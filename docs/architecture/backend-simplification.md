@@ -54,7 +54,7 @@ checks, and the Vercel production-alias gate.
 
 Client intake uses the existing client object correctly, researches public company identity even without a supplied website, and grows the company wiki from supported evidence. Backend simplification removes verified dead behavior and competing live representations while preserving authorization, source evidence, immutable issued artifacts, and resumable operations.
 
-The audit covers 153 tables declared directly in schema.ts, the 12 local Workspace scan/reconciliation tables, and the six additional Convex Auth tables. Related domain findings and table dispositions follow below. Table count alone is not a quality target.
+The audit covers the tables declared directly in schema.ts and the six additional Convex Auth tables. Related domain findings and table dispositions follow below. Table count alone is not a quality target.
 
 ## Client information contract
 
@@ -159,7 +159,6 @@ Read-only discovery performed against current checkout on 2026-09-14 before impl
 | policyFiles | Keep authoritative source-file list and ownership; remove uncalled legacy extractedData/write paths only after migration. Inline policies.files is explicit UI projection, not a second editable source. |
 | policyUploadFingerprints, policyUploadFingerprintInventories | Keep hash lookup/dedup and bounded inventory backfill progress; projection/index prevents scans, not arbitrary duplicate data. |
 | policyExtractionRuns | Keep high-churn logs/checkpoint/promotion ledger off policy row. |
-| policyExtractionQueue, policyExtractionPreviewQueue | Keep separate narrow claim/lease lanes; merging would couple independent preview/final claims and increase scans. |
 | policyExtractionArtifacts | Keep storage-backed transient large payloads/resumability; cl_sdk_checkpoint is named legacy cleanup kind and should only narrow after cleanup. |
 | routerAssets | Keep signed, lease/org-bound, expiring model input staging; security boundary. |
 | operationalRouterSmokeRuns, workerRouterTransportSmokeRuns | Keep bounded marker-owned release diagnostics; never generalize identities/models/assets or merge with production claim queues. |
@@ -177,7 +176,6 @@ Read-only discovery performed against current checkout on 2026-09-14 before impl
 | policyAuditLog | Keep operational history independent of current entity. |
 | requirementSourceDocuments | Keep originals/provenance/import status, consolidate dual holder association. |
 | requirementExtractionRuns | Keep bounded diagnostics and count/source/model attribution; router transport direct value is historical compatibility. |
-| extractionReviews | Keep operator quality feedback + router submission state; not policy manual corrections. |
 | insuranceRequirements | Keep executable coverage criteria; finish existing legacy shape migration, remove deprecated duplicate criterion representation. |
 | complianceChecks | Keep requirement/subject evaluation and manual evidence/history; checkedAt/alertedAt/expiry are real evaluation/reminder boundaries. |
 | certificateHolders | Keep tenant-local recipient identity/contact/address normalization for deterministic dedup, not org identity or legal policy insured. |
@@ -334,7 +332,6 @@ Plan: normalize singular transport input to array at one ingress boundary, keep 
 | `pendingEmails`, `emailDeliveryAttempts`, `emailDraftReviewLinks`, `appCardAccessLinks` | Keep draft/attempt/access-token boundaries; simplify draft envelope as above. Token, exact fingerprint, actor and source-thread binding are not generic markdown facts. |
 | `agentResponseFeedback` | Keep cross-channel actor identity and router feedback-delivery state; schema.ts:4879. Avoid putting feedback into general message `metadata`. |
 | `connectedEmailAccounts`, `connectedEmailScanStates`, `connectedEmailAutomationItems` | Keep credential ownership/user-vs-org scope separate from IMAP UID checkpoint and per-message automation dedupe/result. `connectedEmail.ts:120` and `:141` enforce scope; `actions/connectedEmailScan.ts:907` maps user accounts to private threads. Remove only explicit legacy `memoryIds` in this batch. |
-| Workspace scan config/runs/mailboxes/sources/source parts | Keep authorization/credential revision, independently leased work and bounded source content. `operatorGoogleWorkspaceScan.ts:78`, `:231`, `:669`, `:779`, `:951` actively write these. `active`, `hasError` are indexed projections, not automatically removable status duplicates. |
 | Workspace reconciliation finding sources/inventories/contexts/imports/findings/changes/identities | Keep original evidence, resumable inventories, imported-file provenance, independently reviewable findings, before/after corrections and identity dedupe. Active writes `operatorGoogleWorkspaceReconciliation.ts:165`, `:323`, `:500`, `:584`, `:617`, `:757`. Before/after JSON is historical audit snapshot, not a second live business object. Future narrowing should use typed operation discriminants, only after cataloging consumers. |
 | `operatorAuthNonces`, `operatorImpersonationSessions`, `employeeProvisioningRequests`, `operatorAuditEvents` | Keep security replay/impersonation/provisioning idempotency/audit boundaries. Safe shared audit metadata typing is preferable to schema flattening. |
 | OAuth clients/codes/tokens/rate counters; auth library tables; user email change requests | Keep protocol lifecycles; canonical scopes is the evidenced simplification. Security expiry remains. |

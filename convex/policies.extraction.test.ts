@@ -4,7 +4,6 @@ import dayjs from "dayjs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { buildDocumentSourceTree, buildSourceSpan } from "@claritylabs/cl-sdk";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import {
   buildExtractionCompletionManifest,
@@ -291,11 +290,4 @@ test("the stale sweep hands abandoned extraction-worker runs to advance", async 
       args: [{ jobId: String(ids.policyId) }],
     }),
   ]);
-  const queued = await t.run((ctx) =>
-    ctx.db
-      .query("policyExtractionQueue")
-      .withIndex("policy", (q) => q.eq("policyId", ids.policyId as Id<"policies">))
-      .collect(),
-  );
-  expect(queued).toEqual([]);
 });

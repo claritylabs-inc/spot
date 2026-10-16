@@ -15,8 +15,6 @@ import {
   notificationSourceRefValidator,
 } from "./lib/notificationTypes";
 import { proposalReviewFindingValidator } from "./lib/proposalReview";
-import { googleWorkspaceScanTables } from "./lib/googleWorkspaceScanSchema";
-import { scanReconciliationTables } from "./lib/scanReconciliationSchema";
 import { completionOutcomeValidator } from "./lib/procurementCompletionOutcome";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
@@ -457,10 +455,6 @@ const certificateHolderRelationshipKindValidator = v.union(
 );
 
 export default defineSchema({
-  // Deprecated: workspace scan removed; drop after data cleanup.
-  ...googleWorkspaceScanTables,
-  // Deprecated: workspace scan removed; drop after data cleanup.
-  ...scanReconciliationTables,
   ...authTables,
   ...markdownDocumentTables,
 
@@ -1639,48 +1633,6 @@ export default defineSchema({
     .index("started", ["startedAt"])
     .index("expiration", ["expiresAt"]),
 
-  // Deprecated: rating removed; drop after data cleanup.
-  extractionReviews: defineTable({
-    targetKind: v.union(
-      v.literal("policy_extraction"),
-      v.literal("requirement_extraction"),
-    ),
-    targetId: v.string(),
-    targetKey: v.string(),
-    orgId: v.id("organizations"),
-    operatorUserId: v.id("users"),
-    policyId: v.optional(v.id("policies")),
-    rating: v.union(v.literal("positive"), v.literal("negative")),
-    category: v.optional(
-      v.union(
-        v.literal("incorrect"),
-        v.literal("missing"),
-        v.literal("ungrounded"),
-        v.literal("unsafe"),
-        v.literal("other"),
-      ),
-    ),
-    fieldPath: v.optional(v.string()),
-    expectedValue: v.optional(v.string()),
-    comment: v.optional(v.string()),
-    routerRequestId: v.optional(v.string()),
-    taskKind: v.optional(v.string()),
-    provider: v.optional(modelProviderValidator),
-    model: v.optional(v.string()),
-    routerSignalStatus: v.union(
-      v.literal("not_applicable"),
-      v.literal("pending"),
-      v.literal("submitted"),
-      v.literal("error"),
-    ),
-    routerSignalError: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("target_operator", ["targetKey", "operatorUserId"])
-    .index("organization_created", ["orgId", "createdAt"])
-    .index("operator_created", ["operatorUserId", "createdAt"]),
-
   insuranceRequirements: defineTable({
     orgId: v.id("organizations"),
     kind: v.union(
@@ -2450,40 +2402,6 @@ export default defineSchema({
   })
     .index("policy", ["policyId"])
     .index("status_updated", ["pipelineStatus", "updatedAt"]),
-
-  // Deprecated: extraction worker removed; drop after data cleanup. Was the
-  // narrow claim queue for external Railway extraction workers.
-  policyExtractionQueue: defineTable({
-    policyId: v.id("policies"),
-    runId: v.id("policyExtractionRuns"),
-    status: v.union(v.literal("queued"), v.literal("leased")),
-    leaseId: v.optional(v.string()),
-    leaseExpiresAt: v.optional(v.number()),
-    heartbeatAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("policy", ["policyId"])
-    .index("status_updated", ["status", "updatedAt"]),
-
-  // Deprecated: extraction worker removed; drop after data cleanup. Was the
-  // lightweight first-read queue that preview workers populated with bounded
-  // canonical fields before the full source-backed extraction completed;
-  // preview fields are now written inline by the Convex section pipeline.
-  policyExtractionPreviewQueue: defineTable({
-    policyId: v.id("policies"),
-    runId: v.id("policyExtractionRuns"),
-    status: v.union(v.literal("queued"), v.literal("leased")),
-    leaseId: v.optional(v.string()),
-    leaseExpiresAt: v.optional(v.number()),
-    heartbeatAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("policy", ["policyId"])
-    .index("status_updated", ["status", "updatedAt"]),
-
-  // Storage-backed transient extraction artifacts. These records point at JSON
   // blobs in Convex file storage for pre-embedding chunk/source-span payloads,
   // section extraction results, and legacy cl-sdk checkpoint cleanup.
   policyExtractionArtifacts: defineTable({

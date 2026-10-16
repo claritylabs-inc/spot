@@ -1,5 +1,4 @@
 "use client";
-import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 

@@ -35,7 +35,6 @@ import {
 import { PillButton } from "@/components/ui/pill-button";
 import {
   useCachedOperatorClients,
-  useCachedOperatorCurrent,
   useOperatorClientCacheActions,
 } from "@/lib/sync/operator-cached-queries";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -45,7 +44,6 @@ import {
 } from "./operator-client-tabs";
 import { type OperatorClientRow } from "../client-model";
 import OperatorClientWikiPage from "./wiki/page";
-import { typeStyle } from "@/lib/typography";
 
 type ClientTab = OperatorClientPageTab;
 type ClientSupportDetails = NonNullable<

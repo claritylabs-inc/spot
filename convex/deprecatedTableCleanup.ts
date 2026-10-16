@@ -14,21 +14,12 @@ import { internalMutation, internalQuery } from "./_generated/server";
  * Add `--prod` (or `--deployment-name <name>`) to target a cloud deployment.
  */
 const DEPRECATED_TABLES = [
-  "extractionReviews",
-  "policyExtractionQueue",
-  "policyExtractionPreviewQueue",
-  "operatorGoogleWorkspaceScanConfig",
-  "operatorGoogleWorkspaceScanRuns",
-  "operatorGoogleWorkspaceScanMailboxes",
-  "operatorGoogleWorkspaceScanSources",
-  "operatorGoogleWorkspaceScanSourceParts",
-  "operatorWorkspaceScanFindingSources",
-  "operatorWorkspaceScanInventories",
-  "operatorWorkspaceScanContexts",
-  "operatorWorkspaceScanImports",
-  "operatorWorkspaceScanFindings",
-  "operatorWorkspaceScanChanges",
-  "operatorWorkspaceScanIdentities",
+  "certificateWorkflowSettings",
+  "documentChunks",
+  "publicDemoConversations",
+  "publicDemoChatLogs",
+  "publicDemoSalesTranscripts",
+  "publicDemoRateCounters",
 ] as const;
 
 const BATCH_SIZE = 100;
@@ -53,13 +44,7 @@ export const purge = internalMutation({
     const table = DEPRECATED_TABLES.find((name) => name === args.table);
     if (!table) throw new Error(`${args.table} is not a deprecated table`);
     const rows = await ctx.db.query(table).take(BATCH_SIZE);
-    for (const row of rows) {
-      if (table === "operatorWorkspaceScanImports") {
-        const { file } = row as { file?: { fileId: Parameters<typeof ctx.storage.delete>[0] } };
-        if (file?.fileId) await ctx.storage.delete(file.fileId);
-      }
-      await ctx.db.delete(row._id);
-    }
+    for (const row of rows) await ctx.db.delete(row._id);
     if (rows.length === BATCH_SIZE) {
       await ctx.scheduler.runAfter(0, internal.deprecatedTableCleanup.purge, {
         table,

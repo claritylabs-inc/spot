@@ -761,7 +761,7 @@ export const saveSectionForMcp = internalMutation({
       throw new Error(
         "Company wiki revision changed; read it again before saving.",
       );
-    const heading = requireOrgWikiSection(args.key).heading;
+    requireOrgWikiSection(args.key);
     await writeSection(ctx, {
       orgId: args.orgId,
       key: args.key,

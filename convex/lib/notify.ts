@@ -47,19 +47,10 @@ export const notifyPolicyExtractionReviewInternal = internalMutation({
   args: {
     policyId: v.id("policies"),
     questionCount: v.number(),
-    workspaceScanImportId: v.optional(v.id("operatorWorkspaceScanImports")),
   },
   handler: async (ctx, args): Promise<boolean> => {
     const policy = await ctx.db.get(args.policyId);
     if (!policy?.orgId || args.questionCount < 1) return false;
-    if (args.workspaceScanImportId) {
-      const scanImport = await ctx.db.get(args.workspaceScanImportId);
-      if (!scanImport || scanImport.policyId !== args.policyId)
-        throw new Error(
-          "Scheduled extraction origin does not match this policy",
-        );
-      return false;
-    }
     const label =
       policy.policyNumber && policy.policyNumber !== "Unknown"
         ? `policy ${policy.policyNumber}`

@@ -84,13 +84,11 @@ function ProcurementRequestPreview({
   request,
   basePath,
   onClose,
-  policies,
   readOnly,
 }: {
   request: ProcurementRequestRow;
   basePath: string;
   onClose: () => void;
-  policies: PolicyOption[];
   readOnly: boolean;
 }) {
   const router = useRouter();
@@ -538,14 +536,13 @@ export function ProcurementListWorkspace({
         <ProcurementRequestPreview
           key={request._id}
           request={request}
-          policies={policies}
           readOnly={readOnly}
           basePath={basePath}
           onClose={closeRightPanel}
         />,
       );
     },
-    [basePath, closeRightPanel, onRightPanel, policies, readOnly],
+    [basePath, closeRightPanel, onRightPanel, readOnly],
   );
 
   useEffect(() => {
