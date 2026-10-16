@@ -62,6 +62,7 @@ function optionalClRouterHealthUrl() {
 }
 
 function optionalOperatorImessageWorkerHealthUrl() {
+  if (deployment.operatorImessage?.webhookTransport) return undefined;
   const explicit = process.env.SPOT_OPERATOR_IMESSAGE_WORKER_HEALTH_URL?.trim();
   if (explicit) return explicit;
   const configured = deployment.operatorImessageWorkerHealthUrlEnv
@@ -84,13 +85,14 @@ const urls = {
       deployment.convexAgentHealthUrl,
       "Convex agent health URL",
     ),
-  imessageWorkerHealth:
-    process.env.SPOT_IMESSAGE_WORKER_HEALTH_URL ??
-    envOrDefault(
-      deployment.imessageWorkerHealthUrlEnv,
-      deployment.imessageWorkerHealthUrl,
-      "iMessage worker health URL",
-    ),
+  imessageWorkerHealth: deployment.imessage.webhookTransport
+    ? undefined
+    : (process.env.SPOT_IMESSAGE_WORKER_HEALTH_URL ??
+      envOrDefault(
+        deployment.imessageWorkerHealthUrlEnv,
+        deployment.imessageWorkerHealthUrl,
+        "iMessage worker health URL",
+      )),
   operatorImessageWorkerHealth: optionalOperatorImessageWorkerHealthUrl(),
   clRouterHealth: optionalClRouterHealthUrl(),
 };
@@ -183,9 +185,7 @@ const checks = [
           );
         }
         if (payload.operatorSlack?.hostTeamConfigured !== true) {
-          throw new Error(
-            "operatorSlack.hostTeamConfigured expected true",
-          );
+          throw new Error("operatorSlack.hostTeamConfigured expected true");
         }
         const missingHostScopes = payload.operatorSlack?.missingHostScopes;
         if (!Array.isArray(missingHostScopes)) {
@@ -197,7 +197,16 @@ const checks = [
           );
         }
       }
+      for (const role of ["imessage", "operatorImessage"]) {
+        if (
+          deployment[role]?.webhookTransport &&
+          payload[role]?.webhookTransport !== true
+        ) {
+          throw new Error(`${role}.webhookTransport expected true`);
+        }
+      }
       const operatorImessageRequired = Boolean(
+        deployment.operatorImessage?.required ||
         urls.operatorImessageWorkerHealth,
       );
       if (
@@ -234,40 +243,46 @@ const checks = [
       }
     },
   },
-  {
-    name: "iMessage worker",
-    url: urls.imessageWorkerHealth,
-    validate(payload) {
-      const expected = {
-        ok: true,
-        service: "spot-imessage-worker",
-        channelRole: deployment.imessage.channelRole,
-        transport: deployment.imessage.transport,
-        imessageEnabled: deployment.imessage.imessageEnabled,
-        convexSiteConfigured: true,
-        workerSecretConfigured: true,
-        photonConfigured: deployment.imessage.photonConfigured,
-      };
-      const failures = Object.entries(expected)
-        .filter(([key, value]) => payload[key] !== value)
-        .map(
-          ([key, value]) =>
-            `${key} expected ${String(value)} got ${String(payload[key])}`,
-        );
-      if (failures.length > 0) {
-        throw new Error(failures.join("; "));
-      }
-      validateSpotEnv(payload);
-      for (const port of deployment.imessage.requiredHttpPorts ?? []) {
-        if (
-          !Array.isArray(payload.httpPorts) ||
-          !payload.httpPorts.includes(port)
-        ) {
-          throw new Error(`worker is not listening on required port ${port}`);
-        }
-      }
-    },
-  },
+  ...(urls.imessageWorkerHealth
+    ? [
+        {
+          name: "iMessage worker",
+          url: urls.imessageWorkerHealth,
+          validate(payload) {
+            const expected = {
+              ok: true,
+              service: "spot-imessage-worker",
+              channelRole: deployment.imessage.channelRole,
+              transport: deployment.imessage.transport,
+              imessageEnabled: deployment.imessage.imessageEnabled,
+              convexSiteConfigured: true,
+              workerSecretConfigured: true,
+              photonConfigured: deployment.imessage.photonConfigured,
+            };
+            const failures = Object.entries(expected)
+              .filter(([key, value]) => payload[key] !== value)
+              .map(
+                ([key, value]) =>
+                  `${key} expected ${String(value)} got ${String(payload[key])}`,
+              );
+            if (failures.length > 0) {
+              throw new Error(failures.join("; "));
+            }
+            validateSpotEnv(payload);
+            for (const port of deployment.imessage.requiredHttpPorts ?? []) {
+              if (
+                !Array.isArray(payload.httpPorts) ||
+                !payload.httpPorts.includes(port)
+              ) {
+                throw new Error(
+                  `worker is not listening on required port ${port}`,
+                );
+              }
+            }
+          },
+        },
+      ]
+    : []),
   ...(urls.operatorImessageWorkerHealth
     ? [
         {
@@ -292,8 +307,8 @@ const checks = [
               );
             if (failures.length > 0) throw new Error(failures.join("; "));
             validateSpotEnv(payload);
-            for (const port of
-              deployment.operatorImessage.requiredHttpPorts ?? []) {
+            for (const port of deployment.operatorImessage.requiredHttpPorts ??
+              []) {
               if (
                 !Array.isArray(payload.httpPorts) ||
                 !payload.httpPorts.includes(port)

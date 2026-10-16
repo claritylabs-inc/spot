@@ -5,8 +5,6 @@
     "convexAgentHealthUrl": "https://actions.spot.insure/agent-health",
     "clientPortalUrl": "https://app.spot.insure",
     "clRouterHealthUrlEnv": "SPOT_PRODUCTION_CL_ROUTER_HEALTH_URL",
-    "imessageWorkerHealthUrl": "https://spot-production-4618.up.railway.app/health",
-    "operatorImessageWorkerHealthUrlEnv": "SPOT_PRODUCTION_OPERATOR_IMESSAGE_WORKER_HEALTH_URL",
     "slack": {
       "appId": "A0BMW4TG7JB",
       "enabled": true,
@@ -18,6 +16,7 @@
     "imessage": {
       "channelRole": "customer",
       "transport": "imessage",
+      "webhookTransport": true,
       "imessageEnabled": true,
       "photonConfigured": true,
       "requiredHttpPorts": [3001]
@@ -29,6 +28,7 @@
       "railwayConfig": "imessage-worker/railway.operator.json",
       "channelRole": "operator",
       "transport": "imessage",
+      "webhookTransport": true,
       "imessageEnabled": true,
       "photonConfigured": true,
       "requiredHttpPorts": []
