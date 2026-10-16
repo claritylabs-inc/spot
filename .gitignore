@@ -47,6 +47,7 @@
 !/docs/deployment/
 /docs/deployment/*
 !/docs/deployment/environments.md
+!/docs/deployment/imessage-webhooks.md
 !/docs/deployment/slack.md
 !/docs/deployment/operator-mcp.md
 !/docs/deployment/operator-mcp-sources.md
