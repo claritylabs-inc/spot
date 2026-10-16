@@ -133,6 +133,7 @@ export async function judgeRequirementFields(
     orgId?: Id<"organizations">;
     traceId: string;
     defaultScope: RequirementScope;
+    retainUncertainLineOfBusiness?: boolean;
   },
 ): Promise<Array<ImportedRequirement & { classificationReview?: true }>> {
   const rows: Array<ImportedRequirement & { classificationReview?: true }> = [];
@@ -170,6 +171,7 @@ async function judgeRequirementBatch(
     orgId?: Id<"organizations">;
     traceId: string;
     defaultScope: RequirementScope;
+    retainUncertainLineOfBusiness?: boolean;
   },
 ): Promise<Array<ImportedRequirement & { classificationReview?: true }>> {
   if (!requirements.length) return [];
@@ -284,11 +286,21 @@ async function judgeRequirementBatch(
         : jevProceeds(own) && vendors !== undefined && jevProceeds(1 - vendors)
           ? ("own_org" as const)
           : null;
-    const lob = choice("lob");
+    const lobChoice = choice("lob");
+    const confidentLob =
+      lobChoice && isLobCode(lobChoice) ? lobChoice : undefined;
+    const lobAnswer = result.answers[`r${index}_lob`];
+    const lob =
+      confidentLob ??
+      (args.retainUncertainLineOfBusiness &&
+      lobAnswer?.type === "choice" &&
+      isLobCode(lobAnswer.choice)
+        ? lobAnswer.choice
+        : undefined);
     const form = choice("form");
     const uncertain =
       !scope ||
-      !lob ||
+      !confidentLob ||
       !form ||
       REQUIREMENT_PROVISIONS.some((provision) => {
         const p = probability(provision);
@@ -1136,6 +1148,7 @@ async function runRequirementImport(
         orgId: args.orgId,
         traceId: runId,
         defaultScope: scope,
+        retainUncertainLineOfBusiness: true,
       })
     ).map((requirement) => normalizeImportedRequirement(requirement, scope));
     // The shared writer requires a valid line and checkable coverage terms.
