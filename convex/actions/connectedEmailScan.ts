@@ -37,7 +37,6 @@ import { generateObjectForOrg } from "../lib/models";
 import { htmlToPlainText } from "../lib/inboundEmailParser";
 import {
   canAutoExecuteMailboxDecision,
-  mailboxAutomationDecisionSchema,
   mailboxEmailQuestions,
   applyMailboxAttachmentJudgments,
   applyMailboxAutomationJudgments,
