@@ -1936,7 +1936,14 @@ async function policyFactEvidence(
       return span;
     }),
   );
-  return { policy, spans, snapshot: JSON.stringify({ policy, spans }) };
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify({ policy, spans })),
+  );
+  const snapshotHash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return { policy, spans, snapshotHash };
 }
 
 export const getPolicyFactEvidence = internalQuery({
@@ -1963,12 +1970,10 @@ export const confirmPolicyFactFromSource = internalMutation({
         v.literal("slack"),
       ),
     ),
-    grounding: v.optional(
-      v.object({
-        snapshot: v.string(),
-        probabilities: v.record(v.string(), v.number()),
-      }),
-    ),
+    grounding: v.object({
+      snapshotHash: v.string(),
+      probabilities: v.record(v.string(), v.number()),
+    }),
     fieldUpdates: v.optional(
       v.object({
         carrier: v.optional(v.string()),
@@ -1988,8 +1993,8 @@ export const confirmPolicyFactFromSource = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
-    const { policy, snapshot } = await policyFactEvidence(ctx, args);
-    if (!args.grounding || args.grounding.snapshot !== snapshot) {
+    const { policy, snapshotHash } = await policyFactEvidence(ctx, args);
+    if (args.grounding.snapshotHash !== snapshotHash) {
       throw new Error(
         "Source grounding is missing or stale; look up the evidence again.",
       );
@@ -2053,7 +2058,10 @@ export const confirmPolicyFactFromSource = internalMutation({
       policyId: args.id,
       userId: args.userId,
       orgId: args.orgId,
-      action: "agent_confirmed_policy_fact",
+      action:
+        rejectedFields.length > 0 && Object.keys(acceptedUpdates).length === 0
+          ? "agent_rejected_policy_fact"
+          : "agent_confirmed_policy_fact",
       detail: "Evaluated source-backed policy fact: " + args.fact,
       metadata: {
         rejectedFields,
