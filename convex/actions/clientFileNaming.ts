@@ -16,7 +16,7 @@ import {
 } from "../lib/agentAttachmentContext";
 import { ClRouterRequestError, clRouterDecide } from "../lib/clRouterClient";
 import { pdfPageJevImage, stageJevImages, type JevImage } from "../lib/jevImages";
-import { jevProceeds } from "../lib/jevThreshold";
+import { jevChoiceConfidence, jevProceeds } from "../lib/jevThreshold";
 import { generateObjectForOrg } from "../lib/models";
 import {
   JEV_IMAGE_MAX_SIDE,
@@ -194,10 +194,7 @@ async function categorizeClientFile(
       ).answers.category;
     }
     if (answer?.type !== "choice" || answer.choice === "other") return null;
-    const confidence = Math.min(
-      answer.confidence,
-      answer.probabilities[answer.choice] ?? 0,
-    );
+    const confidence = jevChoiceConfidence(answer);
     return jevProceeds(confidence) && answer.choice in CLIENT_FILE_CATEGORY_LABELS
       ? (answer.choice as ClientFileCategory)
       : null;
