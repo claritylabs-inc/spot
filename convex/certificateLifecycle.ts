@@ -89,16 +89,6 @@ function cleanOptionalText(value?: string) {
   return trimmed || undefined;
 }
 
-function isOpenWorkflowJobStatus(
-  status: Doc<"certificateWorkflowJobs">["status"],
-) {
-  return (
-    status === "review_required" ||
-    status === "blocked_missing_contact" ||
-    status === "sending"
-  );
-}
-
 async function nextCertificateVersionNumber(
   ctx: ReadCtx,
   certificateId: Id<"policyCertificates">,
@@ -405,7 +395,7 @@ export const archive = mutation({
     assertCanWriteCertificates(access);
     await recordImpersonatedWrite(ctx);
     if (certificate.status === "archived") {
-      return { status: "archived", cancelledJobs: 0 };
+      return { status: "archived" };
     }
 
     const now = dayjs().valueOf();
@@ -417,26 +407,7 @@ export const archive = mutation({
       updatedAt: now,
     });
 
-    const jobs = await ctx.db
-      .query("certificateWorkflowJobs")
-      .withIndex("certificate", (q) =>
-        q.eq("certificateId", args.certificateId),
-      )
-      .collect();
-    let cancelledJobs = 0;
-    for (const job of jobs) {
-      if (!isOpenWorkflowJobStatus(job.status)) continue;
-      await ctx.db.patch(job._id, {
-        status: "cancelled",
-        cancelReason: "Certificate archived",
-        cancelledByUserId: access.userId,
-        cancelledAt: now,
-        updatedAt: now,
-      });
-      cancelledJobs += 1;
-    }
-
-    return { status: "archived", cancelledJobs };
+    return { status: "archived" };
   },
 });
 

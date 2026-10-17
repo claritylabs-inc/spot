@@ -16,7 +16,6 @@ type DocumentScope = {
   requestId?: Id<"procurementRequests">;
   requirementSourceDocumentId?: Id<"requirementSourceDocuments">;
   certificateHolderId?: Id<"certificateHolders">;
-  certificateWorkflowJobId?: Id<"certificateWorkflowJobs">;
   filename?: string;
 };
 
@@ -29,7 +28,6 @@ export async function getMarkdownDocument(
     scope.requestId,
     scope.requirementSourceDocumentId,
     scope.certificateHolderId,
-    scope.certificateWorkflowJobId,
   ].filter(Boolean);
   const valid =
     scope.kind === "company_wiki"
@@ -38,11 +36,7 @@ export async function getMarkdownDocument(
         ((requestOwned && scope.requestId) ||
           (scope.kind === "requirement_notes" &&
             scope.requirementSourceDocumentId) ||
-          (scope.kind === "holder_notes" && scope.certificateHolderId) ||
-          (["certificate_review_notes", "certificate_delivery_notes"].includes(
-            scope.kind,
-          ) &&
-            scope.certificateWorkflowJobId));
+          (scope.kind === "holder_notes" && scope.certificateHolderId));
   if (!valid) throw new Error("Invalid Markdown document scope");
   if (scope.kind === "packet" && !scope.filename)
     throw new Error("Packet Markdown files require a filename");
@@ -85,14 +79,6 @@ async function findDocument(ctx: QueryCtx | MutationCtx, scope: DocumentScope) {
           .eq("kind", scope.kind),
       )
       .unique();
-  if (scope.certificateWorkflowJobId)
-    return documents
-      .withIndex("workflow_kind", (q) =>
-        q
-          .eq("certificateWorkflowJobId", scope.certificateWorkflowJobId)
-          .eq("kind", scope.kind),
-      )
-      .unique();
   return documents
     .withIndex("organization_kind", (q) =>
       q.eq("orgId", scope.orgId).eq("kind", scope.kind),
@@ -122,7 +108,6 @@ export async function saveMarkdownDocument(
     args.requestId ??
       args.requirementSourceDocumentId ??
       args.certificateHolderId ??
-      args.certificateWorkflowJobId ??
       args.orgId,
   );
   if (!owner) throw new Error("Markdown document owner not found");
@@ -168,7 +153,6 @@ export async function saveMarkdownDocument(
     requestId: args.requestId,
     requirementSourceDocumentId: args.requirementSourceDocumentId,
     certificateHolderId: args.certificateHolderId,
-    certificateWorkflowJobId: args.certificateWorkflowJobId,
     filename: args.filename,
     markdown,
     revision: (existing?.revision ?? 0) + 1,

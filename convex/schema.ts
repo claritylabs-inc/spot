@@ -410,20 +410,6 @@ const certificateEmailDraftValidator = v.object({
   recipientName: v.optional(v.string()),
 });
 
-const certificateWorkflowJobStatusValidator = v.union(
-  v.literal("review_required"),
-  v.literal("blocked_missing_contact"),
-  v.literal("sending"),
-  v.literal("sent"),
-  v.literal("cancelled"),
-  v.literal("failed"),
-);
-
-const certificateWorkflowJobKindValidator = v.union(
-  v.literal("renewal_reissue"),
-  v.literal("manual_review"),
-);
-
 const certificateHolderRelationshipKindValidator = v.union(
   v.literal("additional_insured"),
   v.literal("loss_payee"),
@@ -3347,43 +3333,6 @@ export default defineSchema({
     .index("holder", ["holderId"])
     .index("source", ["requirementSourceDocumentId"])
     .index("file", ["fileId"]),
-
-  // Deprecated: certificate renewal jobs removed; drop after data cleanup.
-  certificateWorkflowJobs: defineTable({
-    orgId: v.id("organizations"),
-    brokerOrgId: v.optional(v.id("organizations")),
-    certificateId: v.id("policyCertificates"),
-    certificateVersionId: v.optional(v.id("certificateVersions")),
-    holderId: v.id("certificateHolders"),
-    policyId: v.id("policies"),
-    policyVersionId: v.optional(v.id("policyVersions")),
-    kind: certificateWorkflowJobKindValidator,
-    status: certificateWorkflowJobStatusValidator,
-    idempotencyKey: v.string(),
-    reason: v.optional(v.string()),
-    recipientName: v.optional(v.string()),
-    recipientEmail: v.optional(v.string()),
-    recipientPhone: v.optional(v.string()),
-    threadId: v.optional(v.id("threads")),
-    sentAt: v.optional(v.number()),
-    sentByUserId: v.optional(v.id("users")),
-    cancelledAt: v.optional(v.number()),
-    cancelledByUserId: v.optional(v.id("users")),
-    cancelReason: v.optional(v.string()),
-    lastError: v.optional(v.string()),
-    createdByUserId: v.optional(v.id("users")),
-    reviewedByUserId: v.optional(v.id("users")),
-    reviewedAt: v.optional(v.number()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("organization", ["orgId"])
-    .index("organization_status", ["orgId", "status"])
-    .index("policy", ["policyId"])
-    .index("certificate", ["certificateId"])
-    .index("holder", ["holderId"])
-    .index("thread", ["threadId"])
-    .index("idempotency", ["idempotencyKey"]),
 
   certificates: defineTable({
     orgId: v.id("organizations"),

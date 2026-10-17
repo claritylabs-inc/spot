@@ -569,13 +569,12 @@ export const deleteNextTarget = internalMutation({
   },
 });
 
-async function unlinkByThreadId(
+async function unlinkEmailAutomationItems(
   ctx: MutationCtx,
-  table: "connectedEmailAutomationItems" | "certificateWorkflowJobs",
   threadId: Id<"threads">,
 ) {
   const rows = await ctx.db
-    .query(table)
+    .query("connectedEmailAutomationItems")
     .withIndex("thread", (q) => q.eq("threadId", threadId))
     .take(DELETE_BATCH_SIZE);
   for (const row of rows) {
@@ -655,26 +654,15 @@ export const deleteTargetBatch = internalMutation({
     try {
       if (stage === "connected_email") {
         if (
-          await unlinkByThreadId(
-            ctx,
-            "connectedEmailAutomationItems",
-            target.threadId,
-          )
-        ) {
-          await scheduleDeleteTarget(ctx, target._id);
-        } else await advance("certificate_workflow");
-        return;
-      }
-      if (stage === "certificate_workflow") {
-        if (
-          await unlinkByThreadId(
-            ctx,
-            "certificateWorkflowJobs",
-            target.threadId,
-          )
+          await unlinkEmailAutomationItems(ctx, target.threadId)
         ) {
           await scheduleDeleteTarget(ctx, target._id);
         } else await advance("audit");
+        return;
+      }
+      // Targets already past the removed certificate workflow stage.
+      if (stage === "certificate_workflow") {
+        await advance("audit");
         return;
       }
       if (stage === "audit") {

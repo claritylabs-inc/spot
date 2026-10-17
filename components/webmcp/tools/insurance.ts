@@ -547,7 +547,7 @@ export function insuranceToolImplementations(ctx: ClientToolContext): ToolMap {
       const result = await convex.mutation(api.certificateLifecycle.archive, {
         certificateId: id<"policyCertificates">(input, "certificate_id"),
       });
-      return { status: result.status, cancelled_jobs: result.cancelledJobs };
+      return { status: result.status };
     },
     restore_certificate: async (input) => {
       const result = await convex.mutation(api.certificateLifecycle.unarchive, {
