@@ -29,7 +29,6 @@ const TABLES: TableNames[] = [
   "certificateHolderPolicyLinks",
   "policyCertificates",
   "certificateVersions",
-  "certificateWorkflowJobs",
   "notifications",
   "notificationPreferences",
   "sourceSpans",
