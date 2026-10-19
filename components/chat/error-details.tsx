@@ -27,9 +27,13 @@ function detailRows(
   failure: RouterJobFailure | undefined,
   requestReference: string | undefined,
   activity: ChatActivity | undefined,
+  errorCode?: string,
+  messageReference?: string,
 ): [string, string][] {
   const rows: [string, string][] = [];
-  if (failure) rows.push(["Error code", failure.code]);
+  const code = failure?.code ?? errorCode;
+  if (code) rows.push(["Error code", code]);
+  if (messageReference) rows.push(["Message reference", messageReference]);
   const reference = failure?.requestId ?? requestReference;
   if (reference) rows.push(["Request reference", reference]);
   const stage = lastObserved(activity);
@@ -57,13 +61,23 @@ export function ChatErrorDetails({
   failure,
   requestReference,
   activity,
+  errorCode,
+  messageReference,
 }: {
   failure?: RouterJobFailure;
   requestReference?: string;
   activity?: ChatActivity;
+  errorCode?: string;
+  messageReference?: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const rows = detailRows(failure, requestReference, activity);
+  const rows = detailRows(
+    failure,
+    requestReference,
+    activity,
+    errorCode,
+    messageReference,
+  );
   if (rows.length === 0) return null;
   const text = rows.map(([label, value]) => `${label}: ${value}`).join("\n");
   return (
@@ -75,10 +89,7 @@ export function ChatErrorDetails({
     >
       <dl className="space-y-1 py-1.5">
         {rows.map(([label, value]) => (
-          <div
-            key={label}
-            className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5"
-          >
+          <div key={label} className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5">
             <dt>{label}</dt>
             <dd className="min-w-0 break-words text-foreground">{value}</dd>
           </div>

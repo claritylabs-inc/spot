@@ -3,6 +3,12 @@ import { RouterJobFailed } from "./routerJobClient";
 const SAFE_CODE = /^[a-z0-9_.:-]{1,64}$/;
 
 const ROUTER_CODE_REASONS: Record<string, string> = {
+  router_rejected:
+    "The model service rejected this request. Its configuration or input needs to be corrected before retrying.",
+  router_unavailable: "The model service is temporarily unavailable.",
+  router_budget_exhausted:
+    "The model service ran out of time before it could finish.",
+  router_internal: "The model service encountered an internal error.",
   router_candidates_exhausted:
     "Every model the router tried rejected or failed this request.",
   router_payload_too_large: "The request was too large for the model service.",
@@ -23,7 +29,8 @@ function routerReason(code: string | undefined) {
  * stay in the run's stored error and router job for diagnosis.
  */
 export function describeAgentFailure(error: unknown): string {
-  if (error instanceof RouterJobFailed) return routerReason(error.failure?.code);
+  if (error instanceof RouterJobFailed)
+    return routerReason(error.failure?.code);
   if (error instanceof Error) {
     if (error.name === "AgentIncompleteOutputError")
       return error.message.includes("output limit")

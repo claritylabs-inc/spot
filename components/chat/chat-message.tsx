@@ -61,6 +61,8 @@ export function ChatAssistantTurn({
   activity,
   failure,
   routerRequestId,
+  errorCode,
+  messageReference,
   aside,
   after,
   body,
@@ -86,6 +88,8 @@ export function ChatAssistantTurn({
   /** Operator-only diagnostics for a failed turn; ignored for other audiences. */
   failure?: RouterJobFailure;
   routerRequestId?: string;
+  errorCode?: string;
+  messageReference?: string;
   /** Rendered beside the answer or thinking indicator, e.g. a stop control. */
   aside?: ReactNode;
   /** Rendered below the answer regardless of pending state. */
@@ -159,6 +163,8 @@ export function ChatAssistantTurn({
         <ChatErrorDetails
           failure={failure}
           requestReference={routerRequestId}
+          errorCode={errorCode}
+          messageReference={messageReference}
           activity={activity}
         />
       ) : null}

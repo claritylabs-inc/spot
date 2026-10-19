@@ -1087,3 +1087,21 @@ missing date-field error was resolved by running the existing patch step.
 - Demo account workflow: `node scripts/reviewer-account-e2e.mjs` uses ordinary `/login` and `password`, with seeded policies and session rotation; no reviewer-only auth gates. The final integrated run passes all 5 checks.
 
 - `node scripts/password-account-e2e.mjs` and `node scripts/password-account-boundary-e2e.mjs`: integrated backend workflows pass 5/5 and 4/4; closed public signup/reset, hash-only opt-in, revoked JWTs and concurrent credential writes. Artifacts: `.context/qa/password/results.json` and `boundary-results.json`. The author also verified the stale-session case (6/6) on the same backend correction; see `docs/testing/password-account.md`.
+
+### Agent decision traces and failure diagnostics — October 19, 2026
+
+Actor: authenticated operator on the production operator portal. Use the existing
+email-code login; keep OTPs and browser sessions out of tracked artifacts.
+
+1. Start a read-only broker lookup that requires loading a tool family. Observe
+   preparation, model/tool selection, requested calls, and actual tool execution.
+2. Confirm the response completes, reopen its activity, and reload to verify
+   retained history. A completed turn must have no running indicators.
+3. Inspect a failed run: concise error summary, collapsed Error details, then
+   expand safe request/attempt diagnostics. No raw prompts, provider bodies, or
+   credentials may appear. Error details remain accessible with Show thinking off.
+4. Check narrow viewport layout and streaming/activity preferences. Do not replay
+   the original broker-creation request or send external messages during QA.
+
+Status: in progress. Evidence is under `.context/progress-followup/`; authenticated
+production checks and final outcomes will be recorded after the release.

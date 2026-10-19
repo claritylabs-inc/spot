@@ -27,6 +27,7 @@ type BackendMessage = {
   usedTools?: string[];
   activity?: MessageActivity;
   failure?: RouterJobFailure;
+  error?: string;
   routerRequestId?: string;
   emailContent?: Infer<typeof operatorEmailContentValidator>;
   status?: "processing" | "error" | "cancelled";
@@ -165,6 +166,7 @@ export type OperatorAgentMessage = {
   usedTools?: string[];
   activity?: MessageActivity;
   failure?: RouterJobFailure;
+  errorCode?: string;
   routerRequestId?: string;
   emailContent?: BackendMessage["emailContent"];
   status?: "processing" | "error" | "cancelled";
@@ -332,6 +334,11 @@ export function normalizeOperatorAgentThread(
       usedTools: message.usedTools,
       activity: message.activity,
       failure: message.failure,
+      errorCode:
+        message.failure?.code ??
+        message.error?.match(
+          /\b(router_(?:rejected|unavailable|candidates_exhausted|payload_too_large|budget_exhausted|internal))\b/,
+        )?.[1],
       routerRequestId: message.routerRequestId,
       emailContent: message.emailContent,
       status: message.status,

@@ -390,41 +390,41 @@ export const run = internalAction({
         `${stagePrefix}:context`,
         "preparing_context",
         async () => {
-        const continuationBlob = run.modelContinuationStorageId
-          ? await ctx.storage.get(run.modelContinuationStorageId)
-          : null;
-        const continuation = continuationBlob
-          ? (JSON.parse(await continuationBlob.text()) as {
-              messages: ModelMessage[];
-              route: ModelRoute;
-              parentRequestId?: string;
-            })
-          : undefined;
-        if (continuation) {
-          for (const message of continuation.messages) {
-            if (message.role !== "user" || !Array.isArray(message.content))
-              continue;
-            for (const part of message.content) {
-              if (
-                part.type === "file" &&
-                typeof part.data === "string" &&
-                /^https?:\/\//.test(part.data)
-              ) {
-                part.data = new URL(part.data);
-              }
-              if (
-                part.type === "image" &&
-                typeof part.image === "string" &&
-                /^https?:\/\//.test(part.image)
-              ) {
-                part.image = new URL(part.image);
+          const continuationBlob = run.modelContinuationStorageId
+            ? await ctx.storage.get(run.modelContinuationStorageId)
+            : null;
+          const continuation = continuationBlob
+            ? (JSON.parse(await continuationBlob.text()) as {
+                messages: ModelMessage[];
+                route: ModelRoute;
+                parentRequestId?: string;
+              })
+            : undefined;
+          if (continuation) {
+            for (const message of continuation.messages) {
+              if (message.role !== "user" || !Array.isArray(message.content))
+                continue;
+              for (const part of message.content) {
+                if (
+                  part.type === "file" &&
+                  typeof part.data === "string" &&
+                  /^https?:\/\//.test(part.data)
+                ) {
+                  part.data = new URL(part.data);
+                }
+                if (
+                  part.type === "image" &&
+                  typeof part.image === "string" &&
+                  /^https?:\/\//.test(part.image)
+                ) {
+                  part.image = new URL(part.image);
+                }
               }
             }
           }
-        }
-        const messages =
-          continuation?.messages ??
-          (await buildOperatorHistoryWithAttachments(ctx, selected.messages));
+          const messages =
+            continuation?.messages ??
+            (await buildOperatorHistoryWithAttachments(ctx, selected.messages));
           return { continuation, messages };
         },
       );
@@ -489,7 +489,8 @@ export const run = internalAction({
           kind: "stage",
           stageId: toolsStageId,
           stage: "selecting_tools",
-          status: familySelection.source === "fallback" ? "failed" : "completed",
+          status:
+            familySelection.source === "fallback" ? "failed" : "completed",
         });
       }
       const availableFamilies = operatorToolFamiliesOf(context.toolNames);
@@ -597,40 +598,43 @@ export const run = internalAction({
                   );
             });
             toolQueue = execution
-              .then(async (output) => {
-                await recordActivity({
-                  ...activity,
-                  status: toolOutcomeStatus(output),
-                });
-                if (thread.channel === "chat") {
-                  const tool = capturePresentationTool(name, output);
-                  if (tool) {
-                    try {
-                      await ctx.runMutation(
-                        internal.chatPresentations.captureOperatorEvidence,
-                        {
+              .then(
+                async (output) => {
+                  await recordActivity({
+                    ...activity,
+                    status: toolOutcomeStatus(output),
+                  });
+                  if (thread.channel === "chat") {
+                    const tool = capturePresentationTool(name, output);
+                    if (tool) {
+                      try {
+                        await ctx.runMutation(
+                          internal.chatPresentations.captureOperatorEvidence,
+                          {
+                            runId: run._id,
+                            expectedRunnerAttempt,
+                            expectedCheckpointIteration:
+                              run.checkpoint?.iteration ?? 0,
+                            tool,
+                          },
+                        );
+                      } catch {
+                        console.warn("Chat presentation evidence unavailable", {
                           runId: run._id,
-                          expectedRunnerAttempt,
-                          expectedCheckpointIteration:
-                            run.checkpoint?.iteration ?? 0,
-                          tool,
-                        },
-                      );
-                    } catch {
-                      console.warn("Chat presentation evidence unavailable", {
-                        runId: run._id,
-                      });
+                        });
+                      }
                     }
                   }
-                }
-                toolEvidence = mergeToolAudits(
-                  toolEvidence,
-                  collectToolAudit({
-                    toolCalls: [{ toolName: name, input: rawInput }],
-                    toolResults: [{ toolName: name, output }],
-                  }),
-                );
-              }, () => recordActivity({ ...activity, status: "failed" }))
+                  toolEvidence = mergeToolAudits(
+                    toolEvidence,
+                    collectToolAudit({
+                      toolCalls: [{ toolName: name, input: rawInput }],
+                      toolResults: [{ toolName: name, output }],
+                    }),
+                  );
+                },
+                () => recordActivity({ ...activity, status: "failed" }),
+              )
               .catch(() => undefined);
             return toolQueue.then(() => execution);
           },

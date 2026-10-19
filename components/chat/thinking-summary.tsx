@@ -75,7 +75,9 @@ function toolLabel(name: string) {
  */
 export function activityStatusLabel(activity?: ChatActivity): string {
   if (!activity) return "Working…";
-  const stage = activity.stages?.findLast((entry) => entry.status === "running");
+  const stage = activity.stages?.findLast(
+    (entry) => entry.status === "running",
+  );
   if (stage) return `${STAGE_LABELS[stage.stage]}…`;
   for (const status of ["running", "requested"] as const) {
     const active = activity.tools.filter((tool) => tool.status === status);
@@ -179,7 +181,8 @@ export function ThinkingSummary({
   const activities = mergeCalls(tools, toolCalls, activity);
   const stages = activity?.stages ?? [];
   if (activities.length === 0 && stages.length === 0) return null;
-  const hasCalls = Boolean(toolCalls?.length) || Boolean(activity?.tools.length);
+  const hasCalls =
+    Boolean(toolCalls?.length) || Boolean(activity?.tools.length);
 
   const mcpServerIds = [
     ...new Set(activities.flatMap((call) => mcpInput(call)?.serverId ?? [])),
@@ -224,10 +227,7 @@ export function ThinkingSummary({
     >
       <ul className="space-y-1.5 py-1.5">
         {stages.map((entry) => (
-          <li
-            key={entry.stageId}
-            className="flex min-w-0 items-start gap-1.5"
-          >
+          <li key={entry.stageId} className="flex min-w-0 items-start gap-1.5">
             <Route aria-hidden className="mt-0.5 size-3.5 shrink-0" />
             <div
               className={`flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 ${typeStyle("body.default")}`}
