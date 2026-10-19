@@ -42,7 +42,8 @@ export function initAnalytics() {
     enable_recording_console_log: false,
     session_recording: {
       inlineStylesheet: true,
-      maskAllInputs: true,
+      maskAllInputs: false,
+      maskInputOptions: { password: true },
       maskAllElementAttributes: false,
       maskAttributeFn: (name, value, element) => {
         // rrweb replaces stylesheet links with this synthetic attribute. Redacting
@@ -52,21 +53,9 @@ export function initAnalytics() {
           (element?.tagName === "LINK" || element?.tagName === "STYLE")
         )
           return value;
-        // Preserve recorder-generated layout and built-in SVG icon geometry.
-        if (
-          /^rr_(width|height|left|top|position|transform|display|scrollleft|scrolltop|mediastate|open_mode)$/.test(
-            name,
-          )
-        )
-          return value;
-        if (
-          element?.namespaceURI === "http://www.w3.org/2000/svg" &&
-          element.closest("svg")?.classList.contains("lucide") &&
-          /^(viewBox|d|fill|stroke|stroke-width|stroke-linecap|stroke-linejoin|fill-rule|clip-rule|x|y|x1|x2|y1|y2|cx|cy|r|rx|ry|points|transform|xmlns)$/.test(
-            name,
-          )
-        )
-          return value;
+        // Keep visible UI attributes intact while excluding access capabilities.
+        if (/token|secret|password|authorization/i.test(name))
+          return "[redacted]";
         if (
           name === "href" &&
           element?.tagName === "LINK" &&
@@ -74,20 +63,11 @@ export function initAnalytics() {
         )
           return value;
         if (name === "href" || name === "src") return analyticsPath(value);
-        if (
-          /^(class|style|type|role|tabindex|disabled|readonly|checked|selected|multiple|width|height)$/.test(
-            name,
-          ) ||
-          (name.startsWith("data-") &&
-            !/token|key|id|value|name|email/i.test(name)) ||
-          /^(aria-expanded|aria-selected|aria-hidden|aria-disabled)$/.test(name)
-        )
-          return value;
-        return "[redacted]";
+        return value;
       },
-      maskTextSelector: "*",
+      maskTextSelector: ".ph-mask",
       blockSelector:
-        "img, canvas, iframe, object, embed, input[type=file], input[type=hidden], .ph-no-capture",
+        'canvas, iframe, object, embed, input[type=file], input[type=hidden], input[type=password], input[autocomplete="current-password"], input[autocomplete="new-password"], input[autocomplete="one-time-code"], input[name*="password" i], .ph-no-capture',
       recordHeaders: false,
       recordBody: false,
       recordCrossOriginIframes: false,
@@ -98,7 +78,7 @@ export function initAnalytics() {
     },
     before_send: (event) => {
       if (!event) return null;
-      // DOM snapshots are masked by the recorder. Sanitize only replay navigation metadata.
+      // Visible UI is recorded; access-bearing navigation metadata is sanitized separately.
       if (Array.isArray(event.properties.$snapshot_data)) {
         for (const snapshot of event.properties.$snapshot_data) {
           if (snapshot.type === 4 && typeof snapshot.data?.href === "string")

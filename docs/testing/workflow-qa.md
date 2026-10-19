@@ -1197,3 +1197,17 @@ TypeScript and focused ESLint checks passed. Desktop and 390px mobile previews w
 inspected; branding and the provider query contract are unchanged. Preview evidence:
 `.context/qa/provider-signup/compact-desktop.jpg` (local only).
 
+## Replay visibility — October 19, 2026
+
+Before implementation, boundary tests specified readable ordinary inputs/text/attributes,
+blocked password/revealed-password/OTP/hidden controls, capability attribute redaction,
+and access-URL sanitization with network headers/bodies disabled. The initial run
+failed on ordinary visibility and credential selectors. Configuration now removes
+blanket replay text/input/attribute masking while retaining explicit credential and
+document exclusions. OTP controls and the shared PDF wrapper are ph-no-capture.
+Previously masked recording data cannot be recovered. Use synthetic fixtures only
+when verifying new replay visibility.
+
+Validation: 126 tests pass across 18 files; full Next.js typecheck and ESLint
+pass (three pre-existing warnings). Local provider signup renders correctly;
+recording ingestion/playback and the production rollout are verified separately.
