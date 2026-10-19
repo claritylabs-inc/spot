@@ -161,28 +161,28 @@ export function ChatAssistantTurn({
     <div className="w-full">
       {audience === "operator" && executionPlan ? (
         <ChatDisclosure
+          working={working}
           summary={<span>Plan · {executionPlan.steps.length} steps</span>}
-          className="mb-2 max-w-3xl text-muted-foreground"
+          className={`mb-3 max-w-3xl text-muted-foreground/50 ${typeStyle("caption.default")}`}
+          summaryClassName="hover:text-muted-foreground"
         >
-          <p className="mb-2 text-foreground">{executionPlan.summary}</p>
-          {executionPlan.targets.length ? (
-            <p className={`mb-2 break-words ${typeStyle("body.default")}`}>
-              Targets: {executionPlan.targets.join(", ")}
-            </p>
-          ) : null}
-          <ol
-            className={`list-decimal space-y-2 pl-5 ${typeStyle("body.default")}`}
-          >
-            {executionPlan.steps.map((step, index) => (
-              <li key={index} className="break-words">
-                <p className={`text-foreground ${typeStyle("body.medium")}`}>
-                  {step.title}
-                </p>
-                <p>{step.detail}</p>
-                <p className="mt-1">Done when: {step.completionCriteria}</p>
-              </li>
-            ))}
-          </ol>
+          <div className="space-y-2 py-2.5">
+            <p>{executionPlan.summary}</p>
+            {executionPlan.targets.length ? (
+              <p className="break-words">
+                Targets: {executionPlan.targets.join(", ")}
+              </p>
+            ) : null}
+            <ol className="list-outside list-decimal space-y-2 pl-7">
+              {executionPlan.steps.map((step, index) => (
+                <li key={index} className="break-words pl-1">
+                  <p className={typeStyle("caption.medium")}>{step.title}</p>
+                  <p>{step.detail}</p>
+                  <p className="mt-1">Done when: {step.completionCriteria}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
         </ChatDisclosure>
       ) : null}
       {showThinking ? (
