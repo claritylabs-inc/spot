@@ -240,7 +240,7 @@ function McpToolActivityIcon({ serverId }: { serverId: string }) {
       iconUrl={server?.logoUrl}
       website={server?.url}
       size="xs"
-      className="mt-0.5 shrink-0"
+      className="shrink-0"
     />
   );
 }
@@ -382,12 +382,12 @@ function ActivityRow({
   const active = working && status === "running";
   return (
     <li className="flex min-w-0 items-start gap-2.5">
-      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+      <span className="flex h-6 w-4 shrink-0 items-center justify-center">
         {icon}
       </span>
       <div
         className={cn(
-          "flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1",
+          "flex min-h-6 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1",
           typeStyle("body.default"),
         )}
       >

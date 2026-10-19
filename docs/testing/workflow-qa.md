@@ -1312,3 +1312,11 @@ stage has a factual outcome, keep the plan row to its step count, and use
 singular count labels. The local browser scenarios were repeated for this
 reduction, including an extra generic completed model/tools pair alongside the
 factual outcomes; these rows disappear without inflating the duplicate count.
+
+Trace alignment follow-up: the icon column and content group now share a 24px
+minimum first-line height instead of a fixed icon top offset. Headed Chrome
+measured the website-row icon/text center difference falling from 2.20px to
+0.20px at both 1100px and 390px widths; plain stage rows differ by under 0.01px.
+No horizontal overflow. Screenshots: `.context/trace-ux/aligned-1100.png` and
+`aligned-390.png`; repeatable measurement: `alignment.mjs`. Focused ESLint and
+root typechecking passed; no new unit tests.
