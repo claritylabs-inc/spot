@@ -343,7 +343,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   search_organizations: defineOperatorTool({
     version: 1,
     description:
-      "Search Spot customer and external insurance provider organizations (legacy type=broker covers carriers, MGAs, wholesalers, agencies and producers); Spot-owned acquisition brands are excluded from broker results. Omit query to list organizations of the selected type, including when comparing applications across clients. Use this to resolve an exact organization ID before any organization write.",
+      "Search Spot customer and external insurance provider organizations (legacy type=broker covers carriers, MGAs, wholesalers, agencies and producers); Spot-owned brands are excluded from broker results. Omit query to list organizations of the selected type, including when comparing applications across clients. Use this to resolve an exact organization ID before any organization write.",
     inputSchema: z.object({
       query: omittable(z.string().max(200)),
       type: omittable(z.enum(["broker", "client"])),
@@ -961,7 +961,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "broker_network",
     version: 1,
     description:
-      "Read one exact external supplier-network insurance provider profile; Spot-owned acquisition brands are ineligible. Includes neutral organization identity, office, writing states, exact ACORD LOBCd values, portal contacts, last outreach, proposal count, and persisted research outcome, sources and confidence-scored findings.",
+      "Read one exact external supplier-network insurance provider profile; Spot-owned brands are ineligible. Includes neutral organization identity, office, writing states, exact ACORD LOBCd values, portal contacts, last outreach, proposal count, and persisted research outcome, sources and confidence-scored findings.",
     inputSchema: z.object({ brokerOrgId: organizationId }),
     capability: "operator.organizations.read",
     effect: "read",
@@ -974,7 +974,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "broker_network",
     version: 1,
     description:
-      "Search the external supplier-network insurance provider directory by neutral identity, status, USPS writing state, or exact ACORD LOBCd value. Spot-owned acquisition brands are excluded, including legacy broker rows.",
+      "Search the external supplier-network insurance provider directory by neutral identity, status, USPS writing state, or exact ACORD LOBCd value. Spot-owned brands are excluded, including legacy broker rows.",
     inputSchema: z.object({
       query: omittable(z.string().max(200)),
       status: omittable(brokerNetworkStatus),
@@ -1655,7 +1655,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "broker_network",
     version: 3,
     description:
-      "Register a new external supplier-network insurance provider organization and its network profile with no portal users and no invites. The legacy broker type covers carriers, MGAs, wholesalers, agencies and producers; record only evidenced roles. Spot-owned acquisition brands and domains cannot be registered; treat them as Spot. Search the broker network first and update the existing profile instead when the broker is already registered. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values. Creation queues Jev-orchestrated public research to fill missing profile fields; inspect the research outcome before claiming completion.",
+      "Register a new external supplier-network insurance provider organization and its network profile with no portal users and no invites. The legacy broker type covers carriers, MGAs, wholesalers, agencies and producers; record only evidenced roles. Spot-owned brands and domains cannot be registered; treat them as Spot. Search the broker network first and update the existing profile instead when the broker is already registered. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values. Creation queues Jev-orchestrated public research to fill missing profile fields; inspect the research outcome before claiming completion.",
     inputSchema: z.object({
       name: z.string().min(1).max(200),
       website: omittable(optionalHttpUrl).describe(
@@ -1684,7 +1684,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "broker_network",
     version: 3,
     description:
-      "Update supplied fields on one exact external supplier-network insurance provider profile. Spot-owned acquisition identities are rejected. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values; omitted fields remain unchanged. Explicit profile edits, including empty lists, take precedence over automated enrichment. Identity edits queue fresh public research.",
+      "Update supplied fields on one exact external supplier-network insurance provider profile. Spot-owned identities are rejected. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values; omitted fields remain unchanged. Explicit profile edits, including empty lists, take precedence over automated enrichment. Identity edits queue fresh public research.",
     inputSchema: z
       .object({
         brokerOrgId: organizationId,
@@ -1732,7 +1732,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 5,
     description:
-      "Add an external broker-network organization to an exact procurement request with a selected contact and workflow status. Keep outreach notes in the request’s private.md. Spot-owned acquisition organizations and contact domains are ineligible.",
+      "Add an external broker-network organization to an exact procurement request with a selected contact and workflow status. Keep outreach notes in the request’s private.md. Spot-owned organizations and contact domains are ineligible.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgId: organizationId,
@@ -1756,7 +1756,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 5,
     description:
-      "Update supplied external broker outreach identity or workflow status. Keep outreach notes in the request’s private.md. Spot-owned acquisition organizations and contact domains are ineligible. File quote documents as private proposals.",
+      "Update supplied external broker outreach identity or workflow status. Keep outreach notes in the request’s private.md. Spot-owned organizations and contact domains are ineligible. File quote documents as private proposals.",
     inputSchema: z
       .object({
         procurementOutreachId,
