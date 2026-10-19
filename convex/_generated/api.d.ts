@@ -69,6 +69,7 @@ import type * as actions_slackReconciliation from "../actions/slackReconciliatio
 import type * as actions_tenantMcpTools from "../actions/tenantMcpTools.js";
 import type * as actions_threadTitle from "../actions/threadTitle.js";
 import type * as actions_vendorComplianceMonitor from "../actions/vendorComplianceMonitor.js";
+import type * as actions_websiteTech from "../actions/websiteTech.js";
 import type * as agentChannels from "../agentChannels.js";
 import type * as agentHistory from "../agentHistory.js";
 import type * as agentTargets from "../agentTargets.js";
@@ -243,7 +244,9 @@ import type * as lib_insuranceIntakeSchema from "../lib/insuranceIntakeSchema.js
 import type * as lib_insuredNameDecisions from "../lib/insuredNameDecisions.js";
 import type * as lib_intakeApplication from "../lib/intakeApplication.js";
 import type * as lib_intakeDetailsSchema from "../lib/intakeDetailsSchema.js";
+import type * as lib_intakeDiagnostics from "../lib/intakeDiagnostics.js";
 import type * as lib_intakeSlackContext from "../lib/intakeSlackContext.js";
+import type * as lib_jevComposite from "../lib/jevComposite.js";
 import type * as lib_jevEvidenceChoices from "../lib/jevEvidenceChoices.js";
 import type * as lib_jevImages from "../lib/jevImages.js";
 import type * as lib_jevThreshold from "../lib/jevThreshold.js";
@@ -374,6 +377,8 @@ import type * as lib_vendorComplianceTools from "../lib/vendorComplianceTools.js
 import type * as lib_webChatDeterministicControls from "../lib/webChatDeterministicControls.js";
 import type * as lib_webRetrieval from "../lib/webRetrieval.js";
 import type * as lib_websiteBrand from "../lib/websiteBrand.js";
+import type * as lib_websiteTech from "../lib/websiteTech.js";
+import type * as lib_websiteTechSignatures from "../lib/websiteTechSignatures.js";
 import type * as lib_workflows_certificateRequest from "../lib/workflows/certificateRequest.js";
 import type * as lib_workflows_comms from "../lib/workflows/comms.js";
 import type * as lib_workflows_index from "../lib/workflows/index.js";
@@ -441,6 +446,7 @@ import type * as sourceSpans from "../sourceSpans.js";
 import type * as threadActionConfirmations from "../threadActionConfirmations.js";
 import type * as threads from "../threads.js";
 import type * as users from "../users.js";
+import type * as websiteTech from "../websiteTech.js";
 
 import type {
   ApiFromModules,
@@ -510,6 +516,7 @@ declare const fullApi: ApiFromModules<{
   "actions/tenantMcpTools": typeof actions_tenantMcpTools;
   "actions/threadTitle": typeof actions_threadTitle;
   "actions/vendorComplianceMonitor": typeof actions_vendorComplianceMonitor;
+  "actions/websiteTech": typeof actions_websiteTech;
   agentChannels: typeof agentChannels;
   agentHistory: typeof agentHistory;
   agentTargets: typeof agentTargets;
@@ -684,7 +691,9 @@ declare const fullApi: ApiFromModules<{
   "lib/insuredNameDecisions": typeof lib_insuredNameDecisions;
   "lib/intakeApplication": typeof lib_intakeApplication;
   "lib/intakeDetailsSchema": typeof lib_intakeDetailsSchema;
+  "lib/intakeDiagnostics": typeof lib_intakeDiagnostics;
   "lib/intakeSlackContext": typeof lib_intakeSlackContext;
+  "lib/jevComposite": typeof lib_jevComposite;
   "lib/jevEvidenceChoices": typeof lib_jevEvidenceChoices;
   "lib/jevImages": typeof lib_jevImages;
   "lib/jevThreshold": typeof lib_jevThreshold;
@@ -815,6 +824,8 @@ declare const fullApi: ApiFromModules<{
   "lib/webChatDeterministicControls": typeof lib_webChatDeterministicControls;
   "lib/webRetrieval": typeof lib_webRetrieval;
   "lib/websiteBrand": typeof lib_websiteBrand;
+  "lib/websiteTech": typeof lib_websiteTech;
+  "lib/websiteTechSignatures": typeof lib_websiteTechSignatures;
   "lib/workflows/certificateRequest": typeof lib_workflows_certificateRequest;
   "lib/workflows/comms": typeof lib_workflows_comms;
   "lib/workflows/index": typeof lib_workflows_index;
@@ -882,6 +893,7 @@ declare const fullApi: ApiFromModules<{
   threadActionConfirmations: typeof threadActionConfirmations;
   threads: typeof threads;
   users: typeof users;
+  websiteTech: typeof websiteTech;
 }>;
 
 /**

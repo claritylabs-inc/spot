@@ -422,6 +422,31 @@ export type ClRouterRetrieveRequest = {
   executionBudgetMs?: number;
 };
 
+export type ClRouterBrowseRequest = {
+  tenantId?: string;
+  orgId?: string;
+  trace?: ClRouterTraceInput;
+  input: {
+    url: string;
+    goal: string;
+    allowedDomains: string[];
+    maxSteps?: number;
+    outputSchema?: Record<string, unknown>;
+  };
+  executionBudgetMs?: number;
+};
+
+export type ClRouterBrowseResponse = {
+  provider: "browserbase";
+  model: string;
+  output?: unknown;
+  text: string;
+  finished: boolean;
+  steps: number;
+  pages: Array<{ url: string; title: string; text: string }>;
+  networkHosts: string[];
+};
+
 export type ClRouterRetrieveResponse = {
   provider:
     | "parallel"
@@ -562,7 +587,7 @@ export type ClRouterClientOptions = {
   fetch?: typeof fetch;
   abortSignal?: AbortSignal;
   executeJob?: (
-    operation: "generate" | "manual" | "embed" | "retrieve" | "transcribe",
+    operation: "generate" | "manual" | "embed" | "retrieve" | "transcribe" | "browse",
     payload: unknown,
     abortSignal?: AbortSignal,
   ) => Promise<unknown>;
@@ -898,12 +923,12 @@ async function postJson(
   const operation = path.replace(/^\/v1\//, "").split("/")[0];
   if (
     options.executeJob &&
-    ["generate", "manual", "embed", "retrieve", "transcribe"].includes(
+    ["generate", "manual", "embed", "retrieve", "transcribe", "browse"].includes(
       operation,
     )
   ) {
     return options.executeJob(
-      operation as "generate" | "manual" | "embed" | "retrieve" | "transcribe",
+      operation as "generate" | "manual" | "embed" | "retrieve" | "transcribe" | "browse",
       body,
       options.abortSignal,
     );
@@ -1610,6 +1635,51 @@ export async function clRouterRetrieve(
     );
   }
   return payload as ClRouterRetrieveResponse;
+}
+
+const BROWSE_BODY_KEYS = [
+  "orgId",
+  "input",
+  "executionBudgetMs",
+] as const satisfies readonly (keyof ClRouterBrowseRequest)[];
+
+/** Hosted-browser agent run. Browse is durable-only, so options must come from a durable job client. */
+export async function clRouterBrowse(
+  request: ClRouterBrowseRequest,
+  options: ClRouterClientOptions,
+): Promise<ClRouterBrowseResponse> {
+  if (!options.executeJob)
+    throw new ClRouterRequestError(
+      "configuration",
+      "cl-router browse requires a durable job client",
+    );
+  const payload = await postJson(
+    "/v1/browse",
+    requestBody(request, BROWSE_BODY_KEYS),
+    options,
+  );
+  if (
+    !isRecord(payload) ||
+    payload.provider !== "browserbase" ||
+    typeof payload.text !== "string" ||
+    typeof payload.finished !== "boolean" ||
+    !Array.isArray(payload.networkHosts) ||
+    !payload.networkHosts.every((host) => typeof host === "string") ||
+    !Array.isArray(payload.pages) ||
+    !payload.pages.every(
+      (page) =>
+        isRecord(page) &&
+        typeof page.url === "string" &&
+        typeof page.title === "string" &&
+        typeof page.text === "string",
+    )
+  ) {
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router browse response is invalid",
+    );
+  }
+  return payload as ClRouterBrowseResponse;
 }
 
 export async function clRouterEmbed(

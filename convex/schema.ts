@@ -30,6 +30,11 @@ import { agentStepsValidator } from "./lib/agentSteps";
 import { policyProductIdentityValidator } from "./lib/policyProductIdentity";
 import { certificateRequirementSnapshotValidator } from "./lib/certificateRequirementPlan";
 import {
+  websiteTechDisclosureValidator,
+  websiteTechInferenceValidator,
+  websiteTechSignalValidator,
+} from "./lib/websiteTech";
+import {
   companyInformationProfileValidator,
   companyInformationOrganizationFactValidator,
 } from "./lib/companyInformationExtraction";
@@ -595,6 +600,25 @@ export default defineSchema({
     .index("user", ["userId"])
     .index("organization", ["orgId"])
     .index("organization_user", ["orgId", "userId"]),
+
+  // Best-effort public tech-stack scan keyed by website hostname; shared by
+  // intake drafts and organizations and never gates any workflow.
+  websiteTechProfiles: defineTable({
+    domain: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    runId: v.optional(v.string()),
+    signals: v.array(websiteTechSignalValidator),
+    disclosures: v.array(websiteTechDisclosureValidator),
+    inferences: v.optional(v.array(websiteTechInferenceValidator)),
+    error: v.optional(v.string()),
+    completedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("domain", ["domain"]),
 
   // Supply-side broker directory data. A profile may exist without portal
   // users; portal access remains represented exclusively by orgMemberships.
@@ -4542,6 +4566,7 @@ export default defineSchema({
       v.literal("embed"),
       v.literal("retrieve"),
       v.literal("transcribe"),
+      v.literal("browse"),
     ),
     fingerprint: v.string(),
     status: v.union(

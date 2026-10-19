@@ -28,6 +28,7 @@ const operation = v.union(
   v.literal("embed"),
   v.literal("retrieve"),
   v.literal("transcribe"),
+  v.literal("browse"),
 );
 
 export async function routerJobTokenHash(token: string): Promise<string> {

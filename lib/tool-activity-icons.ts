@@ -52,6 +52,7 @@ const operatorToolCategories = {
   call_mcp_tool: "settings",
   web_search: "web",
   research_client: "web",
+  research_client_tech_stack: "web",
   research_broker: "web",
   search_organizations: "organizations",
   get_organization: "organizations",

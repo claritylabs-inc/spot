@@ -49,6 +49,7 @@ import { createProcurementInboxToken } from "./lib/procurement";
 import { seedRequestIntake } from "./lib/procurementNarrative";
 import { publicResearchUrl } from "./lib/companyResearch";
 import { scheduleCompanyResearch } from "./companyResearch";
+import { scheduleWebsiteTechScan } from "./websiteTech";
 
 export async function hashIntakeToken(token: string) {
   const hash = await crypto.subtle.digest(
@@ -766,6 +767,9 @@ export const save = mutation({
       publicResearchUrl(
         /^https?:\/\//i.test(website) ? website : `https://${website}`,
       );
+    // Scan once the applicant moves past the question, not on every keystroke autosave.
+    if (url && args.step !== request.intakeStep)
+      await scheduleWebsiteTechScan(ctx, url);
     const fingerprint = JSON.stringify([name, website]);
     const previousResearch = request.intakeCompanyResearch;
     if (

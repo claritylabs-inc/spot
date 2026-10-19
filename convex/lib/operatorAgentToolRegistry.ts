@@ -1997,6 +1997,31 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) => `Research and enrich client ${input.orgId}`,
   }),
+  research_client_tech_stack: defineOperatorTool({
+    family: "organizations",
+    version: 1,
+    description:
+      "Queue the best-effort tech-stack research agent for an exact client's website (or a bare website for prospects): DNS/header signatures plus a browser agent that explores the company's own trust, legal, pricing and checkout pages, then Jev-verified answers for payment processor, hosting provider and data region. Returns the current stored result immediately; a fresh scan takes a few minutes, so read get_organization (websiteTech) later. Results are public signals for underwriting convenience; confirm with the client before relying on them.",
+    inputSchema: z
+      .object({
+        orgId: omittable(organizationId),
+        website: omittable(z.string().trim().min(3).max(2_048)),
+        force: omittable(z.boolean()),
+      })
+      .refine((input) => !!input.orgId !== !!input.website, {
+        message: "Provide exactly one of orgId or website",
+      }),
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) =>
+      input.orgId
+        ? { kind: "organization", id: input.orgId }
+        : { kind: "platform", id: "spot" },
+    summarize: (input) =>
+      `Research tech stack for ${input.orgId ?? input.website}`,
+  }),
   research_broker: defineOperatorTool({
     family: "broker_network",
     version: 1,

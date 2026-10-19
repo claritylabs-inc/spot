@@ -681,6 +681,39 @@ async function fetchWebsiteHtml(rawUrl: string) {
   };
 }
 
+/** Final response headers and bounded HTML, including non-2xx pages such as bot challenges. */
+export async function readWebsitePage(rawUrl: string) {
+  const response = await fetchPublic(rawUrl);
+  const headers: Record<string, string> = {};
+  response.headers.forEach((value, name) => {
+    headers[name.toLowerCase()] = value;
+  });
+  const url = response.url || normalizePublicWebsiteUrl(rawUrl);
+  if (!(response.headers.get("content-type") ?? "").includes("text/html")) {
+    await discardPublicResponse(response);
+    return { url, status: response.status, headers, html: "" };
+  }
+  // Large app shells are common; the leading bytes carry the script and meta tags we need.
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  const reader = response.body?.getReader();
+  try {
+    while (reader && totalBytes < MAX_HTML_BYTES) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      totalBytes += value.byteLength;
+    }
+    await reader?.cancel();
+  } finally {
+    reader?.releaseLock();
+    await releaseResponseDispatcher(response);
+  }
+  const decoder = new TextDecoder();
+  const html = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("");
+  return { url, status: response.status, headers, html };
+}
+
 async function readStylesheetBrandColors(html: string, website: string) {
   const stylesheets = await Promise.all(
     extractWebsiteStylesheetUrls(html, website).map(async (url) => {

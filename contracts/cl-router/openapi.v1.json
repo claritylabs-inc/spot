@@ -479,7 +479,7 @@
         },
         "responses": {
           "200": {
-            "description": "SSE events; each data frame conforms to StreamEvent.",
+            "description": "SSE events; each data frame conforms to StreamEvent. Progress-only stage events are never written to this stream.",
             "content": {
               "text/event-stream": {
                 "schema": {
@@ -621,7 +621,7 @@
         },
         "responses": {
           "200": {
-            "description": "SSE events; each data frame conforms to StreamEvent.",
+            "description": "SSE events; each data frame conforms to StreamEvent. Progress-only stage events are never written to this stream.",
             "content": {
               "text/event-stream": {
                 "schema": {
@@ -1036,6 +1036,170 @@
           "url",
           "mediaType",
           "sizeBytes"
+        ],
+        "additionalProperties": false
+      },
+      "BrowseRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "orgId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "goal": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "allowedDomains": {
+                "minItems": 1,
+                "maxItems": 5,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 253
+                }
+              },
+              "maxSteps": {
+                "default": 20,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 40
+              },
+              "outputSchema": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "url",
+              "goal",
+              "allowedDomains"
+            ],
+            "additionalProperties": false
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "route": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "openai",
+                      "anthropic",
+                      "google",
+                      "xai",
+                      "mistral",
+                      "cohere",
+                      "fireworks",
+                      "deepseek"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "provider",
+                  "model"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "executionBudgetMs": {
+            "type": "integer",
+            "minimum": 10000,
+            "maximum": 420000
+          }
+        },
+        "required": [
+          "tenantId",
+          "input"
+        ],
+        "additionalProperties": false
+      },
+      "BrowseResponse": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "const": "browserbase"
+          },
+          "model": {
+            "type": "string"
+          },
+          "output": {},
+          "text": {
+            "type": "string"
+          },
+          "finished": {
+            "type": "boolean"
+          },
+          "steps": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url",
+                "title",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "networkHosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "text",
+          "finished",
+          "steps",
+          "pages",
+          "networkHosts"
         ],
         "additionalProperties": false
       },
@@ -2503,7 +2667,8 @@
               "manual",
               "embed",
               "retrieve",
-              "transcribe"
+              "transcribe",
+              "browse"
             ]
           },
           "requestUrl": {
@@ -3320,6 +3485,36 @@
       },
       "StreamEvent": {
         "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "stage"
+              },
+              "stage": {
+                "type": "string",
+                "enum": [
+                  "selecting_model",
+                  "selecting_tools"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "completed",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "stage",
+              "status"
+            ],
+            "additionalProperties": false
+          },
           {
             "type": "object",
             "properties": {
