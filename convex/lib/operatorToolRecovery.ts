@@ -1,3 +1,4 @@
+import { InvalidToolInputError, NoSuchToolError } from "ai";
 import { isRecoverableOperatorToolFailure } from "./operatorAgentToolFailure";
 
 /**
@@ -19,8 +20,6 @@ export type RecoveryFailure = {
   toolName: string;
   code: string;
   guidance: string;
-  /** Stable target ids from the input; empty means the whole tool. */
-  target: string;
 };
 
 export type ExhaustedTool = {
@@ -34,12 +33,15 @@ export type OperatorRecoveryState = {
   /** Corrective iterations left, including the one about to run. */
   attemptsLeft: number;
   exhausted: ExhaustedTool[];
+  /** Exhausted-tool capacity was reached: no further business tool dispatch. */
+  stopped: boolean;
 };
 
 export const EMPTY_RECOVERY: OperatorRecoveryState = {
   pending: [],
   attemptsLeft: 0,
   exhausted: [],
+  stopped: false,
 };
 
 function text(value: unknown, limit = MAX_TEXT): string {
@@ -61,7 +63,6 @@ export function parseRecoveryState(value: unknown): OperatorRecoveryState {
               toolName,
               code: text(item.code, 100),
               guidance: text(item.guidance),
-              target: text(item.target, 400),
             },
           ]
         : [];
@@ -75,39 +76,38 @@ export function parseRecoveryState(value: unknown): OperatorRecoveryState {
       attempts <= MAX_CORRECTIVE_ITERATIONS
         ? attempts
         : 0,
-    exhausted: list(record.exhausted, MAX_EXHAUSTED).map(
-      ({ toolName, code, guidance }) => ({ toolName, code, guidance }),
-    ),
+    exhausted: list(record.exhausted, MAX_EXHAUSTED),
+    stopped: record.stopped === true,
   };
-}
-
-/** Identifier fields name the target; without any, the whole tool is the group. */
-export function recoveryTarget(input: unknown): string {
-  if (!input || typeof input !== "object" || Array.isArray(input)) return "";
-  return Object.entries(input as Record<string, unknown>)
-    .filter(
-      ([key, value]) =>
-        /(?:^|[a-z])Ids?$/.test(key) && typeof value === "string",
-    )
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${value as string}`)
-    .join("&")
-    .slice(0, 400);
 }
 
 type ToolCallRecord = { toolName: string; input: unknown; output: unknown };
 
-/** Outcome for a call the SDK rejected before execute, such as an unoffered tool. */
+/** The SDK refused the call before dispatch, so nothing ran. */
 const UNAVAILABLE_TOOL_OUTPUT = {
   status: "failed",
-  error: "Tool is not available in this step",
+  error: "Tool call was rejected before it ran",
   failure: {
     code: "tool_unavailable",
     phase: "preflight",
     recoverable: true,
     writeState: "not_started",
     guidance:
-      "That tool was not offered in this step and nothing ran. Load its family with expand_tools or use a tool that is offered; do not repeat the same call.",
+      "That tool call was rejected before it ran: the tool was not offered in this step or its input was malformed. Nothing ran. Load its family with expand_tools or use an offered tool, and send input that matches its schema.",
+  },
+};
+
+/** Any other tool-error is not known to be pre-dispatch, so it is terminal. */
+const UNKNOWN_TOOL_ERROR_OUTPUT = {
+  status: "failed",
+  error: "Tool call ended with an unclassified error",
+  failure: {
+    code: "execution_outcome_unknown",
+    phase: "execution",
+    recoverable: false,
+    writeState: "unknown",
+    guidance:
+      "Do not replay this call automatically. Read authoritative state before deciding whether a new action is needed.",
   },
 };
 
@@ -127,18 +127,40 @@ export function recoveryCallsFromResult(result: unknown): ToolCallRecord[] {
       if (typeof toolCallId === "string") answered.add(toolCallId);
       records.push({ toolName, input, output });
     }
+    // An invalid call keeps its real error on the step's tool call; the
+    // content part only carries a message string.
+    const callErrors = new Map<string, unknown>();
+    const calls = (step as { toolCalls?: unknown })?.toolCalls;
+    for (const call of Array.isArray(calls) ? calls : []) {
+      const { toolCallId, invalid, error } = (call ?? {}) as Record<
+        string,
+        unknown
+      >;
+      if (typeof toolCallId === "string" && invalid === true)
+        callErrors.set(toolCallId, error);
+    }
     const content = (step as { content?: unknown })?.content;
     for (const part of Array.isArray(content) ? content : []) {
       const { type, toolName, toolCallId, input } = (part ?? {}) as Record<
         string,
         unknown
       >;
+      const error =
+        typeof toolCallId === "string" ? callErrors.get(toolCallId) : undefined;
       if (
         type === "tool-error" &&
         typeof toolName === "string" &&
         !(typeof toolCallId === "string" && answered.has(toolCallId))
       )
-        records.push({ toolName, input, output: UNAVAILABLE_TOOL_OUTPUT });
+        records.push({
+          toolName,
+          input,
+          output:
+            NoSuchToolError.isInstance(error) ||
+            InvalidToolInputError.isInstance(error)
+              ? UNAVAILABLE_TOOL_OUTPUT
+              : UNKNOWN_TOOL_ERROR_OUTPUT,
+        });
     }
   }
   return records;
@@ -148,56 +170,39 @@ function failureStatus(output: unknown) {
   return (output as { status?: unknown } | null)?.status;
 }
 
-function same(
-  entry: { toolName: string; target: string },
-  toolName: string,
-  target: string,
-) {
-  return (
-    entry.toolName === toolName &&
-    (entry.target === "" || target === "" || entry.target === target)
-  );
-}
-
 /**
  * Folds one model iteration's tool outcomes into the recovery state.
- * Recoverable failures join the episode; a success or a terminal failure of
- * the same tool resolves it. A blocked call executed nothing and changes
- * nothing. The iteration following a failure always consumes one attempt.
+ * Recoverable failures join the episode; a success, a pending approval, or a
+ * terminal failure of the same tool resolves it (terminal detail is in that
+ * result). Failures group by tool, not target: a bogus identifier makes target
+ * keys unreliable, so a corrected call of the same tool must be able to
+ * resolve it, and the plan and prompt keep the model accountable for each
+ * target. A blocked call executed nothing and changes nothing. The iteration
+ * following a failure always consumes one attempt.
  */
 export function advanceRecovery(
   previous: OperatorRecoveryState,
   calls: readonly ToolCallRecord[],
 ): OperatorRecoveryState {
   let pending = previous.pending.map((entry) => ({ ...entry }));
-  for (const { toolName, input, output } of calls) {
+  for (const { toolName, output } of calls) {
     // An exhausted tool is already disabled; further calls change nothing.
-    if (previous.exhausted.some((entry) => entry.toolName === toolName))
-      continue;
-    const target = recoveryTarget(input);
+    if (isDisabledTool(previous, toolName)) continue;
     if (isRecoverableOperatorToolFailure(output)) {
       const entry: RecoveryFailure = {
         toolName,
         code: text(output.failure.code, 100),
         guidance: text(output.failure.guidance),
-        target,
       };
-      const index = pending.findIndex(
-        (item) => item.toolName === toolName && item.target === target,
-      );
+      const index = pending.findIndex((item) => item.toolName === toolName);
       if (index >= 0) pending[index] = entry;
       else if (pending.length < MAX_PENDING) pending.push(entry);
     } else if (failureStatus(output) !== "blocked_by_confirmation") {
-      // Success, a pending approval, or a terminal failure all end the
-      // recoverable failure of that tool; terminal detail is in the result.
-      pending = pending.filter((item) => !same(item, toolName, target));
+      pending = pending.filter((item) => item.toolName !== toolName);
     }
   }
   const carried = previous.pending.some((entry) =>
-    pending.some(
-      (item) =>
-        item.toolName === entry.toolName && item.target === entry.target,
-    ),
+    pending.some((item) => item.toolName === entry.toolName),
   );
   let attemptsLeft =
     pending.length === 0
@@ -206,17 +211,53 @@ export function advanceRecovery(
         ? previous.attemptsLeft - 1
         : MAX_CORRECTIVE_ITERATIONS;
   let exhausted = previous.exhausted;
+  let stopped = previous.stopped;
   if (pending.length > 0 && attemptsLeft <= 0) {
-    exhausted = [
-      ...exhausted,
-      ...pending
-        .filter((item) => !exhausted.some((e) => e.toolName === item.toolName))
-        .map(({ toolName, code, guidance }) => ({ toolName, code, guidance })),
-    ].slice(-MAX_EXHAUSTED);
+    const additions = pending
+      .filter((item) => !exhausted.some((e) => e.toolName === item.toolName))
+      .map(({ toolName, code, guidance }) => ({ toolName, code, guidance }));
+    // Never evict a disabled tool; at capacity the run stops dispatching.
+    if (exhausted.length + additions.length > MAX_EXHAUSTED) stopped = true;
+    else exhausted = [...exhausted, ...additions];
     pending = [];
     attemptsLeft = 0;
   }
-  return { pending, attemptsLeft, exhausted };
+  return { pending, attemptsLeft, exhausted, stopped };
+}
+
+function isDisabledTool(state: OperatorRecoveryState, toolName: string) {
+  return (
+    state.stopped ||
+    state.exhausted.some((entry) => entry.toolName === toolName)
+  );
+}
+
+/**
+ * True when the step called tools and every call targeted a disabled tool, so
+ * it made no valid progress and the run must end rather than continue.
+ */
+export function stepCalledOnlyDisabledTools(
+  result: unknown,
+  state: OperatorRecoveryState,
+): boolean {
+  const steps = (result as { steps?: unknown })?.steps;
+  const names: string[] = [];
+  for (const step of Array.isArray(steps) ? steps : []) {
+    const calls = (step as { toolCalls?: unknown })?.toolCalls;
+    for (const call of Array.isArray(calls) ? calls : []) {
+      const name = (call as { toolName?: unknown })?.toolName;
+      if (typeof name === "string") names.push(name);
+    }
+  }
+  return names.length > 0 && names.every((name) => isDisabledTool(state, name));
+}
+
+/** Deterministic closing note naming what could not be completed. */
+export function incompleteWorkNote(state: OperatorRecoveryState): string {
+  const tools = state.exhausted
+    .map((item) => `${item.toolName} (${item.code || "unknown error"})`)
+    .join(", ");
+  return `Some of this work is incomplete. ${tools ? `These tools were disabled after repeated failed corrections: ${tools}.` : "Further tool calls were stopped after repeated failures."} Review the failed results above; the remaining targets were not handled.`;
 }
 
 /** A final answer is premature while recoverable failures still have attempts. */
@@ -241,6 +282,11 @@ export function recoveryPromptBlock(state: OperatorRecoveryState): string {
         .join(
           "\n",
         )}\nCorrect the input using authoritative tool results, refresh the referenced records, or use a read-only alternative, then call the tool again. A rejected or invalid search or lookup proves nothing about whether a match exists; never say a target has no match unless a valid search returned none. Do not claim these targets are done. Do not retry authorization failures, denied approvals, or outcomes with unknown side effects. Do not finish with a final answer while attempts remain unless the failing work is complete.`,
+    );
+  }
+  if (state.stopped) {
+    parts.push(
+      "ALL TOOLS DISABLED: too many tools failed repeatedly in this run. No tools are offered. Report which targets are incomplete and the error codes; do not claim they were handled.",
     );
   }
   if (state.exhausted.length > 0) {
