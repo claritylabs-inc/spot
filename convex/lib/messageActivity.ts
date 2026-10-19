@@ -19,6 +19,21 @@ export const messageActivityToolStatusValidator = v.union(
   v.literal("skipped"),
 );
 
+export const messageActivityStageValidator = v.object({
+  stageId: v.string(),
+  stage: v.union(
+    v.literal("preparing_context"),
+    v.literal("screening_request"),
+    v.literal("selecting_tools"),
+    v.literal("selecting_model"),
+  ),
+  status: v.union(
+    v.literal("running"),
+    v.literal("completed"),
+    v.literal("failed"),
+  ),
+});
+
 export const messageActivityValidator = v.object({
   phase: v.union(v.literal("model"), v.literal("tools")),
   tools: v.array(
@@ -28,6 +43,7 @@ export const messageActivityValidator = v.object({
       status: messageActivityToolStatusValidator,
     }),
   ),
+  stages: v.optional(v.array(messageActivityStageValidator)),
   updatedAt: v.number(),
 });
 
@@ -37,6 +53,10 @@ export const requestedToolCallValidator = v.object({
 });
 
 export const messageActivityUpdateValidator = v.union(
+  v.object({
+    kind: v.literal("stage"),
+    ...messageActivityStageValidator.fields,
+  }),
   v.object({ kind: v.literal("model") }),
   v.object({
     kind: v.literal("requested"),
@@ -50,8 +70,11 @@ export const messageActivityUpdateValidator = v.union(
   }),
 );
 
+export type MessageActivityStage = Infer<typeof messageActivityStageValidator>;
 export type MessageActivity = Infer<typeof messageActivityValidator>;
-export type MessageActivityUpdate = Infer<typeof messageActivityUpdateValidator>;
+export type MessageActivityUpdate = Infer<
+  typeof messageActivityUpdateValidator
+>;
 export type MessageActivityToolStatus = Infer<
   typeof messageActivityToolStatusValidator
 >;
@@ -111,7 +134,21 @@ export function applyMessageActivity(
 ): MessageActivity {
   let phase = current?.phase ?? "model";
   let tools = [...(current?.tools ?? [])];
-  if (update.kind === "model") {
+  let stages = current?.stages;
+  if (update.kind === "stage") {
+    if (!validText(update.stageId))
+      return current ?? { phase, tools, updatedAt: now };
+    stages = [...(stages ?? [])];
+    const index = stages.findIndex((stage) => stage.stageId === update.stageId);
+    const entry = {
+      stageId: update.stageId,
+      stage: update.stage,
+      status: update.status,
+    };
+    if (index < 0) stages.push(entry);
+    else if (stages[index].status === "running") stages[index] = entry;
+    stages = stages.slice(-32);
+  } else if (update.kind === "model") {
     // A new model step means earlier steps' tools settled; unannounced
     // requests belong to a replaced or retried router job.
     phase = "model";
@@ -142,6 +179,7 @@ export function applyMessageActivity(
   return {
     phase,
     tools: tools.slice(-MESSAGE_ACTIVITY_MAX_TOOLS),
+    ...(stages ? { stages } : {}),
     updatedAt: now,
   };
 }
