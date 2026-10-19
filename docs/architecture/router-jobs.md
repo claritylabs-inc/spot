@@ -98,7 +98,7 @@ Operator and client web replies stream through durable router jobs. `stream: tru
 requests send ordered, cumulative text snapshots to the existing result capability
 with `status: "progress"`; Spot validates invocation, token, fingerprint, router
 ID, sequence, active message, and operator checkpoint before updating the reply.
-Only text is streamed; tool execution waits for the terminal model result.
+Text and tool-request identity can stream; tool execution waits for the terminal model result.
 A progress envelope may also carry optional cumulative
 `toolCalls: [{ toolCallId, toolName }]` (at most 128 entries, each string
 nonempty and at most 200 characters, no other keys, no duplicate ids). Spot
