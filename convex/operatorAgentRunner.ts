@@ -88,8 +88,10 @@ import {
   parseRecoveryState,
   RECOVERY_NOTICE_MESSAGE,
   recoveryCallsFromResult,
+  incompleteWorkNote,
   recoveryPromptBlock,
   recoveryRequiresAnotherIteration,
+  stepCalledOnlyDisabledTools,
 } from "./lib/operatorToolRecovery";
 import { threadPageContext } from "./lib/threadPageContext";
 import {
@@ -728,7 +730,7 @@ export const run = internalAction({
         familySelection.families,
       )) {
         // Tools whose corrective attempts ran out are not offered again.
-        if (exhaustedTools.has(name)) continue;
+        if (recovery.stopped || exhaustedTools.has(name)) continue;
         const spec = OPERATOR_AGENT_TOOL_REGISTRY[name];
         tools[name] = dynamicTool({
           description: spec.description,
@@ -747,7 +749,7 @@ export const run = internalAction({
                 };
               }
               // Defense in depth: an exhausted tool never dispatches.
-              if (exhaustedTools.has(name))
+              if (recovery.stopped || exhaustedTools.has(name))
                 return exhaustedToolFailure(name, exhaustedTools.get(name));
               let input: Record<string, unknown>;
               try {
@@ -941,7 +943,12 @@ export const run = internalAction({
         !pendingConfirmation &&
         !toolsContinue &&
         recoveryRequiresAnotherIteration(nextRecovery);
-      const shouldContinue = toolsContinue || recoveryContinues;
+      // A step that only called disabled tools made no valid progress: end the
+      // run with an explicit incomplete note instead of another iteration.
+      const disabledOnly =
+        !pendingConfirmation && stepCalledOnlyDisabledTools(result, recovery);
+      const shouldContinue =
+        !disabledOnly && (toolsContinue || recoveryContinues);
       const modelContinuationStorageId =
         pendingConfirmation || shouldContinue
           ? await ctx.storage.store(
@@ -991,10 +998,11 @@ export const run = internalAction({
       }
       const content = pendingConfirmation
         ? `Confirmation required: ${pendingConfirmation.summary}. Approve or reject this update. After approval, I'll continue the remaining work.`
-        : generatedTextFromResult(result).trim() ||
-          (audit.completedTools.length > 0
-            ? "The requested operator work completed."
-            : "I couldn't complete that operator task.");
+        : (generatedTextFromResult(result).trim() ||
+            (audit.completedTools.length > 0
+              ? "The requested operator work completed."
+              : "I couldn't complete that operator task.")) +
+          (disabledOnly ? `\n\n${incompleteWorkNote(recovery)}` : "");
       const completion: { status: string } | null = await ctx.runMutation(
         internal.operatorAgent.completeRunInternal,
         {
