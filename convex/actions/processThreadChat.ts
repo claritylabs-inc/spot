@@ -243,6 +243,8 @@ export const run = internalAction({
             userMessageId: args.userMessageId,
           }),
         }),
+        ({ boundedHistory }) =>
+          `${boundedHistory.messages.length} messages loaded`,
       );
       const text = controlState.messageText;
       if (
@@ -284,6 +286,7 @@ export const run = internalAction({
               "first_party",
               args.orgId,
             ),
+          (check) => (check.safe ? "Request accepted" : "Request blocked"),
         );
         if (!injectionCheck.safe) {
           await ctx.runMutation(internal.threads.updateAgentMessage, {
@@ -456,6 +459,10 @@ export const run = internalAction({
               allMessages,
               latestUserMsg?._id ? String(latestUserMsg._id) : undefined,
             ),
+          ({ latestAttachmentNames }) =>
+            latestAttachmentNames.length
+              ? `${latestAttachmentNames.length} attachments available`
+              : "No attachments",
         );
       const hasRichInput = modelMessagesHaveRichInput(messageHistory);
 
@@ -729,6 +736,12 @@ export const run = internalAction({
               parentRequestId: String(args.userMessageId),
             },
           }),
+        (selected) =>
+          selected.source === "fallback"
+            ? "Selection unavailable; all permitted tool groups loaded"
+            : selected.families
+                .map((family) => family.replaceAll("_", " "))
+                .join(", ") || "Core tools only",
       );
       toolArtifacts.push(
         promptModuleArtifact(selection, {
@@ -783,7 +796,10 @@ export const run = internalAction({
           experimental_onStepStart: () => recordActivity({ kind: "model" }),
           // Client tools execute as soon as the SDK starts them, in parallel.
           experimental_onToolCallStart: ({ toolCall }) => {
-            const context = toolActivityContext(toolCall.toolName, toolCall.input);
+            const context = toolActivityContext(
+              toolCall.toolName,
+              toolCall.input,
+            );
             return recordActivity({
               kind: "tool",
               toolCallId: toolCall.toolCallId,
@@ -797,7 +813,9 @@ export const run = internalAction({
               kind: "tool",
               toolCallId: event.toolCall.toolCallId,
               toolName: event.toolCall.toolName,
-              status: event.success ? toolOutcomeStatus(event.output) : "failed",
+              status: event.success
+                ? toolOutcomeStatus(event.output)
+                : "failed",
             }),
           onStepFinish: async (step) => {
             if (surface !== "web") return;

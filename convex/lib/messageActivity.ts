@@ -13,6 +13,7 @@ export const MESSAGE_ACTIVITY_MAX_STRING = 200;
 const toolContextValidator = v.object({
   label: v.string(),
   website: v.optional(v.string()),
+  websites: v.optional(v.array(v.string())),
 });
 
 export const messageActivityToolStatusValidator = v.union(
@@ -35,6 +36,7 @@ export const messageActivityStageValidator = v.object({
     v.literal("selecting_tools"),
     v.literal("selecting_model"),
   ),
+  detail: v.optional(v.string()),
   status: v.union(
     v.literal("running"),
     v.literal("completed"),
@@ -178,6 +180,9 @@ export function applyMessageActivity(
       stageId: update.stageId,
       stage: update.stage,
       status: update.status,
+      ...(update.detail?.trim()
+        ? { detail: update.detail.trim().slice(0, 200) }
+        : {}),
     };
     if (index < 0) stages.push(entry);
     else if (stages[index].status === "running") stages[index] = entry;
@@ -197,6 +202,13 @@ export function applyMessageActivity(
     const context = update.context?.label.trim()
       ? {
           label: update.context.label.trim().slice(0, 160),
+          ...(update.context.websites?.length
+            ? {
+                websites: [...new Set(update.context.websites)]
+                  .filter((site) => site.length <= 200)
+                  .slice(0, 10),
+              }
+            : {}),
           ...(update.context.website && update.context.website.length <= 200
             ? { website: update.context.website }
             : {}),

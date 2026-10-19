@@ -482,6 +482,7 @@ export const run = internalAction({
             (await buildOperatorHistoryWithAttachments(ctx, selected.messages));
           return { continuation, messages };
         },
+        ({ messages }) => `${messages.length} messages loaded`,
       );
       const recovery = parseRecoveryState(continuation?.recovery);
       const exhaustedTools = new Map(
@@ -550,6 +551,12 @@ export const run = internalAction({
           stage: "selecting_tools",
           status:
             familySelection.source === "fallback" ? "failed" : "completed",
+          detail:
+            familySelection.source === "fallback"
+              ? "Selection unavailable; all permitted tool groups loaded"
+              : familySelection.families
+                  .map((family) => family.replaceAll("_", " "))
+                  .join(", "),
         });
       }
       // The operator model is fixed configuration, not a Jev decision. A
@@ -563,6 +570,7 @@ export const run = internalAction({
           "selecting_model",
           (): Promise<ModelRoute> =>
             ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {}),
+          (selected) => `${selected.provider} · ${selected.model}`,
         ).catch(() => undefined));
       const offeredToolNames = operatorAgentToolNamesForFamilies(
         context.toolNames,
@@ -637,6 +645,12 @@ export const run = internalAction({
                 { traceId, parentRequestId, channel: traceChannel },
                 { telemetry: ctx },
               ),
+            (assessment) =>
+              assessment.source === "uncertain"
+                ? "Plan required; complexity check was inconclusive"
+                : assessment.required
+                  ? "Plan required"
+                  : "No plan needed",
           );
           const saved: boolean = await ctx.runMutation(
             internal.operatorAgent.recordPlanningAssessmentInternal,
@@ -701,6 +715,7 @@ export const run = internalAction({
             stageId: planStageId,
             stage: "planning",
             status: "completed",
+            detail: `${generated.steps.length} steps · ${generated.summary}`,
           });
           const saved: boolean = await ctx.runMutation(
             internal.operatorAgent.recordExecutionPlanInternal,
