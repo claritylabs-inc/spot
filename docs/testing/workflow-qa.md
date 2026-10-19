@@ -1,5 +1,23 @@
 # Platform workflow QA
 
+## Safari detail-panel dropdowns — October 19, 2026
+
+Reproduced through native Safari computer use on `/operator/clients`: opening
+Status scrolled the resizable detail panel horizontally by 325px, shifting its
+header, fields, and footer. No production fields were changed. A local synthetic
+fixture using `AppShellPanelLayout`, the app shell's positioned right-panel
+wrapper, `SettingsDrawer`, and the shared Select reproduced a 360px scroll.
+The positioned wrapper is necessary to reproduce; a drawer-only fixture misses it.
+
+The desktop right-panel wrapper now uses `overflow: clip`, preventing popup
+focus from expanding the ancestor panel's scrollable overflow without adding
+another scroll container. Native Safari checks passed for opening, keyboard
+selection, reopening, Escape dismissal, and reopening after keyboard panel
+resize; the local scroll measurement remained zero. Mobile clipping is unchanged.
+Artifacts from this run: `.context/safari-drawer/{before,after}.png` and
+`.context/safari-drawer/page.tsx` (temporary fixture source; no public QA route
+is retained). Full authenticated local-client and other-browser checks were not run.
+
 ## Live agent activity — October 19, 2026
 
 The local Chrome component workflow passed for the real `ChatAssistantTurn`,
