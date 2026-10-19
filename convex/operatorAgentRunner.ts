@@ -89,6 +89,7 @@ import {
   RECOVERY_NOTICE_MESSAGE,
   recoveryCallsFromResult,
   incompleteWorkNote,
+  recoveryBlockerReport,
   recoveryPromptBlock,
   recoveryRequiresAnotherIteration,
   stepCalledOnlyDisabledTools,
@@ -918,7 +919,10 @@ export const run = internalAction({
         },
         {
           taskKind: "operator_agent",
-          ...(traceChannel === "web"
+          // While a failure is unresolved no reply can become the final
+          // answer (a tool call continues, a bare reply is held back or
+          // replaced by the blocker report), so it must not stream.
+          ...(traceChannel === "web" && recovery.pending.length === 0
             ? { streamTarget: run.agentMessageId }
             : {}),
           durable: {
@@ -957,18 +961,21 @@ export const run = internalAction({
               new Blob(
                 [
                   JSON.stringify({
-                    messages: [
-                      ...messages,
-                      ...result.response.messages,
-                      ...(recoveryContinues
-                        ? [
-                            {
-                              role: "user" as const,
-                              content: RECOVERY_NOTICE_MESSAGE,
-                            },
-                          ]
-                        : []),
-                    ],
+                    // A held-back reply stays out of history so the model
+                    // never replays its own rejected provisional text.
+                    messages: recoveryContinues
+                      ? [
+                          ...messages.filter(
+                            (message) =>
+                              message.role !== "user" ||
+                              message.content !== RECOVERY_NOTICE_MESSAGE,
+                          ),
+                          {
+                            role: "user" as const,
+                            content: RECOVERY_NOTICE_MESSAGE,
+                          },
+                        ]
+                      : [...messages, ...result.response.messages],
                     route: result.route,
                     parentRequestId: result.clRouter?.requestId,
                     recovery: nextRecovery,
@@ -1000,13 +1007,26 @@ export const run = internalAction({
       }
       const hasExhaustedCalls =
         nextRecovery.stopped || nextRecovery.exhausted.length > 0;
+      // A corrective iteration that ended without a tool call and without
+      // another iteration was coerced; report the structured blockers instead
+      // of trusting its text.
+      const blocked =
+        !pendingConfirmation &&
+        !shouldContinue &&
+        !disabledOnly &&
+        recovery.pending.length > 0 &&
+        !toolsContinue;
       const content = pendingConfirmation
         ? `Confirmation required: ${pendingConfirmation.summary}. Approve or reject this update. After approval, I'll continue the remaining work.`
-        : (generatedTextFromResult(result).trim() ||
-            (audit.completedTools.length > 0 && !hasExhaustedCalls
-              ? "The requested operator work completed."
-              : "I couldn't complete that operator task.")) +
-          (hasExhaustedCalls ? `\n\n${incompleteWorkNote(nextRecovery)}` : "");
+        : blocked
+          ? recoveryBlockerReport(recovery.pending)
+          : (generatedTextFromResult(result).trim() ||
+              (audit.completedTools.length > 0 && !hasExhaustedCalls
+                ? "The requested operator work completed."
+                : "I couldn't complete that operator task.")) +
+            (hasExhaustedCalls
+              ? `\n\n${incompleteWorkNote(nextRecovery)}`
+              : "");
       const completion: { status: string } | null = await ctx.runMutation(
         internal.operatorAgent.completeRunInternal,
         {
