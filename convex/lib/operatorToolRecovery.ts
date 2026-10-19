@@ -14,8 +14,6 @@ import { isRecoverableOperatorToolFailure } from "./operatorAgentToolFailure";
 export const MAX_CORRECTIVE_ITERATIONS = 3;
 const MAX_PENDING = 8;
 const MAX_EXHAUSTED = 16;
-/** Consecutive replies without a tool call before the run reports the blocker. */
-const MAX_DECLINED = 2;
 const MAX_TEXT = 600;
 
 export type RecoveryFailure = {
@@ -37,8 +35,6 @@ export type OperatorRecoveryState = {
   exhausted: ExhaustedTool[];
   /** Exhausted-tool capacity was reached: no further business tool dispatch. */
   stopped: boolean;
-  /** Consecutive corrective iterations that made no tool call. */
-  declined: number;
 };
 
 export const EMPTY_RECOVERY: OperatorRecoveryState = {
@@ -46,7 +42,6 @@ export const EMPTY_RECOVERY: OperatorRecoveryState = {
   attemptsLeft: 0,
   exhausted: [],
   stopped: false,
-  declined: 0,
 };
 
 function text(value: unknown, limit = MAX_TEXT): string {
@@ -83,12 +78,6 @@ export function parseRecoveryState(value: unknown): OperatorRecoveryState {
         : 0,
     exhausted: list(record.exhausted, MAX_EXHAUSTED),
     stopped: record.stopped === true,
-    declined:
-      Number.isInteger(record.declined) &&
-      (record.declined as number) >= 0 &&
-      (record.declined as number) <= MAX_DECLINED
-        ? (record.declined as number)
-        : 0,
   };
 }
 
@@ -233,11 +222,7 @@ export function advanceRecovery(
     pending = [];
     attemptsLeft = 0;
   }
-  // Replies without a tool call while a failure is unresolved count as
-  // declines; any tool call, or a resolved episode, starts over.
-  const declined =
-    pending.length > 0 && calls.length === 0 ? previous.declined + 1 : 0;
-  return { pending, attemptsLeft, exhausted, stopped, declined };
+  return { pending, attemptsLeft, exhausted, stopped };
 }
 
 function isDisabledTool(state: OperatorRecoveryState, toolName: string) {
@@ -275,24 +260,37 @@ export function incompleteWorkNote(state: OperatorRecoveryState): string {
   return `Some tool calls could not be completed after three corrective attempts. ${tools ? `Stopped calls: ${tools}.` : "Further calls were stopped after repeated failures."} Any work without a successful result remains unverified.`;
 }
 
-/**
- * A reply without a tool call is held back while a recoverable failure has
- * attempts left, but at most twice in a row: a model that twice declines to
- * call a tool has no correction to make, and further prompting only coerces
- * guesses.
- */
+/** A final answer is premature while recoverable failures still have attempts. */
 export function recoveryRequiresAnotherIteration(
   state: OperatorRecoveryState,
 ): boolean {
-  return (
-    state.pending.length > 0 &&
-    state.attemptsLeft > 0 &&
-    state.declined < MAX_DECLINED
-  );
+  return state.pending.length > 0 && state.attemptsLeft > 0;
 }
 
 export const RECOVERY_NOTICE_MESSAGE =
   "[Spot runtime notice, not from the operator] An earlier tool call failed before any write started and is unresolved. Your last reply was not delivered. If the failure can be corrected, call the tool again with corrected input taken from authoritative tool results, refreshing the record with a read-only tool if needed. If the authoritative identifier or input is missing and the available read-only tools cannot find it, do not guess or invent calls: say exactly what is missing. Make tool calls only through the tool interface, never as written text.";
+
+/**
+ * Failures still unresolved once this step is folded in: the episode that is
+ * still pending, or the one this step just exhausted. A step that resolved a
+ * tool's failure leaves nothing for that tool.
+ */
+export function unresolvedAfterStep(
+  previous: OperatorRecoveryState,
+  next: OperatorRecoveryState,
+  stepHadCalls: boolean,
+): RecoveryFailure[] {
+  if (next.pending.length > 0) return next.pending;
+  const added = next.exhausted.filter(
+    (entry) => !previous.exhausted.some((e) => e.toolName === entry.toolName),
+  );
+  if (added.length > 0) return added;
+  // At capacity the additions are not stored; with no calls nothing could
+  // have resolved, so the earlier failures are the unresolved ones.
+  return next.stopped && !previous.stopped && !stepHadCalls
+    ? previous.pending
+    : [];
+}
 
 /** Grounded closing report from the structured failures, not from model prose. */
 export function recoveryBlockerReport(
@@ -304,7 +302,7 @@ export function recoveryBlockerReport(
         `- ${item.toolName} (${item.code || "unknown error"}): ${item.guidance}`,
     )
     .join("\n");
-  return `I couldn't verify part of this request. These calls failed before any change was made, and the missing or incorrect input was not found with the available tools:\n${lines}\nNothing was guessed or changed for them. Send the missing authoritative identifier or name, or use Retry. Other tool results from this run are unaffected.`;
+  return `These calls remain unresolved after the corrective attempts allowed for this run; each reported that no write had started:\n${lines}\nNothing was retried automatically, and no conclusion is drawn about records these calls could not read. Other tool results from this run are unaffected, so check the tool activity for what completed. Use Retry once the cause is fixed.`;
 }
 
 export function recoveryPromptBlock(state: OperatorRecoveryState): string {
@@ -318,7 +316,7 @@ export function recoveryPromptBlock(state: OperatorRecoveryState): string {
         )
         .join(
           "\n",
-        )}\nCorrect the input using authoritative tool results, refresh the referenced records, or use a read-only alternative, then call the tool again. A rejected or invalid search or lookup proves nothing about whether a match exists; never say a target has no match unless a valid search returned none. Do not claim these targets are done. Do not retry authorization failures, denied approvals, or outcomes with unknown side effects. If the authoritative identifier or input is missing and cannot be found with read-only tools, do not guess: say exactly what is missing. A reply without a tool call is held back and you are asked again, and after a second such reply the run ends with a summary of the blocked calls.`,
+        )}\nCorrect the input using authoritative tool results, refresh the referenced records, or use a read-only alternative, then call the tool again. A rejected or invalid search or lookup proves nothing about whether a match exists; never say a target has no match unless a valid search returned none. Do not claim these targets are done. Do not retry authorization failures, denied approvals, or outcomes with unknown side effects. If the authoritative identifier or input is missing and cannot be found with read-only tools, do not guess: say exactly what is missing. A reply without a tool call is held back and uses one attempt; when attempts run out the run ends with a summary of the unresolved calls.`,
     );
   }
   if (state.stopped) {
