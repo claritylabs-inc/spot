@@ -146,7 +146,7 @@ export function parseRouterActivityStages(
       stages.some((existing) => existing.stageId === stageId)
     )
       return null;
-    stages.push({ stageId, stage, status });
+    stages.push({ stageId: stage, stage, status });
   }
   return stages;
 }

@@ -3811,6 +3811,7 @@ export default defineSchema({
       ),
     ),
     activity: v.optional(messageActivityValidator),
+    failure: v.optional(routerJobFailureValidator),
     toolArtifacts: v.optional(
       v.array(
         v.object({
@@ -4383,6 +4384,7 @@ export default defineSchema({
       ),
     ),
     activity: v.optional(messageActivityValidator),
+    failure: v.optional(routerJobFailureValidator),
     toolArtifacts: v.optional(
       v.array(
         v.object({
