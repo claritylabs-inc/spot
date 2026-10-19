@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation } from "convex/react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -16,6 +16,7 @@ import {
 } from "@claritylabs-inc/ui/components/dialog";
 import { PillButton } from "@/components/ui/pill-button";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { typeStyle } from "@/lib/typography";
 
 export function DeleteOrganizationButton({
   orgId,
@@ -63,6 +64,7 @@ export function DeleteOrganizationButton({
         disabled={disabled || busy}
         onClick={() => setOpen(true)}
       >
+        <Trash2 className="size-3.5" />
         Delete {typeLabel}
       </PillButton>
       <Dialog
@@ -86,7 +88,7 @@ export function DeleteOrganizationButton({
             </DialogDescription>
           </DialogHeader>
           {type === "client" ? (
-            <label className="flex items-start gap-2 text-sm">
+            <label className={`flex items-start gap-2 ${typeStyle("body.default")}`}>
               <input
                 type="checkbox"
                 className="mt-0.5"

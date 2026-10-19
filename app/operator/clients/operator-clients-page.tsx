@@ -1,11 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import { AppShell } from "@/components/app-shell";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
@@ -27,16 +25,11 @@ import { Loader2, LogOut, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
-  ClientDetailsEditor,
-  type ClientEditorHandle,
-} from "./client-details-editor";
-import {
   useCachedOperatorClients,
   useCachedOperatorCurrent,
   useOperatorClientCacheActions,
 } from "@/lib/sync/operator-cached-queries";
 import { useStopOperatorImpersonation } from "@/hooks/use-stop-operator-impersonation";
-import { useStartOperatorImpersonation } from "@/hooks/use-start-operator-impersonation";
 import { formatDisplayDate } from "@/lib/date-format";
 import {
   ONBOARDING_CLIENT_STATUS,
@@ -81,10 +74,7 @@ type ClientFilter = "all" | "active" | "limited" | "onboarding";
 
 export default function OperatorClientsScreen() {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<Id<"organizations"> | null>(
-    null,
-  );
-  const [panelMode, setPanelMode] = useState<"create" | "details" | null>(null);
+  const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ClientFilter>("all");
   const [name, setName] = useState("");
@@ -122,24 +112,9 @@ export default function OperatorClientsScreen() {
       : [];
   const { seedClient } = useOperatorClientCacheActions();
   const createClient = useAction(api.operator.createSoloClient);
-  const { startImpersonation } = useStartOperatorImpersonation();
   const stopOperatorImpersonation = useStopOperatorImpersonation(
     current?.activeImpersonation,
   );
-
-  const selected = useMemo(
-    () => clients?.find((client) => client._id === selectedId) ?? null,
-    [clients, selectedId],
-  );
-  const editor = useRef<ClientEditorHandle>(null);
-
-  async function saveDetails() {
-    return (
-      panelMode !== "details" ||
-      !editor.current ||
-      (await editor.current.saveNow())
-    );
-  }
 
   async function submitClient(event: React.FormEvent) {
     event.preventDefault();
@@ -163,38 +138,12 @@ export default function OperatorClientsScreen() {
     }
   }
 
-  async function impersonate(client: OperatorClientRow) {
-    if (!(await saveDetails())) return;
-    setBusy(true);
-    try {
-      await startImpersonation({
-        targetOrgId: client._id,
-        targetRole: "admin",
-        destination: "/policies",
-        failureMessage: "Failed to impersonate client",
-      });
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(error, "Failed to impersonate client"),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function contactEmail(client: OperatorClientRow) {
     return client.primaryContactEmail ?? client.adminEmail;
   }
 
-  async function openDetails(client: OperatorClientRow) {
-    if (!(await saveDetails())) return;
-    setSelectedId(client._id);
-    setPanelMode("details");
-  }
-
-  async function openCreate() {
-    if (!(await saveDetails())) return;
-    setPanelMode("create");
+  function openClient(client: OperatorClientRow) {
+    router.push(`/operator/clients/${client._id}`);
   }
 
   const actions = (
@@ -213,7 +162,7 @@ export default function OperatorClientsScreen() {
           <LogOut className="size-3.5" />
         </PillButton>
       ) : null}
-      <PillButton size="compact" onClick={openCreate}>
+      <PillButton size="compact" onClick={() => setCreating(true)}>
         <Plus className="size-3.5" />
         Create client
       </PillButton>
@@ -221,101 +170,41 @@ export default function OperatorClientsScreen() {
   );
   const rightPanel = (
     <SettingsDrawer
-      open={panelMode !== null}
-      onOpenChange={async (open) => {
-        if (!open && (await saveDetails())) {
-          setPanelMode(null);
-          setSelectedId(null);
-        }
-      }}
-      title={
-        panelMode === "create" || !selected ? (
-          "Create client"
-        ) : (
-          <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
-            <span className="min-w-0 truncate">{selected.name}</span>
-            <span className="flex shrink-0 items-center gap-2">
-              <StatusTag
-                {...operatorClientStatusPresentation(selected)}
-              >
-                {operatorClientStatusLabel(selected)}
-              </StatusTag>
-            </span>
-          </span>
-        )
-      }
+      open={creating}
+      onOpenChange={setCreating}
+      title="Create client"
       footer={
-        panelMode === "create" ? (
-          <PillButton
-            type="submit"
-            form="operator-create-client-form"
-            disabled={busy || !name.trim()}
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Create client
-          </PillButton>
-        ) : selected ? (
-          <>
-            <DeleteOrganizationButton
-              orgId={selected._id}
-              name={selected.name}
-              type="client"
-              disabled={busy || Boolean(current?.activeImpersonation)}
-              beforeDelete={saveDetails}
-              onDeleted={() => {
-                setPanelMode(null);
-                setSelectedId(null);
-              }}
-            />
-            <PillButton
-              variant="secondary"
-              disabled={busy}
-              onClick={() => void impersonate(selected)}
-            >
-              Impersonate
-            </PillButton>
-            <PillButton
-              onClick={async () => {
-                if (await saveDetails())
-                  router.push(`/operator/clients/${selected._id}`);
-              }}
-            >
-              Manage client
-            </PillButton>
-          </>
-        ) : null
+        <PillButton
+          type="submit"
+          form="operator-create-client-form"
+          disabled={busy || !name.trim()}
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Create client
+        </PillButton>
       }
     >
-      {panelMode === "create" ? (
-        <form
-          id="operator-create-client-form"
-          onSubmit={submitClient}
-          className="space-y-3"
-        >
-          <Field label="Client name">
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Client organization"
-              required
-            />
-          </Field>
-          <Field label="Website">
-            <Input
-              value={website}
-              onChange={(event) => setWebsite(event.target.value)}
-              placeholder="https://example.com"
-            />
-          </Field>
-        </form>
-      ) : selected ? (
-        <ClientDetailsEditor
-          key={selected._id}
-          ref={editor}
-          client={selected}
-          disabled={Boolean(current?.activeImpersonation)}
-        />
-      ) : null}
+      <form
+        id="operator-create-client-form"
+        onSubmit={submitClient}
+        className="space-y-3"
+      >
+        <Field label="Client name">
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Client organization"
+            required
+          />
+        </Field>
+        <Field label="Website">
+          <Input
+            value={website}
+            onChange={(event) => setWebsite(event.target.value)}
+            placeholder="https://example.com"
+          />
+        </Field>
+      </form>
     </SettingsDrawer>
   );
 
@@ -408,15 +297,13 @@ export default function OperatorClientsScreen() {
                   <TableRow
                     key={client._id}
                     tabIndex={0}
-                    onClick={() => openDetails(client)}
+                    onClick={() => openClient(client)}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter" && event.key !== " ") return;
                       event.preventDefault();
-                      openDetails(client);
+                      openClient(client);
                     }}
-                    className={`cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${
-                      selectedId === client._id ? "bg-muted/50" : ""
-                    }`}
+                    className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   >
                     <TableCell className="px-4">
                       <div className="flex min-w-0 items-center gap-2.5">
