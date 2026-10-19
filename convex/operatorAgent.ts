@@ -3,6 +3,7 @@ import {
   updateApplicationByOperator,
 } from "./procurementRequests";
 import { clientAccessStatus } from "./lib/clientAccess";
+import { routerJobFailureValidator } from "./lib/routerJobFailure";
 import { readIntakeBusinessProfile } from "./lib/intakeApplication";
 import {
   prepareBusinessProfileToolUpdate,
@@ -6066,6 +6067,10 @@ export const failRunInternal = internalMutation({
     runId: v.id("operatorAgentRuns"),
     expectedRunnerAttempt: v.optional(v.number()),
     error: v.string(),
+    /** Safe categorized summary shown to the operator; `error` stays internal. */
+    reason: v.optional(v.string()),
+    /** Sanitized router diagnostics retained for operator troubleshooting. */
+    failure: v.optional(routerJobFailureValidator),
     expectedCheckpointIteration: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -6138,9 +6143,12 @@ export const failRunInternal = internalMutation({
       updatedAt: now,
     });
     await ctx.db.patch(run.agentMessageId, {
-      content: "I couldn't complete that operator task.",
+      content: args.reason
+        ? `I couldn't complete that operator task. ${args.reason.slice(0, 300)}`
+        : "I couldn't complete that operator task.",
       status: "error",
       error: args.error.slice(0, 1_000),
+      ...(args.failure ? { failure: args.failure } : {}),
       updatedAt: now,
     });
     await ctx.db.patch(run.threadId, { lastMessageAt: now, updatedAt: now });
