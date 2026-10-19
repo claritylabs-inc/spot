@@ -22,7 +22,7 @@ import type { AgentDockAdapter } from "./types";
 
 const AGENT_DOCK_BAR_HEIGHT = 44;
 export const AGENT_CHAT_SURFACE =
-  "bg-(--chat-surface) [--chat-surface:color-mix(in_srgb,var(--muted)_40%,var(--background))] dark:[--chat-surface:#0b0c0d]";
+  "bg-(--chat-surface) [--chat-surface:color-mix(in_srgb,var(--muted)_40%,var(--background))] dark:[--chat-surface:#050506]";
 /** Frame around the lifted app card while the agent is open. */
 const CARD_GAP = 8;
 const CARD_RADIUS = 12;
@@ -300,7 +300,7 @@ export function AgentDockLayout({
         className={cn(
           "absolute inset-x-0 top-0 z-10 origin-top overflow-hidden bg-background",
           enabled &&
-            "shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_-14px_rgba(0,0,0,0.1)] ring-1 ring-foreground/[0.04]",
+            "shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_-14px_rgba(0,0,0,0.1)] ring-1 ring-foreground/[0.04] dark:shadow-[0_8px_24px_-14px_rgba(0,0,0,0.6)] dark:ring-foreground/20",
         )}
         initial={false}
         animate={{
