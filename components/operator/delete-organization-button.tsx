@@ -36,11 +36,14 @@ export function DeleteOrganizationButton({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const remove = useMutation(api.operator.deleteOrganization);
+  const removeWithUsers = useMutation(api.operator.deleteClientWithUsers);
+  const [withUsers, setWithUsers] = useState(false);
   async function confirm() {
     setBusy(true);
     try {
       if (!(await beforeDelete())) return;
-      await remove({ orgId, type });
+      if (type === "client" && withUsers) await removeWithUsers({ orgId });
+      else await remove({ orgId, type });
       setOpen(false);
       onDeleted();
       toast.success(`${type === "client" ? "Client" : "Provider"} deleted`);
@@ -65,7 +68,9 @@ export function DeleteOrganizationButton({
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (!busy) setOpen(next);
+          if (busy) return;
+          setOpen(next);
+          if (!next) setWithUsers(false);
         }}
       >
         <DialogContent showCloseButton={!busy}>
@@ -80,6 +85,21 @@ export function DeleteOrganizationButton({
                 : " Shared packet links will stop working."}
             </DialogDescription>
           </DialogHeader>
+          {type === "client" ? (
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={withUsers}
+                disabled={busy}
+                onChange={(event) => setWithUsers(event.target.checked)}
+              />
+              <span>
+                Also permanently delete all users under this client. They lose
+                login access and cannot be restored.
+              </span>
+            </label>
+          ) : null}
           <DialogFooter>
             <PillButton
               type="button"
@@ -96,7 +116,11 @@ export function DeleteOrganizationButton({
               onClick={() => void confirm()}
             >
               {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              {busy ? "Deleting…" : `Delete ${typeLabel}`}
+              {busy
+                ? "Deleting…"
+                : withUsers
+                  ? `Delete ${typeLabel} and users`
+                  : `Delete ${typeLabel}`}
             </PillButton>
           </DialogFooter>
         </DialogContent>

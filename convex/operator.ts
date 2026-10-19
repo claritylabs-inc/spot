@@ -55,7 +55,10 @@ import {
   type ExtractionSectionFactView,
 } from "./lib/extractionRunView";
 
-const clientStatusValidator = v.union(v.literal("limited"), v.literal("active"));
+const clientStatusValidator = v.union(
+  v.literal("limited"),
+  v.literal("active"),
+);
 const orgRoleValidator = v.union(v.literal("admin"), v.literal("member"));
 const operatorClientUserValidator = v.object({
   email: v.string(),
@@ -1112,6 +1115,94 @@ export const markSoloClientLaunchedInternal = internalMutation({
         resendEmailId: args.resendEmailId,
       },
     });
+  },
+});
+
+export const deleteClientWithUsers = mutation({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
+    const org = await ctx.db.get(args.orgId);
+    if (!org || org.type !== "client") throw new Error("Client not found");
+    const memberships = await ctx.db
+      .query("orgMemberships")
+      .withIndex("organization", (q) => q.eq("orgId", org._id))
+      .take(501);
+    if (memberships.length > 500)
+      throw new Error("Too many users to delete at once");
+    const userIds: Id<"users">[] = [];
+    for (const membership of memberships) {
+      const user = await ctx.db.get(membership.userId);
+      if (
+        !user ||
+        user._id === operator.userId ||
+        user.accountKind === "operator" ||
+        user.serviceAccountKind
+      )
+        continue;
+      const userMemberships = await ctx.db
+        .query("orgMemberships")
+        .withIndex("user", (q) => q.eq("userId", user._id))
+        .take(2);
+      if (userMemberships.some((other) => other.orgId !== org._id)) continue;
+      userIds.push(user._id);
+      for await (const session of ctx.db
+        .query("authSessions")
+        .withIndex("userId", (q) => q.eq("userId", user._id))) {
+        for await (const token of ctx.db
+          .query("authRefreshTokens")
+          .withIndex("sessionId", (q) => q.eq("sessionId", session._id)))
+          await ctx.db.delete(token._id);
+        await ctx.db.delete(session._id);
+      }
+      for await (const account of ctx.db
+        .query("authAccounts")
+        .withIndex("userIdAndProvider", (q) => q.eq("userId", user._id))) {
+        for await (const code of ctx.db
+          .query("authVerificationCodes")
+          .withIndex("accountId", (q) => q.eq("accountId", account._id)))
+          await ctx.db.delete(code._id);
+        await ctx.db.delete(account._id);
+      }
+    }
+    const connections = await ctx.db
+      .query("slackWorkspaceConnections")
+      .withIndex("client_status", (q) => q.eq("clientOrgId", org._id))
+      .take(50);
+    for (const connection of connections)
+      if (connection.serviceUserId) userIds.push(connection.serviceUserId);
+    if (org.deletedAt === undefined)
+      await ctx.db.patch(org._id, {
+        deletedAt: dayjs().valueOf(),
+        deletedByUserId: operator.userId,
+      });
+    for await (const session of ctx.db
+      .query("operatorImpersonationSessions")
+      .withIndex("target", (q) => q.eq("targetOrgId", org._id))) {
+      if (session.status === "active")
+        await ctx.db.patch(session._id, {
+          status: "ended",
+          endedAt: dayjs().valueOf(),
+        });
+    }
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "setup_write",
+      targetOrgId: org._id,
+      summary: `Deleted client ${org.name} and ${userIds.length} user${userIds.length === 1 ? "" : "s"}`,
+      metadata: {
+        operation: "delete_with_users",
+        organizationType: "client",
+        deletedUsers: userIds.length,
+      },
+    });
+    await ctx.scheduler.runAfter(0, internal.clientDeletion.purgeClient, {
+      orgId: org._id,
+      userIds,
+      position: 0,
+    });
+    return { deletedUsers: userIds.length };
   },
 });
 

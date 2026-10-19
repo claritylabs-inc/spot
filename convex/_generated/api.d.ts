@@ -83,6 +83,7 @@ import type * as certificateNotes from "../certificateNotes.js";
 import type * as certificates from "../certificates.js";
 import type * as chatPresentations from "../chatPresentations.js";
 import type * as clRouterOperations from "../clRouterOperations.js";
+import type * as clientDeletion from "../clientDeletion.js";
 import type * as clientFiles from "../clientFiles.js";
 import type * as clientProcurementRequests from "../clientProcurementRequests.js";
 import type * as companyInformation from "../companyInformation.js";
@@ -530,6 +531,7 @@ declare const fullApi: ApiFromModules<{
   certificates: typeof certificates;
   chatPresentations: typeof chatPresentations;
   clRouterOperations: typeof clRouterOperations;
+  clientDeletion: typeof clientDeletion;
   clientFiles: typeof clientFiles;
   clientProcurementRequests: typeof clientProcurementRequests;
   companyInformation: typeof companyInformation;
