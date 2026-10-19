@@ -412,15 +412,15 @@ function ActivityRow({
             {shown.text}
           </span>
         ) : null}
+        {active ? (
+          <Spinner
+            aria-hidden="true"
+            role="presentation"
+            aria-label={undefined}
+            className="size-3.5 shrink-0 motion-reduce:animate-none"
+          />
+        ) : null}
       </div>
-      {active ? (
-        <Spinner
-          aria-hidden="true"
-          role="presentation"
-          aria-label={undefined}
-          className="mt-0.5 size-3.5 shrink-0 motion-reduce:animate-none"
-        />
-      ) : null}
     </li>
   );
 }
