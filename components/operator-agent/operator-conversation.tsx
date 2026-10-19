@@ -271,6 +271,8 @@ function OperatorMessageRow({
         tools={message.usedTools}
         toolCalls={message.toolCalls}
         activity={message.activity}
+        failure={message.failure}
+        routerRequestId={message.routerRequestId}
         audience="operator"
         content={content}
         channel={bubbleChannel}

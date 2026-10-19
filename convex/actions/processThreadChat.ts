@@ -54,6 +54,7 @@ import {
   toolOutcomeStatus,
   type MessageActivityUpdate,
 } from "../lib/messageActivity";
+import { traceStage } from "../lib/agentActivityTrace";
 import { FATAL_ACTION_FAILED_MESSAGE } from "../lib/actionFailures";
 import { buildPendingEmailConfirmation } from "../lib/actionConfirmationFingerprint";
 import {
@@ -211,17 +212,37 @@ export const run = internalAction({
       return agentMessage?.status === "cancelled";
     };
 
+    // Live status is presentation only and must never block or fail the turn.
+    const recordActivity = async (update: MessageActivityUpdate) => {
+      if (surface !== "web") return;
+      try {
+        await ctx.runMutation(internal.routerJobs.recordActivity, {
+          target: agentMsgId,
+          update,
+        });
+      } catch {
+        console.warn("[processThreadChat] Agent activity unavailable");
+      }
+    };
+
     try {
-      const boundedHistory = await loadBoundedAgentHistory(ctx, {
-        threadId: args.threadId,
-        currentMessageId: args.userMessageId,
-        surface,
-      });
-      const controlState = await loadWebChatDeterministicControlState(ctx, {
-        threadId: args.threadId,
-        orgId: args.orgId,
-        userMessageId: args.userMessageId,
-      });
+      const { boundedHistory, controlState } = await traceStage(
+        recordActivity,
+        "context",
+        "preparing_context",
+        async () => ({
+          boundedHistory: await loadBoundedAgentHistory(ctx, {
+            threadId: args.threadId,
+            currentMessageId: args.userMessageId,
+            surface,
+          }),
+          controlState: await loadWebChatDeterministicControlState(ctx, {
+            threadId: args.threadId,
+            orgId: args.orgId,
+            userMessageId: args.userMessageId,
+          }),
+        }),
+      );
       const text = controlState.messageText;
       if (
         await runWebChatEmailControls(ctx, {
@@ -251,11 +272,17 @@ export const run = internalAction({
       // Slack ingress already screens before preparing/claiming the agent response.
       if (surface !== "slack" && userMsgForGuard?.content) {
         const sanitizedContent = enforceInputLimits(userMsgForGuard.content);
-        const injectionCheck = await classifyPromptInjection(
-          ctx,
-          sanitizedContent,
-          "first_party",
-          args.orgId,
+        const injectionCheck = await traceStage(
+          recordActivity,
+          "screening",
+          "screening_request",
+          () =>
+            classifyPromptInjection(
+              ctx,
+              sanitizedContent,
+              "first_party",
+              args.orgId,
+            ),
         );
         if (!injectionCheck.safe) {
           await ctx.runMutation(internal.threads.updateAgentMessage, {
@@ -418,10 +445,16 @@ export const run = internalAction({
           : "";
 
       const { history: messageHistory, latestAttachmentNames } =
-        await buildMessageHistoryWithAttachmentContext(
-          ctx,
-          allMessages,
-          latestUserMsg?._id ? String(latestUserMsg._id) : undefined,
+        await traceStage(
+          recordActivity,
+          "attachments",
+          "preparing_context",
+          () =>
+            buildMessageHistoryWithAttachmentContext(
+              ctx,
+              allMessages,
+              latestUserMsg?._id ? String(latestUserMsg._id) : undefined,
+            ),
         );
       const hasRichInput = modelMessagesHaveRichInput(messageHistory);
 
@@ -677,19 +710,25 @@ export const run = internalAction({
       };
 
       if (await isAgentResponseCancelled(true)) return;
-      const selection = await decideClientAgentTurn(ctx, {
-        orgId: args.orgId,
-        surface,
-        message: text,
-        tools: registeredTools,
-        summary: boundedHistory.summary,
-        attachments: latestAttachmentNames,
-        slackReaction: surface === "slack",
-        trace: {
-          traceId: String(agentMsgId),
-          parentRequestId: String(args.userMessageId),
-        },
-      });
+      const selection = await traceStage(
+        recordActivity,
+        "tools",
+        "selecting_tools",
+        () =>
+          decideClientAgentTurn(ctx, {
+            orgId: args.orgId,
+            surface,
+            message: text,
+            tools: registeredTools,
+            summary: boundedHistory.summary,
+            attachments: latestAttachmentNames,
+            slackReaction: surface === "slack",
+            trace: {
+              traceId: String(agentMsgId),
+              parentRequestId: String(args.userMessageId),
+            },
+          }),
+      );
       toolArtifacts.push(
         promptModuleArtifact(selection, {
           traceId: String(agentMsgId),
@@ -732,18 +771,6 @@ export const run = internalAction({
 
       const chatTask = hasRichInput ? "chat_vision" : "chat";
       const presentationTools: CapturedPresentationTool[] = [];
-      // Live status is presentation only and must never block or fail the turn.
-      const recordActivity = async (update: MessageActivityUpdate) => {
-        if (surface !== "web") return;
-        try {
-          await ctx.runMutation(internal.routerJobs.recordActivity, {
-            target: agentMsgId,
-            update,
-          });
-        } catch {
-          console.warn("[processThreadChat] Agent activity unavailable");
-        }
-      };
       const turn = await runAgentTurn(ctx, {
         orgId: args.orgId,
         task: chatTask,
