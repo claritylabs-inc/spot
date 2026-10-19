@@ -98,14 +98,34 @@ Operator and client web replies stream through durable router jobs. `stream: tru
 requests send ordered, cumulative text snapshots to the existing result capability
 with `status: "progress"`; Spot validates invocation, token, fingerprint, router
 ID, sequence, active message, and operator checkpoint before updating the reply.
-Only text is streamed; tool execution waits for the terminal model result.
+Text and tool-request identity can stream; tool execution waits for the terminal model result.
+A progress envelope may also carry optional cumulative
+`toolCalls: [{ toolCallId, toolName }]` (at most 128 entries, each string
+nonempty and at most 200 characters, no other keys, no duplicate ids). Spot
+rejects malformed metadata with the whole callback; text-only callbacks remain
+valid. Metadata means the model requested the tool, not that it is running or
+finished, and it never carries arguments, results or reasoning.
 Cancelled/terminal jobs reject late progress. Router progress delivery is best
 effort and never restarts inference. The router schema/API and router-owned worker must support progress callbacks before a Spot consumer uses streaming.
 
 Profile settings store personal `users.streamResponses` (default on) and
-`users.showThinking` (default off). Both operator and client web renderers share
-these preferences. Show thinking displays a collapsible summary of tool activity,
-not raw reasoning or tool payloads. Approvals and task artifacts remain independent
+`users.showThinking` (default on; only an explicit false hides activity). Both
+operator and client web renderers share these preferences. Show thinking displays
+the live status line and a collapsible summary of tool activity, not raw
+reasoning or tool payloads.
+
+`threadMessages.activity` and `operatorAgentMessages.activity` hold bounded live
+status for a processing web message: a `model`/`tools` phase plus per-call
+`requested`, `running`, `returned`, `completed`, `failed`, `awaiting_approval`
+or `skipped` status (`convex/lib/messageActivity.ts`). `requested` comes from
+router progress metadata; the runners record `running` immediately before a
+tool executes (operator tools are serialized, so queued calls stay `requested`)
+and the outcome when it returns. `returned` means the function returned without
+an error marker, not business success; only an explicit `succeeded` result is
+`completed`. `routerJobs.recordActivity` ignores messages that are no longer
+processing and, for operator runs, stale runner attempts, stale checkpoints and
+cancelled runs. Writes are presentation-only and never fail a turn. Settled
+messages keep the existing `usedTools`/`toolCalls` audit history. Approvals and task artifacts remain independent
 of these display preferences. Non-web channel delivery stays terminal-only.
 
 These preferences control presentation only; turning streaming off does not stop

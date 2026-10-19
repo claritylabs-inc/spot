@@ -7,6 +7,7 @@ import { routingSelectionValidator } from "./lib/extractionTraceRouterFields";
 import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
 import { companyResearchValidator } from "./lib/companyResearch";
 import { routerJobFailureValidator } from "./lib/routerJobFailure";
+import { messageActivityValidator } from "./lib/messageActivity";
 import { slackStoredAttachmentValidator } from "./lib/slackAttachments";
 import {
   activeNotificationTypeValidator,
@@ -3809,6 +3810,7 @@ export default defineSchema({
         }),
       ),
     ),
+    activity: v.optional(messageActivityValidator),
     toolArtifacts: v.optional(
       v.array(
         v.object({
@@ -4380,6 +4382,7 @@ export default defineSchema({
         }),
       ),
     ),
+    activity: v.optional(messageActivityValidator),
     toolArtifacts: v.optional(
       v.array(
         v.object({

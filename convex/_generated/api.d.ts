@@ -261,6 +261,7 @@ import type * as lib_mcpEventProtocol from "../lib/mcpEventProtocol.js";
 import type * as lib_mcpEventWebhook from "../lib/mcpEventWebhook.js";
 import type * as lib_mcpProtocol from "../lib/mcpProtocol.js";
 import type * as lib_mergePdfs from "../lib/mergePdfs.js";
+import type * as lib_messageActivity from "../lib/messageActivity.js";
 import type * as lib_modelCallTelemetry from "../lib/modelCallTelemetry.js";
 import type * as lib_modelCatalog from "../lib/modelCatalog.js";
 import type * as lib_models from "../lib/models.js";
@@ -695,6 +696,7 @@ declare const fullApi: ApiFromModules<{
   "lib/mcpEventWebhook": typeof lib_mcpEventWebhook;
   "lib/mcpProtocol": typeof lib_mcpProtocol;
   "lib/mergePdfs": typeof lib_mergePdfs;
+  "lib/messageActivity": typeof lib_messageActivity;
   "lib/modelCallTelemetry": typeof lib_modelCallTelemetry;
   "lib/modelCatalog": typeof lib_modelCatalog;
   "lib/models": typeof lib_models;

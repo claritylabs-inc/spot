@@ -1,5 +1,28 @@
 # Platform workflow QA
 
+## Live agent activity — October 19, 2026
+
+The local Chrome component workflow passed for the real `ChatAssistantTurn`,
+`ThinkingSummary`, disclosure, and display-preference components with synthetic
+message/viewer state. Covered: unset activity preference defaults visible;
+requested/running labels; failed and awaiting-approval labels; model waiting;
+streaming disabled without losing activity; explicit activity opt-out; completion
+removes the spinner; and 390px mobile layout without horizontal overflow.
+Artifacts: `.context/progress-fixes/browser/{run.mjs,fixture.tsx,convex.ts,stubs.tsx,result.json,running-desktop.png,running-mobile.png}`.
+The fixture substitutes authentication/query data and answer rendering; it does
+not establish an authenticated agent workflow or live router callback delivery.
+No Vercel preview or production deployment was used.
+
+Integrated verification: Spot root and Convex typechecks, touched-file lint,
+existing `convex/routerJobs.test.ts` (8 passing), and router contract check
+(17 fixtures/10 operations) passed. cl-router's integrated `npm run check`
+passed (433 tests, one skipped); the router worker separately reported the
+existing waterfall transport scenarios passing (31/31). No unit tests were
+added to the commits. Live tool metadata delivery across the two deployed
+services remains unverified and requires the updated router plus an approved
+Spot callback endpoint. Tool-request progress never authorizes execution;
+actual tool execution still waits for the terminal model result.
+
 ## MCP Events — September 30, 2026
 
 Local isolation coverage passes for tenant/operator boundaries, removed

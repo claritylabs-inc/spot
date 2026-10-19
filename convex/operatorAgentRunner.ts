@@ -32,6 +32,10 @@ import {
 } from "./lib/agentMessageHistory";
 import { collectToolAudit, mergeToolAudits } from "./lib/agentToolAudit";
 import {
+  toolOutcomeStatus,
+  type MessageActivityUpdate,
+} from "./lib/messageActivity";
+import {
   buildOperatorRunCheckpointSummary,
   shouldContinueOperatorRun,
 } from "./lib/operatorAgentContinuation";
@@ -430,13 +434,36 @@ export const run = internalAction({
       let pendingConfirmation: { status: string; summary: string } | undefined;
       let toolQueue: Promise<unknown> = Promise.resolve();
       let toolEvidence = collectToolAudit({});
+      // Live status is presentation only and must never block or fail the run.
+      const recordActivity = async (update: MessageActivityUpdate) => {
+        if (traceChannel !== "web") return;
+        try {
+          await ctx.runMutation(internal.routerJobs.recordActivity, {
+            target: run.agentMessageId,
+            update,
+            operatorRun: {
+              runId: run._id,
+              expectedRunnerAttempt,
+              expectedCheckpointIteration: expectedCheckpointIteration ?? 0,
+            },
+          });
+        } catch {
+          console.warn("Agent activity unavailable", { runId: run._id });
+        }
+      };
 
       tools[EXPAND_TOOLS_NAME] = tool({
         ...expandOperatorToolsSpec(availableFamilies),
-        execute: async ({ families }) => ({
-          status: "available_next_step",
-          families,
-        }),
+        execute: async ({ families }, options) => {
+          const activity = {
+            kind: "tool" as const,
+            toolCallId: options.toolCallId,
+            toolName: EXPAND_TOOLS_NAME,
+          };
+          await recordActivity({ ...activity, status: "running" });
+          await recordActivity({ ...activity, status: "returned" });
+          return { status: "available_next_step", families };
+        },
       });
       for (const name of operatorAgentToolNamesForFamilies(
         context.toolNames,
@@ -446,7 +473,12 @@ export const run = internalAction({
         tools[name] = dynamicTool({
           description: spec.description,
           inputSchema: spec.inputSchema,
-          execute: async (rawInput): Promise<unknown> => {
+          execute: async (rawInput, options): Promise<unknown> => {
+            const activity = {
+              kind: "tool" as const,
+              toolCallId: options.toolCallId,
+              toolName: name,
+            };
             const execution = toolQueue.then(async () => {
               if (pendingConfirmation) {
                 return {
@@ -463,6 +495,8 @@ export const run = internalAction({
                   error,
                 );
               }
+              // Tools run serially; mark running only once this call's turn starts.
+              await recordActivity({ ...activity, status: "running" });
               const inputHash = await actionConfirmationFingerprint({
                 toolName: name,
                 toolVersion: spec.version,
@@ -519,6 +553,10 @@ export const run = internalAction({
             });
             toolQueue = execution
               .then(async (output) => {
+                await recordActivity({
+                  ...activity,
+                  status: toolOutcomeStatus(output),
+                });
                 if (thread.channel === "chat") {
                   const tool = capturePresentationTool(name, output);
                   if (tool) {
@@ -547,7 +585,7 @@ export const run = internalAction({
                     toolResults: [{ toolName: name, output }],
                   }),
                 );
-              })
+              }, () => recordActivity({ ...activity, status: "failed" }))
               .catch(() => undefined);
             return toolQueue.then(() => execution);
           },
@@ -584,6 +622,7 @@ export const run = internalAction({
               : ""),
           messages,
           tools,
+          experimental_onStepStart: () => recordActivity({ kind: "model" }),
           onStepFinish: async (step) => {
             if (traceChannel !== "web") return;
             await ctx.runMutation(internal.routerJobs.recordToolActivity, {
