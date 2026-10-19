@@ -3382,6 +3382,7 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
     );
     await ctx.db.patch(auditId, {
       status: "failed",
+      output: boundedJson(failure),
       error: message.slice(0, 1_000),
       updatedAt: dayjs().valueOf(),
     });
@@ -4222,6 +4223,7 @@ async function confirmOperatorAction(
     });
     await ctx.db.patch(ledger._id, {
       status: "failed",
+      output: boundedJson(failure),
       error: failure.error.slice(0, 1_000),
       updatedAt: now,
     });
@@ -4484,7 +4486,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
         );
     await ctx.db.patch(ledger._id, {
       status: succeeded ? "succeeded" : "failed",
-      output: succeeded ? boundedJson(args.result) : ledger.output,
+      output: succeeded ? boundedJson(args.result) : boundedJson(outcome),
       error,
       updatedAt: now,
     });
@@ -4563,7 +4565,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
     if (run.status === "cancelled" || run.cancellationRequestedAt) {
       return { status: "cancelled" as const, result: outcome };
     }
-    if (!succeeded) {
+    if (!succeeded && !isRecoverableOperatorToolFailure(outcome)) {
       const content = `Could not complete ${payload.summary}: ${error}`;
       await ctx.db.patch(run.agentMessageId, {
         content,
@@ -4606,7 +4608,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
             previous: run.checkpoint?.summary,
             audit: {
               usedTools: [payload.toolName],
-              completedTools: [payload.toolName],
+              completedTools: succeeded ? [payload.toolName] : [],
               toolCalls: [toolCall],
               workflowOutcomes: [],
             },
@@ -5744,6 +5746,12 @@ export const requestToolConfirmationInternal = internalMutation({
           summary: confirmation.payload.summary,
         };
       }
+      const previousFailure = parseStoredOutput(existing.output);
+      if (
+        existing.status === "failed" &&
+        isRecoverableOperatorToolFailure(previousFailure)
+      )
+        return previousFailure;
       return executionOperatorToolFailure(
         args.toolName as OperatorAgentToolName,
         existing.status === "pending"

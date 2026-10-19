@@ -285,6 +285,7 @@ import type * as lib_operatorMcpAttachments from "../lib/operatorMcpAttachments.
 import type * as lib_operatorMcpClient from "../lib/operatorMcpClient.js";
 import type * as lib_operatorMcpOAuth from "../lib/operatorMcpOAuth.js";
 import type * as lib_operatorMcpToolCatalog from "../lib/operatorMcpToolCatalog.js";
+import type * as lib_operatorPlanning from "../lib/operatorPlanning.js";
 import type * as lib_operatorRunPlan from "../lib/operatorRunPlan.js";
 import type * as lib_operatorSlackConfig from "../lib/operatorSlackConfig.js";
 import type * as lib_orgBranding from "../lib/orgBranding.js";
@@ -723,6 +724,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorMcpClient": typeof lib_operatorMcpClient;
   "lib/operatorMcpOAuth": typeof lib_operatorMcpOAuth;
   "lib/operatorMcpToolCatalog": typeof lib_operatorMcpToolCatalog;
+  "lib/operatorPlanning": typeof lib_operatorPlanning;
   "lib/operatorRunPlan": typeof lib_operatorRunPlan;
   "lib/operatorSlackConfig": typeof lib_operatorSlackConfig;
   "lib/orgBranding": typeof lib_orgBranding;

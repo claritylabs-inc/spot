@@ -100,7 +100,7 @@ function preflightFailure(
       writeState: "not_started",
       guidance: terminal
         ? "Do not retry or work around this restriction. Report the blocked action and use the existing authorization or approval flow."
-        : `No write started. Correct ${toolName} using its schema and authoritative IDs. Search inputs accept one target unless an array is explicitly supported; a rejected search is not evidence of absence.${confirmed ? " Changed input requires a fresh exact confirmation." : ""}`,
+        : `No write started. Correct ${toolName} using its schema and authoritative IDs. Search inputs accept one target unless batch syntax is explicitly supported; a rejected search is not evidence of absence.${confirmed ? " Changed input requires a fresh exact confirmation." : ""}`,
       ...(issues ? { issues } : {}),
     },
     error: message,
