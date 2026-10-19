@@ -45,3 +45,48 @@ Do not submit invented business facts or submit an actual insurance request as
 part of the contact conversion test. An ad blocker can prevent delivery; do not
 circumvent the visitor's tracking preferences. Google Ads reporting can lag the
 Tag Assistant result. Enhanced conversions are not implemented by this change.
+
+## Marketing-to-intake funnel
+
+The marketing site (`spot.insure`, clarity-landing's `apps/spot`) and the app
+(`app.spot.insure`) send new events to **Spot, project 667578**, using the same
+public project token. Both use `persistence: "cookie"` and
+`cross_subdomain_cookie: true`: the first-party `.spot.insure` analytics cookie
+carries the anonymous identity, session and acquisition properties across the
+handoff. No visitor identifiers or application capabilities are added to links.
+The app's existing `identify(userId)` merges anonymous acquisition activity into
+the authenticated opaque user; do not reset before initial identification.
+Sign-out/account-switch resets remain in place. DNT is respected on both sites.
+
+The marketing initializer uses `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` (same override
+name as the app), with the Spot public token as default. The former
+`NEXT_PUBLIC_POSTHOG_KEY` belonged to Clairty Website (330399) and is intentionally
+ignored. If overriding, configure both deployments with the same Spot token.
+Historical events/replays remain in their original project; this change does not
+retroactively merge people or fabricate missing handoff activity.
+
+Paid landings retain only bounded `acquisition_gclid`, numeric
+`acquisition_gad_campaignid`, fixed `acquisition_source` and query-free
+`acquisition_landing_path` as shared super-properties. These are attribution
+metadata, not authentication or authorization. Contact values and handoff keys
+are never custom-event properties. Separate registrable domains such as
+coverwithspot.com do not share this cookie and require a separate handoff design.
+
+Funnel: `landing_viewed` → `landing_signup_clicked` → `intake_contact_viewed` →
+`intake_contact_started` → `intake_contact_submission_started` →
+`intake_contact_saved` → `intake_step_viewed` → `intake_submitted`.
+Existing accounts may emit `intake_verification_sent` and
+`intake_verification_succeeded` between contact and intake. Failures emit
+`intake_contact_failed`, `intake_verification_failed` or the existing
+`intake_submission_failed`, without raw error messages. `intake_contact_saved`
+requires a successful `/api/intake` response; it is not an application submission.
+Already-signed-in visitors can go directly from signup arrival into intake and
+skip contact entry. Analyze those as a separate path rather than forcing every
+visitor through the contact-saved milestone.
+
+Verify in a fresh browser: open a synthetic paid landing, click Get My Quotes,
+then confirm the same `distinct_id` and `$session_id` for landing and app events
+in project 667578, with acquisition properties retained. Exercise contact failure,
+accepted contact and intake steps only with local synthetic fixtures. Replay
+should include both hosts in one session when recording is enabled on both and
+no session timeout/reset occurs. Do not claim submission coverage from page loads.
