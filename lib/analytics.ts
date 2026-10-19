@@ -29,6 +29,11 @@ export function initAnalytics() {
     api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || "/ingest",
     ui_host: "https://us.posthog.com",
     defaults: "2025-11-30",
+    // Match spot.insure's project and persistence so the anonymous acquisition
+    // session continues through signup and identify() merges it into the user.
+    persistence: "cookie",
+    cross_subdomain_cookie: true,
+    respect_dnt: true,
     capture_pageview: false,
     capture_pageleave: true,
     autocapture: true,
@@ -128,6 +133,14 @@ export function initAnalytics() {
 }
 
 type AnalyticsEvent =
+  | "intake_contact_viewed"
+  | "intake_contact_started"
+  | "intake_contact_submission_started"
+  | "intake_contact_saved"
+  | "intake_contact_failed"
+  | "intake_verification_sent"
+  | "intake_verification_succeeded"
+  | "intake_verification_failed"
   | "intake_goal_selected"
   | "intake_step_viewed"
   | "intake_submission_started"
