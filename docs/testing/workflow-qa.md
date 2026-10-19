@@ -1141,6 +1141,6 @@ Acceptance workflow (pending production verification):
 2. Submit the original 13 broker domains as a read-only directory comparison. Observe complexity assessment, a distinct saved plan before the first business call, per-target searches or a disclosed bounded list, and an answer covering every target. A rejected batch is not a no-match result.
 3. Reload while planning and after completion; the plan is retained and the durable planner invocation is reused. Stop a new run during planning; no business tool may execute after cancellation.
 4. Ask for a read using an invalid identifier, then recover via an authoritative lookup. Verify structured error code, corrected call and final answer. Persistently invalid calls must exhaust after three corrective model iterations, not loop or claim absence. Do not manufacture production writes to test failures.
-5. Recheck collapsed Plan/error disclosures, Show thinking preference and narrow viewport. Existing approval, authorization and unknown-outcome boundaries receive code review and existing automated coverage.
+5. Recheck collapsed Plan/error disclosures, Show thinking preference and narrow viewport. The single Retry button must start a new attempt directly, include existing error context automatically for failed turns, and remain disabled during an active run. Existing approval, authorization and unknown-outcome boundaries receive code review and existing automated coverage.
 
 No new unit tests or Vercel previews are used. Results and artifact locations are recorded after integrated acceptance.
