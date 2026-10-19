@@ -1,0 +1,166 @@
+import { v, type Infer } from "convex/values";
+
+/**
+ * Live execution status for a processing agent message. It records what the
+ * app itself observed: tool names and call ids, never arguments, results or
+ * model reasoning. "returned" means the tool function returned without an
+ * error marker; only an explicit success marker becomes "completed".
+ */
+export const MESSAGE_ACTIVITY_MAX_TOOLS = 128;
+export const MESSAGE_ACTIVITY_MAX_STRING = 200;
+
+export const messageActivityToolStatusValidator = v.union(
+  v.literal("requested"),
+  v.literal("running"),
+  v.literal("returned"),
+  v.literal("completed"),
+  v.literal("failed"),
+  v.literal("awaiting_approval"),
+  v.literal("skipped"),
+);
+
+export const messageActivityValidator = v.object({
+  phase: v.union(v.literal("model"), v.literal("tools")),
+  tools: v.array(
+    v.object({
+      toolCallId: v.string(),
+      toolName: v.string(),
+      status: messageActivityToolStatusValidator,
+    }),
+  ),
+  updatedAt: v.number(),
+});
+
+export const requestedToolCallValidator = v.object({
+  toolCallId: v.string(),
+  toolName: v.string(),
+});
+
+export const messageActivityUpdateValidator = v.union(
+  v.object({ kind: v.literal("model") }),
+  v.object({
+    kind: v.literal("requested"),
+    toolCalls: v.array(requestedToolCallValidator),
+  }),
+  v.object({
+    kind: v.literal("tool"),
+    toolCallId: v.string(),
+    toolName: v.string(),
+    status: messageActivityToolStatusValidator,
+  }),
+);
+
+export type MessageActivity = Infer<typeof messageActivityValidator>;
+export type MessageActivityUpdate = Infer<typeof messageActivityUpdateValidator>;
+export type MessageActivityToolStatus = Infer<
+  typeof messageActivityToolStatusValidator
+>;
+export type RequestedToolCall = Infer<typeof requestedToolCallValidator>;
+
+const SETTLED: ReadonlySet<MessageActivityToolStatus> = new Set([
+  "returned",
+  "completed",
+  "failed",
+  "awaiting_approval",
+  "skipped",
+]);
+
+function validText(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MESSAGE_ACTIVITY_MAX_STRING
+  );
+}
+
+/**
+ * Validates the optional cumulative `toolCalls` router progress metadata.
+ * Returns undefined when absent and null when malformed, including extra keys
+ * that could smuggle arguments or results.
+ */
+export function parseRequestedToolCalls(
+  value: unknown,
+): RequestedToolCall[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > MESSAGE_ACTIVITY_MAX_TOOLS)
+    return null;
+  const seen = new Set<string>();
+  const calls: RequestedToolCall[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry))
+      return null;
+    const keys = Object.keys(entry);
+    const { toolCallId, toolName } = entry as Record<string, unknown>;
+    if (
+      keys.length !== 2 ||
+      !validText(toolCallId) ||
+      !validText(toolName) ||
+      seen.has(toolCallId)
+    )
+      return null;
+    seen.add(toolCallId);
+    calls.push({ toolCallId, toolName });
+  }
+  return calls;
+}
+
+export function applyMessageActivity(
+  current: MessageActivity | undefined,
+  update: MessageActivityUpdate,
+  now: number,
+): MessageActivity {
+  let phase = current?.phase ?? "model";
+  let tools = [...(current?.tools ?? [])];
+  if (update.kind === "model") {
+    // A new model step means earlier steps' tools settled; unannounced
+    // requests belong to a replaced or retried router job.
+    phase = "model";
+    tools = tools.filter((tool) => tool.status !== "requested");
+  } else if (update.kind === "requested") {
+    for (const call of update.toolCalls) {
+      if (!tools.some((tool) => tool.toolCallId === call.toolCallId))
+        tools.push({ ...call, status: "requested" });
+    }
+  } else {
+    phase = "tools";
+    const index = tools.findIndex(
+      (tool) => tool.toolCallId === update.toolCallId,
+    );
+    if (index < 0) {
+      tools.push({
+        toolCallId: update.toolCallId,
+        toolName: update.toolName,
+        status: update.status,
+      });
+    } else if (
+      !SETTLED.has(tools[index].status) ||
+      SETTLED.has(update.status)
+    ) {
+      tools[index] = { ...tools[index], status: update.status };
+    }
+  }
+  return {
+    phase,
+    tools: tools.slice(-MESSAGE_ACTIVITY_MAX_TOOLS),
+    updatedAt: now,
+  };
+}
+
+/** Classifies a tool function's return value without claiming business success. */
+export function toolOutcomeStatus(
+  output: unknown,
+): Extract<
+  MessageActivityToolStatus,
+  "returned" | "completed" | "failed" | "awaiting_approval" | "skipped"
+> {
+  if (!output || typeof output !== "object" || Array.isArray(output))
+    return "returned";
+  const { status, error } = output as Record<string, unknown>;
+  if (status === "confirmation_required" || status === "needs_confirmation")
+    return "awaiting_approval";
+  if (status === "blocked_by_confirmation") return "skipped";
+  if (status === "failed" || status === "error" || typeof error === "string")
+    return "failed";
+  if (status === "succeeded") return "completed";
+  return "returned";
+}

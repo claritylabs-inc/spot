@@ -430,6 +430,7 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
       <ChatAssistantTurn
         working={working}
         tools={msg.usedTools}
+        activity={msg.activity}
         aside={working ? <CancelButton messageId={msg._id} /> : undefined}
         after={
           working ? artifacts : msg.status === "pending_send" && msg.pendingEmailId ? (

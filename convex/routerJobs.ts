@@ -2,6 +2,12 @@ import { startModelCall, finishModelCall } from "./modelRoutingEvents";
 import { callContextValidator, callResultValidator, modelCallResult } from "./lib/modelCallTelemetry";
 import dayjs from "dayjs";
 import { parseRouterJobError, routerJobFailureValidator } from "./lib/routerJobFailure";
+import {
+  applyMessageActivity,
+  messageActivityUpdateValidator,
+  parseRequestedToolCalls,
+  requestedToolCallValidator,
+} from "./lib/messageActivity";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -407,6 +413,60 @@ export const recordToolActivity = internalMutation({
   },
 });
 
+/**
+ * Records live tool activity before the work finishes. Operator writes must
+ * match the active run attempt and checkpoint so a stale attempt cannot
+ * overwrite a newer one; client writes require a processing chat message.
+ */
+export const recordActivity = internalMutation({
+  args: {
+    target: v.union(v.id("threadMessages"), v.id("operatorAgentMessages")),
+    update: messageActivityUpdateValidator,
+    operatorRun: v.optional(
+      v.object({
+        runId: v.id("operatorAgentRuns"),
+        expectedRunnerAttempt: v.number(),
+        expectedCheckpointIteration: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.target);
+    if (
+      !message ||
+      message.status !== "processing" ||
+      message.channel !== "chat"
+    )
+      return;
+    if (args.operatorRun) {
+      const run = await ctx.db.get(args.operatorRun.runId);
+      if (
+        !run ||
+        run.status !== "running" ||
+        run.cancellationRequestedAt ||
+        run.agentMessageId !== message._id ||
+        run.runnerAttempt !== args.operatorRun.expectedRunnerAttempt ||
+        (run.checkpoint?.iteration ?? 0) !==
+          args.operatorRun.expectedCheckpointIteration
+      )
+        return;
+    }
+    const update =
+      args.update.kind === "requested"
+        ? args.update
+        : args.update.kind === "tool"
+          ? {
+              ...args.update,
+              toolCallId: args.update.toolCallId.slice(0, 200),
+              toolName: args.update.toolName.slice(0, 200),
+            }
+          : args.update;
+    await ctx.db.patch(args.target, {
+      activity: applyMessageActivity(message.activity, update, dayjs().valueOf()),
+    });
+  },
+});
+
 export const progress = internalMutation({
   args: {
     id: v.id("routerJobs"),
@@ -416,6 +476,7 @@ export const progress = internalMutation({
     fingerprint: v.string(),
     sequence: v.number(),
     text: v.string(),
+    toolCalls: v.optional(v.array(requestedToolCallValidator)),
   },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.id);
@@ -429,7 +490,9 @@ export const progress = internalMutation({
       !["prepared", "running"].includes(row.status) ||
       !Number.isSafeInteger(args.sequence) ||
       args.sequence < 1 ||
-      new TextEncoder().encode(args.text).byteLength > 256 * 1024
+      new TextEncoder().encode(args.text).byteLength > 256 * 1024 ||
+      (args.toolCalls !== undefined &&
+        parseRequestedToolCalls(args.toolCalls) === null)
     )
       return false;
     if (args.sequence <= (row.progressSequence ?? 0)) return true;
@@ -452,7 +515,19 @@ export const progress = internalMutation({
       routerJobId: args.jobId,
       progressSequence: args.sequence,
     });
-    await ctx.db.patch(row.streamTarget, { content: args.text });
+    // Requested means the model asked for the tool, not that it is running.
+    await ctx.db.patch(row.streamTarget, {
+      content: args.text,
+      ...(args.toolCalls?.length
+        ? {
+            activity: applyMessageActivity(
+              message.activity,
+              { kind: "requested", toolCalls: args.toolCalls },
+              dayjs().valueOf(),
+            ),
+          }
+        : {}),
+    });
     return true;
   },
 });
@@ -490,6 +565,8 @@ export const resultHttp = httpAction(async (ctx, request) => {
       return new Response(null, { status: 409 });
     if (new TextEncoder().encode(body.text).byteLength > 256 * 1024)
       return new Response(null, { status: 413 });
+    const toolCalls = parseRequestedToolCalls(body.toolCalls);
+    if (toolCalls === null) return new Response(null, { status: 409 });
     const accepted = await ctx.runMutation(internal.routerJobs.progress, {
       id: row._id,
       tokenHash,
@@ -498,6 +575,7 @@ export const resultHttp = httpAction(async (ctx, request) => {
       fingerprint: row.fingerprint,
       sequence: body.sequence,
       text: body.text,
+      ...(toolCalls ? { toolCalls } : {}),
     });
     return new Response(null, { status: accepted ? 204 : 409 });
   }

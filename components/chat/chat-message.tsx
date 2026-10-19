@@ -16,11 +16,15 @@ import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { ChatMessageBubble, type ChatChannel } from "./message-bubble";
-import { ThinkingSummary } from "./thinking-summary";
+import {
+  activityStatusLabel,
+  ThinkingSummary,
+  type ChatActivity,
+} from "./thinking-summary";
 
 export { ChatErrorNotice } from "./message-bubble";
 
-function AgentThinkingBubble() {
+function AgentThinkingBubble({ label }: { label: string }) {
   return (
     <div
       role="status"
@@ -36,7 +40,7 @@ function AgentThinkingBubble() {
         aria-label={undefined}
         className="motion-reduce:animate-none"
       />
-      <span>Thinking…</span>
+      <span>{label}</span>
     </div>
   );
 }
@@ -44,13 +48,15 @@ function AgentThinkingBubble() {
 /**
  * Assistant turn: optional tool-activity summary, then the Markdown answer
  * with any generated presentation. While `working`, the viewer's Stream
- * responses and Show thinking preferences decide whether streamed text or the
- * thinking indicator shows. `body` replaces the answer bubble entirely.
+ * responses preference decides whether streamed text or the status indicator
+ * shows, and Show thinking (visible unless explicitly off) adds the observed
+ * tool status and activity summary. `body` replaces the answer bubble entirely.
  */
 export function ChatAssistantTurn({
   working,
   tools,
   toolCalls,
+  activity,
   aside,
   after,
   body,
@@ -71,6 +77,8 @@ export function ChatAssistantTurn({
   working: boolean;
   tools?: string[];
   toolCalls?: { name: string; input?: string }[];
+  /** Live tool status for a processing message; ignored once settled. */
+  activity?: ChatActivity;
   /** Rendered beside the answer or thinking indicator, e.g. a stop control. */
   aside?: ReactNode;
   /** Rendered below the answer regardless of pending state. */
@@ -86,9 +94,12 @@ export function ChatAssistantTurn({
   children?: ReactNode;
 }) {
   const { streamResponses, showThinking } = useChatDisplayPreferences();
+  const liveActivity = working ? activity : undefined;
   const answer =
     working && (!streamResponses || !content) ? (
-      <AgentThinkingBubble />
+      <AgentThinkingBubble
+        label={activityStatusLabel(showThinking ? liveActivity : undefined)}
+      />
     ) : (
       <div className="min-w-0 max-w-[min(max(32rem,80vw),100%)]">
         {body ?? (
@@ -123,7 +134,12 @@ export function ChatAssistantTurn({
   return (
     <div className="w-full">
       {showThinking ? (
-        <ThinkingSummary tools={tools} toolCalls={toolCalls} working={working} />
+        <ThinkingSummary
+          tools={tools}
+          toolCalls={toolCalls}
+          activity={liveActivity}
+          working={working}
+        />
       ) : null}
       {aside ? (
         <div className="flex items-start gap-2">

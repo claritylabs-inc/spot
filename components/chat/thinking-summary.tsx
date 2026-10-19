@@ -7,7 +7,52 @@ import { toolActivityIcon } from "@/lib/tool-activity-icons";
 import { typeStyle } from "@/lib/typography";
 import { ChatDisclosure } from "./disclosure";
 
-type ActivityCall = { name: string; input?: string };
+type ActivityCall = { name: string; input?: string; status?: ActivityStatus };
+
+export type ActivityStatus =
+  | "requested"
+  | "running"
+  | "returned"
+  | "completed"
+  | "failed"
+  | "awaiting_approval"
+  | "skipped";
+
+/** Live status observed by the app for a processing message. */
+export type ChatActivity = {
+  phase: "model" | "tools";
+  tools: { toolCallId: string; toolName: string; status: ActivityStatus }[];
+};
+
+const STATUS_LABELS: Record<ActivityStatus, string> = {
+  requested: "Requested",
+  running: "Running",
+  returned: "Finished",
+  completed: "Completed",
+  failed: "Failed",
+  awaiting_approval: "Awaiting approval",
+  skipped: "Not run",
+};
+
+function toolLabel(name: string) {
+  return name.charAt(0).toUpperCase() + name.slice(1).replaceAll("_", " ");
+}
+
+/**
+ * One-line status for the working indicator, from observed activity only.
+ * Returns the generic label when there is nothing real to report.
+ */
+export function activityStatusLabel(activity?: ChatActivity): string {
+  if (!activity) return "Working…";
+  for (const status of ["running", "requested"] as const) {
+    const active = activity.tools.filter((tool) => tool.status === status);
+    if (active.length > 0) {
+      const more = active.length > 1 ? ` +${active.length - 1} more` : "";
+      return `${STATUS_LABELS[status]} ${toolLabel(active[0].toolName)}${more}…`;
+    }
+  }
+  return activity.phase === "model" ? "Waiting for model…" : "Working…";
+}
 
 function mcpInput(
   call: ActivityCall,
@@ -57,16 +102,26 @@ function activityContext(input: string | undefined): string | undefined {
 export function ThinkingSummary({
   tools = [],
   toolCalls,
+  activity,
   working,
 }: {
   tools?: string[];
   toolCalls?: ActivityCall[];
+  activity?: ChatActivity;
   working: boolean;
 }) {
-  const hasCalls = Boolean(toolCalls?.length);
-  const activities: ActivityCall[] = toolCalls?.length
-    ? toolCalls
-    : [...new Set(tools)].map((name) => ({ name }));
+  const live: ActivityCall[] = activity
+    ? activity.tools.map((tool) => ({
+        name: tool.toolName,
+        status: tool.status,
+      }))
+    : [];
+  const hasCalls = live.length > 0 || Boolean(toolCalls?.length);
+  const activities: ActivityCall[] = live.length
+    ? live
+    : toolCalls?.length
+      ? toolCalls
+      : [...new Set(tools)].map((name) => ({ name }));
   if (activities.length === 0) return null;
 
   const mcpServerIds = [
@@ -105,10 +160,7 @@ export function ThinkingSummary({
       <ul className="space-y-1.5 py-1.5">
         {activities.map((call, index) => {
           const mcp = mcpInput(call);
-          const label =
-            mcp?.toolName ??
-            call.name.charAt(0).toUpperCase() +
-              call.name.slice(1).replaceAll("_", " ");
+          const label = mcp?.toolName ?? toolLabel(call.name);
           const context = activityContext(call.input);
           const Icon = toolActivityIcon(call.name);
           return (
@@ -125,6 +177,15 @@ export function ThinkingSummary({
                 className={`flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 ${typeStyle("body.default")}`}
               >
                 <span className="break-words text-foreground">{label}</span>
+                {call.status ? (
+                  <span
+                    className={
+                      call.status === "failed" ? "text-destructive" : undefined
+                    }
+                  >
+                    {STATUS_LABELS[call.status]}
+                  </span>
+                ) : null}
                 {context ? (
                   <span className="min-w-0 break-words">{context}</span>
                 ) : null}

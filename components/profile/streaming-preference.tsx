@@ -11,7 +11,8 @@ export function useChatDisplayPreferences() {
   return {
     loaded: viewer != null,
     streamResponses: viewer != null && viewer.streamResponses !== false,
-    showThinking: viewer?.showThinking === true,
+    // Unset defaults to visible; only an explicit false hides activity.
+    showThinking: viewer != null && viewer.showThinking !== false,
   };
 }
 
