@@ -1,14 +1,27 @@
 "use client";
 
-import { Route } from "lucide-react";
+import type { ReactNode } from "react";
+import { Globe, Route } from "lucide-react";
 import { useQuery } from "convex/react";
+import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { api } from "@/convex/_generated/api";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { toolActivityIcon } from "@/lib/tool-activity-icons";
+import {
+  isWebActivityTool,
+  toolActivityContext,
+  type ToolActivityContext,
+} from "@/lib/tool-activity-context";
 import { typeStyle } from "@/lib/typography";
+import { cn } from "@/lib/utils";
 import { ChatDisclosure } from "./disclosure";
 
-type ActivityCall = { name: string; input?: string; status?: ActivityStatus };
+type ActivityCall = {
+  name: string;
+  input?: string;
+  status?: ActivityStatus;
+  context?: ToolActivityContext;
+};
 
 export type ActivityStatus =
   | "requested"
@@ -32,7 +45,12 @@ type StageStatus = "running" | "completed" | "failed";
 /** Status observed by the app for a message; retained after the turn settles. */
 export type ChatActivity = {
   phase: "model" | "tools";
-  tools: { toolCallId: string; toolName: string; status: ActivityStatus }[];
+  tools: {
+    toolCallId: string;
+    toolName: string;
+    status: ActivityStatus;
+    context?: ToolActivityContext;
+  }[];
   stages?: { stageId: string; stage: StageName; status: StageStatus }[];
 };
 
@@ -49,14 +67,35 @@ export function stageLabel(stage: StageName) {
   return STAGE_LABELS[stage];
 }
 
-/** A turn that ended while an item was open never finished it. */
-function displayStatus(status: ActivityStatus | StageStatus, working: boolean) {
-  if (!working && status === "running") return "Interrupted";
-  if (!working && status === "requested") return "Not run";
-  if (status === "completed" && !working) return "Done";
-  return status in STATUS_LABELS
-    ? STATUS_LABELS[status as ActivityStatus]
-    : status;
+type RowStatus = ActivityStatus | StageStatus;
+
+/**
+ * Accessible status text plus whether it is worth showing. Ordinary success is
+ * screen-reader only; failures, approvals, and a turn that ended while an item
+ * was open are explicit.
+ */
+function rowStatus(status: RowStatus, working: boolean) {
+  if (!working && status === "running")
+    return { text: "Interrupted", visible: true };
+  if (!working && status === "requested")
+    return { text: "Not run", visible: true };
+  if (status === "running") return { text: "Running", visible: false };
+  if (status === "completed")
+    return { text: working ? "Completed" : "Done", visible: false };
+  if (status === "returned") return { text: "Finished", visible: false };
+  const text =
+    status in STATUS_LABELS ? STATUS_LABELS[status as ActivityStatus] : status;
+  return { text, visible: true };
+}
+
+/** True when a visible row already shows what the turn is doing right now. */
+export function hasActiveActivity(activity?: ChatActivity): boolean {
+  return Boolean(
+    activity?.stages?.some((entry) => entry.status === "running") ||
+    activity?.tools.some(
+      (tool) => tool.status === "running" || tool.status === "requested",
+    ),
+  );
 }
 
 const STATUS_LABELS: Record<ActivityStatus, string> = {
@@ -124,14 +163,19 @@ function McpToolActivityIcon({ serverId }: { serverId: string }) {
   );
 }
 
-function activityContext(input: string | undefined): string | undefined {
-  if (!input) return;
+/** Observed context first; stored audit previews cover older messages. */
+function callContext(call: ActivityCall): ToolActivityContext | undefined {
+  if (call.context) return call.context;
+  if (!call.input) return;
   try {
-    const value: unknown = JSON.parse(input);
+    const value: unknown = JSON.parse(call.input);
+    const web = toolActivityContext(call.name, value);
+    if (web) return web;
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
     for (const key of ["query", "title", "filename", "fileName", "name"]) {
       const detail = (value as Record<string, unknown>)[key];
-      if (typeof detail === "string" && detail.trim()) return detail.trim();
+      if (typeof detail === "string" && detail.trim())
+        return { label: detail.trim().replace(/\s+/g, " ").slice(0, 160) };
     }
   } catch {
     // Stored audit previews can be truncated JSON.
@@ -155,20 +199,98 @@ function mergeCalls(
       const index = pool.findIndex((tool) => tool.toolName === call.name);
       if (index < 0) return call;
       const [match] = pool.splice(index, 1);
-      return { ...call, status: match.status };
+      return { ...call, status: match.status, context: match.context };
     });
     return [
       ...merged,
-      ...pool.map((tool) => ({ name: tool.toolName, status: tool.status })),
+      ...pool.map((tool) => ({
+        name: tool.toolName,
+        status: tool.status,
+        context: tool.context,
+      })),
     ];
   }
   const seen = new Set(observed.map((tool) => tool.toolName));
   return [
-    ...observed.map((tool) => ({ name: tool.toolName, status: tool.status })),
+    ...observed.map((tool) => ({
+      name: tool.toolName,
+      status: tool.status,
+      context: tool.context,
+    })),
     ...[...new Set(tools)]
       .filter((name) => !seen.has(name))
       .map((name) => ({ name })),
   ];
+}
+
+function ActivityRow({
+  icon,
+  label,
+  context,
+  status,
+  working,
+}: {
+  icon: ReactNode;
+  label: string;
+  context?: ToolActivityContext;
+  status?: RowStatus;
+  working: boolean;
+}) {
+  const shown = status ? rowStatus(status, working) : undefined;
+  const active = working && status === "running";
+  return (
+    <li className="flex min-w-0 items-start gap-2.5">
+      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+        {icon}
+      </span>
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1",
+          typeStyle("body.default"),
+        )}
+      >
+        <span className="break-words text-foreground">{label}</span>
+        {context ? (
+          context.website ? (
+            <span
+              title={context.label}
+              className="max-w-full truncate rounded-full bg-muted px-2 py-0.5 text-muted-foreground/80"
+            >
+              {context.label}
+            </span>
+          ) : (
+            <span
+              title={context.label}
+              className="line-clamp-2 min-w-0 break-words text-muted-foreground/70"
+            >
+              {context.label}
+            </span>
+          )
+        ) : null}
+        {shown ? (
+          <span
+            className={cn(
+              shown.visible
+                ? status === "failed"
+                  ? "text-destructive"
+                  : "text-muted-foreground/70"
+                : "sr-only",
+            )}
+          >
+            {shown.text}
+          </span>
+        ) : null}
+      </div>
+      {active ? (
+        <Spinner
+          aria-hidden="true"
+          role="presentation"
+          aria-label={undefined}
+          className="mt-0.5 size-3.5 shrink-0 motion-reduce:animate-none"
+        />
+      ) : null}
+    </li>
+  );
 }
 
 export function ThinkingSummary({
@@ -229,59 +351,44 @@ export function ThinkingSummary({
         </>
       }
     >
-      <ul className="space-y-1.5 py-1.5">
+      <ul className="space-y-2.5 py-2.5">
         {stages.map((entry) => (
-          <li key={entry.stageId} className="flex min-w-0 items-start gap-1.5">
-            <Route aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-            <div
-              className={`flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 ${typeStyle("body.default")}`}
-            >
-              <span className="break-words text-foreground">
-                {STAGE_LABELS[entry.stage]}
-              </span>
-              <span
-                className={
-                  entry.status === "failed" ? "text-destructive" : undefined
-                }
-              >
-                {displayStatus(entry.status, working)}
-              </span>
-            </div>
-          </li>
+          <ActivityRow
+            key={entry.stageId}
+            icon={<Route aria-hidden className="size-4" />}
+            label={STAGE_LABELS[entry.stage]}
+            status={entry.status}
+            working={working}
+          />
         ))}
         {activities.map((call, index) => {
           const mcp = mcpInput(call);
-          const label = mcp?.toolName ?? toolLabel(call.name);
-          const context = activityContext(call.input);
+          const context = callContext(call);
           const Icon = toolActivityIcon(call.name);
           return (
-            <li
+            <ActivityRow
               key={`${call.name}-${index}`}
-              className="flex min-w-0 items-start gap-1.5"
-            >
-              {mcp ? (
-                <McpToolActivityIcon serverId={mcp.serverId} />
-              ) : (
-                <Icon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-              )}
-              <div
-                className={`flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 ${typeStyle("body.default")}`}
-              >
-                <span className="break-words text-foreground">{label}</span>
-                {call.status ? (
-                  <span
-                    className={
-                      call.status === "failed" ? "text-destructive" : undefined
-                    }
-                  >
-                    {displayStatus(call.status, working)}
-                  </span>
-                ) : null}
-                {context ? (
-                  <span className="min-w-0 break-words">{context}</span>
-                ) : null}
-              </div>
-            </li>
+              icon={
+                mcp ? (
+                  <McpToolActivityIcon serverId={mcp.serverId} />
+                ) : context?.website ? (
+                  <OrgBrandIcon
+                    name={context.label}
+                    website={context.website}
+                    size="xs"
+                    className="size-4 rounded-full"
+                  />
+                ) : isWebActivityTool(call.name) ? (
+                  <Globe aria-hidden className="size-4" />
+                ) : (
+                  <Icon aria-hidden className="size-4" />
+                )
+              }
+              label={mcp?.toolName ?? toolLabel(call.name)}
+              context={context}
+              status={call.status}
+              working={working}
+            />
           );
         })}
       </ul>
