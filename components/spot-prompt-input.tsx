@@ -434,12 +434,15 @@ function PromptTextSegment({
   isCommandVariant,
   roomyOnMobile,
   registerRef,
+  textIndent,
   onFocus,
   onChange,
   onKeyDown,
 }: {
   token: PromptTextToken;
   placeholder?: string;
+  /** Leaves room on the first line for an inline chip rendered before the text. */
+  textIndent?: number;
   isCommandVariant: boolean;
   roomyOnMobile: boolean;
   registerRef: (id: string, node: HTMLTextAreaElement | null) => void;
@@ -459,6 +462,7 @@ function PromptTextSegment({
       onChange={onChange}
       onFocus={onFocus}
       onKeyDown={onKeyDown}
+      style={textIndent ? { textIndent } : undefined}
       className={cn(
         `max-w-full p-0 placeholder:text-muted-foreground/40 ${typeStyle("control.input")}`,
         isPlaceholderSegment
@@ -644,7 +648,22 @@ export const SpotPromptInput = forwardRef<
 ) {
   const isCommandVariant = variant === "command";
   const isDockVariant = variant === "dock";
+  const hasDockChip = isDockVariant && Boolean(contextChip);
+
+  useEffect(() => {
+    const node = dockChipRef.current;
+    if (!hasDockChip || !node) {
+      setDockChipWidth(0);
+      return;
+    }
+    const observer = new ResizeObserver(() => setDockChipWidth(node.offsetWidth));
+    observer.observe(node);
+    setDockChipWidth(node.offsetWidth);
+    return () => observer.disconnect();
+  }, [hasDockChip]);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const dockChipRef = useRef<HTMLSpanElement>(null);
+  const [dockChipWidth, setDockChipWidth] = useState(0);
   const addFilesRef = useRef<((files: File[]) => void) | null>(null);
   const textAreaRefs = useRef(new Map<string, HTMLTextAreaElement>());
   const pendingFocusRef = useRef<{
@@ -1348,6 +1367,7 @@ export const SpotPromptInput = forwardRef<
   const tokenEditor = (
   <div
     className={cn(
+      isDockVariant && "relative",
       "flex w-full flex-wrap content-start items-center gap-x-1 gap-y-1",
       isDockVariant
         ? "min-h-6 min-w-0 flex-1"
@@ -1366,6 +1386,14 @@ export const SpotPromptInput = forwardRef<
     }}
   >
     <input readOnly type="hidden" name="message" value={messageText} />
+    {isDockVariant && contextChip ? (
+      <span
+        ref={dockChipRef}
+        className="absolute left-0 top-0 z-10 flex max-w-full items-center"
+      >
+        {contextChip}
+      </span>
+    ) : null}
     {tokens.map((token) =>
       token.type === "reference" ? (
         isSearchDropdownOpen ? null : (
@@ -1388,6 +1416,11 @@ export const SpotPromptInput = forwardRef<
           isCommandVariant={isCommandVariant}
           roomyOnMobile={roomyOnMobile}
           registerRef={registerTextAreaRef}
+          textIndent={
+            isDockVariant && token.id === firstTextTokenId(tokens)
+              ? dockChipWidth
+              : undefined
+          }
           onFocus={() => {
             setActiveTextTokenId(token.id);
             const textArea = textAreaRefs.current.get(token.id);
@@ -1491,7 +1524,6 @@ export const SpotPromptInput = forwardRef<
         />
         {isDockVariant ? (
           <div className="flex w-full min-w-0 items-center gap-2 py-2">
-            {contextChip}
             {tokenEditor}
             {submitControls}
           </div>
