@@ -5,7 +5,15 @@
  * hostname when the request names an explicit public domain, otherwise a
  * bounded readable query.
  */
-export type ToolActivityContext = { label: string; website?: string };
+export type ToolActivityContext = {
+  label: string;
+  /** One validated public target as an https URL. */
+  website?: string;
+  /** Several validated public targets (https URLs, deduped, at most 10). */
+  websites?: string[];
+};
+
+const MAX_WEBSITES = 10;
 
 const MAX_LABEL = 160;
 // Hostnames double as labels (160) and websites ("https://" + host, 200).
@@ -120,7 +128,7 @@ export function toolActivityContext(
   const { query, url, allowedDomains } = input as Record<string, unknown>;
   // An explicit URL names the target. Otherwise the domains the query and the
   // allowed-domain scope name decide: exactly one is a site; several are not
-  // one site, so they get a readable label and never a single favicon.
+  // one site, so they get a count label with every domain listed.
   const explicit =
     typeof url === "string" ? hostnameFromUrl(url.trim()) : undefined;
   if (explicit) return { label: explicit, website: `https://${explicit}` };
@@ -137,8 +145,13 @@ export function toolActivityContext(
   const [first, ...others] = [...hosts];
   if (first && others.length === 0)
     return { label: first, website: `https://${first}` };
+  if (others.length > 0) {
+    const websites = [first, ...others]
+      .slice(0, MAX_WEBSITES)
+      .map((host) => `https://${host}`);
+    return { label: `${websites.length} websites`, websites };
+  }
   if (typeof query === "string" && query.trim())
     return { label: readable(query) };
-  if (first) return { label: clip(`${first} +${others.length}`, MAX_LABEL) };
   return undefined;
 }
