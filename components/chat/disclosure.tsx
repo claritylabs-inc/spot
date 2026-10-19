@@ -67,7 +67,9 @@ export function ChatDisclosure({
         initial={false}
         animate={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }}
         transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.32, 0.72, 0, 1] }}
-        className="overflow-hidden"
+        // Positioned so absolute descendants (e.g. sr-only text) stay clipped
+        // instead of extending the transcript's scroll height while collapsed.
+        className="relative overflow-hidden"
       >
         {children}
       </motion.div>
