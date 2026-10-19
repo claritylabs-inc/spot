@@ -76,7 +76,13 @@ list only the owning actor's origin/scope/expiry and allow revocation. See
 Operator steps use the shared family selector with the existing 13-family catalog. Starter intents keep their shortcuts; resumed durable steps offer all available families, and tools used or expanded earlier in the run remain loaded. Operator MCP continues to expose its complete authorized catalog. The `expand_tools` control exposes additional families on demand and is not a business write; the registry still rechecks role, integration, exact target, and approval at execution.
 
 The [operator activity icon inventory](docs/design/operator-tool-icons.md) groups
-every operator tool by its browser activity icon.
+every operator tool by its browser activity icon. Web research records a bounded
+target label at execution start: a hostname for one site, or up to ten public
+site URLs for overlapping favicons and a website count. Generic queries keep a
+short readable label. Setup traces retain factual outcomes (loaded tool groups,
+configured model, planning decision and plan size); identical completed outcomes
+are grouped only in the UI. These are observed activity metadata, not model
+reasoning. Router callbacks still accept only their existing stage/name contract.
 
 Submitted company facts live in `organizations.intakeBusinessProfile` and request facts in `intakeSubmittedApplication`; research and authored notes remain company Markdown. `update_client_business_profile` is the preferred exact-approved operator tool for company-field edits and document imports. Read `get_organization` or `lookup_client_wiki` first for `businessProfile.submittedAt` (0 if absent); supply `expectedVersion` and only changed typed answers/details. Omitted fields are preserved; supplied addresses, revenue objects and lists replace that whole field. It shares the profile editor’s operator-only, impersonation-protected, revision-checked writer and leaves submitted request snapshots and Markdown untouched. `update_organization_profile` accepts only name and website; `get_organization` returns identity, research status and the client’s typed business profile. Operator and tenant policy lookups and COI generation use policy evidence and policy overrides, with no company-profile fallback. `update_client_wiki` / `write_company_wiki` edit prose only; they cannot amend submitted application facts. `lookup_client_wiki` includes the typed business profile, and procurement request reads include the accepted structured application. Application amendments use owner intake edits and resubmission.
 

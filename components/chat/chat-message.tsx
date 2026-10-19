@@ -22,6 +22,7 @@ import { ChatErrorDetails } from "./error-details";
 import type { RouterJobFailure } from "@/convex/lib/routerJobFailure";
 import {
   activityStatusLabel,
+  hasActiveActivity,
   ThinkingSummary,
   type ChatActivity,
 } from "./thinking-summary";
@@ -109,11 +110,22 @@ export function ChatAssistantTurn({
   children?: ReactNode;
 }) {
   const { streamResponses, showThinking } = useChatDisplayPreferences();
+  // A visible activity row already shows what the turn is doing, so the
+  // standalone indicator would repeat it. It stays for Show thinking off, no
+  // activity, and waiting on the model with no row in progress.
+  const rowShowsProgress = showThinking && hasActiveActivity(activity);
   const answer =
     working && (!streamResponses || !content) ? (
-      <AgentThinkingBubble
-        label={activityStatusLabel(showThinking ? activity : undefined)}
-      />
+      rowShowsProgress ? (
+        // The row shows the detail; announce only the current activity.
+        <span role="status" aria-live="polite" className="sr-only">
+          {activityStatusLabel(activity)}
+        </span>
+      ) : (
+        <AgentThinkingBubble
+          label={activityStatusLabel(showThinking ? activity : undefined)}
+        />
+      )
     ) : (
       <div className="min-w-0 max-w-[min(max(32rem,80vw),100%)]">
         {body ?? (
