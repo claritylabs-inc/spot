@@ -66,7 +66,7 @@ function clip(value: string, limit: number) {
 }
 
 function firstSentence(value: string, limit: number) {
-  const sentence = /^.*?[.!?](?:\s|$)/s.exec(value)?.[0] ?? value;
+  const sentence = /^[\s\S]*?[.!?](?:\s|$)/.exec(value)?.[0] ?? value;
   return clip(sentence.trim(), limit);
 }
 
@@ -78,6 +78,9 @@ type JsonSchemaNode = {
   enum?: unknown[];
   maxLength?: number;
   maxItems?: number;
+  minimum?: number;
+  maximum?: number;
+  description?: string;
   anyOf?: JsonSchemaNode[];
 };
 
@@ -90,6 +93,8 @@ function nodeLabel(node: JsonSchemaNode): string {
     : (variant.type ?? "value");
   if (type === "array")
     return `array<${variant.items ? nodeLabel(variant.items) : "value"}>${variant.maxItems ? `≤${variant.maxItems}` : ""}`;
+  if (variant.minimum !== undefined || variant.maximum !== undefined)
+    return `${type}[${variant.minimum ?? ""}..${variant.maximum ?? ""}]`;
   return `${type}${variant.maxLength ? `≤${variant.maxLength}` : ""}`;
 }
 
@@ -106,10 +111,10 @@ function inputLimits(schema: z.ZodType): string {
         .slice(0, 24)
         .map(
           ([key, node]) =>
-            `${key}${required.has(key) ? "*" : ""}:${nodeLabel(node)}`,
+            `${key}${required.has(key) ? "*" : ""}:${nodeLabel(node)}${node.description ? ` (${clip(node.description, 120)})` : ""}`,
         )
         .join(", "),
-      600,
+      1_200,
     );
   } catch {
     return "";
@@ -230,7 +235,7 @@ export function operatorPlannerPrompt(context: PlanningContext): string {
     context.attachmentNames.length
       ? `ATTACHED FILES:\n${context.attachmentNames.slice(0, 20).join("\n")}`
       : "",
-    `TOOLS OFFERED NOW:\n${clip(tools, 24_000)}`,
+    `TOOLS OFFERED NOW:\n${clip(tools, 48_000)}`,
     context.otherFamilies.length
       ? `OTHER TOOL FAMILIES (load with expand_tools):\n${context.otherFamilies.join("\n")}`
       : "",
