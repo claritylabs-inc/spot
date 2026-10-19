@@ -649,6 +649,10 @@ export const SpotPromptInput = forwardRef<
   const isCommandVariant = variant === "command";
   const isDockVariant = variant === "dock";
   const hasDockChip = isDockVariant && Boolean(contextChip);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const dockChipRef = useRef<HTMLSpanElement>(null);
+  const [dockChipWidth, setDockChipWidth] = useState(0);
+
 
   useEffect(() => {
     const node = dockChipRef.current;
@@ -661,9 +665,6 @@ export const SpotPromptInput = forwardRef<
     setDockChipWidth(node.offsetWidth);
     return () => observer.disconnect();
   }, [hasDockChip]);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const dockChipRef = useRef<HTMLSpanElement>(null);
-  const [dockChipWidth, setDockChipWidth] = useState(0);
   const addFilesRef = useRef<((files: File[]) => void) | null>(null);
   const textAreaRefs = useRef(new Map<string, HTMLTextAreaElement>());
   const pendingFocusRef = useRef<{
