@@ -1144,3 +1144,23 @@ Acceptance workflow (pending production verification):
 5. Recheck collapsed Plan/error disclosures, Show thinking preference and narrow viewport. The single Retry button must start a new attempt directly, include existing error context automatically for failed turns, and remain disabled during an active run. Existing approval, authorization and unknown-outcome boundaries receive code review and existing automated coverage.
 
 No new unit tests or Vercel previews are used. Results and artifact locations are recorded after integrated acceptance.
+
+## Intake Slack answer values — October 19, 2026
+
+The owner requested all saved applicant/contact facts in #submissions and an
+edit of the existing incident message. The scoped backend change renders typed
+answers and structured per-coverage limits, preserving unknown vs blank values.
+Revision-keyed summary events edit the original thread message on same-question
+autosaves; file additions/removals refresh it as well. Progress remains threaded,
+with @here reserved for accepted submissions/resubmissions. Internal exact-target
+backfill checks revision, thread timestamp and configured destination.
+
+Failure modes were specified before implementation: missing literal answer
+values; stale derived coverage values; Markdown/mention injection; silent text
+truncation; repeated-save duplication; old queued summary snapshots overwriting
+new answers; delivery lease overlap; and wrong-target backfills. Focused tests
+cover these boundaries and the existing owner/revision authorization suite.
+The full root suite passes 122 checks across 16 files. App and Convex types,
+focused lint and deployment dry run are recorded with the release. The real
+backfill is owner-authorized incident repair, not a synthetic submission test.
+No applicant contact details or access capabilities are committed here.
