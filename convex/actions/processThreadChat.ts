@@ -1,5 +1,6 @@
 "use node";
 
+import { toolActivityContext } from "../../lib/tool-activity-context";
 import {
   appendCapturedPresentationTool,
   capturePresentationTool,
@@ -781,13 +782,16 @@ export const run = internalAction({
           stopWhen: stepCountIs(25),
           experimental_onStepStart: () => recordActivity({ kind: "model" }),
           // Client tools execute as soon as the SDK starts them, in parallel.
-          experimental_onToolCallStart: ({ toolCall }) =>
-            recordActivity({
+          experimental_onToolCallStart: ({ toolCall }) => {
+            const context = toolActivityContext(toolCall.toolName, toolCall.input);
+            return recordActivity({
               kind: "tool",
               toolCallId: toolCall.toolCallId,
               toolName: toolCall.toolName,
               status: "running",
-            }),
+              ...(context ? { context } : {}),
+            });
+          },
           experimental_onToolCallFinish: (event) =>
             recordActivity({
               kind: "tool",

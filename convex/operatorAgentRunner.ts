@@ -1,5 +1,6 @@
 "use node";
 
+import { toolActivityContext } from "../lib/tool-activity-context";
 import { capturePresentationTool } from "./chatPresentations";
 
 import { CLIENT_PROFILE_GUIDANCE } from "./lib/clientProfile";
@@ -765,7 +766,12 @@ export const run = internalAction({
                 );
               }
               // Tools run serially; mark running only once this call's turn starts.
-              await recordActivity({ ...activity, status: "running" });
+              const activityContext = toolActivityContext(name, input);
+              await recordActivity({
+                ...activity,
+                status: "running",
+                ...(activityContext ? { context: activityContext } : {}),
+              });
               const inputHash = await actionConfirmationFingerprint({
                 toolName: name,
                 toolVersion: spec.version,
