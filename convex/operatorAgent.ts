@@ -5323,6 +5323,18 @@ export const executeUnconfirmedActionToolInternal = internalAction({
         channel: args.channel,
         idempotencyKey: args.idempotencyKey,
       });
+      const readResult = recordValue(output.result);
+      if (
+        (args.toolName === "lookup_address" ||
+          args.toolName === "web_search") &&
+        readResult?.status === "unavailable"
+      ) {
+        throw new Error(
+          typeof readResult.message === "string"
+            ? readResult.message
+            : "The retrieval service is temporarily unavailable.",
+        );
+      }
       await ctx.runMutation(
         internal.operatorAgent.finishUnconfirmedActionToolInternal,
         {

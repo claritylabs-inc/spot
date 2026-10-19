@@ -55,13 +55,13 @@ function terminalCode(error: unknown) {
   }
   const message = errorMessage(error);
   if (
-    /"category"\s*:\s*"(?:authentication|permission)"|session (?:has )?expired|stop impersonating/i.test(
+    /"category"\s*:\s*"(?:authentication|permission)"|session (?:has )?expired|stop impersonating|HTTP (?:401|403)/i.test(
       message,
     )
   )
     return "not_authorized";
   if (
-    /access is disabled|credentials are unavailable|integration.*(?:disabled|not configured)|Approve all is no longer enabled/i.test(
+    /access is disabled|credentials are unavailable|is not configured|integration.*(?:disabled|not configured)|Approve all is no longer enabled/i.test(
       message,
     )
   )
@@ -163,9 +163,13 @@ export function executionOperatorToolFailure(
           ? "target_not_found"
           : /cursor|continuation/i.test(message)
             ? "invalid_continuation"
-            : /same input already failed/i.test(message)
-              ? "same_input_already_failed"
-              : "read_failed"
+            : /timed out|temporarily unavailable|HTTP (?:429|5\d\d)/i.test(
+                  message,
+                )
+              ? "provider_unavailable"
+              : /same input already failed/i.test(message)
+                ? "same_input_already_failed"
+                : "read_failed"
       : "execution_outcome_unknown");
   return {
     status: "failed",
