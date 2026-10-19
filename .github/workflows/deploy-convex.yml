@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   validate-root:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     strategy:
@@ -30,7 +30,7 @@ jobs:
           - typecheck-convex
           - build
     steps:
-      - uses: actions/checkout@v7
+      - uses: useblacksmith/checkout@v1
 
       - uses: actions/setup-node@v6
         with:
@@ -63,7 +63,7 @@ jobs:
         run: npm run build
 
   validate-packages:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       fail-fast: false
       matrix:
@@ -74,7 +74,7 @@ jobs:
       run:
         working-directory: ${{ matrix.package }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: useblacksmith/checkout@v1
 
       - uses: actions/setup-node@v6
         with:
@@ -89,14 +89,14 @@ jobs:
         run: npm run typecheck
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     needs:
       - validate-root
       - validate-packages
     steps:
-      - uses: actions/checkout@v7
+      - uses: useblacksmith/checkout@v1
 
       - uses: actions/setup-node@v6
         with:
@@ -131,7 +131,7 @@ jobs:
   release-ready-production:
     if: always() && github.ref_name == 'main'
     name: release-ready-production
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: deploy
     steps:
       - name: Require Convex deployment success
@@ -140,7 +140,7 @@ jobs:
           echo "Convex deployment result was ${{ needs.deploy.result }}"
           exit 1
 
-      - uses: actions/checkout@v7
+      - uses: useblacksmith/checkout@v1
 
       - uses: actions/setup-node@v6
         with:
@@ -166,13 +166,13 @@ jobs:
 
   publish-cli:
     if: github.ref_name == 'main'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: deploy
     defaults:
       run:
         working-directory: cli
     steps:
-      - uses: actions/checkout@v7
+      - uses: useblacksmith/checkout@v1
 
       - uses: actions/setup-node@v6
         with:
@@ -207,13 +207,13 @@ jobs:
 
   publish-operator-cli:
     if: github.ref_name == 'main'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: deploy
     defaults:
       run:
         working-directory: operator-cli
     steps:
-      - uses: actions/checkout@v7
+      - uses: useblacksmith/checkout@v1
 
       - uses: actions/setup-node@v6
         with:
