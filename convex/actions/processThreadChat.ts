@@ -244,7 +244,7 @@ export const run = internalAction({
           }),
         }),
         ({ boundedHistory }) =>
-          `${boundedHistory.messages.length} messages loaded`,
+          `${boundedHistory.messages.length} message${boundedHistory.messages.length === 1 ? "" : "s"} loaded`,
       );
       const text = controlState.messageText;
       if (
@@ -461,7 +461,7 @@ export const run = internalAction({
             ),
           ({ latestAttachmentNames }) =>
             latestAttachmentNames.length
-              ? `${latestAttachmentNames.length} attachments available`
+              ? `${latestAttachmentNames.length} attachment${latestAttachmentNames.length === 1 ? "" : "s"} available`
               : "No attachments",
         );
       const hasRichInput = modelMessagesHaveRichInput(messageHistory);

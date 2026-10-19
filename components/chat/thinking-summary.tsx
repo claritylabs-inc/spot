@@ -113,12 +113,27 @@ type StageEntry = NonNullable<ChatActivity["stages"]>[number];
 
 /**
  * Display-only grouping: identical completed stages with the same outcome
- * collapse into one counted row. Running, failed, and differing outcomes are
- * never merged, and the stored data is untouched.
+ * collapse into one counted row, and detail-less completed rows are hidden
+ * when the same stage has a stated outcome. Running, failed, and differing
+ * outcomes are never merged or hidden, and the stored data is untouched.
  */
 function groupStages(stages: readonly StageEntry[]) {
   const rows: { entry: StageEntry; count: number }[] = [];
+  // A generic completed row adds nothing once another completed entry of the
+  // same stage states its outcome. It is hidden, not merged: it is not
+  // identical to the detailed outcome.
+  const detailed = new Set(
+    stages.flatMap((entry) =>
+      entry.status === "completed" && entry.detail?.trim() ? [entry.stage] : [],
+    ),
+  );
   for (const entry of stages) {
+    if (
+      entry.status === "completed" &&
+      !entry.detail?.trim() &&
+      detailed.has(entry.stage)
+    )
+      continue;
     const match =
       entry.status === "completed"
         ? rows.find(

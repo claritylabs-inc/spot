@@ -482,7 +482,7 @@ export const run = internalAction({
             (await buildOperatorHistoryWithAttachments(ctx, selected.messages));
           return { continuation, messages };
         },
-        ({ messages }) => `${messages.length} messages loaded`,
+        ({ messages }) => `${messages.length} message${messages.length === 1 ? "" : "s"} loaded`,
       );
       const recovery = parseRecoveryState(continuation?.recovery);
       const exhaustedTools = new Map(
@@ -715,7 +715,7 @@ export const run = internalAction({
             stageId: planStageId,
             stage: "planning",
             status: "completed",
-            detail: `${generated.steps.length} steps · ${generated.summary}`,
+            detail: `${generated.steps.length} step${generated.steps.length === 1 ? "" : "s"}`,
           });
           const saved: boolean = await ctx.runMutation(
             internal.operatorAgent.recordExecutionPlanInternal,
