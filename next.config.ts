@@ -34,12 +34,20 @@ const nextConfig: NextConfig = {
       process.env.VERCEL_ENV ?? process.env.NEXT_PUBLIC_VERCEL_ENV ?? "",
   },
   async redirects() {
-    return appAliasHosts.map((host) => ({
-      source: "/:path*",
-      has: [{ type: "host" as const, value: host }],
-      destination: `https://${appHost}/:path*`,
-      permanent: true,
-    }));
+    return [
+      ...appAliasHosts.map((host) => ({
+        source: "/:path*",
+        has: [{ type: "host" as const, value: host }],
+        destination: `https://${appHost}/:path*`,
+        permanent: true,
+      })),
+      {
+        // Old booking links must reach signup before the app's auth guard runs.
+        source: "/landing/book",
+        destination: "/signup",
+        permanent: false,
+      },
+    ];
   },
   async rewrites() {
     if (!convexSiteUrl) return [...legacyAssetRewrites, ...analyticsRewrites];
