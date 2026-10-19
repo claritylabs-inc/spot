@@ -908,9 +908,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   get_procurement_request: defineOperatorTool({
     family: "procurement",
-    version: 1,
+    version: 2,
     description:
-      "Get one exact procurement request including its typed application, intakeRevision and updatedAt for update_procurement_application, client requirements, replacement/result policy links, request forwarding address, broker outreach/application/quote state, requested files, linked client files with upload or procurement-email provenance, and imported email threads.",
+      "Get one exact insurance intake or procurement request. Before company attachment, returns an operator-only diagnostic view of saved draft answers/details, current step, revision, timestamps and bounded Slack delivery events; it grants no fulfillment or sharing access. Draft answers are not an accepted application. For company-linked requests, includes its typed application, intakeRevision and updatedAt for update_procurement_application, client requirements, replacement/result policy links, request forwarding address, broker outreach/application/quote state, requested files, linked client files with upload or procurement-email provenance, and imported email threads.",
     inputSchema: z.object({ procurementRequestId }),
     capability: "operator.procurement.read",
     effect: "read",

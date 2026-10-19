@@ -1164,3 +1164,26 @@ The full root suite passes 122 checks across 16 files. App and Convex types,
 focused lint and deployment dry run are recorded with the release. The real
 backfill is owner-authorized incident repair, not a synthetic submission test.
 No applicant contact details or access capabilities are committed here.
+
+
+### 2026-10-19 — operator diagnostics for unlinked intake
+
+Production Ask Spot failed to read an exact saved draft because the procurement
+reader requires a company. The exact-ID operator reader now checks active operator
+identity and returns allowlisted draft answers, typed details, progress, revision,
+timestamps and at most 40 Slack delivery events. It does not attach a company or
+change any fulfillment, sharing or writer authorization. Draft answers remain
+unaccepted until submission. Registry version 2 and AGENT_TOOLS.md describe this.
+
+Before implementation, the isolation test defined these failure modes: customers
+and disabled operators gaining access, deleted drafts remaining readable, inbox
+or verification capabilities leaking, and a diagnostic read changing saved state.
+The test checks each boundary. Incident records and personal details are excluded
+from this ledger.
+
+The preceding Slack repair was deployed to the verified production target and
+PR #479 merged. A revision- and original-thread-bound backfill edited the existing
+bot parent successfully; delivery was verified without changing the application.
+
+Validation: all 123 tests pass across 17 files; Convex typecheck, focused ESLint
+and git diff --check pass. Production rollout is tracked by the follow-up PR.

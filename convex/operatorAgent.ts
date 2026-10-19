@@ -5,6 +5,7 @@ import {
   operatorExecutionPlanSchema,
 } from "./lib/operatorRunPlan";
 import { jevProceedThreshold } from "./lib/jevThreshold";
+import { readUnlinkedIntakeByOperator } from "./lib/intakeDiagnostics";
 import {
   prepareApplicationToolUpdate,
   updateApplicationByOperator,
@@ -2005,6 +2006,11 @@ async function executeToolDomain(
       ctx,
       input.procurementRequestId,
     );
+    const intake = await readUnlinkedIntakeByOperator(ctx, {
+      operatorUserId: args.operatorUserId,
+      requestId,
+    });
+    if (intake) return intake;
     return await getProcurementRequestDetails(ctx, requestId);
   }
 
