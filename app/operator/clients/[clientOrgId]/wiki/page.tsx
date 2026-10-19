@@ -44,6 +44,7 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
+import { WebsiteTechSection } from "./website-tech-section";
 
 function ProfileContent({
   client,
@@ -228,6 +229,7 @@ function LoadedProfile({
               ["Related legal entities", "Related entities"],
               ["Revenue", "Revenue"],
               ["Locations", "Locations"],
+              ["Tech stack", "Tech stack"],
             ].map(([value, label]) => (
               <TabsTrigger key={value} value={value}>
                 {label}
@@ -235,7 +237,9 @@ function LoadedProfile({
             ))}
           </TabsList>
           <TabsContent value={profileTab}>
-            {profileTab === "Account" ? (
+            {profileTab === "Tech stack" ? (
+              <WebsiteTechSection orgId={client._id} readOnly={readOnly} />
+            ) : profileTab === "Account" ? (
               <ClientAccountSection
                 client={client}
                 editing={!readOnly}
