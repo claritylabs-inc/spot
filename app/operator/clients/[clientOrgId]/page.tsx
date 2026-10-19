@@ -226,7 +226,7 @@ function OperatorClientSettingsPage() {
               href={`/operator/clients/${clientOrgId}`}
               className="truncate text-muted-foreground/80 transition-colors hover:text-foreground"
             >
-              {client?.name ?? "Client"}
+              {client ? (client.dba ?? client.name) : "Client"}
             </Link>
             <span className="text-muted-foreground/30" aria-hidden="true">
               /
@@ -234,7 +234,7 @@ function OperatorClientSettingsPage() {
             <span className="truncate">{breadcrumbSection}</span>
           </span>
         ) : (
-          (client?.name ?? "Client")
+          (client ? (client.dba ?? client.name) : "Client")
         )
       }
       rightPanel={rightPanel}
@@ -243,7 +243,7 @@ function OperatorClientSettingsPage() {
         context={{
           pageType: "operator_client",
           entityId: clientOrgId,
-          summary: client ? `Client: ${client.name}` : "Current client",
+          summary: client ? `Client: ${client.dba ?? client.name}` : "Current client",
         }}
       />
       {clients === undefined || supportDetails === undefined ? (
