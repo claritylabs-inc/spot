@@ -270,6 +270,7 @@ function OperatorMessageRow({
         working={working}
         tools={message.usedTools}
         toolCalls={message.toolCalls}
+        activity={message.activity}
         audience="operator"
         content={content}
         channel={bubbleChannel}

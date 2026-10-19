@@ -1,6 +1,7 @@
 import { makeFunctionReference } from "convex/server";
 import type { Infer } from "convex/values";
 import type { operatorEmailContentValidator } from "@/convex/lib/threadMessageValidators";
+import type { MessageActivity } from "@/convex/lib/messageActivity";
 
 import type { Id } from "@/convex/_generated/dataModel";
 import type { PageContext } from "@/hooks/use-page-context";
@@ -23,6 +24,7 @@ type BackendMessage = {
   content: string;
   presentation?: unknown;
   usedTools?: string[];
+  activity?: MessageActivity;
   emailContent?: Infer<typeof operatorEmailContentValidator>;
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
@@ -158,6 +160,7 @@ export type OperatorAgentMessage = {
   content: string;
   presentation?: unknown;
   usedTools?: string[];
+  activity?: MessageActivity;
   emailContent?: BackendMessage["emailContent"];
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
@@ -322,6 +325,7 @@ export function normalizeOperatorAgentThread(
       content: message.content,
       presentation: message.presentation,
       usedTools: message.usedTools,
+      activity: message.activity,
       emailContent: message.emailContent,
       status: message.status,
       createdAt: message.createdAt,

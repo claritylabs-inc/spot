@@ -50,6 +50,10 @@ import {
   collectAllowedRecipients,
   enforceInputLimits,
 } from "../lib/security";
+import {
+  toolOutcomeStatus,
+  type MessageActivityUpdate,
+} from "../lib/messageActivity";
 import { FATAL_ACTION_FAILED_MESSAGE } from "../lib/actionFailures";
 import { buildPendingEmailConfirmation } from "../lib/actionConfirmationFingerprint";
 import {
@@ -728,6 +732,18 @@ export const run = internalAction({
 
       const chatTask = hasRichInput ? "chat_vision" : "chat";
       const presentationTools: CapturedPresentationTool[] = [];
+      // Live status is presentation only and must never block or fail the turn.
+      const recordActivity = async (update: MessageActivityUpdate) => {
+        if (surface !== "web") return;
+        try {
+          await ctx.runMutation(internal.routerJobs.recordActivity, {
+            target: agentMsgId,
+            update,
+          });
+        } catch {
+          console.warn("[processThreadChat] Agent activity unavailable");
+        }
+      };
       const turn = await runAgentTurn(ctx, {
         orgId: args.orgId,
         task: chatTask,
@@ -736,6 +752,22 @@ export const run = internalAction({
           ...turnTools,
           messages: messageHistory,
           stopWhen: stepCountIs(25),
+          experimental_onStepStart: () => recordActivity({ kind: "model" }),
+          // Client tools execute as soon as the SDK starts them, in parallel.
+          experimental_onToolCallStart: ({ toolCall }) =>
+            recordActivity({
+              kind: "tool",
+              toolCallId: toolCall.toolCallId,
+              toolName: toolCall.toolName,
+              status: "running",
+            }),
+          experimental_onToolCallFinish: (event) =>
+            recordActivity({
+              kind: "tool",
+              toolCallId: event.toolCall.toolCallId,
+              toolName: event.toolCall.toolName,
+              status: event.success ? toolOutcomeStatus(event.output) : "failed",
+            }),
           onStepFinish: async (step) => {
             if (surface !== "web") return;
             for (const result of step.toolResults) {
