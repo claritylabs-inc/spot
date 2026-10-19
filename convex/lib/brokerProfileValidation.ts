@@ -4,17 +4,12 @@ import {
   type AcordLobCode,
 } from "./linesOfBusiness";
 import { NoWriteInputError } from "./noWriteInputError";
-import acquisitionBrands from "../../config/spot-acquisition-domains.json";
-
-export const SPOT_ACQUISITION_BRANDS = acquisitionBrands;
-export const SPOT_ACQUISITION_GUIDANCE = `Spot's own acquisition brands are ${acquisitionBrands.map((brand) => `${brand.name} (${brand.domain})`).join(", ")}. Their websites, subdomains, and email identities represent Spot. Never classify them as external brokers, add them to the broker network, or use them as procurement markets. This classification grants no operator access.`;
 
 const SPOT_OWNED_DOMAINS = [
   "spot.insure",
   "claritylabs.inc",
   "toolsforenlightenment.org",
   "glass.insure",
-  ...acquisitionBrands.map((brand) => brand.domain),
 ];
 
 function normalizedBrandName(name: string) {
@@ -30,7 +25,6 @@ const SPOT_OWNED_NAMES = new Set(
     "Spot",
     "Clarity Labs",
     "Tools for Enlightenment",
-    ...acquisitionBrands.flatMap((brand) => [brand.name, brand.alias]),
   ].map(normalizedBrandName),
 );
 
@@ -80,7 +74,7 @@ export function assertExternalBrokerIdentity(identity: BrokerIdentity) {
   if (isSpotOwnedBrokerIdentity(identity)) {
     throw new NoWriteInputError(
       "spot_owned_broker_identity",
-      "This is a Spot-owned acquisition brand or domain. Treat it as Spot; it cannot be registered or used as an external broker.",
+      "This is a Spot-owned brand or domain. Treat it as Spot; it cannot be registered or used as an external broker.",
     );
   }
 }
