@@ -116,7 +116,12 @@ export function ChatAssistantTurn({
   const rowShowsProgress = showThinking && hasActiveActivity(activity);
   const answer =
     working && (!streamResponses || !content) ? (
-      rowShowsProgress ? null : (
+      rowShowsProgress ? (
+        // The row shows the detail; announce only the current activity.
+        <span role="status" aria-live="polite" className="sr-only">
+          {activityStatusLabel(activity)}
+        </span>
+      ) : (
         <AgentThinkingBubble
           label={activityStatusLabel(showThinking ? activity : undefined)}
         />

@@ -8,8 +8,8 @@
 export type ToolActivityContext = { label: string; website?: string };
 
 const MAX_LABEL = 160;
-// The recorded website ("https://" + host) must stay within 200 characters.
-const MAX_HOSTNAME = 190;
+// Hostnames double as labels (160) and websites ("https://" + host, 200).
+const MAX_HOSTNAME = MAX_LABEL;
 const WEB_TOOLS = new Set(["web_search", "web_research"]);
 
 export function isWebActivityTool(toolName: string) {
@@ -86,29 +86,28 @@ function hostnameFromUrl(value: string): string | undefined {
   }
 }
 
-function hostnameFromQuery(query: string): string | undefined {
+/** Every distinct public domain the query names, in order. */
+function hostsFromQuery(query: string): string[] {
+  const hosts = new Set<string>();
   for (const raw of query.split(/\s+/)) {
     const token = raw.replace(/^[("'<]+|[)"'>,;:!?]+$/g, "");
     const site = /^site:(.+)$/i.exec(token);
+    let host: string | undefined;
     if (site) {
-      const host = hostnameFromUrl(
+      host = hostnameFromUrl(
         /^https?:\/\//i.test(site[1]) ? site[1] : `https://${site[1]}`,
       );
-      if (host) return host;
-      continue;
+    } else if (/^https?:\/\//i.test(token)) {
+      host = hostnameFromUrl(token);
+    } else if (/^[a-z0-9.-]+$/i.test(token)) {
+      // A standalone bare domain only: no path, port, credentials or query.
+      const candidate = publicHostname(token);
+      if (candidate && BARE_DOMAIN_TLDS.has(candidate.split(".").at(-1) ?? ""))
+        host = candidate;
     }
-    if (/^https?:\/\//i.test(token)) {
-      const host = hostnameFromUrl(token);
-      if (host) return host;
-      continue;
-    }
-    // A standalone bare domain only: no path, port, credentials or query.
-    if (/^[a-z0-9.-]+$/i.test(token)) {
-      const host = publicHostname(token);
-      if (host && BARE_DOMAIN_TLDS.has(host.split(".").at(-1) ?? ""))
-        return host;
-    }
+    if (host) hosts.add(host);
   }
+  return [...hosts];
 }
 
 export function toolActivityContext(
@@ -119,27 +118,27 @@ export function toolActivityContext(
   if (!input || typeof input !== "object" || Array.isArray(input))
     return undefined;
   const { query, url, allowedDomains } = input as Record<string, unknown>;
-  // An explicit URL names the target; otherwise a domain in the query; one
-  // allowed domain is a legitimate scope. Several different domains are not
-  // one site, so they never produce a website.
-  const scope = [
-    ...new Set(
-      (Array.isArray(allowedDomains) ? allowedDomains : []).flatMap((entry) => {
-        const host =
-          typeof entry === "string"
-            ? publicHostname(entry.trim().replace(/^\*\./, ""))
-            : undefined;
-        return host ? [host] : [];
-      }),
-    ),
-  ];
-  const host =
-    (typeof url === "string" ? hostnameFromUrl(url.trim()) : undefined) ??
-    (typeof query === "string" ? hostnameFromQuery(query) : undefined) ??
-    (scope.length === 1 ? scope[0] : undefined);
-  if (host) return { label: host, website: `https://${host}` };
+  // An explicit URL names the target. Otherwise the domains the query and the
+  // allowed-domain scope name decide: exactly one is a site; several are not
+  // one site, so they get a readable label and never a single favicon.
+  const explicit =
+    typeof url === "string" ? hostnameFromUrl(url.trim()) : undefined;
+  if (explicit) return { label: explicit, website: `https://${explicit}` };
+  const hosts = new Set<string>(
+    typeof query === "string" ? hostsFromQuery(query) : [],
+  );
+  for (const entry of Array.isArray(allowedDomains) ? allowedDomains : []) {
+    const host =
+      typeof entry === "string"
+        ? publicHostname(entry.trim().replace(/^\*\./, ""))
+        : undefined;
+    if (host) hosts.add(host);
+  }
+  const [first, ...others] = [...hosts];
+  if (first && others.length === 0)
+    return { label: first, website: `https://${first}` };
   if (typeof query === "string" && query.trim())
     return { label: readable(query) };
-  if (scope.length > 1) return { label: `${scope[0]} +${scope.length - 1}` };
+  if (first) return { label: clip(`${first} +${others.length}`, MAX_LABEL) };
   return undefined;
 }
