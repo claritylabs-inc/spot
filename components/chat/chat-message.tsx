@@ -163,20 +163,22 @@ export function ChatAssistantTurn({
         <ChatDisclosure
           working={working}
           summary={<span>Plan · {executionPlan.steps.length} steps</span>}
-          className={`mb-3 max-w-3xl text-muted-foreground/50 ${typeStyle("caption.default")}`}
+          className={`max-w-3xl text-muted-foreground/50 ${typeStyle("caption.default")}`}
           summaryClassName="hover:text-muted-foreground"
         >
-          <div className="space-y-2 py-2.5">
-            <p>{executionPlan.summary}</p>
+          <div
+            className={`space-y-2.5 pt-2.5 pb-1 text-muted-foreground/70 ${typeStyle("body.default")}`}
+          >
+            <p className="text-foreground">{executionPlan.summary}</p>
             {executionPlan.targets.length ? (
               <p className="break-words">
                 Targets: {executionPlan.targets.join(", ")}
               </p>
             ) : null}
-            <ol className="list-outside list-decimal space-y-2 pl-7">
+            <ol className="list-outside list-decimal space-y-2.5 pl-7">
               {executionPlan.steps.map((step, index) => (
                 <li key={index} className="break-words pl-1">
-                  <p className={typeStyle("caption.medium")}>{step.title}</p>
+                  <p className="text-foreground">{step.title}</p>
                   <p>{step.detail}</p>
                   <p className="mt-1">Done when: {step.completionCriteria}</p>
                 </li>
