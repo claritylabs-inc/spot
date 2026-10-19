@@ -2,11 +2,26 @@ import dayjs from "dayjs";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, type MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { getClientPortalUrl } from "./lib/domains";
+import {
+  buildIntakeSlackContext,
+  escapeIntakeSlack as escape,
+} from "./lib/intakeSlackContext";
+async function savedContext(ctx: MutationCtx, request: Doc<"procurementRequests">) {
+  const owner = request.ownerUserId ? await ctx.db.get(request.ownerUserId) : null;
+  const files = await ctx.db.query("requestIntakeFiles")
+    .withIndex("request", q => q.eq("requestId", request._id)).take(100);
+  return buildIntakeSlackContext(request, {
+    emailVerified: Boolean(owner?.emailVerificationTime),
+    files: files.map(file => ({ name: file.name, category: file.category })),
+  });
+}
 
-const escape = (text: string) =>
-  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+async function threadSummary(ctx: MutationCtx, request: Doc<"procurementRequests">) {
+  return `**Insurance application — current saved details**\nApplication ID: ${request._id}\n${await savedContext(ctx, request)}`;
+}
+
 export async function queueIntakeSlack(
   ctx: MutationCtx,
   requestId: Id<"procurementRequests">,
@@ -26,6 +41,7 @@ export async function queueIntakeSlack(
       ? `${getClientPortalUrl()}/operator/clients/${request.clientOrgId}/policies`
       : `${getClientPortalUrl()}/operator/clients/${request.clientOrgId}/procurement/${requestId}`
     : `${getClientPortalUrl()}/operator/clients`;
+  const context = await savedContext(ctx, request);
   const add = async (key: string, content: string) => {
     const exists = await ctx.db
       .query("intakeSlackEvents")
@@ -46,13 +62,14 @@ export async function queueIntakeSlack(
   };
   await add(
     "started",
-    `**Insurance application started**\n${name}\nApplication ID: ${requestId}`,
+    `**Insurance application started**\n${name}\nApplication ID: ${requestId}\n${context}`,
   );
-  if (eventKey !== "started")
+  if (eventKey !== "started" && !eventKey.startsWith("summary:"))
     await add(
       eventKey,
-      `**${escape(progress)}**\n${name}${submitted && answers.intakeGoal === "savings" ? `\n[Review policies](${link})` : submitted ? `\nCoverage: ${escape(answers.coverage || "Not specified")}\nEffective date: ${escape(answers.effectiveDate || "Not specified")}\n[Review application](${link})` : ""}`,
+      `**${escape(progress)}**\n${name}\nApplication ID: ${requestId}\n${context}${submitted && answers.intakeGoal === "savings" ? `\n[Review policies](${link})` : submitted ? `\nCoverage: ${escape(answers.coverage || "Not specified")}\nEffective date: ${escape(answers.effectiveDate || "Not specified")}\n[Review application](${link})` : ""}`,
     );
+  await add(eventKey.startsWith("summary:") ? eventKey : `summary:${request.intakeRevision ?? 0}`, await threadSummary(ctx, request));
   await ctx.scheduler.runAfter(0, internal.actions.intakeSlack.deliver, {
     requestId,
   });
@@ -81,12 +98,15 @@ export const claim = internalMutation({
       return null;
     const lease = dayjs().add(1, "minute").valueOf();
     await ctx.db.patch(requestId, { intakeSlackLeaseUntil: lease });
-    await ctx.db.patch(event._id, { attempts: event.attempts + 1 });
+    const content = event.eventKey.startsWith("summary:")
+      ? await threadSummary(ctx, request)
+      : event.content;
+    await ctx.db.patch(event._id, { attempts: event.attempts + 1, content });
     // Recover a delivery that stops after claiming; Slack send receipts deduplicate the event ID.
     await ctx.scheduler.runAfter(61000, internal.actions.intakeSlack.deliver, {
       requestId,
     });
-    return { event, threadTs: request.intakeSlackThreadTs, lease };
+    return { event: { ...event, content }, threadTs: request.intakeSlackThreadTs, lease };
   },
 });
 export const finish = internalMutation({
@@ -122,5 +142,31 @@ export const finish = internalMutation({
       internal.actions.intakeSlack.deliver,
       { requestId: request._id },
     );
+  },
+});
+
+// Exact-target backfill: only refresh this existing configured intake thread.
+export const refresh = internalMutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    expectedRevision: v.number(),
+    expectedThreadTs: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const request = await ctx.db.get(args.requestId);
+    if (!request || request.deletedAt) throw new Error("Application not found");
+    if ((request.intakeRevision ?? 0) !== args.expectedRevision ||
+        request.intakeSlackThreadTs !== args.expectedThreadTs)
+      throw new Error("Application or Slack thread changed; inspect again before backfilling");
+    if (!process.env.SLACK_CLARITY_TEAM_ID?.trim() || !process.env.INTAKE_SLACK_CHANNEL_ID?.trim())
+      throw new Error("Intake Slack destination is not configured");
+    const started = await ctx.db.query("intakeSlackEvents")
+      .withIndex("request_event", q => q.eq("requestId", request._id).eq("eventKey", "started"))
+      .unique();
+    if (!started || started.teamId !== process.env.SLACK_CLARITY_TEAM_ID?.trim() ||
+        started.channelId !== process.env.INTAKE_SLACK_CHANNEL_ID?.trim())
+      throw new Error("Original intake thread destination does not match current configuration");
+    await queueIntakeSlack(ctx, request._id, `summary:backfill:${args.expectedRevision}`, "Application saved");
+    return { requestId: request._id, threadTs: request.intakeSlackThreadTs, revision: args.expectedRevision };
   },
 });
