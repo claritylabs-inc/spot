@@ -104,6 +104,7 @@ export default function OperatorClientsScreen() {
       (filter === "all" || operatorClientDisplayStatus(client) === filter) &&
       matchesSearch([
         client.name,
+        client.dba,
         client.website,
         client.primaryContactEmail,
         client.adminEmail,
@@ -233,7 +234,7 @@ export default function OperatorClientsScreen() {
           "Create client"
         ) : (
           <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
-            <span className="min-w-0 truncate">{selected.name}</span>
+            <span className="min-w-0 truncate">{selected.dba ?? selected.name}</span>
             <span className="flex shrink-0 items-center gap-2">
               <StatusTag
                 {...operatorClientStatusPresentation(selected)}
@@ -421,7 +422,7 @@ export default function OperatorClientsScreen() {
                     <TableCell className="px-4">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <OrgBrandIcon
-                          name={client.name}
+                          name={client.dba ?? client.name}
                           iconUrl={client.iconUrl}
                           website={client.website}
                           size="md"
@@ -430,7 +431,7 @@ export default function OperatorClientsScreen() {
                           href={`/operator/clients/${client._id}`}
                           className="truncate"
                         >
-                          {client.name}
+                          {client.dba ?? client.name}
                         </TableNameLink>
                       </div>
                     </TableCell>

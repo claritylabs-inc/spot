@@ -83,6 +83,7 @@ export function useOperatorClientCacheActions() {
       const row = {
         _id: input.clientOrgId,
         name: input.name,
+        dba: undefined,
         website: input.website,
         iconStorageId: undefined,
         iconUrl: null,
