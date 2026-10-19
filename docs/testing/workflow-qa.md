@@ -1171,13 +1171,22 @@ headed cloud Chrome at `app.spot.insure/operator/brokers`:
 - Recovery exhaustion: the deliberately invalid, unidentified read stopped
   after the initial iteration plus three corrective iterations, with no guessed
   target or writes. It exposed malformed provisional model prose in the final
-  answer (run `q97vdt392ktref0we48f5h7jgh8gkzs1`); this is a failed acceptance
-  case pending the focused follow-up and browser retest.
+  answer (run `q97vdt392ktref0we48f5h7jgh8gkzs1`). PR #484 fixed provisional
+  streaming and continuation-history contamination. Retest on production
+  `5e2978b0` passed: run `q97nb9sxpjxjgrw840nv5c8z9s8gjef7` completed after
+  four model iterations (initial failure plus three corrective opportunities),
+  with one failed read, no guessed target, and a clean final report using the
+  recorded code and guidance. No provisional recovery prose appeared during
+  observation. Successful correction was rechecked in run
+  `q97j9dzsvak6p65cpzna59saf98gjx27`: invalid ID, authoritative search, corrected
+  successful read, then a normal final answer with no extra failed attempts.
+  Release validation, deployment and production readiness passed.
 
 Artifacts are under `.context/operator-planning/browser/`: `simple-evidence.json`,
 `complex-evidence.json`, `recovery-evidence.json`, `cancel-evidence.json`,
 `retry-evidence.json`, `plan-ui-evidence.json`, `plan-expanded.png`,
-`plan-mobile.png`, and `recovery-complete.png`. These contain no browser session
+`plan-mobile.png`, `recovery-complete.png`, `exhaustion-fixed-evidence.json`,
+`exhaustion-fixed.png`, and `recovery-fixed-evidence.json`. These contain no browser session
 credentials. Release CI and production readiness passed; no new unit tests or
 Vercel previews were used. Existing authorization, approval and unknown-write
 boundaries were reviewed and their existing automated checks retained.
