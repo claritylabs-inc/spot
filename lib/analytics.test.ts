@@ -57,3 +57,10 @@ test("access-bearing URLs and request bodies remain excluded", () => {
   expect(replay.recordHeaders).toBe(false);
   expect(replay.recordBody).toBe(false);
 });
+
+test("the marketing handoff shares project, cookie state and tracking preferences", () => {
+  expect(init.mock.calls[0][0]).toBe("phc_r4wwom2cwB995w8VgdddnTa8faLVthutqXr6YUG298ZT");
+  expect(config.persistence).toBe("cookie");
+  expect(config.cross_subdomain_cookie).toBe(true);
+  expect(config.respect_dnt).toBe(true);
+});

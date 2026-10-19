@@ -302,7 +302,7 @@ export function recoveryBlockerReport(
         `- ${item.toolName} (${item.code || "unknown error"}): ${item.guidance}`,
     )
     .join("\n");
-  return `These calls remain unresolved after the corrective attempts allowed for this run; each reported that no write had started:\n${lines}\nNothing was retried automatically, and no conclusion is drawn about records these calls could not read. Other tool results from this run are unaffected, so check the tool activity for what completed. Use Retry once the cause is fixed.`;
+  return `I couldn't complete these calls after three corrective attempts. Each failure reported that no write started:\n${lines}\nThese failures do not establish whether matching records exist. Other work in this run may have completed; check the tool activity before retrying.`;
 }
 
 export function recoveryPromptBlock(state: OperatorRecoveryState): string {

@@ -1,6 +1,7 @@
 "use client";
 import { toast } from "sonner";
 import { initializeIntakeGoogleAds, trackIntakeContactSaved } from "@/lib/google-ads";
+import { captureAnalytics } from "@/lib/analytics";
 import {
   Card,
   CardHeader,
@@ -40,7 +41,9 @@ export function IntakeSignup() {
 function SignupForm() {
   useEffect(() => {
     initializeIntakeGoogleAds();
+    captureAnalytics("intake_contact_viewed");
   }, []);
+  const contactStarted = useRef(false);
   const params = useSearchParams();
   const router = useRouter();
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -134,6 +137,7 @@ function SignupForm() {
         router.replace(withQuoteProvider(`/intake?request=${id}`, params.get("provider")));
       })
       .catch((e) => {
+        captureAnalytics("intake_contact_failed", { stage: "claim" });
         setError(
           getUserFacingErrorMessage(e, "Could not complete this action"),
         );
@@ -158,12 +162,14 @@ function SignupForm() {
     queueMicrotask(() => setBusy(true));
     void (
       handoff.existingAccount || handoff.claimed
-        ? signIn("resend-otp", { email: handoff.email }).then(() =>
-            setCodeSent(true),
-          )
+        ? signIn("resend-otp", { email: handoff.email }).then(() => {
+            setCodeSent(true);
+            captureAnalytics("intake_verification_sent");
+          })
         : signIn("intake", { token })
     )
       .catch((e) => {
+        captureAnalytics("intake_contact_failed", { stage: "authentication" });
         setHandoffTransition(false);
         setError(getUserFacingErrorMessage(e, "Could not continue"));
       })
@@ -173,6 +179,7 @@ function SignupForm() {
     autoHandoff.current = true;
     setBusy(true);
     setError("");
+    captureAnalytics("intake_contact_submission_started");
     try {
       let activeToken = token;
       let existing = handoff?.existingAccount;
@@ -194,6 +201,7 @@ function SignupForm() {
         });
         const outcome = await response.json();
         if (!response.ok) throw new Error(outcome.error);
+        captureAnalytics("intake_contact_saved");
         // Match the former landing form: count accepted contact details, not
         // a page visit, an email-only redirect, or a failed signup attempt.
         void trackIntakeContactSaved(handoffKey.current);
@@ -209,12 +217,14 @@ function SignupForm() {
       if (existing || handoff?.claimed) {
         await signIn("resend-otp", { email });
         setCodeSent(true);
+        captureAnalytics("intake_verification_sent");
       } else {
         setHandoffTransition(true);
         router.prefetch("/intake");
         await signIn("intake", { token: activeToken });
       }
     } catch (e) {
+      captureAnalytics("intake_contact_failed");
       setHandoffTransition(false);
       setError(getUserFacingErrorMessage(e, "Could not continue"));
     } finally {
@@ -260,8 +270,10 @@ function SignupForm() {
     setError("");
     try {
       await completeOtpSignIn(email, code);
+      captureAnalytics("intake_verification_succeeded");
       window.location.assign(`/signup?intake=${encodeURIComponent(token)}`);
     } catch (e) {
+      captureAnalytics("intake_verification_failed");
       setError(getUserFacingErrorMessage(e, "Could not verify"));
       setBusy(false);
     }
@@ -453,6 +465,11 @@ function SignupForm() {
         <form
           id="intake-contact"
           className="space-y-5"
+          onChange={() => {
+            if (codeSent || contactStarted.current) return;
+            contactStarted.current = true;
+            captureAnalytics("intake_contact_started");
+          }}
           onSubmit={(e) => {
             e.preventDefault();
             void (codeSent ? verify() : continueSignup());

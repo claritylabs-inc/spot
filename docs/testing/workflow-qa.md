@@ -1135,7 +1135,7 @@ browser-session credentials. The failure reference is
 
 ### Operator planning and corrective tool iterations — October 19, 2026
 
-Acceptance workflow (pending production verification):
+Acceptance workflow:
 
 1. Submit a simple answer-only question: no business plan when all four Jev answers confidently say no.
 2. Submit the original 13 broker domains as a read-only directory comparison. Observe complexity assessment, a distinct saved plan before the first business call, per-target searches or a disclosed bounded list, and an answer covering every target. A rejected batch is not a no-match result.
@@ -1143,7 +1143,53 @@ Acceptance workflow (pending production verification):
 4. Ask for a read using an invalid identifier, then recover via an authoritative lookup. Verify structured error code, corrected call and final answer. Persistently invalid calls must exhaust after three corrective model iterations, not loop or claim absence. Do not manufacture production writes to test failures.
 5. Recheck collapsed Plan/error disclosures, Show thinking preference and narrow viewport. The single Retry button must start a new attempt directly, include existing error context automatically for failed turns, and remain disabled during an active run. Existing approval, authorization and unknown-outcome boundaries receive code review and existing automated coverage.
 
-No new unit tests or Vercel previews are used. Results and artifact locations are recorded after integrated acceptance.
+Production acceptance on release `5fa0c71f` (PR #481), through authenticated
+headed cloud Chrome at `app.spot.insure/operator/brokers`:
+
+- Simple answer: four Jev probabilities confidently said no, no plan or tools,
+  answer `4`. Run `q97ngbryceg0460dm1f1fz9rqh8gje06`.
+- Complex comparison: a separate three-step plan retained all 13 targets before
+  13 individual directory searches. Every target appeared in the final answer;
+  Montgomery Risk was matched by website, unrelated fuzzy candidates were not
+  treated as exact matches, and absent records were qualified to the searched
+  directory. No writes or web research. Run `q97ynk9wm5s1tmj10npfn9w8198gkfd3`.
+  Reload during planning and execution retained the plan. Router request
+  `88122f9e-d532-4b5b-b3f3-8558d8698109` was the distinct planner call.
+- Correctable failure: `get_organization` returned `invalid_identifier`; the
+  agent searched for the organization, used the returned ID for a successful
+  read, then finished without repeating successful calls. Run
+  `q97knd1zacd5qjdxs9z3tkqads8gj28v`.
+- Cancellation: Stop during Creating a plan cancelled run
+  `q97tzd9wf1xexx4qpkg762d17s8gjqcf`; reload confirmed zero business calls.
+- Retry: one click produced a new completed run with answer `4`
+  (`q97y04dmh7x9dp0ge3msvddszh8gjtf2`), without a menu. The button disabled
+  immediately. Failed-turn error-context selection is automatic in the handler;
+  no write-bearing failed production turn was replayed for QA.
+- Presentation: Plan starts collapsed, expands, survives reload, and remains
+  available with Show thinking off. At 390px there was no horizontal overflow.
+  Show thinking and desktop viewport were restored afterward.
+- Recovery exhaustion: the deliberately invalid, unidentified read stopped
+  after the initial iteration plus three corrective iterations, with no guessed
+  target or writes. It exposed malformed provisional model prose in the final
+  answer (run `q97vdt392ktref0we48f5h7jgh8gkzs1`). PR #484 fixed provisional
+  streaming and continuation-history contamination. Retest on production
+  `5e2978b0` passed: run `q97nb9sxpjxjgrw840nv5c8z9s8gjef7` completed after
+  four model iterations (initial failure plus three corrective opportunities),
+  with one failed read, no guessed target, and a clean final report using the
+  recorded code and guidance. No provisional recovery prose appeared during
+  observation. Successful correction was rechecked in run
+  `q97j9dzsvak6p65cpzna59saf98gjx27`: invalid ID, authoritative search, corrected
+  successful read, then a normal final answer with no extra failed attempts.
+  Release validation, deployment and production readiness passed.
+
+Artifacts are under `.context/operator-planning/browser/`: `simple-evidence.json`,
+`complex-evidence.json`, `recovery-evidence.json`, `cancel-evidence.json`,
+`retry-evidence.json`, `plan-ui-evidence.json`, `plan-expanded.png`,
+`plan-mobile.png`, `recovery-complete.png`, `exhaustion-fixed-evidence.json`,
+`exhaustion-fixed.png`, and `recovery-fixed-evidence.json`. These contain no browser session
+credentials. Release CI and production readiness passed; no new unit tests or
+Vercel previews were used. Existing authorization, approval and unknown-write
+boundaries were reviewed and their existing automated checks retained.
 
 ## Intake Slack answer values — October 19, 2026
 
