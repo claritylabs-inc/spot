@@ -1211,3 +1211,9 @@ when verifying new replay visibility.
 Validation: 126 tests pass across 18 files; full Next.js typecheck and ESLint
 pass (three pre-existing warnings). Local provider signup renders correctly;
 recording ingestion/playback and the production rollout are verified separately.
+
+Live ingestion/playback follow-up: a refreshed localhost signup sent a synthetic
+name/email fixture to the existing Spot PostHog project without submitting the
+form. Replay `01a1557f-5770-7433-9da9-a6aece2cc728` visibly shows the page labels,
+name and email after the fresh pageview; its earlier snapshots remain masked.
+The local fixture was cleared afterward. No application record was created.
