@@ -1274,3 +1274,27 @@ name/email fixture to the existing Spot PostHog project without submitting the
 form. Replay `01a1557f-5770-7433-9da9-a6aece2cc728` visibly shows the page labels,
 name and email after the fresh pageview; its earlier snapshots remain masked.
 The local fixture was cleared afterward. No application record was created.
+
+
+### Agent trace presentation — October 19, 2026
+
+Cloud Chrome (headed, existing desktop session) exercised the actual shared
+ChatAssistantTurn and ThinkingSummary components against controlled activity
+fixtures served locally. The fixture includes a running search with no completed
+audit entry, so its domain must come from execution-start metadata. Verified:
+
+- One visible active indicator, alongside the active row; a single accessible
+  status announcement. Empty activity, model wait and hidden-activity preferences
+  retain their standalone loading indicator; streaming-off stays responsive.
+- Site labels and circular favicons, overlapping icons and website counts for
+  multiple targets, with all listed domains available through keyboard focus.
+- Concise setup outcomes, repeated identical completed stages grouped with a
+  count, and failed/interrupted/awaiting-approval states still explicit.
+- Completion collapses activity, reopening preserves context, and settled rows
+  have no spinning indicator. Desktop and 390px dark mode have no horizontal
+  overflow; reduced motion is respected.
+
+Artifacts: `.context/trace-ux/qa.mjs`, `browser-qa.txt`, `planning.png`,
+`search.png`, `multi-desktop.png`, and `multi-mobile-dark.png` (workspace-local).
+Existing 127 tests pass; no new unit tests or Vercel preview testing. The release
+PR records the separate authenticated production acceptance after deployment.
