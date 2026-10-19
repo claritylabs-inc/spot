@@ -1176,3 +1176,44 @@ bot parent successfully; delivery was verified without changing the application.
 
 Validation: all 123 tests pass across 17 files; Convex typecheck, focused ESLint
 and git diff --check pass. Production rollout is tracked by the follow-up PR.
+
+
+## Referring-provider intake header — October 19, 2026
+
+Local signup header QA at localhost:8080 covers the registered Montgomery provider,
+normal Spot entry without a provider, unknown-provider fallback and mobile layout.
+The public branding registry is exported from the broker-network ledger; incoming
+values cannot set image URLs or home links. TypeScript and focused ESLint checks
+were run. Two existing application hook dependency warnings remain outside this
+change. The local Convex backend was unavailable, so authenticated submission,
+verification and post-signup continuation were not exercised. No live contact details
+were submitted and no production deployment was performed. Provider selection is
+visual branding only and does not grant account or request access.
+
+Provider signup layout follow-up: compact brand lockup (32px artwork), shorter header,
+centered progress indicator, 528px desktop form content, smaller signup heading and
+44px contact controls. Signup footer content shares the form's horizontal edges.
+TypeScript and focused ESLint checks passed. Desktop and 390px mobile previews were
+inspected; branding and the provider query contract are unchanged. Preview evidence:
+`.context/qa/provider-signup/compact-desktop.jpg` (local only).
+
+## Replay visibility — October 19, 2026
+
+Before implementation, boundary tests specified readable ordinary inputs/text/attributes,
+blocked password/revealed-password/OTP/hidden controls, capability attribute redaction,
+and access-URL sanitization with network headers/bodies disabled. The initial run
+failed on ordinary visibility and credential selectors. Configuration now removes
+blanket replay text/input/attribute masking while retaining explicit credential and
+document exclusions. OTP controls and the shared PDF wrapper are ph-no-capture.
+Previously masked recording data cannot be recovered. Use synthetic fixtures only
+when verifying new replay visibility.
+
+Validation: 126 tests pass across 18 files; full Next.js typecheck and ESLint
+pass (three pre-existing warnings). Local provider signup renders correctly;
+recording ingestion/playback and the production rollout are verified separately.
+
+Live ingestion/playback follow-up: a refreshed localhost signup sent a synthetic
+name/email fixture to the existing Spot PostHog project without submitting the
+form. Replay `01a1557f-5770-7433-9da9-a6aece2cc728` visibly shows the page labels,
+name and email after the fresh pageview; its earlier snapshots remain masked.
+The local fixture was cleared afterward. No application record was created.

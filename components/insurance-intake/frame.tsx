@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, type ReactNode } from "react";
-import { LogoIcon } from "@/components/ui/logo-icon";
-import { BrandWordmark } from "@/components/auth-shell";
+import { IntakeProviderBrand } from "./provider-brand";
 import { Button } from "@claritylabs-inc/ui/components/button";
 import { typeStyle } from "@/lib/typography";
 
@@ -14,6 +13,7 @@ export function IntakeFrame({
   onSection,
   disabled = false,
   showSteps = true,
+  compact = false,
 }: {
   children: ReactNode;
   footer?: ReactNode;
@@ -22,6 +22,7 @@ export function IntakeFrame({
   onSection?: (step: number) => void;
   disabled?: boolean;
   showSteps?: boolean;
+  compact?: boolean;
 }) {
   const footerRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -46,17 +47,8 @@ export function IntakeFrame({
       data-intake-form
       className="min-h-screen bg-background text-foreground"
     >
-      <header className="grid grid-cols-3 items-center border-b bg-background px-6 py-5 md:sticky md:top-0 md:z-20 sm:px-10">
-        <a
-          href="https://spot.insure"
-          aria-label="Spot home"
-          className="justify-self-start"
-        >
-          <LogoIcon size={24} className="sm:hidden" />
-          <span className="hidden sm:inline-flex">
-            <BrandWordmark />
-          </span>
-        </a>
+      <header className="grid grid-cols-3 items-center border-b bg-background px-6 py-3 md:sticky md:top-0 md:z-20 sm:px-10">
+        <IntakeProviderBrand />
         {showSteps ? (
           <nav
             aria-label="Application sections"
@@ -76,7 +68,7 @@ export function IntakeFrame({
                 aria-current={section === index ? "step" : undefined}
                 disabled={disabled || !onSection}
                 onClick={() => onSection?.([1, 6, 10, 20, 28][index])}
-                className={`h-1.5 w-4 rounded-full p-0 disabled:opacity-100 sm:w-14 ${section >= index ? "bg-foreground" : "bg-foreground/15"}`}
+                className={`h-1.5 w-4 rounded-full p-0 disabled:opacity-100 sm:w-10 ${section >= index ? "bg-foreground" : "bg-foreground/15"}`}
               />
             ))}
           </nav>
@@ -91,14 +83,14 @@ export function IntakeFrame({
           {status}
         </span>
       </header>
-      <main className="mx-auto max-w-2xl px-6 pb-36 pt-12 sm:pt-20">
+      <main className={`mx-auto px-6 pb-32 pt-10 sm:pt-12 ${compact ? "max-w-xl" : "max-w-2xl"}`}>
         {children}
       </main>
       <footer
         ref={footerRef}
-        className="fixed inset-x-0 bottom-0 z-20 border-t bg-background px-6 pt-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
+        className="fixed inset-x-0 bottom-0 z-20 border-t bg-background px-6 pt-3 pb-[calc(.75rem+env(safe-area-inset-bottom))]"
       >
-        <div className="mx-auto flex min-h-12 max-w-2xl items-center justify-between gap-4">
+        <div className={`mx-auto flex min-h-12 items-center justify-between gap-4 ${compact ? "max-w-xl px-6" : "max-w-2xl"}`}>
           {footer}
         </div>
       </footer>
