@@ -243,6 +243,7 @@ import type * as lib_insuranceIntakeSchema from "../lib/insuranceIntakeSchema.js
 import type * as lib_insuredNameDecisions from "../lib/insuredNameDecisions.js";
 import type * as lib_intakeApplication from "../lib/intakeApplication.js";
 import type * as lib_intakeDetailsSchema from "../lib/intakeDetailsSchema.js";
+import type * as lib_intakeSlackContext from "../lib/intakeSlackContext.js";
 import type * as lib_jevEvidenceChoices from "../lib/jevEvidenceChoices.js";
 import type * as lib_jevImages from "../lib/jevImages.js";
 import type * as lib_jevThreshold from "../lib/jevThreshold.js";
@@ -285,7 +286,10 @@ import type * as lib_operatorMcpAttachments from "../lib/operatorMcpAttachments.
 import type * as lib_operatorMcpClient from "../lib/operatorMcpClient.js";
 import type * as lib_operatorMcpOAuth from "../lib/operatorMcpOAuth.js";
 import type * as lib_operatorMcpToolCatalog from "../lib/operatorMcpToolCatalog.js";
+import type * as lib_operatorPlanning from "../lib/operatorPlanning.js";
+import type * as lib_operatorRunPlan from "../lib/operatorRunPlan.js";
 import type * as lib_operatorSlackConfig from "../lib/operatorSlackConfig.js";
+import type * as lib_operatorToolRecovery from "../lib/operatorToolRecovery.js";
 import type * as lib_orgBranding from "../lib/orgBranding.js";
 import type * as lib_orgWiki from "../lib/orgWiki.js";
 import type * as lib_orgWikiDocument from "../lib/orgWikiDocument.js";
@@ -680,6 +684,7 @@ declare const fullApi: ApiFromModules<{
   "lib/insuredNameDecisions": typeof lib_insuredNameDecisions;
   "lib/intakeApplication": typeof lib_intakeApplication;
   "lib/intakeDetailsSchema": typeof lib_intakeDetailsSchema;
+  "lib/intakeSlackContext": typeof lib_intakeSlackContext;
   "lib/jevEvidenceChoices": typeof lib_jevEvidenceChoices;
   "lib/jevImages": typeof lib_jevImages;
   "lib/jevThreshold": typeof lib_jevThreshold;
@@ -722,7 +727,10 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorMcpClient": typeof lib_operatorMcpClient;
   "lib/operatorMcpOAuth": typeof lib_operatorMcpOAuth;
   "lib/operatorMcpToolCatalog": typeof lib_operatorMcpToolCatalog;
+  "lib/operatorPlanning": typeof lib_operatorPlanning;
+  "lib/operatorRunPlan": typeof lib_operatorRunPlan;
   "lib/operatorSlackConfig": typeof lib_operatorSlackConfig;
+  "lib/operatorToolRecovery": typeof lib_operatorToolRecovery;
   "lib/orgBranding": typeof lib_orgBranding;
   "lib/orgWiki": typeof lib_orgWiki;
   "lib/orgWikiDocument": typeof lib_orgWikiDocument;

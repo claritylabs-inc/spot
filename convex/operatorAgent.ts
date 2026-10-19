@@ -1,3 +1,10 @@
+import { NoWriteInputError } from "./lib/noWriteInputError";
+import {
+  operatorPlanningAssessmentValidator,
+  operatorExecutionPlanValidator,
+  operatorExecutionPlanSchema,
+} from "./lib/operatorRunPlan";
+import { jevProceedThreshold } from "./lib/jevThreshold";
 import { readUnlinkedIntakeByOperator } from "./lib/intakeDiagnostics";
 import {
   prepareApplicationToolUpdate,
@@ -128,6 +135,7 @@ import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmati
 import {
   confirmedPreflightOperatorToolFailure,
   executionOperatorToolFailure,
+  operatorNoWriteCode,
   isRecoverableOperatorToolFailure,
   preflightOperatorToolFailure,
   type OperatorToolFailedOutcome,
@@ -362,8 +370,9 @@ async function resolveGoogleWorkspaceContinuation(
     typeof cursor !== "string" ||
     !cursor
   ) {
-    throw new Error(
-      "Google Workspace continuation reference is invalid for this operator, thread, or tool.",
+    throw new NoWriteInputError(
+      "invalid_continuation",
+      "Google Workspace continuation reference is invalid for this operator, thread, or tool. Restart without a cursor using the original filters.",
     );
   }
   return { ...input, cursor };
@@ -909,23 +918,38 @@ function normalizeOperatorThreadTitle(value: string | undefined) {
 }
 
 function normalizeOrganizationId(ctx: QueryCtx | MutationCtx, value: unknown) {
-  if (typeof value !== "string") throw new Error("Organization ID is required");
+  if (typeof value !== "string")
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Organization ID is required",
+    );
   const orgId = ctx.db.normalizeId("organizations", value);
-  if (!orgId) throw new Error("Invalid organization ID");
+  if (!orgId)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Invalid organization ID",
+    );
   return orgId;
 }
 
 function normalizePolicyId(ctx: QueryCtx | MutationCtx, value: unknown) {
-  if (typeof value !== "string") throw new Error("Policy ID is required");
+  if (typeof value !== "string")
+    throw new NoWriteInputError("invalid_identifier", "Policy ID is required");
   const policyId = ctx.db.normalizeId("policies", value);
-  if (!policyId) throw new Error("Invalid policy ID");
+  if (!policyId)
+    throw new NoWriteInputError("invalid_identifier", "Invalid policy ID");
   return policyId;
 }
 
 function normalizeClientFileId(ctx: QueryCtx | MutationCtx, value: unknown) {
-  if (typeof value !== "string") throw new Error("Client file ID is required");
+  if (typeof value !== "string")
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Client file ID is required",
+    );
   const clientFileId = ctx.db.normalizeId("clientFiles", value);
-  if (!clientFileId) throw new Error("Invalid client file ID");
+  if (!clientFileId)
+    throw new NoWriteInputError("invalid_identifier", "Invalid client file ID");
   return clientFileId;
 }
 
@@ -934,10 +958,17 @@ function normalizeProcurementRequestId(
   value: unknown,
 ) {
   if (typeof value !== "string") {
-    throw new Error("Procurement request ID is required");
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Procurement request ID is required",
+    );
   }
   const requestId = ctx.db.normalizeId("procurementRequests", value);
-  if (!requestId) throw new Error("Invalid procurement request ID");
+  if (!requestId)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Invalid procurement request ID",
+    );
   return requestId;
 }
 
@@ -946,10 +977,17 @@ function normalizeProcurementOutreachId(
   value: unknown,
 ) {
   if (typeof value !== "string") {
-    throw new Error("Procurement broker outreach ID is required");
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Procurement broker outreach ID is required",
+    );
   }
   const outreachId = ctx.db.normalizeId("procurementBrokerOutreaches", value);
-  if (!outreachId) throw new Error("Invalid procurement broker outreach ID");
+  if (!outreachId)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Invalid procurement broker outreach ID",
+    );
   return outreachId;
 }
 
@@ -958,10 +996,17 @@ function normalizeProcurementFileItemId(
   value: unknown,
 ) {
   if (typeof value !== "string") {
-    throw new Error("Procurement file item ID is required");
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Procurement file item ID is required",
+    );
   }
   const fileItemId = ctx.db.normalizeId("procurementFileItems", value);
-  if (!fileItemId) throw new Error("Invalid procurement file item ID");
+  if (!fileItemId)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Invalid procurement file item ID",
+    );
   return fileItemId;
 }
 
@@ -970,10 +1015,17 @@ function normalizeProcurementEmailThreadId(
   value: unknown,
 ) {
   if (typeof value !== "string") {
-    throw new Error("Procurement email thread ID is required");
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Procurement email thread ID is required",
+    );
   }
   const emailThreadId = ctx.db.normalizeId("procurementEmailThreads", value);
-  if (!emailThreadId) throw new Error("Invalid procurement email thread ID");
+  if (!emailThreadId)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Invalid procurement email thread ID",
+    );
   return emailThreadId;
 }
 
@@ -982,10 +1034,17 @@ function normalizeProcurementProposalId(
   value: unknown,
 ) {
   if (typeof value !== "string") {
-    throw new Error("Procurement proposal ID is required");
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Procurement proposal ID is required",
+    );
   }
   const id = ctx.db.normalizeId("procurementProposals", value);
-  if (!id) throw new Error("Invalid procurement proposal ID");
+  if (!id)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Invalid procurement proposal ID",
+    );
   return id;
 }
 
@@ -994,10 +1053,17 @@ function normalizeProcurementProposalReviewId(
   value: unknown,
 ) {
   if (typeof value !== "string") {
-    throw new Error("Procurement proposal review ID is required");
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Procurement proposal review ID is required",
+    );
   }
   const id = ctx.db.normalizeId("procurementProposalReviews", value);
-  if (!id) throw new Error("Invalid procurement proposal review ID");
+  if (!id)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Invalid procurement proposal review ID",
+    );
   return id;
 }
 
@@ -1006,15 +1072,23 @@ function normalizeProcurementPacketLinkId(
   value: unknown,
 ) {
   if (typeof value !== "string") {
-    throw new Error("Procurement packet link ID is required");
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Procurement packet link ID is required",
+    );
   }
   const id = ctx.db.normalizeId("procurementPacketLinks", value);
-  if (!id) throw new Error("Invalid procurement packet link ID");
+  if (!id)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Invalid procurement packet link ID",
+    );
   return id;
 }
 
 function procurementOutreachStatus(value: unknown) {
   switch (value) {
+    case "observed":
     case "request_sent":
     case "can_handle":
     case "cannot_handle":
@@ -1196,11 +1270,19 @@ async function cancelActiveRunsForThread(
   for (const run of runs) {
     if (run.modelContinuationStorageId)
       await ctx.storage.delete(run.modelContinuationStorageId);
-    const invocationKey = `operator:${String(run._id)}:${run.checkpoint?.iteration ?? 0}:0`;
-    await cancelRouterJobForInvocation(ctx, invocationKey);
-    await ctx.scheduler.runAfter(0, internal.actions.routerJobs.cancel, {
-      invocationKey,
-    });
+    const retry = run.checkpoint?.routerRetryCount
+      ? `:r${run.checkpoint.routerRetryCount}`
+      : "";
+    const invocationKeys = [
+      `operator:${String(run._id)}:${run.checkpoint?.iteration ?? 0}${retry}:0`,
+      `operator:${String(run._id)}:plan${retry}:0`,
+    ];
+    for (const invocationKey of invocationKeys) {
+      await cancelRouterJobForInvocation(ctx, invocationKey);
+      await ctx.scheduler.runAfter(0, internal.actions.routerJobs.cancel, {
+        invocationKey,
+      });
+    }
     await ctx.db.patch(run._id, {
       status: "cancelled",
       modelContinuationStorageId: undefined,
@@ -1595,7 +1677,7 @@ async function executeToolDomain(
           .query("organizations")
           .withIndex("deletion_type", (q) => q.eq("deletedAt", undefined))
           .take(1_000);
-    return organizations
+    const matches = organizations
       .filter(
         (organization) =>
           organization.type !== "broker" ||
@@ -1611,7 +1693,6 @@ async function executeToolDomain(
           right.score - left.score ||
           left.organization.name.localeCompare(right.organization.name),
       )
-      .slice(0, limit)
       .map(({ organization }) => ({
         orgId: organization._id,
         name: organization.name,
@@ -1623,6 +1704,21 @@ async function executeToolDomain(
         website: organization.website,
         brokerOrgId: organization.brokerOrgId,
       }));
+    const scanBounded =
+      requestedType === "client"
+        ? ["client", undefined].some(
+            (type) =>
+              organizations.filter((org) => org.type === type).length >= 500,
+          )
+        : organizations.length >= (requestedType ? 500 : 1_000);
+    return {
+      organizations: matches.slice(0, limit),
+      matchedInScan: matches.length,
+      scanned: organizations.length,
+      bounded: scanBounded || matches.length > limit,
+      scanBounded,
+      limit,
+    };
   }
 
   if (toolName === "get_organization") {
@@ -1737,7 +1833,7 @@ async function executeToolDomain(
       .query("policies")
       .withIndex("organization", (index) => index.eq("orgId", orgId))
       .take(2_000);
-    return policies
+    const matches = policies
       .filter((policy) => includeArchived || !policy.deletedAt)
       .filter((policy) => {
         if (!queryText) return true;
@@ -1754,7 +1850,6 @@ async function executeToolDomain(
             .includes(queryText),
         );
       })
-      .slice(0, limit)
       .map((policy) => ({
         policyId: policy._id,
         policyNumber: policy.policyNumber,
@@ -1767,6 +1862,14 @@ async function executeToolDomain(
         pipelineStatus: policy.pipelineStatus,
         archived: Boolean(policy.deletedAt),
       }));
+    return {
+      policies: matches.slice(0, limit),
+      matchedInScan: matches.length,
+      scanned: policies.length,
+      bounded: policies.length >= 2_000 || matches.length > limit,
+      scanBounded: policies.length >= 2_000,
+      limit,
+    };
   }
 
   if (toolName === "get_policy_status") {
@@ -2134,6 +2237,7 @@ async function executeToolDomain(
         ...(inspectProposals ? (["proposal"] as const) : []),
       ],
       bounded:
+        pipelineRuns.some((runs) => runs.length >= candidateLimit) ||
         candidates.length > results.length ||
         proposalResult.bounded ||
         results.length + proposalResult.issues.length > limit,
@@ -3284,6 +3388,7 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
     );
     await ctx.db.patch(auditId, {
       status: "failed",
+      output: boundedJson(failure),
       error: message.slice(0, 1_000),
       updatedAt: dayjs().valueOf(),
     });
@@ -4124,6 +4229,7 @@ async function confirmOperatorAction(
     });
     await ctx.db.patch(ledger._id, {
       status: "failed",
+      output: boundedJson(failure),
       error: failure.error.slice(0, 1_000),
       updatedAt: now,
     });
@@ -4332,6 +4438,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
     result: v.optional(v.any()),
     attachments: v.optional(v.array(operatorAttachmentValidator)),
     error: v.optional(v.string()),
+    noWriteCode: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
@@ -4376,11 +4483,16 @@ export const finishConfirmedActionToolInternal = internalMutation({
       ? { status: "succeeded" as const, result: args.result, idempotent: false }
       : executionOperatorToolFailure(
           payload.toolName as OperatorAgentToolName,
-          error,
+          args.noWriteCode
+            ? new NoWriteInputError(
+                args.noWriteCode,
+                error ?? "Input rejected before execution",
+              )
+            : error,
         );
     await ctx.db.patch(ledger._id, {
       status: succeeded ? "succeeded" : "failed",
-      output: succeeded ? boundedJson(args.result) : ledger.output,
+      output: succeeded ? boundedJson(args.result) : boundedJson(outcome),
       error,
       updatedAt: now,
     });
@@ -4459,7 +4571,11 @@ export const finishConfirmedActionToolInternal = internalMutation({
     if (run.status === "cancelled" || run.cancellationRequestedAt) {
       return { status: "cancelled" as const, result: outcome };
     }
-    if (!succeeded) {
+    if (
+      !succeeded &&
+      (run.executionKind !== "goal" ||
+        !isRecoverableOperatorToolFailure(outcome))
+    ) {
       const content = `Could not complete ${payload.summary}: ${error}`;
       await ctx.db.patch(run.agentMessageId, {
         content,
@@ -4502,7 +4618,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
             previous: run.checkpoint?.summary,
             audit: {
               usedTools: [payload.toolName],
-              completedTools: [payload.toolName],
+              completedTools: succeeded ? [payload.toolName] : [],
               toolCalls: [toolCall],
               workflowOutcomes: [],
             },
@@ -4566,7 +4682,7 @@ async function executeConfirmedActionTool(
     const message = error instanceof Error ? error.message : String(error);
     return await ctx.runMutation(
       internal.operatorAgent.finishConfirmedActionToolInternal,
-      { ...args, error: message },
+      { ...args, error: message, noWriteCode: operatorNoWriteCode(error) },
     );
   }
 }
@@ -5114,7 +5230,11 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
           idempotent: true,
         };
       }
-      throw new Error("Operator action is already in progress");
+      throw new Error(
+        existing.status === "failed"
+          ? "The same input already failed; correct the input or use another read. An identical call will not execute again."
+          : "Operator action is already in progress",
+      );
     }
     if (run.status !== "running" || run.cancellationRequestedAt) {
       throw new Error("Operator agent run is no longer active");
@@ -5209,6 +5329,18 @@ export const executeUnconfirmedActionToolInternal = internalAction({
         channel: args.channel,
         idempotencyKey: args.idempotencyKey,
       });
+      const readResult = recordValue(output.result);
+      if (
+        (args.toolName === "lookup_address" ||
+          args.toolName === "web_search") &&
+        readResult?.status === "unavailable"
+      ) {
+        throw new Error(
+          typeof readResult.message === "string"
+            ? readResult.message
+            : "The retrieval service is temporarily unavailable.",
+        );
+      }
       await ctx.runMutation(
         internal.operatorAgent.finishUnconfirmedActionToolInternal,
         {
@@ -5627,7 +5759,7 @@ export const requestToolConfirmationInternal = internalMutation({
         ) {
           return preflightOperatorToolFailure(
             args.toolName as OperatorAgentToolName,
-            "Operator confirmation is no longer active; retry with a new idempotency key",
+            "Operator confirmation is no longer active. Do not retry this action; use the existing approval flow.",
           );
         }
         return {
@@ -5636,11 +5768,17 @@ export const requestToolConfirmationInternal = internalMutation({
           summary: confirmation.payload.summary,
         };
       }
-      return preflightOperatorToolFailure(
+      const previousFailure = parseStoredOutput(existing.output);
+      if (
+        existing.status === "failed" &&
+        isRecoverableOperatorToolFailure(previousFailure)
+      )
+        return previousFailure;
+      return executionOperatorToolFailure(
         args.toolName as OperatorAgentToolName,
         existing.status === "pending"
           ? "Operator action is already in progress"
-          : `Operator action is ${existing.status}; retry with a new idempotency key`,
+          : `Operator action is ${existing.status}. Do not replay this input; inspect authoritative state and report the prior outcome.`,
       );
     }
     if (run.cancellationRequestedAt || run.status !== "running") {
@@ -5915,6 +6053,77 @@ export const completeRunInternal = internalMutation({
         ? ("waiting_confirmation" as const)
         : ("completed" as const),
     };
+  },
+});
+
+/** Preflight decisions belong to one current run, never to a thread-wide cache. */
+export const recordPlanningAssessmentInternal = internalMutation({
+  args: {
+    runId: v.id("operatorAgentRuns"),
+    expectedRunnerAttempt: v.number(),
+    expectedCheckpointIteration: v.number(),
+    assessment: operatorPlanningAssessmentValidator,
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (
+      !run ||
+      run.status !== "running" ||
+      run.cancellationRequestedAt ||
+      run.runnerAttempt !== args.expectedRunnerAttempt ||
+      (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration
+    )
+      return false;
+    if (run.planningAssessment) return true;
+    const probabilities = Object.values(args.assessment.probabilities);
+    if (
+      probabilities.some(
+        (p) => p !== null && (!Number.isFinite(p) || p < 0 || p > 1),
+      )
+    )
+      throw new Error("Invalid planning probability");
+    if (
+      !args.assessment.required &&
+      probabilities.some((p) => p === null || p > 1 - jevProceedThreshold())
+    )
+      throw new Error("Uncertain workflows require a plan");
+    await ctx.db.patch(run._id, {
+      planningAssessment: args.assessment,
+      updatedAt: dayjs().valueOf(),
+    });
+    return true;
+  },
+});
+
+export const recordExecutionPlanInternal = internalMutation({
+  args: {
+    runId: v.id("operatorAgentRuns"),
+    expectedRunnerAttempt: v.number(),
+    expectedCheckpointIteration: v.number(),
+    plan: operatorExecutionPlanValidator,
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (
+      !run ||
+      run.status !== "running" ||
+      run.cancellationRequestedAt ||
+      run.runnerAttempt !== args.expectedRunnerAttempt ||
+      (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration
+    )
+      return false;
+    if (!run.planningAssessment?.required)
+      throw new Error("Planning assessment required");
+    if (run.executionPlan) return true;
+    const message = await ctx.db.get(run.agentMessageId);
+    if (!message || message.status !== "processing") return false;
+    const plan = operatorExecutionPlanSchema.parse(args.plan);
+    await ctx.db.patch(run._id, {
+      executionPlan: plan,
+      updatedAt: dayjs().valueOf(),
+    });
+    await ctx.db.patch(message._id, { executionPlan: plan });
+    return true;
   },
 });
 

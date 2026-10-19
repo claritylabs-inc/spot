@@ -14,6 +14,25 @@ function serializeToolAuditValue(
 ): string | undefined {
   if (value === undefined) return undefined;
   try {
+    if (
+      value &&
+      typeof value === "object" &&
+      "failure" in value &&
+      value.failure &&
+      typeof value.failure === "object"
+    ) {
+      const failure = value.failure as Record<string, unknown>;
+      return JSON.stringify({
+        status: "failed",
+        code: failure.code,
+        recoverable: failure.recoverable,
+        writeState: failure.writeState,
+        guidance:
+          typeof failure.guidance === "string"
+            ? failure.guidance.slice(0, 220)
+            : undefined,
+      }).slice(0, 500);
+    }
     if (preserveContinuation && value && typeof value === "object") {
       const wrapped = "result" in value ? value.result : value;
       if (
@@ -82,12 +101,18 @@ export function collectToolAudit(result: unknown): AgentToolAudit {
     const name = resultPart.toolName ?? resultPart.name;
     if (typeof name !== "string" || !name) return;
     addUsedTool(name);
-    if (!seenCompletedTools.has(name)) {
+    const output =
+      resultPart.output ?? resultPart.result ?? resultPart.value ?? undefined;
+    const failed =
+      resultPart.type === "tool-error" ||
+      (output &&
+        typeof output === "object" &&
+        "status" in output &&
+        output.status === "failed");
+    if (!failed && !seenCompletedTools.has(name)) {
       seenCompletedTools.add(name);
       completedTools.push(name);
     }
-    const output =
-      resultPart.output ?? resultPart.result ?? resultPart.value ?? undefined;
     if (output && typeof output === "object" && "workflowOutcome" in output) {
       const workflowOutcome = parseWorkflowOutcome(
         (output as Record<string, unknown>).workflowOutcome,
@@ -98,7 +123,15 @@ export function collectToolAudit(result: unknown): AgentToolAudit {
       .reverse()
       .find((candidate) => candidate.name === name && !candidate.output);
     if (target) {
-      target.output = serializeToolAuditValue(output, true);
+      target.output = serializeToolAuditValue(
+        resultPart.type === "tool-error"
+          ? {
+              status: "failed",
+              error: String(resultPart.error ?? "Tool call failed"),
+            }
+          : output,
+        true,
+      );
     }
   };
 
@@ -112,6 +145,12 @@ export function collectToolAudit(result: unknown): AgentToolAudit {
       if (call && typeof call === "object") {
         addToolCall(call as Record<string, unknown>);
       }
+    }
+    for (const part of Array.isArray(stepRecord.content)
+      ? stepRecord.content
+      : []) {
+      if (part && typeof part === "object" && part.type === "tool-error")
+        addToolResult(part);
     }
     const results = Array.isArray(stepRecord.toolResults)
       ? stepRecord.toolResults

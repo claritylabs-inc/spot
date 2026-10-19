@@ -16,6 +16,8 @@ import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { ChatMessageBubble, type ChatChannel } from "./message-bubble";
+import { ChatDisclosure } from "./disclosure";
+import type { OperatorExecutionPlan } from "@/convex/lib/operatorRunPlan";
 import { ChatErrorDetails } from "./error-details";
 import type { RouterJobFailure } from "@/convex/lib/routerJobFailure";
 import {
@@ -59,6 +61,7 @@ export function ChatAssistantTurn({
   tools,
   toolCalls,
   activity,
+  executionPlan,
   failure,
   routerRequestId,
   errorCode,
@@ -85,6 +88,7 @@ export function ChatAssistantTurn({
   toolCalls?: { name: string; input?: string }[];
   /** Observed stages and tool status; retained as evidence once settled. */
   activity?: ChatActivity;
+  executionPlan?: OperatorExecutionPlan;
   /** Operator-only diagnostics for a failed turn; ignored for other audiences. */
   failure?: RouterJobFailure;
   routerRequestId?: string;
@@ -143,6 +147,32 @@ export function ChatAssistantTurn({
     );
   return (
     <div className="w-full">
+      {audience === "operator" && executionPlan ? (
+        <ChatDisclosure
+          summary={<span>Plan · {executionPlan.steps.length} steps</span>}
+          className="mb-2 max-w-3xl text-muted-foreground"
+        >
+          <p className="mb-2 text-foreground">{executionPlan.summary}</p>
+          {executionPlan.targets.length ? (
+            <p className={`mb-2 break-words ${typeStyle("body.default")}`}>
+              Targets: {executionPlan.targets.join(", ")}
+            </p>
+          ) : null}
+          <ol
+            className={`list-decimal space-y-2 pl-5 ${typeStyle("body.default")}`}
+          >
+            {executionPlan.steps.map((step, index) => (
+              <li key={index} className="break-words">
+                <p className={`text-foreground ${typeStyle("body.medium")}`}>
+                  {step.title}
+                </p>
+                <p>{step.detail}</p>
+                <p className="mt-1">Done when: {step.completionCriteria}</p>
+              </li>
+            ))}
+          </ol>
+        </ChatDisclosure>
+      ) : null}
       {showThinking ? (
         <ThinkingSummary
           tools={tools}
