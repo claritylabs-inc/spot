@@ -40,7 +40,24 @@ export function operatorNoWriteCode(error: unknown): string | undefined {
 }
 
 // These failures require a human or an existing approval, never model retries.
-function terminalCode(message: string) {
+function terminalCode(error: unknown) {
+  if (error && typeof error === "object" && "data" in error) {
+    const data = error.data;
+    if (
+      data &&
+      typeof data === "object" &&
+      "category" in data &&
+      (data.category === "authentication" || data.category === "permission")
+    )
+      return "not_authorized";
+  }
+  const message = errorMessage(error);
+  if (
+    /"category"\s*:\s*"(?:authentication|permission)"|session (?:has )?expired|stop impersonating/i.test(
+      message,
+    )
+  )
+    return "not_authorized";
   if (
     /access is disabled|credentials are unavailable|integration.*(?:disabled|not configured)|Approve all is no longer enabled/i.test(
       message,
@@ -73,7 +90,7 @@ function preflightFailure(
   confirmed: boolean,
 ): OperatorToolFailedOutcome {
   const message = errorMessage(error);
-  const terminal = terminalCode(message);
+  const terminal = terminalCode(error);
   const issues =
     error instanceof z.ZodError
       ? error.issues.slice(0, 10).map((issue) => ({
@@ -125,7 +142,7 @@ export function executionOperatorToolFailure(
   error: unknown,
 ): OperatorToolFailedOutcome {
   const message = errorMessage(error);
-  const terminal = terminalCode(message);
+  const terminal = terminalCode(error);
   const knownNoWrite = operatorNoWriteCode(error);
   // Attachment retrieval is catalogued as read but stages a file in the thread.
   const readOnly =
