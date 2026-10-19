@@ -1,4 +1,10 @@
 import {
+  operatorPlanningAssessmentValidator,
+  operatorExecutionPlanValidator,
+  operatorExecutionPlanSchema,
+} from "./lib/operatorRunPlan";
+import { jevProceedThreshold } from "./lib/jevThreshold";
+import {
   prepareApplicationToolUpdate,
   updateApplicationByOperator,
 } from "./procurementRequests";
@@ -1195,11 +1201,19 @@ async function cancelActiveRunsForThread(
   for (const run of runs) {
     if (run.modelContinuationStorageId)
       await ctx.storage.delete(run.modelContinuationStorageId);
-    const invocationKey = `operator:${String(run._id)}:${run.checkpoint?.iteration ?? 0}:0`;
-    await cancelRouterJobForInvocation(ctx, invocationKey);
-    await ctx.scheduler.runAfter(0, internal.actions.routerJobs.cancel, {
-      invocationKey,
-    });
+    const retry = run.checkpoint?.routerRetryCount
+      ? `:r${run.checkpoint.routerRetryCount}`
+      : "";
+    const invocationKeys = [
+      `operator:${String(run._id)}:${run.checkpoint?.iteration ?? 0}${retry}:0`,
+      `operator:${String(run._id)}:plan${retry}:0`,
+    ];
+    for (const invocationKey of invocationKeys) {
+      await cancelRouterJobForInvocation(ctx, invocationKey);
+      await ctx.scheduler.runAfter(0, internal.actions.routerJobs.cancel, {
+        invocationKey,
+      });
+    }
     await ctx.db.patch(run._id, {
       status: "cancelled",
       modelContinuationStorageId: undefined,
@@ -5909,6 +5923,77 @@ export const completeRunInternal = internalMutation({
         ? ("waiting_confirmation" as const)
         : ("completed" as const),
     };
+  },
+});
+
+/** Preflight decisions belong to one current run, never to a thread-wide cache. */
+export const recordPlanningAssessmentInternal = internalMutation({
+  args: {
+    runId: v.id("operatorAgentRuns"),
+    expectedRunnerAttempt: v.number(),
+    expectedCheckpointIteration: v.number(),
+    assessment: operatorPlanningAssessmentValidator,
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (
+      !run ||
+      run.status !== "running" ||
+      run.cancellationRequestedAt ||
+      run.runnerAttempt !== args.expectedRunnerAttempt ||
+      (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration
+    )
+      return false;
+    if (run.planningAssessment) return true;
+    const probabilities = Object.values(args.assessment.probabilities);
+    if (
+      probabilities.some(
+        (p) => p !== null && (!Number.isFinite(p) || p < 0 || p > 1),
+      )
+    )
+      throw new Error("Invalid planning probability");
+    if (
+      !args.assessment.required &&
+      probabilities.some((p) => p === null || p > 1 - jevProceedThreshold())
+    )
+      throw new Error("Uncertain workflows require a plan");
+    await ctx.db.patch(run._id, {
+      planningAssessment: args.assessment,
+      updatedAt: dayjs().valueOf(),
+    });
+    return true;
+  },
+});
+
+export const recordExecutionPlanInternal = internalMutation({
+  args: {
+    runId: v.id("operatorAgentRuns"),
+    expectedRunnerAttempt: v.number(),
+    expectedCheckpointIteration: v.number(),
+    plan: operatorExecutionPlanValidator,
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (
+      !run ||
+      run.status !== "running" ||
+      run.cancellationRequestedAt ||
+      run.runnerAttempt !== args.expectedRunnerAttempt ||
+      (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration
+    )
+      return false;
+    if (!run.planningAssessment?.required)
+      throw new Error("Planning assessment required");
+    if (run.executionPlan) return true;
+    const message = await ctx.db.get(run.agentMessageId);
+    if (!message || message.status !== "processing") return false;
+    const plan = operatorExecutionPlanSchema.parse(args.plan);
+    await ctx.db.patch(run._id, {
+      executionPlan: plan,
+      updatedAt: dayjs().valueOf(),
+    });
+    await ctx.db.patch(message._id, { executionPlan: plan });
+    return true;
   },
 });
 

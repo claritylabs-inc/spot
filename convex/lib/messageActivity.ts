@@ -22,6 +22,8 @@ export const messageActivityToolStatusValidator = v.union(
 export const messageActivityStageValidator = v.object({
   stageId: v.string(),
   stage: v.union(
+    v.literal("assessing_workflow"),
+    v.literal("planning"),
     v.literal("preparing_context"),
     v.literal("screening_request"),
     v.literal("selecting_tools"),
