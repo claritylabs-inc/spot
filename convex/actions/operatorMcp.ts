@@ -1,5 +1,6 @@
+"use node";
+
 import { NoWriteInputError } from "../lib/noWriteInputError";
-("use node");
 
 import { getSessionUserId as getAuthUserId } from "../lib/sessionIdentity";
 import { v } from "convex/values";
