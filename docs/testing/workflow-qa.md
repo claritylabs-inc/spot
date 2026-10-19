@@ -1298,3 +1298,17 @@ Artifacts: `.context/trace-ux/qa.mjs`, `browser-qa.txt`, `planning.png`,
 `search.png`, `multi-desktop.png`, and `multi-mobile-dark.png` (workspace-local).
 Existing 127 tests pass; no new unit tests or Vercel preview testing. The release
 PR records the separate authenticated production acceptance after deployment.
+
+Production acceptance on release `1105c245` (PR #487): authenticated cloud Chrome
+at `/operator/brokers` completed a read-only Allianz/Chubb research turn with a
+required plan and two successful searches. Websocket samples recorded the first
+`2 websites` context while running before any audit calls existed, and the later
+`allianz.com` context while running. Both circular favicon treatments rendered;
+keyboard focus revealed both multi-site domains. Artifacts are
+`.context/trace-ux/live-evidence.json`, `live-planning.png`, `live-research.png`
+and `live-complete.png`. No business records were changed. Live review prompted
+a final presentation reduction: omit generic completed stage rows when that
+stage has a factual outcome, keep the plan row to its step count, and use
+singular count labels. The local browser scenarios were repeated for this
+reduction, including an extra generic completed model/tools pair alongside the
+factual outcomes; these rows disappear without inflating the duplicate count.
