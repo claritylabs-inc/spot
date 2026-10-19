@@ -1103,5 +1103,32 @@ email-code login; keep OTPs and browser sessions out of tracked artifacts.
 4. Check narrow viewport layout and streaming/activity preferences. Do not replay
    the original broker-creation request or send external messages during QA.
 
-Status: in progress. Evidence is under `.context/progress-followup/`; authenticated
-production checks and final outcomes will be recorded after the release.
+Status: passed against production Spot `3cf9c46a` and cl-router `ca325298`.
+Headed cloud Chrome used the ordinary email-code login. No Vercel preview or
+business write was used. Read-only broker lookup and public website research
+exercised family expansion and the web-search tool.
+
+- Before: public research repeatedly failed with provider 400; the diagnostic
+  rollout narrowed this to `provider_400_param_tool_choice`. The OpenAI adapter
+  treated the consumer function `web_search` as a hosted-tool choice. Router
+  PR71 requires the single selected function without using that reserved name
+  as the choice type. Deterministic rejections now stop after one attempt.
+- After: run `q97xms99j67jbkxa1tn3rwb3pn8gj1px` completed with three web-search
+  calls and a sourced answer. Seventeen observed stages survived browser reload;
+  settled activity was collapsed and no running indicator remained.
+- The real failed turn exposed a descriptive summary and collapsed Error
+  details. Expanding and copying preserved safe request/message references,
+  retry disposition and the provider-attempt code. Narrow viewport overflow
+  passed. Turning Show thinking off retained Error details; the original
+  preference was restored.
+- Existing Spot suite: 117 tests passed. Router full check and both production
+  release workflows passed. Shared-component browser checks also covered
+  streaming disabled, interrupted activity and merged legacy tool history.
+
+Evidence: `.context/progress-followup/browser/` contains
+`live-success-result.json`, `live-error-result.json`,
+`production-success.png`, `production-error-expanded.png` and
+`production-error-mobile.png`. These workspace artifacts contain no OTP or
+browser-session credentials. The failure reference is
+`81daa5ed-1d3c-49dc-b514-0bc43736532a`; successful request reference
+`137f3caf-77ad-4752-aa00-c517cadce071`.

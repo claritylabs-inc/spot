@@ -142,3 +142,10 @@ router progress callbacks. A transport rollback must deploy a Spot consumer that
 omits `stream: true` and drain in-flight jobs before removing router support.
 
 Local operator troubleshooting: a successful web request does not imply the scheduled agent completed. Inspect `operatorAgentRuns.lastError` and the stored router failure. `routerJobClient` preserves typed control-plane rejections, including callback-host rejection, instead of only the HTTP status. Local Spot may use the production router with a separately issued inference client token and an exact HTTPS callback host approved on both router Convex and its Railway worker. Provider credentials remain router-owned.
+
+Operator failures retain an optional bounded structured `failure`: a safe code,
+retry/execution flags, request reference and at most four provider-attempt
+summaries. The chat shows a categorized explanation plus collapsed, copyable
+Error details independently of Show thinking. Diagnostics never include raw
+provider bodies, prompts, credentials or tool inputs/outputs. Legacy failed
+messages expose only an allowlisted code and their message reference.
