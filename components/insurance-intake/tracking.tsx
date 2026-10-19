@@ -5,7 +5,7 @@ import {
   OperationalLabelValueRow,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { IntakeReviewChanges } from "./review-changes";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type ReactNode, type MouseEvent } from "react";
 import { IntakeCompanyReview, IntakeRequestReview } from "./company-review";
 import { api } from "@/convex/_generated/api";
 import { useQuery } from "convex/react";
@@ -13,6 +13,8 @@ import type { FunctionReturnType } from "convex/server";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { PillButton } from "@/components/ui/pill-button";
 import { IntakeFrame } from "./frame";
+import { useSearchParams } from "next/navigation";
+import { withQuoteProvider } from "@/lib/quote-provider";
 import { typeStyle } from "@/lib/typography";
 import {
   type IntakeDetails,
@@ -42,6 +44,7 @@ export function IntakeTracking({
   footer?: ReactNode;
   onEdit?: (step: number) => void;
 }) {
+  const params = useSearchParams();
   useEffect(() => {
     if (!data.submitted) return;
     const key = `spot:intake-submitted-scroll:${data.requestId}`;
@@ -222,8 +225,8 @@ export function IntakeTracking({
                     ) : (
                       <PillButton
                         variant="ghost"
-                        href={`/intake?request=${data.requestId}&step=${item.step}&section=${item.step}`}
-                        onClick={(event) => event.stopPropagation()}
+                        href={withQuoteProvider(`/intake?request=${data.requestId}&step=${item.step}&section=${item.step}`, params.get("provider"))}
+                        onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
                       >
                         Edit
                       </PillButton>

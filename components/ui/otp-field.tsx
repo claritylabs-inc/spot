@@ -5,8 +5,7 @@ import { OTPField } from "@base-ui/react/otp-field";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
 
-const slotClass =
-  `min-w-0 flex-1 aspect-square max-h-14 rounded-lg border border-input bg-popover text-center text-foreground transition-colors focus:outline-none focus:border-border-focus focus:ring-1 focus:ring-border-emphasized disabled:bg-foreground/[0.02] disabled:text-muted-foreground/60 ${typeStyle("technical.otp")}`;
+const slotClass = `min-w-0 flex-1 aspect-square max-h-14 rounded-lg border border-input bg-popover text-center text-foreground transition-colors focus:outline-none focus:border-border-focus focus:ring-1 focus:ring-border-emphasized disabled:bg-foreground/[0.02] disabled:text-muted-foreground/60 ${typeStyle("technical.otp")}`;
 
 export function OtpField({
   value,
@@ -55,7 +54,7 @@ export function OtpField({
       onValueChange={onValueChange}
       disabled={disabled}
       required={required}
-      className={cn("flex gap-2", className)}
+      className={cn("ph-no-capture flex gap-2", className)}
     >
       {Array.from({ length }, (_, index) => (
         <OTPField.Input
