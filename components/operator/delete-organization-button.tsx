@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@claritylabs-inc/ui/components/dialog";
 import { PillButton } from "@/components/ui/pill-button";
+import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 export function DeleteOrganizationButton({
@@ -86,7 +87,7 @@ export function DeleteOrganizationButton({
             </DialogDescription>
           </DialogHeader>
           {type === "client" ? (
-            <label className="flex items-start gap-2 text-sm">
+            <label className={`flex items-start gap-2 ${typeStyle("body.default")}`}>
               <input
                 type="checkbox"
                 className="mt-0.5"

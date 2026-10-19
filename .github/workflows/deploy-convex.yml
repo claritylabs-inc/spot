@@ -132,13 +132,33 @@ jobs:
     if: always() && github.ref_name == 'main'
     name: release-ready-production
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    needs: deploy
+    needs:
+      - validate-root
+      - validate-packages
+      - deploy
     steps:
-      - name: Require Convex deployment success
-        if: needs.deploy.result != 'success'
+      - name: Require release prerequisites
+        env:
+          ROOT_RESULT: ${{ needs.validate-root.result }}
+          PACKAGES_RESULT: ${{ needs.validate-packages.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
         run: |
-          echo "Convex deployment result was ${{ needs.deploy.result }}"
-          exit 1
+          {
+            echo "### Release prerequisites"
+            echo "| Prerequisite | Result |"
+            echo "| --- | --- |"
+            echo "| Root validation | $ROOT_RESULT |"
+            echo "| Package validation | $PACKAGES_RESULT |"
+            echo "| Convex deployment | $DEPLOY_RESULT |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$ROOT_RESULT" != "success" || "$PACKAGES_RESULT" != "success" ]]; then
+            echo "::error::Release validation did not pass (root: $ROOT_RESULT, packages: $PACKAGES_RESULT). Convex deployment: $DEPLOY_RESULT. Inspect the validation jobs for the underlying failure."
+            exit 1
+          fi
+          if [[ "$DEPLOY_RESULT" != "success" ]]; then
+            echo "::error::Convex deployment did not succeed: $DEPLOY_RESULT"
+            exit 1
+          fi
 
       - uses: useblacksmith/checkout@v1
 

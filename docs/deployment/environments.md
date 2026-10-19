@@ -41,8 +41,11 @@ completion has been verified on all deployed targets.
 `.github/workflows/deploy-convex.yml` owns readiness for every commit pushed to
 `main`; it is not path-filtered. Root lint, tests, Next.js typechecking, Convex
 typechecking, and the production build run as five parallel `validate-root`
-matrix jobs alongside worker and package validation. Each root job checks shared
-package versions. Deployment requires every validation job to pass. After
+matrix jobs alongside CLI package validation. Deployment requires every validation
+job to pass. A failed or cancelled validation skips Convex deployment and blocks
+Vercel promotion; skipped deployment is not evidence of an unchanged backend.
+The release-ready job reports all prerequisite results in its summary and
+identifies validation failures separately from deployment failures. After
 validation, the workflow:
 
 1. deploys the commit's Convex functions to production;
