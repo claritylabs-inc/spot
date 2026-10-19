@@ -268,7 +268,42 @@ export function recoveryRequiresAnotherIteration(
 }
 
 export const RECOVERY_NOTICE_MESSAGE =
-  "[Spot runtime notice, not from the operator] A tool call failed before any write started and is not resolved yet. Do not give a final answer. Correct the input or refresh the referenced records, then call the tool again, or use a read-only alternative.";
+  "[Spot runtime notice, not from the operator] An earlier tool call failed before any write started and is unresolved. Your last reply was not delivered. If the failure can be corrected, call the tool again with corrected input taken from authoritative tool results, refreshing the record with a read-only tool if needed. If the authoritative identifier or input is missing and the available read-only tools cannot find it, do not guess or invent calls: say exactly what is missing. Make tool calls only through the tool interface, never as written text.";
+
+/**
+ * Failures still unresolved once this step is folded in: the episode that is
+ * still pending, or the one this step just exhausted. A step that resolved a
+ * tool's failure leaves nothing for that tool.
+ */
+export function unresolvedAfterStep(
+  previous: OperatorRecoveryState,
+  next: OperatorRecoveryState,
+  stepHadCalls: boolean,
+): RecoveryFailure[] {
+  if (next.pending.length > 0) return next.pending;
+  const added = next.exhausted.filter(
+    (entry) => !previous.exhausted.some((e) => e.toolName === entry.toolName),
+  );
+  if (added.length > 0) return added;
+  // At capacity the additions are not stored; with no calls nothing could
+  // have resolved, so the earlier failures are the unresolved ones.
+  return next.stopped && !previous.stopped && !stepHadCalls
+    ? previous.pending
+    : [];
+}
+
+/** Grounded closing report from the structured failures, not from model prose. */
+export function recoveryBlockerReport(
+  unresolved: readonly RecoveryFailure[],
+): string {
+  const lines = unresolved
+    .map(
+      (item) =>
+        `- ${item.toolName} (${item.code || "unknown error"}): ${item.guidance}`,
+    )
+    .join("\n");
+  return `I couldn't complete these calls after three corrective attempts. Each failure reported that no write started:\n${lines}\nThese failures do not establish whether matching records exist. Other work in this run may have completed; check the tool activity before retrying.`;
+}
 
 export function recoveryPromptBlock(state: OperatorRecoveryState): string {
   const parts: string[] = [];
@@ -281,7 +316,7 @@ export function recoveryPromptBlock(state: OperatorRecoveryState): string {
         )
         .join(
           "\n",
-        )}\nCorrect the input using authoritative tool results, refresh the referenced records, or use a read-only alternative, then call the tool again. A rejected or invalid search or lookup proves nothing about whether a match exists; never say a target has no match unless a valid search returned none. Do not claim these targets are done. Do not retry authorization failures, denied approvals, or outcomes with unknown side effects. Do not finish with a final answer while attempts remain unless the failing work is complete.`,
+        )}\nCorrect the input using authoritative tool results, refresh the referenced records, or use a read-only alternative, then call the tool again. A rejected or invalid search or lookup proves nothing about whether a match exists; never say a target has no match unless a valid search returned none. Do not claim these targets are done. Do not retry authorization failures, denied approvals, or outcomes with unknown side effects. If the authoritative identifier or input is missing and cannot be found with read-only tools, do not guess: say exactly what is missing. A reply without a tool call is held back and uses one attempt; when attempts run out the run ends with a summary of the unresolved calls.`,
     );
   }
   if (state.stopped) {
