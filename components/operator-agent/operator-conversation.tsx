@@ -52,7 +52,11 @@ const SETTLED_CONFIRMATION_STATUS: Record<
   cancelled: { label: "Cancelled", tone: "neutral", indicator: "cancelled" },
   expired: { label: "Expired", tone: "warning" },
   superseded: { label: "Superseded", tone: "neutral", indicator: "inactive" },
-  unavailable: { label: "No longer available", tone: "neutral", indicator: "inactive" },
+  unavailable: {
+    label: "No longer available",
+    tone: "neutral",
+    indicator: "inactive",
+  },
 };
 
 function operatorConfirmationStatus(
@@ -60,13 +64,18 @@ function operatorConfirmationStatus(
 ): { label: string } & StatusPresentation {
   if (confirmation.state === "approved") {
     return {
-      label: confirmation.approvalMode === "automatic" ? "Auto-approved" : "Approved",
+      label:
+        confirmation.approvalMode === "automatic"
+          ? "Auto-approved"
+          : "Approved",
       tone: "success",
     };
   }
   if (confirmation.state === "pending") {
     return {
-      label: confirmation.actionable ? "Approval required" : "Awaiting approval",
+      label: confirmation.actionable
+        ? "Approval required"
+        : "Awaiting approval",
       tone: "warning",
       indicator: "waiting",
     };
@@ -101,7 +110,9 @@ function groupOperatorConfirmations(
   return groups;
 }
 
-type RenderConfirmation = (confirmation: OperatorAgentConfirmation) => ReactNode;
+type RenderConfirmation = (
+  confirmation: OperatorAgentConfirmation,
+) => ReactNode;
 
 function OperatorMessageFooter({
   message,
@@ -159,7 +170,10 @@ function OperatorMessageFooter({
                 )}
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuItem disabled={disabled} onClick={() => rerun(false)}>
+                <DropdownMenuItem
+                  disabled={disabled}
+                  onClick={() => rerun(false)}
+                >
                   Rerun
                 </DropdownMenuItem>
                 {message.rerun.withErrorContext ? (
@@ -219,8 +233,14 @@ function EmptyThread({
       items={[
         ...intents,
         ...prompts
-          .filter((prompt) => !intents.some((intent) => intent.label === prompt.label))
-          .map((prompt) => ({ id: `prompt:${prompt.label}`, label: prompt.label })),
+          .filter(
+            (prompt) =>
+              !intents.some((intent) => intent.label === prompt.label),
+          )
+          .map((prompt) => ({
+            id: `prompt:${prompt.label}`,
+            label: prompt.label,
+          })),
       ].slice(0, 5)}
       pendingId={launchingIntentId}
       onSelect={(id) => {
@@ -256,7 +276,9 @@ function OperatorMessageRow({
         ? "Task stopped."
         : "");
   const attachments = message.attachments?.length ? (
-    <ChatAttachmentList className="mt-2" size="compact"
+    <ChatAttachmentList
+      className="mt-2"
+      size="compact"
       operatorThreadId={threadId}
       attachments={message.attachments}
     />
@@ -271,6 +293,10 @@ function OperatorMessageRow({
         tools={message.usedTools}
         toolCalls={message.toolCalls}
         activity={message.activity}
+        failure={message.failure}
+        errorCode={message.errorCode}
+        messageReference={message.id}
+        routerRequestId={message.routerRequestId}
         audience="operator"
         content={content}
         channel={bubbleChannel}
@@ -300,18 +326,20 @@ function OperatorMessageRow({
           className="size-3 shrink-0 text-muted-foreground/45"
         />
       }
-      body={emailBody ? (
-        <OperatorEmailMessage message={message} attachments={attachments} />
-      ) : !content ? null : message.channel === "slack" ? (
-        <ProseMarkdown sourceFormat="slack-mrkdwn" gfm breaks>
-          {content}
-        </ProseMarkdown>
-      ) : (
-        <p className="whitespace-pre-wrap wrap-anywhere">
-          <MessageContextTag context={message.pageContext} />
-          {content}
-        </p>
-      )}
+      body={
+        emailBody ? (
+          <OperatorEmailMessage message={message} attachments={attachments} />
+        ) : !content ? null : message.channel === "slack" ? (
+          <ProseMarkdown sourceFormat="slack-mrkdwn" gfm breaks>
+            {content}
+          </ProseMarkdown>
+        ) : (
+          <p className="whitespace-pre-wrap wrap-anywhere">
+            <MessageContextTag context={message.pageContext} />
+            {content}
+          </p>
+        )
+      }
       attachments={emailBody ? null : attachments}
     />
   );
@@ -398,14 +426,21 @@ export function OperatorConversation({
       ) : (
         entries.map((entry) => {
           if (entry.kind === "tool_calls") {
-            return <OperatorToolActivityGroup key={entry.activities[0].request.id} activities={entry.activities} />;
+            return (
+              <OperatorToolActivityGroup
+                key={entry.activities[0].request.id}
+                activities={entry.activities}
+              />
+            );
           }
           const { request: message, response, confirmations } = entry.activity;
           const settledAnswer =
             message.role === "assistant" &&
             message.status !== "processing" &&
             !message.isDirectToolRequest;
-          const renderConfirmation = (confirmation: OperatorAgentConfirmation) => (
+          const renderConfirmation = (
+            confirmation: OperatorAgentConfirmation,
+          ) => (
             <div key={confirmation.id} className="w-full">
               {confirmationCard(confirmation)}
               {message.isDirectToolRequest && !isAutoApproved(confirmation) ? (
@@ -433,7 +468,9 @@ export function OperatorConversation({
                   ) : null}
                   {[message, ...(response ? [response] : [])].map((item) =>
                     item.attachments?.length ? (
-                      <ChatAttachmentList className="mt-2" size="compact"
+                      <ChatAttachmentList
+                        className="mt-2"
+                        size="compact"
                         key={item.id}
                         operatorThreadId={threadId}
                         attachments={item.attachments}
@@ -447,8 +484,12 @@ export function OperatorConversation({
                   message={message}
                   showSender={multipleSenders}
                   onFollowUp={onFollowUp}
-                  presentationDisabled={presentationDisabled || hasPendingConfirmation}
-                  working={message.status === "processing" && !hasPendingConfirmation}
+                  presentationDisabled={
+                    presentationDisabled || hasPendingConfirmation
+                  }
+                  working={
+                    message.status === "processing" && !hasPendingConfirmation
+                  }
                 />
               )}
               {settledAnswer ? (
@@ -461,7 +502,9 @@ export function OperatorConversation({
               ) : null}
               {groupOperatorConfirmations(
                 settledAnswer
-                  ? confirmations.filter((confirmation) => !isAutoApproved(confirmation))
+                  ? confirmations.filter(
+                      (confirmation) => !isAutoApproved(confirmation),
+                    )
                   : confirmations,
               ).map((group) =>
                 isAutoApproved(group[0]) ? (
@@ -470,17 +513,23 @@ export function OperatorConversation({
                     summaryClassName="text-muted-foreground hover:text-foreground"
                     summary={
                       <span>
-                        {group.length} {group.length === 1 ? "task" : "tasks"} auto-approved
+                        {group.length} {group.length === 1 ? "task" : "tasks"}{" "}
+                        auto-approved
                       </span>
                     }
                   >
-                    <div className="space-y-2">{group.map(renderConfirmation)}</div>
+                    <div className="space-y-2">
+                      {group.map(renderConfirmation)}
+                    </div>
                   </ChatDisclosure>
                 ) : (
-                  <Fragment key={group[0].id}>{renderConfirmation(group[0])}</Fragment>
+                  <Fragment key={group[0].id}>
+                    {renderConfirmation(group[0])}
+                  </Fragment>
                 ),
               )}
-              {message.isDirectToolRequest && confirmations.some(isAutoApproved) ? (
+              {message.isDirectToolRequest &&
+              confirmations.some(isAutoApproved) ? (
                 <OperatorToolActivity
                   request={message}
                   response={response}

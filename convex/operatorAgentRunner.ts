@@ -35,6 +35,8 @@ import {
   toolOutcomeStatus,
   type MessageActivityUpdate,
 } from "./lib/messageActivity";
+import { traceStage } from "./lib/agentActivityTrace";
+import { describeAgentFailure } from "./lib/agentFailureReason";
 import {
   buildOperatorRunCheckpointSummary,
   shouldContinueOperatorRun,
@@ -361,79 +363,6 @@ export const run = internalAction({
       routerRetryCount = run.checkpoint?.routerRetryCount ?? 0;
       const runChannel = operatorChannel(thread.channel);
       const traceChannel = runChannel === "chat" ? "web" : runChannel;
-      const selected = selectBoundedAgentHistory(context.messages, {
-        currentMessageId: String(run.userMessageId),
-      });
-      const continuationBlob = run.modelContinuationStorageId
-        ? await ctx.storage.get(run.modelContinuationStorageId)
-        : null;
-      const continuation = continuationBlob
-        ? (JSON.parse(await continuationBlob.text()) as {
-            messages: ModelMessage[];
-            route: ModelRoute;
-            parentRequestId?: string;
-          })
-        : undefined;
-      if (continuation) {
-        for (const message of continuation.messages) {
-          if (message.role !== "user" || !Array.isArray(message.content))
-            continue;
-          for (const part of message.content) {
-            if (
-              part.type === "file" &&
-              typeof part.data === "string" &&
-              /^https?:\/\//.test(part.data)
-            ) {
-              part.data = new URL(part.data);
-            }
-            if (
-              part.type === "image" &&
-              typeof part.image === "string" &&
-              /^https?:\/\//.test(part.image)
-            ) {
-              part.image = new URL(part.image);
-            }
-          }
-        }
-      }
-      const messages =
-        continuation?.messages ??
-        (await buildOperatorHistoryWithAttachments(ctx, selected.messages));
-      // A retried step needs a fresh router job; the failed one stays terminal.
-      const invocationKey = `operator:${String(run._id)}:${expectedCheckpointIteration}${routerRetryCount ? `:r${routerRetryCount}` : ""}`;
-      const traceId = `${String(run._id)}:operator-agent`;
-      const parentRequestId =
-        continuation?.parentRequestId ?? String(run.userMessageId);
-      const intentFamilies = operatorIntentFamilies(run, context.messages);
-      const familySelection = await selectOperatorToolFamilies(
-        {
-          toolNames: context.toolNames,
-          required: operatorRunRequiredFamilies(
-            run,
-            context.messages,
-            continuation?.messages ?? [],
-          ),
-          intentFamilies,
-          // A step resumed after its router job was submitted replays that
-          // job's response, which may call any tool offered at submission.
-          // The model client suffixes the invocation key with its job step.
-          resumed:
-            !intentFamilies &&
-            (await ctx.runQuery(internal.routerJobs.get, {
-              invocationKey: `${invocationKey}:0`,
-            })) !== null,
-          request: run.objective,
-          recentToolActivity: run.checkpoint?.summary,
-          pageType: threadPageContext(thread)?.pageType,
-          trace: { traceId, parentRequestId, channel: traceChannel },
-        },
-        { telemetry: ctx },
-      );
-      const availableFamilies = operatorToolFamiliesOf(context.toolNames);
-      const tools: ToolSet = {};
-      let pendingConfirmation: { status: string; summary: string } | undefined;
-      let toolQueue: Promise<unknown> = Promise.resolve();
-      let toolEvidence = collectToolAudit({});
       // Live status is presentation only and must never block or fail the run.
       const recordActivity = async (update: MessageActivityUpdate) => {
         if (traceChannel !== "web") return;
@@ -452,6 +381,123 @@ export const run = internalAction({
         }
       };
 
+      const selected = selectBoundedAgentHistory(context.messages, {
+        currentMessageId: String(run.userMessageId),
+      });
+      const stagePrefix = String(expectedCheckpointIteration);
+      const { continuation, messages } = await traceStage(
+        recordActivity,
+        `${stagePrefix}:context`,
+        "preparing_context",
+        async () => {
+          const continuationBlob = run.modelContinuationStorageId
+            ? await ctx.storage.get(run.modelContinuationStorageId)
+            : null;
+          const continuation = continuationBlob
+            ? (JSON.parse(await continuationBlob.text()) as {
+                messages: ModelMessage[];
+                route: ModelRoute;
+                parentRequestId?: string;
+              })
+            : undefined;
+          if (continuation) {
+            for (const message of continuation.messages) {
+              if (message.role !== "user" || !Array.isArray(message.content))
+                continue;
+              for (const part of message.content) {
+                if (
+                  part.type === "file" &&
+                  typeof part.data === "string" &&
+                  /^https?:\/\//.test(part.data)
+                ) {
+                  part.data = new URL(part.data);
+                }
+                if (
+                  part.type === "image" &&
+                  typeof part.image === "string" &&
+                  /^https?:\/\//.test(part.image)
+                ) {
+                  part.image = new URL(part.image);
+                }
+              }
+            }
+          }
+          const messages =
+            continuation?.messages ??
+            (await buildOperatorHistoryWithAttachments(ctx, selected.messages));
+          return { continuation, messages };
+        },
+      );
+      // A retried step needs a fresh router job; the failed one stays terminal.
+      const invocationKey = `operator:${String(run._id)}:${expectedCheckpointIteration}${routerRetryCount ? `:r${routerRetryCount}` : ""}`;
+      const traceId = `${String(run._id)}:operator-agent`;
+      const parentRequestId =
+        continuation?.parentRequestId ?? String(run.userMessageId);
+      const intentFamilies = operatorIntentFamilies(run, context.messages);
+      // A step resumed after its router job was submitted replays that
+      // job's response, which may call any tool offered at submission.
+      // The model client suffixes the invocation key with its job step.
+      const resumed =
+        !intentFamilies &&
+        (await ctx.runQuery(internal.routerJobs.get, {
+          invocationKey: `${invocationKey}:0`,
+        })) !== null;
+      const selectFamilies = () =>
+        selectOperatorToolFamilies(
+          {
+            toolNames: context.toolNames,
+            required: operatorRunRequiredFamilies(
+              run,
+              context.messages,
+              continuation?.messages ?? [],
+            ),
+            intentFamilies,
+            resumed,
+            request: run.objective,
+            recentToolActivity: run.checkpoint?.summary,
+            pageType: threadPageContext(thread)?.pageType,
+            trace: { traceId, parentRequestId, channel: traceChannel },
+          },
+          { telemetry: ctx },
+        );
+      // Only a real Jev decision is staged; intents and replays skip it. The
+      // selector absorbs Jev failures by offering every family, so a fallback
+      // is recorded as a failed decision.
+      const toolsStageId = `${stagePrefix}:tools`;
+      let familySelection: OperatorToolFamilySelection;
+      if (intentFamilies || resumed) {
+        familySelection = await selectFamilies();
+      } else {
+        await recordActivity({
+          kind: "stage",
+          stageId: toolsStageId,
+          stage: "selecting_tools",
+          status: "running",
+        });
+        try {
+          familySelection = await selectFamilies();
+        } catch (error) {
+          await recordActivity({
+            kind: "stage",
+            stageId: toolsStageId,
+            stage: "selecting_tools",
+            status: "failed",
+          });
+          throw error;
+        }
+        await recordActivity({
+          kind: "stage",
+          stageId: toolsStageId,
+          stage: "selecting_tools",
+          status:
+            familySelection.source === "fallback" ? "failed" : "completed",
+        });
+      }
+      const availableFamilies = operatorToolFamiliesOf(context.toolNames);
+      const tools: ToolSet = {};
+      let pendingConfirmation: { status: string; summary: string } | undefined;
+      let toolQueue: Promise<unknown> = Promise.resolve();
+      let toolEvidence = collectToolAudit({});
       tools[EXPAND_TOOLS_NAME] = tool({
         ...expandOperatorToolsSpec(availableFamilies),
         execute: async ({ families }, options) => {
@@ -552,40 +598,43 @@ export const run = internalAction({
                   );
             });
             toolQueue = execution
-              .then(async (output) => {
-                await recordActivity({
-                  ...activity,
-                  status: toolOutcomeStatus(output),
-                });
-                if (thread.channel === "chat") {
-                  const tool = capturePresentationTool(name, output);
-                  if (tool) {
-                    try {
-                      await ctx.runMutation(
-                        internal.chatPresentations.captureOperatorEvidence,
-                        {
+              .then(
+                async (output) => {
+                  await recordActivity({
+                    ...activity,
+                    status: toolOutcomeStatus(output),
+                  });
+                  if (thread.channel === "chat") {
+                    const tool = capturePresentationTool(name, output);
+                    if (tool) {
+                      try {
+                        await ctx.runMutation(
+                          internal.chatPresentations.captureOperatorEvidence,
+                          {
+                            runId: run._id,
+                            expectedRunnerAttempt,
+                            expectedCheckpointIteration:
+                              run.checkpoint?.iteration ?? 0,
+                            tool,
+                          },
+                        );
+                      } catch {
+                        console.warn("Chat presentation evidence unavailable", {
                           runId: run._id,
-                          expectedRunnerAttempt,
-                          expectedCheckpointIteration:
-                            run.checkpoint?.iteration ?? 0,
-                          tool,
-                        },
-                      );
-                    } catch {
-                      console.warn("Chat presentation evidence unavailable", {
-                        runId: run._id,
-                      });
+                        });
+                      }
                     }
                   }
-                }
-                toolEvidence = mergeToolAudits(
-                  toolEvidence,
-                  collectToolAudit({
-                    toolCalls: [{ toolName: name, input: rawInput }],
-                    toolResults: [{ toolName: name, output }],
-                  }),
-                );
-              }, () => recordActivity({ ...activity, status: "failed" }))
+                  toolEvidence = mergeToolAudits(
+                    toolEvidence,
+                    collectToolAudit({
+                      toolCalls: [{ toolName: name, input: rawInput }],
+                      toolResults: [{ toolName: name, output }],
+                    }),
+                  );
+                },
+                () => recordActivity({ ...activity, status: "failed" }),
+              )
               .catch(() => undefined);
             return toolQueue.then(() => execution);
           },
@@ -606,6 +655,18 @@ export const run = internalAction({
       const modelTask = modelMessagesHaveRichInput(messages)
         ? "chat_vision"
         : "chat";
+      // The operator model is fixed configuration, not a Jev decision. A
+      // continuation reuses its pinned route; a failed lookup is left to the
+      // model client, which re-resolves it with its own failure telemetry.
+      const route: ModelRoute | undefined =
+        continuation?.route ??
+        (await traceStage(
+          recordActivity,
+          `${stagePrefix}:model`,
+          "selecting_model",
+          (): Promise<ModelRoute> =>
+            ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {}),
+        ).catch(() => undefined));
       const result = await generateAgentTextForOperatorTask(
         ctx,
         modelTask,
@@ -642,7 +703,7 @@ export const run = internalAction({
             : {}),
           durable: {
             invocationKey,
-            route: continuation?.route,
+            route,
           },
           sessionKey: `operator:${String(run.operatorUserId)}:${String(run.threadId)}`,
           trace,
@@ -741,6 +802,10 @@ export const run = internalAction({
         expectedCheckpointIteration,
         expectedRunnerAttempt,
         error: message,
+        reason: describeAgentFailure(error),
+        ...(error instanceof RouterJobFailed && error.failure
+          ? { failure: error.failure }
+          : {}),
       });
       return { status: "failed" as const, error: message };
     }

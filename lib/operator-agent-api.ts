@@ -2,6 +2,7 @@ import { makeFunctionReference } from "convex/server";
 import type { Infer } from "convex/values";
 import type { operatorEmailContentValidator } from "@/convex/lib/threadMessageValidators";
 import type { MessageActivity } from "@/convex/lib/messageActivity";
+import type { RouterJobFailure } from "@/convex/lib/routerJobFailure";
 
 import type { Id } from "@/convex/_generated/dataModel";
 import type { PageContext } from "@/hooks/use-page-context";
@@ -25,6 +26,9 @@ type BackendMessage = {
   presentation?: unknown;
   usedTools?: string[];
   activity?: MessageActivity;
+  failure?: RouterJobFailure;
+  error?: string;
+  routerRequestId?: string;
   emailContent?: Infer<typeof operatorEmailContentValidator>;
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
@@ -161,6 +165,9 @@ export type OperatorAgentMessage = {
   presentation?: unknown;
   usedTools?: string[];
   activity?: MessageActivity;
+  failure?: RouterJobFailure;
+  errorCode?: string;
+  routerRequestId?: string;
   emailContent?: BackendMessage["emailContent"];
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
@@ -326,6 +333,13 @@ export function normalizeOperatorAgentThread(
       presentation: message.presentation,
       usedTools: message.usedTools,
       activity: message.activity,
+      failure: message.failure,
+      errorCode:
+        message.failure?.code ??
+        message.error?.match(
+          /\b(router_(?:rejected|unavailable|candidates_exhausted|payload_too_large|budget_exhausted|internal))\b/,
+        )?.[1],
+      routerRequestId: message.routerRequestId,
       emailContent: message.emailContent,
       status: message.status,
       createdAt: message.createdAt,

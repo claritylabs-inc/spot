@@ -16,6 +16,8 @@ import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { ChatMessageBubble, type ChatChannel } from "./message-bubble";
+import { ChatErrorDetails } from "./error-details";
+import type { RouterJobFailure } from "@/convex/lib/routerJobFailure";
 import {
   activityStatusLabel,
   ThinkingSummary,
@@ -57,6 +59,10 @@ export function ChatAssistantTurn({
   tools,
   toolCalls,
   activity,
+  failure,
+  routerRequestId,
+  errorCode,
+  messageReference,
   aside,
   after,
   body,
@@ -77,8 +83,13 @@ export function ChatAssistantTurn({
   working: boolean;
   tools?: string[];
   toolCalls?: { name: string; input?: string }[];
-  /** Live tool status for a processing message; ignored once settled. */
+  /** Observed stages and tool status; retained as evidence once settled. */
   activity?: ChatActivity;
+  /** Operator-only diagnostics for a failed turn; ignored for other audiences. */
+  failure?: RouterJobFailure;
+  routerRequestId?: string;
+  errorCode?: string;
+  messageReference?: string;
   /** Rendered beside the answer or thinking indicator, e.g. a stop control. */
   aside?: ReactNode;
   /** Rendered below the answer regardless of pending state. */
@@ -94,11 +105,10 @@ export function ChatAssistantTurn({
   children?: ReactNode;
 }) {
   const { streamResponses, showThinking } = useChatDisplayPreferences();
-  const liveActivity = working ? activity : undefined;
   const answer =
     working && (!streamResponses || !content) ? (
       <AgentThinkingBubble
-        label={activityStatusLabel(showThinking ? liveActivity : undefined)}
+        label={activityStatusLabel(showThinking ? activity : undefined)}
       />
     ) : (
       <div className="min-w-0 max-w-[min(max(32rem,80vw),100%)]">
@@ -137,7 +147,7 @@ export function ChatAssistantTurn({
         <ThinkingSummary
           tools={tools}
           toolCalls={toolCalls}
-          activity={liveActivity}
+          activity={activity}
           working={working}
         />
       ) : null}
@@ -149,6 +159,15 @@ export function ChatAssistantTurn({
       ) : (
         answer
       )}
+      {isError && audience === "operator" ? (
+        <ChatErrorDetails
+          failure={failure}
+          requestReference={routerRequestId}
+          errorCode={errorCode}
+          messageReference={messageReference}
+          activity={activity}
+        />
+      ) : null}
       {after}
     </div>
   );

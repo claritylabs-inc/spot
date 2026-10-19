@@ -103,7 +103,13 @@ A progress envelope may also carry optional cumulative
 `toolCalls: [{ toolCallId, toolName }]` (at most 128 entries, each string
 nonempty and at most 200 characters, no other keys, no duplicate ids). Spot
 rejects malformed metadata with the whole callback; text-only callbacks remain
-valid. Metadata means the model requested the tool, not that it is running or
+valid. Optional cumulative `stages` contains at most two entries with
+`stageId` equal to `stage` (`selecting_model` or `selecting_tools`) and a
+`running`, `completed`, or `failed` status. Spot validates the exact fields and
+namespaces persisted stage IDs by job so retries and later steps remain distinct.
+These report observed routing and Jev tool-selection work without decision inputs
+or answers. Manual model routing reports configuration selection, not a Jev choice.
+Tool metadata means the model requested the tool, not that it is running or
 finished, and it never carries arguments, results or reasoning.
 Cancelled/terminal jobs reject late progress. Router progress delivery is best
 effort and never restarts inference. The router schema/API and router-owned worker must support progress callbacks before a Spot consumer uses streaming.
@@ -115,7 +121,8 @@ the live status line and a collapsible summary of tool activity, not raw
 reasoning or tool payloads.
 
 `threadMessages.activity` and `operatorAgentMessages.activity` hold bounded live
-status for a processing web message: a `model`/`tools` phase plus per-call
+status and a retained activity history: a `model`/`tools` phase, up to 32 decision
+stages, and up to 128 per-call
 `requested`, `running`, `returned`, `completed`, `failed`, `awaiting_approval`
 or `skipped` status (`convex/lib/messageActivity.ts`). `requested` comes from
 router progress metadata; the runners record `running` immediately before a
@@ -125,7 +132,9 @@ an error marker, not business success; only an explicit `succeeded` result is
 `completed`. `routerJobs.recordActivity` ignores messages that are no longer
 processing and, for operator runs, stale runner attempts, stale checkpoints and
 cancelled runs. Writes are presentation-only and never fail a turn. Settled
-messages keep the existing `usedTools`/`toolCalls` audit history. Approvals and task artifacts remain independent
+messages keep their stage and tool statuses alongside the `usedTools`/`toolCalls`
+audit history. The renderer stops unresolved indicators when a turn settles and
+does not infer successful execution from an unfinished activity entry. Approvals and task artifacts remain independent
 of these display preferences. Non-web channel delivery stays terminal-only.
 
 These preferences control presentation only; turning streaming off does not stop

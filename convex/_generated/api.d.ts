@@ -119,9 +119,11 @@ import type * as lib_actionConfirmationFingerprint from "../lib/actionConfirmati
 import type * as lib_actionFailures from "../lib/actionFailures.js";
 import type * as lib_actorRef from "../lib/actorRef.js";
 import type * as lib_additionalInsuredDecisions from "../lib/additionalInsuredDecisions.js";
+import type * as lib_agentActivityTrace from "../lib/agentActivityTrace.js";
 import type * as lib_agentAttachmentContext from "../lib/agentAttachmentContext.js";
 import type * as lib_agentAttachmentLimits from "../lib/agentAttachmentLimits.js";
 import type * as lib_agentEmailDomains from "../lib/agentEmailDomains.js";
+import type * as lib_agentFailureReason from "../lib/agentFailureReason.js";
 import type * as lib_agentHistoryLoader from "../lib/agentHistoryLoader.js";
 import type * as lib_agentMessageHistory from "../lib/agentMessageHistory.js";
 import type * as lib_agentPolicyFocus from "../lib/agentPolicyFocus.js";
@@ -554,9 +556,11 @@ declare const fullApi: ApiFromModules<{
   "lib/actionFailures": typeof lib_actionFailures;
   "lib/actorRef": typeof lib_actorRef;
   "lib/additionalInsuredDecisions": typeof lib_additionalInsuredDecisions;
+  "lib/agentActivityTrace": typeof lib_agentActivityTrace;
   "lib/agentAttachmentContext": typeof lib_agentAttachmentContext;
   "lib/agentAttachmentLimits": typeof lib_agentAttachmentLimits;
   "lib/agentEmailDomains": typeof lib_agentEmailDomains;
+  "lib/agentFailureReason": typeof lib_agentFailureReason;
   "lib/agentHistoryLoader": typeof lib_agentHistoryLoader;
   "lib/agentMessageHistory": typeof lib_agentMessageHistory;
   "lib/agentPolicyFocus": typeof lib_agentPolicyFocus;
