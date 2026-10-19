@@ -293,6 +293,7 @@ function OperatorMessageRow({
         tools={message.usedTools}
         toolCalls={message.toolCalls}
         activity={message.activity}
+        executionPlan={message.executionPlan}
         failure={message.failure}
         errorCode={message.errorCode}
         messageReference={message.id}

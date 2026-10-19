@@ -1,4 +1,5 @@
-"use node";
+import { NoWriteInputError } from "../lib/noWriteInputError";
+("use node");
 
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
@@ -81,7 +82,10 @@ export const runInternal = internalAction({
       for (const file of files) {
         const blob = await ctx.storage.get(file.fileId);
         if (!blob || !(await blob.slice(0, 1024).text()).includes("%PDF-"))
-          throw new Error(`${file.fileName} is not a PDF`);
+          throw new NoWriteInputError(
+            "invalid_file_type",
+            `${file.fileName} is not a PDF. Select a PDF source before requesting a new approval.`,
+          );
       }
       let mergedFileId: Id<"_storage"> | undefined;
       let mergedName: string | undefined;
@@ -89,7 +93,11 @@ export const runInternal = internalAction({
         const urls = await Promise.all(
           files.map(async (file) => {
             const url = await ctx.storage.getUrl(file.fileId);
-            if (!url) throw new Error("Policy PDF is unavailable");
+            if (!url)
+              throw new NoWriteInputError(
+                "source_unavailable",
+                "Policy PDF is unavailable. Refresh the source file before requesting a new approval.",
+              );
             return url;
           }),
         );
@@ -137,7 +145,9 @@ export const runInternal = internalAction({
         id: orgId,
       });
       if (!organization || organization.type !== "client") {
-        throw new Error("Client organization not found");
+        throw new Error(
+          "Client organization not found. Use an exact client organization ID from search_organizations; a broker ID is not valid here.",
+        );
       }
       if (args.toolName === "confirm_policy_fact") {
         const policyId = input.policyId as Id<"policies">;
@@ -262,7 +272,10 @@ export const runInternal = internalAction({
           filename: String(input.filename),
         },
       );
-      if (!attachment) throw new Error("Operator thread attachment not found");
+      if (!attachment)
+        throw new Error(
+          "Operator thread attachment not found. Use the exact messageId and filename returned by search_thread_history.",
+        );
       return { result: await readStoredAgentFile(ctx, attachment) };
     }
 
