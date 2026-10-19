@@ -41,6 +41,8 @@ export function operatorNoWriteCode(error: unknown): string | undefined {
 
 // These failures require a human or an existing approval, never model retries.
 function terminalCode(error: unknown) {
+  if (operatorNoWriteCode(error) === "spot_owned_broker_identity")
+    return "spot_owned_broker_identity";
   if (error && typeof error === "object" && "data" in error) {
     const data = error.data;
     if (
