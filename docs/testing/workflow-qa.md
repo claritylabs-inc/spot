@@ -1132,3 +1132,24 @@ Evidence: `.context/progress-followup/browser/` contains
 browser-session credentials. The failure reference is
 `81daa5ed-1d3c-49dc-b514-0bc43736532a`; successful request reference
 `137f3caf-77ad-4752-aa00-c517cadce071`.
+
+
+## Intake Slack answer values — October 19, 2026
+
+The owner requested all saved applicant/contact facts in #submissions and an
+edit of the existing incident message. The scoped backend change renders typed
+answers and structured per-coverage limits, preserving unknown vs blank values.
+Revision-keyed summary events edit the original thread message on same-question
+autosaves; file additions/removals refresh it as well. Progress remains threaded,
+with @here reserved for accepted submissions/resubmissions. Internal exact-target
+backfill checks revision, thread timestamp and configured destination.
+
+Failure modes were specified before implementation: missing literal answer
+values; stale derived coverage values; Markdown/mention injection; silent text
+truncation; repeated-save duplication; old queued summary snapshots overwriting
+new answers; delivery lease overlap; and wrong-target backfills. Focused tests
+cover these boundaries and the existing owner/revision authorization suite.
+The full root suite passes 122 checks across 16 files. App and Convex types,
+focused lint and deployment dry run are recorded with the release. The real
+backfill is owner-authorized incident repair, not a synthetic submission test.
+No applicant contact details or access capabilities are committed here.

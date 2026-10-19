@@ -831,15 +831,20 @@ export const save = mutation({
     if (
       args.step !== request.intakeStep ||
       details?.revenueStep !== request.intakeDetails?.revenueStep ||
-      details?.coverageIndex !== request.intakeDetails?.coverageIndex
+      details?.coverageIndex !== request.intakeDetails?.coverageIndex ||
+      details?.mailingAddressStep !== request.intakeDetails?.mailingAddressStep
     ) {
-      const key = `step:${args.step}:${details?.revenueStep || ""}:${details?.coverageIndex ?? 0}`;
+      const key = `step:${args.step}:${details?.revenueStep || ""}:${details?.coverageIndex ?? 0}${args.step === 14 && details?.mailingAddressStep ? ":mailing" : ""}`;
       await queueIntakeSlack(
         ctx,
         request._id,
         key,
-        `Application progress: ${INTAKE_STEPS[args.step]}`,
+        `Application saved — now on: ${INTAKE_STEPS[args.step]}`,
       );
+    }
+    else {
+      // Same-question autosaves also refresh the thread's current answer values.
+      await queueIntakeSlack(ctx, request._id, `summary:${revision}`, "Application saved");
     }
     return revision;
   },
@@ -1119,6 +1124,7 @@ export const attachFile = mutation({
       await ctx.db.patch(intakeFileId, { clientFileId });
       await ctx.db.patch(request._id, { intakeAmendedAt: now, updatedAt: now });
     }
+    await queueIntakeSlack(ctx, request._id, `summary:file:${intakeFileId}:attached`, "Document attached");
     return intakeFileId;
   },
 });
@@ -1164,6 +1170,7 @@ export const removeFile = mutation({
         ? { packetRevision: (request.packetRevision ?? 0) + 1 }
         : {}),
     });
+    await queueIntakeSlack(ctx, request._id, `summary:file:${intakeFileId}:removed`, "Document removed");
     return null;
   },
 });
