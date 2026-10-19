@@ -257,7 +257,7 @@ export function incompleteWorkNote(state: OperatorRecoveryState): string {
   const tools = state.exhausted
     .map((item) => `${item.toolName} (${item.code || "unknown error"})`)
     .join(", ");
-  return `Some of this work is incomplete. ${tools ? `These tools were disabled after repeated failed corrections: ${tools}.` : "Further tool calls were stopped after repeated failures."} Review the failed results above; the remaining targets were not handled.`;
+  return `Some tool calls could not be completed after three corrective attempts. ${tools ? `Stopped calls: ${tools}.` : "Further calls were stopped after repeated failures."} Any work without a successful result remains unverified.`;
 }
 
 /** A final answer is premature while recoverable failures still have attempts. */

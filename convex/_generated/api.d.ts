@@ -289,6 +289,7 @@ import type * as lib_operatorMcpToolCatalog from "../lib/operatorMcpToolCatalog.
 import type * as lib_operatorPlanning from "../lib/operatorPlanning.js";
 import type * as lib_operatorRunPlan from "../lib/operatorRunPlan.js";
 import type * as lib_operatorSlackConfig from "../lib/operatorSlackConfig.js";
+import type * as lib_operatorToolRecovery from "../lib/operatorToolRecovery.js";
 import type * as lib_orgBranding from "../lib/orgBranding.js";
 import type * as lib_orgWiki from "../lib/orgWiki.js";
 import type * as lib_orgWikiDocument from "../lib/orgWikiDocument.js";
@@ -729,6 +730,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorPlanning": typeof lib_operatorPlanning;
   "lib/operatorRunPlan": typeof lib_operatorRunPlan;
   "lib/operatorSlackConfig": typeof lib_operatorSlackConfig;
+  "lib/operatorToolRecovery": typeof lib_operatorToolRecovery;
   "lib/orgBranding": typeof lib_orgBranding;
   "lib/orgWiki": typeof lib_orgWiki;
   "lib/orgWikiDocument": typeof lib_orgWikiDocument;
