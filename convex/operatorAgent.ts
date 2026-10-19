@@ -4565,7 +4565,11 @@ export const finishConfirmedActionToolInternal = internalMutation({
     if (run.status === "cancelled" || run.cancellationRequestedAt) {
       return { status: "cancelled" as const, result: outcome };
     }
-    if (!succeeded && !isRecoverableOperatorToolFailure(outcome)) {
+    if (
+      !succeeded &&
+      (run.executionKind !== "goal" ||
+        !isRecoverableOperatorToolFailure(outcome))
+    ) {
       const content = `Could not complete ${payload.summary}: ${error}`;
       await ctx.db.patch(run.agentMessageId, {
         content,
