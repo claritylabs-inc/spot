@@ -15,8 +15,8 @@ import {
   DialogTitle,
 } from "@claritylabs-inc/ui/components/dialog";
 import { PillButton } from "@/components/ui/pill-button";
-import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
+import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 export function DeleteOrganizationButton({
   orgId,

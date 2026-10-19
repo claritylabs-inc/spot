@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { InlineCollectionActionsContext } from "@/components/ui/inline-fields";
-import { Loader2, Plus, StickyNote } from "lucide-react";
+import { Loader2, Plus, RefreshCw, StickyNote } from "lucide-react";
 
 import { useMutation, useQuery } from "convex/react";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -45,7 +45,7 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
-import { WebsiteTechSection } from "./website-tech-section";
+import { useWebsiteTechScan, WebsiteTechSection } from "./website-tech-section";
 
 function ProfileContent({
   client,
@@ -111,6 +111,7 @@ function LoadedProfile({
     version: wiki.businessProfile?.submittedAt ?? 0,
     account,
   });
+  const techScan = useWebsiteTechScan(client._id, profileTab === "Tech stack");
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesToolbar, setNotesToolbar] = useState<HTMLDivElement | null>(null);
   const autoSave = useLocalFirstAutoSave({
@@ -168,6 +169,21 @@ function LoadedProfile({
             Notes
           </PillButton>
           {!readOnly && <AutoSaveStatus status={autoSave.status} />}
+          {!readOnly && profileTab === "Tech stack" && techScan.canRescan && (
+            <PillButton
+              variant="secondary"
+              size="compact"
+              disabled={techScan.scanning}
+              onClick={techScan.rescan}
+            >
+              {techScan.scanning ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              Rescan
+            </PillButton>
+          )}
           {!readOnly && profileTab === "Related legal entities" && (
             <PillButton
               variant="secondary"
@@ -249,7 +265,7 @@ function LoadedProfile({
           </TabsList>
           <TabsContent value={profileTab}>
             {profileTab === "Tech stack" ? (
-              <WebsiteTechSection orgId={client._id} readOnly={readOnly} />
+              <WebsiteTechSection scan={techScan} />
             ) : profileTab === "Account" ? (
               <ClientAccountSection
                 client={client}
@@ -322,7 +338,7 @@ export default function OperatorClientWikiPage() {
             href={`/operator/clients/${clientOrgId}`}
             className="truncate text-muted-foreground/80 transition-colors hover:text-foreground"
           >
-            {client?.name ?? "Client"}
+            {client ? (client.dba ?? client.name) : "Client"}
           </Link>
           <span
             className={`text-muted-foreground/30 ${typeStyle("body.default")}`}
@@ -339,7 +355,7 @@ export default function OperatorClientWikiPage() {
           pageType: "operator_client_wiki",
           entityId: clientOrgId,
           summary: client
-            ? `Profile for ${client.name}`
+            ? `Profile for ${client.dba ?? client.name}`
             : "Current client profile",
         }}
       />

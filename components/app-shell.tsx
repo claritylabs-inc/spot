@@ -255,7 +255,9 @@ function ShellFrame({
       entityPanel={hasEntityPanel ? <EntityPreviewPanel /> : undefined}
       rightPanel={
         hasRightPanel ? (
-          <div className="relative flex h-full min-h-0 w-full min-w-0">
+          // Safari can scroll the resizable panel when a nested popup receives
+          // focus. Clip at its positioned wrapper without creating a scrollport.
+          <div className="relative flex h-full min-h-0 w-full min-w-0 lg:overflow-clip">
             <div
               ref={setRightPanelTarget}
               className="flex h-full min-h-0 w-full min-w-0"

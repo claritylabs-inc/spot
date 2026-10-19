@@ -239,6 +239,7 @@ async function listOperatorClientRows(ctx: QueryCtx) {
       return {
         _id: client._id,
         name: client.name,
+        dba: client.profileFacts?.dba?.value.trim() || undefined,
         ...(await orgBrandFields(ctx, client)),
         agentHandle: client.agentHandle,
         clientAccessStatus: clientAccessStatus(client),
@@ -280,7 +281,7 @@ export const listUnlinkedApplications = query({
         const answers = row.intakeAnswers ?? {};
         return {
           requestId: row._id,
-          companyName: answers.legalName || undefined,
+          companyName: answers.dba || answers.legalName || undefined,
           applicantName: answers.name || owner?.name,
           applicantEmail: answers.email || owner?.email,
           createdAt: row.createdAt,
