@@ -5,6 +5,8 @@ import { parseRouterJobError, routerJobFailureValidator } from "./lib/routerJobF
 import {
   applyMessageActivity,
   messageActivityUpdateValidator,
+  messageActivityStageValidator,
+  parseRouterActivityStages,
   parseRequestedToolCalls,
   requestedToolCallValidator,
 } from "./lib/messageActivity";
@@ -477,6 +479,7 @@ export const progress = internalMutation({
     sequence: v.number(),
     text: v.string(),
     toolCalls: v.optional(v.array(requestedToolCallValidator)),
+    stages: v.optional(v.array(messageActivityStageValidator)),
   },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.id);
@@ -492,7 +495,8 @@ export const progress = internalMutation({
       args.sequence < 1 ||
       new TextEncoder().encode(args.text).byteLength > 256 * 1024 ||
       (args.toolCalls !== undefined &&
-        parseRequestedToolCalls(args.toolCalls) === null)
+        parseRequestedToolCalls(args.toolCalls) === null) ||
+      parseRouterActivityStages(args.stages) === null
     )
       return false;
     if (args.sequence <= (row.progressSequence ?? 0)) return true;
@@ -515,18 +519,34 @@ export const progress = internalMutation({
       routerJobId: args.jobId,
       progressSequence: args.sequence,
     });
+    const now = dayjs().valueOf();
+    let activity = message.activity;
+    // Each job owns its decision stages, including retries and later model steps.
+    for (const stage of args.stages ?? []) {
+      activity = applyMessageActivity(
+        activity,
+        {
+          kind: "stage",
+          ...stage,
+          stageId: `${row._id}:${stage.stageId}`,
+        },
+        now,
+      );
+    }
     // Requested means the model asked for the tool, not that it is running.
+    if (args.toolCalls?.length) {
+      activity = applyMessageActivity(
+        activity,
+        {
+          kind: "requested",
+          toolCalls: args.toolCalls,
+        },
+        now,
+      );
+    }
     await ctx.db.patch(row.streamTarget, {
       content: args.text,
-      ...(args.toolCalls?.length
-        ? {
-            activity: applyMessageActivity(
-              message.activity,
-              { kind: "requested", toolCalls: args.toolCalls },
-              dayjs().valueOf(),
-            ),
-          }
-        : {}),
+      ...(activity ? { activity } : {}),
     });
     return true;
   },
@@ -566,7 +586,9 @@ export const resultHttp = httpAction(async (ctx, request) => {
     if (new TextEncoder().encode(body.text).byteLength > 256 * 1024)
       return new Response(null, { status: 413 });
     const toolCalls = parseRequestedToolCalls(body.toolCalls);
-    if (toolCalls === null) return new Response(null, { status: 409 });
+    const stages = parseRouterActivityStages(body.stages);
+    if (toolCalls === null || stages === null)
+      return new Response(null, { status: 409 });
     const accepted = await ctx.runMutation(internal.routerJobs.progress, {
       id: row._id,
       tokenHash,
@@ -576,6 +598,7 @@ export const resultHttp = httpAction(async (ctx, request) => {
       sequence: body.sequence,
       text: body.text,
       ...(toolCalls ? { toolCalls } : {}),
+      ...(stages ? { stages } : {}),
     });
     return new Response(null, { status: accepted ? 204 : 409 });
   }

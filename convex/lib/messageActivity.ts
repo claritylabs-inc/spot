@@ -127,6 +127,30 @@ export function parseRequestedToolCalls(
   return calls;
 }
 
+/** Router stages have a fixed vocabulary and cannot carry provider text. */
+export function parseRouterActivityStages(
+  value: unknown,
+): MessageActivityStage[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 2) return null;
+  const stages: MessageActivityStage[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry))
+      return null;
+    const { stageId, stage, status } = entry as Record<string, unknown>;
+    if (
+      Object.keys(entry).length !== 3 ||
+      (stage !== "selecting_model" && stage !== "selecting_tools") ||
+      stageId !== stage ||
+      (status !== "running" && status !== "completed" && status !== "failed") ||
+      stages.some((existing) => existing.stageId === stageId)
+    )
+      return null;
+    stages.push({ stageId, stage, status });
+  }
+  return stages;
+}
+
 export function applyMessageActivity(
   current: MessageActivity | undefined,
   update: MessageActivityUpdate,
