@@ -1,9 +1,22 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Globe, Route } from "lucide-react";
+import {
+  Cpu,
+  Globe,
+  Layers,
+  ListChecks,
+  Route,
+  ShieldCheck,
+  Wrench,
+} from "lucide-react";
 import { useQuery } from "convex/react";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@claritylabs-inc/ui/components/tooltip";
 import { api } from "@/convex/_generated/api";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { toolActivityIcon } from "@/lib/tool-activity-icons";
@@ -51,20 +64,74 @@ export type ChatActivity = {
     status: ActivityStatus;
     context?: ToolActivityContext;
   }[];
-  stages?: { stageId: string; stage: StageName; status: StageStatus }[];
+  stages?: {
+    stageId: string;
+    stage: StageName;
+    status: StageStatus;
+    /** Concise factual outcome; absent on older messages. */
+    detail?: string;
+  }[];
 };
 
-const STAGE_LABELS: Record<StageName, string> = {
-  assessing_workflow: "Checking workflow complexity",
-  planning: "Creating a plan",
-  preparing_context: "Preparing context",
-  screening_request: "Checking request",
-  selecting_tools: "Deciding which tools to load",
-  selecting_model: "Selecting model",
+const STAGE_LABELS: Record<
+  StageName,
+  { running: string; completed: string; icon: typeof Route }
+> = {
+  assessing_workflow: {
+    running: "Checking workflow",
+    completed: "Workflow checked",
+    icon: ListChecks,
+  },
+  planning: { running: "Creating plan", completed: "Plan ready", icon: Route },
+  preparing_context: {
+    running: "Preparing context",
+    completed: "Context ready",
+    icon: Layers,
+  },
+  screening_request: {
+    running: "Checking request",
+    completed: "Request checked",
+    icon: ShieldCheck,
+  },
+  selecting_tools: {
+    running: "Loading tools",
+    completed: "Tools loaded",
+    icon: Wrench,
+  },
+  selecting_model: {
+    running: "Selecting model",
+    completed: "Model selected",
+    icon: Cpu,
+  },
 };
 
 export function stageLabel(stage: StageName) {
-  return STAGE_LABELS[stage];
+  return STAGE_LABELS[stage].running;
+}
+
+type StageEntry = NonNullable<ChatActivity["stages"]>[number];
+
+/**
+ * Display-only grouping: identical completed stages with the same outcome
+ * collapse into one counted row. Running, failed, and differing outcomes are
+ * never merged, and the stored data is untouched.
+ */
+function groupStages(stages: readonly StageEntry[]) {
+  const rows: { entry: StageEntry; count: number }[] = [];
+  for (const entry of stages) {
+    const match =
+      entry.status === "completed"
+        ? rows.find(
+            (row) =>
+              row.entry.status === "completed" &&
+              row.entry.stage === entry.stage &&
+              (row.entry.detail ?? "") === (entry.detail ?? ""),
+          )
+        : undefined;
+    if (match) match.count += 1;
+    else rows.push({ entry, count: 1 });
+  }
+  return rows;
 }
 
 type RowStatus = ActivityStatus | StageStatus;
@@ -121,7 +188,7 @@ export function activityStatusLabel(activity?: ChatActivity): string {
   const stage = activity.stages?.findLast(
     (entry) => entry.status === "running",
   );
-  if (stage) return `${STAGE_LABELS[stage.stage]}…`;
+  if (stage) return `${STAGE_LABELS[stage.stage].running}…`;
   for (const status of ["running", "requested"] as const) {
     const active = activity.tools.filter((tool) => tool.status === status);
     if (active.length > 0) {
@@ -223,16 +290,76 @@ function mergeCalls(
   ];
 }
 
+function hostOf(website: string) {
+  try {
+    return new URL(website).hostname.replace(/^www\./, "");
+  } catch {
+    return website;
+  }
+}
+
+/** Several targets: overlapping favicons, a count, and every domain on focus. */
+function WebsiteTargets({ websites }: { websites: string[] }) {
+  const hosts = websites.map(hostOf);
+  const summary = `${hosts.length} website${hosts.length === 1 ? "" : "s"}`;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            tabIndex={0}
+            aria-label={`${summary}: ${hosts.join(", ")}`}
+            className="inline-flex max-w-full items-center gap-1.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        }
+      >
+        <span className="flex items-center" aria-hidden>
+          {websites.slice(0, 3).map((website, index) => (
+            <OrgBrandIcon
+              key={website}
+              name={hosts[index]}
+              website={website}
+              size="xs"
+              className={cn(
+                "size-4 rounded-full ring-2 ring-background",
+                index > 0 && "-ml-1.5",
+              )}
+            />
+          ))}
+        </span>
+        <span
+          aria-hidden
+          className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground/80"
+        >
+          {summary}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <ul className="space-y-0.5">
+          {hosts.map((host) => (
+            <li key={host} className="break-all">
+              {host}
+            </li>
+          ))}
+        </ul>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ActivityRow({
   icon,
   label,
   context,
+  count = 1,
   status,
   working,
 }: {
   icon: ReactNode;
   label: string;
   context?: ToolActivityContext;
+  /** Identical completed rows merged for display. */
+  count?: number;
   status?: RowStatus;
   working: boolean;
 }) {
@@ -250,7 +377,12 @@ function ActivityRow({
         )}
       >
         <span className="break-words text-foreground">{label}</span>
-        {context ? (
+        {count > 1 ? (
+          <span className="text-muted-foreground/70">×{count}</span>
+        ) : null}
+        {context?.websites?.length ? (
+          <WebsiteTargets websites={context.websites} />
+        ) : context ? (
           context.website ? (
             <span
               title={context.label}
@@ -352,15 +484,23 @@ export function ThinkingSummary({
       }
     >
       <ul className="space-y-2.5 py-2.5">
-        {stages.map((entry) => (
-          <ActivityRow
-            key={entry.stageId}
-            icon={<Route aria-hidden className="size-4" />}
-            label={STAGE_LABELS[entry.stage]}
-            status={entry.status}
-            working={working}
-          />
-        ))}
+        {groupStages(stages).map(({ entry, count }) => {
+          const meta = STAGE_LABELS[entry.stage];
+          const Icon = meta.icon;
+          return (
+            <ActivityRow
+              key={entry.stageId}
+              icon={<Icon aria-hidden className="size-4" />}
+              label={
+                entry.status === "completed" ? meta.completed : meta.running
+              }
+              context={entry.detail ? { label: entry.detail } : undefined}
+              count={count}
+              status={entry.status}
+              working={working}
+            />
+          );
+        })}
         {activities.map((call, index) => {
           const mcp = mcpInput(call);
           const context = callContext(call);
