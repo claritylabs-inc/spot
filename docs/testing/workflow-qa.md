@@ -1176,3 +1176,24 @@ bot parent successfully; delivery was verified without changing the application.
 
 Validation: all 123 tests pass across 17 files; Convex typecheck, focused ESLint
 and git diff --check pass. Production rollout is tracked by the follow-up PR.
+
+
+## Referring-provider intake header — October 19, 2026
+
+Local signup header QA at localhost:8080 covers the registered Montgomery provider,
+normal Spot entry without a provider, unknown-provider fallback and mobile layout.
+The public branding registry is exported from the broker-network ledger; incoming
+values cannot set image URLs or home links. TypeScript and focused ESLint checks
+were run. Two existing application hook dependency warnings remain outside this
+change. The local Convex backend was unavailable, so authenticated submission,
+verification and post-signup continuation were not exercised. No live contact details
+were submitted and no production deployment was performed. Provider selection is
+visual branding only and does not grant account or request access.
+
+Provider signup layout follow-up: compact brand lockup (32px artwork), shorter header,
+centered progress indicator, 528px desktop form content, smaller signup heading and
+44px contact controls. Signup footer content shares the form's horizontal edges.
+TypeScript and focused ESLint checks passed. Desktop and 390px mobile previews were
+inspected; branding and the provider query contract are unchanged. Preview evidence:
+`.context/qa/provider-signup/compact-desktop.jpg` (local only).
+

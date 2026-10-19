@@ -22,6 +22,7 @@ import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { IntakeFrame } from "./frame";
+import { withQuoteProvider } from "@/lib/quote-provider";
 import { Field, FieldLabel } from "@claritylabs-inc/ui/components/field";
 import { OtpField } from "@/components/ui/otp-field";
 import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
@@ -130,7 +131,7 @@ function SignupForm() {
     void claim({ token })
       .then((id) => {
         queueMicrotask(() => setHandoffTransition(true));
-        router.replace(`/intake?request=${id}`);
+        router.replace(withQuoteProvider(`/intake?request=${id}`, params.get("provider")));
       })
       .catch((e) => {
         setError(
@@ -139,7 +140,7 @@ function SignupForm() {
         advancing.current = false;
         setHandoffTransition(false);
       });
-  }, [isAuthenticated, token, handoff, claim, router]);
+  }, [isAuthenticated, token, handoff, claim, router, params]);
   const autoHandoff = useRef(false);
   useEffect(() => {
     if (
@@ -225,7 +226,7 @@ function SignupForm() {
     setError("");
     try {
       const id = await start({ orgId: org?.org?._id });
-      router.push(`/intake?request=${id}`);
+      router.push(withQuoteProvider(`/intake?request=${id}`, params.get("provider")));
     } catch (e) {
       setError(getUserFacingErrorMessage(e, "Could not create request"));
       setBusy(false);
@@ -267,6 +268,7 @@ function SignupForm() {
   }
   return (
     <IntakeFrame
+      compact
       showSteps={!(isAuthenticated && !token && !handoffTransition)}
       status={busy || handoffTransition ? "Continuing…" : undefined}
       footer={
@@ -295,7 +297,7 @@ function SignupForm() {
                     selectedRequest === "new"
                       ? await start({ orgId: org?.org?._id })
                       : selectedRequest;
-                  router.push(`/intake?request=${id}`);
+                  router.push(withQuoteProvider(`/intake?request=${id}`, params.get("provider")));
                 } catch (e) {
                   setError(
                     getUserFacingErrorMessage(e, "Could not open request"),
@@ -338,14 +340,14 @@ function SignupForm() {
         )
       }
     >
-      <h1 className={`text-wrap-pretty ${typeStyle("heading.display")}`}>
+      <h1 className={`text-wrap-pretty ${typeStyle("heading.page")}`}>
         {codeSent
           ? "Can you confirm your work email?"
           : isAuthenticated && !token && !handoffTransition
             ? "Which application would you like to view?"
             : "What are your contact details?"}
       </h1>
-      <div className="h-10" />
+      <div className="h-7" />
       {token && handoff === null && !handoffTransition && (
         <div className="mb-5 space-y-3">
           <p>
@@ -483,14 +485,14 @@ function SignupForm() {
               <Field>
                 <FieldLabel
                   htmlFor="signup-name"
-                  className={typeStyle("body.root")}
+                  className={typeStyle("body.large")}
                 >
                   Full name
                 </FieldLabel>
                 <Input
                   placeholder="Enter your full name"
                   id="signup-name"
-                  className="mt-2 h-12"
+                  className="mt-1.5 h-11"
                   autoComplete="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -501,14 +503,14 @@ function SignupForm() {
               <Field>
                 <FieldLabel
                   htmlFor="signup-email"
-                  className={typeStyle("body.root")}
+                  className={typeStyle("body.large")}
                 >
                   Work email
                 </FieldLabel>
                 <Input
                   placeholder="you@company.com"
                   id="signup-email"
-                  className="mt-2 h-12"
+                  className="mt-1.5 h-11"
                   type="email"
                   autoComplete="email"
                   value={email}
@@ -520,13 +522,13 @@ function SignupForm() {
               <Field>
                 <FieldLabel
                   htmlFor="signup-phone"
-                  className={typeStyle("body.root")}
+                  className={typeStyle("body.large")}
                 >
                   Phone number
                 </FieldLabel>
                 <PhoneInput
                   id="signup-phone"
-                  className="min-h-12"
+                  className="min-h-11"
                   autoComplete="tel"
                   placeholder="Phone number"
                   value={phone}
