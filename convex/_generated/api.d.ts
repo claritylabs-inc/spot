@@ -243,6 +243,7 @@ import type * as lib_insuranceIntakeSchema from "../lib/insuranceIntakeSchema.js
 import type * as lib_insuredNameDecisions from "../lib/insuredNameDecisions.js";
 import type * as lib_intakeApplication from "../lib/intakeApplication.js";
 import type * as lib_intakeDetailsSchema from "../lib/intakeDetailsSchema.js";
+import type * as lib_intakeSlackContext from "../lib/intakeSlackContext.js";
 import type * as lib_jevEvidenceChoices from "../lib/jevEvidenceChoices.js";
 import type * as lib_jevImages from "../lib/jevImages.js";
 import type * as lib_jevThreshold from "../lib/jevThreshold.js";
@@ -682,6 +683,7 @@ declare const fullApi: ApiFromModules<{
   "lib/insuredNameDecisions": typeof lib_insuredNameDecisions;
   "lib/intakeApplication": typeof lib_intakeApplication;
   "lib/intakeDetailsSchema": typeof lib_intakeDetailsSchema;
+  "lib/intakeSlackContext": typeof lib_intakeSlackContext;
   "lib/jevEvidenceChoices": typeof lib_jevEvidenceChoices;
   "lib/jevImages": typeof lib_jevImages;
   "lib/jevThreshold": typeof lib_jevThreshold;
