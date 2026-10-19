@@ -122,7 +122,7 @@ export function AgentDockHistory({ adapter }: { adapter: AgentDockAdapter }) {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 md:px-3">
-      <div className="ml-auto flex min-h-full w-full max-w-md flex-col justify-end pb-2">
+      <div className="ml-auto flex min-h-full w-fit min-w-[min(100%,28rem)] max-w-full flex-col justify-end pb-2">
         {threads === undefined ? (
           <div className="flex h-24 items-center justify-center">
             <Spinner className="text-muted-foreground" />
