@@ -3,12 +3,6 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { ChevronRight, RotateCcw } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@claritylabs-inc/ui/components/dropdown-menu";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import type { StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
 import {
@@ -130,11 +124,15 @@ function OperatorMessageFooter({
   const [expanded, setExpanded] = useState(false);
   const approved = confirmations.filter(isAutoApproved);
   const disabled = rerunAction.pending || activeRun;
-  function rerun(includeErrorContext: boolean) {
+  function rerun() {
     const target = message.rerun;
-    if (!target || activeRun) return;
+    if (!target || disabled) return;
     void rerunAction.run(
-      () => rerunTurn({ runId: target.runId, includeErrorContext }),
+      () =>
+        rerunTurn({
+          runId: target.runId,
+          includeErrorContext: target.withErrorContext,
+        }),
       (error) => getUserFacingErrorMessage(error, "Could not rerun the turn"),
     );
   }
@@ -149,43 +147,21 @@ function OperatorMessageFooter({
             className={controlClass}
           />
           {message.rerun ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                disabled={disabled}
-                render={
-                  <PillButton
-                    variant="icon"
-                    size="small"
-                    iconOnly
-                    label="Rerun options"
-                    disabled={disabled}
-                    className={controlClass}
-                  />
-                }
-              >
-                {rerunAction.pending ? (
-                  <Spinner className="size-3.5" />
-                ) : (
-                  <RotateCcw className="size-3.5" />
-                )}
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuItem
-                  disabled={disabled}
-                  onClick={() => rerun(false)}
-                >
-                  Rerun
-                </DropdownMenuItem>
-                {message.rerun.withErrorContext ? (
-                  <DropdownMenuItem
-                    disabled={disabled}
-                    onClick={() => rerun(true)}
-                  >
-                    Rerun with error context
-                  </DropdownMenuItem>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <PillButton
+              variant="icon"
+              size="small"
+              iconOnly
+              label="Retry"
+              disabled={disabled}
+              className={controlClass}
+              onClick={rerun}
+            >
+              {rerunAction.pending ? (
+                <Spinner className="size-3.5" />
+              ) : (
+                <RotateCcw className="size-3.5" />
+              )}
+            </PillButton>
           ) : null}
         </div>
         {approved.length > 0 ? (
@@ -293,6 +269,7 @@ function OperatorMessageRow({
         tools={message.usedTools}
         toolCalls={message.toolCalls}
         activity={message.activity}
+        executionPlan={message.executionPlan}
         failure={message.failure}
         errorCode={message.errorCode}
         messageReference={message.id}

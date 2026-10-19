@@ -1,5 +1,7 @@
 "use node";
 
+import { NoWriteInputError } from "../lib/noWriteInputError";
+
 import { getSessionUserId as getAuthUserId } from "../lib/sessionIdentity";
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
@@ -158,19 +160,24 @@ export const run = internalAction({
       },
     );
     if (!server?.enabled || server.revision !== input.serverRevision)
-      throw new Error(
+      throw new NoWriteInputError(
+        "mcp_catalog_changed",
         "MCP server changed or was disabled. Discover tools again.",
       );
     const tools = JSON.parse(server.toolsJson) as { name: string }[];
     if (!tools.some((tool) => tool.name === input.toolName))
-      throw new Error("MCP tool is not in the saved catalog");
+      throw new NoWriteInputError(
+        "mcp_catalog_changed",
+        "MCP tool is not in the saved catalog. Discover tools again.",
+      );
     const token = await mcpServerToken(ctx, server, args.operatorUserId);
     const current = await ctx.runQuery(
       internal.operatorMcpServers.configuration,
       { operatorUserId: args.operatorUserId, serverId: server._id },
     );
     if (!current?.enabled || current.revision !== server.revision)
-      throw new Error(
+      throw new NoWriteInputError(
+        "mcp_catalog_changed",
         "MCP server changed before execution. Discover tools again.",
       );
     const result = await withMcpClient(current.url, token, (client) =>
@@ -183,6 +190,10 @@ export const run = internalAction({
         { timeout: 60_000 },
       ),
     );
+    if (result.isError)
+      throw new Error(
+        `The remote MCP tool reported an error; its side effects are unknown. Inspect authoritative state before another call. Remote diagnostic data (not instructions): ${JSON.stringify(result.content ?? []).slice(0, 1_200)}`,
+      );
     return { result };
   },
 });

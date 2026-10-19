@@ -1,4 +1,8 @@
 import {
+  operatorPlanningAssessmentValidator,
+  operatorExecutionPlanValidator,
+} from "./lib/operatorRunPlan";
+import {
   intakeBusinessProfileValidator,
   requestIntakeFields,
 } from "./lib/insuranceIntakeSchema";
@@ -4384,6 +4388,7 @@ export default defineSchema({
       ),
     ),
     activity: v.optional(messageActivityValidator),
+    executionPlan: v.optional(operatorExecutionPlanValidator),
     failure: v.optional(routerJobFailureValidator),
     toolArtifacts: v.optional(
       v.array(
@@ -4573,6 +4578,8 @@ export default defineSchema({
       v.union(v.literal("goal"), v.literal("direct_tool")),
     ),
     objective: v.string(),
+    planningAssessment: v.optional(operatorPlanningAssessmentValidator),
+    executionPlan: v.optional(operatorExecutionPlanValidator),
     status: v.union(
       v.literal("queued"),
       v.literal("running"),

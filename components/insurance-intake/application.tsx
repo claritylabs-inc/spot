@@ -68,6 +68,7 @@ import {
 } from "@/lib/insurance-intake";
 import { IntakeSavedBusinessSummary } from "./company-review";
 import { IntakeFrame } from "./frame";
+import { withQuoteProvider } from "@/lib/quote-provider";
 import { IntakeTracking } from "./tracking";
 import {
   Field,
@@ -218,14 +219,14 @@ export function InsuranceIntake() {
         } catch {
           /* Ownership is already saved on the server. */
         }
-        window.location.replace(`/intake?request=${requestId}`);
+        window.location.replace(withQuoteProvider(`/intake?request=${requestId}`, params.get("provider")));
       })
       .catch((e) => {
         setConfirmationError(
           getUserFacingErrorMessage(e, "Could not confirm your application"),
         );
       });
-  }, [verification, requestId, isAuthenticated, confirmOwnership]);
+  }, [verification, requestId, isAuthenticated, confirmOwnership, params]);
   if (requestId && (isLoading || needsLogin))
     return <IntakeApplicationLoading />;
   if (verification)
@@ -237,7 +238,7 @@ export function InsuranceIntake() {
             : "Confirming your saved application…"}
         </p>
         {confirmationError && (
-          <PillButton href="/signup">Find my drafts</PillButton>
+          <PillButton href={withQuoteProvider("/signup", params.get("provider"))}>Find my drafts</PillButton>
         )}
       </IntakeFrame>
     );
@@ -246,7 +247,7 @@ export function InsuranceIntake() {
     return (
       <IntakeFrame>
         <p>Please reopen your saved application.</p>
-        <PillButton href="/signup">Find my drafts</PillButton>
+        <PillButton href={withQuoteProvider("/signup", params.get("provider"))}>Find my drafts</PillButton>
       </IntakeFrame>
     );
   if (!recovered)
@@ -274,6 +275,7 @@ function Application({
   reviewSection: number;
   reviewCoverageIndex: number;
 }) {
+  const params = useSearchParams();
   const connection = useConvexConnectionState();
   const data = useQuery(api.requestIntake.get, { requestId });
   const router = useRouter();
@@ -1057,7 +1059,7 @@ function Application({
         window.history.replaceState(
           null,
           "",
-          `/intake?request=${requestId}&step=${next}&section=${reviewSection}&coverageIndex=${coverageIndex}`,
+          withQuoteProvider(`/intake?request=${requestId}&step=${next}&section=${reviewSection}&coverageIndex=${coverageIndex}`, params.get("provider")),
         );
       if (confirmSave)
         toast.success("Your answers were saved", {
@@ -1065,7 +1067,7 @@ function Application({
         });
       if (editingReview && next === 28) {
         setEditingReview(false);
-        window.history.replaceState(null, "", `/intake?request=${requestId}`);
+        window.history.replaceState(null, "", withQuoteProvider(`/intake?request=${requestId}`, params.get("provider")));
         requestAnimationFrame(() =>
           requestAnimationFrame(() =>
             window.scrollTo({ top: reviewScroll.current, behavior: "instant" }),
@@ -1138,7 +1140,7 @@ function Application({
     await navigate(28, confirmSave);
     if (state.current.step !== 28) return;
     setEditingReview(false);
-    window.history.replaceState(null, "", `/intake?request=${requestId}`);
+    window.history.replaceState(null, "", withQuoteProvider(`/intake?request=${requestId}`, params.get("provider")));
     requestAnimationFrame(() =>
       requestAnimationFrame(() =>
         window.scrollTo({ top: reviewScroll.current, behavior: "instant" }),
@@ -1153,7 +1155,7 @@ function Application({
         toast.success("Your answers were saved", {
           id: "intake-answers-saved",
         });
-      router.push(`/intake?request=${requestId}`);
+      router.push(withQuoteProvider(`/intake?request=${requestId}`, params.get("provider")));
     } else setBusy(false);
   }
   async function removeFile(intakeFileId: Id<"requestIntakeFiles">) {
@@ -1258,7 +1260,7 @@ function Application({
       await completeOtpSignIn(answers.email!, code);
       intentionalRedirect.current = true;
       window.location.assign(
-        `/intake?request=${requestId}&verify=${verificationToken.current}`,
+        withQuoteProvider(`/intake?request=${requestId}&verify=${verificationToken.current}`, params.get("provider")),
       );
     } catch (e) {
       intentionalRedirect.current = false;
@@ -1824,7 +1826,7 @@ function Application({
         }
         footer={
           isSavings && data.submitted ? (
-            <PillButton size="large" variant="ghost" href="/signup">
+            <PillButton size="large" variant="ghost" href={withQuoteProvider("/signup", params.get("provider"))}>
               All applications
             </PillButton>
           ) : !data.submitted ? (
@@ -1852,7 +1854,7 @@ function Application({
             </>
           ) : (
             <>
-              <PillButton size="large" variant="ghost" href="/signup">
+              <PillButton size="large" variant="ghost" href={withQuoteProvider("/signup", params.get("provider"))}>
                 All applications
               </PillButton>
               <PillButton
@@ -2043,7 +2045,7 @@ function Application({
         if (data.submitted) {
           if (await flush())
             window.location.assign(
-              `/intake?request=${requestId}&step=${next}&section=${next}`,
+              withQuoteProvider(`/intake?request=${requestId}&step=${next}&section=${next}`, params.get("provider")),
             );
         } else void navigate(next);
       }}
@@ -2059,7 +2061,7 @@ function Application({
                 ? void returnToReview()
                 : step === 1
                   ? void (async () => {
-                      if (await flush()) router.push("/signup");
+                      if (await flush()) router.push(withQuoteProvider("/signup", params.get("provider")));
                     })()
                   : void navigate(
                       step === 8 && details.coverages[0]?.coverage === "unknown"

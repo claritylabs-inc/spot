@@ -1,3 +1,4 @@
+import type { OperatorExecutionPlan } from "@/convex/lib/operatorRunPlan";
 import { makeFunctionReference } from "convex/server";
 import type { Infer } from "convex/values";
 import type { operatorEmailContentValidator } from "@/convex/lib/threadMessageValidators";
@@ -26,6 +27,7 @@ type BackendMessage = {
   presentation?: unknown;
   usedTools?: string[];
   activity?: MessageActivity;
+  executionPlan?: OperatorExecutionPlan;
   failure?: RouterJobFailure;
   error?: string;
   routerRequestId?: string;
@@ -165,6 +167,7 @@ export type OperatorAgentMessage = {
   presentation?: unknown;
   usedTools?: string[];
   activity?: MessageActivity;
+  executionPlan?: OperatorExecutionPlan;
   failure?: RouterJobFailure;
   errorCode?: string;
   routerRequestId?: string;
@@ -333,6 +336,7 @@ export function normalizeOperatorAgentThread(
       presentation: message.presentation,
       usedTools: message.usedTools,
       activity: message.activity,
+      executionPlan: message.executionPlan,
       failure: message.failure,
       errorCode:
         message.failure?.code ??

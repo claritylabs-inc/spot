@@ -1,5 +1,6 @@
 "use node";
 
+import { NoWriteInputError } from "./noWriteInputError";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { convert } from "html-to-text";
 import { simpleParser } from "mailparser";
@@ -1171,13 +1172,22 @@ export async function getCompanyEmailAttachment(
     !attachmentId ||
     attachmentId.length > GOOGLE_WORKSPACE_LIMITS.maxAttachmentIdChars
   )
-    throw new Error("Gmail attachment identity is invalid.");
+    throw new NoWriteInputError(
+      "invalid_attachment_reference",
+      "Gmail attachment identity is invalid. Read the email thread again and use its exact messageId and attachmentId.",
+    );
   const message = await provider.getMessageFull({ mailbox, messageId });
   if (message.id !== messageId)
-    throw new Error("Gmail message identity changed.");
+    throw new NoWriteInputError(
+      "source_changed",
+      "Gmail message identity changed. Read the thread again before retrieving the attachment.",
+    );
   const located = locatedAttachment(message, attachmentId);
   if (!located)
-    throw new Error("Attachment is not part of the requested Gmail message.");
+    throw new NoWriteInputError(
+      "invalid_attachment_reference",
+      "Attachment is not part of the requested Gmail message. Read the thread again and use its exact messageId and attachmentId.",
+    );
   const metadata = attachmentMetadata(located);
   if (metadata.size > GOOGLE_WORKSPACE_LIMITS.maxAttachmentBytes) {
     throw new Error("Gmail attachment exceeds the 15 MiB retrieval limit.");
@@ -1192,7 +1202,10 @@ export async function getCompanyEmailAttachment(
       ).data
     : located.part.body.data;
   if (encoded == null)
-    throw new Error("Gmail attachment content is unavailable.");
+    throw new NoWriteInputError(
+      "source_unavailable",
+      "Gmail attachment content is unavailable. Read the thread again to refresh the source.",
+    );
   if (
     encoded.length >
     Math.ceil(GOOGLE_WORKSPACE_LIMITS.maxAttachmentBytes / 3) * 4 + 4
@@ -1371,10 +1384,7 @@ export async function scanWorkspaceMailbox(
     offset < Math.min(page.messages.length, limit);
     offset += 5
   ) {
-    const references = page.messages.slice(
-      offset,
-      Math.min(offset + 5, limit),
-    );
+    const references = page.messages.slice(offset, Math.min(offset + 5, limit));
     const batch = await Promise.all(
       references.map(async (reference) => {
         if (dayjs().valueOf() >= deadline) {

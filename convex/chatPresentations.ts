@@ -66,7 +66,7 @@ const supportedTools = new Set([
 const evidenceFields = new Set(
   `_id id policyId orgId clientOrgId brokerOrgId clientFileId requestId procurementRequestId
 proposalId procurementProposalId requirementId sourceSpanIds spanId policyId1 policyId2 policy1
-policy2 policies files requests proposals profiles organization profile policy requirement
+policy2 policies files requests proposals profiles organization organizations profile policy requirement
 requirements findings sources source evidence results items records comparisons coverages
 coverageBreakdown limits amount limit deductible premium currency name title label value values
 type kind status scope number policyNumber insured insuredName carrier effective expiration

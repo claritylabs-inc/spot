@@ -20,6 +20,8 @@ export type ActivityStatus =
   | "skipped";
 
 export type StageName =
+  | "assessing_workflow"
+  | "planning"
   | "preparing_context"
   | "screening_request"
   | "selecting_tools"
@@ -35,6 +37,8 @@ export type ChatActivity = {
 };
 
 const STAGE_LABELS: Record<StageName, string> = {
+  assessing_workflow: "Checking workflow complexity",
+  planning: "Creating a plan",
   preparing_context: "Preparing context",
   screening_request: "Checking request",
   selecting_tools: "Deciding which tools to load",

@@ -1132,3 +1132,99 @@ Evidence: `.context/progress-followup/browser/` contains
 browser-session credentials. The failure reference is
 `81daa5ed-1d3c-49dc-b514-0bc43736532a`; successful request reference
 `137f3caf-77ad-4752-aa00-c517cadce071`.
+
+### Operator planning and corrective tool iterations — October 19, 2026
+
+Acceptance workflow (pending production verification):
+
+1. Submit a simple answer-only question: no business plan when all four Jev answers confidently say no.
+2. Submit the original 13 broker domains as a read-only directory comparison. Observe complexity assessment, a distinct saved plan before the first business call, per-target searches or a disclosed bounded list, and an answer covering every target. A rejected batch is not a no-match result.
+3. Reload while planning and after completion; the plan is retained and the durable planner invocation is reused. Stop a new run during planning; no business tool may execute after cancellation.
+4. Ask for a read using an invalid identifier, then recover via an authoritative lookup. Verify structured error code, corrected call and final answer. Persistently invalid calls must exhaust after three corrective model iterations, not loop or claim absence. Do not manufacture production writes to test failures.
+5. Recheck collapsed Plan/error disclosures, Show thinking preference and narrow viewport. The single Retry button must start a new attempt directly, include existing error context automatically for failed turns, and remain disabled during an active run. Existing approval, authorization and unknown-outcome boundaries receive code review and existing automated coverage.
+
+No new unit tests or Vercel previews are used. Results and artifact locations are recorded after integrated acceptance.
+
+## Intake Slack answer values — October 19, 2026
+
+The owner requested all saved applicant/contact facts in #submissions and an
+edit of the existing incident message. The scoped backend change renders typed
+answers and structured per-coverage limits, preserving unknown vs blank values.
+Revision-keyed summary events edit the original thread message on same-question
+autosaves; file additions/removals refresh it as well. Progress remains threaded,
+with @here reserved for accepted submissions/resubmissions. Internal exact-target
+backfill checks revision, thread timestamp and configured destination.
+
+Failure modes were specified before implementation: missing literal answer
+values; stale derived coverage values; Markdown/mention injection; silent text
+truncation; repeated-save duplication; old queued summary snapshots overwriting
+new answers; delivery lease overlap; and wrong-target backfills. Focused tests
+cover these boundaries and the existing owner/revision authorization suite.
+The full root suite passes 122 checks across 16 files. App and Convex types,
+focused lint and deployment dry run are recorded with the release. The real
+backfill is owner-authorized incident repair, not a synthetic submission test.
+No applicant contact details or access capabilities are committed here.
+
+
+### 2026-10-19 — operator diagnostics for unlinked intake
+
+Production Ask Spot failed to read an exact saved draft because the procurement
+reader requires a company. The exact-ID operator reader now checks active operator
+identity and returns allowlisted draft answers, typed details, progress, revision,
+timestamps and at most 40 Slack delivery events. It does not attach a company or
+change any fulfillment, sharing or writer authorization. Draft answers remain
+unaccepted until submission. Registry version 2 and AGENT_TOOLS.md describe this.
+
+Before implementation, the isolation test defined these failure modes: customers
+and disabled operators gaining access, deleted drafts remaining readable, inbox
+or verification capabilities leaking, and a diagnostic read changing saved state.
+The test checks each boundary. Incident records and personal details are excluded
+from this ledger.
+
+The preceding Slack repair was deployed to the verified production target and
+PR #479 merged. A revision- and original-thread-bound backfill edited the existing
+bot parent successfully; delivery was verified without changing the application.
+
+Validation: all 123 tests pass across 17 files; Convex typecheck, focused ESLint
+and git diff --check pass. Production rollout is tracked by the follow-up PR.
+
+
+## Referring-provider intake header — October 19, 2026
+
+Local signup header QA at localhost:8080 covers the registered Montgomery provider,
+normal Spot entry without a provider, unknown-provider fallback and mobile layout.
+The public branding registry is exported from the broker-network ledger; incoming
+values cannot set image URLs or home links. TypeScript and focused ESLint checks
+were run. Two existing application hook dependency warnings remain outside this
+change. The local Convex backend was unavailable, so authenticated submission,
+verification and post-signup continuation were not exercised. No live contact details
+were submitted and no production deployment was performed. Provider selection is
+visual branding only and does not grant account or request access.
+
+Provider signup layout follow-up: compact brand lockup (32px artwork), shorter header,
+centered progress indicator, 528px desktop form content, smaller signup heading and
+44px contact controls. Signup footer content shares the form's horizontal edges.
+TypeScript and focused ESLint checks passed. Desktop and 390px mobile previews were
+inspected; branding and the provider query contract are unchanged. Preview evidence:
+`.context/qa/provider-signup/compact-desktop.jpg` (local only).
+
+## Replay visibility — October 19, 2026
+
+Before implementation, boundary tests specified readable ordinary inputs/text/attributes,
+blocked password/revealed-password/OTP/hidden controls, capability attribute redaction,
+and access-URL sanitization with network headers/bodies disabled. The initial run
+failed on ordinary visibility and credential selectors. Configuration now removes
+blanket replay text/input/attribute masking while retaining explicit credential and
+document exclusions. OTP controls and the shared PDF wrapper are ph-no-capture.
+Previously masked recording data cannot be recovered. Use synthetic fixtures only
+when verifying new replay visibility.
+
+Validation: 126 tests pass across 18 files; full Next.js typecheck and ESLint
+pass (three pre-existing warnings). Local provider signup renders correctly;
+recording ingestion/playback and the production rollout are verified separately.
+
+Live ingestion/playback follow-up: a refreshed localhost signup sent a synthetic
+name/email fixture to the existing Spot PostHog project without submitting the
+form. Replay `01a1557f-5770-7433-9da9-a6aece2cc728` visibly shows the page labels,
+name and email after the fresh pageview; its earlier snapshots remain masked.
+The local fixture was cleared afterward. No application record was created.

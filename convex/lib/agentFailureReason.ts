@@ -32,6 +32,8 @@ export function describeAgentFailure(error: unknown): string {
   if (error instanceof RouterJobFailed)
     return routerReason(error.failure?.code);
   if (error instanceof Error) {
+    if (error.name === "OperatorPlanGenerationError")
+      return "The model could not create a valid workflow plan. No business tools ran; retry planning before proceeding.";
     if (error.name === "AgentIncompleteOutputError")
       return error.message.includes("output limit")
         ? "The model reached its output limit before answering."

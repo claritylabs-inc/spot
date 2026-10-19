@@ -712,19 +712,21 @@ export const run = internalAction({
       let pendingConfirmation: { status: string; summary: string } | undefined;
       let toolQueue: Promise<unknown> = Promise.resolve();
       let toolEvidence = collectToolAudit({});
-      tools[EXPAND_TOOLS_NAME] = tool({
-        ...expandOperatorToolsSpec(availableFamilies),
-        execute: async ({ families }, options) => {
-          const activity = {
-            kind: "tool" as const,
-            toolCallId: options.toolCallId,
-            toolName: EXPAND_TOOLS_NAME,
-          };
-          await recordActivity({ ...activity, status: "running" });
-          await recordActivity({ ...activity, status: "returned" });
-          return { status: "available_next_step", families };
-        },
-      });
+      if (!recovery.stopped && !exhaustedTools.has(EXPAND_TOOLS_NAME)) {
+        tools[EXPAND_TOOLS_NAME] = tool({
+          ...expandOperatorToolsSpec(availableFamilies),
+          execute: async ({ families }, options) => {
+            const activity = {
+              kind: "tool" as const,
+              toolCallId: options.toolCallId,
+              toolName: EXPAND_TOOLS_NAME,
+            };
+            await recordActivity({ ...activity, status: "running" });
+            await recordActivity({ ...activity, status: "returned" });
+            return { status: "available_next_step", families };
+          },
+        });
+      }
       for (const name of operatorAgentToolNamesForFamilies(
         context.toolNames,
         familySelection.families,
@@ -996,13 +998,15 @@ export const run = internalAction({
           return continuation ?? { status: "missing" as const };
         }
       }
+      const hasExhaustedCalls =
+        nextRecovery.stopped || nextRecovery.exhausted.length > 0;
       const content = pendingConfirmation
         ? `Confirmation required: ${pendingConfirmation.summary}. Approve or reject this update. After approval, I'll continue the remaining work.`
         : (generatedTextFromResult(result).trim() ||
-            (audit.completedTools.length > 0
+            (audit.completedTools.length > 0 && !hasExhaustedCalls
               ? "The requested operator work completed."
               : "I couldn't complete that operator task.")) +
-          (disabledOnly ? `\n\n${incompleteWorkNote(recovery)}` : "");
+          (hasExhaustedCalls ? `\n\n${incompleteWorkNote(nextRecovery)}` : "");
       const completion: { status: string } | null = await ctx.runMutation(
         internal.operatorAgent.completeRunInternal,
         {

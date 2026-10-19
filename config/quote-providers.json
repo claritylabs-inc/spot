@@ -1,0 +1,86 @@
+{
+  "montgomery-risk": {
+    "name": "Montgomery Risk Partners",
+    "shortName": "Montgomery",
+    "homeUrl": "https://montgomeryrisk.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/montgomery-risk/assets/brand/architectural-m.webp",
+    "logoIsLockup": false
+  },
+  "kearny-risk": {
+    "name": "Kearny Risk",
+    "shortName": "Kearny",
+    "homeUrl": "https://kearnyrisk.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/kearny-risk/assets/brand/suspension-bridge.webp",
+    "logoIsLockup": false
+  },
+  "folsom-risk": {
+    "name": "Folsom Risk",
+    "shortName": "Folsom",
+    "homeUrl": "https://folsomrisk.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/folsom-risk/assets/brand/folded-ribbon.webp",
+    "logoIsLockup": false
+  },
+  "fillmore-risk": {
+    "name": "Fillmore Risk",
+    "shortName": "Fillmore",
+    "homeUrl": "https://fillmorerisk.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/fillmore-risk/assets/brand/grotesk-f.webp",
+    "logoIsLockup": false
+  },
+  "castro-risk": {
+    "name": "Castro Risk",
+    "shortName": "Castro",
+    "homeUrl": "https://castrorisk.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/castro-risk/assets/brand/folded-fan.webp",
+    "logoIsLockup": false
+  },
+  "hayes-risk": {
+    "name": "Hayes Risk",
+    "shortName": "Hayes",
+    "homeUrl": "https://hayesrisk.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/hayes-risk/assets/brand/ginkgo-mark.webp",
+    "logoIsLockup": false
+  },
+  "van-ness-partners": {
+    "name": "Van Ness Partners",
+    "shortName": "Van Ness",
+    "homeUrl": "https://vannesspartners.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/van-ness-partners/assets/brand/avenue-v.webp",
+    "logoIsLockup": false
+  },
+  "potrero-risk": {
+    "name": "Potrero Risk",
+    "shortName": "Potrero",
+    "homeUrl": "https://potrerorisk.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/potrero-risk/assets/brand/engraved-p.webp",
+    "logoIsLockup": false
+  },
+  "mission-bay-coverage": {
+    "name": "Mission Bay Coverage",
+    "shortName": "Mission Bay",
+    "homeUrl": "https://missionbaycoverage.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/mission-bay-coverage/assets/brand/bay-heron.webp",
+    "logoIsLockup": false
+  },
+  "loudon-risk-management": {
+    "name": "Loudon Risk Management",
+    "shortName": "Loudon",
+    "homeUrl": "https://loudonrisk.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/loudon-risk-management/assets/brand/data-grid-mark.png",
+    "logoIsLockup": false
+  },
+  "stanford-cover": {
+    "name": "Stanford Coverage",
+    "shortName": "Stanford Coverage",
+    "homeUrl": "https://stanfordcover.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/stanford-cover/assets/brand/stanford-coverage-mark.png",
+    "logoIsLockup": false
+  },
+  "fort-mason-partners": {
+    "name": "Fort Mason Partners",
+    "shortName": "Fort Mason",
+    "homeUrl": "https://fortmasonpartners.com",
+    "logoUrl": "https://u9gxjk2gybn0jux3.public.blob.vercel-storage.com/site-images/fort-mason-partners/assets/brand/cypress-lockup.webp",
+    "logoIsLockup": true
+  }
+}
