@@ -29,7 +29,7 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { getSessionUserId } from "./lib/sessionIdentity";
 import { getOrgAccess } from "./lib/access";
 import { normalizeUserPhone, findUserByNormalizedPhone } from "./lib/userPhone";
@@ -148,6 +148,61 @@ async function ownedRequest(
   if (request.clientOrgId && !user.intakeRestricted)
     await getOrgAccess(ctx, request.clientOrgId);
   return { user, request };
+}
+async function createIntakeClient(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  answers: IntakeAnswers,
+  draftRequestId?: Id<"procurementRequests">,
+) {
+  const website = answers.website?.trim() || undefined;
+  const orgId = await ctx.db.insert("organizations", {
+    name: answers.legalName!.trim(),
+    website,
+    type: "client",
+    primaryInsuranceContactId: userId,
+    onboardingComplete: true,
+    intakeDraftRequestId: draftRequestId,
+  });
+  await ctx.db.insert("orgMemberships", { orgId, userId, role: "admin" });
+  await scheduleCompanyResearch(ctx, orgId);
+  if (website)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.extractCompanyInfo.importMissingOrgLogoInternal,
+      { orgId, url: website },
+    );
+  return orgId;
+}
+/** The client created early by this unsubmitted draft, whose identity still follows its answers. */
+async function draftClient(
+  ctx: QueryCtx | MutationCtx,
+  request: Doc<"procurementRequests">,
+) {
+  if (!request.clientOrgId || request.intakeSubmittedAt) return null;
+  const org = await ctx.db.get(request.clientOrgId);
+  return org &&
+    org.deletedAt === undefined &&
+    org.intakeDraftRequestId === request._id
+    ? org
+    : null;
+}
+async function syncDraftClient(
+  ctx: MutationCtx,
+  org: Doc<"organizations">,
+  answers: IntakeAnswers,
+) {
+  const name = answers.legalName?.trim() || org.name;
+  const website = answers.website?.trim() || undefined;
+  if (name === org.name && website === org.website) return;
+  await ctx.db.patch(org._id, { name, website });
+  await scheduleCompanyResearch(ctx, org._id);
+  if (website && website !== org.website)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.extractCompanyInfo.importMissingOrgLogoInternal,
+      { orgId: org._id, url: website },
+    );
 }
 async function newDraft(
   ctx: MutationCtx,
@@ -549,7 +604,10 @@ export const get = query({
         request.intakeCompanyResearch?.status === "completed"
           ? request.intakeCompanyResearch
           : undefined,
-      orgId: request.clientOrgId,
+      // A client created by this draft is not a saved company to offer back.
+      orgId: (await draftClient(ctx, request))
+        ? undefined
+        : request.clientOrgId,
       canUseSavedCompany:
         !!request.intakeSavedCompany || !!request.intakeNewCompany,
       verified: !!user.emailVerificationTime && !user.intakeRestricted,
@@ -794,10 +852,31 @@ export const save = mutation({
         { requestId: request._id, fingerprint },
       );
     }
+    // Create the client once the applicant moves past naming their company, so operators see it before submission.
+    let clientOrgId = request.clientOrgId;
+    if (!request.intakeSubmittedAt && name && args.step !== request.intakeStep) {
+      const company = await draftClient(ctx, request);
+      if (company) await syncDraftClient(ctx, company, answers);
+      else if (
+        !clientOrgId &&
+        (request.intakeNewCompany ||
+          !(await ctx.db
+            .query("orgMemberships")
+            .withIndex("user", (q) => q.eq("userId", user._id))
+            .first()))
+      )
+        clientOrgId = await createIntakeClient(
+          ctx,
+          user._id,
+          answers,
+          request._id,
+        );
+    }
     const answersChanged =
       JSON.stringify(answers) !== JSON.stringify(request.intakeAnswers ?? {});
     const revision = (request.intakeRevision ?? 0) + 1;
     await ctx.db.patch(request._id, {
+      clientOrgId,
       intakeAnswers: answers,
       ...(request.intakeSubmittedAt && answersChanged
         ? {
@@ -862,6 +941,7 @@ export const useNewCompany = mutation({
     const { request } = await ownedRequest(ctx, args.requestId);
     if (request.intakeSubmittedAt)
       throw new Error("Start a new application to use a different company");
+    const company = await draftClient(ctx, request);
     if ((request.intakeRevision ?? 0) !== args.expectedRevision)
       throw new Error(
         "This application changed. Reload before changing companies.",
@@ -883,7 +963,7 @@ export const useNewCompany = mutation({
     };
     const revision = (request.intakeRevision ?? 0) + 1;
     await ctx.db.patch(request._id, {
-      ...(request.clientOrgId && !request.intakeSavedCompany
+      ...(request.clientOrgId && !request.intakeSavedCompany && !company
         ? {
             intakeSavedCompany: {
               orgId: request.clientOrgId,
@@ -892,7 +972,7 @@ export const useNewCompany = mutation({
             },
           }
         : {}),
-      clientOrgId: undefined,
+      clientOrgId: company?._id,
       intakeNewCompany: true,
       intakeCompanyResearch: undefined,
       intakeAnswers: answers,
@@ -958,6 +1038,21 @@ export const useSavedCompany = mutation({
       !membership
     )
       throw new Error("Saved company is no longer available");
+    const draftCompany = await draftClient(ctx, request);
+    if (draftCompany && draftCompany._id !== saved.orgId) {
+      await ctx.db.patch(draftCompany._id, {
+        deletedAt: dayjs().valueOf(),
+        deletedByUserId: user._id,
+        intakeDraftRequestId: undefined,
+      });
+      const draftMembership = await ctx.db
+        .query("orgMemberships")
+        .withIndex("organization_user", (q) =>
+          q.eq("orgId", draftCompany._id).eq("userId", user._id),
+        )
+        .first();
+      if (draftMembership) await ctx.db.delete(draftMembership._id);
+    }
     const answers = { ...request.intakeAnswers };
     for (const key of COMPANY_INTAKE_FIELDS) {
       delete answers[key];
@@ -1365,25 +1460,12 @@ export const submit = mutation({
         .first();
       if (membership && !request.intakeNewCompany)
         throw new Error("Select your existing company before submitting");
-      orgId = await ctx.db.insert("organizations", {
-        name: answers.legalName!,
-        website: answers.website || undefined,
-        type: "client",
-        primaryInsuranceContactId: user._id,
-        onboardingComplete: true,
-      });
-      await ctx.db.insert("orgMemberships", {
-        orgId,
-        userId: user._id,
-        role: "admin",
-      });
-      await scheduleCompanyResearch(ctx, orgId);
-      if (answers.website)
-        await ctx.scheduler.runAfter(
-          0,
-          internal.actions.extractCompanyInfo.importMissingOrgLogoInternal,
-          { orgId, url: answers.website },
-        );
+      orgId = await createIntakeClient(ctx, user._id, answers);
+    }
+    const draftCompany = await draftClient(ctx, request);
+    if (draftCompany) {
+      await syncDraftClient(ctx, draftCompany, answers);
+      await ctx.db.patch(draftCompany._id, { intakeDraftRequestId: undefined });
     }
     const now = dayjs().valueOf();
     await ctx.db.patch(request._id, {

@@ -486,6 +486,8 @@ export default defineSchema({
     clientAccessStatus: v.optional(
       v.union(v.literal("limited"), v.literal("active")),
     ),
+    // Unsubmitted intake draft that created this client; its identity follows the draft until submission.
+    intakeDraftRequestId: v.optional(v.id("procurementRequests")),
     name: v.string(),
     deletedAt: v.optional(v.number()),
     deletedByUserId: v.optional(v.id("users")),
@@ -2673,7 +2675,12 @@ export default defineSchema({
     ])
     .index("status", ["clientOrgId", "status", "updatedAt"])
     .index("inbox", ["inboxToken"])
-    .index("owner_updated", ["ownerUserId", "updatedAt"]),
+    .index("owner_updated", ["ownerUserId", "updatedAt"])
+    .index("intake_submitted_status", [
+      "intakeSubmittedAt",
+      "status",
+      "updatedAt",
+    ]),
 
   requestHandoffs: defineTable({
     intakeGoal: v.optional(v.union(v.literal("quote"), v.literal("savings"))),

@@ -206,13 +206,30 @@ export const setApproveAll = mutation({
   },
 });
 
-async function listOperatorClientRows(ctx: QueryCtx) {
-  const clients = await ctx.db
-    .query("organizations")
-    .withIndex("deletion_type", (q) =>
-      q.eq("deletedAt", undefined).eq("type", "client"),
+async function inProgressIntakeDrafts(ctx: QueryCtx) {
+  const rows = await ctx.db
+    .query("procurementRequests")
+    .withIndex("intake_submitted_status", (q) =>
+      q.eq("intakeSubmittedAt", undefined).eq("status", "draft"),
     )
+    .order("desc")
     .take(500);
+  return rows.filter(
+    (row) => !row.deletedAt && row.intakeSchemaVersion !== undefined,
+  );
+}
+
+async function listOperatorClientRows(ctx: QueryCtx) {
+  const [clients, drafts] = await Promise.all([
+    ctx.db
+      .query("organizations")
+      .withIndex("deletion_type", (q) =>
+        q.eq("deletedAt", undefined).eq("type", "client"),
+      )
+      .take(500),
+    inProgressIntakeDrafts(ctx),
+  ]);
+  const inProgress = new Set(drafts.map((row) => row.clientOrgId));
   return await Promise.all(
     clients.map(async (client) => {
       const admin = await getOrgAdmin(ctx, client._id);
@@ -231,6 +248,7 @@ async function listOperatorClientRows(ctx: QueryCtx) {
         adminName: admin?.name,
         adminEmail: admin?.email,
         adminPhone: admin?.phone,
+        applicationInProgress: inProgress.has(client._id),
         createdAt: client._creationTime,
       };
     }),
@@ -242,6 +260,31 @@ export const listClients = query({
   handler: async (ctx) => {
     await requireOperator(ctx);
     return await listOperatorClientRows(ctx);
+  },
+});
+
+/** Unsubmitted self-serve applications not yet tied to a client; listClients flags the rest. */
+export const listUnlinkedApplications = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireOperator(ctx);
+    const drafts = await inProgressIntakeDrafts(ctx);
+    const rows = await Promise.all(
+      drafts.map(async (row) => {
+        const client = row.clientOrgId ? await ctx.db.get(row.clientOrgId) : null;
+        if (client && client.deletedAt === undefined) return null;
+        const owner = await ctx.db.get(row.ownerUserId ?? row.createdByUserId);
+        const answers = row.intakeAnswers ?? {};
+        return {
+          requestId: row._id,
+          companyName: answers.legalName || undefined,
+          applicantName: answers.name || owner?.name,
+          applicantEmail: answers.email || owner?.email,
+          createdAt: row.createdAt,
+        };
+      }),
+    );
+    return rows.filter((row) => row !== null);
   },
 });
 
