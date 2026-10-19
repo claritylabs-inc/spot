@@ -97,6 +97,7 @@ export function useOperatorClientCacheActions() {
         adminName: input.adminName,
         adminEmail: input.adminEmail,
         adminPhone: input.adminPhone,
+        applicationInProgress: false,
         createdAt: now,
       } satisfies OperatorClientRow;
       await upsertClients({}, (current) =>

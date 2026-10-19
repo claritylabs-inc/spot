@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -12,6 +12,7 @@ import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@claritylabs-inc/ui/components/input";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import {
   Table,
@@ -38,6 +39,8 @@ import { useStopOperatorImpersonation } from "@/hooks/use-stop-operator-imperson
 import { useStartOperatorImpersonation } from "@/hooks/use-start-operator-impersonation";
 import { formatDisplayDate } from "@/lib/date-format";
 import {
+  ONBOARDING_CLIENT_STATUS,
+  operatorClientDisplayStatus,
   operatorClientStatusLabel,
   operatorClientStatusPresentation,
   type OperatorClientRow,
@@ -61,6 +64,21 @@ function Field({
   );
 }
 
+function applicationName(application: {
+  companyName?: string;
+  applicantName?: string;
+  applicantEmail?: string;
+}) {
+  return (
+    application.companyName ??
+    application.applicantName ??
+    application.applicantEmail ??
+    "Unnamed applicant"
+  );
+}
+
+type ClientFilter = "all" | "active" | "limited" | "onboarding";
+
 export default function OperatorClientsScreen() {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<Id<"organizations"> | null>(
@@ -68,21 +86,40 @@ export default function OperatorClientsScreen() {
   );
   const [panelMode, setPanelMode] = useState<"create" | "details" | null>(null);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<ClientFilter>("all");
   const [name, setName] = useState("");
   const [website, setWebsite] = useState("");
   const [busy, setBusy] = useState(false);
 
   const current = useCachedOperatorCurrent();
   const clients = useCachedOperatorClients();
-  const searchText = search.trim().toLowerCase();
-  const filteredClients = clients?.filter((client) =>
-    [
-      client.name,
-      client.website,
-      client.primaryContactEmail,
-      client.adminEmail,
-    ].some((value) => value?.toLowerCase().includes(searchText)),
+  const unlinkedApplications = useQuery(
+    api.operator.listUnlinkedApplications,
   );
+  const searchText = search.trim().toLowerCase();
+  const matchesSearch = (values: (string | undefined)[]) =>
+    values.some((value) => value?.toLowerCase().includes(searchText));
+  const filteredClients = clients?.filter(
+    (client) =>
+      (filter === "all" || operatorClientDisplayStatus(client) === filter) &&
+      matchesSearch([
+        client.name,
+        client.website,
+        client.primaryContactEmail,
+        client.adminEmail,
+      ]),
+  );
+  // Applicants who have not named their company yet have no client record.
+  const filteredApplications =
+    filter === "all" || filter === "onboarding"
+      ? (unlinkedApplications?.filter((application) =>
+          matchesSearch([
+            application.companyName,
+            application.applicantName,
+            application.applicantEmail,
+          ]),
+        ) ?? [])
+      : [];
   const { seedClient } = useOperatorClientCacheActions();
   const createClient = useAction(api.operator.createSoloClient);
   const { startImpersonation } = useStartOperatorImpersonation();
@@ -288,15 +325,30 @@ export default function OperatorClientsScreen() {
       rightPanel={rightPanel}
     >
       <main className="flex w-full flex-col gap-4">
-        <div className="relative max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search clients"
-            aria-label="Search clients"
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative w-full max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search clients"
+              aria-label="Search clients"
+            />
+          </div>
+          <Tabs
+            value={filter}
+            onValueChange={(value) => {
+              if (value) setFilter(value as ClientFilter);
+            }}
+          >
+            <TabsList variant="pill" aria-label="Client status">
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="active">Active</TabsTrigger>
+              <TabsTrigger value="limited">Limited</TabsTrigger>
+              <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
         <OperationalPanel>
           <Table>
@@ -339,13 +391,14 @@ export default function OperatorClientsScreen() {
                     <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                   </TableCell>
                 </TableRow>
-              ) : filteredClients?.length === 0 ? (
+              ) : filteredClients?.length === 0 &&
+                filteredApplications.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
                     colSpan={5}
                     className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                   >
-                    {searchText
+                    {searchText || filter !== "all"
                       ? "No clients match this search."
                       : "No client accounts found."}
                   </TableCell>
@@ -388,13 +441,7 @@ export default function OperatorClientsScreen() {
                       {client.website ?? "Not set"}
                     </TableCell>
                     <TableCell>
-                      <StatusTag
-                        tone={
-                          client.clientAccessStatus === "active"
-                            ? "success"
-                            : "warning"
-                        }
-                      >
+                      <StatusTag {...operatorClientStatusPresentation(client)}>
                         {operatorClientStatusLabel(client)}
                       </StatusTag>
                     </TableCell>
@@ -404,6 +451,43 @@ export default function OperatorClientsScreen() {
                   </TableRow>
                 ))
               )}
+              {clients === undefined
+                ? null
+                : filteredApplications.map((application) => (
+                    <TableRow
+                      key={application.requestId}
+                      className="hover:bg-transparent"
+                    >
+                      <TableCell className="px-4">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <OrgBrandIcon
+                            name={applicationName(application)}
+                            size="md"
+                          />
+                          <span className="truncate">
+                            {applicationName(application)}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-56 truncate text-muted-foreground">
+                        {application.applicantEmail ?? "No email"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        Not set
+                      </TableCell>
+                      <TableCell>
+                        <StatusTag
+                          tone={ONBOARDING_CLIENT_STATUS.tone}
+                          indicator={ONBOARDING_CLIENT_STATUS.indicator}
+                        >
+                          {ONBOARDING_CLIENT_STATUS.label}
+                        </StatusTag>
+                      </TableCell>
+                      <TableCell className="px-4 text-muted-foreground">
+                        {formatDisplayDate(application.createdAt)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
             </TableBody>
           </Table>
         </OperationalPanel>
