@@ -110,9 +110,6 @@ export default function OperatorClientsScreen() {
         client.adminEmail,
       ]),
   );
-  const selection = useRowSelection(
-    filteredClients?.map((client) => client._id) ?? [],
-  );
   // Applicants who have not named their company yet have no client record.
   const filteredApplications =
     filter === "all" || filter === "onboarding"
@@ -124,6 +121,16 @@ export default function OperatorClientsScreen() {
           ]),
         ) ?? [])
       : [];
+  const selection = useRowSelection<string>([
+    ...(filteredClients?.map((client) => client._id) ?? []),
+    ...filteredApplications.map((application) => application.requestId),
+  ]);
+  const selectedOrgIds = (filteredClients ?? [])
+    .map((client) => client._id)
+    .filter(selection.isSelected);
+  const selectedApplicationIds = filteredApplications
+    .map((application) => application.requestId)
+    .filter(selection.isSelected);
   const { seedClient } = useOperatorClientCacheActions();
   const createClient = useAction(api.operator.createSoloClient);
   const stopOperatorImpersonation = useStopOperatorImpersonation(
@@ -224,7 +231,7 @@ export default function OperatorClientsScreen() {
       rightPanel={rightPanel}
     >
       <main className="flex w-full flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <div className="relative w-full max-w-sm">
             <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
             <Input
@@ -250,8 +257,10 @@ export default function OperatorClientsScreen() {
           </Tabs>
           <BulkDeleteBar
             type="client"
-            selectedIds={selection.selectedIds}
+            orgIds={selectedOrgIds}
+            applicationIds={selectedApplicationIds}
             disabled={readOnly}
+            className="sm:ml-auto"
             onClear={selection.clear}
           />
         </div>
@@ -259,37 +268,37 @@ export default function OperatorClientsScreen() {
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="w-10 pl-4 pr-0">
+                <TableHead className="w-11 pl-4 pr-0">
                   <Checkbox
                     aria-label="Select all clients"
                     checked={selection.allSelected}
                     indeterminate={selection.someSelected}
-                    disabled={readOnly || !filteredClients?.length}
+                    disabled={readOnly || selection.visibleCount === 0}
                     onCheckedChange={selection.toggleAll}
                   />
                 </TableHead>
                 <TableHead
-                  className={`w-[25%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[28%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
                 >
                   Client
                 </TableHead>
                 <TableHead
-                  className={`w-[22%] text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[24%] text-muted-foreground ${typeStyle("label.table")}`}
                 >
                   Admin
                 </TableHead>
                 <TableHead
-                  className={`w-[18%] text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[20%] text-muted-foreground ${typeStyle("label.table")}`}
                 >
                   Website
                 </TableHead>
                 <TableHead
-                  className={`w-[10%] text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[14%] text-muted-foreground ${typeStyle("label.table")}`}
                 >
                   Status
                 </TableHead>
                 <TableHead
-                  className={`w-[8%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[14%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
                 >
                   Created
                 </TableHead>
@@ -325,7 +334,7 @@ export default function OperatorClientsScreen() {
                       selection.isSelected(client._id) ? "selected" : undefined
                     }
                   >
-                    <TableCell className="w-10 pl-4 pr-0">
+                    <TableCell className="pl-4 pr-0">
                       <Checkbox
                         aria-label={`Select ${client.dba ?? client.name}`}
                         checked={selection.isSelected(client._id)}
@@ -374,9 +383,23 @@ export default function OperatorClientsScreen() {
                 : filteredApplications.map((application) => (
                     <TableRow
                       key={application.requestId}
+                      data-state={
+                        selection.isSelected(application.requestId)
+                          ? "selected"
+                          : undefined
+                      }
                       className="hover:bg-transparent"
                     >
-                      <TableCell className="w-10 pl-4 pr-0" />
+                      <TableCell className="pl-4 pr-0">
+                        <Checkbox
+                          aria-label={`Select ${applicationName(application)}`}
+                          checked={selection.isSelected(application.requestId)}
+                          disabled={readOnly}
+                          onCheckedChange={(checked) =>
+                            selection.toggle(application.requestId, checked)
+                          }
+                        />
+                      </TableCell>
                       <TableCell className="px-4">
                         <div className="flex min-w-0 items-center gap-2.5">
                           <OrgBrandIcon

@@ -292,6 +292,44 @@ export const listUnlinkedApplications = query({
   },
 });
 
+export const deleteUnlinkedApplications = mutation({
+  args: { requestIds: v.array(v.id("procurementRequests")) },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
+    if (args.requestIds.length > 100)
+      throw new Error("Delete at most 100 applicants at a time");
+    for (const requestId of args.requestIds) {
+      const request = await ctx.db.get(requestId);
+      if (
+        !request ||
+        request.deletedAt !== undefined ||
+        request.status !== "draft" ||
+        request.intakeSubmittedAt !== undefined
+      )
+        continue;
+      const client = request.clientOrgId
+        ? await ctx.db.get(request.clientOrgId)
+        : null;
+      if (client && client.deletedAt === undefined)
+        throw new Error("Applicant already has a client; delete the client");
+      await ctx.db.patch(request._id, {
+        deletedAt: dayjs().valueOf(),
+        deletedByUserId: operator.userId,
+      });
+      await writeOperatorAudit(ctx, {
+        operatorUserId: operator.userId,
+        type: "setup_write",
+        summary: `Deleted unlinked applicant ${request.title}`,
+        metadata: {
+          operation: "delete_unlinked_application",
+          requestId: request._id,
+        },
+      });
+    }
+  },
+});
+
 export const getClientSupportDetails = query({
   args: { clientOrgId: v.id("organizations") },
   handler: async (ctx, args) => {
