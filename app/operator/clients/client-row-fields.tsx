@@ -16,6 +16,7 @@ import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
 import { useOperatorClientCacheActions } from "@/lib/sync/operator-cached-queries";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
+  ONBOARDING_CLIENT_STATUS,
   OPERATOR_CLIENT_STATUSES,
   operatorClientStatusLabel,
   operatorClientStatusPresentation,
@@ -64,7 +65,7 @@ export function ClientWebsiteField({
           event.currentTarget.blur();
         }
       }}
-      className="truncate"
+      className="-ml-[13px] w-[calc(100%+13px)] truncate"
     />
   );
 }
@@ -101,7 +102,9 @@ export function ClientStatusField({
           void change(value as OperatorClientRow["clientAccessStatus"]);
       }}
     >
-      <SelectTrigger className="w-full" aria-label={`Status for ${client.name}`}>
+      <SelectTrigger
+        className="-ml-[13px] w-[calc(100%+13px)]"
+        aria-label={`Status for ${client.name}`}>
         <SelectValue>
           <StatusLabel {...operatorClientStatusPresentation(client)}>
             {operatorClientStatusLabel(client)}
@@ -117,6 +120,43 @@ export function ClientStatusField({
           ),
         )}
       </SelectContent>
+    </Select>
+  );
+}
+
+export function ApplicationWebsiteField({ name }: { name: string }) {
+  return (
+    <Input
+      aria-label={`Website for ${name}`}
+      placeholder="Not set"
+      disabled
+      value=""
+      readOnly
+      className="-ml-[13px] w-[calc(100%+13px)]"
+    />
+  );
+}
+
+export function ApplicationStatusField({ name }: { name: string }) {
+  return (
+    <Select
+      value="onboarding"
+      items={{ onboarding: ONBOARDING_CLIENT_STATUS.label }}
+      disabled
+    >
+      <SelectTrigger
+        className="-ml-[13px] w-[calc(100%+13px)]"
+        aria-label={`Status for ${name}`}
+      >
+        <SelectValue>
+          <StatusLabel
+            tone={ONBOARDING_CLIENT_STATUS.tone}
+            indicator={ONBOARDING_CLIENT_STATUS.indicator}
+          >
+            {ONBOARDING_CLIENT_STATUS.label}
+          </StatusLabel>
+        </SelectValue>
+      </SelectTrigger>
     </Select>
   );
 }
