@@ -1507,6 +1507,11 @@ reports preserve failed candidates and their repeatable artifacts:
   trusted-HTTPS refusal checks passed with zero messages exposed. Real delivery,
   positive read and acceptance remain blocked on the exact sender address and
   existing MCP conversation ID; no email was sent.
+- [857 native demo run](browser-native-live-sol-857074d-2026-10-20.md): Turnstile's
+  testing-key widget showed Success after native top-page motion and one
+  press/release. V2 refused before pressing because two hover checks fell below
+  threshold; its quota warning was already present and unchanged. Neither result
+  establishes production challenge strength or host-form acceptance.
 
 These reports do not establish hosted sandbox isolation, production challenge
 solving, controlled inbox delivery, or customer submission acceptance. Final
