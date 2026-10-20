@@ -1,0 +1,24 @@
+{
+  "candidate": "d28fb67ae6c5d05c4294f31b9f8b5d96712ff31d",
+  "sourceFiles": {
+    "packages/server/src/skills/browser.ts": "edd6fff8a15b06f0851f6900f08271edcc733c4f20a42fa92deaf62d530aa96c",
+    "packages/server/src/skills/harness.ts": "aeaa051fbcf1e6385944a5e9b6168be96947e7294ee2d64c6676f490c38cd030",
+    "packages/server/src/skills/gate.ts": "412b525e5542ab3269623e730448747b337412f23692ebf76fa179878f2c6379",
+    "packages/server/src/browse/tools.ts": "8b9aa8e5ed9c1d2f9b42cccf2ad5e24b90a7a00da31ff8942f2d62b1c5492eeb",
+    "packages/server/src/skills/challenge/captcha.ts": "d59110cbd2cb5e8d6e6564c126b74759a68d64cc5c48d019f75fc21e323a37ec"
+  },
+  "productionConstantName": "CAPTCHA_CLICK_DESCRIPTION",
+  "productionConstant": "Locate the described checkbox, image tile or verify control with screenshot vision, move the top-page pointer, then send one trusted press and release. Before input the runtime checks the allowed page, recognized challenge frame, geometry, content and final hit; these checks can refuse the action. Drag, slider, audio and typed targets are unsupported. Page handlers may submit data or make network requests in response to the click.",
+  "productionConstantUtf8Sha256": "486d74eeec7f03eff7b3d140c91be7efb37e3be66ce078faf8d9f68cdfee488a",
+  "capturedActionDescriptionEqualsConstant": true,
+  "actualActorToolDescriptionEqualsConstantBeforeInference": true,
+  "actualActionPrimitive": "captchaClick",
+  "questionThresholdObservationCodeByteEqualTo4bbe": true,
+  "unchangedGateSectionSha256": "f77cd5fbd431c1df597263518734a0bfc396fd479ee43e17a21ce35c0a4687cb",
+  "gateSection": "actionGateQuestions, actionRiskLimit, gateFailures and boundedObservation; start actionGateQuestions, end before GateVerdict",
+  "thresholds": {
+    "relevanceMin": 0.7,
+    "riskMax": 0.3
+  },
+  "controllerPublicationChanges": "Module/output/prior-artifact paths relocated only; not rerun."
+}
