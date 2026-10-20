@@ -72,7 +72,9 @@ export function ClientWebsiteField({
           event.currentTarget.blur();
         }
       }}
-      className="-ml-[13px] w-[calc(100%+13px)] truncate"
+      // The https:// prefix shows only while editing.
+      groupClassName="-ml-[13px] w-[calc(100%+13px)] [&>[data-slot=input-group-addon]]:pl-3 [&:not(:focus-within)>[data-slot=input-group-addon]]:hidden"
+      className="truncate bg-transparent! not-focus:pl-3!"
     />
   );
 }

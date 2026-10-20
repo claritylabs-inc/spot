@@ -279,7 +279,8 @@
   select,
   [data-slot="select-trigger"],
   [role="combobox"],
-  [data-slot="input-group"]
+  [data-slot="input-group"],
+  [data-slot="website-input"]
 ):is(:focus, :focus-visible, :focus-within) {
   --tw-ring-shadow: 0 0 #0000;
   --tw-ring-offset-shadow: 0 0 #0000;
@@ -289,15 +290,15 @@
 }
 
 /* Admin field controls keep the readable row presentation until focused. */
-[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"]) {
+[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"], [data-slot="website-input"]) {
   background-color: transparent;
   border-color: transparent;
   box-shadow: none;
 }
-[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"]):hover {
+[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"], [data-slot="website-input"]):hover {
   background-color: var(--muted);
 }
-[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"]):is(:focus, :focus-visible, :focus-within) {
+[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"], [data-slot="website-input"]):is(:focus, :focus-visible, :focus-within) {
   background-color: var(--background);
   border-color: var(--input);
 }
