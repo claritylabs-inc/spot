@@ -1,5 +1,110 @@
 # Platform workflow QA
 
+## Introduction spacing refinement — October 20, 2026
+
+Local Chrome real-component preview passed top-aligned introduction content,
+wider desktop content/footer alignment, roomier topic rows, and removal of the
+icon/counter/bottom note. At 393×700 the content ended at 504px and footer began
+at 627px; there was no horizontal overflow. Evidence:
+`.context/qa/intake-polish/introduction-top-aligned-{desktop,mobile}.png`.
+The introduction-only IntakeFrame layout leaves ordinary form layout intact.
+Touched-component lint passed; temporary preview route was removed.
+
+## Intake integrated questions and inferred Booleans — October 20, 2026
+
+Isolation failure modes identified before implementation: confidence below 0.70
+or invalid probability; Unknown selected; unsupported question/control; overwritten
+human answers or explicit skips; inactive conditional child; stale token/context
+or provisional batch accepting inferred answers; forged prefill provenance.
+These inference/write races cannot reliably be established in browser E2E.
+`convex/lib/intakePrefills.test.ts` defines the compact decision/merge invariants
+before implementation. Browser coverage will check coverage-owned vehicle fields,
+review/edit of prefills, multiple routes and the final removal of reorder/clear/distance controls.
+
+Results: local Chrome component workflows passed for adding/removing independent
+routes and stops; Start/Stop vs Stop 1/Stop 2 labels; endpoint naming with an SVG
+ArrowRight; legacy single-route input and reload recovery; hidden maximum-distance
+values; absent reorder/Clear route/banner/help copy; equal 48px large secondary add
+buttons; and 393px layout without horizontal overflow. Route reload recovery here
+uses fixture session storage. Separately, the user draft showed Saved and reached
+review with three routes after the local backend validator sync fixed the reported
+save rejection. Production was not deployed.
+
+Coverage component QA passed two independent vehicle answers, conditional equipment
+details clearing on No, and combined vehicle/quote/driver review under Coverage.
+Vehicle and Locations headings had identical computed size (14px), weight (500),
+and color. The Prefilled review label rendered; exact review editing uses the
+existing follow-up edit path. Live Jev returned No with 0.98 joint confidence on
+explicit synthetic non-hazardous-freight evidence; output is in
+`.context/qa/intake-integrated/live-jev.json`. This probe verifies router decisions,
+not an entire live applicant-prefill turn. The decision/merge isolation suite and
+existing owner/revision tests passed (8 checks). Stale-evidence/provenance guards
+were reviewed in the production writer, but not raced through browser sessions.
+
+Evidence and repeatable fixture source are under `.context/qa/intake-integrated/`
+(`page.tsx`, `qaIntakeInference.ts`, routes/review desktop/mobile PNGs). Temporary
+preview and backend probe modules were removed after the run. Final root/Convex
+typechecks and touched-file lint are recorded there; lint retains the existing
+application effect-dependency warning.
+
+
+## Intake loading and section introductions — October 20, 2026
+
+Actor: local Chrome component preview using the real intake components, with
+synthetic callback state and no backend writes. Temporary preview route:
+`/intake/qa-polish`, removed after verification; fixture retained at
+`.context/qa/intake-polish/page.tsx` for repeatability.
+
+1. Inspect each quote section introduction: icon, section label, heading,
+   description, topic preview and Back/begin actions; verify section navigation.
+2. Check savings policy introduction without quote section numbering.
+3. Continue into pending follow-ups: show one announced status and decorative
+   form skeletons. Switch to the initial application loading variant.
+4. Check desktop and 393px layouts for wrapping and footer overlap. Verify
+   loading placeholders are hidden from accessibility and motion is conditional.
+5. Remove the temporary preview route. No draft edits or submissions.
+
+Results: passed in local Chrome for all six quote introduction variants,
+savings policy upload introduction, begin/back callbacks, both initial and
+question-preparation loading cards, and 393px/desktop layouts. Mobile scroll
+width matched the 393px viewport; topics, supporting copy and footer stayed
+readable. The status region retained visible copy, and the spinner/skeleton
+subtrees were marked decorative. Reduced-motion classes were source-checked;
+OS preference emulation was not run. Screenshots:
+`.context/qa/intake-polish/{introduction,loading}-{desktop,mobile}.png`.
+The temporary route was removed. Node 24 typecheck and whitespace checks passed;
+lint had no errors and the existing `application.tsx` effect-dependency warning.
+This component preview does not establish live inference, authentication or
+handoff timing. No unit tests were added.
+
+## Intake review disclosures and grouped labels — October 20, 2026
+
+Actor: existing signed-in local synthetic Lakeview Freight Test LLC applicant at
+`localhost:3207`; no submission or external delivery.
+
+1. Open Review from the section navigation: land directly on the final review.
+2. Toggle Application questions, Additional details, Commercial auto details and
+   Driver schedule with pointer/keyboard; each body must expand and collapse.
+3. Expand Application questions: vehicle facts share a vehicle heading, labels
+   omit the repeated vehicle prefix and “Include the units”, and saved answers
+   and skipped states remain visible. Inactive conditional answers stay hidden.
+4. Use Application questions Edit: grouped vehicle labels use `body.root` like
+   Location name and inputs use the same 48px sizing; return to review.
+5. Check narrow layout for wrapping/overflow. Cleanup: leave draft unsubmitted.
+
+Results: local Chrome passed direct Review entry, pointer open/close for all
+four added disclosures, keyboard Enter toggling for Driver schedule, the missing
+driver empty state, grouped Vehicle 1 answers/skips, and a labeled General
+questions group. Vehicle/general subheadings use `heading.micro` and render
+smaller than the main section title. At 393px the page had no horizontal
+overflow. Edit opened the saved application-question position; grouped-field
+`body.root` typography and 48px input sizing were checked in source but not
+visually reached in this fixture. Multi-vehicle, savings, light theme, and
+inactive-child regression cases were not run. No submission was made.
+Evidence: `.context/qa/intake-review-grouped.png` and
+`.context/qa/intake-review-mobile.png`. Node 24 root typecheck, touched-file lint,
+and diff whitespace checks passed. No unit tests were added.
+
 ## Intake follow-up questions — October 20, 2026
 
 Helium verified one-question-per-page ACORD and generated follow-up sections,
@@ -1370,3 +1475,156 @@ Actor: existing synthetic local intake owner, isolated route draft (human drafts
 Workflow: select Cleveland → Columbus → Cincinnati; inspect map; reorder and remove stops; edit a city; enter maximum distance; reload; verify readable review. Adjacent cases: empty skip, partial route cannot continue, keyboard suggestions, narrow viewport, provider failure/manual city entry. Cleanup: remove local-only fixture function; retain synthetic test draft for user review. Evidence: `.context/qa/routes/`.
 
 Outcome: passed visible Helium QA for three selected Ohio cities, keyboard selection, pointer selection of a UK city, reorder/remove, clear-to-skip, incomplete-step blocking, review's incomplete-route link, readable review, reload persistence, and manual no-result city entry. An Ohio→London route returned no road path and retained numbered stops without drawing a fabricated connection. Fixed the provider's single-marker padding rejection and narrow-screen input/overflow/map-cropping issues. Final 393px viewport had equal document/client widths (378px after scrollbar). Artifacts: `route-desktop.png`, `route-mobile.png`, `route-no-road.png`. Root and Convex type checks passed; existing intake authorization/Slack suites passed 9 tests; focused lint had no errors and one pre-existing application effect warning. Temporary local fixture source removed and local backend redeployed. Dark theme was exercised in the application; light theme and its loaded map were verified in a temporary, synthetic-only primitive harness (`route-light.png`), with the original system theme restored and harness removed. A forced network outage was not separately exercised. The memory helper's macOS free-only estimate reported critical; native memory_pressure showed 32% available, so checks ran sequentially with existing services retained.
+
+2026-10-20 requirement prefill: local callback rejection diagnosed and the known unaccepted job repaired once. Actual Program Manager Agreement extraction selected professional liability; grounded $1,000,000 unspecified minimum corrected to aggregate without another model call. Eleven merge/prefill and request authorization checks pass. Artifacts: `.context/qa/requirements-prefill/`. Browser verification of this newer request was blocked by the selected browser account’s request ownership; saved typed details and source both confirm aggregate 1000000 and blank each_claim.
+
+2026-10-20 intake polish: browser verified Back from the first business question reopens its introduction, Let’s begin returns to the question, and Skip moves forward within the section. Company name uses the requested optional trading-name placeholder; next page shows legal name and website with a static title. Multiline description expanded from 126px to 760px with scrollHeight equal to clientHeight and content sizing enabled, then the original answer was restored. Copied base coverage summary was removed only when the existing draft matched the source exactly; aggregate remains 1000000. Live ACME Inc / acme.com lookup completed with zero verified identity facts, correctly leaving autofill blank. Artifacts: `.context/qa/requirements-prefill/`.
+
+Applicant-provided website follow-up: removed intake company-name matching and read the supplied site plus same-site business/about pages. Live site retrieval for the entered ACME example returned freeware, software-library and mapping-tool operations despite the entered name differing. Website content remains evidence; other company research retains identity verification. No new tests or dev migrations were added for this follow-up.
+
+2026-10-20 description industry and empty gaps: browser verified Jev filled Professional Services from Business management consulting, preserved it after a conflicting retail description edit, and restored the original description. A ready empty additional batch automatically reached review without the gap intro or empty answer screen. Screenshots: `.context/qa/requirements-prefill/industry-prefilled.png` and `empty-gaps-review.png`. Date controls reuse the shared DateField, generated kind selection uses Jev Choice, and legacy questions use read-only rendering hints. Root/Convex TypeScript and touched-file lint pass apart from the existing application data dependency warning. No new tests or dev migrations were written.
+
+Continue-gap gate live QA: a saved Continue produced a completed Jev Yes and three screened yes/no follow-ups in the existing QA draft. The original description and temporary trading name were restored through the UI. Date-kind schema, rendering hints, final calendar validation and applicant-only prompt guidance passed root/Convex typechecking; no new tests or dev migrations were written. Review address typography now follows the shared row role.
+
+### 2026-10-20 final applicant walkthrough
+Actor: owner-authenticated synthetic QA applicant, local frontend 3207/backend 3220; reuse isolated QA draft, preserve entered baseline answers. Native memory_pressure reports 40% available (6.4GiB); helper's macOS free-only estimate is not available-memory accounting. Run sequentially with watcher.
+1. Reopen review; edit company name → verify optional trading-name then static legal-name/website page, Back introduction, Skip/Continue and reload persistence.
+2. Edit coverage/routes → verify multiple routes, Start/Stop labeling, endpoint heading/icon, matching add actions, delete alignment, no reorder/clear/distance/helper text; Continue must save without invalid-followup errors.
+3. Go through history and follow-ups → verify typed controls, applicant-answerable prompts, ready-empty section skipping, final review reached without starter.
+4. Expand review → commercial auto/driver schedule nested in Coverage, vehicle labels match Locations and address/body sizes match. Check 393px layout and console.
+Failure cases: partial route blocks progression; blank optional answers remain skipped; existing industry not replaced. Model/network failures must retain answers without inference replay. Requirements extraction and website/industry live prefill have prior evidence; rerun only where current workflow supplies fixture.
+Cleanup: restore temporary synthetic edits, reset viewport, retain draft without submission. Evidence under `.context/qa/intake-walkthrough/`; record observed coverage and unexercised paths separately.
+
+Final-list regression result: passed route partial-stop blocking, removal back to
+Start/Stop, successful route Continue with no Invalid follow-up answer console
+error, and saved routes retained. Review title now reads “Review your insurance
+application before submitting”; completed Additional details shows Complete.
+Generated-question evidence and all context/token finalization hashes now exclude
+final LLM answers, while previous definitions are exclusion-only. Disabled the
+automatic enrichment pass after provisional-list screening. Backend snapshot
+comparison before/after unchanged Continue and a deliberate final-answer No→Yes
+edit found the entire ready batch and gap assessment byte-for-byte unchanged;
+enriching stayed false. Restored No, reloaded review, and reopened the section
+without a preparation screen. Screenshot `review-complete.png`; 393px review
+has scrollWidth=clientWidth=378px (`review-mobile.png`), viewport restored.
+Root/Convex types and diff whitespace checks passed; focused lint has only the
+existing application effect dependency warning. No new tests, migrations,
+application submission or production deployment. This run focused on the route,
+review and terminal-question regressions; earlier prefill/date/navigation evidence
+above was not regenerated in this pass.
+
+### Request-notes coverage preselection — 2026-10-20
+Actor: existing owner-authenticated synthetic route QA draft, local 3207/3220.
+Enter request notes asking for commercial tenant insurance for a rented office;
+continue to coverage and expect relevant lines selected, previous commercial-auto
+selection retained, no loading banner, no invented limits/ownership. Reload and
+verify saved selections/source deduplication; explicit deselection must remain.
+Restore notes and remove only new QA coverage selections. No submission.
+
+Observed: the tenant-office note selected Commercial Property, retained existing
+Commercial auto, left amounts unspecified, and showed no inference banner.
+Selection survived reload. Manual Property deselection survived another reload
+with the note unchanged. Restored blank notes and removed the new QA line through
+the UI; existing auto/driver/route data retained. Screenshot:
+`.context/qa/intake-walkthrough/notes-coverages.png`. Root/Convex type checks pass;
+focused lint has only the pre-existing application effect dependency warning.
+No new tests or migrations; local backend sync only.
+
+2026-10-20 coverage layout/loading follow-up: local Convex history for the supplied
+request showed catalog selection at 4.026s, preceded by an additional gate failure
+(`Additional-question assessment uncertain`), not an indefinite generator. The
+700ms browser warmup could cancel on navigation; saved-progress backend warmup
+now starts catalog preparation during Coverage. New pending-token deduplication
+retains in-flight work. Logs and bounded diagnosis are under
+`.context/qa/intake-walkthrough/loading-diagnosis.json`. Applicant wording, one-page
+location hierarchy, industry placeholders and subsection intro metadata passed
+root typechecking and focused lint (one pre-existing effect warning); no new tests
+or migrations. The supplied screenshots show the live subsection progression;
+a full fresh browser rerun of the reordered Coverage flow remains unexercised in
+this pass. No application submitted or production deployment performed.
+
+
+### Local baked coverage packs and consolidated review — 2026-10-20
+Actor: owner-authenticated synthetic QA draft `zh742ma43782we1bmbxzdad48d8gm612`, local Next 3207 / Convex 3220. Preserve existing auto, drivers and routes; add a named QA property for regression evidence. No submission.
+
+Actions/outcomes: opening standard Coverage questions returned immediately without model preparation. Hired vehicles Yes exposed its catalog-authored cost child; Back initially failed exact-definition validation because Convex reordered condition-object keys. Comparing condition fields fixed this; repeat Continue/Back passed, and No hid the child without save errors. Vehicle ownership now renders five large radio choices, and Yes/No/unsure controls share the same extracted `radio-choices.tsx` primitive; operator inline dropdowns retain their compact contract.
+
+Added QA WeWork with the Mapbox-selected 100 University Avenue address, activities, leased occupancy, four staff, contents and replacement value. Review displays all entered location facts in a single named row card, with no Other coverage details or General questions wrapper. Location heading uses the standard micro subheading. General catalog answers are assigned to their coverage and sorted by pack order before scoped locations. Screenshot: `.context/qa/intake-walkthrough/consolidated-location-review.png`. Synthetic property retained as a review regression fixture; existing auto/driver/routes preserved. No applicant authorization checkbox or Submit used.
+
+Empty/failed optional generation is hidden and routes directly to review; source inspection verifies the failed text and error toast are removed and both forward/back paths bypass unavailable empty batches. A forced generation-failure browser case was not injected in this pass. The supplied live request's remaining tail question was confirmed as the historical `catalog1_eo_terms_extended_reporting`; shared visibility now retires it across drafts/review/exports while allowing preserved history to save. No production or historical database backfill performed.
+
+Root/Convex type checks and diff whitespace checks passed. Focused lint reports only the existing application effect dependency warning. No new tests or migrations; local backend sync only.
+
+### Business-first intake, typed inputs and conditional payroll — 2026-10-20
+Actor: existing owner-authenticated synthetic drafts on local Next 3207 / Convex
+3220. No submission, no production deployment, no new tests/migrations.
+
+- Passed: request notes → Your business introduction; saved-business Continue →
+  Coverage (caught and fixed the old history shortcut). Progress and review use
+  Business before Coverage. Screenshot: `business-before-coverage.png` under
+  `.context/qa/intake-walkthrough/`.
+- Passed: 2022 Ford F-150 has Pickup truck suggested into its blank body field;
+  identity-only scope and named fixed vehicle detail pages render. Earlier scalar
+  currency/percentage unsure answers saved/reloaded, including largest contract
+  value; industry multi-select saved two selections. Percentage 234 clamps to 100
+  on blur. Applicant textarea unsure checkbox aligns to the first text line.
+- Passed: missing privacy and terms links render shared URL input-group controls
+  (`type=url`, URL placeholder, link icon, unsure). User-entered Stripe privacy and
+  terms URLs saved through the normal revision writer. Screenshot:
+  `cyber-url-field.png`. Synthetic fixture deliberately uses a different company
+  name to exercise applicant-provided website research.
+- Background cyber job exercised: first local extraction failed the bounded
+  inline-task allowlist; added the exact task/trace to the existing text-only
+  3,000-token path. A subsequent changed-context run completed with no supported
+  proposals, so no cyber answers were filled. Nonempty verified-proposal merge
+  and stale-proposal rejection are source-reviewed, not claimed as live browser
+  passes. Failure never blocked the form. Diagnostics: `cyber-runtime.log`.
+- Passed: workers’ compensation owner elections Yes exposes the details child;
+  entered a synthetic owner/role, returned and chose No; child became hidden and
+  its saved answer cleared/skipped. Payroll now belongs to WC, including with
+  other coverages selected (pack ownership precedes generic catalog groups).
+- Passed: payroll groups Office staff (4, USD240000) and Warehouse staff (2,
+  USD120000) for the next 12 months saved, survived Back and full reload, and
+  rendered separate human-readable group summaries in review. Blank/incomplete
+  structured groups disable Continue. Fixed money primitive comma normalization
+  without losing the entered group. Legacy saved next/last-12-month periods remain
+  supported alongside annual/monthly/biweekly/weekly and custom-date entry.
+  Screenshot: `structured-payroll.png`. Custom dates/currency alternatives were
+  not separately exercised.
+- Passed: entered the empty/unavailable Additional details section, which routed
+  directly to Review without the reported showSectionIntro ReferenceError. Moved
+  all introduction derivation before early returns, and guarded cursor persistence
+  against temporarily unavailable question batches. Screenshot:
+  `optional-section-skip-fixed.png`. No authorization checkbox or Submit used.
+
+Synthetic cyber fixture `zh761k2t9pcw99vs8t3wfqb63n8gntc5` retains the structured
+WC payroll regression data and optional policy links; its temporary company facts
+remain draft-only. Root/Convex type checks pass; focused lint has the pre-existing
+application effect dependency warning and no errors. No new isolated tests.
+
+### Non-blocking submission phone — 2026-10-20
+Removed final phone-format/presence blockers from shared review completion and
+`requestIntake.submit` for quote and savings. Both final profile-phone promotions
+now tolerate normalization failure and omit invalid/blank/in-use values, preserving
+an existing profile number while retaining raw submitted contact data. Manual
+in-memory execution of the shared validator confirms `123`, `not a number`, and
+blank phone values produce no phone problem for either intake goal. Source review
+covers both final profile-write branches. Root/Convex type checks and focused lint
+passed; local backend synced. No application submitted, new tests, migrations, or
+production deployment. A full end-to-end submission was not performed.
+
+### Signup phone render loop — 2026-10-20
+Signup now stores the phone primitive's empty value as `undefined` and passes the
+stable React state setter directly; it no longer feeds `""` back after the control
+emits `undefined`. Handoff hydration uses the same convention; only the HTTP
+payload converts empty to `""`. The application's contact phone control also
+receives `undefined` when empty. Shared primitive/package remains unchanged.
+
+Browser verification used an independent signed-out in-app browser session to
+preserve the existing Chrome local QA login. Typed a Canadian 416 number, verified
+Canada inference, selected all and deleted it, entered/deleted a partial 1, then
+selected United Kingdom and typed a synthetic London number. All operations kept
+the form responsive, and captured console warnings/errors stayed empty. No form
+submission/account creation. Screenshot:
+`.context/qa/intake-walkthrough/signup-phone-fixed.png`. Root type check and focused
+lint pass (the application's prior effect-dependency warning remains). No new tests.
