@@ -5,7 +5,8 @@ import customParseFormat from "dayjs/plugin/customParseFormat";
 import type { Id } from "../../_generated/dataModel";
 import type { ActionCtx } from "../../_generated/server";
 import type {
-  ExtractRequest,
+  ExtractAnswer,
+  ExtractFieldSpec,
   ExtractResponse,
 } from "../../../contracts/cl-router/policy";
 import { clRouterExtract } from "../clRouterClient";
@@ -39,8 +40,6 @@ export const MAX_DECLARATIONS_STATE_CHARS = 240_000;
 const MAX_NULL_PROBABILITY = 0.5;
 const MAX_LIST_ITEMS = 60;
 
-type FieldSpec = ExtractRequest["fields"][string];
-
 const SCALAR_TEXT_KEYS = [
   "policyNumber",
   "namedInsured",
@@ -56,7 +55,7 @@ type ScalarKey = (typeof SCALAR_TEXT_KEYS)[number] | (typeof DATE_KEYS)[number];
 
 const evidenceKey = (key: (typeof DATE_KEYS)[number]) => `${key}Evidence`;
 
-export const DECLARATIONS_FIELDS: Record<string, FieldSpec> = {
+export const DECLARATIONS_FIELDS: Record<string, ExtractFieldSpec> = {
   policyNumber: {
     type: "text",
     instructions: "The policy number of this policy, exactly as written.",
@@ -181,7 +180,7 @@ function resolveSpan(
   return quote.trim() ? { page: offset.page, quote } : null;
 }
 
-type Answer = ExtractResponse["answers"][string];
+type Answer = ExtractAnswer;
 
 function scalarValue(answer: Answer | undefined): string | null {
   if (!answer || answer.value === null || Array.isArray(answer.value))
@@ -310,7 +309,7 @@ export function mapDeclarationsAnswers(
 export async function runDeclarationsFastPass(
   ctx: ActionCtx,
   params: {
-    orgId: Id<"organizations"> | string;
+    orgId: Id<"organizations">;
     traceId?: string;
     parsed: ParsedPdfText;
     sections: PolicySection[];
@@ -329,7 +328,7 @@ export async function runDeclarationsFastPass(
       referenceDate: dayjs().format("YYYY-MM-DD"),
       ...(params.traceId ? { trace: { traceId: params.traceId } } : {}),
     },
-    { orgId: String(params.orgId), telemetry: ctx },
+    { orgId: params.orgId, telemetry: ctx },
   );
   return { fields: mapDeclarationsAnswers(built, raw.answers), raw };
 }
