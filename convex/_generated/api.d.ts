@@ -33,6 +33,7 @@ import type * as actions_handleInboundOperatorImessage from "../actions/handleIn
 import type * as actions_handleInboundSlack from "../actions/handleInboundSlack.js";
 import type * as actions_imessageWebhook from "../actions/imessageWebhook.js";
 import type * as actions_intakeCompanyResearch from "../actions/intakeCompanyResearch.js";
+import type * as actions_intakeFollowups from "../actions/intakeFollowups.js";
 import type * as actions_intakeRequirementPrefill from "../actions/intakeRequirementPrefill.js";
 import type * as actions_intakeSlack from "../actions/intakeSlack.js";
 import type * as actions_mcpChat from "../actions/mcpChat.js";
@@ -241,8 +242,11 @@ import type * as lib_inboundEmailDeterministicControls from "../lib/inboundEmail
 import type * as lib_inboundEmailParser from "../lib/inboundEmailParser.js";
 import type * as lib_insuranceIntakeSchema from "../lib/insuranceIntakeSchema.js";
 import type * as lib_insuredNameDecisions from "../lib/insuredNameDecisions.js";
+import type * as lib_intakeAcordQuestions from "../lib/intakeAcordQuestions.js";
 import type * as lib_intakeApplication from "../lib/intakeApplication.js";
 import type * as lib_intakeDetailsSchema from "../lib/intakeDetailsSchema.js";
+import type * as lib_intakeDiagnostics from "../lib/intakeDiagnostics.js";
+import type * as lib_intakeFollowupSchema from "../lib/intakeFollowupSchema.js";
 import type * as lib_intakeSlackContext from "../lib/intakeSlackContext.js";
 import type * as lib_jevEvidenceChoices from "../lib/jevEvidenceChoices.js";
 import type * as lib_jevImages from "../lib/jevImages.js";
@@ -474,6 +478,7 @@ declare const fullApi: ApiFromModules<{
   "actions/handleInboundSlack": typeof actions_handleInboundSlack;
   "actions/imessageWebhook": typeof actions_imessageWebhook;
   "actions/intakeCompanyResearch": typeof actions_intakeCompanyResearch;
+  "actions/intakeFollowups": typeof actions_intakeFollowups;
   "actions/intakeRequirementPrefill": typeof actions_intakeRequirementPrefill;
   "actions/intakeSlack": typeof actions_intakeSlack;
   "actions/mcpChat": typeof actions_mcpChat;
@@ -682,8 +687,11 @@ declare const fullApi: ApiFromModules<{
   "lib/inboundEmailParser": typeof lib_inboundEmailParser;
   "lib/insuranceIntakeSchema": typeof lib_insuranceIntakeSchema;
   "lib/insuredNameDecisions": typeof lib_insuredNameDecisions;
+  "lib/intakeAcordQuestions": typeof lib_intakeAcordQuestions;
   "lib/intakeApplication": typeof lib_intakeApplication;
   "lib/intakeDetailsSchema": typeof lib_intakeDetailsSchema;
+  "lib/intakeDiagnostics": typeof lib_intakeDiagnostics;
+  "lib/intakeFollowupSchema": typeof lib_intakeFollowupSchema;
   "lib/intakeSlackContext": typeof lib_intakeSlackContext;
   "lib/jevEvidenceChoices": typeof lib_jevEvidenceChoices;
   "lib/jevImages": typeof lib_jevImages;

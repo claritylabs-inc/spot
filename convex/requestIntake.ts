@@ -1,3 +1,13 @@
+import { estimatedVehicleValueError } from "../lib/intake-auto-quote";
+import { vinError } from "../lib/intake-vehicles";
+import { driverScheduleErrors, driverModelContext } from "../lib/intake-drivers";
+import { intakeQuestionHistory } from "../lib/intake-question-history";
+import { followupQuestionVisible, expandIntakeFollowupQuestion } from "../lib/intake-followups";
+import { INTAKE_ACORD_CATALOG_VERSION } from "./lib/intakeAcordQuestions";
+import {
+  followupSectionValidator,
+  followupQuestionValidator,
+} from "./lib/intakeFollowupSchema";
 import { createOwnedIntakePolicyUpload } from "./policies";
 import {
   applicationMarkdownBlock,
@@ -24,12 +34,13 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import {
   internalMutation,
+  internalQuery,
   mutation,
   query,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { getSessionUserId } from "./lib/sessionIdentity";
 import { getOrgAccess } from "./lib/access";
 import { normalizeUserPhone, findUserByNormalizedPhone } from "./lib/userPhone";
@@ -75,6 +86,10 @@ export function submissionContent(
     "prefillSourceIds",
     "operatingLocationPrefilled",
     "activitiesPrefilled",
+    "followupProgress",
+    "driverIndex",
+    "autoVehicleIndex",
+    "collectSensitiveDriverDetails",
   ]);
   const normalize = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(normalize);
@@ -490,6 +505,7 @@ export const get = query({
     return {
       requestId: request._id,
       answers: request.intakeAnswers ?? {},
+      followupBatches: request.intakeFollowups,
       details: {
         ...details,
         scopeNote:
@@ -716,10 +732,38 @@ export const save = mutation({
       args.skippedStep !== undefined &&
       (!Number.isInteger(args.skippedStep) ||
         args.skippedStep < 0 ||
-        args.skippedStep >= INTAKE_STEPS.length - 1)
+        args.skippedStep >= INTAKE_STEPS.length ||
+        args.skippedStep === 28)
     )
       throw new Error("This question cannot be skipped");
-    if (args.details) validateIntakeDetails(args.details);
+    if (args.details) {
+      validateIntakeDetails(args.details);
+      const approved = [
+        ...(request.intakeFollowups?.acord?.questions ?? []),
+        ...(request.intakeFollowups?.additional?.questions ?? []),
+        ...(request.intakeDetails?.followups ?? []),
+      ].flatMap((question) => [question, ...expandIntakeFollowupQuestion(question)]);
+      for (const row of args.details.followups??[]) {
+        const { answer: _answer, skipped: _skipped, ...question }=row;
+        if(row.answer.trim() && !followupQuestionVisible(row,args.details.followups))throw new Error("This follow-up does not apply to the current answer.");
+        if (
+          !approved.some(
+            (candidate) =>
+              candidate.id === question.id &&
+              candidate.section === question.section &&
+              candidate.label === question.label &&
+              candidate.kind === question.kind &&
+              candidate.source === question.source &&
+              JSON.stringify(candidate.conditions??[])===JSON.stringify(question.conditions??[]) &&
+              JSON.stringify(candidate.options) ===
+                JSON.stringify(question.options),
+          )
+        )
+          throw new Error(
+            "These follow-up questions have changed. Reload your application.",
+          );
+      }
+    }
     let details = args.details ?? request.intakeDetails;
     if (!args.details && details) {
       const legacy = detailsFromAnswers({
@@ -841,10 +885,14 @@ export const save = mutation({
         key,
         `Application saved — now on: ${INTAKE_STEPS[args.step]}`,
       );
-    }
-    else {
+    } else {
       // Same-question autosaves also refresh the thread's current answer values.
-      await queueIntakeSlack(ctx, request._id, `summary:${revision}`, "Application saved");
+      await queueIntakeSlack(
+        ctx,
+        request._id,
+        `summary:${revision}`,
+        "Application saved",
+      );
     }
     return revision;
   },
@@ -1124,7 +1172,12 @@ export const attachFile = mutation({
       await ctx.db.patch(intakeFileId, { clientFileId });
       await ctx.db.patch(request._id, { intakeAmendedAt: now, updatedAt: now });
     }
-    await queueIntakeSlack(ctx, request._id, `summary:file:${intakeFileId}:attached`, "Document attached");
+    await queueIntakeSlack(
+      ctx,
+      request._id,
+      `summary:file:${intakeFileId}:attached`,
+      "Document attached",
+    );
     return intakeFileId;
   },
 });
@@ -1170,7 +1223,12 @@ export const removeFile = mutation({
         ? { packetRevision: (request.packetRevision ?? 0) + 1 }
         : {}),
     });
-    await queueIntakeSlack(ctx, request._id, `summary:file:${intakeFileId}:removed`, "Document removed");
+    await queueIntakeSlack(
+      ctx,
+      request._id,
+      `summary:file:${intakeFileId}:removed`,
+      "Document removed",
+    );
     return null;
   },
 });
@@ -1209,6 +1267,7 @@ export const submit = mutation({
     const savings = answers.intakeGoal === "savings";
     const missing = missingIntakeAnswers(answers);
     const details = request.intakeDetails ?? detailsFromAnswers(answers);
+    if (!savings) missing.push(...driverScheduleErrors(details));
     if (!savings && details.hasClaims === "yes" && !answers.claims?.trim())
       missing.push("Claims details");
     if (
@@ -1236,7 +1295,13 @@ export const submit = mutation({
           line.limits.coverage_description === "I'm not sure")
       )
         missing.push("Type of insurance for other coverage");
-      if (!validCoverageScope(line, details.scopeNote || answers.coverageScope))
+      for (const [index, vehicle] of (line.vehicles ?? []).entries()) {
+        const valueProblem=estimatedVehicleValueError(vehicle.estimatedValue);
+        if(valueProblem)missing.push(`Vehicle ${index+1} approximate value: ${valueProblem}`);
+        const problem=vinError(vehicle.vin, details.registrationCountry);
+        if(problem) missing.push(`Vehicle ${index+1} VIN: ${problem}`);
+      }
+      if (line.coverage !== "commercial_auto" && !validCoverageScope(line, details.scopeNote || answers.coverageScope))
         missing.push(`${coverageOption(line.coverage).label}: what to insure`);
       for (const limit of coverageOption(line.coverage).limits)
         if (!validCoverageLimit(limit.key, line.limits[limit.key]))
@@ -1666,5 +1731,141 @@ export const finishCompanyResearch = internalMutation({
       },
     });
     return null;
+  },
+});
+
+async function followupContextHash(
+  ctx: QueryCtx | MutationCtx,
+  request: Doc<"procurementRequests">,
+  section: "acord" | "additional",
+) {
+  const details =
+    request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {});
+  const contextDetails = {
+    ...details,
+    followups:
+      section === "additional"
+        ? (details.followups ?? []).filter((row) => row.section === "acord")
+        : undefined,
+  };
+  const files = await ctx.db
+    .query("requestIntakeFiles")
+    .withIndex("request", (q) => q.eq("requestId", request._id))
+    .take(50);
+  return hashIntakeToken(
+    `${INTAKE_ACORD_CATALOG_VERSION}:history-v3-auto-quote:${JSON.stringify((request.intakeSkippedSteps ?? []).filter((step) => step < 28))}:${submissionContent(
+      request.intakeAnswers ?? {},
+      contextDetails,
+      files.map((file) => String(file._id)),
+    )}`,
+  );
+}
+/** One generation per saved application context; revisiting after edits prepares a new context. */
+export const prepareFollowups = mutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    section: followupSectionValidator,
+  },
+  handler: async (ctx, { requestId, section }) => {
+    const { request } = await ownedRequest(ctx, requestId);
+    if (
+      request.intakeSubmittedAt ||
+      request.intakeAnswers?.intakeGoal === "savings"
+    )
+      throw new Error(
+        "Follow-up generation is only available for quote drafts",
+      );
+    const contextHash = await followupContextHash(ctx, request, section);
+    const previous = request.intakeFollowups?.[section];
+    // Never automatically replay a pending, failed, or unknown inference outcome.
+    if (previous?.contextHash === contextHash) return null;
+    const batch = {
+      status: "pending" as const,
+      token: crypto.randomUUID(),
+      contextHash,
+      startedAt: dayjs().valueOf(),
+      questions: [],
+    };
+    await ctx.db.patch(requestId, {
+      intakeFollowups: { ...request.intakeFollowups, [section]: batch },
+    });
+    await ctx.scheduler.runAfter(0, internal.actions.intakeFollowups.generate, {
+      requestId,
+      section,
+      token: batch.token,
+    });
+    return null;
+  },
+});
+export const followupContext = internalQuery({
+  args: {
+    requestId: v.id("procurementRequests"),
+    section: followupSectionValidator,
+    token: v.string(),
+  },
+  handler: async (ctx, { requestId, section, token }) => {
+    const request = await ctx.db.get(requestId);
+    if (
+      !request ||
+      request.deletedAt ||
+      request.intakeSubmittedAt ||
+      request.intakeFollowups?.[section]?.token !== token
+    )
+      return null;
+    const files = await ctx.db
+      .query("requestIntakeFiles")
+      .withIndex("request", (q) => q.eq("requestId", requestId))
+      .take(50);
+    const historyDetails = request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {});
+    return {
+      questionHistory: intakeQuestionHistory(request.intakeAnswers ?? {}, historyDetails, request.intakeSkippedSteps ?? []),
+      priorQuestions:
+        section === "additional"
+          ? (request.intakeFollowups?.acord?.questions ?? [])
+          : [],
+      answers: request.intakeAnswers ?? {},
+      details: { ...historyDetails, drivers: (historyDetails.drivers ?? []).map(driverModelContext) },
+      files: files.map(({ name, category }) => ({ name, category })),
+    };
+  },
+});
+export const finishFollowups = internalMutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    section: followupSectionValidator,
+    token: v.string(),
+    questions: v.array(followupQuestionValidator),
+    failed: v.boolean(),
+  },
+  handler: async (ctx, { requestId, section, token, questions, failed }) => {
+    const request = await ctx.db.get(requestId);
+    const batch = request?.intakeFollowups?.[section];
+    if (
+      !request ||
+      request.deletedAt ||
+      request.intakeSubmittedAt ||
+      !batch ||
+      batch.token !== token ||
+      batch.status !== "pending"
+    )
+      return;
+    if (
+      questions.length > 40 ||
+      questions.some((row) => row.section !== section)
+    )
+      throw new Error("Invalid follow-up batch");
+    failed ||=
+      batch.contextHash !== (await followupContextHash(ctx, request, section));
+    if (failed) questions = [];
+    await ctx.db.patch(requestId, {
+      intakeFollowups: {
+        ...request.intakeFollowups,
+        [section]: {
+          ...batch,
+          status: failed ? ("failed" as const) : ("ready" as const),
+          questions,
+        },
+      },
+    });
   },
 });

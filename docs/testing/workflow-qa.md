@@ -1,5 +1,19 @@
 # Platform workflow QA
 
+## Intake follow-up questions — October 20, 2026
+
+Helium verified one-question-per-page ACORD and generated follow-up sections,
+per-section Back/Continue/Skip, saved answers and resume position, five input
+primitives, review editing, local synthetic submission, immutable accepted
+answers and amendment comparison, public Markdown projection, and 393px dark
+mobile layout. Live Jev selection passed. The LLM response UI used an explicit
+deterministic fixture after the router rejected the temporary QA callback
+origin; live LLM generation remains blocked by the callback allowlist. Nine
+existing authorization/context tests and both typechecks passed. See
+[intake follow-ups](intake-followups.md) for the full ledger and remaining
+not-run cases. Evidence: `.context/qa/intake-followups-single-question.png` and
+`.context/qa/followups-runtime/snapshot-check.json`.
+
 ## Live agent activity — October 19, 2026
 
 The local Chrome component workflow passed for the real `ChatAssistantTurn`,
@@ -1274,3 +1288,58 @@ name/email fixture to the existing Spot PostHog project without submitting the
 form. Replay `01a1557f-5770-7433-9da9-a6aece2cc728` visibly shows the page labels,
 name and email after the fresh pageview; its earlier snapshots remain masked.
 The local fixture was cleared afterward. No application record was created.
+
+
+October 20, 2026: replaced intake boilerplate with PR #519's canonical 475-question
+Spot catalog (ACORD mappings unverified). Exact source comparison, all adapted
+definitions, root/Convex types, focused lint, isolated deploy and Helium first
+question/dropdown checks passed. Live Jev selected eight questions for the GL
+fixture, one per page. See [intake follow-ups](intake-followups.md) for evidence
+and adapter limitations; the existing live LLM callback blocker is unchanged.
+
+
+October 20, 2026: resolved the intake additional-question callback failure for
+local QA. Explicit bounded local generation uses the same router synchronous
+endpoint; default/hosted generation remains durable. Actual LLM generated six
+saved questions and Helium rendered the first currency question. See the live
+recovery run in [intake follow-ups](intake-followups.md); this supersedes its
+previous local LLM callback blocker. No mocked generation or production changes.
+
+
+October 20, 2026: added full base/follow-up question history with paired answers
+and skip status, reserved blank base facts, explicit skip persistence and an
+independent Jev novelty screen. Live regeneration returned four new underwriting
+detail questions with no repeated revenue/subcontracting facts; Helium verified
+the new first question. Existing typed answers were preserved. Context inspection,
+root/Convex types, focused lint and nine existing tests passed. See the complete
+question-history run in [intake follow-ups](intake-followups.md).
+
+
+October 20, 2026: tested the supplied trucking example on a separate local copy.
+Live selection chose 12/176 eligible catalog questions; live generation/novelty
+screen returned six follow-ups with no revenue repeat. Both batches ready.
+Underwriting completeness did not pass: VIN, driver/history, physical-damage,
+authority/cargo and data-consistency gaps remain. Full results/limitations are
+recorded in the trucking scenario in [intake follow-ups](intake-followups.md).
+
+
+October 20, 2026: VIN/driver workflow QA passed for short VIN, invalid check digit,
+valid/blank VIN, two-driver navigation, reload recovery, optional sensitive data,
+entered-date validation and model-context redaction. Names define the initial
+schedule; DOB/license numbers are opt-in and optional, other driver facts can be
+skipped. Rerun of the supplied trucking example: 8 catalog + 6 follow-ups, with
+VIN/roster still unresolved rather than invented. See the minimal-driver run in
+[intake follow-ups](intake-followups.md) for evidence and limits.
+
+### 2026-10-20 commercial-auto follow-up polish
+Actor: existing synthetic local applicant, isolated backend 3220, Next 3207. Verify scope textarea removal; Back from driver roster reaches per-vehicle dollar value then freight; enter/save value and freight, continue to roster; inspect driver label/placeholder with helper paragraph removed; insurance-history No routes established business to uninsured reason then existing claims question. Preserve synthetic draft and do not submit. Artifacts: `.context/qa/trucking-case/driver-polish.png` and `auto-*.log`.
+
+Observed result: passed vehicle → freight → value → roster and reverse navigation, $25,000 and synthetic freight persistence, No current insurance → reason → claims and reverse navigation. Driver class screenshot confirms shared FieldLabel, example placeholder, no helper paragraph. Header section navigation was corrected to jump directly rather than run the current driver’s Back logic. Existing auth/Slack suite: 9 passed; type checks passed; focused lint has only the two existing application hook warnings. New per-vehicle skip metadata is included in model history. No production deployment or application submission.
+
+### 2026-10-20 named driver questions and license jurisdiction
+Existing synthetic local two-driver draft, Helium at 3207/backend 3220: driver headings now name the active driver; Label/Field primitives render a 16px foreground name with 8px control gap. License jurisdiction uses shared SearchableSelect for flag-bearing countries, US states and Canadian provinces; other countries retain a region input. Verified country search → United States → Ohio, country switch clears Ohio → Canada → Ontario, and reload recovery. Existing saved jurisdiction strings are retained until edited. No schema or model-tool contract changes. TypeScript and focused lint passed. Screenshots under `.context/qa/trucking-case/driver-named-*.png`.
+
+### 2026-10-20 scoped catalog controls and conditional equipment details
+Actor: existing synthetic local applicant at 3207/3220. Use current vehicle equipment question: Yes → separate catalog-authored text details; save a synthetic detail, Back → No → detail hidden and obsolete text cleared. Two-vehicle adapter check confirms distinct IDs and named prompts. No-answer parent does not reveal child. Shared question controls remain one per page. Retired uninsured reason must be absent from navigation/resume; uninsured businesses still get claims. Business-name presentation must show A&A Bonita Trucking LLC instead of “the business” while preserving approval/save identity. Existing auth/Slack suite: 9 passed; scoped type/lint logs and screenshots under `.context/qa/trucking-case/scoped-*`. No application submitted.
+
+Final validation: root and Convex TypeScript checks passed; existing 9 auth/Slack tests passed; focused lint has no errors and only the two pre-existing application hook warnings. Temporary local scoped-catalog helper was removed and local functions redeployed. Generated follow-ups now have separate Jev novelty and input-fit checks, both requiring threshold confidence. Existing user-entered test answers were preserved; only QA equipment detail text was cleared when its parent was changed to No.

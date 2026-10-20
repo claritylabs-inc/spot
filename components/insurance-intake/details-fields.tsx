@@ -89,7 +89,7 @@ function formatDollarInput(value: string) {
   );
 }
 
-function IntakeValueInput({
+export function IntakeValueInput({
   id,
   label,
   value,
@@ -1900,6 +1900,7 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
                     }
                   >
                     <IntakeVehicleFields
+                      country={details.registrationCountry}
                       id={`insured-vehicle-${i}`}
                       vehicle={vehicle}
                       onChange={(next) =>
@@ -1934,16 +1935,6 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
     );
   return (
     <FieldGroup>
-      {!!details.scopeNote && (
-        <Textarea
-          aria-label="Previous scope details"
-          placeholder="Previous scope details"
-          value={details.scopeNote}
-          onChange={(event) =>
-            onChange({ ...details, scopeNote: event.target.value })
-          }
-        />
-      )}
       {details.coverages.map((line, index) => {
         const update = (patch: Partial<typeof line>) =>
           onChange({
@@ -1976,6 +1967,7 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
                   <Card key={vehicleIndex} className="border border-border">
                     <CardContent className="space-y-4">
                       <IntakeVehicleFields
+                      country={details.registrationCountry}
                         vehicle={vehicle}
                         id={`vehicle-${index}-${vehicleIndex}`}
                         onChange={(next) =>

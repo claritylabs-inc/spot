@@ -103,3 +103,6 @@ next-env.d.ts
 .cursor/
 .codex/
 
+
+# Structured procurement follow-up catalog
+!/docs/procurement/acord-intake/

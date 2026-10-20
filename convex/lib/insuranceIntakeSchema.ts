@@ -1,3 +1,4 @@
+import { followupBatchValidator } from "./intakeFollowupSchema";
 import { intakeDetailsValidator } from "./intakeDetailsSchema";
 import { v } from "convex/values";
 import { INTAKE_FIELDS } from "../../lib/insurance-intake";
@@ -24,6 +25,7 @@ export const intakeBusinessProfileValidator = v.object({
   sourceRequestId: v.optional(v.id("procurementRequests")),
 });
 export const requestIntakeFields = {
+  intakeFollowups: v.optional(v.object({ acord: v.optional(followupBatchValidator), additional: v.optional(followupBatchValidator) })),
   intakeSubmittedApplication: v.optional(intakeApplicationValidator),
   ownerUserId: v.optional(v.id("users")), // Existing requests retain createdByUserId ownership.
   intakeSavedCompany: v.optional(

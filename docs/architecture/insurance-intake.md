@@ -92,3 +92,116 @@ The separate company accuracy confirmation page is retired. Its former step inde
 Policy savings intake uses the shared buying-reason choice. Savings applicants upload at least one PDF policy, then provide business information; request timing, coverage selection, and procurement questions are skipped. The existing owner-scoped intake record stores recovery and the accepted snapshot with `intakeGoal: savings`; it remains excluded from Procurement lists and resource access. Submission creates idempotently linked policy uploads through `createOwnedIntakePolicyUpload` and the existing policy extraction pipeline, without procurement packets, file items, or marketing lifecycle. Admin follow-up is under the business’s Policies page. The received confirmation makes no fixed turnaround promise, and accepted savings reviews are read-only.
 
 Savings intake enters through the shared buying-reason question (“Save money on my current policies”), not a separate quote/savings page. Draft saves derive the purpose from the recognized reason. Selecting savings leads to current-policy upload and then company information, bypassing coverage questions. Review exposes the reason for correction before submission. Existing savings records remain supported.
+
+## Adaptive follow-up questions
+
+Quote drafts add two sections before review: Application questions and Additional
+details. Every selected/generated question is a separate page, with Back,
+Continue/Skip within its section. Persisted section IDs
+29 and 30 and `IntakeDetails.followupProgress` retain the current position;
+review keeps ID 28 for existing links. Savings reviews skip both sections.
+
+The canonical `docs/procurement/acord-intake/question-catalog.json` is imported
+unchanged from PR #519 at `d982690a2e19bbeb3004d1c3fb920a201109daa0`:
+475 original Spot questions, 36 groups, seven coverage lines, and business
+supplements. ACORD-code mappings remain explicitly unverified. The adjacent
+source schemas, index, manifest, model graph and contract are retained.
+`convex/lib/intakeAcordQuestions.ts` adapts the catalog to the current six
+input primitives, preserving the original ID in the answer source. Company/coverage money fields use the shared dollar input. Rich values
+use text with currency/period/unit/subject guidance; this does not implement the
+source contract's proposed typed schedules and subject-scoped answer storage.
+Coverage mappings and explicit parent conditions gate candidates in code.
+Unknown parents do not qualify: dependent questions can qualify on a later
+preparation with known parent answers, not dynamically during the same batch.
+Restricted identifiers, upload-reference questions, and questions requiring an
+unspecified history period stay out of this adapter. Uploads use existing flows.
+Each eligible candidate gets an atomic Jev Noul with the full saved application
+and source metadata. Twelve decisions share a request, with at most three
+requests in flight; only answers meeting `jevProceeds` qualify. At most 40
+questions are retained, ordered by probability. Catalog revision and adapter
+version participate in the context hash so old boilerplate batches refresh.
+
+`convex/actions/intakeFollowups.ts` then asks the routed `analysis` task for up
+to eight further questions using the saved application, previous ACORD
+questions and answers. Its bounded schema permits yes/no, short text, long
+text, number, currency and dropdown inputs; model output cannot supply executable UI.
+Hosted generation uses the existing durable router transport. For `SPOT_ENV=local` only, bounded additional-question text generation explicitly uses the same router's synchronous endpoint before any job submission, avoiding an unreachable local callback. This is not a retry/fallback after a durable request. `generateObjectForPublicTask` rejects that mode outside local intake analysis, or for messages/tools/unbounded output; default callers remain durable.
+
+`requestIntake.prepareFollowups` authenticates the owner and schedules one
+batch per application-context hash. Private results use a token and a fresh
+context check to discard stale work. Pending/failed outcomes do not
+implicitly replay inference. A failed or stalled batch permits the applicant
+to continue. Edits and reloads retain prior question definitions and answers.
+The UI position is excluded from submission and generation-context hashing.
+
+Follow-up answers use `IntakeDetails.followups`, validated against server-issued
+or previously saved definitions. They flow into the immutable accepted
+application, review/edit UI, operator application review, amendment comparison,
+Slack context and Markdown projection. They do not promote into the company's
+allowlisted business profile. Existing detail fields retain their 32 KB limit;
+combined details including the bounded follow-up rows permit 128 KB.
+
+See [the follow-up workflow guide](../testing/intake-followups.md) for coverage
+and external router prerequisites.
+
+
+The retired compound starter question `acord126_subcontracted_work` expands to
+separate description and annual dollar-spending steps for unanswered drafts.
+Stable child IDs are server-allowlisted only from that existing source question;
+previously answered prose and submitted snapshots are preserved. Draft question
+lists deduplicate expanded IDs. Generated follow-ups explicitly request one fact
+per question and support currency; source text fields remain text. Currency
+answers reuse the intake's dollar formatter and retain dollar notation in review,
+Markdown export and Slack context. Period-bound and repeated-subject source
+amounts retain text until their scope/period can be represented faithfully.
+
+
+Follow-up context includes `questionHistory`: every base step and its labeled
+fields paired with saved answers and answered/skipped/unanswered status, plus
+all previously asked follow-up definitions and answers. Base facts are reserved
+regardless of status; neither blank nor skipped revenue permits a new revenue
+question. Granular `IntakeDetails.skippedBaseFields` distinguishes annual and
+projected revenue skips on shared step 18. Follow-up answers retain an optional
+`skipped` flag, cleared when edited. Legacy blank follow-ups are asked/unanswered
+and receive the same no-repeat treatment. Existing typed answers/details and
+upload metadata are sent alongside the history. Skip metadata and the history
+contract version participate in generation context hashing. Generated follow-ups
+pass a separate atomic Jev novelty screen against base facts, history, answers
+and earlier candidates; only confident new facts qualify. Exact normalized
+duplicates are removed in code. Unanswered retired questions outside the current
+ready batch stay in history instead of being appended back to the UI; answered
+rows remain available for review/editing.
+
+
+## Commercial-auto VINs and driver schedules
+
+`lib/intake-vehicles.ts` validates nonblank VINs for 17 allowed characters and
+US/Canadian-market position-nine check digits. This checks structure, not registry
+existence, ownership or matching the selected make/model. Blank VINs remain
+allowed for initial quoting. Partial entries remain saveable as drafts, while
+vehicle-page advancement and final server submission reject malformed entered
+VINs. Non-auto scope and savings navigation retain their existing behavior.
+
+Commercial-auto coverage routes vehicle scope into driver steps 31–40 before
+company details. The roster collects names; subsequent questions repeat per
+driver for licensing jurisdiction/class, experience and a clearly stated
+five-year accident/violation history, including conditional detail pages. These
+fields can be skipped; unknown does not mean No. Birth-date and license-number
+pages are optional and off by default, enabled on the roster when the applicant
+wants to provide them. Valid entered dates/experience remain enforced. Names are
+the only required driver data for initial application submission; this is not a
+claim that every carrier can produce a firm quote without more information.
+Progressive's commercial-auto quote checklist explicitly allows driving-history
+information instead of license numbers for an initial quote; market-specific
+requirements still determine later collection.
+
+Stable request-scoped driver IDs and a saved driver cursor retain multiple-driver
+navigation and recovery. Review and the accepted snapshot preserve the schedule;
+company-profile promotion excludes it. Markdown packet summaries omit birth dates
+and license numbers. Driver inputs, review and amendment comparison block session
+replay. `driverModelContext` redacts those fields before follow-up inference,
+while the question book reserves all driver base facts against repeated prompts.
+
+Commercial-auto quote intake collects freight hauled and approximate current value per vehicle (optional currency) in fixed steps 41–42 before the driver schedule. Step 43 asks established businesses without current insurance why they are uninsured; the existing claims-history step also remains reachable when uninsured. Typed details (`freightHauled`, per-vehicle `estimatedValue`, `noCurrentInsuranceReason`) persist in accepted applications, review/export, Slack summaries, and both model stages’ answered/skipped question history. UI cursor `autoVehicleIndex` is excluded from submission-change comparison. Legacy scope notes remain saved but their redundant intake textarea is hidden.
+
+Catalog adapter v3 binds vehicle, driver, location and property questions to known typed subjects before Jev relevance selection. Subjects without typed records are omitted rather than merged into one yes/no answer. Typed money uses currency; scoped prompts do not request identifiers through Boolean/dropdown controls. Catalog-authored Boolean child questions carry server-approved `conditions` (questionId/answer), appear on a separate page only when the same subject’s parent matches, and clear obsolete child answers when parents change. Saved skipped child history is retained; server saves enforce exact condition definitions and reject entered inactive answers. Review/export hides inactive children. The uninsured-reason question is retired (legacy step 43 redirects to claims step 23); its old typed field remains readable and reserved against AI re-asking. Intake presentation substitutes the saved legal business name (DBA fallback) into generic business/company wording without mutating approved definitions.

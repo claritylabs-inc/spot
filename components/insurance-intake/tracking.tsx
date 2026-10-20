@@ -1,4 +1,8 @@
 "use client";
+import { IntakeAutoQuoteReview } from "./auto-quote-fields";
+import { IntakeDriverReview } from "./driver-fields";
+import { hasCommercialAuto } from "@/lib/intake-drivers";
+import { IntakeFollowupReview } from "./followup-review";
 import { ChevronDown } from "lucide-react";
 import {
   OperationalLabelValueList,
@@ -127,7 +131,7 @@ export function IntakeTracking({
   return (
     <IntakeFrame
       showSteps={!isSavings}
-      section={4}
+      section={6}
       footer={
         footer ?? (
           <>
@@ -327,6 +331,15 @@ export function IntakeTracking({
               }}
             />
           )}
+        {!isSavings && (["acord", "additional"] as const).map((section) => {
+          const rows = data.details.followups?.filter((row) => row.section === section) ?? [];
+          return <div key={section} className="py-4 space-y-3">
+            <div className="flex items-center justify-between gap-3"><h2 className={typeStyle("heading.item")}>{section === "acord" ? "Application questions" : "Additional details"}</h2>{onEdit && <PillButton variant="ghost" onClick={() => onEdit(section === "acord" ? 29 : 30)}>Edit</PillButton>}</div>
+            <IntakeFollowupReview businessName={a.legalName || a.dba} answers={rows} />
+          </div>;
+        })}
+        {!isSavings && <IntakeAutoQuoteReview details={data.details} onEdit={onEdit}/>}
+        {!isSavings && hasCommercialAuto(data.details) && <div className="py-4 space-y-3"><div className="flex items-center justify-between"><h2 className={typeStyle("heading.item")}>Driver schedule</h2>{onEdit&&<PillButton variant="ghost" onClick={()=>onEdit(31)}>Edit</PillButton>}</div><IntakeDriverReview details={data.details}/></div>}
         {confirmation}
       </div>
     </IntakeFrame>

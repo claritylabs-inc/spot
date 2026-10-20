@@ -24,12 +24,14 @@ import type {
 } from "@/lib/insurance-intake-details";
 import { typeStyle } from "@/lib/typography";
 
-function Rows({
+export function IntakeReviewRows({
   rows,
   emptyTitle = "No details added yet",
+  layout = "responsive",
 }: {
   rows: { label: string; value?: ReactNode }[];
   emptyTitle?: string;
+  layout?: "responsive" | "stacked";
 }) {
   const compact = useContext(IntakeReviewCompact);
   const bodyRole = compact ? "body.default" : "body.root";
@@ -42,11 +44,12 @@ function Rows({
     );
   return (
     <OperationalLabelValueList
-      className={`[&>dl>div]:grid-cols-1 [&>dl>div]:gap-2 sm:[&>dl>div]:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] sm:[&>dl>div]:gap-4 [&_dd]:min-w-0 [&_dd]:text-left sm:[&_dd]:text-right [&>dl>div:has([data-review-prose])]:grid-cols-1 [&>dl>div:has([data-review-prose])]:gap-y-1 [&>dl>div:has([data-review-prose])_dd]:text-left`}
+      className={layout === "responsive" ? `[&>dl>div]:grid-cols-1 [&>dl>div]:gap-2 sm:[&>dl>div]:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] sm:[&>dl>div]:gap-4 [&_dd]:min-w-0 [&_dd]:text-left sm:[&_dd]:text-right [&>dl>div:has([data-review-prose])]:grid-cols-1 [&>dl>div:has([data-review-prose])]:gap-y-1 [&>dl>div:has([data-review-prose])_dd]:text-left` : undefined}
     >
       {rows.map(({ label, value }) => (
         <OperationalLabelValueRow
           key={label}
+          layout={layout}
           label={<span className={typeStyle(bodyRole)}>{label}</span>}
           value={
             <div
@@ -78,7 +81,7 @@ function Group({
   return (
     <section className="space-y-3" aria-label={title}>
       {!hideHeading && <h3 className={typeStyle("heading.item")}>{title}</h3>}
-      <Rows rows={rows} emptyTitle={`No ${title.toLowerCase()} added yet`} />
+      <IntakeReviewRows rows={rows} emptyTitle={`No ${title.toLowerCase()} added yet`} />
     </section>
   );
 }
@@ -242,7 +245,7 @@ export function IntakeCompanyReview({
             details.relatedEntities
               .filter((entity) => entity.legalName.trim())
               .map((entity, index) => (
-                <Rows
+                <IntakeReviewRows
                   key={index}
                   rows={[
                     { label: "Name", value: entity.legalName },
@@ -299,7 +302,7 @@ export function IntakeCompanyReview({
           {details.locations.length ? (
             details.locations.map((location, index) => (
               <section key={index} className="space-y-3">
-                <Rows
+                <IntakeReviewRows
                   rows={[
                     {
                       label: "Name",
@@ -325,7 +328,7 @@ export function IntakeCompanyReview({
               </section>
             ))
           ) : (
-            <Rows rows={[{ label: "Locations", value: answers.locations }]} />
+            <IntakeReviewRows rows={[{ label: "Locations", value: answers.locations }]} />
           )}
         </section>
       )}
@@ -390,7 +393,7 @@ export function IntakeRequestReview({
             details.coverages.map((line, index) => {
               const option = coverageOption(line.coverage);
               return (
-                <Rows
+                <IntakeReviewRows
                   key={index}
                   rows={[
                     {
@@ -459,13 +462,13 @@ export function IntakeRequestReview({
               );
             })
           ) : (
-            <Rows rows={rows(["coverage", "limits"])} />
+            <IntakeReviewRows rows={rows(["coverage", "limits"])} />
           )}
           {(details.limitsNote ||
             details.additionalNote ||
             details.scopeNote ||
             answers.separateQuotes) && (
-            <Rows
+            <IntakeReviewRows
               rows={[
                 {
                   label: "Other limits or deductibles",
@@ -510,7 +513,7 @@ export function IntakeSavedBusinessSummary({
   details: IntakeDetails;
 }) {
   return (
-    <Rows
+    <IntakeReviewRows
       rows={[
         { label: "Company legal name", value: answers.legalName },
         ...(answers.website

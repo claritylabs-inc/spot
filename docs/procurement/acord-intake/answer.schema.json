@@ -1,0 +1,701 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Spot procurement follow-up answer draft",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "catalogId": {
+      "const": "spot.procurement.follow_up"
+    },
+    "catalogRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "questionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "applicationRevision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "subjectId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "subjectKind": {
+      "enum": [
+        "building",
+        "company",
+        "coverage",
+        "driver",
+        "employee_class",
+        "location",
+        "loss",
+        "person",
+        "prior_policy",
+        "vehicle"
+      ]
+    },
+    "coverageRequestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "answerType": {
+      "enum": [
+        "text",
+        "long_text",
+        "sensitive_text",
+        "boolean",
+        "text_list",
+        "single_choice",
+        "multi_choice",
+        "year",
+        "date",
+        "sensitive_date",
+        "count",
+        "decimal",
+        "percentage",
+        "money",
+        "period_money",
+        "period_count",
+        "duration",
+        "distance",
+        "area",
+        "weight",
+        "address",
+        "email",
+        "phone",
+        "file_refs",
+        "entity_ref",
+        "entity_refs"
+      ]
+    },
+    "status": {
+      "enum": [
+        "unanswered",
+        "answered",
+        "unknown",
+        "not_applicable"
+      ]
+    },
+    "value": {},
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "historyPeriod": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "through": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "required": [
+            "from",
+            "through"
+          ]
+        }
+      },
+      "required": []
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "applicant",
+            "operator",
+            "accepted_prefill"
+          ]
+        },
+        "actorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "kind",
+        "actorId"
+      ]
+    }
+  },
+  "required": [
+    "catalogId",
+    "catalogRevision",
+    "questionId",
+    "requestId",
+    "applicationRevision",
+    "subjectId",
+    "subjectKind",
+    "answerType",
+    "status",
+    "provenance"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "value"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "value"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "not_applicable"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "text"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/text"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "long_text"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/long_text"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "sensitive_text"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/sensitive_text"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "boolean"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/boolean"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "text_list"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/text_list"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "single_choice"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/single_choice"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "multi_choice"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/multi_choice"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "year"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/year"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "date"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/date"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "sensitive_date"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/sensitive_date"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "count"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/count"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "decimal"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/decimal"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "percentage"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/percentage"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "money"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/money"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "period_money"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/period_money"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "period_count"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/period_count"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "duration"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/duration"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "distance"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/distance"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "area"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/area"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "weight"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/weight"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "address"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/address"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "email"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/email"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "phone"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/phone"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "file_refs"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/file_refs"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "entity_ref"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/entity_ref"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "answerType": {
+            "const": "entity_refs"
+          },
+          "status": {
+            "const": "answered"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "value": {
+            "$ref": "catalog.schema.json#/$defs/entity_refs"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "subjectKind": {
+            "const": "coverage"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "coverageRequestId"
+        ]
+      }
+    }
+  ]
+}

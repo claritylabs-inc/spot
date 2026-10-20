@@ -1,3 +1,4 @@
+import { followupQuestionVisible, formatIntakeFollowupAnswer } from "../../lib/intake-followups";
 import dayjs from "dayjs";
 import type { Doc } from "../_generated/dataModel";
 import { INTAKE_FIELDS, INTAKE_STEPS, type IntakeField } from "../../lib/insurance-intake";
@@ -41,6 +42,11 @@ export function buildIntakeSlackContext(request: IntakeSlackState, options?: {
     if (value || ["name", "email", "phone"].includes(field))
       lines.push(`${INTAKE_FIELDS[field]}: ${escapeIntakeSlack(value || "Not provided")}`);
   }
+  if(details?.freightHauled)lines.push(`Freight hauled: ${escapeIntakeSlack(details.freightHauled)}`);
+  if(details?.noCurrentInsuranceReason)lines.push(`Reason for no current insurance: ${escapeIntakeSlack(details.noCurrentInsuranceReason)}`);
+  for(const line of details?.coverages??[])for(const [index,vehicle]of(line.vehicles??[]).entries())if(vehicle.estimatedValue)lines.push(`Vehicle ${index+1} approximate value: $${escapeIntakeSlack(vehicle.estimatedValue)}`);
+  for (const row of details?.followups ?? [])
+    if (row.answer.trim() && followupQuestionVisible(row,details?.followups)) lines.push(`${escapeIntakeSlack(row.label)}: ${escapeIntakeSlack(formatIntakeFollowupAnswer(row))}`);
   if (request.intakeSkippedSteps?.length)
     lines.push("", `Skipped questions: ${request.intakeSkippedSteps.map(index => INTAKE_STEPS[index]).filter(Boolean).join("; ")}`);
   if (options?.files)

@@ -1,3 +1,4 @@
+import { followupAnswerValidator } from "./intakeFollowupSchema";
 import { v } from "convex/values";
 export const intakeAddressValidator = v.object({
   longitude: v.optional(v.number()),
@@ -11,6 +12,19 @@ export const intakeAddressValidator = v.object({
   formatted: v.optional(v.string()),
 });
 export const intakeDetailsValidator = v.object({
+  drivers: v.optional(v.array(v.object({
+    id:v.string(),name:v.string(),dateOfBirth:v.string(),licenseNumber:v.string(),licenseJurisdiction:v.string(),licenseClass:v.string(),yearsExperience:v.string(),
+    accidents:v.union(v.literal(""),v.literal("yes"),v.literal("no")),accidentDetails:v.string(),
+    violations:v.union(v.literal(""),v.literal("yes"),v.literal("no")),violationDetails:v.string(),
+  }))),
+  freightHauled: v.optional(v.string()),
+  noCurrentInsuranceReason: v.optional(v.string()),
+  autoVehicleIndex: v.optional(v.number()),
+  driverIndex: v.optional(v.number()),
+  collectSensitiveDriverDetails: v.optional(v.boolean()),
+  followups: v.optional(v.array(followupAnswerValidator)),
+  skippedBaseFields: v.optional(v.array(v.string())),
+  followupProgress: v.optional(v.object({ acord: v.number(), additional: v.number() })),
   companyResearchSource: v.optional(v.string()),
   prefillSourceIds: v.optional(v.array(v.string())),
   coverages: v.array(
@@ -50,6 +64,8 @@ export const intakeDetailsValidator = v.object({
             make: v.string(),
             model: v.string(),
             vin: v.string(),
+            estimatedValue: v.optional(v.string()),
+              estimatedValueSkipped: v.optional(v.boolean()),
           }),
         ),
       ),

@@ -1,4 +1,12 @@
 "use client";
+import { driverQuestion, DRIVER_FIELDS, isDriverStep, hasCommercialAuto, newIntakeDriver, driverFieldValid, driverScheduleErrors } from "@/lib/intake-drivers";
+import { vinError } from "@/lib/intake-vehicles";
+import { IntakeAutoQuoteFields } from "./auto-quote-fields";
+import { autoVehicles, estimatedVehicleValueError } from "@/lib/intake-auto-quote";
+import { IntakeDriverFields } from "./driver-fields";
+import { INTAKE_STEP_FIELDS } from "@/lib/intake-question-history";
+import { IntakeFollowups } from "./followups";
+import { personalizeIntakeQuestion, followupQuestionVisible, expandIntakeFollowupQuestion, type IntakeFollowupQuestion } from "@/lib/intake-followups";
 import { captureAnalytics } from "@/lib/analytics";
 import dayjs from "dayjs";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
@@ -156,7 +164,7 @@ export function InsuranceIntake() {
             ? 6
             : reviewStep < 20 || reviewStep === 27
               ? 10
-              : 20),
+              : reviewStep===41 || reviewStep===42 ? 41 : reviewStep===43 ? 43 : isDriverStep(reviewStep) ? 31 : reviewStep === 29 || reviewStep === 30 ? reviewStep : 20),
   );
   const reviewCoverageIndex = Number(params.get("coverageIndex") ?? 0);
   const { isAuthenticated, isLoading } = useConvexAuth();
@@ -280,6 +288,8 @@ function Application({
   const data = useQuery(api.requestIntake.get, { requestId });
   const router = useRouter();
   const save = useMutation(api.requestIntake.save);
+  const prepareFollowups = useMutation(api.requestIntake.prepareFollowups);
+  const preparingFollowups = useRef<string | null>(null);
   const prepareVerification = useMutation(
     api.requestIntake.prepareVerification,
   );
@@ -295,6 +305,51 @@ function Application({
     (answers.intakeGoal ?? data?.answers.intakeGoal) === "savings";
   const [details, setDetails] = useState<IntakeDetails>(detailsFromAnswers({}));
   const [step, setStep] = useState(0);
+  const followupBatch =
+    data?.followupBatches?.[step === 29 ? "acord" : "additional"];
+  const followupWaitKey = `${step}:${followupBatch?.token ?? "initial"}`;
+  const followupStartedAt = followupBatch?.startedAt;
+  const [expiredFollowupKey, setExpiredFollowupKey] = useState<string | null>(
+    null,
+  );
+  const followupWaitExpired = expiredFollowupKey === followupWaitKey;
+  useEffect(() => {
+    if (![29, 30].includes(step)) return;
+    const remaining = Math.max(
+      0,
+      120000 - (followupStartedAt ? dayjs().valueOf() - followupStartedAt : 0),
+    );
+    const timer = setTimeout(
+      () => setExpiredFollowupKey(followupWaitKey),
+      remaining,
+    );
+    return () => clearTimeout(timer);
+  }, [step, followupWaitKey, followupStartedAt]);
+  const followupsPending =
+    !data?.submitted &&
+    [29, 30].includes(step) &&
+    !followupWaitExpired &&
+    (!followupBatch || followupBatch.status === "pending");
+  const followupSection = step === 29 ? "acord" : "additional";
+  const savedFollowupQuestions = (details.followups ?? []).filter(
+    (row) => row.section === followupSection,
+  ).flatMap((row) => data?.submitted || row.answer.trim() ? [row] : expandIntakeFollowupQuestion(row));
+  const currentFollowupQuestions = data?.submitted
+    ? []
+    : (followupBatch?.questions ?? []).flatMap(expandIntakeFollowupQuestion);
+  const followupQuestions = Array.from(new Map([
+    ...currentFollowupQuestions,
+    ...savedFollowupQuestions.filter(
+      (saved) =>
+        !currentFollowupQuestions.some((question) => question.id === saved.id) &&
+        (!!details.followups?.find((row) => row.id === saved.id)?.answer.trim() || !!data?.submitted || followupBatch?.status !== "ready"),
+    ),
+  ].map((question) => [question.id, question])).values()).filter(question=>followupQuestionVisible(question,details.followups));
+  const followupIndex = Math.min(
+    details.followupProgress?.[followupSection] ?? 0,
+    Math.max(0, followupQuestions.length - 1),
+  );
+  const followupQuestion = followupQuestions[followupIndex];
   const [editingReview, setEditingReview] = useState(
     reviewStep !== undefined && reviewStep !== 28,
   );
@@ -433,7 +488,7 @@ function Application({
         revision: data.revision,
         dirty: false,
       };
-    if (isSavings && [6, 7, 8, 9].includes(state.current.step))
+    if (isSavings && ([6, 7, 8, 9, 41, 42, 43].includes(state.current.step) || isDriverStep(state.current.step)))
       state.current.step = 10;
     if (state.current.step === 27) state.current.step = 20;
     state.current.details = state.current.details ?? data.details;
@@ -465,13 +520,14 @@ function Application({
       state.current.details?.coverages[0]?.coverage === "unknown"
     )
       state.current.step = 9;
-    if (state.current.step === 26) state.current.step = 28;
+    if (state.current.step === 26) state.current.step = state.current.answers.intakeGoal === "savings" ? 28 : 29;
+    if (state.current.step === 43) state.current.step = 23;
     if (state.current.step === 22) state.current.step = 23;
     if (
-      [21, 22, 23, 24].includes(state.current.step) &&
+      [21, 22].includes(state.current.step) &&
       state.current.answers.currentInsurance === "No"
     )
-      state.current.step = 25;
+      state.current.step = 23;
     if (
       state.current.step === 24 &&
       !shouldRequestLossRuns(state.current.answers, state.current.details)
@@ -580,6 +636,28 @@ function Application({
       window.removeEventListener("beforeunload", unload);
     };
   }, [flush, cache, uploading]);
+  useEffect(() => {
+    if (!ready || !data || data.submitted || isSavings || ![29, 30].includes(step)) return;
+    const section = step === 29 ? "acord" : "additional";
+    const key = `${requestId}:${section}`;
+    if (preparingFollowups.current === key) return;
+    preparingFollowups.current = key;
+    void (async () => {
+      if (!(await flush())) { preparingFollowups.current = null; return; }
+      try { await prepareFollowups({ requestId, section }); }
+      catch (error) { setError(getUserFacingErrorMessage(error, "We couldn’t prepare follow-up questions.")); }
+    })();
+  }, [ready, data, isSavings, step, requestId, flush, prepareFollowups]);
+  function changeFollowup(question: IntakeFollowupQuestion, answer: string) {
+    const current = state.current.details ?? details;
+    const rows = current.followups ?? [];
+    const updatedRows = rows.some((row) => row.id === question.id)
+        ? rows.map((row) =>
+            row.id === question.id ? { ...question, answer, skipped: false } : row,
+          )
+        : [...rows, { ...question, answer, skipped: false }];
+    changeDetails({...current,followups:updatedRows.map(row=>followupQuestionVisible(row,updatedRows)?row:{...row,answer:"",skipped:true})});
+  }
   function change(field: IntakeField, value: string) {
     setSubmissionConfirmed(false);
     if (field === "timingUnknown" && value === "yes") {
@@ -878,6 +956,7 @@ function Application({
               action: {
                 label: "Load saved version",
                 onClick: () => {
+                  intentionalRedirect.current = true;
                   localStorage.removeItem(key);
                   window.location.reload();
                 },
@@ -911,7 +990,7 @@ function Application({
     if (busy || uploading) return;
     // Existing policies supply savings coverage; skip these questions on every
     // entry path, including review navigation and older saved step links.
-    if (isSavings && [6, 7, 8, 9].includes(next)) next = 10;
+    if (isSavings && ([6, 7, 8, 9, 41, 42, 43].includes(next) || isDriverStep(next))) next = 10;
     if (isSavings && !fromReview) {
       if (step === 1 && next === 2) next = 21;
       else if (step === 21 && next < 21) next = 1;
@@ -940,10 +1019,10 @@ function Application({
       if (next === 4 && !requiresDocument) next = 2;
       if (
         !isSavings &&
-        [21, 22, 23, 24].includes(next) &&
+        [21, 22].includes(next) &&
         state.current.answers.currentInsurance === "No"
       )
-        next = step > next ? 20 : 25;
+        next = step > next ? 20 : 23;
       if (next === 22)
         next =
           editingReview && editingSection.current === 21
@@ -989,6 +1068,39 @@ function Application({
         )
       )
         next = step > 13 ? 12 : 14;
+      let autoVehicleIndex = previousDetails.autoVehicleIndex ?? 0;
+      let driverIndex = previousDetails.driverIndex ?? 0;
+      const auto = !isSavings && hasCommercialAuto(previousDetails);
+      if (!fromReview) {
+        if (auto && step === 9 && next === 10) { next = 41; driverIndex = 0; autoVehicleIndex = 0; }
+        else if (auto && step === 10 && next === 9) { driverIndex = Math.max(0,(previousDetails.drivers?.length??1)-1); next = previousDetails.drivers?.[driverIndex]?.violations === "yes" ? 40 : 39; }
+        else if (isDriverStep(step)) {
+          const driver = previousDetails.drivers?.[driverIndex];
+          if (step === 31) { next = next > step ? (previousDetails.collectSensitiveDriverDetails ? 32 : 34) : (autoVehicles(previousDetails).length ? 42 : 41); autoVehicleIndex=Math.max(0,autoVehicles(previousDetails).length-1); driverIndex=0; }
+          else if (next > step) {
+            if (next === 32 && !previousDetails.collectSensitiveDriverDetails) next=34;
+            if (next === 38 && driver?.accidents !== "yes") next=39;
+            if (next === 40 && driver?.violations !== "yes") next=41;
+            if (next === 41) { if(driverIndex < (previousDetails.drivers?.length??0)-1){next=previousDetails.collectSensitiveDriverDetails?32:34;driverIndex++;}else next=10; }
+          } else {
+            if(next===38 && driver?.accidents!=="yes")next=37;
+            if(next===33 && !previousDetails.collectSensitiveDriverDetails)next=31;
+            if(next===31 && driverIndex>0){driverIndex--;next=previousDetails.drivers?.[driverIndex]?.violations==="yes"?40:39;}
+          }
+        }
+      }
+      if (!fromReview) {
+        if (step === 41) { next = next > step ? (autoVehicles(previousDetails).length ? 42 : 31) : 9; autoVehicleIndex=0; }
+        else if (step === 42) {
+          if(next > step) { if(autoVehicleIndex < autoVehicles(previousDetails).length-1){autoVehicleIndex++;next=42;}else{next=31;driverIndex=0;} }
+          else if(autoVehicleIndex>0){autoVehicleIndex--;next=42;}else next=41;
+        }
+        if(step===20 && next===25 && state.current.answers.currentInsurance==="No") next=23;
+        if(step===43)next=next>step?23:20;
+        if(step===23 && next===22 && state.current.answers.currentInsurance==="No")next=20;
+      }
+      if (next === 43) next = 23;
+      if (isDriverStep(next) && !auto) next=10;
       let mailingAddressStep = previousDetails.mailingAddressStep;
       if (
         step === 14 &&
@@ -1011,8 +1123,72 @@ function Application({
         revenueStep = "annual";
       } else if (step === 19 && next === 18) revenueStep = "projected";
       else if (next === 18 && step < 18) revenueStep = "annual";
+      if (!isSavings && !data?.submitted && !editingReview && !fromReview && next === 28 && step !== 30) next = 29;
+      let followupProgress = previousDetails.followupProgress ?? {
+        acord: 0,
+        additional: 0,
+      };
+      if (!fromReview && (step === 29 || step === 30)) {
+        const forward = step === 29 ? next === 30 : next === 28;
+        const backward = step === 29 ? next === 25 : next === 29;
+        if (forward && followupIndex < followupQuestions.length - 1) {
+          next = step;
+          followupProgress = {
+            ...followupProgress,
+            [followupSection]: followupIndex + 1,
+          };
+        } else if (backward && followupIndex > 0) {
+          next = step;
+          followupProgress = {
+            ...followupProgress,
+            [followupSection]: followupIndex - 1,
+          };
+        } else if (forward && next === 30) {
+          followupProgress = { ...followupProgress, additional: 0 };
+        } else if (backward && next === 29) {
+          followupProgress = {
+            ...followupProgress,
+            acord: Math.max(
+              0,
+              (data?.followupBatches?.acord?.questions.length ?? 1) - 1,
+            ),
+          };
+        }
+      } else if (next === 29 || next === 30) {
+        followupProgress = {
+          ...followupProgress,
+          [next === 29 ? "acord" : "additional"]: 0,
+        };
+      }
       const nextDetails = {
         ...previousDetails,
+        autoVehicleIndex,
+        ...(step===42 ? {coverages: previousDetails.coverages.map(line=>line.coverage==="commercial_auto"?{...line,vehicles:line.vehicles?.map((vehicle,index)=>index===(previousDetails.autoVehicleIndex??0)?{...vehicle,estimatedValueSkipped:!!skipped && !vehicle.estimatedValue?.trim()}:vehicle)}:line)} : {}),
+        ...(isDriverStep(next) || isDriverStep(step) ? {driverIndex, drivers: previousDetails.drivers?.length ? previousDetails.drivers : [newIntakeDriver()]} : {}),
+        ...([29, 30].includes(step) &&
+        followupQuestion &&
+        !(previousDetails.followups ?? []).some(
+          (row) => row.id === followupQuestion.id,
+        )
+          ? {
+              followups: [
+                ...(previousDetails.followups ?? []),
+                { ...followupQuestion, answer: "", skipped: !!skipped },
+              ],
+            }
+          : {}),
+        ...([29, 30].includes(step) && followupQuestion && skipped && (previousDetails.followups ?? []).some((row) => row.id === followupQuestion.id)
+          ? { followups: (previousDetails.followups ?? []).map((row) => row.id === followupQuestion.id ? { ...row, skipped: !row.answer.trim() } : row) }
+          : {}),
+        ...(skipped && step < 28 ? {
+          skippedBaseFields: Array.from(new Set([
+            ...(previousDetails.skippedBaseFields ?? []),
+            ...(step === 18 ? [previousDetails.revenueStep === "projected" ? "projectedRevenue" : "trailingRevenue"] : INTAKE_STEP_FIELDS[step] ?? []),
+          ])),
+        } : {}),
+        ...([29, 30].includes(step) || [29, 30].includes(next)
+          ? { followupProgress }
+          : {}),
         ...(revenueStep ? { revenueStep } : {}),
         coverageIndex,
         ...(mailingAddressStep !== undefined ? { mailingAddressStep } : {}),
@@ -1025,11 +1201,13 @@ function Application({
             : start === 1
               ? (next >= 1 && next <= 5) || (isSavings && next === 21)
               : start === 6
-                ? next >= 6 && next <= 9
+                ? next >= 6 && next <= 9 || isDriverStep(next) || next===41 || next===42
                 : start === 10
                   ? (next >= 10 && next <= 19) || next === 27
                   : start === 20
-                    ? next >= 20 && next <= 25
+                    ? next >= 20 && next <= 25 || next===43
+                    : start===41 || start===42 ? next===41 || next===42
+                    : isDriverStep(start) ? isDriverStep(next)
                     : start === 21
                       ? next === 21 || next === 24
                       : next === start;
@@ -1137,7 +1315,7 @@ function Application({
     await navigate(next, false, false, true);
   }
   async function returnToReview(confirmSave = false) {
-    await navigate(28, confirmSave);
+    await navigate(28, confirmSave, false, true);
     if (state.current.step !== 28) return;
     setEditingReview(false);
     window.history.replaceState(null, "", withQuoteProvider(`/intake?request=${requestId}`, params.get("provider")));
@@ -1700,6 +1878,12 @@ function Application({
     "Cancellation or renewal-decline details": 25,
   };
   const missing = missingIntakeAnswers(answers);
+  if (!isSavings) {
+    const driverErrors=driverScheduleErrors(details);
+    for(const vehicle of autoVehicles(details)) if(estimatedVehicleValueError(vehicle.estimatedValue)){missing.push("Valid approximate vehicle value");completionSteps["Valid approximate vehicle value"]=42;}
+    for(const label of driverErrors){missing.push(label);completionSteps[label]=31;}
+    for(const line of details.coverages) for(const vehicle of line.vehicles??[]) if(vinError(vehicle.vin, details.registrationCountry)){missing.push("Valid 17-character VIN");completionSteps["Valid 17-character VIN"]=9;}
+  }
   if (!isSavings && details.hasClaims === "yes" && !answers.claims?.trim())
     missing.push("Claims details");
   if (
@@ -1834,7 +2018,7 @@ function Application({
               <PillButton
                 size="large"
                 variant="ghost"
-                onClick={() => void navigate(25)}
+                onClick={() => void navigate(isSavings ? 19 : 30)}
               >
                 <ChevronLeft className="size-4" />
                 Back
@@ -1876,7 +2060,9 @@ function Application({
       />
     );
   const canContinue =
-    isSavings && step === 21
+    step===42 ? !estimatedVehicleValueError(autoVehicles(details)[details.autoVehicleIndex??0]?.estimatedValue) :
+    isDriverStep(step) ? step === 31 ? !!details.drivers?.length && details.drivers.every(driver=>!!driver.name.trim()) : !!details.drivers?.[details.driverIndex??0] && driverFieldValid(details.drivers[details.driverIndex??0],step) :
+    [29, 30].includes(step) ? !followupsPending : isSavings && step === 21
       ? data.files.some((file) => file.category === "policy")
       : step === 23 && details.hasClaims === "yes"
         ? !!answers.claims?.trim()
@@ -1933,7 +2119,7 @@ function Application({
                             ? !!answers.currentInsurance
                             : step === 9
                               ? details.coverages.every((line) =>
-                                  validCoverageScope(line, details.scopeNote),
+                                  validCoverageScope(line, details.scopeNote, details.registrationCountry),
                                 )
                               : step === 10
                                 ? !!answers.legalName?.trim()
@@ -1984,6 +2170,11 @@ function Application({
                                           )
                                         : true;
   const optionalValues: Record<number, string | boolean> = {
+    41: details.freightHauled??"",
+    42: autoVehicles(details)[details.autoVehicleIndex??0]?.estimatedValue??"",
+    43: details.noCurrentInsuranceReason??"",
+    29: (details.followups ?? []).find((row) => row.id === followupQuestion?.id)?.answer ?? "",
+    30: (details.followups ?? []).find((row) => row.id === followupQuestion?.id)?.answer ?? "",
     4:
       data.files.some((file) => file.category === "requirements") ||
       !!answers.requirements?.trim(),
@@ -2016,23 +2207,26 @@ function Application({
     25: details.hasCancellations || answers.cancellations?.trim() || "",
   };
   // Empty notes, extra coverage requests, and website/DBA are valid answers.
-  const canSkipStep = step < 28 && !(isSavings && step === 21);
+  const canSkipStep = !(step===42 && estimatedVehicleValueError(autoVehicles(details)[details.autoVehicleIndex??0]?.estimatedValue)) && !(isDriverStep(step) && (step === 31 || !driverFieldValid(details.drivers?.[details.driverIndex??0] ?? newIntakeDriver(), step))) && !(step === 9 && details.coverages.some(line=>(line.vehicles??[]).some(vehicle=>!!vinError(vehicle.vin, details.registrationCountry)))) && step !== 28 && !followupsPending && !(isSavings && step === 21);
+  const driverValue = details.drivers?.[details.driverIndex??0]?.[DRIVER_FIELDS[step-31]];
   const skipStep =
     canSkipStep &&
-    (!canContinue || (step in optionalValues && !optionalValues[step]));
+    (!canContinue || (isDriverStep(step) && !driverValue?.trim()) || (step in optionalValues && !optionalValues[step]));
   return (
     <IntakeFrame
       showSteps={!isSavings}
       section={
-        step < 6
+        step===43 ? 3 : step===41 || step===42 || isDriverStep(step) ? 1 : step < 6
           ? 0
           : step < 10
             ? 1
             : step < 20 || step === 27
               ? 2
-              : step < 28
-                ? 3
-                : 4
+              : step === 29
+                ? 4
+                : step === 30
+                  ? 5
+                  : step < 28 ? 3 : 6
       }
       status={
         uploading
@@ -2047,7 +2241,7 @@ function Application({
             window.location.assign(
               withQuoteProvider(`/intake?request=${requestId}&step=${next}&section=${next}`, params.get("provider")),
             );
-        } else void navigate(next);
+        } else void navigate(next, false, false, true);
       }}
       disabled={busy || uploading}
       footer={
@@ -2057,19 +2251,19 @@ function Application({
             variant="ghost"
             disabled={busy || uploading}
             onClick={() =>
-              editingReview
+              editingReview && step!==42 && !isDriverStep(step) && !([29, 30].includes(step) && followupIndex > 0)
                 ? void returnToReview()
                 : step === 1
                   ? void (async () => {
                       if (await flush()) router.push(withQuoteProvider("/signup", params.get("provider")));
                     })()
                   : void navigate(
-                      step === 8 && details.coverages[0]?.coverage === "unknown"
+                      step === 29 ? 25 : step === 30 ? 29 : step === 8 && details.coverages[0]?.coverage === "unknown"
                         ? 6
                         : step === 5
                           ? 2
                           : step === 25 && answers.currentInsurance === "No"
-                            ? 20
+                            ? 23
                             : step === 25 &&
                                 /^(none|no|0)$/i.test(
                                   answers.claims?.trim() ?? "",
@@ -2127,14 +2321,14 @@ function Application({
               >
                 {skipStep ? "Skip" : "Continue"}
               </PillButton>
-            ) : step < INTAKE_STEPS.length - 1 ? (
+            ) : step !== 28 ? (
               <PillButton
                 size="large"
                 disabled={busy || uploading || (!canContinue && !canSkipStep)}
                 variant={skipStep ? "secondary" : "primary"}
                 onClick={() =>
                   void navigate(
-                    step === 6 && details.coverages[0]?.coverage === "unknown"
+                    step === 29 ? 30 : step === 30 ? 28 : step === 6 && details.coverages[0]?.coverage === "unknown"
                       ? 8
                       : step === 3 &&
                           ["No", "None"].includes(answers.requirements ?? "")
@@ -2166,8 +2360,8 @@ function Application({
                   )
                 }
               >
-                {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-                {skipStep ? "Skip" : "Continue"}
+                {busy || followupsPending ? <Loader2 className="size-4 animate-spin" /> : null}
+                {followupsPending ? "Preparing questions…" : skipStep ? "Skip" : "Continue"}
               </PillButton>
             ) : (
               <PillButton
@@ -2188,7 +2382,10 @@ function Application({
       }
     >
       <h1 className={`text-wrap-pretty ${typeStyle("heading.display")}`}>
-        {isSavings && step === 21
+        {personalizeIntakeQuestion((step === 29 || step === 30) && (data.submitted || followupBatch?.status === "ready") && followupQuestion
+          ? followupQuestion.label
+          : isDriverStep(step) ? driverQuestion(step,details.drivers?.[details.driverIndex??0]?.name)
+          : isSavings && step === 21
           ? "Can you upload your current policies?"
           : step === 10 && showSavedCompany
             ? "Are you applying for your saved business?"
@@ -2198,10 +2395,17 @@ function Application({
                 ? "Where do you project your business’s revenue to be?"
                 : step === 14 && details.mailingAddressStep
                   ? "What is your mailing address?"
-                  : INTAKE_STEPS[step]}
+                  : INTAKE_STEPS[step],answers.legalName || answers.dba)}
       </h1>
       <div className="h-10" />
       <div className="space-y-6">
+        {(step === 29 || step === 30) && <IntakeFollowups
+          question={followupQuestion}
+          businessName={answers.legalName || answers.dba}
+          status={data.submitted ? "ready" : followupWaitExpired && followupBatch?.status !== "ready" ? "failed" : followupBatch?.status}
+          answer={(details.followups ?? []).find((row) => row.id === followupQuestion?.id)?.answer ?? ""}
+          onChange={changeFollowup}
+        />}
         {step === 0 && (
           <>
             {field("name", { required: true })}
@@ -2246,6 +2450,8 @@ function Application({
             onChange={changeDetails}
           />
         )}
+        {[41,42].includes(step) && <IntakeAutoQuoteFields details={details} step={step} onChange={changeDetails} />}
+        {isDriverStep(step) && <IntakeDriverFields details={details} step={step} onChange={changeDetails} />}
         {step === 9 && (
           <IntakeCoverageScope details={details} onChange={changeDetails} />
         )}

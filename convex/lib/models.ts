@@ -1382,8 +1382,17 @@ export async function generateObjectForPublicTask<T>(
   task: ModelTask,
   options: RoutedGenerateObjectOptions<T>,
   callContext?: ModelCallContext,
+  execution: "durable" | "local-inline" = "durable",
 ): Promise<RoutedGenerateObjectResult<T>> {
   const { schema, ...textOptions } = options;
+  // Bounded text-only local intake QA can use the router's synchronous endpoint.
+  // Select this before submitting anything; never fall back after a job failure.
+  if (execution === "local-inline" && (
+    process.env.SPOT_ENV !== "local" || task !== "analysis" ||
+    callContext?.taskKind !== "intake_additional_questions" ||
+    typeof textOptions.prompt !== "string" || textOptions.messages !== undefined ||
+    textOptions.tools !== undefined || (textOptions.maxOutputTokens ?? Infinity) > 3000
+  )) throw new Error("Inline generation is limited to bounded local intake text");
   const input = clRouterGenerateInputForEnabledTask(
     task,
     callContext?.taskKind,
@@ -1401,7 +1410,9 @@ export async function generateObjectForPublicTask<T>(
         label: "convex.models.generateObjectForPublicTask",
       }),
       clRouterPinForCall(settings, task, callContext?.taskKind),
-      durableRouterClientOptions(ctx, undefined, textOptions.abortSignal),
+      execution === "local-inline"
+        ? { telemetry: ctx, abortSignal: textOptions.abortSignal }
+        : durableRouterClientOptions(ctx, undefined, textOptions.abortSignal),
     ),
     schema,
   );

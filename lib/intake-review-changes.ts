@@ -28,6 +28,8 @@ function reviewValues(version: IntakeReviewVersion) {
   const put = (key: string, label: string, value?: string) =>
     values.set(key, { label, value: value?.trim() || "" });
   const { answers, details } = version;
+  for (const driver of details.drivers??[]) for(const [field,value] of Object.entries(driver)) if(field!=="id") put(`driver:${driver.id}:${field}`,`${driver.name||"Driver"}: ${field}`,value);
+  for (const row of details.followups ?? []) put(`followup:${row.id}`, row.label, row.answer);
   const structured = new Set([
     "companyConfirmed",
     "changes",
@@ -168,6 +170,7 @@ function reviewValues(version: IntakeReviewVersion) {
         `${label}: Vehicle ${index + 1} VIN`,
         vehicle.vin,
       );
+      put(`${key}:vehicle:${index}:value`, `${label}: Vehicle ${index+1} approximate value`,vehicle.estimatedValue ? `$${vehicle.estimatedValue}` : "");
     });
   });
   if (!details.coverages.length) {
@@ -180,6 +183,8 @@ function reviewValues(version: IntakeReviewVersion) {
     "Additional coverage requests",
     details.additionalNote || answers.separateQuotes,
   );
+  put("freightHauled", "Freight hauled", details.freightHauled);
+  put("noCurrentInsuranceReason", "Reason for no current insurance", details.noCurrentInsuranceReason);
   put("scopeNote", "Scope notes", details.scopeNote);
   version.files.forEach((file) =>
     put(`file:${file.id}`, "Supporting document", file.name),

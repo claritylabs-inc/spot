@@ -1,4 +1,5 @@
 "use client";
+import { vinError } from "@/lib/intake-vehicles";
 import {
   InlineFieldRow,
   InlineFieldsContext,
@@ -98,10 +99,12 @@ function optionsFor(query: string) {
 export function IntakeVehicleFields({
   vehicle,
   id,
+  country,
   onChange,
 }: {
   vehicle: Vehicle;
   id: string;
+  country?: string;
   onChange: (vehicle: Vehicle) => void;
 }) {
   const inline = useContext(InlineFieldsContext);
@@ -284,17 +287,19 @@ export function IntakeVehicleFields({
           className={`h-12 ${typeStyle("body.root")}`}
           placeholder="Enter vehicle VIN"
           value={vehicle.vin}
-          maxLength={17}
+          maxLength={64}
+          aria-invalid={!!vinError(vehicle.vin, country)}
+          aria-describedby={vinError(vehicle.vin, country) ? `${id}-vin-error` : undefined}
           onChange={(event) =>
             onChange({
               ...vehicle,
               vin: event.target.value
                 .toUpperCase()
-                .replace(/[^A-HJ-NPR-Z0-9]/g, "")
-                .slice(0, 17),
+                .replace(/\s/g, ""),
             })
           }
         />
+        {vinError(vehicle.vin, country) && <p id={`${id}-vin-error`} role="alert" className={`${typeStyle("body.root")} text-destructive`}>{vinError(vehicle.vin, country)}</p>}
       </VehicleField>
     </>
   );

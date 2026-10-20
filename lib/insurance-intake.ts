@@ -1,3 +1,6 @@
+import { AUTO_QUOTE_QUESTIONS } from "./intake-auto-quote";
+import { DRIVER_QUESTIONS } from "./intake-drivers";
+import { followupQuestionVisible, formatIntakeFollowupAnswer } from "./intake-followups";
 import dayjs from "dayjs";
 import { vehicleMakeLabel } from "./vehicle-display";
 import {
@@ -53,6 +56,10 @@ export const INTAKE_STEPS = [
   "Is your business planning any changes?",
   "Are these company details accurate?",
   "Is your request ready to submit?",
+  "A few more details for your insurance application",
+  "What else should insurers know?",
+  ...DRIVER_QUESTIONS,
+  ...AUTO_QUOTE_QUESTIONS,
 ] as const;
 export const INTAKE_FIELDS = {
   intakeGoal: "What would you like help with?",
@@ -237,7 +244,7 @@ export function intakeMarkdown(
       fields: ["currentInsurance", "claims", "cancellations"],
     },
   ];
-  return groups
+  const sections = groups
     .flatMap((group) => {
       const keys = group.fields.filter((key) => allowed.has(key) && value(key));
       if (!keys.length) return [];
@@ -356,5 +363,20 @@ ${table(
         `## ${group.title}\n\n${[table(rows), ...paragraphs, ...locations].filter(Boolean).join("\n\n")}`,
       ];
     })
+    .concat(fields.length === Object.keys(INTAKE_FIELDS).length ? (["acord", "additional"] as const).flatMap((section) => {
+      const rows = details?.followups?.filter((row) => row.section === section && row.answer.trim() && followupQuestionVisible(row,details?.followups)) ?? [];
+      return rows.length ? [`## ${section === "acord" ? "Application questions" : "Additional details"}\n\n${table(rows.map((row) => [row.source ? `${row.label} (${row.source})` : row.label, formatIntakeFollowupAnswer(row)]))}`] : [];
+    }) : [])
     .join("\n\n");
+  const drivers = details?.coverages.some(line=>line.coverage==="commercial_auto") && details.drivers?.length && allowed.size === Object.keys(INTAKE_FIELDS).length
+    ? `## Driver schedule\n\n${table(details.drivers.map(driver=>[driver.name, `License: ${driver.licenseJurisdiction} · ${driver.licenseClass}; experience: ${driver.yearsExperience} years; accidents in past five years: ${driver.accidents} ${driver.accidentDetails}; violations/suspensions in past five years: ${driver.violations} ${driver.violationDetails}. Full license and birth date are retained in the authorized application.`]))}` : "";
+  const quoteRows: [string,string][] = [];
+  if (details && allowed.size === Object.keys(INTAKE_FIELDS).length) {
+    if(details.coverages.some(line=>line.coverage==="commercial_auto")) {
+      if(details.freightHauled?.trim())quoteRows.push(["Freight hauled",details.freightHauled]);
+      for(const line of details.coverages)for(const vehicle of line.vehicles??[])if(vehicle.estimatedValue)quoteRows.push([[vehicle.year,vehicle.make,vehicle.model].filter(Boolean).join(" ")+" — approximate value",`$ ${vehicle.estimatedValue}`]);
+    }
+  }
+  return [sections,drivers,quoteRows.length?`## Additional quote details\n\n${table(quoteRows)}`:""].filter(Boolean).join("\n\n");
+
 }

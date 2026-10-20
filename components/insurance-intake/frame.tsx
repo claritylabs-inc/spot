@@ -59,6 +59,8 @@ export function IntakeFrame({
               "Coverage",
               "Company",
               "Insurance history",
+              "Application questions",
+              "Additional details",
               "Review",
             ].map((label, index) => (
               <Button
@@ -67,8 +69,8 @@ export function IntakeFrame({
                 aria-label={label}
                 aria-current={section === index ? "step" : undefined}
                 disabled={disabled || !onSection}
-                onClick={() => onSection?.([1, 6, 10, 20, 28][index])}
-                className={`h-1.5 w-4 rounded-full p-0 disabled:opacity-100 sm:w-10 ${section >= index ? "bg-foreground" : "bg-foreground/15"}`}
+                onClick={() => onSection?.([1, 6, 10, 20, 29, 30, 28][index])}
+                className={`h-1.5 w-3 rounded-full p-0 disabled:opacity-100 sm:w-10 ${section >= index ? "bg-foreground" : "bg-foreground/15"}`}
               />
             ))}
           </nav>
