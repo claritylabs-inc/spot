@@ -1,0 +1,17 @@
+{
+  "actualPrivateLogicalRequests": 12,
+  "allPrivateRequestsMode0600": true,
+  "originalHashesMatch": true,
+  "allExactRedactionLedgersReplayed": true,
+  "allSanitizedStateHashesMatch": true,
+  "providerHttpAttempts": 12,
+  "allHttp200": true,
+  "nativeEntries": 2,
+  "skillInvocations": 2,
+  "goalProvenanceChecked": true,
+  "actual96dV2GoalUnknown": true,
+  "allPngMetadataChecked": true,
+  "publishedPngFiles": 27,
+  "sourceTransformsVerifiedBy": "analyze-evidence.mjs",
+  "newBrowserOrProviderCallsDuringPackaging": 0
+}

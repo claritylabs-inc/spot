@@ -1,0 +1,757 @@
+{
+  "coordinateConvention": "JSONPointer in each original logical request; UTF16 spans are zero-based and end-exclusive",
+  "requests": [
+    {
+      "id": "request-001",
+      "site": "recaptcha-v2",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "97074ea638316a5212b149ad6859eb6852a42734ef18cfbed564860800aa9f5b",
+      "originalStateSha256": "c05799db572d11925ce16a2b1fe6c823b3d2a8522a621c7e2ca6a52df2cd4016",
+      "sanitizedRequestSha256": "7dd1591d4ae2ccd1aaed18954177b7ee74591dd750bf54cba66a4321bad03b01",
+      "sanitizedStateSha256": "1f9dd319f1388966a3497150178f1d5ce0baa169cde213c5034ed9942289931f",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "d94b753c41913c03831208f5de15acf47966ec30707af27026e5f43ee964fa67",
+          "originalBase64Utf16Length": 175172
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/page/text",
+          "operation": "replace string spans",
+          "reason": "public demo sitekey",
+          "replacement": "[REDACTED_DEMO_SITEKEY]",
+          "originalUtf16Spans": [
+            [
+              702,
+              742
+            ],
+            [
+              1060,
+              1100
+            ]
+          ]
+        },
+        {
+          "path": "/state/page/text",
+          "operation": "replace string spans",
+          "reason": "public API key placeholder",
+          "replacement": "[REDACTED_API_KEY_PLACEHOLDER]",
+          "originalUtf16Spans": [
+            [
+              980,
+              992
+            ]
+          ]
+        },
+        {
+          "path": "/state/page/text",
+          "operation": "replace string spans",
+          "reason": "sample response token or long opaque example",
+          "replacement": "[REDACTED_SAMPLE_TOKEN]",
+          "originalUtf16Spans": [
+            [
+              1365,
+              1785
+            ]
+          ]
+        },
+        {
+          "path": "/state/screenshot",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              38
+            ]
+          ],
+          "originalValueSha256": "3b1573025d80668f98d61de78cf51b15e4a1ebfc6c5f71e893a8c5793fac2a07",
+          "replacement": "image-1"
+        }
+      ]
+    },
+    {
+      "id": "request-002",
+      "site": "recaptcha-v2",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "c607f498a1e8332021ce5643a67b2f70d679bd6411e9a6ffc56cd7c0285fb3d2",
+      "originalStateSha256": "d9dc3c508f6d8de69a54fd0bd57850478018772ea6340d466c75c6aba9300ffa",
+      "sanitizedRequestSha256": "15c63fdfd089946d11c3065d4ef0811ff3cff02567d2f1017fe655e62e37498e",
+      "sanitizedStateSha256": "3bfdedc8d3794c26bad21994bd6f352711fdb3071419efafdfb96e5b40f8090e",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "d94b753c41913c03831208f5de15acf47966ec30707af27026e5f43ee964fa67",
+          "originalBase64Utf16Length": 175172
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/screenshot",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3e67d60dab22f00c32b4d744496f8be02673bdc2fcae25f7d9148891668df101",
+          "replacement": "image-1"
+        }
+      ]
+    },
+    {
+      "id": "request-003",
+      "site": "recaptcha-v2",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "9d88b2abd62e3bdf750b10fa7c1835bf15a64874c8248ab9c352fd212045c123",
+      "originalStateSha256": "7f4fd5ccf14335de3e3aa1b946757470bb9e2834279ca5471b1de6f727c5b8bb",
+      "sanitizedRequestSha256": "ae25594147cdb6db7073633175caae1eda91148440787eca2be7576a65f6286e",
+      "sanitizedStateSha256": "fa2201572a03e6bc95d3f2cdf76bb6100f5fea31b7e78514d3f113de3f4fd49d",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "f559e12b42754df3213ab41e3f6340bca83ccdd5b723cef53d30df698a03a5f5",
+          "originalBase64Utf16Length": 175832
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/goal",
+          "operation": "replace string spans",
+          "reason": "sample response token or long opaque example",
+          "replacement": "[REDACTED_SAMPLE_TOKEN]",
+          "originalUtf16Spans": [
+            [
+              396,
+              481
+            ]
+          ]
+        },
+        {
+          "path": "/state/observation/recent/0/result/text/text",
+          "operation": "replace string spans",
+          "reason": "public demo sitekey",
+          "replacement": "[REDACTED_DEMO_SITEKEY]",
+          "originalUtf16Spans": [
+            [
+              702,
+              742
+            ],
+            [
+              1060,
+              1100
+            ]
+          ]
+        },
+        {
+          "path": "/state/observation/recent/0/result/text/text",
+          "operation": "replace string spans",
+          "reason": "public API key placeholder",
+          "replacement": "[REDACTED_API_KEY_PLACEHOLDER]",
+          "originalUtf16Spans": [
+            [
+              980,
+              992
+            ]
+          ]
+        },
+        {
+          "path": "/state/observation/recent/0/result/text/text",
+          "operation": "replace string spans",
+          "reason": "sample response token or long opaque example",
+          "replacement": "[REDACTED_SAMPLE_TOKEN]",
+          "originalUtf16Spans": [
+            [
+              1365,
+              1785
+            ]
+          ]
+        },
+        {
+          "path": "/state/observation/screenshot",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "0f1948644d140abdd729dc3037d56d76746e9b209909318735e69ac80fed2f9f",
+          "replacement": "image-1"
+        }
+      ]
+    },
+    {
+      "id": "request-004",
+      "site": "recaptcha-v2",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "2bc631dedf436566b22f643bf48593f541785de6c649efd888ab341b08907b45",
+      "originalStateSha256": "739ed5a21d6051cd1a2b73bc9ed4f50ae2bf50628f08f97839c3a223f8667876",
+      "sanitizedRequestSha256": "b0baa2bf555228cbd370be1e8cca2c87fba265234826e169741f7fca4b8e8ca5",
+      "sanitizedStateSha256": "3bfdedc8d3794c26bad21994bd6f352711fdb3071419efafdfb96e5b40f8090e",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "6b62bf1942f652649d19f01f172adc7a4fb49a71f115f9ac3976706c0b19dd55",
+          "originalBase64Utf16Length": 175664
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/screenshot",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "bb05847e9fb2da9eb2eab4eaf6bbce3364c3e8b58bf07a23cd53ab6fc369c066",
+          "replacement": "image-1"
+        }
+      ]
+    },
+    {
+      "id": "request-005",
+      "site": "recaptcha-v2",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "aa55ce6c9f670e2512145b84909c94388a40d15e1e73d194621a7a3901124698",
+      "originalStateSha256": "bccf4e65d7a428ea7886a498920f2db13f3e77169343fbf2b3223cebc88dedc2",
+      "sanitizedRequestSha256": "e2a90052d3ef04c00240ce2d613f348d8a37f23e6592b52ad0ee4edf56e0aca6",
+      "sanitizedStateSha256": "e6dfde736ad3d3000864a1329ae53a22d9eeb624a2bec113205c733bc4ae464c",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "cad19b993a2289d7594fd2a2a72fdb6bbb816b49df557e47b8ea1a71f4699298",
+          "originalBase64Utf16Length": 19540
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/screenshot",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "35f5649ab971daadb60a11eb60b8d2de04d4804df4e815643d49f34a822be75c",
+          "replacement": "image-1"
+        }
+      ]
+    },
+    {
+      "id": "request-006",
+      "site": "recaptcha-v2",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "9fa43d24e83e6e0bc56a4c60bc2160f91af51ba2e98dd4f69c8123abe82163c5",
+      "originalStateSha256": "ab7358d08f1e3ca704d1fd6cf3568ae319d480691f66986408822668c57220aa",
+      "sanitizedRequestSha256": "37b3775e4a4ec78f7301fc72248e992aeebed777ac46933760413bf18770686c",
+      "sanitizedStateSha256": "5e2bc104841b12166b2dad29acdeb23f885cbd053fc8d804059fe8960ea2bb5f",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215",
+          "originalBase64Utf16Length": 18056
+        },
+        {
+          "path": "/assets/image-2/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d",
+          "originalBase64Utf16Length": 18088
+        },
+        {
+          "path": "/assets/image-3/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "234478538ac49c7b08ca3b41491e45ae22c88edbf77b47d0521d316635f9ed82",
+          "originalBase64Utf16Length": 6720
+        },
+        {
+          "path": "/assets/image-4/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "7738abc94688b1876e9dcdfa8fd619b62ad992dae3fde617c75984178db3e0bf",
+          "originalBase64Utf16Length": 6732
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "524b7cba5ee2f7da08294c0f433d900ebd2834f6a5c8521866fbe5eb08091758",
+          "replacement": "image-1"
+        },
+        {
+          "path": "/state/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "b51229e624aa22d29f8d6f25cdd42d9f67d1abe02981687b07c9f49fe6f645a9",
+          "replacement": "image-2"
+        },
+        {
+          "path": "/state/before_target",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "ed58705841a9b47bc388dbed1863bbde77b58da37dc14703c8b1da97055fea8f",
+          "replacement": "image-3"
+        },
+        {
+          "path": "/state/after_target",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "01bbd2a4b68db013d712ff3e1076a1f26804ad24efa3a3d2002430ceda0aed8d",
+          "replacement": "image-4"
+        }
+      ]
+    },
+    {
+      "id": "request-007",
+      "site": "turnstile",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "a6468f431370a4e4866aac0653c17a1c61a0db55ad742f415b7ca806e465b6b4",
+      "originalStateSha256": "706e3ebec3d923be2a43216520c8d8ded1a41a6cb62d966d0c17f7795941ceb6",
+      "sanitizedRequestSha256": "f06a917bca5325bc167b715ed3370412a9280e88679f8d872224f77b9fcae4d1",
+      "sanitizedStateSha256": "ee7822d4e0ea5307a5022ebbbace5bdf9689f31eb337dccd1c3709ca1374c47c",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "7b630e84bdbe34c2a7105373347105bd5c5e3561661816c413e2509e46d15fe9",
+          "originalBase64Utf16Length": 168392
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/page/text",
+          "operation": "replace string spans",
+          "reason": "public demo sitekey",
+          "replacement": "[REDACTED_DEMO_SITEKEY]",
+          "originalUtf16Spans": [
+            [
+              761,
+              785
+            ],
+            [
+              926,
+              950
+            ],
+            [
+              1082,
+              1106
+            ],
+            [
+              1337,
+              1361
+            ],
+            [
+              1845,
+              1869
+            ]
+          ]
+        },
+        {
+          "path": "/state/page/text",
+          "operation": "replace string spans",
+          "reason": "public API key placeholder",
+          "replacement": "[REDACTED_API_KEY_PLACEHOLDER]",
+          "originalUtf16Spans": [
+            [
+              1281,
+              1293
+            ],
+            [
+              1791,
+              1803
+            ]
+          ]
+        },
+        {
+          "path": "/state/page/text",
+          "operation": "replace string spans",
+          "reason": "sample response token or long opaque example",
+          "replacement": "[REDACTED_SAMPLE_TOKEN]",
+          "originalUtf16Spans": [
+            [
+              1466,
+              1683
+            ]
+          ]
+        },
+        {
+          "path": "/state/screenshot",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              38
+            ]
+          ],
+          "originalValueSha256": "8454fa73f3916b10989e75eb3a8ceebe92c7cd5be7a9d219b8ae7d45fba8aa50",
+          "replacement": "image-1"
+        }
+      ]
+    },
+    {
+      "id": "request-008",
+      "site": "turnstile",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "c9456a9e66dc64a16ed956e1b7444e5cf1ab236d685593704a412d80ac5f1de7",
+      "originalStateSha256": "e2572fb9809d7251c31847e3bde33af56321e0249654eb3b9434845c7a968a17",
+      "sanitizedRequestSha256": "53576ab3a839270525ed49fddf79ca15e119d4d64c58db10871a6e6632328f18",
+      "sanitizedStateSha256": "1cf0300a55136b1dec4eb8eb3db7cf80a9af5c8adcd5f5d99fd7bf2a13a66aea",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "7b630e84bdbe34c2a7105373347105bd5c5e3561661816c413e2509e46d15fe9",
+          "originalBase64Utf16Length": 168392
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/screenshot",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "f56d5c5ab6738beee805d2509cf4db124b14a4cc060c91e58bd16fffc10f4927",
+          "replacement": "image-1"
+        }
+      ]
+    },
+    {
+      "id": "request-009",
+      "site": "turnstile",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "79a50ef9ae499b1632ffaff353cd9dacb5492918ca3ab2121f8cb15807e96fa0",
+      "originalStateSha256": "3425a02ba722a87ed74e985ea08a61727ca5055c3b1171d5eac7567950923222",
+      "sanitizedRequestSha256": "0888ffe2b92caa31886ea006e75a32df90a77b09a66dfd075139192da04e151c",
+      "sanitizedStateSha256": "16936e6f04f0e88921b1b35f3d43d43b7d6874f40fa3a022f3bcc0ae2d401709",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "b20e2e9e8f8e132328fd4a10dbdf9c110c2bbaaa9521c0417fc207ae5f64c58d",
+          "originalBase64Utf16Length": 169388
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/observation/recent/0/result/text/text",
+          "operation": "replace string spans",
+          "reason": "public demo sitekey",
+          "replacement": "[REDACTED_DEMO_SITEKEY]",
+          "originalUtf16Spans": [
+            [
+              761,
+              785
+            ],
+            [
+              926,
+              950
+            ],
+            [
+              1082,
+              1106
+            ],
+            [
+              1337,
+              1361
+            ],
+            [
+              1845,
+              1869
+            ]
+          ]
+        },
+        {
+          "path": "/state/observation/recent/0/result/text/text",
+          "operation": "replace string spans",
+          "reason": "public API key placeholder",
+          "replacement": "[REDACTED_API_KEY_PLACEHOLDER]",
+          "originalUtf16Spans": [
+            [
+              1281,
+              1293
+            ],
+            [
+              1791,
+              1803
+            ]
+          ]
+        },
+        {
+          "path": "/state/observation/recent/0/result/text/text",
+          "operation": "replace string spans",
+          "reason": "sample response token or long opaque example",
+          "replacement": "[REDACTED_SAMPLE_TOKEN]",
+          "originalUtf16Spans": [
+            [
+              1466,
+              1683
+            ]
+          ]
+        },
+        {
+          "path": "/state/observation/screenshot",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3a974939de3624aadd3bb2351b414586af65cb2937c9baba3f2c156e24bcb873",
+          "replacement": "image-1"
+        }
+      ]
+    },
+    {
+      "id": "request-010",
+      "site": "turnstile",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "83daafb7e162a096e6e8a7c6e76a0e1da12e967e640af1dc61fcb75d47bbd789",
+      "originalStateSha256": "fa0924f1e2af0131f2087260e4f63165f7633725b693bfb4645777db9c75deb0",
+      "sanitizedRequestSha256": "caeeb861908e1b56f31d0af96b622f0afde324caf80847cbb6b044d1ef288eb0",
+      "sanitizedStateSha256": "1cf0300a55136b1dec4eb8eb3db7cf80a9af5c8adcd5f5d99fd7bf2a13a66aea",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "967c226393b7beaa4bd8fd35f25b62ca6b0a1a03bfd81ca2467c7fdaf42c1d3f",
+          "originalBase64Utf16Length": 169060
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/screenshot",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "7f05d743fd3ff371edf6dfb21bf44221526f902bac479af91a8e504177105eba",
+          "replacement": "image-1"
+        }
+      ]
+    },
+    {
+      "id": "request-011",
+      "site": "turnstile",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "f10ca83725b5ca444dd9d2ae9ba58976da9a5ceb6d83e7a7ce563ae4b903d7a4",
+      "originalStateSha256": "49ffa1c2afef3435277e69d57dfe2152dca15779ff87635c59fe88f5c2741752",
+      "sanitizedRequestSha256": "75149ca46a87d7a54c222aa4d583b513259025b1e7f0e5f9e6fcf77e22277980",
+      "sanitizedStateSha256": "d049ef1cf81faf99a9d1c623e4fecf65a41a92418f531eb5486a5282ddbb279a",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "b143bc7cc36d9f0ece0270bdbbace9619a53ff6acb5464b19f3f1b92436116b2",
+          "originalBase64Utf16Length": 20316
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/screenshot",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "f440e44ac1ba97f439120d92ec224879625b8889be633b2027d148ce9f92872a",
+          "replacement": "image-1"
+        }
+      ]
+    },
+    {
+      "id": "request-012",
+      "site": "turnstile",
+      "fullLogicalRequestStoredBeforeInference": true,
+      "privateFileMode": "0600",
+      "originalRequestSha256": "9fff5d8904b698058c2e476161687063201ed2722e8ef0e31c2c703777aac73a",
+      "originalStateSha256": "36198964f0abb4f6cd51a607129547cc2e8b1f19dfe2c32837ebadf919791e34",
+      "sanitizedRequestSha256": "701921811f894b8bd8bd6c71c37c1e57e65f0589c43a9fe3b6165ec2baae6e7e",
+      "sanitizedStateSha256": "1e0413ae6215510ba0dd59606f09280cfb7f610d95d766173fee89b0dc0d1766",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "c413b196c4f8939902e45abd073061e8de273aff6f8ca0b405d280e47c1b057a",
+          "originalBase64Utf16Length": 169208
+        },
+        {
+          "path": "/assets/image-2/dataBase64",
+          "operation": "omit raw PNG/base64",
+          "decodedSha256": "7b630e84bdbe34c2a7105373347105bd5c5e3561661816c413e2509e46d15fe9",
+          "originalBase64Utf16Length": 168392
+        },
+        {
+          "path": "/assets",
+          "operation": "normalize opaque asset keys consistently with state image references"
+        },
+        {
+          "path": "/state/page/text",
+          "operation": "replace string spans",
+          "reason": "public demo sitekey",
+          "replacement": "[REDACTED_DEMO_SITEKEY]",
+          "originalUtf16Spans": [
+            [
+              761,
+              785
+            ],
+            [
+              926,
+              950
+            ],
+            [
+              1082,
+              1106
+            ],
+            [
+              1337,
+              1361
+            ],
+            [
+              1845,
+              1869
+            ]
+          ]
+        },
+        {
+          "path": "/state/page/text",
+          "operation": "replace string spans",
+          "reason": "public API key placeholder",
+          "replacement": "[REDACTED_API_KEY_PLACEHOLDER]",
+          "originalUtf16Spans": [
+            [
+              1281,
+              1293
+            ],
+            [
+              1791,
+              1803
+            ]
+          ]
+        },
+        {
+          "path": "/state/page/text",
+          "operation": "replace string spans",
+          "reason": "sample response token or long opaque example",
+          "replacement": "[REDACTED_SAMPLE_TOKEN]",
+          "originalUtf16Spans": [
+            [
+              1466,
+              1683
+            ]
+          ]
+        },
+        {
+          "path": "/state/screenshot",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              38
+            ]
+          ],
+          "originalValueSha256": "ec511eb611b2907247ddf482fe2972b2a1aa15ebd6709d6177f0ef0ed53764c9",
+          "replacement": "image-1"
+        },
+        {
+          "path": "/state/prior",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              38
+            ]
+          ],
+          "originalValueSha256": "c1f1e672249868562fd1131d3e066eb43b000d4c4fb4c3aa0e758eec912ac34b",
+          "replacement": "image-2"
+        }
+      ]
+    }
+  ]
+}
