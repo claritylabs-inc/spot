@@ -1,12 +1,52 @@
 # Platform workflow QA
 
+## Clairic fast-pass dates and lists — October 20, 2026
+
+Source `1c0af6a084ea97a25142e9e8e6986945f7b3f67b`. Only
+`declarationsFastPass.ts` and the section-extraction architecture doc changed.
+The request omits `linesOfBusiness` and `coverageSummaries`.
+`fastPassAsOutput` returns both empty, even for restored artifacts. Date
+instructions name the start and end of the policy period, From/To pairs and
+labeled dates, and forbid inferred dates. The evidence and calendar gates are
+unchanged.
+
+Checks: focused ESLint on `declarationsFastPass.ts`, Convex `tsc --noEmit` and
+root `tsc --noEmit` passed. Each ran once. No unit tests were added.
+
+Offline scratch execution (not a test file) confirmed:
+
+- Unchanged date gates: a calendar-invalid value, a value with a time, a value
+  holding two dates, a value missing from its evidence quote, evidence without
+  a span or with an out-of-range span, and evidence with a null value all map
+  to null.
+- Legacy list answers are ignored. A restored artifact that still stores lines
+  of business and coverages produces empty lists in the output, preview fields
+  and summary, and keeps its scalars and forms.
+- `overlayFastPass` keeps the LLM's lines of business and coverages.
+
+Live synthetic `/v1/extract` on shared dev `tangible-warbler-253` (router
+`12ca9ec2`). Each case ran once and passed, so none was repeated:
+
+| Case | Result | Request |
+| --- | --- | --- |
+| `Policy Period: From 01/15/2026 to 01/15/2027 12:01 A.M. standard time` (previously expiration null, pNull 0.85) | 2026-01-15 / 2027-01-15, both cited; expiration pNull 0.0004 | `613872b6-a485-4d01-a74a-e9bf99ca75cf` |
+| From March 1, 2026 to March 1, 2027 at 12:01 A.M. | 2026-03-01 / 2027-03-01, cited | `2e9359e0-bb92-490d-a7e5-0ae6a7fcc9d8` |
+| Labeled effective/expiration/retroactive with a Date Issued distractor | 2026-06-01 / 2027-06-01 / 2019-09-15, cited; issue date not used | `51478e9e-990c-432a-aba6-1c66366f0f8c` |
+| Effective date only, no end date | expiration null (pNull 0.997), no invented date; summary omits Policy period | `e10db628-1a7e-4da4-80cb-4eeeada9a413` |
+
+No response contained list answers for lines of business or coverages, and every
+summary omitted both. Router latency was 383–566 ms (wall 551–1245 ms). In the
+first case Clairic returned the form `IL 00 17 11` without its `98` edition
+suffix; form mapping is outside this change. These are single samples, so model
+nondeterminism is not ruled out. Artifacts are in `.context/clairic/quality/`. No
+preview, deployment, customer data, or Spot write was used.
+
 ## Clairic declarations fast-pass — October 20, 2026
 
 Independent Opus review covered the fixed router endpoint, request/response
 contract, citation offsets, null/list mapping, date evidence, once-per-plan
 execution and unknown outcomes, early preview/context, and scalar authority
-across multiple declarations sections. Sonnet implemented the router adapter
-and helper; Opus implemented pipeline orchestration. No unit tests were added.
+across multiple declarations sections. No unit tests were added.
 
 Router acceptance on Node 24.14.1: `npm run openapi:generate` and `npm run check`
 passed (lint, workspace typechecks, 439 existing tests passed / one skipped,
@@ -28,7 +68,6 @@ same-advance non-declarations submission, and final scalar `sourceSpanIds`
 remain unverified. Repeat the workflow in
 `docs/architecture/convex-section-extraction.md` on an explicitly selected
 development target with both updated services before claiming those results.
-
 
 ## Safari detail-panel dropdowns — October 19, 2026
 
