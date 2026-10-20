@@ -155,7 +155,7 @@ function placeholderCompanyName(user: Doc<"users"> | null) {
     user?.name?.trim() || user?.email?.split("@")[0] || "New applicant";
   return name.replace(/\b\w/g, (char) => char.toUpperCase());
 }
-export async function createIntakeClient(
+async function createIntakeClient(
   ctx: MutationCtx,
   userId: Id<"users">,
   answers: IntakeAnswers,
