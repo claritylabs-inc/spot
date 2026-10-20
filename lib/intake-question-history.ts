@@ -1,3 +1,4 @@
+import { followupQuestionVisible } from "./intake-followups";
 import { autoQuoteQuestionHistory } from "./intake-auto-quote";
 import {
   DRIVER_QUESTIONS,
@@ -78,7 +79,7 @@ export function intakeQuestionHistory(
           })),
         }))
       : [],
-    autoQuoteQuestions: autoQuoteQuestionHistory(details,skippedSteps),
+    autoQuoteQuestions: autoQuoteQuestionHistory(details, skippedSteps),
     scheduledDriverCount: details.drivers?.length ?? 0,
     followupQuestions: (details.followups ?? []).map((row) => ({
       id: row.id,
@@ -87,7 +88,8 @@ export function intakeQuestionHistory(
       answer: row.answer,
       kind: row.kind,
       options: row.options,
-      conditions: row.conditions??[],
+      conditions: row.conditions ?? [],
+      applicable: followupQuestionVisible(row, details.followups),
       status: row.answer.trim()
         ? "answered"
         : row.skipped

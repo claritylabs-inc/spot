@@ -51,7 +51,7 @@ export function IntakeFollowups({
   if (!question)
     return (
       <p className="text-muted-foreground">
-        You’ve already covered what we need here. Continue to the next section.
+        No additional questions for this section. Continue when you’re ready.
       </p>
     );
   const id = `followup-${question.id}`;

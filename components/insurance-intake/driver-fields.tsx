@@ -1,4 +1,5 @@
 "use client";
+import { IntakeReviewRows } from "./company-review";
 import { typeStyle } from "@/lib/typography";
 import dayjs from "dayjs";
 import { parseDateText } from "@claritylabs-inc/ui/components/date-field";
@@ -184,33 +185,66 @@ export function IntakeDriverFields({
   );
 }
 export function IntakeDriverReview({ details }: { details: IntakeDetails }) {
+  const historyValue = (answer: "" | "yes" | "no", notes: string) =>
+    answer === "yes"
+      ? ["Yes", notes.trim()].filter(Boolean).join(" — ")
+      : answer === "no"
+        ? "No"
+        : "Not provided";
   return (
     <div className="ph-no-capture space-y-4">
       {details.drivers?.length ? (
-        details.drivers.map((driver) => (
-          <div key={driver.id} className="space-y-1">
-            <p className={typeStyle("heading.item")}>{driver.name}</p>
-            <p>Date of birth: {driver.dateOfBirth}</p>
-            <p>
-              License: {driver.licenseNumber} · {driver.licenseJurisdiction} ·{" "}
-              {driver.licenseClass}
-            </p>
-            <p>Experience: {driver.yearsExperience} years</p>
-            <p>
-              Accidents in past five years: {driver.accidents || "Not answered"}
-              {driver.accidents === "yes" ? ` — ${driver.accidentDetails}` : ""}
-            </p>
-            <p>
-              Violations/suspensions in past five years:{" "}
-              {driver.violations || "Not answered"}
-              {driver.violations === "yes"
-                ? ` — ${driver.violationDetails}`
-                : ""}
-            </p>
-          </div>
+        details.drivers.map((driver, index) => (
+          <section key={driver.id} className="space-y-3">
+            <h3 className={typeStyle("heading.item")}>
+              {driver.name || `Driver ${index + 1}`}
+            </h3>
+            <IntakeReviewRows
+              rows={[
+                ...(driver.dateOfBirth
+                  ? [
+                      {
+                        label: "Date of birth",
+                        value: /^\d{4}-\d{2}-\d{2}$/.test(driver.dateOfBirth)
+                          ? dayjs(driver.dateOfBirth).format("MMM D, YYYY")
+                          : driver.dateOfBirth,
+                      },
+                    ]
+                  : []),
+                ...(driver.licenseNumber
+                  ? [{ label: "License number", value: driver.licenseNumber }]
+                  : []),
+                {
+                  label: "License issued in",
+                  value: driver.licenseJurisdiction,
+                },
+                {
+                  label: "License class and endorsements",
+                  value: driver.licenseClass,
+                },
+                {
+                  label: "Driving experience",
+                  value: driver.yearsExperience.trim()
+                    ? `${driver.yearsExperience} ${Number(driver.yearsExperience) === 1 ? "year" : "years"}`
+                    : undefined,
+                },
+                {
+                  label: "Accidents in the past five years",
+                  value: historyValue(driver.accidents, driver.accidentDetails),
+                },
+                {
+                  label: "Violations or suspensions in the past five years",
+                  value: historyValue(
+                    driver.violations,
+                    driver.violationDetails,
+                  ),
+                },
+              ]}
+            />
+          </section>
         ))
       ) : (
-        <p className="text-muted-foreground">Driver schedule not provided.</p>
+        <IntakeReviewRows rows={[]} emptyTitle="Driver schedule not provided" />
       )}
     </div>
   );

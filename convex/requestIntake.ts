@@ -1,8 +1,7 @@
-import { estimatedVehicleValueError } from "../lib/intake-auto-quote";
-import { vinError } from "../lib/intake-vehicles";
-import { driverScheduleErrors, driverModelContext } from "../lib/intake-drivers";
+import { intakeSubmissionProblems } from "../lib/intake-submission";
+import { driverModelContext } from "../lib/intake-drivers";
 import { intakeQuestionHistory } from "../lib/intake-question-history";
-import { followupQuestionVisible, expandIntakeFollowupQuestion } from "../lib/intake-followups";
+import { boundIntakeFollowupQuestions, followupQuestionVisible, expandIntakeFollowupQuestion } from "../lib/intake-followups";
 import { INTAKE_ACORD_CATALOG_VERSION } from "./lib/intakeAcordQuestions";
 import {
   followupSectionValidator,
@@ -20,12 +19,10 @@ import {
 import { queueIntakeSlack } from "./intakeSlack";
 import { intakeDetailsValidator } from "./lib/intakeDetailsSchema";
 import {
+  activeIntakeDetails,
   detailsFromAnswers,
   detailsAnswers,
   validateIntakeDetails,
-  validCoverageLimit,
-  validCoverageScope,
-  coverageOption,
   type IntakeDetails,
 } from "../lib/insurance-intake-details";
 import dayjs from "dayjs";
@@ -53,7 +50,6 @@ import {
   INTAKE_REASONS,
   SAVINGS_INTAKE_REASON,
   INTAKE_STEPS,
-  missingIntakeAnswers,
   type IntakeAnswers,
 } from "../lib/insurance-intake";
 import { createProcurementInboxToken } from "./lib/procurement";
@@ -106,7 +102,7 @@ export function submissionContent(
     return value;
   };
   return JSON.stringify(
-    normalize({ answers, details, files: [...fileIds].sort() }),
+    normalize({ answers, details: activeIntakeDetails(details,answers.intakeGoal), files: [...fileIds].sort() }),
   );
 }
 function validateContact(name: string, email: string, phone: string) {
@@ -1265,59 +1261,9 @@ export const submit = mutation({
       answers.phone ?? "",
     );
     const savings = answers.intakeGoal === "savings";
-    const missing = missingIntakeAnswers(answers);
-    const details = request.intakeDetails ?? detailsFromAnswers(answers);
-    if (!savings) missing.push(...driverScheduleErrors(details));
-    if (!savings && details.hasClaims === "yes" && !answers.claims?.trim())
-      missing.push("Claims details");
-    if (
-      !savings &&
-      details.hasCancellations === "yes" &&
-      !answers.cancellations?.trim()
-    )
-      missing.push("Cancellation or renewal-decline details");
-    if (
-      (details.registrationCountry || "United States") === "United States" &&
-      answers.fein &&
-      !/^\d{2}-?\d{7}$/.test(answers.fein.trim())
-    )
-      missing.push("Valid nine-digit FEIN");
-    if (
-      details.registrationCountry === "Canada" &&
-      answers.businessNumber &&
-      !/^\d{9}$/.test(answers.businessNumber.trim())
-    )
-      missing.push("Valid nine-digit Canadian business number");
-    for (const line of savings ? [] : details.coverages) {
-      if (
-        line.coverage === "other" &&
-        (!line.limits.coverage_description?.trim() ||
-          line.limits.coverage_description === "I'm not sure")
-      )
-        missing.push("Type of insurance for other coverage");
-      for (const [index, vehicle] of (line.vehicles ?? []).entries()) {
-        const valueProblem=estimatedVehicleValueError(vehicle.estimatedValue);
-        if(valueProblem)missing.push(`Vehicle ${index+1} approximate value: ${valueProblem}`);
-        const problem=vinError(vehicle.vin, details.registrationCountry);
-        if(problem) missing.push(`Vehicle ${index+1} VIN: ${problem}`);
-      }
-      if (line.coverage !== "commercial_auto" && !validCoverageScope(line, details.scopeNote || answers.coverageScope))
-        missing.push(`${coverageOption(line.coverage).label}: what to insure`);
-      for (const limit of coverageOption(line.coverage).limits)
-        if (!validCoverageLimit(limit.key, line.limits[limit.key]))
-          missing.push(
-            `${coverageOption(line.coverage).label}: ${limit.label}`,
-          );
-    }
-    if (missing.length)
-      throw new Error(`Please complete: ${missing.join(", ")}`);
-    for (const key of ["effectiveDate", "deadline"] as const)
-      if (
-        answers[key] &&
-        (!/^\d{4}-\d{2}-\d{2}$/.test(answers[key]!) ||
-          dayjs(answers[key]).format("YYYY-MM-DD") !== answers[key])
-      )
-        throw new Error("Enter a valid date");
+    const details = activeIntakeDetails(request.intakeDetails ?? detailsFromAnswers(answers),answers.intakeGoal);
+    const problems=intakeSubmissionProblems(answers,details);
+    if(problems.length)throw new Error(`Please complete: ${problems.map(problem=>problem.label).join(", ")}`);
     const files = await ctx.db
       .query("requestIntakeFiles")
       .withIndex("request", (q) => q.eq("requestId", request._id))
@@ -1453,8 +1399,7 @@ export const submit = mutation({
       clientVisible: !savings,
       targetEffectiveDate: answers.effectiveDate || undefined,
       intakeSnapshot: answers,
-      intakeDetailsSnapshot:
-        request.intakeDetails ?? detailsFromAnswers(answers),
+      intakeDetailsSnapshot: details,
       intakeSubmittedAt: now,
       intakeSubmittedApplication: submissionBaseline,
       intakeSubmittedContentHash: contentHash,
@@ -1753,7 +1698,7 @@ async function followupContextHash(
     .withIndex("request", (q) => q.eq("requestId", request._id))
     .take(50);
   return hashIntakeToken(
-    `${INTAKE_ACORD_CATALOG_VERSION}:history-v3-auto-quote:${JSON.stringify((request.intakeSkippedSteps ?? []).filter((step) => step < 28))}:${submissionContent(
+    `${INTAKE_ACORD_CATALOG_VERSION}:history-v4-active-quote:${JSON.stringify((request.intakeSkippedSteps ?? []).filter((step) => step < 28))}:${submissionContent(
       request.intakeAnswers ?? {},
       contextDetails,
       files.map((file) => String(file._id)),
@@ -1816,13 +1761,14 @@ export const followupContext = internalQuery({
       .query("requestIntakeFiles")
       .withIndex("request", (q) => q.eq("requestId", requestId))
       .take(50);
-    const historyDetails = request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {});
+    const historyDetails = activeIntakeDetails(request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {}),request.intakeAnswers?.intakeGoal);
     return {
       questionHistory: intakeQuestionHistory(request.intakeAnswers ?? {}, historyDetails, request.intakeSkippedSteps ?? []),
       priorQuestions:
         section === "additional"
           ? (request.intakeFollowups?.acord?.questions ?? [])
           : [],
+      reservedQuestions: request.intakeFollowups?.[section === "acord" ? "additional" : "acord"]?.status === "ready" ? request.intakeFollowups[section === "acord" ? "additional" : "acord"]!.questions : [],
       answers: request.intakeAnswers ?? {},
       details: { ...historyDetails, drivers: (historyDetails.drivers ?? []).map(driverModelContext) },
       files: files.map(({ name, category }) => ({ name, category })),
@@ -1857,6 +1803,10 @@ export const finishFollowups = internalMutation({
     failed ||=
       batch.contextHash !== (await followupContextHash(ctx, request, section));
     if (failed) questions = [];
+    else {
+      const other=request.intakeFollowups?.[section === "acord" ? "additional" : "acord"];
+      questions=boundIntakeFollowupQuestions(questions,request.intakeDetails?.followups??[],other?.status==="ready"?other.questions:[]);
+    }
     await ctx.db.patch(requestId, {
       intakeFollowups: {
         ...request.intakeFollowups,

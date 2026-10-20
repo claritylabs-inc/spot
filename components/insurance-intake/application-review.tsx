@@ -1,6 +1,8 @@
 "use client";
+import { hasCommercialAuto } from "@/lib/intake-drivers";
 import { IntakeAutoQuoteReview } from "./auto-quote-fields";
 import { IntakeDriverReview } from "./driver-fields";
+import { followupQuestionVisible } from "@/lib/intake-followups";
 import { IntakeFollowupReview } from "./followup-review";
 import { useState, type ReactNode } from "react";
 import {
@@ -32,15 +34,33 @@ export function IntakeApplicationReview({
     { title: "Coverage Requested", section: "coverage" as const },
     { title: "Business details", section: null },
     { title: "Insurance history", section: "history" as const },
-    ...((application.details.freightHauled || application.details.noCurrentInsuranceReason || application.details.coverages.some(line=>line.vehicles?.some(vehicle=>vehicle.estimatedValue))) ? [{title:"Quote details",section:"autoQuote" as const}] : []),
-    ...(application.details.drivers?.length ? [{title:"Driver schedule",section:"drivers" as const}] : []),
-    ...(application.details.followups?.length
+    ...(hasCommercialAuto(application.details) &&
+    (application.details.freightHauled ||
+      application.details.coverages.some((line) =>
+        line.vehicles?.some((vehicle) => vehicle.estimatedValue),
+      ))
+      ? [{ title: "Quote details", section: "autoQuote" as const }]
+      : []),
+    ...(hasCommercialAuto(application.details) &&
+    application.details.drivers?.length
+      ? [{ title: "Driver schedule", section: "drivers" as const }]
+      : []),
+    ...(application.details.followups?.some((row) =>
+      followupQuestionVisible(row, application.details.followups),
+    )
       ? [{ title: "Follow-up answers", section: "followups" as const }]
       : []),
   ];
   const content = (section: (typeof groups)[number]["section"]) =>
-    section === "autoQuote" ? <IntakeAutoQuoteReview details={application.details}/> : section === "drivers" ? <IntakeDriverReview details={application.details}/> : section === "followups" ? (
-      <IntakeFollowupReview businessName={application.answers.legalName || application.answers.dba} answers={application.details.followups ?? []} />
+    section === "autoQuote" ? (
+      <IntakeAutoQuoteReview details={application.details} hideHeading />
+    ) : section === "drivers" ? (
+      <IntakeDriverReview details={application.details} />
+    ) : section === "followups" ? (
+      <IntakeFollowupReview
+        businessName={application.answers.legalName || application.answers.dba}
+        answers={application.details.followups ?? []}
+      />
     ) : section ? (
       <IntakeRequestReview
         answers={application.answers}
@@ -70,7 +90,11 @@ export function IntakeApplicationReview({
   if (tabbed)
     return (
       <Tabs
-        value={selected}
+        value={
+          groups.some((group) => group.title === selected)
+            ? selected
+            : groups[0].title
+        }
         onValueChange={(value) => setSelected(String(value))}
         className="gap-5"
       >

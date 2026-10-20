@@ -1,5 +1,6 @@
 "use client";
-import { driverQuestion, DRIVER_FIELDS, isDriverStep, hasCommercialAuto, newIntakeDriver, driverFieldValid, driverScheduleErrors } from "@/lib/intake-drivers";
+import { intakeSubmissionProblems } from "@/lib/intake-submission";
+import { driverQuestion, DRIVER_FIELDS, isDriverStep, hasCommercialAuto, newIntakeDriver, driverFieldValid } from "@/lib/intake-drivers";
 import { vinError } from "@/lib/intake-vehicles";
 import { IntakeAutoQuoteFields } from "./auto-quote-fields";
 import { autoVehicles, estimatedVehicleValueError } from "@/lib/intake-auto-quote";
@@ -70,7 +71,6 @@ import {
   hasIntakeRequirements,
   INTAKE_STEPS,
   INTAKE_VERSION,
-  missingIntakeAnswers,
   type IntakeAnswers,
   type IntakeField,
 } from "@/lib/insurance-intake";
@@ -110,6 +110,18 @@ type Recovery = {
   details?: IntakeDetails;
   skippedStep?: number;
 };
+// Keep the cursor used for validation and persistence aligned with the record
+// rendered by the collection fields, including older saved drafts.
+function normalizeIntakeCursors(details: IntakeDetails): IntakeDetails {
+  const clamp = (index: number | undefined, length: number) =>
+    Math.min(Math.max(0, typeof index === "number" && Number.isInteger(index) ? index : 0), Math.max(0, length - 1));
+  return {
+    ...details,
+    coverageIndex: clamp(details.coverageIndex, details.coverages.length),
+    driverIndex: clamp(details.driverIndex, details.drivers?.length ?? 0),
+    autoVehicleIndex: clamp(details.autoVehicleIndex, autoVehicles(details).length),
+  };
+}
 function IntakeApplicationLoading() {
   return (
     <IntakeFrame
@@ -330,6 +342,11 @@ function Application({
     [29, 30].includes(step) &&
     !followupWaitExpired &&
     (!followupBatch || followupBatch.status === "pending");
+  const [editingReview, setEditingReview] = useState(
+    reviewStep !== undefined && reviewStep !== 28,
+  );
+  const reviewScroll = useRef(0);
+  const editingSection = useRef(reviewSection);
   const followupSection = step === 29 ? "acord" : "additional";
   const savedFollowupQuestions = (details.followups ?? []).filter(
     (row) => row.section === followupSection,
@@ -341,8 +358,10 @@ function Application({
     ...currentFollowupQuestions,
     ...savedFollowupQuestions.filter(
       (saved) =>
-        !currentFollowupQuestions.some((question) => question.id === saved.id) &&
-        (!!details.followups?.find((row) => row.id === saved.id)?.answer.trim() || !!data?.submitted || followupBatch?.status !== "ready"),
+        // Historical answers remain reviewable, but a new forward batch must
+        // not turn previously answered/skipped questions into new pages again.
+        (!!data?.submitted || editingReview) &&
+        !currentFollowupQuestions.some((question) => question.id === saved.id),
     ),
   ].map((question) => [question.id, question])).values()).filter(question=>followupQuestionVisible(question,details.followups));
   const followupIndex = Math.min(
@@ -350,11 +369,6 @@ function Application({
     Math.max(0, followupQuestions.length - 1),
   );
   const followupQuestion = followupQuestions[followupIndex];
-  const [editingReview, setEditingReview] = useState(
-    reviewStep !== undefined && reviewStep !== 28,
-  );
-  const reviewScroll = useRef(0);
-  const editingSection = useRef(reviewSection);
   const [status, setStatus] = useState("Loading…");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -488,8 +502,6 @@ function Application({
         revision: data.revision,
         dirty: false,
       };
-    if (isSavings && ([6, 7, 8, 9, 41, 42, 43].includes(state.current.step) || isDriverStep(state.current.step)))
-      state.current.step = 10;
     if (state.current.step === 27) state.current.step = 20;
     state.current.details = state.current.details ?? data.details;
     if (data.submitted && !recovery?.dirty)
@@ -509,6 +521,27 @@ function Application({
     };
     if (state.current.answers.requirements === "None")
       state.current.answers.requirements = "No";
+    state.current.details = normalizeIntakeCursors(state.current.details!);
+    const savedSavings = state.current.answers.intakeGoal === "savings";
+    const savedAuto = !savedSavings && hasCommercialAuto(state.current.details);
+    if (savedSavings && [20, 22, 23, 24, 25, 26, 29, 30, 43].includes(state.current.step))
+      state.current.step = data.files.some((file) => file.category === "policy") ? 28 : 21;
+    else if (
+      (savedSavings && [6, 7, 8, 9].includes(state.current.step)) ||
+      (!savedAuto && ([41, 42].includes(state.current.step) || isDriverStep(state.current.step)))
+    )
+      state.current.step = 10;
+    else if (state.current.step === 42 && !autoVehicles(state.current.details).length)
+      state.current.step = 31;
+    else if (isDriverStep(state.current.step) && state.current.step !== 31) {
+      if (!state.current.details.drivers?.length) state.current.step = 31;
+      else if ([32, 33].includes(state.current.step) && !state.current.details.collectSensitiveDriverDetails)
+        state.current.step = 34;
+      else if (state.current.step === 38 && state.current.details.drivers[state.current.details.driverIndex ?? 0].accidents !== "yes")
+        state.current.step = 37;
+      else if (state.current.step === 40 && state.current.details.drivers[state.current.details.driverIndex ?? 0].violations !== "yes")
+        state.current.step = 39;
+    }
     if (
       state.current.step === 3 ||
       (state.current.step === 4 &&
@@ -520,15 +553,19 @@ function Application({
       state.current.details?.coverages[0]?.coverage === "unknown"
     )
       state.current.step = 9;
+    if (state.current.step === 9 && !state.current.details.coverages.some((line) => needsCoverageScope(line.coverage)))
+      state.current.step = 10;
     if (state.current.step === 26) state.current.step = state.current.answers.intakeGoal === "savings" ? 28 : 29;
-    if (state.current.step === 43) state.current.step = 23;
-    if (state.current.step === 22) state.current.step = 23;
+    if (!savedSavings && state.current.step === 43) state.current.step = 23;
+    if (!savedSavings && state.current.step === 22) state.current.step = 23;
     if (
+      !savedSavings &&
       [21, 22].includes(state.current.step) &&
       state.current.answers.currentInsurance === "No"
     )
       state.current.step = 23;
     if (
+      !savedSavings &&
       state.current.step === 24 &&
       !shouldRequestLossRuns(state.current.answers, state.current.details)
     )
@@ -637,13 +674,22 @@ function Application({
     };
   }, [flush, cache, uploading]);
   useEffect(() => {
-    if (!ready || !data || data.submitted || isSavings || ![29, 30].includes(step)) return;
+    if (!ready || !data || data.submitted || isSavings || ![29, 30].includes(step)) {
+      // This latch covers one visit, not the lifetime of the application. A
+      // later visit must let the server compare the latest context hash.
+      preparingFollowups.current = null;
+      return;
+    }
     const section = step === 29 ? "acord" : "additional";
     const key = `${requestId}:${section}`;
     if (preparingFollowups.current === key) return;
     preparingFollowups.current = key;
     void (async () => {
-      if (!(await flush())) { preparingFollowups.current = null; return; }
+      if (!(await flush())) {
+        if (preparingFollowups.current === key) preparingFollowups.current = null;
+        return;
+      }
+      if (state.current.step !== step) return;
       try { await prepareFollowups({ requestId, section }); }
       catch (error) { setError(getUserFacingErrorMessage(error, "We couldn’t prepare follow-up questions.")); }
     })();
@@ -703,6 +749,7 @@ function Application({
   }
   function changeDetails(next: IntakeDetails) {
     setSubmissionConfirmed(false);
+    next = normalizeIntakeCursors(next);
     const stored = state.current.details;
     if (
       next.scopeNote === undefined &&
@@ -990,7 +1037,6 @@ function Application({
     if (busy || uploading) return;
     // Existing policies supply savings coverage; skip these questions on every
     // entry path, including review navigation and older saved step links.
-    if (isSavings && ([6, 7, 8, 9, 41, 42, 43].includes(next) || isDriverStep(next))) next = 10;
     if (isSavings && !fromReview) {
       if (step === 1 && next === 2) next = 21;
       else if (step === 21 && next < 21) next = 1;
@@ -999,8 +1045,11 @@ function Application({
       else if ((step === 19 || step === 10) && next === 27) next = 28;
       else if (step === 0 && next === 1) next = 21;
     }
+    if (isSavings && ([6, 7, 8, 9, 41, 42].includes(next) || isDriverStep(next))) next = 10;
     // Keep old saved step numbers compatible without showing the retired confirmation page.
     if (next === 27) next = step >= 20 ? 19 : 20;
+    if (isSavings && [20, 22, 23, 24, 25, 26, 29, 30, 43].includes(next))
+      next = data?.files.some((file) => file.category === "policy") ? 28 : 21;
     const previousStep = step;
     const previousDetails = state.current.details ?? details;
     setBusy(true);
@@ -1023,7 +1072,7 @@ function Application({
         state.current.answers.currentInsurance === "No"
       )
         next = step > next ? 20 : 23;
-      if (next === 22)
+      if (!isSavings && next === 22)
         next =
           editingReview && editingSection.current === 21
             ? 24
@@ -1031,11 +1080,12 @@ function Application({
               ? 21
               : 23;
       if (
+        !isSavings &&
         next === 24 &&
         !shouldRequestLossRuns(state.current.answers, previousDetails)
       )
         next = step > 24 ? 23 : 25;
-      if (next === 26) next = step > 26 ? 25 : 28;
+      if (!isSavings && next === 26) next = step > 26 ? 25 : 28;
       if (
         [7, 8].includes(next) &&
         previousDetails.coverages[0]?.coverage === "unknown"
@@ -1060,7 +1110,9 @@ function Application({
           needsCoverageScope(line.coverage),
         )
       )
-        next = step > 9 ? 8 : 10;
+        next = step > 9
+          ? previousDetails.coverages[0]?.coverage === "unknown" ? 6 : 8
+          : 10;
       if (
         next === 13 &&
         !["United States", "Canada"].includes(
@@ -1095,12 +1147,13 @@ function Application({
           if(next > step) { if(autoVehicleIndex < autoVehicles(previousDetails).length-1){autoVehicleIndex++;next=42;}else{next=31;driverIndex=0;} }
           else if(autoVehicleIndex>0){autoVehicleIndex--;next=42;}else next=41;
         }
-        if(step===20 && next===25 && state.current.answers.currentInsurance==="No") next=23;
-        if(step===43)next=next>step?23:20;
-        if(step===23 && next===22 && state.current.answers.currentInsurance==="No")next=20;
+        if(!isSavings && step===20 && next===25 && state.current.answers.currentInsurance==="No") next=23;
+        if(!isSavings && step===43)next=next>step?23:20;
+        if(!isSavings && step===23 && next===22 && state.current.answers.currentInsurance==="No")next=20;
       }
-      if (next === 43) next = 23;
-      if (isDriverStep(next) && !auto) next=10;
+      if (!isSavings && next === 43) next = 23;
+      if ((isDriverStep(next) || next === 41 || next === 42) && !auto) next=10;
+      if (next === 42 && !autoVehicles(previousDetails).length) next = 31;
       let mailingAddressStep = previousDetails.mailingAddressStep;
       if (
         step === 14 &&
@@ -1131,13 +1184,13 @@ function Application({
       if (!fromReview && (step === 29 || step === 30)) {
         const forward = step === 29 ? next === 30 : next === 28;
         const backward = step === 29 ? next === 25 : next === 29;
-        if (forward && followupIndex < followupQuestions.length - 1) {
+        if (forward && (data?.submitted || followupBatch?.status === "ready") && followupIndex < followupQuestions.length - 1) {
           next = step;
           followupProgress = {
             ...followupProgress,
             [followupSection]: followupIndex + 1,
           };
-        } else if (backward && followupIndex > 0) {
+        } else if (backward && (data?.submitted || followupBatch?.status === "ready") && followupIndex > 0) {
           next = step;
           followupProgress = {
             ...followupProgress,
@@ -1157,7 +1210,12 @@ function Application({
       } else if (next === 29 || next === 30) {
         followupProgress = {
           ...followupProgress,
-          [next === 29 ? "acord" : "additional"]: 0,
+          [next === 29 ? "acord" : "additional"]:
+            step === 28 && !fromReview
+              ? Math.max(0, (data?.followupBatches?.[next === 29 ? "acord" : "additional"]?.questions ?? [])
+                  .flatMap(expandIntakeFollowupQuestion)
+                  .filter((question) => followupQuestionVisible(question, previousDetails.followups)).length - 1)
+              : 0,
         };
       }
       const nextDetails = {
@@ -1863,35 +1921,9 @@ function Application({
     !!answers.locations &&
     !editCompany &&
     !data.submitted;
-  const completionSteps: Record<string, number> = {
-    [INTAKE_FIELDS.name]: 0,
-    [INTAKE_FIELDS.email]: 0,
-    [INTAKE_FIELDS.phone]: 0,
-    [INTAKE_FIELDS.trigger]: 1,
-    [INTAKE_FIELDS.coverage]: 6,
-    [INTAKE_FIELDS.legalName]: 10,
-    [INTAKE_FIELDS.description]: 16,
-    [INTAKE_FIELDS.locations]: 19,
-    [INTAKE_FIELDS.currentInsurance]: 20,
-    "Desired effective date": 2,
-    "Claims details": 23,
-    "Cancellation or renewal-decline details": 25,
-  };
-  const missing = missingIntakeAnswers(answers);
-  if (!isSavings) {
-    const driverErrors=driverScheduleErrors(details);
-    for(const vehicle of autoVehicles(details)) if(estimatedVehicleValueError(vehicle.estimatedValue)){missing.push("Valid approximate vehicle value");completionSteps["Valid approximate vehicle value"]=42;}
-    for(const label of driverErrors){missing.push(label);completionSteps[label]=31;}
-    for(const line of details.coverages) for(const vehicle of line.vehicles??[]) if(vinError(vehicle.vin, details.registrationCountry)){missing.push("Valid 17-character VIN");completionSteps["Valid 17-character VIN"]=9;}
-  }
-  if (!isSavings && details.hasClaims === "yes" && !answers.claims?.trim())
-    missing.push("Claims details");
-  if (
-    !isSavings &&
-    details.hasCancellations === "yes" &&
-    !answers.cancellations?.trim()
-  )
-    missing.push("Cancellation or renewal-decline details");
+  const submissionProblems=intakeSubmissionProblems(answers,details);
+  const missing=submissionProblems.map(problem=>problem.label);
+  const completionSteps=Object.fromEntries(submissionProblems.map(problem=>[problem.label,problem.step]));
   if (isSavings && !data.files.some((file) => file.category === "policy"))
     missing.push("Current policy PDF");
   if (
@@ -1980,9 +2012,17 @@ function Application({
                         className="h-auto w-full justify-start gap-3 rounded-md px-0 py-3 text-left whitespace-normal hover:bg-muted focus-visible:ring-2"
                         disabled={busy || uploading}
                         aria-label={`Go to section: ${item}`}
-                        onClick={() =>
-                          void editFromReview(completionSteps[item] ?? 10)
-                        }
+                        onClick={() => {
+                          const problem = submissionProblems.find(row => row.label === item);
+                          if (problem?.coverageIndex !== undefined) {
+                            changeDetails({
+                              ...details,
+                              coverageIndex: problem.coverageIndex,
+                              ...(problem.vehicleIndex === undefined ? {} : { autoVehicleIndex: problem.vehicleIndex }),
+                            });
+                          }
+                          void editFromReview(completionSteps[item] ?? (item === "Current policy PDF" ? 21 : 10));
+                        }}
                       >
                         <Circle
                           aria-hidden="true"
@@ -2210,7 +2250,7 @@ function Application({
   const canSkipStep = !(step===42 && estimatedVehicleValueError(autoVehicles(details)[details.autoVehicleIndex??0]?.estimatedValue)) && !(isDriverStep(step) && (step === 31 || !driverFieldValid(details.drivers?.[details.driverIndex??0] ?? newIntakeDriver(), step))) && !(step === 9 && details.coverages.some(line=>(line.vehicles??[]).some(vehicle=>!!vinError(vehicle.vin, details.registrationCountry)))) && step !== 28 && !followupsPending && !(isSavings && step === 21);
   const driverValue = details.drivers?.[details.driverIndex??0]?.[DRIVER_FIELDS[step-31]];
   const skipStep =
-    canSkipStep &&
+    canSkipStep && !([29,30].includes(step) && (!followupQuestion || (!data.submitted && followupBatch?.status !== "ready"))) &&
     (!canContinue || (isDriverStep(step) && !driverValue?.trim()) || (step in optionalValues && !optionalValues[step]));
   return (
     <IntakeFrame
@@ -2241,7 +2281,15 @@ function Application({
             window.location.assign(
               withQuoteProvider(`/intake?request=${requestId}&step=${next}&section=${next}`, params.get("provider")),
             );
-        } else void navigate(next, false, false, true);
+        } else {
+          const previousSection = editingSection.current;
+          // Section navigation during a review edit adopts the new scope;
+          // otherwise its first Continue would finish the old section's edit.
+          if (editingReview) editingSection.current = next;
+          await navigate(next, false, false, true);
+          if (state.current.step === step && next !== step)
+            editingSection.current = previousSection;
+        }
       }}
       disabled={busy || uploading}
       footer={

@@ -511,3 +511,11 @@ export function shouldRequestLossRuns(
     !/^(none|no|0)$/i.test(answers.claims?.trim() ?? "")
   );
 }
+
+/** Keep dormant auto drafts recoverable, but project only currently requested facts. */
+export function activeIntakeDetails(details: IntakeDetails, purpose?: string): IntakeDetails {
+  if(purpose === "savings") details={...details,coverages:[],followups:[]};
+  if(details.coverages.some(line=>line.coverage==="commercial_auto"))return details;
+  const {drivers:_drivers,driverIndex:_driverIndex,collectSensitiveDriverDetails:_private,freightHauled:_freight,autoVehicleIndex:_vehicleIndex,...active}=details;
+  return active;
+}

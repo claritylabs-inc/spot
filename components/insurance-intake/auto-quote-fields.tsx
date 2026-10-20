@@ -5,10 +5,7 @@ import {
   InputGroupAddon,
   InputGroupText,
 } from "@claritylabs-inc/ui/components/input-group";
-import {
-  OperationalLabelValueList,
-  OperationalLabelValueRow,
-} from "@claritylabs-inc/ui/components/operational-panel";
+import { IntakeReviewRows } from "./company-review";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { IntakeValueInput } from "./details-fields";
@@ -95,14 +92,17 @@ export function IntakeAutoQuoteFields({
 export function IntakeAutoQuoteReview({
   details,
   onEdit,
+  hideHeading = false,
 }: {
   details: IntakeDetails;
   onEdit?: (step: number) => void;
+  hideHeading?: boolean;
 }) {
+  if (!hasCommercialAuto(details)) return null;
   return (
     <div className="space-y-4">
-      {hasCommercialAuto(details) && (
-        <div className="space-y-3">
+      <div className="space-y-3">
+        {!hideHeading && (
           <div className="flex items-center justify-between">
             <h2 className={typeStyle("heading.item")}>
               Commercial auto details
@@ -113,25 +113,19 @@ export function IntakeAutoQuoteReview({
               </PillButton>
             )}
           </div>
-          <OperationalLabelValueList>
-            <OperationalLabelValueRow
-              label="Freight hauled"
-              value={details.freightHauled || "Not provided"}
-            />
-            {autoVehicles(details).map((vehicle, index) => (
-              <OperationalLabelValueRow
-                key={index}
-                label={`${vehicleQuoteLabel(vehicle, index)} — approximate value`}
-                value={
-                  vehicle.estimatedValue
-                    ? `$ ${vehicle.estimatedValue}`
-                    : "Not provided"
-                }
-              />
-            ))}
-          </OperationalLabelValueList>
-        </div>
-      )}
+        )}
+        <IntakeReviewRows
+          rows={[
+            { label: "Freight hauled", value: details.freightHauled },
+            ...autoVehicles(details).map((vehicle, index) => ({
+              label: `${vehicleQuoteLabel(vehicle, index)} — approximate value`,
+              value: vehicle.estimatedValue
+                ? `$${vehicle.estimatedValue}`
+                : undefined,
+            })),
+          ]}
+        />
+      </div>
     </div>
   );
 }

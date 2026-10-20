@@ -18,10 +18,71 @@ export type IntakeFollowupAnswer = IntakeFollowupQuestion & {
   answer: string;
   skipped?: boolean;
 };
+export const MAX_INTAKE_FOLLOWUPS = 60;
+
+/** Reserve capacity for saved history and the other section before offering new
+ * questions. Parent/details groups fit together; saved history is never pruned.
+ */
+export function boundIntakeFollowupQuestions(
+  questions: IntakeFollowupQuestion[],
+  history: IntakeFollowupQuestion[] = [],
+  reservedQuestions: IntakeFollowupQuestion[] = [],
+): IntakeFollowupQuestion[] {
+  const occupied = new Set(
+    [...history, ...reservedQuestions].map((row) => row.id),
+  );
+  const candidates = [
+    ...new Map(questions.map((row) => [row.id, row])).values(),
+  ];
+  const output: IntakeFollowupQuestion[] = [];
+  const included = new Set<string>();
+  const appendGroup = (root: IntakeFollowupQuestion) => {
+    const group: IntakeFollowupQuestion[] = [];
+    const groupIds = new Set<string>();
+    const add = (question: IntakeFollowupQuestion) => {
+      if (included.has(question.id) || groupIds.has(question.id)) return;
+      // Every condition must reference an available parent, never an orphan.
+      if (
+        (question.conditions ?? []).some(
+          (condition) =>
+            !occupied.has(condition.questionId) &&
+            !included.has(condition.questionId) &&
+            !groupIds.has(condition.questionId),
+        )
+      )
+        return;
+      groupIds.add(question.id);
+      group.push(question);
+      for (const child of candidates) {
+        if (
+          child.conditions?.some(
+            (condition) => condition.questionId === question.id,
+          )
+        )
+          add(child);
+      }
+    };
+    add(root);
+    const newCount = group.filter((row) => !occupied.has(row.id)).length;
+    if (
+      occupied.size + newCount > MAX_INTAKE_FOLLOWUPS ||
+      output.length + group.length > 40
+    )
+      return;
+    for (const question of group) {
+      output.push(question);
+      included.add(question.id);
+      occupied.add(question.id);
+    }
+  };
+  for (const question of candidates) appendGroup(question);
+  return output;
+}
+
 export const FOLLOWUP_STEPS = { acord: 29, additional: 30 } as const;
 export function validateFollowupAnswers(rows: IntakeFollowupAnswer[] = []) {
   if (
-    rows.length > 60 ||
+    rows.length > MAX_INTAKE_FOLLOWUPS ||
     new Set(rows.map((row) => row.id)).size !== rows.length
   )
     throw new Error("Invalid follow-up answers");
@@ -104,12 +165,23 @@ export function followupQuestionVisible(
   question: IntakeFollowupQuestion,
   answers: IntakeFollowupAnswer[] = [],
 ): boolean {
-  return (question.conditions ?? []).every((condition) =>
-    answers.some(
-      (row) =>
-        row.id === condition.questionId && row.answer === condition.answer,
-    ),
-  );
+  const visit = (
+    candidate: IntakeFollowupQuestion,
+    path: Set<string>,
+  ): boolean => {
+    if (path.has(candidate.id)) return false;
+    const nextPath = new Set(path).add(candidate.id);
+    return (candidate.conditions ?? []).every((condition) => {
+      const parent = answers.find((row) => row.id === condition.questionId);
+      return (
+        !!parent &&
+        !parent.skipped &&
+        parent.answer === condition.answer &&
+        visit(parent, nextPath)
+      );
+    });
+  };
+  return visit(question, new Set());
 }
 
 /** Presentation only: retain server-approved definitions and saved answer identity. */

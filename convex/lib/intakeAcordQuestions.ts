@@ -1,6 +1,7 @@
 import catalog from "../../docs/procurement/acord-intake/question-catalog.json";
 import {
   addressText,
+  COVERAGE_OPTIONS,
   type IntakeDetails,
 } from "../../lib/insurance-intake-details";
 import type { IntakeFollowupQuestion } from "../../lib/intake-followups";
@@ -9,7 +10,7 @@ import type { IntakeFollowupQuestion } from "../../lib/intake-followups";
  * Keep the source JSON intact. This adapter targets the intake's declarative primitives,
  * not the catalog's proposed typed/scoped answer storage contract.
  */
-export const INTAKE_ACORD_CATALOG_VERSION = `${catalog.catalogId}:${catalog.revision}:d982690a2e19bbeb3004d1c3fb920a201109daa0:adapter3-scoped-inputs`;
+export const INTAKE_ACORD_CATALOG_VERSION = `${catalog.catalogId}:${catalog.revision}:d982690a2e19bbeb3004d1c3fb920a201109daa0:adapter5-fixed-coverage-limits`;
 
 export const INTAKE_ACORD_QUESTIONS = catalog.questions.map((definition) => {
   const group = catalog.groups.find((group) => group.id === definition.groupId);
@@ -157,13 +158,95 @@ function catalogAnswer(questionId: string, context: CatalogContext): unknown {
   }
   return undefined;
 }
+/** Exact catalog equivalents of fixed intake fields never reach relevance AI.
+ * Blank/skipped/unsure base answers are deliberate, not missing follow-up work.
+ * Keep distinct facts (e.g. vehicle ownership, hired date) available to Jev.
+ */
+const FIXED_COVERAGE_LIMIT_PATHS = new Set<string>(
+  COVERAGE_OPTIONS.flatMap((coverage) =>
+    coverage.limits.map(
+      (limit) => `details.coverages[${coverage.id}].limits.${limit.key}`,
+    ),
+  ),
+);
+const FIXED_INTAKE_CATALOG_FACTS = new Set([
+  "shared.identity.legal_name",
+  "shared.identity.trading_names",
+  "shared.identity.website",
+  "shared.identity.entity_type",
+  "shared.identity.formation_jurisdiction",
+  "shared.identity.start_year",
+  "shared.identity.tax_identifier",
+  "shared.identity.mailing_address",
+  "shared.identity.contact_name",
+  "shared.identity.contact_email",
+  "shared.identity.contact_phone",
+  "shared.identity.has_related_entities",
+  "shared.identity.related_entity_scope",
+  "shared.identity.requested_start",
+  "shared.identity.requirements_deadline",
+  "shared.identity.changes_description",
+  "shared.operations.activities",
+  "shared.operations.annual_revenue",
+  "shared.operations.projected_revenue",
+  "shared.operations.full_time_staff",
+  "shared.operations.part_time_staff",
+  "shared.operations.contractor_count",
+  "shared.insurance.has_current_insurance",
+  "shared.insurance.has_losses",
+  "shared.insurance.adverse_insurance_action",
+  "shared.insurance.uninsured_details",
+  "auto.vehicle.vin",
+  "auto.vehicle.year",
+  "auto.vehicle.make",
+  "auto.vehicle.model",
+  "auto.vehicle.replacement_value",
+  "auto.driver.name",
+  "auto.driver.date_of_birth",
+  "auto.driver.license_number",
+  "auto.driver.license_jurisdiction",
+  "auto.driver.license_class",
+  "auto.driver.experience",
+  "auto.driver.violations",
+  "auto.driver.violation_details",
+  "auto.driver.accidents",
+  "auto.driver.accident_details",
+]);
+
 export function intakeAcordCandidates(
   coverageIds: readonly string[],
   context: CatalogContext,
 ) {
   return INTAKE_ACORD_QUESTIONS.flatMap((candidate) => {
     const { definition, group } = candidate;
+    const explicitZeroWorkforce = ["fullTime", "partTime", "contractors"].every(
+      (field) => {
+        const value = context.answers[field];
+        return typeof value === "number"
+          ? value === 0
+          : typeof value === "string" &&
+              value.trim() !== "" &&
+              Number(value) === 0;
+      },
+    );
+    // An owner can work offsite without employing anybody. Preserve that
+    // exposure instead of presenting an employee premise known to be false.
+    const presentedCandidate =
+      definition.id === "gl.exposure.work_offsite" && explicitZeroWorkforce
+        ? {
+            ...candidate,
+            question: {
+              ...candidate.question,
+              label:
+                "Does the business perform work at customer premises or other offsite locations?",
+            },
+          }
+        : candidate;
     if (
+      FIXED_INTAKE_CATALOG_FACTS.has(definition.id) ||
+      definition.existingAnswerCandidates.some((path) =>
+        FIXED_COVERAGE_LIMIT_PATHS.has(path),
+      ) ||
       !group.coverageIds.some((coverage) => coverageIds.includes(coverage)) ||
       definition.sensitivity !== "ordinary_business" ||
       definition.answerType === "file_refs" ||
@@ -171,13 +254,48 @@ export function intakeAcordCandidates(
     )
       return [];
     if (["company", "coverage"].includes(definition.subjectKind)) {
-      return definition.conditions.every(
-        (condition) =>
-          condition.operator === "eq" &&
-          catalogAnswer(condition.questionId, context) === condition.value,
+      if (
+        definition.conditions.every(
+          (condition) =>
+            condition.operator === "eq" &&
+            catalogAnswer(condition.questionId, context) === condition.value,
+        )
       )
-        ? [candidate]
-        : [];
+        return [presentedCandidate];
+      // Prepare details alongside an unanswered Boolean parent, so answering Yes
+      // does not require another model call or lose the catalog's follow-up.
+      // Already answered No/unsure parents cannot authorize their details.
+      const conditionalParents = definition.conditions.map((condition) =>
+        INTAKE_ACORD_QUESTIONS.find(
+          (parent) =>
+            parent.definition.id === condition.questionId &&
+            parent.definition.subjectKind === definition.subjectKind &&
+            parent.definition.answerType === "boolean" &&
+            parent.definition.conditions.length === 0,
+        ),
+      );
+      if (
+        definition.conditions.some(
+          (condition, index) =>
+            condition.operator !== "eq" ||
+            typeof condition.value !== "boolean" ||
+            !conditionalParents[index] ||
+            catalogAnswer(condition.questionId, context) !== undefined,
+        )
+      )
+        return [];
+      return [
+        {
+          ...candidate,
+          question: {
+            ...candidate.question,
+            conditions: definition.conditions.map((condition, index) => ({
+              questionId: conditionalParents[index]!.question.id,
+              answer: condition.value ? "Yes" : "No",
+            })),
+          },
+        },
+      ];
     }
     return subjects(definition.subjectKind, context).flatMap((subject) => {
       const conditions = definition.conditions.map((condition) => ({
@@ -228,17 +346,18 @@ export function withCatalogConditionalQuestions(
 ) {
   const output: IntakeFollowupQuestion[] = [];
   for (const question of selected) {
-    if (output.length >= 40) break;
+    if (
+      question.conditions?.length ||
+      output.some((row) => row.id === question.id)
+    )
+      continue;
     output.push(question);
     for (const child of eligible.filter((row) =>
       row.question.conditions?.some(
         (condition) => condition.questionId === question.id,
       ),
     )) {
-      if (
-        output.length < 40 &&
-        !output.some((row) => row.id === child.question.id)
-      )
+      if (!output.some((row) => row.id === child.question.id))
         output.push(child.question);
     }
   }
