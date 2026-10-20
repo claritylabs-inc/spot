@@ -1,0 +1,10 @@
+{
+  "failure": "Initial fixture readiness false: product BrowserTargets private-egress guard refuses localhost navigation.",
+  "preservedComparisonCompleted": true,
+  "corpusCapturesBeforeFailure": 0,
+  "corpusProviderCallsBeforeFailure": 0,
+  "chosenRenderingPath": "Ordinary local Chrome raw top-target CDP, fixture-only; no BrowserTargets guard disabled or altered.",
+  "managerAuthorization": "Explicit continuation using ordinary local Chrome solely to render controlled corpus.",
+  "sourceQuestionsPlanFixtureUnchanged": true,
+  "preservedComparisonNotRepeated": true
+}

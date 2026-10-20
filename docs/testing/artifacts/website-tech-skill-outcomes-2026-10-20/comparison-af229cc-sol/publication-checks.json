@@ -1,0 +1,27 @@
+{
+  "preservedResultAndInitialTraceUnchanged": true,
+  "allRequestsStored0600BeforeInference": true,
+  "logicalWireStatesQuestionsAndImageBytesEqual": true,
+  "sharedStateHasNoImageRefs": true,
+  "eachQuestionHasExactlyRelevantTwoDistinctRefs": true,
+  "allSourceCanvasesPixelValidated": true,
+  "preservedFourCanvasesByteIdenticalTo3965f4ec": true,
+  "fullLogicalRequests": 8,
+  "providerHttpRequests": 8,
+  "httpStatuses": [
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200,
+    200
+  ],
+  "models": [
+    "jev-1.13.0"
+  ],
+  "corpusGroundTruthFrozenBeforeCorpusInference": true,
+  "rawImagesOmittedFromPublicText": true,
+  "nativeInputCommands": 0
+}

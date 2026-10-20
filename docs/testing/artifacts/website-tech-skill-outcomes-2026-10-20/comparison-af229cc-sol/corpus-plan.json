@@ -1,0 +1,23 @@
+{
+  "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+  "scope": "Predeclared controlled browser-rendered comparison corpus, not native CAPTCHA acceptance",
+  "fixedBeforeAnyInference": true,
+  "viewport": {"width": 1024, "height": 768},
+  "frameCssRect": {"x": 283, "y": 300, "width": 304, "height": 140},
+  "controlCssRectWithinFrame": {"x": 120, "y": 60, "width": 56, "height": 56},
+  "actualLocatedRectSource": "Before capture DOM getBoundingClientRect of the controlled fixture's control; same rect supplied unchanged to the closure",
+  "target": "the square control below the written challenge instruction",
+  "maximumRealProviderRequests": 10,
+  "retryOrPromptVariants": false,
+  "cases": [
+    {"id": "unchanged", "before": "empty", "after": "empty", "expected": true, "expectedPath": "unchanged fast path; zero inference", "fixtureAction": "Apply identical empty state and capture twice"},
+    {"id": "border-hover", "before": "empty", "after": "hover", "expected": true, "expectedPath": "semantic comparison", "fixtureAction": "Only border color changes from #555 to #aaa; shape, size, marks and selection unchanged"},
+    {"id": "added-tick", "before": "empty", "after": "tick", "expected": false, "expectedPath": "semantic comparison", "fixtureAction": "Add a visible tick and set aria-checked true"},
+    {"id": "removed-mark", "before": "tick", "after": "empty", "expected": false, "expectedPath": "semantic comparison", "fixtureAction": "Remove the visible existing tick and clear aria-checked"},
+    {"id": "new-spinner", "before": "empty", "after": "spinner", "expected": false, "expectedPath": "semantic comparison", "fixtureAction": "Add a static visible spinner/symbol; no animation"},
+    {"id": "replaced-picture", "before": "landscape", "after": "boat", "expected": false, "expectedPath": "semantic comparison", "fixtureAction": "Replace the depicted mountain landscape illustration with a boat illustration inside the same control"},
+    {"id": "changed-instruction", "before": "empty", "after": "instruction", "expected": false, "expectedPath": "deterministic containment refusal; zero inference", "fixtureAction": "Change the written instruction above the control, outside the before-control-plus4 region"},
+    {"id": "moved-resized", "before": "empty", "after": "moved", "expected": false, "expectedPath": "semantic comparison", "fixtureAction": "Move control +1px,+1px and enlarge width/height +2px; all changes remain within original control plus4"},
+    {"id": "selected-state", "before": "landscape", "after": "selected", "expected": false, "expectedPath": "semantic comparison", "fixtureAction": "Select the same pictured tile, changing selection border/highlight and adding a visible selection badge; aria-selected true"}
+  ]
+}
