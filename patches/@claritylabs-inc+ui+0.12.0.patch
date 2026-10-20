@@ -1,6 +1,6 @@
 diff --git a/node_modules/@claritylabs-inc/ui/src/components/calendar.tsx b/node_modules/@claritylabs-inc/ui/src/components/calendar.tsx
 new file mode 100644
-index 0000000..1111111
+index 0000000..23a2544
 --- /dev/null
 +++ b/node_modules/@claritylabs-inc/ui/src/components/calendar.tsx
 @@ -0,0 +1,221 @@
@@ -227,7 +227,7 @@ index 0000000..1111111
 +export { Calendar, CalendarDayButton }
 diff --git a/node_modules/@claritylabs-inc/ui/src/components/date-field.tsx b/node_modules/@claritylabs-inc/ui/src/components/date-field.tsx
 new file mode 100644
-index 0000000..1111111
+index 0000000..1444bb4
 --- /dev/null
 +++ b/node_modules/@claritylabs-inc/ui/src/components/date-field.tsx
 @@ -0,0 +1,93 @@
@@ -324,43 +324,11 @@ index 0000000..1111111
 +
 +export { DateField, parseDateText }
 +export type { DateFieldProps }
-diff --git a/node_modules/@claritylabs-inc/ui/src/lib/typography.ts b/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
---- a/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
-+++ b/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
-@@ -53,7 +53,7 @@
-   "control.buttonCompact":
-     "font-sans text-label font-medium leading-4 tracking-normal normal-case not-italic normal-nums",
-   "control.input":
--    "font-sans text-base font-normal leading-normal tracking-normal normal-case not-italic normal-nums file:font-sans file:text-base file:font-medium file:leading-normal file:tracking-normal file:normal-case file:not-italic file:normal-nums max-md:text-[16px]",
-+    "font-sans text-[1rem] font-normal leading-normal tracking-normal normal-case not-italic normal-nums file:font-sans file:text-[1rem] file:font-medium file:leading-normal file:tracking-normal file:normal-case file:not-italic file:normal-nums max-md:text-[16px]",
-   "control.tab":
-     "font-sans text-label font-normal leading-normal tracking-normal normal-case not-italic normal-nums data-active:font-medium",
-   "control.menu":
-diff --git a/node_modules/@claritylabs-inc/ui/src/components/select.tsx b/node_modules/@claritylabs-inc/ui/src/components/select.tsx
---- a/node_modules/@claritylabs-inc/ui/src/components/select.tsx
-+++ b/node_modules/@claritylabs-inc/ui/src/components/select.tsx
-@@ -43,7 +43,7 @@
-       data-slot="select-trigger"
-       data-size={size}
-       className={cn(
--        `flex w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-popover py-2 pr-2 pl-3 whitespace-nowrap transition-colors outline-none select-none hover:border-border-hover focus-visible:border-border-focus focus-visible:ring-1 focus-visible:ring-input disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 ${typeStyle("control.menu")}`,
-+        `flex w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-popover py-2 pr-2 pl-3 whitespace-nowrap transition-colors outline-none select-none hover:border-border-hover focus-visible:border-border-focus focus-visible:ring-1 focus-visible:ring-input disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground/40 data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 ${typeStyle("control.input")}`,
-         className
-       )}
-       {...props}
-@@ -125,7 +125,7 @@
-     <SelectPrimitive.Item
-       data-slot="select-item"
-       className={cn(
--        `relative my-0.5 flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 outline-hidden transition-colors select-none focus:bg-foreground/[0.035] focus:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2 ${typeStyle("control.menu")}`,
-+        `relative my-0.5 flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 outline-hidden transition-colors select-none focus:bg-foreground/[0.035] focus:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2 ${typeStyle("control.input")}`,
-         className
-       )}
-       {...props}
 diff --git a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx b/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
+index 0a23de6..2447339 100644
 --- a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
 +++ b/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
-@@ -10,6 +10,7 @@
+@@ -11,6 +11,7 @@ interface SearchableSelectOption {
    value: string
    label: string
    icon?: ReactNode
@@ -368,7 +336,7 @@ diff --git a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.t
  }
  
  interface SearchableSelectProps {
-@@ -99,7 +100,7 @@
+@@ -115,7 +116,7 @@ function SearchableSelectControl(props: ControlProps) {
      >
        <Combobox.Trigger
          aria-label={ariaLabel}
@@ -377,16 +345,16 @@ diff --git a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.t
        >
          {selected?.icon ? (
            <span aria-hidden="true" className="shrink-0">
-@@ -122,7 +123,7 @@
-           className="isolate z-50"
+@@ -139,7 +140,7 @@ function SearchableSelectControl(props: ControlProps) {
          >
            <Combobox.Popup
+             data-blink={blinkClose.blink}
 -            className={`z-50 w-max max-w-(--available-width) min-w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-border-emphasized outline-hidden duration-75 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 ${typeStyle("control.menu")}`}
 +            className={`z-50 w-max max-w-(--available-width) min-w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-border-emphasized outline-hidden duration-75 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 ${typeStyle("control.input")}`}
            >
              <div className="border-b border-border p-1.5">
                <div className="relative">
-@@ -134,11 +135,11 @@
+@@ -151,11 +152,11 @@ function SearchableSelectControl(props: ControlProps) {
                </div>
              </div>
              <Combobox.Empty
@@ -400,12 +368,47 @@ diff --git a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.t
                {(option: SearchableSelectOption) => (
                  <Combobox.Item
                    key={option.value}
-@@ -149,7 +150,7 @@
+@@ -167,7 +168,7 @@ function SearchableSelectControl(props: ControlProps) {
                      props.value.length >= props.maxSelected &&
                      !props.value.includes(option.value)
                    }
--                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 data-disabled:opacity-40 ${typeStyle("control.menu")}`}
-+                  className={`${option.separatorBefore ? "mt-2 border-t border-border pt-3!" : ""} flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 data-disabled:opacity-40 ${typeStyle("control.input")}`}
+-                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 in-data-[blink=off]:bg-transparent! data-disabled:opacity-40 ${typeStyle("control.menu")}`}
++                  className={`${option.separatorBefore ? "mt-2 border-t border-border pt-3!" : ""} flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 in-data-[blink=off]:bg-transparent! data-disabled:opacity-40 ${typeStyle("control.input")}`}
                  >
                    {option.icon ? (
                      <span aria-hidden="true" className="shrink-0">
+diff --git a/node_modules/@claritylabs-inc/ui/src/components/select.tsx b/node_modules/@claritylabs-inc/ui/src/components/select.tsx
+index dc2a5c0..aee2d36 100644
+--- a/node_modules/@claritylabs-inc/ui/src/components/select.tsx
++++ b/node_modules/@claritylabs-inc/ui/src/components/select.tsx
+@@ -62,7 +62,7 @@ function SelectTrigger({
+       data-slot="select-trigger"
+       data-size={size}
+       className={cn(
+-        `flex w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-popover py-2 pr-2 pl-3 whitespace-nowrap transition-colors outline-none select-none hover:border-border-hover focus-visible:border-border-focus focus-visible:ring-1 focus-visible:ring-input disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 ${typeStyle("control.menu")}`,
++        `flex w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-popover py-2 pr-2 pl-3 whitespace-nowrap transition-colors outline-none select-none hover:border-border-hover focus-visible:border-border-focus focus-visible:ring-1 focus-visible:ring-input disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground/40 data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 ${typeStyle("control.input")}`,
+         className
+       )}
+       {...props}
+@@ -146,7 +146,7 @@ function SelectItem({
+     <SelectPrimitive.Item
+       data-slot="select-item"
+       className={cn(
+-        `relative my-0.5 flex w-full in-data-[blink=off]:bg-transparent! cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 outline-hidden transition-colors select-none focus:bg-foreground/[0.035] focus:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2 ${typeStyle("control.menu")}`,
++        `relative my-0.5 flex w-full in-data-[blink=off]:bg-transparent! cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 outline-hidden transition-colors select-none focus:bg-foreground/[0.035] focus:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2 ${typeStyle("control.input")}`,
+         className
+       )}
+       {...props}
+diff --git a/node_modules/@claritylabs-inc/ui/src/lib/typography.ts b/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
+index 823d1dd..1474874 100644
+--- a/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
++++ b/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
+@@ -53,7 +53,7 @@ export const typographyRoles = {
+   "control.buttonCompact":
+     "font-sans text-label font-medium leading-4 tracking-normal normal-case not-italic normal-nums",
+   "control.input":
+-    "font-sans text-base font-normal leading-normal tracking-normal normal-case not-italic normal-nums file:font-sans file:text-base file:font-medium file:leading-normal file:tracking-normal file:normal-case file:not-italic file:normal-nums max-md:text-[16px]",
++    "font-sans text-[1rem] font-normal leading-normal tracking-normal normal-case not-italic normal-nums file:font-sans file:text-[1rem] file:font-medium file:leading-normal file:tracking-normal file:normal-case file:not-italic file:normal-nums max-md:text-[16px]",
+   "control.tab":
+     "font-sans text-label font-normal leading-normal tracking-normal normal-case not-italic normal-nums data-active:font-medium",
+   "control.menu":

@@ -1,4 +1,5 @@
 "use client";
+import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import {
@@ -71,12 +72,10 @@ export function ClientAccountSection({
           />
         </InlineFieldRow>
         <InlineFieldRow label="Website">
-          <Input
+          <WebsiteInput
             aria-label="Website"
             value={value.website}
-            onChange={(event) =>
-              onChange({ ...value, website: event.target.value })
-            }
+            onChange={(website) => onChange({ ...value, website })}
           />
         </InlineFieldRow>
         <InlineFieldRow label="Status">

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { normalizeWebsiteUrl } from "@claritylabs-inc/ui/lib/website";
+import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
+import { Input } from "@claritylabs-inc/ui/components/input";
+import { useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
-import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   Select,
   SelectContent,
@@ -35,10 +37,16 @@ export function ClientWebsiteField({
   const { patchClientSettings } = useOperatorClientCacheActions();
   const saved = client.website ?? "";
   const [draft, setDraft] = useState<string | null>(null);
+  const cancelled = useRef(false);
 
   async function commit() {
+    if (cancelled.current) {
+      cancelled.current = false;
+      setDraft(null);
+      return;
+    }
     if (draft === null) return;
-    const website = draft.trim();
+    const website = normalizeWebsiteUrl(draft) ?? draft.trim();
     setDraft(null);
     if (website === saved) return;
     await patchClientSettings(client._id, { website });
@@ -51,17 +59,16 @@ export function ClientWebsiteField({
   }
 
   return (
-    <Input
+    <WebsiteInput
       aria-label={`Website for ${client.name}`}
-      placeholder="Not set"
       disabled={disabled}
       value={draft ?? saved}
-      onChange={(event) => setDraft(event.target.value)}
+      onChange={setDraft}
       onBlur={() => void commit()}
       onKeyDown={(event) => {
         if (event.key === "Enter") event.currentTarget.blur();
         if (event.key === "Escape") {
-          setDraft(null);
+          cancelled.current = true;
           event.currentTarget.blur();
         }
       }}

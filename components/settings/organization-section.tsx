@@ -1,5 +1,7 @@
 "use client";
 
+import { normalizeWebsiteUrl } from "@claritylabs-inc/ui/lib/website";
+import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { useSyncStore } from "@claritylabs/cl-sync";
 
 import { useEffect, useRef, useState } from "react";
@@ -46,6 +48,9 @@ export function OrganizationSection() {
   const orgSettingsArgs = {
     ...draft.patch,
     ...(draft.patch.name !== undefined ? { name: name.trim() } : {}),
+    ...(draft.patch.website !== undefined
+      ? { website: normalizeWebsiteUrl(website) ?? website.trim() }
+      : {}),
   };
   const orgAutoSave = useLocalFirstAutoSave({
     mutationName: "settings.organization.updateOrg",
@@ -125,13 +130,11 @@ export function OrganizationSection() {
                 >
                   Website
                 </label>
-                <input
-                  type="text"
+                <WebsiteInput
+                  aria-label="Website"
                   value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
+                  onChange={setWebsite}
                   onBlur={() => void saveOrgSettingsNow()}
-                  placeholder="https://example.com"
-                  className={`h-9 w-full rounded-lg border border-input bg-popover px-3 placeholder:text-muted-foreground/40 focus:outline-none focus:border-border-focus focus:ring-1 focus:ring-input transition-colors ${typeStyle("control.input")}`}
                 />
               </div>
 

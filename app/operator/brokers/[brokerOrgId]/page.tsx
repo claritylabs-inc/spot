@@ -1,5 +1,7 @@
 "use client";
 
+import { normalizeWebsiteUrl } from "@claritylabs-inc/ui/lib/website";
+import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
@@ -115,7 +117,9 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
       await update({
         brokerOrgId: row.broker._id,
         name: trimmed("name"),
-        website: changed("website") ? next.website.trim() || null : undefined,
+        website: changed("website")
+          ? normalizeWebsiteUrl(next.website) || next.website.trim() || null
+          : undefined,
         networkStatus: changed("status") ? next.status : undefined,
         officeAddress: officeChanged
           ? {
@@ -170,11 +174,10 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
               />
             </InlineFieldRow>
             <InlineFieldRow label="Website">
-              <Input
+              <WebsiteInput
                 aria-label="Website"
-                placeholder="https://example.com"
                 value={values.website}
-                onChange={(event) => set("website", event.target.value)}
+                onChange={(website) => set("website", website)}
                 onBlur={() => void autoSave.saveNow()}
               />
             </InlineFieldRow>

@@ -358,6 +358,13 @@
   line-height: inherit;
 }
 
+/* Website prefixes and values follow the surrounding table or inline-row type. */
+[data-operator-inline-fields] [data-slot="website-input"],
+[data-operator-inline-fields] [data-slot="website-input"] :is([data-slot="input-group-addon"], span, input) {
+  font-size: inherit;
+  line-height: inherit;
+}
+
 /* Native numeric spinners follow the same focus-only affordance as intake counts. */
 input[type="number"]:not(:focus) {
   -moz-appearance: textfield;
