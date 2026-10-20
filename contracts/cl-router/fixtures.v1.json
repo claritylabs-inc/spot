@@ -636,6 +636,7 @@
       "name": "Spot website research with inbox skill",
       "schema": "BrowseRequest",
       "value": {
+        "tenantId": "tenant_spot_fixture",
         "input": {
           "url": "https://example.com/",
           "goal": "Read the company privacy and pricing pages.",
