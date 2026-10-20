@@ -1460,21 +1460,43 @@ function fastPassForSection(
   return { ...fastPass, fields };
 }
 
-/** Clairic scalars replace the LLM's before the declarations result is stored. */
+/**
+ * Clairic scalars are authoritative: before a declarations result is stored,
+ * it takes the scalars cited on its own pages and drops any scalar the fast
+ * pass cited on another section, so merge's first declarations value is the
+ * Clairic one. LLM-only structures are kept.
+ */
 function withFastPassScalars(
   section: PolicySection,
   output: unknown,
   fastPass: DeclarationsFastPass | undefined,
-): { output: unknown; applied: number } {
-  if (!fastPass || section.kind !== "declarations") return { output, applied: 0 };
+): { output: unknown; applied: number; cleared: number } {
+  if (!fastPass || section.kind !== "declarations") {
+    return { output, applied: 0, cleared: 0 };
+  }
+  const parsed = parseSectionResult(section, output);
+  if (parsed?.kind !== "declarations") {
+    throw new Error("Declarations output does not match the section schema");
+  }
   const scoped = fastPassForSection(fastPass, section);
-  const applied = Object.keys(scoped.fields).length;
-  const parsed = applied > 0 ? parseSectionResult(section, output) : undefined;
-  const overlaid =
-    parsed?.kind === "declarations"
-      ? parseSectionResult(section, overlayFastPass(parsed.output, scoped))
-      : undefined;
-  return overlaid ? { output: overlaid.output, applied } : { output, applied: 0 };
+  const overlaid = { ...overlayFastPass(parsed.output, scoped) };
+  let cleared = 0;
+  for (const key of DECLARATIONS_SCALAR_KEYS) {
+    if (!fastPass.fields[key] || scoped.fields[key]) continue;
+    if (overlaid[key] !== null) cleared += 1;
+    overlaid[key] = null;
+  }
+  const validated = parseSectionResult(section, overlaid);
+  if (validated?.kind !== "declarations") {
+    throw new Error(
+      "Declarations output with fast-pass scalars does not match the section schema",
+    );
+  }
+  return {
+    output: validated.output,
+    applied: Object.keys(scoped.fields).length,
+    cleared,
+  };
 }
 
 /**
@@ -2226,7 +2248,7 @@ export function makePhases(
         }
         if (outcome.status === "succeeded") {
           const { response } = outcome;
-          const { output, applied } = withFastPassScalars(
+          const { output, applied, cleared } = withFastPassScalars(
             section,
             outcome.output,
             fastPass,
@@ -2275,7 +2297,7 @@ export function makePhases(
             details: { sectionId: section.sectionId, kind: section.kind },
           });
           await pCtx.log(
-            `Extracted ${section.kind} pages ${section.pageStart}-${section.pageEnd}${applied > 0 ? `; kept ${applied} fast-pass ${applied === 1 ? "field" : "fields"}` : ""}`,
+            `Extracted ${section.kind} pages ${section.pageStart}-${section.pageEnd}${applied + cleared > 0 ? `; fast pass set ${applied} and cleared ${cleared} scalar fields` : ""}`,
           );
           continue;
         }
