@@ -10,17 +10,12 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
+import { regionCountry } from "@/convex/lib/websiteTech";
 
 type Profile = NonNullable<
   NonNullable<FunctionReturnType<typeof api.websiteTech.getForOperator>>["profile"]
 >;
 type Row = { key: string; name: string; detail?: string; evidence: string; href?: string };
-
-const INFERENCE_TOPICS: Record<Profile["inferences"][number]["topic"], string> = {
-  payment_processor: "Payment processor",
-  hosting_provider: "Hosting provider",
-  data_region: "Data region",
-};
 
 const SIGNAL_CATEGORIES: Record<string, string> = {
   website: "Website platform",
@@ -36,12 +31,59 @@ const SIGNAL_CATEGORIES: Record<string, string> = {
   saas: "Business software",
 };
 
+const SOURCE_EVIDENCE: Record<Profile["signals"][number]["source"], string> = {
+  html: "Found on the website",
+  headers: "Seen in the website’s response headers",
+  dns: "Found in DNS records",
+  browser: "Loaded while browsing the site",
+};
+
+function locationLabel(region: string | undefined) {
+  if (!region) return undefined;
+  const country = regionCountry(region);
+  return country ? `${country} (${region})` : region;
+}
+
+/** One row per vendor or country, merging the evidence from every source that found it. */
+function merge(rows: Row[]) {
+  const byName = new Map<string, Row>();
+  for (const row of rows) {
+    const key = row.name.toLowerCase();
+    const existing = byName.get(key);
+    if (!existing) byName.set(key, { ...row, key });
+    else if (!existing.evidence.includes(row.evidence))
+      byName.set(key, {
+        ...existing,
+        detail: existing.detail ?? row.detail,
+        evidence: `${existing.evidence} · ${row.evidence}`,
+        href: existing.href ?? row.href,
+      });
+  }
+  return [...byName.values()];
+}
+
+/**
+ * Jev's reconciliation keeps only candidates the evidence supports, strongest first. Without
+ * a reconciliation (older scan or a failed Jev stage) every finding is shown.
+ */
+function reconcile(profile: Profile, topic: Profile["inferences"][number]["topic"], rows: Row[]) {
+  const merged = merge(rows);
+  const ranked = profile.inferences.filter((item) => item.topic === topic);
+  if (!ranked.length) return { kept: merged, dropped: [] };
+  const rank = (row: Row) =>
+    ranked.findIndex((item) => item.answer.toLowerCase() === row.name.toLowerCase());
+  return {
+    kept: merged.filter((row) => rank(row) >= 0).sort((left, right) => rank(left) - rank(right)),
+    dropped: merged.filter((row) => rank(row) < 0),
+  };
+}
+
 function rowsFor(profile: Profile) {
   const disclosed = (category: Profile["disclosures"][number]["category"]) =>
     profile.disclosures
       .filter((item) => item.category === category)
       .map((item) => ({
-        key: `${item.category}:${item.name}`,
+        key: item.name,
         name: item.name,
         detail: item.detail,
         evidence: `“${item.quote}”`,
@@ -51,16 +93,37 @@ function rowsFor(profile: Profile) {
     profile.signals
       .filter((signal) => categories.includes(signal.category))
       .map((signal) => ({
-        key: `${signal.category}:${signal.name}`,
+        key: signal.name,
         name: signal.name,
-        detail: signal.region ? `Region ${signal.region}` : undefined,
-        evidence: `Detected from ${signal.evidence}`,
+        detail: locationLabel(signal.region),
+        evidence: SOURCE_EVIDENCE[signal.source],
       }));
+  const located = profile.signals.flatMap((signal) =>
+    signal.region
+      ? [
+          {
+            key: signal.region,
+            name: regionCountry(signal.region) ?? signal.region,
+            detail: `${signal.name} region ${signal.region}`,
+            evidence: SOURCE_EVIDENCE[signal.source],
+          },
+        ]
+      : [],
+  );
+  const hosting = reconcile(profile, "hosting_provider", [
+    ...disclosed("hosting_provider"),
+    ...detected(["hosting", "cloud"]),
+  ]);
   return {
-    payments: [...disclosed("payment_processor"), ...detected(["payments"])],
-    data: [...disclosed("hosting_provider"), ...disclosed("data_region")],
-    website: detected(["hosting", "cloud", "cdn"]),
-    subprocessors: disclosed("subprocessor"),
+    payments: reconcile(profile, "payment_processor", [
+      ...disclosed("payment_processor"),
+      ...detected(["payments"]),
+    ]).kept,
+    hosting: hosting.kept,
+    location: reconcile(profile, "data_region", [...disclosed("data_region"), ...located]).kept,
+    // Hosts Jev did not accept as product hosting still describe the marketing site.
+    website: merge([...hosting.dropped, ...detected(["cdn"])]),
+    subprocessors: merge(disclosed("subprocessor")),
     other: Object.entries(SIGNAL_CATEGORIES).flatMap(([category, label]) =>
       detected([category]).map((row) => ({ ...row, detail: row.detail ?? label })),
     ),
@@ -135,7 +198,6 @@ export function WebsiteTechSection({ scan }: { scan: WebsiteTechScan }) {
   const nothingFound =
     !!rows &&
     !!profile &&
-    !profile.inferences.length &&
     Object.values(rows).every((list) => !list.length);
   return (
     <div className="space-y-4">
@@ -168,24 +230,16 @@ export function WebsiteTechSection({ scan }: { scan: WebsiteTechScan }) {
         rows &&
         profile && (
           <>
-            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-              Public signals for {profile.domain}. Confirm with the client before relying on them.
-            </p>
-            <TechCard
-              title="Likely answers"
-              rows={profile.inferences.map((item) => ({
-                key: item.topic,
-                name: INFERENCE_TOPICS[item.topic],
-                detail: item.answer,
-                evidence: `Evidence score ${Math.round(item.confidence * 100)}%, from the findings below`,
-              }))}
-              empty="Not enough evidence for a confident answer."
-            />
             <TechCard title="Payment processor" rows={rows.payments} empty="No payment processor found." />
             <TechCard
               title="Data hosting"
-              rows={rows.data}
-              empty="No published hosting provider or data region found."
+              rows={rows.hosting}
+              empty="No hosting provider found for the product or customer data."
+            />
+            <TechCard
+              title="Data location"
+              rows={rows.location}
+              empty="No country found for customer data."
             />
             <TechCard
               title="Website infrastructure"
