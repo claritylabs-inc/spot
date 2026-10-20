@@ -650,7 +650,7 @@
       }
     },
     {
-      "name": "Spot website research with inbox skill",
+      "name": "Spot website research with explicit browser skills",
       "schema": "BrowseRequest",
       "value": {
         "tenantId": "tenant_spot_fixture",
@@ -664,7 +664,15 @@
         },
         "config": {
           "skills": [
-            "inbox.wait_for_email"
+            "site.find_pages",
+            "page.dismiss_overlays",
+            "account.signup",
+            "account.sign_in",
+            "inbox.wait_for_email",
+            "account.verify_email",
+            "account.enter_otp",
+            "challenge.captcha",
+            "checkout.observe_payment"
           ]
         },
         "executionBudgetMs": 360000

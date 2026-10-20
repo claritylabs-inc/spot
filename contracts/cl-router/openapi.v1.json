@@ -1246,7 +1246,16 @@
                 "items": {
                   "type": "string",
                   "enum": [
-                    "inbox.wait_for_email"
+                    "inbox.wait_for_email",
+                    "account.signup",
+                    "account.sign_in",
+                    "account.verify_email",
+                    "account.enter_otp",
+                    "account.cleanup",
+                    "challenge.captcha",
+                    "site.find_pages",
+                    "page.dismiss_overlays",
+                    "checkout.observe_payment"
                   ]
                 },
                 "description": "Skills to offer the agent. Omit for the operation's defaults; an empty array disables skills."
@@ -1754,7 +1763,16 @@
                 "items": {
                   "type": "string",
                   "enum": [
-                    "inbox.wait_for_email"
+                    "inbox.wait_for_email",
+                    "account.signup",
+                    "account.sign_in",
+                    "account.verify_email",
+                    "account.enter_otp",
+                    "account.cleanup",
+                    "challenge.captcha",
+                    "site.find_pages",
+                    "page.dismiss_overlays",
+                    "checkout.observe_payment"
                   ]
                 },
                 "description": "Skills to offer the agent. Omit for the operation's defaults; an empty array disables skills."

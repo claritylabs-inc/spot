@@ -17,7 +17,7 @@ The router may report procedure outcomes in `BrowseResponse.skills`, for example
 
 Before storage each summary is redacted: the run's inbox capability URL and password are replaced, any link is reduced to its hostname (verification links carry tokens), the test address becomes "the test email address" and other email addresses become `[email]`.
 
-Older records and router responses without skills simply omit `browse.skills`; nothing is backfilled. Spot does not currently request skills through `BrowseRequest.config`; which skills run is set by the router.
+Older records and router responses without skills simply omit `browse.skills`; nothing is backfilled. Spot explicitly requests nine research procedures in `BrowseRequest.config.skills`: site page finding, overlay dismissal, signup, sign-in, inbox selection, email verification, code entry, CAPTCHA handling and payment observation. Capability checks omit account or email procedures when their identity or inbox is unavailable. Account cleanup is not requested, and the research goal forbids account deletion. The goal owns the research order; the router remains general-purpose.
 
 Skill outcomes describe what the browser could do on the site. They are not independent proof of a vendor finding, and a submitted signup form does not mean an account was created.
 

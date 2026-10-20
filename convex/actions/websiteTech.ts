@@ -62,6 +62,7 @@ const BROWSE_GOAL = [
   "2. Which cloud or hosting provider hosts its product and customer data, and in which countries or regions?",
   "3. Which subprocessors does it publish?",
   "Check footer, legal, trust, security, privacy, DPA and subprocessor pages, and pricing pages. Then follow the trial, signup or checkout flow: when a test identity is available, sign up by email and continue to plan, billing or checkout until the payment step, without entering payment details. Use network_hosts on checkout or billing pages to spot embedded payment providers.",
+  "Use the enabled skills to find pages, dismiss obstructing overlays, create the test account, handle its verification email or code, and observe the payment step. If a CAPTCHA interrupts the flow, handle it in this session and resume only from the observed state. Report blockers honestly; submitting signup is not proof of account creation. Do not delete accounts.",
   "Record each finding with the exact page URL it came from and a short verbatim quote from that page naming the vendor or region. Omit anything not stated on a page.",
 ].join("\n");
 
@@ -128,6 +129,19 @@ async function browseCompanySite(ctx: ActionCtx, domain: string, trace: Trace) {
         maxSteps: 30,
         outputSchema: z.toJSONSchema(findingsSchema) as Record<string, unknown>,
         ...(signup ? { signup } : {}),
+      },
+      config: {
+        skills: [
+          "site.find_pages",
+          "page.dismiss_overlays",
+          "account.signup",
+          "account.sign_in",
+          "inbox.wait_for_email",
+          "account.verify_email",
+          "account.enter_otp",
+          "challenge.captcha",
+          "checkout.observe_payment",
+        ],
       },
       executionBudgetMs: 6 * 60_000,
     },

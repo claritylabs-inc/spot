@@ -426,6 +426,18 @@ export type ClRouterRetrieveRequest = {
   executionBudgetMs?: number;
 };
 
+export type ClRouterBrowseSkillName =
+  | "inbox.wait_for_email"
+  | "account.signup"
+  | "account.sign_in"
+  | "account.verify_email"
+  | "account.enter_otp"
+  | "account.cleanup"
+  | "challenge.captcha"
+  | "site.find_pages"
+  | "page.dismiss_overlays"
+  | "checkout.observe_payment";
+
 export type ClRouterBrowseRequest = {
   tenantId?: string;
   orgId?: string;
@@ -443,7 +455,7 @@ export type ClRouterBrowseRequest = {
       inboxUrl?: string;
     };
   };
-  config?: { skills?: Array<"inbox.wait_for_email"> };
+  config?: { skills?: ClRouterBrowseSkillName[] };
   executionBudgetMs?: number;
 };
 
