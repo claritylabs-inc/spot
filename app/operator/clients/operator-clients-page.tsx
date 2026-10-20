@@ -34,11 +34,10 @@ import { formatDisplayDate } from "@/lib/date-format";
 import {
   ONBOARDING_CLIENT_STATUS,
   operatorClientDisplayStatus,
-  operatorClientStatusLabel,
-  operatorClientStatusPresentation,
   type OperatorClientRow,
 } from "./client-model";
 import { typeStyle } from "@/lib/typography";
+import { ClientStatusField, ClientWebsiteField } from "./client-row-fields";
 
 function Field({
   label,
@@ -82,6 +81,7 @@ export default function OperatorClientsScreen() {
   const [busy, setBusy] = useState(false);
 
   const current = useCachedOperatorCurrent();
+  const readOnly = Boolean(current?.activeImpersonation);
   const clients = useCachedOperatorClients();
   const unlinkedApplications = useQuery(
     api.operator.listUnlinkedApplications,
@@ -141,10 +141,6 @@ export default function OperatorClientsScreen() {
 
   function contactEmail(client: OperatorClientRow) {
     return client.primaryContactEmail ?? client.adminEmail;
-  }
-
-  function openClient(client: OperatorClientRow) {
-    router.push(`/operator/clients/${client._id}`);
   }
 
   const actions = (
@@ -240,7 +236,7 @@ export default function OperatorClientsScreen() {
             </TabsList>
           </Tabs>
         </div>
-        <OperationalPanel>
+        <OperationalPanel data-operator-inline-fields>
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -295,17 +291,7 @@ export default function OperatorClientsScreen() {
                 </TableRow>
               ) : (
                 filteredClients?.map((client) => (
-                  <TableRow
-                    key={client._id}
-                    tabIndex={0}
-                    onClick={() => openClient(client)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter" && event.key !== " ") return;
-                      event.preventDefault();
-                      openClient(client);
-                    }}
-                    className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                  >
+                  <TableRow key={client._id}>
                     <TableCell className="px-4">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <OrgBrandIcon
@@ -325,13 +311,14 @@ export default function OperatorClientsScreen() {
                     <TableCell className="max-w-56 truncate text-muted-foreground">
                       {contactEmail(client) ?? "No admin"}
                     </TableCell>
-                    <TableCell className="max-w-44 truncate text-muted-foreground">
-                      {client.website ?? "Not set"}
+                    <TableCell className="max-w-44">
+                      <ClientWebsiteField
+                        client={client}
+                        disabled={readOnly}
+                      />
                     </TableCell>
                     <TableCell>
-                      <StatusTag {...operatorClientStatusPresentation(client)}>
-                        {operatorClientStatusLabel(client)}
-                      </StatusTag>
+                      <ClientStatusField client={client} disabled={readOnly} />
                     </TableCell>
                     <TableCell className="px-4 text-muted-foreground">
                       {formatDisplayDate(client.createdAt)}

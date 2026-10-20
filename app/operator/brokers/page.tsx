@@ -21,10 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
-import {
-  StatusTag,
-  StatusLabel,
-} from "@claritylabs-inc/ui/components/status-tag";
+import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
 import {
   Table,
   TableBody,
@@ -69,7 +66,7 @@ export default function OperatorBrokersPage() {
       }
     >
       <div className="@container/brokers space-y-4">
-        <OperationalPanel>
+        <OperationalPanel data-operator-inline-fields>
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
@@ -97,18 +94,7 @@ export default function OperatorBrokersPage() {
                 </TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow
-                    key={row.broker._id}
-                    className="cursor-pointer"
-                    tabIndex={0}
-                    onClick={() => openBroker(row.broker._id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        openBroker(row.broker._id);
-                      }
-                    }}
-                  >
+                  <TableRow key={row.broker._id}>
                     <TableCell className="px-4">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <OrgBrandIcon
@@ -126,17 +112,11 @@ export default function OperatorBrokersPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <StatusTag
-                        {...NETWORK_STATUS_PRESENTATION[
-                          row.profile?.networkStatus ?? "prospect"
-                        ]}
-                      >
-                        {
-                          NETWORK_STATUS_LABELS[
-                            row.profile?.networkStatus ?? "prospect"
-                          ]
-                        }
-                      </StatusTag>
+                      <BrokerStatusField
+                        brokerOrgId={row.broker._id}
+                        name={row.broker.name}
+                        status={row.profile?.networkStatus ?? "prospect"}
+                      />
                     </TableCell>
                     <TableCell className="whitespace-normal text-muted-foreground">
                       {row.profile?.writingStates.join(", ") || "—"}
@@ -152,6 +132,55 @@ export default function OperatorBrokersPage() {
         </OperationalPanel>
       </div>
     </AppShell>
+  );
+}
+
+function BrokerStatusField({
+  brokerOrgId,
+  name,
+  status,
+}: {
+  brokerOrgId: Id<"organizations">;
+  name: string;
+  status: NetworkStatus;
+}) {
+  const update = useMutation(api.brokerProfiles.upsert);
+  return (
+    <Select
+      value={status}
+      items={NETWORK_STATUS_LABELS}
+      onValueChange={(value) => {
+        if (!value || value === status || !(value in NETWORK_STATUS_LABELS))
+          return;
+        void update({
+          brokerOrgId,
+          networkStatus: value as NetworkStatus,
+        }).catch((error) =>
+          toast.error(
+            getUserFacingErrorMessage(error, "Could not save the status"),
+          ),
+        );
+      }}
+    >
+      <SelectTrigger className="w-full" aria-label={`Status for ${name}`}>
+        <SelectValue>
+          <StatusLabel {...NETWORK_STATUS_PRESENTATION[status]}>
+            {NETWORK_STATUS_LABELS[status]}
+          </StatusLabel>
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {Object.entries(NETWORK_STATUS_LABELS).map(([value, label]) => (
+          <SelectItem key={value} value={value}>
+            <StatusLabel
+              {...NETWORK_STATUS_PRESENTATION[value as NetworkStatus]}
+            >
+              {label}
+            </StatusLabel>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
