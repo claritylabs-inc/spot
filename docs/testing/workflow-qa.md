@@ -1,12 +1,106 @@
 # Platform workflow QA
 
+## Clairic fast-pass deadline — October 20, 2026
+
+Source `8af88b01a7afb1bca8b0437c9a963d15fb8933bc`. Only
+`declarationsFastPass.ts` and the section-extraction architecture doc changed;
+`clRouterClient.ts` and other router callers are unchanged.
+`runDeclarationsFastPass` races `clRouterExtract` against a 15-second timer.
+At expiry the timer first rejects with a `ClRouterRequestError` of kind
+`timeout`, then aborts the request through the existing `abortSignal`. The
+timer is cleared in `finally`. `executionStarted` is left unset, and source
+checks run before the timer starts.
+
+Failure modes were listed before the change: a fetch that stalls before
+headers, a body that stalls after headers, a late result after expiry,
+cleanup on success and error, no replay after an unknown outcome, and no
+effect on other router callers.
+
+Checks: focused ESLint on `declarationsFastPass.ts`, Convex `tsc --noEmit` and
+root `tsc --noEmit` passed. Each ran once. No unit tests were added.
+
+Scratch fault injection (not a test file) used real `fetch` against a loopback
+HTTP server, with the router URL overridden in-process:
+
+| Case | Result |
+| --- | --- |
+| No response headers | `timeout` at 15,003 ms; server socket closed at 15,004 ms |
+| 200 headers, then body stalls | `timeout` (not `invalid_response`) at 15,001 ms; socket closed at 15,002 ms |
+| Response scheduled 500 ms after the deadline | `timeout` at 15,000 ms; the connection had already closed, so no late result arrived |
+| Body arrives at 14 s, completion telemetry takes 2 s | `timeout` at 15,001 ms; the result is discarded |
+| Success | result returned in 30 ms; timer cleared, never fired |
+| Typed HTTP 500 | `server` / `router_internal`, `executionStarted: true` preserved; timer cleared |
+| Invalid JSON, connection refused | `invalid_response` and `connection`, unchanged; timer cleared |
+| No text layer | plain error; no request and no timer |
+| Direct `clRouterExtract`, reply at 16.5 s | succeeds at 16,505 ms; no global deadline |
+
+Timeout errors never set `executionStarted`. No unhandled rejection
+occurred. Source inspection of `policyExtraction.ts`: the `started` marker is
+saved before the call. Any error, including `timeout`, logs the failure class,
+records a trace error, marks the fast pass `skipped` and continues
+declarations-first. An interrupted `started` marker is also skipped, so the
+call is never replayed. The helper has no retry.
+
+Two telemetry notes, neither blocking: the deadline also covers the start
+telemetry mutation inside `clRouterExtract`; and when completion telemetry
+straddles the deadline, the model-call record says `complete` even though the
+fast pass fell back. After a timeout, the error telemetry mutation finishes
+after the helper has returned.
+
+Live: the original From/To fixture ran once through the wrapped helper on
+shared dev `tangible-warbler-253`. It returned 2026-01-15 / 2027-01-15, both
+cited, with router latency 477 ms and wall time 984 ms (request
+`1bdd3316-91d6-4425-9ac6-00925988e772`). The process exited after 1.08 s, so no
+15-second timer was left behind. Artifacts are in `.context/clairic/timeout/`.
+No preview, deployment, customer data, or Spot write was used.
+
+## Clairic fast-pass dates and lists — October 20, 2026
+
+Source `1c0af6a084ea97a25142e9e8e6986945f7b3f67b`. Only
+`declarationsFastPass.ts` and the section-extraction architecture doc changed.
+The request omits `linesOfBusiness` and `coverageSummaries`.
+`fastPassAsOutput` returns both empty, even for restored artifacts. Date
+instructions name the start and end of the policy period, From/To pairs and
+labeled dates, and forbid inferred dates. The evidence and calendar gates are
+unchanged.
+
+Checks: focused ESLint on `declarationsFastPass.ts`, Convex `tsc --noEmit` and
+root `tsc --noEmit` passed. Each ran once. No unit tests were added.
+
+Offline scratch execution (not a test file) confirmed:
+
+- Unchanged date gates: a calendar-invalid value, a value with a time, a value
+  holding two dates, a value missing from its evidence quote, evidence without
+  a span or with an out-of-range span, and evidence with a null value all map
+  to null.
+- Legacy list answers are ignored. A restored artifact that still stores lines
+  of business and coverages produces empty lists in the output, preview fields
+  and summary, and keeps its scalars and forms.
+- `overlayFastPass` keeps the LLM's lines of business and coverages.
+
+Live synthetic `/v1/extract` on shared dev `tangible-warbler-253` (router
+`12ca9ec2`). Each case ran once and passed, so none was repeated:
+
+| Case | Result | Request |
+| --- | --- | --- |
+| `Policy Period: From 01/15/2026 to 01/15/2027 12:01 A.M. standard time` (previously expiration null, pNull 0.85) | 2026-01-15 / 2027-01-15, both cited; expiration pNull 0.0004 | `613872b6-a485-4d01-a74a-e9bf99ca75cf` |
+| From March 1, 2026 to March 1, 2027 at 12:01 A.M. | 2026-03-01 / 2027-03-01, cited | `2e9359e0-bb92-490d-a7e5-0ae6a7fcc9d8` |
+| Labeled effective/expiration/retroactive with a Date Issued distractor | 2026-06-01 / 2027-06-01 / 2019-09-15, cited; issue date not used | `51478e9e-990c-432a-aba6-1c66366f0f8c` |
+| Effective date only, no end date | expiration null (pNull 0.997), no invented date; summary omits Policy period | `e10db628-1a7e-4da4-80cb-4eeeada9a413` |
+
+No response contained list answers for lines of business or coverages, and every
+summary omitted both. Router latency was 383–566 ms (wall 551–1245 ms). In the
+first case Clairic returned the form `IL 00 17 11` without its `98` edition
+suffix; form mapping is outside this change. These are single samples, so model
+nondeterminism is not ruled out. Artifacts are in `.context/clairic/quality/`. No
+preview, deployment, customer data, or Spot write was used.
+
 ## Clairic declarations fast-pass — October 20, 2026
 
 Independent Opus review covered the fixed router endpoint, request/response
 contract, citation offsets, null/list mapping, date evidence, once-per-plan
 execution and unknown outcomes, early preview/context, and scalar authority
-across multiple declarations sections. Sonnet implemented the router adapter
-and helper; Opus implemented pipeline orchestration. No unit tests were added.
+across multiple declarations sections. No unit tests were added.
 
 Router acceptance on Node 24.14.1: `npm run openapi:generate` and `npm run check`
 passed (lint, workspace typechecks, 439 existing tests passed / one skipped,
@@ -28,7 +122,6 @@ same-advance non-declarations submission, and final scalar `sourceSpanIds`
 remain unverified. Repeat the workflow in
 `docs/architecture/convex-section-extraction.md` on an explicitly selected
 development target with both updated services before claiming those results.
-
 
 ## Safari detail-panel dropdowns — October 19, 2026
 

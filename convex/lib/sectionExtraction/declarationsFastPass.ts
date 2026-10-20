@@ -8,7 +8,7 @@ import type {
   ExtractFieldSpec,
   ExtractResponse,
 } from "../../../contracts/cl-router/policy";
-import { clRouterExtract } from "../clRouterClient";
+import { ClRouterRequestError, clRouterExtract } from "../clRouterClient";
 import type { PolicySection } from "../policySectioning";
 import type { PdfPageText } from "../pdfText";
 import type { DeclarationsSectionOutput } from "./schemas";
@@ -34,6 +34,8 @@ export type DeclarationsFastPass = {
 
 /** About 60k tokens of the model's 64k window. */
 export const MAX_DECLARATIONS_STATE_CHARS = 240_000;
+/** Caller wait for the Clairic request, including its response body. */
+export const DECLARATIONS_FAST_PASS_TIMEOUT_MS = 15_000;
 const MAX_LIST_ITEMS = 60;
 
 const SCALAR_TEXT_KEYS = [
@@ -86,45 +88,38 @@ export const DECLARATIONS_FIELDS: Record<string, ExtractFieldSpec> = {
   },
   effectiveDate: {
     type: "date",
-    instructions: "The policy effective (inception) date.",
+    instructions:
+      "The date the policy period starts: the effective or inception date, such as the 'From' date of 'Policy Period: From X to Y' or a labeled 'Effective Date'. Return the calendar date only and ignore any time of day. Do not use the issue, transaction or retroactive date. Leave empty if no start date is written; never infer a date or assume a year.",
   },
   expirationDate: {
     type: "date",
-    instructions: "The policy expiration date.",
+    instructions:
+      "The date the policy period ends: the expiration date, such as the 'To' date of 'Policy Period: From X to Y' or a labeled 'Expiration Date'. Return the calendar date only and ignore any time of day such as '12:01 A.M.'. Do not use the issue, transaction or retroactive date. Leave empty if no end date is written; never infer a date from the effective date, assume a one-year term, or assume a year.",
   },
   retroactiveDate: {
     type: "date",
-    instructions: "The retroactive date, if the policy is claims-made.",
+    instructions:
+      "The retroactive date, if the policy is claims-made. Return the calendar date only and ignore any time of day. Leave empty if none is written; never infer a date or assume a year.",
   },
   [evidenceKey("effectiveDate")]: {
     type: "text",
     instructions:
-      "The exact text, as written on the page, that states the policy effective date.",
+      "The exact text, as written on the page, that states the policy effective date: the start date of the policy period, including the date as written (and its time of day, if given). Copy it verbatim from the page.",
   },
   [evidenceKey("expirationDate")]: {
     type: "text",
     instructions:
-      "The exact text, as written on the page, that states the policy expiration date.",
+      "The exact text, as written on the page, that states the policy expiration date: the end date of the policy period, including the date as written (and its time of day, if given). Copy it verbatim from the page. For a 'From X to Y' period, this is the text containing Y.",
   },
   [evidenceKey("retroactiveDate")]: {
     type: "text",
     instructions:
-      "The exact text, as written on the page, that states the retroactive date.",
-  },
-  linesOfBusiness: {
-    type: "list",
-    items: "text",
-    instructions: "Each line of business or coverage part the policy includes.",
+      "The exact text, as written on the page, that states the retroactive date. Copy it verbatim from the page.",
   },
   formNumbers: {
     type: "list",
     items: "text",
     instructions: "Each form number listed in the forms schedule.",
-  },
-  coverageSummaries: {
-    type: "list",
-    items: "text",
-    instructions: "coverage name and its limit as written",
   },
 };
 
@@ -295,24 +290,6 @@ export function mapDeclarationsAnswers(
     setScalar(key, day, citation);
   }
 
-  const lines = listItems(answers.linesOfBusiness);
-  if (lines.length) fields.linesOfBusiness = lines;
-
-  const coverages = listItems(answers.coverageSummaries);
-  if (coverages.length)
-    fields.coverages = coverages.map((name) => ({
-      name,
-      lineOfBusiness: null,
-      coverageCode: null,
-      limit: null,
-      deductible: null,
-      premium: null,
-      retroactiveDate: null,
-      formNumber: null,
-      limits: [],
-      citations: listCitations(state, answers.coverageSummaries, name),
-    }));
-
   const forms = listItems(answers.formNumbers);
   if (forms.length)
     fields.forms = forms.map((formNumber) => ({
@@ -340,15 +317,42 @@ export async function runDeclarationsFastPass(
   const built = buildDeclarationsState(params.parsed, params.sections);
   if (!built.state.trim() || built.pageOffsets.every((o) => o.end === o.start))
     throw new Error("declarations fast pass: declarations pages have no text");
-  const raw = await clRouterExtract(
-    {
-      task: "policy_declarations_fast_pass",
-      state: built.state,
-      fields: DECLARATIONS_FIELDS,
-      ...(params.traceId ? { trace: { traceId: params.traceId } } : {}),
-    },
-    { orgId: params.orgId, telemetry: ctx },
-  );
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // Settles before the abort so a late result or abort error cannot win. The
+  // router may already have run inference, so executionStarted stays unknown.
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new ClRouterRequestError(
+          "timeout",
+          `declarations fast pass: cl-router extract timed out after ${DECLARATIONS_FAST_PASS_TIMEOUT_MS} ms`,
+        ),
+      );
+      controller.abort();
+    }, DECLARATIONS_FAST_PASS_TIMEOUT_MS);
+  });
+  let raw: ExtractResponse;
+  try {
+    raw = await Promise.race([
+      clRouterExtract(
+        {
+          task: "policy_declarations_fast_pass",
+          state: built.state,
+          fields: DECLARATIONS_FIELDS,
+          ...(params.traceId ? { trace: { traceId: params.traceId } } : {}),
+        },
+        {
+          orgId: params.orgId,
+          telemetry: ctx,
+          abortSignal: controller.signal,
+        },
+      ),
+      deadline,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
   return { fields: mapDeclarationsAnswers(built, raw.answers), raw };
 }
 
@@ -367,7 +371,11 @@ export function overlayFastPass(
   return result;
 }
 
-/** Complete output for the preview and declarations summary. */
+/**
+ * Complete output for the preview and declarations summary. Fast-pass coverage
+ * lists were unreliable, so lines of business and coverages stay empty even
+ * when a restored artifact carries them; the LLM extraction supplies both.
+ */
 export function fastPassAsOutput(
   fastPass: DeclarationsFastPass,
 ): DeclarationsSectionOutput {
@@ -386,11 +394,11 @@ export function fastPassAsOutput(
     totalCost: null,
     premiumBreakdown: [],
     taxesAndFees: [],
-    linesOfBusiness: [],
     parties: [],
     insuredDetails: [],
-    coverages: [],
     forms: [],
     ...fields,
+    linesOfBusiness: [],
+    coverages: [],
   };
 }
