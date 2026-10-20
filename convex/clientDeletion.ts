@@ -236,9 +236,9 @@ async function deleteTree(
   return true;
 }
 
-function buildSteps(userIds: Id<"users">[]) {
+function buildSteps(userIds: Id<"users">[], hasOrg: boolean) {
   return [
-    ...ORG_ROOTS.map((node) => ({ node, scopeId: null })),
+    ...(hasOrg ? ORG_ROOTS : []).map((node) => ({ node, scopeId: null })),
     ...userIds.flatMap((userId) =>
       USER_ROOTS.map((node) => ({ node, scopeId: userId as string })),
     ),
@@ -247,12 +247,12 @@ function buildSteps(userIds: Id<"users">[]) {
 
 export const purgeClient = internalMutation({
   args: {
-    orgId: v.id("organizations"),
+    orgId: v.optional(v.id("organizations")),
     userIds: v.array(v.id("users")),
     position: v.number(),
   },
   handler: async (ctx, args) => {
-    const steps = buildSteps(args.userIds);
+    const steps = buildSteps(args.userIds, args.orgId !== undefined);
     const budget: Budget = { ops: 0 };
     let position = args.position;
     while (position < steps.length && budget.ops <= OP_BUDGET) {
@@ -260,7 +260,7 @@ export const purgeClient = internalMutation({
       const rows = await indexedRows(
         ctx,
         step.node,
-        step.scopeId ?? args.orgId,
+        (step.scopeId ?? args.orgId) as string,
         ROOT_BATCH,
       );
       budget.ops += rows.length + 1;
@@ -284,7 +284,7 @@ export const purgeClient = internalMutation({
     for (const userId of args.userIds) {
       if (await ctx.db.get(userId)) await ctx.db.delete(userId);
     }
-    const org = await ctx.db.get(args.orgId);
+    const org = args.orgId ? await ctx.db.get(args.orgId) : null;
     if (org) {
       if (org.iconStorageId)
         await ctx.storage.delete(org.iconStorageId).catch(() => {});

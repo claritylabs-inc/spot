@@ -293,7 +293,10 @@ export const listUnlinkedApplications = query({
 });
 
 export const deleteUnlinkedApplications = mutation({
-  args: { requestIds: v.array(v.id("procurementRequests")) },
+  args: {
+    requestIds: v.array(v.id("procurementRequests")),
+    withUsers: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     await assertNoOperatorImpersonation(ctx, operator.userId);
@@ -317,13 +320,37 @@ export const deleteUnlinkedApplications = mutation({
         deletedAt: dayjs().valueOf(),
         deletedByUserId: operator.userId,
       });
+      let deletedUser = false;
+      if (args.withUsers) {
+        const userId = request.ownerUserId ?? request.createdByUserId;
+        const user = await ctx.db.get(userId);
+        const memberships = await ctx.db
+          .query("orgMemberships")
+          .withIndex("user", (q) => q.eq("userId", userId))
+          .take(1);
+        if (
+          user &&
+          memberships.length === 0 &&
+          user._id !== operator.userId &&
+          user.accountKind !== "operator" &&
+          !user.serviceAccountKind
+        ) {
+          await deleteUserAuth(ctx, userId);
+          await ctx.scheduler.runAfter(0, internal.clientDeletion.purgeClient, {
+            userIds: [userId],
+            position: 0,
+          });
+          deletedUser = true;
+        }
+      }
       await writeOperatorAudit(ctx, {
         operatorUserId: operator.userId,
         type: "setup_write",
-        summary: `Deleted unlinked applicant ${request.title}`,
+        summary: `Deleted unlinked applicant ${request.title}${deletedUser ? " and their user" : ""}`,
         metadata: {
           operation: "delete_unlinked_application",
           requestId: request._id,
+          deletedUser,
         },
       });
     }
@@ -1200,6 +1227,27 @@ export const markSoloClientLaunchedInternal = internalMutation({
   },
 });
 
+async function deleteUserAuth(ctx: MutationCtx, userId: Id<"users">) {
+  for await (const session of ctx.db
+    .query("authSessions")
+    .withIndex("userId", (q) => q.eq("userId", userId))) {
+    for await (const token of ctx.db
+      .query("authRefreshTokens")
+      .withIndex("sessionId", (q) => q.eq("sessionId", session._id)))
+      await ctx.db.delete(token._id);
+    await ctx.db.delete(session._id);
+  }
+  for await (const account of ctx.db
+    .query("authAccounts")
+    .withIndex("userIdAndProvider", (q) => q.eq("userId", userId))) {
+    for await (const code of ctx.db
+      .query("authVerificationCodes")
+      .withIndex("accountId", (q) => q.eq("accountId", account._id)))
+      await ctx.db.delete(code._id);
+    await ctx.db.delete(account._id);
+  }
+}
+
 export const deleteClientWithUsers = mutation({
   args: { orgId: v.id("organizations") },
   handler: async (ctx, args) => {
@@ -1229,24 +1277,7 @@ export const deleteClientWithUsers = mutation({
         .take(2);
       if (userMemberships.some((other) => other.orgId !== org._id)) continue;
       userIds.push(user._id);
-      for await (const session of ctx.db
-        .query("authSessions")
-        .withIndex("userId", (q) => q.eq("userId", user._id))) {
-        for await (const token of ctx.db
-          .query("authRefreshTokens")
-          .withIndex("sessionId", (q) => q.eq("sessionId", session._id)))
-          await ctx.db.delete(token._id);
-        await ctx.db.delete(session._id);
-      }
-      for await (const account of ctx.db
-        .query("authAccounts")
-        .withIndex("userIdAndProvider", (q) => q.eq("userId", user._id))) {
-        for await (const code of ctx.db
-          .query("authVerificationCodes")
-          .withIndex("accountId", (q) => q.eq("accountId", account._id)))
-          await ctx.db.delete(code._id);
-        await ctx.db.delete(account._id);
-      }
+      await deleteUserAuth(ctx, user._id);
     }
     const connections = await ctx.db
       .query("slackWorkspaceConnections")
