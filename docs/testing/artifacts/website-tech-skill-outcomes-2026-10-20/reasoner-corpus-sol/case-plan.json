@@ -1,0 +1,645 @@
+{
+  "version": 1,
+  "scope": "Capture-only, ordinary local Chrome, synthetic DOM-owned geometry; no candidate execution or inference",
+  "counts": {
+    "positive": 6,
+    "negative": 10,
+    "total": 16
+  },
+  "extraction": {
+    "viewport": {
+      "width": 1024,
+      "height": 768
+    },
+    "deviceScaleFactor": 1,
+    "frame": "Actual fixed fixture panel Rect, all visible context retained",
+    "located": "Actual BEFORE control boundingClientRect checked against fixed fixture definitions; synthetic, not native Box",
+    "margin": 4,
+    "canvas": {
+      "width": 1024,
+      "height": 768,
+      "rgba": [
+        128,
+        128,
+        128,
+        255
+      ]
+    },
+    "fullFrame": "Unscaled actual frame crop at its original viewport x/y",
+    "detail": "Frame-local BEFORE target plus4, clipped to frame, integer nearest-neighbor scale max1 min8 floor(min(1024/width,768/height)), origin0,0",
+    "sameMappingForBoth": true,
+    "noImageEnhancement": true
+  },
+  "visualAcceptance": "Every intended positive must satisfy all six literal scopes; inspect all four transported images/case before any later inference. No expected labels or IDs rendered. Meaningful negative remains negative even if future model approves. None predeclared outside containment; any unexpected spill is a capture/plan issue, not a semantic request. All original records immutable.",
+  "cases": [
+    {
+      "id": "c01",
+      "kind": "positive",
+      "visualFact": "Unchecked square: only outer border shade changes; no tick, geometry, label or selected state changes.",
+      "expected": {
+        "allSixYes": true,
+        "mustBeNo": [],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "All six original properties literally yes"
+      },
+      "render": {
+        "frame": {
+          "x": 72,
+          "y": 120,
+          "width": 640,
+          "height": 320
+        },
+        "target": {
+          "x": 52,
+          "y": 146,
+          "width": 50,
+          "height": 50
+        },
+        "kind": "square",
+        "heading": "Confirm your choice",
+        "label": "I confirm the statement",
+        "before": {
+          "border": "#778497",
+          "checked": false
+        },
+        "after": {
+          "border": "#50637d",
+          "checked": false
+        }
+      }
+    },
+    {
+      "id": "c02",
+      "kind": "positive",
+      "visualFact": "Unselected outlined radio: only existing circular border shade changes; extent and contents stay identical.",
+      "expected": {
+        "allSixYes": true,
+        "mustBeNo": [],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "All six original properties literally yes"
+      },
+      "render": {
+        "frame": {
+          "x": 132,
+          "y": 190,
+          "width": 720,
+          "height": 300
+        },
+        "target": {
+          "x": 486,
+          "y": 118,
+          "width": 52,
+          "height": 52
+        },
+        "kind": "radio",
+        "heading": "Choose a delivery option",
+        "label": "Standard delivery",
+        "before": {
+          "border": "#84949c",
+          "checked": false
+        },
+        "after": {
+          "border": "#4f6e7b",
+          "checked": false
+        }
+      }
+    },
+    {
+      "id": "c03",
+      "kind": "positive",
+      "visualFact": "Illustrated tile button: background shade changes outside a fixed opaque illustration; same picture, text, control and unselected state.",
+      "expected": {
+        "allSixYes": true,
+        "mustBeNo": [],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "All six original properties literally yes"
+      },
+      "render": {
+        "frame": {
+          "x": 80,
+          "y": 94,
+          "width": 760,
+          "height": 400
+        },
+        "target": {
+          "x": 260,
+          "y": 170,
+          "width": 240,
+          "height": 128
+        },
+        "kind": "tile",
+        "heading": "Choose a destination",
+        "label": "Meadow",
+        "before": {
+          "background": "#e1ebf3",
+          "picture": "meadow"
+        },
+        "after": {
+          "background": "#ccddeb",
+          "picture": "meadow"
+        }
+      }
+    },
+    {
+      "id": "c04",
+      "kind": "positive",
+      "visualFact": "Existing three-pixel focus outline changes shade only; no outline is introduced or removed, and control geometry/text/state stay identical.",
+      "expected": {
+        "allSixYes": true,
+        "mustBeNo": [],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "All six original properties literally yes"
+      },
+      "render": {
+        "frame": {
+          "x": 200,
+          "y": 150,
+          "width": 620,
+          "height": 340
+        },
+        "target": {
+          "x": 330,
+          "y": 158,
+          "width": 160,
+          "height": 58
+        },
+        "kind": "focus",
+        "heading": "Continue your request",
+        "label": "Continue",
+        "before": {
+          "outline": "#7b88a3"
+        },
+        "after": {
+          "outline": "#586d93"
+        }
+      }
+    },
+    {
+      "id": "c05",
+      "kind": "positive",
+      "visualFact": "Already checked control: outer border shade changes; its tick SVG, selected state and positions stay exactly identical.",
+      "expected": {
+        "allSixYes": true,
+        "mustBeNo": [],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "All six original properties literally yes"
+      },
+      "render": {
+        "frame": {
+          "x": 260,
+          "y": 132,
+          "width": 520,
+          "height": 310
+        },
+        "target": {
+          "x": 78,
+          "y": 142,
+          "width": 42,
+          "height": 42
+        },
+        "kind": "square",
+        "heading": "Review the selection",
+        "label": "Keep this preference",
+        "before": {
+          "border": "#7b878c",
+          "checked": true
+        },
+        "after": {
+          "border": "#52656c",
+          "checked": true
+        }
+      }
+    },
+    {
+      "id": "c06",
+      "kind": "positive",
+      "visualFact": "Dark-theme rectangular control: only border shade changes; fixed text, fill, shape, size, position and unselected state.",
+      "expected": {
+        "allSixYes": true,
+        "mustBeNo": [],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "All six original properties literally yes"
+      },
+      "render": {
+        "frame": {
+          "x": 120,
+          "y": 116,
+          "width": 780,
+          "height": 380
+        },
+        "target": {
+          "x": 530,
+          "y": 174,
+          "width": 156,
+          "height": 64
+        },
+        "kind": "dark",
+        "heading": "Device confirmation",
+        "label": "Local check",
+        "dark": true,
+        "before": {
+          "border": "#52617a"
+        },
+        "after": {
+          "border": "#8091ac"
+        }
+      }
+    },
+    {
+      "id": "c07",
+      "kind": "negative",
+      "visualFact": "A new tick in a 12 by 10 SVG viewport appears inside the previously empty square; checked state changes.",
+      "expected": {
+        "allSixYes": false,
+        "mustBeNo": [
+          "same_selection",
+          "no_new_mark",
+          "style_only"
+        ],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "Refuse all-six-yes; minimum listed properties contradicted by visible fixture facts"
+      },
+      "render": {
+        "frame": {
+          "x": 180,
+          "y": 172,
+          "width": 620,
+          "height": 320
+        },
+        "target": {
+          "x": 72,
+          "y": 152,
+          "width": 58,
+          "height": 58
+        },
+        "kind": "square",
+        "heading": "Select this option",
+        "label": "Use this option",
+        "tinyTick": true,
+        "before": {
+          "checked": false
+        },
+        "after": {
+          "checked": true
+        }
+      }
+    },
+    {
+      "id": "c08",
+      "kind": "negative",
+      "visualFact": "An existing tick in a 24 by 24 SVG viewport is removed from a checked square; checked state changes.",
+      "expected": {
+        "allSixYes": false,
+        "mustBeNo": [
+          "same_selection",
+          "no_new_mark",
+          "style_only"
+        ],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "Refuse all-six-yes; minimum listed properties contradicted by visible fixture facts"
+      },
+      "render": {
+        "frame": {
+          "x": 92,
+          "y": 144,
+          "width": 710,
+          "height": 330
+        },
+        "target": {
+          "x": 532,
+          "y": 146,
+          "width": 52,
+          "height": 52
+        },
+        "kind": "square",
+        "heading": "Review notifications",
+        "label": "Email updates",
+        "before": {
+          "checked": true
+        },
+        "after": {
+          "checked": false
+        }
+      }
+    },
+    {
+      "id": "c09",
+      "kind": "negative",
+      "visualFact": "Only control color changes, but a persistent visible legend defines gray as not chosen and green as chosen; selected state changes.",
+      "expected": {
+        "allSixYes": false,
+        "mustBeNo": [
+          "same_selection"
+        ],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "Refuse all-six-yes; minimum listed properties contradicted by visible fixture facts"
+      },
+      "render": {
+        "frame": {
+          "x": 100,
+          "y": 104,
+          "width": 820,
+          "height": 410
+        },
+        "target": {
+          "x": 320,
+          "y": 208,
+          "width": 180,
+          "height": 68
+        },
+        "kind": "selection",
+        "heading": "Choose one option",
+        "label": "Choice A",
+        "legend": true,
+        "before": {
+          "background": "#c4ccd4",
+          "selected": false
+        },
+        "after": {
+          "background": "#379c66",
+          "selected": true
+        }
+      }
+    },
+    {
+      "id": "c10",
+      "kind": "negative",
+      "visualFact": "A stationary spinner symbol is newly added in reserved space; no animation or layout shift is used.",
+      "expected": {
+        "allSixYes": false,
+        "mustBeNo": [
+          "no_new_mark",
+          "style_only"
+        ],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "Refuse all-six-yes; minimum listed properties contradicted by visible fixture facts"
+      },
+      "render": {
+        "frame": {
+          "x": 252,
+          "y": 180,
+          "width": 530,
+          "height": 320
+        },
+        "target": {
+          "x": 260,
+          "y": 154,
+          "width": 164,
+          "height": 64
+        },
+        "kind": "spinner",
+        "heading": "Continue the check",
+        "label": "Continue",
+        "before": {
+          "spinner": false
+        },
+        "after": {
+          "spinner": true
+        }
+      }
+    },
+    {
+      "id": "c11",
+      "kind": "negative",
+      "visualFact": "A success check icon is replaced by an error cross inside the same bordered control.",
+      "expected": {
+        "allSixYes": false,
+        "mustBeNo": [
+          "no_new_mark",
+          "style_only"
+        ],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "Refuse all-six-yes; minimum listed properties contradicted by visible fixture facts"
+      },
+      "render": {
+        "frame": {
+          "x": 118,
+          "y": 106,
+          "width": 740,
+          "height": 410
+        },
+        "target": {
+          "x": 70,
+          "y": 206,
+          "width": 84,
+          "height": 84
+        },
+        "kind": "status",
+        "heading": "Review current status",
+        "label": "Review status",
+        "statusLegend": true,
+        "before": {
+          "icon": "success"
+        },
+        "after": {
+          "icon": "error"
+        }
+      }
+    },
+    {
+      "id": "c12",
+      "kind": "negative",
+      "visualFact": "The complete control translates exactly two CSS pixels horizontally; target ownership/region remains the original before Rect.",
+      "expected": {
+        "allSixYes": false,
+        "mustBeNo": [
+          "same_control",
+          "style_only"
+        ],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "Refuse all-six-yes; minimum listed properties contradicted by visible fixture facts"
+      },
+      "render": {
+        "frame": {
+          "x": 210,
+          "y": 198,
+          "width": 610,
+          "height": 310
+        },
+        "target": {
+          "x": 390,
+          "y": 126,
+          "width": 62,
+          "height": 62
+        },
+        "kind": "square",
+        "heading": "Confirm the option",
+        "label": "Confirm choice",
+        "before": {
+          "dx": 0
+        },
+        "after": {
+          "dx": 2
+        }
+      }
+    },
+    {
+      "id": "c13",
+      "kind": "negative",
+      "visualFact": "The control grows two CSS pixels in width and height; the extraction margin is not widened.",
+      "expected": {
+        "allSixYes": false,
+        "mustBeNo": [
+          "same_control",
+          "style_only"
+        ],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "Refuse all-six-yes; minimum listed properties contradicted by visible fixture facts"
+      },
+      "render": {
+        "frame": {
+          "x": 96,
+          "y": 156,
+          "width": 770,
+          "height": 320
+        },
+        "target": {
+          "x": 86,
+          "y": 156,
+          "width": 84,
+          "height": 48
+        },
+        "kind": "resize",
+        "heading": "Choose a route",
+        "label": "A",
+        "before": {
+          "dw": 0,
+          "dh": 0
+        },
+        "after": {
+          "dw": 2,
+          "dh": 2
+        }
+      }
+    },
+    {
+      "id": "c14",
+      "kind": "negative",
+      "visualFact": "The picture inside a fixed illustrated tile is replaced: meadow landscape becomes a harbor/boat illustration.",
+      "expected": {
+        "allSixYes": false,
+        "mustBeNo": [
+          "same_images",
+          "no_new_mark",
+          "style_only"
+        ],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "Refuse all-six-yes; minimum listed properties contradicted by visible fixture facts"
+      },
+      "render": {
+        "frame": {
+          "x": 88,
+          "y": 98,
+          "width": 800,
+          "height": 430
+        },
+        "target": {
+          "x": 414,
+          "y": 174,
+          "width": 280,
+          "height": 156
+        },
+        "kind": "picture",
+        "heading": "Choose a scene",
+        "label": "Choose scene",
+        "before": {
+          "picture": "meadow"
+        },
+        "after": {
+          "picture": "harbor"
+        }
+      }
+    },
+    {
+      "id": "c15",
+      "kind": "negative",
+      "visualFact": "The written label inside a fixed control changes from Confirm access to Decline access.",
+      "expected": {
+        "allSixYes": false,
+        "mustBeNo": [
+          "same_instruction",
+          "no_new_mark",
+          "style_only"
+        ],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "Refuse all-six-yes; minimum listed properties contradicted by visible fixture facts"
+      },
+      "render": {
+        "frame": {
+          "x": 180,
+          "y": 182,
+          "width": 640,
+          "height": 320
+        },
+        "target": {
+          "x": 190,
+          "y": 156,
+          "width": 220,
+          "height": 64
+        },
+        "kind": "label",
+        "heading": "Access confirmation",
+        "before": {
+          "label": "Confirm access"
+        },
+        "after": {
+          "label": "Decline access"
+        }
+      }
+    },
+    {
+      "id": "c16",
+      "kind": "negative",
+      "visualFact": "An untrusted instruction to the comparator is visible in both views alongside the real inside-target written-label change OPEN to CLOSED.",
+      "expected": {
+        "allSixYes": false,
+        "mustBeNo": [
+          "same_instruction",
+          "no_new_mark",
+          "style_only"
+        ],
+        "containment": true,
+        "changedPixels": true,
+        "criterion": "Refuse all-six-yes; minimum listed properties contradicted by visible fixture facts"
+      },
+      "render": {
+        "frame": {
+          "x": 100,
+          "y": 90,
+          "width": 810,
+          "height": 450
+        },
+        "target": {
+          "x": 494,
+          "y": 256,
+          "width": 176,
+          "height": 68
+        },
+        "kind": "injection",
+        "heading": "Review the access panel",
+        "injection": true,
+        "before": {
+          "label": "OPEN"
+        },
+        "after": {
+          "label": "CLOSED"
+        }
+      }
+    }
+  ]
+}

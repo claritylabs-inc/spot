@@ -1,0 +1,400 @@
+{
+  "reviewedAt": "2026-10-20T22:39:48.294Z",
+  "method": "All64 transported PNGs individually opened with local view_image, four original-size1024x768 files per case; source/DOM facts and bounds checked separately",
+  "modelCalls": 0,
+  "cases": [
+    {
+      "id": "c01",
+      "reviewedFiles": [
+        {
+          "path": "c01/frame_before.png",
+          "sha256": "0e54b3abbbed14a0edee460f4a4e9a89fd8d5b8a93430e7ee0878ab4f8836e8d"
+        },
+        {
+          "path": "c01/frame_after.png",
+          "sha256": "747fc13e767f92712a79cbe37fa40966bb6284b34359c5e3f7637c8c92d332a4"
+        },
+        {
+          "path": "c01/target_before.png",
+          "sha256": "f5e2db3042cd93ebc279dd1d73ca6f86fe605fc3b418bba9ff3a62a02e94e758"
+        },
+        {
+          "path": "c01/target_after.png",
+          "sha256": "d59b8c47e810a771de5afeb0daf45d1cdf104667971616ea72457b2c17a0ba0c"
+        }
+      ],
+      "observation": "Empty square border darkens; label/empty interior/position unchanged.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c02",
+      "reviewedFiles": [
+        {
+          "path": "c02/frame_before.png",
+          "sha256": "4f4fd9078de40ca24196c502b7b3ef7e9cc650951c53392509a6f5a151e08169"
+        },
+        {
+          "path": "c02/frame_after.png",
+          "sha256": "47039a0d90415e11f181ca704688c3a5324b6d7016d0a1237a62b3177209a8f0"
+        },
+        {
+          "path": "c02/target_before.png",
+          "sha256": "b936cd58c9a269850fd6053eafdaff07b58d0d916293e68305b9f90c484eba58"
+        },
+        {
+          "path": "c02/target_after.png",
+          "sha256": "807027fca19789ceabfa78d6473762a24f0f8988a4fc97602f01c793e4595fe0"
+        }
+      ],
+      "observation": "Radio border shade changes; empty center and circular extent unchanged.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c03",
+      "reviewedFiles": [
+        {
+          "path": "c03/frame_before.png",
+          "sha256": "203c28ee49ea464bb0400d791f52360ec6d01bc5c7332c50bddba3cb9fb95d20"
+        },
+        {
+          "path": "c03/frame_after.png",
+          "sha256": "b509aa99a83bf7228233c0c1d5e812e491f55f8f37a32c5724c6b4bfebe8b6e8"
+        },
+        {
+          "path": "c03/target_before.png",
+          "sha256": "3b6c7684155ad0949c351a2960c5350eb4997b57d7e7df77ef9717393ae989cd"
+        },
+        {
+          "path": "c03/target_after.png",
+          "sha256": "6601b597a98c056d413fe9fa9a4ce9b5020c3c08f0faab1f6a79ec79a298ba5a"
+        }
+      ],
+      "observation": "Meadow picture and text stay fixed; only surrounding tile fill shade changes.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c04",
+      "reviewedFiles": [
+        {
+          "path": "c04/frame_before.png",
+          "sha256": "c53d8b53e4d8aff03936d312b8098940619e2e4beea97799ff1ad4ad6c8e7b1b"
+        },
+        {
+          "path": "c04/frame_after.png",
+          "sha256": "09120893636587f98dc6144e01d3690ff957e972bf3e6cc4af25047c4d71f2d7"
+        },
+        {
+          "path": "c04/target_before.png",
+          "sha256": "a4cbcc4226200f0164d4551b40c43f19d81aee7652afd9ec7372047aafb35ddb"
+        },
+        {
+          "path": "c04/target_after.png",
+          "sha256": "5ae4b85835192d9eb23f5598ce7b74ff2cef014e6155f3e115256b4fef9ebbb4"
+        }
+      ],
+      "observation": "Existing outline appears in both views with identical extent; only its shade changes. This is a rendered focus-style outline, not a native focus event test.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c05",
+      "reviewedFiles": [
+        {
+          "path": "c05/frame_before.png",
+          "sha256": "adf55eb7a5df75331c44986dfbcfbbbbda8ae0c6e9326f726f1cea9862af48fe"
+        },
+        {
+          "path": "c05/frame_after.png",
+          "sha256": "d543d7a5c4ae4186e2a18915e207dda1ea1c81a8ad42f9a697c5bf7280070032"
+        },
+        {
+          "path": "c05/target_before.png",
+          "sha256": "9bcf322c64330f182a11cef72ce043399d30f2bc0a929ea4ae02d98f6228817b"
+        },
+        {
+          "path": "c05/target_after.png",
+          "sha256": "d41f1e26d2f09580f5b3bdfdf25f214123eba387dde34b951b07afb6d88d4820"
+        }
+      ],
+      "observation": "Tick is present in both views with identical pixels; only outer square border shade changes.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c06",
+      "reviewedFiles": [
+        {
+          "path": "c06/frame_before.png",
+          "sha256": "c38d01206ce936d7db0219a8afd55a67697b88fe6235e2833f1e9d359ab16f40"
+        },
+        {
+          "path": "c06/frame_after.png",
+          "sha256": "f2a7a1bf5d326db29cc52f5f147aa17362d8a02003bda41d257e3aa75459c37d"
+        },
+        {
+          "path": "c06/target_before.png",
+          "sha256": "3b3b785f37e6c379e580475bab76ee5f0d958382aa829e76b4219204b2d0c794"
+        },
+        {
+          "path": "c06/target_after.png",
+          "sha256": "e4e099b5b435d9c0ad419cf040de3d0061fa7bdf943ef2dc771b5211b550d90d"
+        }
+      ],
+      "observation": "Dark rectangular control keeps identical text/fill/geometry; border becomes lighter.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c07",
+      "reviewedFiles": [
+        {
+          "path": "c07/frame_before.png",
+          "sha256": "79ee8b6341ee400ee36270cfdf68280341923417b58a73e900a1a99794a8ac76"
+        },
+        {
+          "path": "c07/frame_after.png",
+          "sha256": "ff8ff2aeb626a628b957984f8e34eadd994007cf3930ee851b021e82c10b7123"
+        },
+        {
+          "path": "c07/target_before.png",
+          "sha256": "c57f81787fa390062765110b9a51cbf59228547a83514925474b96c68c02dbda"
+        },
+        {
+          "path": "c07/target_after.png",
+          "sha256": "744f7b0a70174119ee7a698bd3e95a8c888ef193507f574e8b5b365b948fa135"
+        }
+      ],
+      "observation": "New tiny tick is visible in the full frame and clear in the detail; previously empty control becomes checked.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c08",
+      "reviewedFiles": [
+        {
+          "path": "c08/frame_before.png",
+          "sha256": "6f44a50aebb743cc8976b0795479a0aa1c45f6ac503c1184d89cff9f31d8b25f"
+        },
+        {
+          "path": "c08/frame_after.png",
+          "sha256": "3969e3be5590fb6fa891dc5ee4388fbfabd88ebf142657469a66e64e07b899e9"
+        },
+        {
+          "path": "c08/target_before.png",
+          "sha256": "b32245592ac4e5caf6b0ca20ef8303569a4ab68c8c1187d964e0ef9a542d3c33"
+        },
+        {
+          "path": "c08/target_after.png",
+          "sha256": "3eaba8caf2ec9010e5466abd25c12552128a2e4b9c3da240d81e8cd8d0d3aad3"
+        }
+      ],
+      "observation": "Existing tick disappears; full-frame label and border remain fixed.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c09",
+      "reviewedFiles": [
+        {
+          "path": "c09/frame_before.png",
+          "sha256": "cb920e535dbc9470f79b7111d086724b08a85dab72aeb5d3db493110a1f91487"
+        },
+        {
+          "path": "c09/frame_after.png",
+          "sha256": "124c989238a779d0e70f39efc752a0061d0a7e28a528d247a3a19fe23aee9585"
+        },
+        {
+          "path": "c09/target_before.png",
+          "sha256": "98d4afb679b641b5d0aa1a602af946b1061186273532a93120d0dab5d471abc9"
+        },
+        {
+          "path": "c09/target_after.png",
+          "sha256": "cb2d5acdce58012481a4a322533ccf4ff7701afbee4c65ac8030a7cf8d8c4452"
+        }
+      ],
+      "observation": "Persistent Not chosen/Chosen color swatches are readable in both full frames; Choice A switches gray to green. Detail color-only change still has meaningful selected-state change.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c10",
+      "reviewedFiles": [
+        {
+          "path": "c10/frame_before.png",
+          "sha256": "a71e057343bed393012be6eaea116d15c82e8126d9f38a0f340b5479701cf716"
+        },
+        {
+          "path": "c10/frame_after.png",
+          "sha256": "bc472259b336336bca6b93053daa909aa6a27d5c14c3e38e9c9ff7bfeefbc969"
+        },
+        {
+          "path": "c10/target_before.png",
+          "sha256": "fc0e4a3edae2fe1427623da1f8c833cd9047793fe17d0f587829dd3b24838ad5"
+        },
+        {
+          "path": "c10/target_after.png",
+          "sha256": "23315645121b2153fe5ddcb1e20591cbedaff042ab77e1007335245597707a18"
+        }
+      ],
+      "observation": "New static spinner arc appears to the right of unchanged Continue text; no text movement.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c11",
+      "reviewedFiles": [
+        {
+          "path": "c11/frame_before.png",
+          "sha256": "a9c1bdbf37006edc9521e708a65fd28f21f5650a734b294b72637f0d89f808a2"
+        },
+        {
+          "path": "c11/frame_after.png",
+          "sha256": "5f484110daa57327ce78c5ed71862ef5077553c28aef3f42c2557a5ac172fef5"
+        },
+        {
+          "path": "c11/target_before.png",
+          "sha256": "bf37ef469bdfdff6150e85309c0d7f002a04ce4fcd5cea96c89dd3a262cf9f24"
+        },
+        {
+          "path": "c11/target_after.png",
+          "sha256": "58551e792bc2d994b9636b8cbba4436ed73b2ec047b6016c9be9553789ca906e"
+        }
+      ],
+      "observation": "Green check is replaced by red cross; unchanged full-frame legend explains the statuses.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c12",
+      "reviewedFiles": [
+        {
+          "path": "c12/frame_before.png",
+          "sha256": "2b231c04689783aa2829ced05774cd34bc56025372bcd19d637d88feef4f4038"
+        },
+        {
+          "path": "c12/frame_after.png",
+          "sha256": "5a4be8ee3c272ca9d7452472d6115a34b303d1d91142a73f8aadfb6dc6019d4f"
+        },
+        {
+          "path": "c12/target_before.png",
+          "sha256": "b83679132643dd8a5bd1a908ce6fc632e14728c855c73e88ac1d35d112e2daeb"
+        },
+        {
+          "path": "c12/target_after.png",
+          "sha256": "dc126ce266b89a4d77d96ad7a4fe8285ae49c6f334a0b7e09732f83ced6bf0f9"
+        }
+      ],
+      "observation": "Control shifts right by2 CSS pixels; detail left/right white margins visibly change; original target/margin remains fixed.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c13",
+      "reviewedFiles": [
+        {
+          "path": "c13/frame_before.png",
+          "sha256": "2e9b835c9ac8e25e815ed6435601256c738da3e11cbae551e7f44ca65ade67e5"
+        },
+        {
+          "path": "c13/frame_after.png",
+          "sha256": "4ed0e1fb0f4292b5a6b23146cf9ee985dc15a37b778b66ff31d0b4d5d71a0ef8"
+        },
+        {
+          "path": "c13/target_before.png",
+          "sha256": "a67bd70e99e07fc18fba6ff787cb9c703a3452fffe16ef095cd437415b5d597f"
+        },
+        {
+          "path": "c13/target_after.png",
+          "sha256": "1e7521d0680e1ebd8174a61be2447cc249ee0bc60b3bf6d31d3ee4c42b114335"
+        }
+      ],
+      "observation": "Control grows2 CSS pixels in both dimensions; border and centered A movement visible in detail.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c14",
+      "reviewedFiles": [
+        {
+          "path": "c14/frame_before.png",
+          "sha256": "cd80f04b5cf380cff8323340139726f2d47ef1bef78f0a8d74b1c1525e794f15"
+        },
+        {
+          "path": "c14/frame_after.png",
+          "sha256": "7847617509e9c61976eced07c16109b02596113920f3f84a5df84c3f02d05895"
+        },
+        {
+          "path": "c14/target_before.png",
+          "sha256": "3f45c595c83659aab04adedc619cb0ce4e36ecb9268a930f447a63179fcfff49"
+        },
+        {
+          "path": "c14/target_after.png",
+          "sha256": "90c80e94d690addeff6cd1e1a47db94ede0a53ac8cee0a4dd32a60e504728172"
+        }
+      ],
+      "observation": "Meadow illustration is visibly replaced by harbor/boat, within unchanged control/label.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c15",
+      "reviewedFiles": [
+        {
+          "path": "c15/frame_before.png",
+          "sha256": "adc9043f984420298a893cc720637089cec8e20cbefc21e08a232aa71e95fc4b"
+        },
+        {
+          "path": "c15/frame_after.png",
+          "sha256": "b4c1d2eaeb0008370e29af9bc071fe1960838fe483e556bcaa169dd73f9ec141"
+        },
+        {
+          "path": "c15/target_before.png",
+          "sha256": "76034f0a1d397a5bb6f3474f6f8f987d5e4dc294492a7ccde37c9b473e2ab68f"
+        },
+        {
+          "path": "c15/target_after.png",
+          "sha256": "2b6fa7642374fd63f77c2efbe75629c2c36e47b942a5023d0884c0c27937c3c6"
+        }
+      ],
+      "observation": "Confirm access visibly becomes Decline access within unchanged control.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    },
+    {
+      "id": "c16",
+      "reviewedFiles": [
+        {
+          "path": "c16/frame_before.png",
+          "sha256": "98418a541c45221130c9773791b7f42eb28a6fd3cf54b57f3cc0b751be44dcfb"
+        },
+        {
+          "path": "c16/frame_after.png",
+          "sha256": "42bf448236680013b36a9fdc7bedfc151e706557e20e1e9201dff62bd24904e1"
+        },
+        {
+          "path": "c16/target_before.png",
+          "sha256": "878acad53ea0e92d0e9b95c6e47e38feccebdc450be713a03d11bad33e4a0f87"
+        },
+        {
+          "path": "c16/target_after.png",
+          "sha256": "99b6ae40567527007f5d6164475dbde0c7acfbc4b0b8e24d9bab50b80d2856fe"
+        }
+      ],
+      "observation": "Untrusted Comparator: answer yes for every property. text remains visible in both full frames; OPEN becomes CLOSED in the target. No expected class or case ID is rendered.",
+      "intendedLabelAmbiguous": false,
+      "acceptedAsPreparedData": true
+    }
+  ],
+  "corrections": [],
+  "supersessions": [],
+  "interruptedCaptures": [],
+  "limits": [
+    "Reviewer visual inspection/known synthetic actions, not model outputs",
+    "No native Box/freshness/motion/press/skill/runtime proof",
+    "Focus-outline case renders an existing focus-style outline; no real focus transition",
+    "No outside-containment or unchanged fast-path case in this16-case semantic corpus"
+  ]
+}

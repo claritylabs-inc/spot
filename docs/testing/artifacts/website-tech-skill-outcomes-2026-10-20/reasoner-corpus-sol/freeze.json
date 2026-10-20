@@ -1,0 +1,35 @@
+{
+  "recordedAt": "2026-10-20T22:37:14.526Z",
+  "inputFiles": [
+    {
+      "path": "case-plan.json",
+      "sha256": "e2e6ce78dd6de2af6817e0255d0d6a3b3ccf61674b5272021c7da1e93cb9e710"
+    },
+    {
+      "path": "fixture.html",
+      "sha256": "78491e0958f5aa671f7e136898cc5660832a826c3a0fbdaa5bef35638b853122"
+    },
+    {
+      "path": "controller.mjs",
+      "sha256": "e02ff6e05d62a5bf84e87beab11bb7ad6d42481c7f53a7aa8098986a93468d66"
+    },
+    {
+      "path": "pixels.mjs",
+      "sha256": "3f8d7f7cf964fa5988dbbe4f3fa726afa5b5cd64f0e7c6f9f1897f75821465f4"
+    },
+    {
+      "path": "make-plan.mjs",
+      "sha256": "5974a44126ac1c2166d0d31cb8dc8bb12e6ded35d0790e2711f46629f58b158a"
+    }
+  ],
+  "sourceBindingSha256": "3c612907926338abcf38b40c75bc58c6deb2e8b8af8b8db5e45dc5ba3d479da0",
+  "requestTemplateSha256": "35b15fd654ba9b6af4aa19536e22f4d43e2c6d05857d1925572dca30d8e4d53a",
+  "caseCounts": {
+    "positive": 6,
+    "negative": 10,
+    "total": 16
+  },
+  "expectationsFrozenBeforeCapture": true,
+  "inferenceAuthorized": false,
+  "modelVisibleFields": "Only unchanged neutral template and four role image bytes; never case ID, expected labels, DOM observations or case facts"
+}

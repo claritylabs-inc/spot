@@ -1,0 +1,63 @@
+{
+  "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+  "sourcePath": "packages/server/src/browse/primitives.ts",
+  "sourceSha256": "005e60212307cc2d5192d46dab4b63e73cc25db6ee1d97b8c6e26fb34fee7a50",
+  "closureSha256": "0087d228841341f7de71e172c4d1424492a111c55124d0416dee995b86a276eb",
+  "questionsSha256": "6cdfefcdeead79adbf28879428d6662ed012378e12718d507412cb990f54973b",
+  "definitions": [
+    {
+      "id": "same_instruction",
+      "question": "Does the challenge in `after` show the same written instruction or checkbox label as in `before`?",
+      "before": "frame_before",
+      "after": "frame_after"
+    },
+    {
+      "id": "same_images",
+      "question": "Do `before` and `after` depict the same pictures in the same positions?",
+      "scope": "Pictures means depicted photographs, illustrations, logos and puzzle-tile content, rather than the screenshot files or a control's border. Added, removed, moved or replaced picture content is a difference. If both views contain no pictures, their picture content is the same.",
+      "before": "frame_before",
+      "after": "frame_after"
+    },
+    {
+      "id": "same_selection",
+      "question": "Are exactly the same tiles, boxes or checkboxes selected or checked in `after` as in `before`?",
+      "scope": "A checkbox, tile or option that is checked or selected in one and not the other is a difference. If neither contains anything selectable that is selected, the unchanged state counts as yes.",
+      "before": "frame_before",
+      "after": "frame_after"
+    },
+    {
+      "id": "same_control",
+      "question": "Do `before` and `after` show the same control, with the same shape, size and position?",
+      "before": "target_before",
+      "after": "target_after"
+    },
+    {
+      "id": "no_new_mark",
+      "question": "Do `before` and `after` contain exactly the same marks?",
+      "scope": "Marks include check marks, ticks, spinners, symbols, text and pictures. Any added, removed or replaced mark is a difference. Two empty controls have the same marks. A change of border color alone does not add or remove a mark.",
+      "before": "target_before",
+      "after": "target_after"
+    },
+    {
+      "id": "style_only",
+      "question": "Is every difference between `before` and `after` only a change of color, shade, border or outline?",
+      "scope": "Moved, resized, added, removed or replaced shapes, marks or text are not a change of color, shade, border or outline.",
+      "before": "target_before",
+      "after": "target_after"
+    }
+  ],
+  "acceptedProbeCommit": "889daaa761d3b55dd3a147fc97c4c7659eca8e3b",
+  "acceptedProbeDeclarationSha256": "42f997390e3b0b43dc160fd1108fbd797ede2b1661ec053af2fc7ebd3665f9ce",
+  "acceptedTemplateSha256": "066b3bdd5b3c225ae0e463b0f83739b5457d1660f4958b07131304ca84cb558b",
+  "templateSha256": "2d921e9b19d8894a8a36d0bb42f479b42b97359931d50a9412088db54653bc74",
+  "constants": {
+    "threshold": 0.9,
+    "margin": 4,
+    "maxScale": 8,
+    "viewport": {
+      "width": 1024,
+      "height": 768
+    }
+  },
+  "execution": "Source binding / pure pixel transform only; candidate closure, BrowserTargets, Box and native primitives NOT executed"
+}

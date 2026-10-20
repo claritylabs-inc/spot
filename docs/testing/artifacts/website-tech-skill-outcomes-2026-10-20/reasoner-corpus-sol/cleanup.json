@@ -1,0 +1,35 @@
+{
+  "recordedAt": "2026-10-20T22:40:58.332Z",
+  "browserClosed": true,
+  "serverClosed": true,
+  "chromeProfileRemoved": true,
+  "xvfbStopped": true,
+  "ports": [
+    {
+      "port": 46167,
+      "closed": true
+    },
+    {
+      "port": 8080,
+      "closed": true
+    },
+    {
+      "port": 8083,
+      "closed": true
+    },
+    {
+      "port": 8084,
+      "closed": true
+    },
+    {
+      "port": 9222,
+      "closed": true
+    }
+  ],
+  "sourceCheckoutTrackedClean": true,
+  "backendAndInboxUntouched": true,
+  "modelCalls": 0,
+  "cleanupMutationRequired": false,
+  "credentialValuesReadOrChanged": false,
+  "environmentSettingsChanged": false
+}
