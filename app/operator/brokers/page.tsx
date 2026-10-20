@@ -66,19 +66,20 @@ export default function OperatorBrokersPage() {
       <div className="@container/brokers space-y-4">
         <BulkDeleteBar
           type="broker"
-          selectedIds={selection.selectedIds}
+          orgIds={selection.selectedIds}
+          className="justify-end"
           onClear={selection.clear}
         />
         <OperationalPanel data-operator-inline-fields>
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-10 pl-4 pr-0">
+                <TableHead className="w-11 pl-4 pr-0">
                   <Checkbox
                     aria-label="Select all providers"
                     checked={selection.allSelected}
                     indeterminate={selection.someSelected}
-                    disabled={!rows?.length}
+                    disabled={selection.visibleCount === 0}
                     onCheckedChange={selection.toggleAll}
                   />
                 </TableHead>
@@ -117,7 +118,7 @@ export default function OperatorBrokersPage() {
                         : undefined
                     }
                   >
-                    <TableCell className="w-10 pl-4 pr-0">
+                    <TableCell className="pl-4 pr-0">
                       <Checkbox
                         aria-label={`Select ${row.broker.name}`}
                         checked={selection.isSelected(row.broker._id)}

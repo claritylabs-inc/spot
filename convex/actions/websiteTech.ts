@@ -13,10 +13,11 @@ import { decideComposite, type CompositeGroup } from "../lib/jevComposite";
 import { jevProceedThreshold } from "../lib/jevThreshold";
 import { durableRouterClientOptionsWithTrace } from "../lib/routerJobClient";
 import { readWebsitePage, resolvePublicAddress } from "../lib/websiteBrand";
-import type {
-  WebsiteTechDisclosure,
-  WebsiteTechInference,
-  WebsiteTechSignal,
+import {
+  regionCountry,
+  type WebsiteTechDisclosure,
+  type WebsiteTechInference,
+  type WebsiteTechSignal,
 } from "../lib/websiteTech";
 import {
   detectWebsiteTech,
@@ -114,6 +115,51 @@ async function browseCompanySite(ctx: ActionCtx, domain: string, trace: Trace) {
       taskKind: "website_tech_browse",
     }),
   );
+}
+
+/** Canonical country name from Mapbox's country list, or null when it is not a country. */
+async function mapboxCountry(query: string) {
+  const token =
+    process.env.MAPBOX_ACCESS_TOKEN?.trim() ||
+    process.env.NEXT_PUBLIC_MAPBOX_TOKEN?.trim();
+  if (!token) return null;
+  const params = new URLSearchParams({
+    access_token: token,
+    q: query,
+    types: "country",
+    language: "en",
+    limit: "1",
+  });
+  try {
+    const response = await fetch(
+      `https://api.mapbox.com/search/geocode/v6/forward?${params}`,
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as {
+      features?: Array<{ properties?: { name?: string } }>;
+    };
+    return data.features?.[0]?.properties?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Maps each hosting region and stated data location to a Mapbox country name. */
+async function resolveCountries(
+  signals: WebsiteTechSignal[],
+  disclosures: WebsiteTechDisclosure[],
+) {
+  const queries = new Set<string>();
+  for (const signal of signals) {
+    const country = regionCountry(signal.region);
+    if (country) queries.add(country);
+  }
+  for (const item of disclosures)
+    if (item.category === "data_region") queries.add(item.name);
+  const resolved = await Promise.all(
+    [...queries].map(async (query) => [query, await mapboxCountry(query)] as const),
+  );
+  return new Map(resolved.flatMap(([query, name]) => (name ? [[query, name]] : [])));
 }
 
 function normalizeText(value: string) {
@@ -241,7 +287,7 @@ async function verifyFindings(
 }
 
 /**
- * Composite scoring per candidate answer, over two evidence paths: the company's own page
+ * Composite scoring per candidate, over two evidence paths: the company's own page
  * statements and technical signals. A candidate's score is its stronger path.
  */
 async function inferAnswers(
@@ -249,6 +295,7 @@ async function inferAnswers(
   domain: string,
   signals: WebsiteTechSignal[],
   disclosures: WebsiteTechDisclosure[],
+  countries: Map<string, string>,
   trace: Trace,
 ): Promise<WebsiteTechInference[]> {
   const topics: Array<{
@@ -272,8 +319,10 @@ async function inferAnswers(
     {
       topic: "data_region",
       claim: (name) => `${domain} stores its customer data in ${name}`,
-      signal: (signal) =>
-        signal.region ? `${signal.region} (${signal.name})` : null,
+      signal: (signal) => {
+        const country = regionCountry(signal.region);
+        return country ? (countries.get(country) ?? country) : null;
+      },
     },
   ];
   const candidates = topics.flatMap(({ topic, claim, signal }) => {
@@ -284,7 +333,11 @@ async function inferAnswers(
       add(item.name, `Company page states: "${item.quote}"`);
     for (const item of signals) {
       const name = signal(item);
-      if (name) add(name, `Technical signal: ${item.evidence}`);
+      if (name)
+        add(
+          name,
+          `Technical signal: ${item.name} ${item.evidence}${item.region ? ` (region ${item.region})` : ""}`,
+        );
     }
     return [...byName.entries()]
       .slice(0, 8)
@@ -366,26 +419,17 @@ async function inferAnswers(
     },
     groups: Object.fromEntries(groups),
   });
-  const scored = candidates.flatMap((candidate, index) => {
-    const best = [result[`c${index}__stated`], result[`c${index}__technical`]]
-      .filter((score) => score?.verdict === "high")
-      .sort((left, right) => right.composite - left.composite)[0];
-    return best ? [{ ...candidate, score: best.composite }] : [];
-  });
-  return topics.flatMap(({ topic }) => {
-    const best = scored
-      .filter((candidate) => candidate.topic === topic)
-      .sort((left, right) => right.score - left.score)[0];
-    return best
-      ? [
-          {
-            topic,
-            answer: best.name,
-            confidence: Math.round(best.score * 100) / 100,
-          },
-        ]
-      : [];
-  });
+  // Reconciles the findings: every candidate the evidence does not rule out, strongest first.
+  return candidates
+    .flatMap(({ topic, name }, index) => {
+      const best = [result[`c${index}__stated`], result[`c${index}__technical`]]
+        .filter((score) => score && score.verdict !== "low")
+        .sort((left, right) => right!.composite - left!.composite)[0];
+      return best
+        ? [{ topic, answer: name, confidence: Math.round(best.composite * 100) / 100 }]
+        : [];
+    })
+    .sort((left, right) => right.confidence - left.confidence);
 }
 
 export const run = internalAction({
@@ -408,33 +452,48 @@ export const run = internalAction({
       errors.push(message(infrastructure.reason));
     if (browse.status === "rejected") errors.push(message(browse.reason));
     const browsed = browse.status === "fulfilled" ? browse.value : null;
-    const signals =
-      infrastructure.status === "fulfilled" || browsed
-        ? detectWebsiteTech({
-            html: "",
-            headers: {},
-            cnames: [],
-            ptr: [],
-            mx: [],
-            txt: [],
-            ns: [],
-            ...(infrastructure.status === "fulfilled"
-              ? infrastructure.value
-              : {}),
-            requestHosts: browsed?.networkHosts ?? [],
-          })
+    // The two scans are additive: each contributes signals and a match from either one counts.
+    const empty = { html: "", headers: {}, cnames: [], ptr: [], mx: [], txt: [], ns: [] };
+    const fromInfrastructure =
+      infrastructure.status === "fulfilled"
+        ? detectWebsiteTech({ ...empty, ...infrastructure.value, requestHosts: [] })
         : [];
+    const fromBrowser = browsed
+      ? detectWebsiteTech({
+          ...empty,
+          requestHosts: [
+            ...browsed.networkHosts,
+            ...browsed.pages.map((page) => page.url),
+          ],
+        })
+      : [];
+    const signals = [...fromInfrastructure];
+    for (const signal of fromBrowser) {
+      const existing = signals.find(
+        (item) => item.category === signal.category && item.name === signal.name,
+      );
+      if (!existing) signals.push(signal);
+      else if (!existing.region && signal.region) existing.region = signal.region;
+    }
     // Each Jev stage is optional: a failure keeps whatever earlier stages established.
     let disclosures: WebsiteTechDisclosure[] = [];
     let inferences: WebsiteTechInference[] = [];
     try {
       if (browsed)
         disclosures = await verifyFindings(ctx, args.domain, browsed, trace);
+      const countries = await resolveCountries(signals, disclosures);
+      // Stated data locations use Mapbox country names so they line up with Jev's reconciliation.
+      disclosures = disclosures.map((item) =>
+        item.category === "data_region" && countries.has(item.name)
+          ? { ...item, detail: item.detail ?? item.name, name: countries.get(item.name)! }
+          : item,
+      );
       inferences = await inferAnswers(
         ctx,
         args.domain,
         signals,
         disclosures,
+        countries,
         trace,
       );
     } catch (error) {
