@@ -1,0 +1,129 @@
+{
+  "candidate": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "changes": [
+    {
+      "file": "local-backend.mjs",
+      "originalSha256": "52229a09ce2340393252253f6c4c9fc18e34803efb9f8d170d4c8776d61da029",
+      "adaptedSha256": "5111013fbfe0f1e4e59b2479adc6652bb9b9d0a731b88b7b494156df881533b3",
+      "changes": [
+        "Exact cc8bb050 guard",
+        "Unique runtime output path",
+        "Candidate-root Vite/helper imports where applicable",
+        "Access CLI uses explicit guarded loopback helper"
+      ]
+    },
+    {
+      "file": "fast-local.mjs",
+      "originalSha256": "45f937e94ba7da808a14d257b8a7187e9c15a8bd606709a95040c5d79dd9738f",
+      "adaptedSha256": "6ecbc48ca84f77d51b4872066fce39f5a21f78085f75ac674713d20c72f3aca4",
+      "changes": [
+        "Exact cc8bb050 guard",
+        "Unique runtime output path",
+        "Candidate-root Vite/helper imports where applicable",
+        "Access CLI uses explicit guarded loopback helper",
+        "Same SPOT_ENV/router-absence checks in parallel; bounded paginated reads for complete local cleanup"
+      ]
+    },
+    {
+      "file": "fixtures.mjs",
+      "originalSha256": "fab6d882d423da1f0406d1e9d01c2fe3e1950c6031ccb2e70fac8dca594c4af2",
+      "adaptedSha256": "c042f58b2e18a8525d5be7cc8d23b4fb4d530a66bfa2232903978a6da6aa88de",
+      "changes": [
+        "Exact cc8bb050 guard",
+        "Unique runtime output path",
+        "Candidate-root Vite/helper imports where applicable",
+        "Access CLI uses explicit guarded loopback helper",
+        "Existing claim/finish setup retries bounded20 instead of5 after documented real scheduler contention; no acceptance predicate change"
+      ]
+    },
+    {
+      "file": "login.mjs",
+      "originalSha256": "00ce7932b289e51c13d2dcc13e778dbcd52a07bb3e174e79f26f09f2272711da",
+      "adaptedSha256": "f67ba8c588cda17367e3617f6423e33138d55c983e808f4f6f3d08fb14a897a7",
+      "changes": [
+        "Exact cc8bb050 guard",
+        "Unique runtime output path",
+        "Candidate-root Vite/helper imports where applicable",
+        "Access CLI uses explicit guarded loopback helper"
+      ]
+    },
+    {
+      "file": "prepare-local.mjs",
+      "originalSha256": "6b6d833b2982a3c1f031b76d3f5124921f9a7cbb949503ae61266f4ee864f43e",
+      "adaptedSha256": "02e11b12807f9d63128fc24f76715ff8adb950e86083ea89bea510c51fcf919d",
+      "changes": [
+        "Exact cc8bb050 guard",
+        "Unique runtime output path",
+        "Candidate-root Vite/helper imports where applicable",
+        "Access CLI uses explicit guarded loopback helper"
+      ]
+    },
+    {
+      "file": "boundary.mjs",
+      "originalSha256": "30592eb6370e7d5c52fa70e28ae0c05b8c1cbaa2b17f56f4cc54f8ca802931a5",
+      "adaptedSha256": "a43343267771bd69eec623ecd26cee39f2a0333cf21d8edc5a2df526b0460075",
+      "changes": [
+        "Exact cc8bb050 guard",
+        "Unique runtime output path",
+        "Candidate-root Vite/helper imports where applicable",
+        "Access CLI uses explicit guarded loopback helper"
+      ]
+    },
+    {
+      "file": "access-qa.mjs",
+      "originalSha256": "9460ce3c58fba7108cf84ad51c182609cc88958cb7c69067cda555aea0d86dcd",
+      "adaptedSha256": "326ab25fae54d5fa01cc73e2f317bc4b7561d5e80830a5696fc10cdee20c62cb",
+      "changes": [
+        "Exact cc8bb050 guard",
+        "Unique runtime output path",
+        "Candidate-root Vite/helper imports where applicable",
+        "Access CLI uses explicit guarded loopback helper",
+        "Removed duplicate JSON.parse for guarded helper result; authorized current-profile read replaces fresh-null assertion after setup proceeded"
+      ]
+    },
+    {
+      "file": "app-qa.mjs",
+      "originalSha256": "9ca092fd65997749c9c61f6b54017d39380e15bf526507b1cbf157a1d0eaa9ca",
+      "adaptedSha256": "f4e3fd0a9a3a246ce8f5ba4308c19c59e7c041b03461dac29d3b193a481a9572",
+      "changes": [
+        "Exact cc8bb050 guard",
+        "Unique runtime output path",
+        "Candidate-root Vite/helper imports where applicable",
+        "Access CLI uses explicit guarded loopback helper"
+      ]
+    },
+    {
+      "file": "app-followup.mjs",
+      "originalSha256": "dfce3f16168ffd842e1ac5572f65f0577d2c6496e12a2db9c987769c3c76fc41",
+      "adaptedSha256": "a1121a97f121a8484ba4ab30b67ac2b1c64515bca610799ef3150741aa1a19ec",
+      "changes": [
+        "Exact cc8bb050 guard",
+        "Unique runtime output path",
+        "Candidate-root Vite/helper imports where applicable",
+        "Access CLI uses explicit guarded loopback helper",
+        "Structural HTTP/websocket observer; no frame bodies, headers, query strings or args"
+      ]
+    },
+    {
+      "file": "cleanup-local.mjs",
+      "originalSha256": "f9d37187aca160952b068c60e9a8a5e9a4d525d52d33ff3ad981cd1064f074fa",
+      "adaptedSha256": "386c622c1bce6e3ffde51617e56e3a501ad59c5153f62ef77544a6782a4b504f",
+      "changes": [
+        "Exact cc8bb050 guard",
+        "Unique runtime output path",
+        "Candidate-root Vite/helper imports where applicable",
+        "Access CLI uses explicit guarded loopback helper"
+      ]
+    },
+    {
+      "file": "check-request.mjs",
+      "originalPath": "integration-2c1b6d4f/check-request.mjs",
+      "originalSha256": "2043513960f85739ae63bc8bec683ce9b33580667992677c3c561acabc336e0b",
+      "adaptedSha256": "1856ff15221d203f3fea2fa0e0c8bae4651e9223eef81fbf466d0d088d491d95",
+      "changes": [
+        "Exact cc8bb050 guard",
+        "Unique runtime output path; request checks otherwise unchanged"
+      ]
+    }
+  ]
+}

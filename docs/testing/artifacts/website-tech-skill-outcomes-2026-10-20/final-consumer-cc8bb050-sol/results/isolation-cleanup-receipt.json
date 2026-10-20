@@ -1,0 +1,26 @@
+{
+  "spotEnv": "local",
+  "backend": "http://127.0.0.1:8083",
+  "ports": {
+    "cloud": 8083,
+    "site": 8084
+  },
+  "routerUrlPresent": false,
+  "routerSecretPresent": false,
+  "originalBothAbsentStillAbsent": true,
+  "routerJobs": 0,
+  "routerJobsByStatus": {},
+  "sharedRouterJobIds": 0,
+  "nonterminalJobs": 0,
+  "profiles": [
+    {
+      "domain": "cove.dev",
+      "status": "completed"
+    },
+    {
+      "domain": "skill-qa.example",
+      "status": "failed"
+    }
+  ],
+  "scope": "Fresh isolated database only; no external router execution or shared settings change"
+}

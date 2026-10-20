@@ -1,0 +1,31 @@
+{
+  "candidate": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "scope": "Fresh native-local actual consumer UI/storage/access/executor replay, offline actual source/serializer and strict pinned schema",
+  "actor": "Ordinary seeded operator via fresh local OTP; anonymous and seeded client denial",
+  "backend": "Fresh isolated native-local 8083/8084; SPOT_ENV=local; EMAIL_DELIVERY_MODE=capture; no router URL/secret",
+  "groups": {
+    "app": 15,
+    "boundary": 8,
+    "access": 5,
+    "request": [
+      "identity/inbox",
+      "identity/no-inbox",
+      "identity-unavailable",
+      "no-config/old-response",
+      "explicit-empty-config",
+      "ten vocabulary/nine selection"
+    ]
+  },
+  "ui": [
+    "known/unknown labels including constructor/toString",
+    "four statuses",
+    "empty/failed/legacy browse distinctions",
+    "zero/singular/plural steps",
+    "40 row limit",
+    "390px unbroken text and separate shell overflow",
+    "Rescan live pending-to-terminal",
+    "keyboard and reload"
+  ],
+  "storage": "Existing claim/finish and actual operator tool executors; synthetic outcome injection labeled",
+  "cleanup": "Restore synthetic website; settle/cancel local jobs; delete auth; stop owned processes; no original backend/env mutation"
+}

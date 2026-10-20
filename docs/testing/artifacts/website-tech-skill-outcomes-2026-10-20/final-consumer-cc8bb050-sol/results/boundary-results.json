@@ -1,0 +1,38 @@
+{
+  "candidate": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "scope": "Actual imported clRouterBrowse with synthetic executeJob. skillOutcomes is actual source extracted/transpiled; no full action runtime claim.",
+  "checks": [
+    {
+      "name": "old response without skills remains compatible",
+      "status": "PASS"
+    },
+    {
+      "name": "all four statuses and zero step count accepted",
+      "status": "PASS"
+    },
+    {
+      "name": "40 outcomes accepted; 41 rejected",
+      "status": "PASS"
+    },
+    {
+      "name": "bounded fields reject name/version/summary overflow",
+      "status": "PASS"
+    },
+    {
+      "name": "bad status/type/negative/fractional steps rejected",
+      "status": "PASS"
+    },
+    {
+      "name": "actual skillOutcomes source drops extra keys",
+      "status": "PASS"
+    },
+    {
+      "name": "summary redacts inbox capability, verification URL, test email, other email and password",
+      "status": "PASS"
+    },
+    {
+      "name": "projection caps 40 rows and preserves absent skills",
+      "status": "PASS"
+    }
+  ]
+}

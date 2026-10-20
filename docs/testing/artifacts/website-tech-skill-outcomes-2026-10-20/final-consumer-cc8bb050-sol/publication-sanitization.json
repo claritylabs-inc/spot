@@ -1,0 +1,19 @@
+{
+  "rawProtocolSha256": "a8607e3f0e6fd7ed4e5f41eb24fb6b6ef4c450c26e177a6070be31ce6f8cd320",
+  "changes": [
+    {
+      "path": "/http/200 http:~1~1localhost:8080~1ingest~1array~1[public-project-id]~1config",
+      "operation": "normalize public analytics project identifier in HTTP path",
+      "originalKeySha256": "d2f324e055cf53a5c82bf80685ee9338c1eca39556066def53a44834ad93b2b5",
+      "originalUtf16Spans": [
+        [
+          39,
+          87
+        ]
+      ],
+      "replacement": "[public-project-id]"
+    }
+  ],
+  "otherRuntimeResultsCopiedExactly": true,
+  "privateAuthEnvLogsAndInboxNeverPublished": true
+}
