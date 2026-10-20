@@ -6,7 +6,6 @@ import { useRef, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { AppShell } from "@/components/app-shell";
-import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -32,7 +31,6 @@ import {
 import { useStopOperatorImpersonation } from "@/hooks/use-stop-operator-impersonation";
 import { formatDisplayDate } from "@/lib/date-format";
 import {
-  ONBOARDING_CLIENT_STATUS,
   operatorClientDisplayStatus,
   type OperatorClientRow,
 } from "./client-model";
