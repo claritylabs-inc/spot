@@ -1,0 +1,18 @@
+{
+  "candidate": "7ad8e5e05cf5a3c076a9a67b190cef0f89f11a36",
+  "scope": "single read-only provider diagnostic; no native click acceptance",
+  "imagesVisuallyReviewed": true,
+  "realProviderAttempts": 1,
+  "files": {
+    "provider-result.json": "0c13214368e69312b7056828591da00d2e88ba11029634d9b9cf44bd90ceda05",
+    "source-extraction.json": "955c37e1475a9f43d6f6d9c352649887991d0f9cbd41fa522f21a3bef77eeeb5",
+    "gate-observation-analysis.json": "5640d92bf1f922b821ab905cd2fdabd94b3307e7ad4bf5e3c60410f2a01bfb4d",
+    "padded-before.png": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215",
+    "padded-after.png": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d",
+    "original-before.png": "11f676baf297afd5985984ad19924902304ddd77c27455c69b3c52aff0ecac94",
+    "original-after.png": "17ce9f58c431c43bc6d4383c3276a255cf529fa4f7f7f23b9204412b062d9f5d",
+    "prior-turnstile-gate.json": "8937a69253e4dc37008388ae5a52ab2494f71651e244896a055062de8cef39dd",
+    "single-request.mjs": "b682f893ff53b3ffcf8d3d3d8965e7b7f1d37e5c3b727c674bbe95cce6ea84d7",
+    "cosmetic-source.mts": "54c522e6d92c6ef1804317fa840422b69ca8d45a2fcf5d98640f8802febe7205"
+  }
+}
