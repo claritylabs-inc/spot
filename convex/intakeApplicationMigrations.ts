@@ -5,7 +5,6 @@ import {
   submittedIntakeApplication,
   companyApplicationProfile,
 } from "../lib/intake-application";
-import { createIntakeClient } from "./requestIntake";
 
 const migrations = new Migrations<DataModel>(components.migrations);
 /** Additive, resumable. Original snapshots, prose, markers and links are never rewritten. */
@@ -83,40 +82,6 @@ export const releaseUntouchedIntakeFiles = migrations.define({
     await ctx.db.patch(item._id, { brokerRelease: "attached" });
     await ctx.db.patch(request._id, {
       packetRevision: (request.packetRevision ?? 0) + 1,
-    });
-  },
-});
-/** Gives first-time applicants from before clients were created at intake start a client operators can open. */
-export const linkUnsubmittedIntakeClients = migrations.define({
-  table: "procurementRequests",
-  migrateOne: async (ctx, request) => {
-    if (
-      request.deletedAt !== undefined ||
-      request.status !== "draft" ||
-      request.intakeSubmittedAt !== undefined ||
-      request.intakeSchemaVersion === undefined
-    )
-      return;
-    const client = request.clientOrgId
-      ? await ctx.db.get(request.clientOrgId)
-      : null;
-    if (client && client.deletedAt === undefined) return;
-    const userId = request.ownerUserId ?? request.createdByUserId;
-    const user = await ctx.db.get(userId);
-    if (!user || user.accountKind === "operator" || user.serviceAccountKind)
-      return;
-    const membership = await ctx.db
-      .query("orgMemberships")
-      .withIndex("user", (q) => q.eq("userId", userId))
-      .first();
-    if (membership) return;
-    await ctx.db.patch(request._id, {
-      clientOrgId: await createIntakeClient(
-        ctx,
-        userId,
-        request.intakeAnswers ?? {},
-        request._id,
-      ),
     });
   },
 });
