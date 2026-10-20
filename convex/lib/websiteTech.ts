@@ -27,7 +27,7 @@ export const websiteTechDisclosureValidator = v.object({
   quote: v.string(),
 });
 
-// Jev's best answer to each underwriting question, chosen among evidenced candidates.
+// Jev's reconciled candidates per underwriting question, each scored from the evidence found.
 export const websiteTechInferenceValidator = v.object({
   topic: v.union(
     v.literal("payment_processor"),
@@ -50,4 +50,38 @@ export function websiteTechDomain(website: string | undefined) {
     /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
   );
   return url ? new URL(url).hostname.replace(/^www\./, "") : null;
+}
+
+const AWS_REGION_COUNTRY: Record<string, string> = {
+  "eu-west-1": "Ireland",
+  "eu-west-2": "United Kingdom",
+  "eu-west-3": "France",
+  "eu-central-1": "Germany",
+  "eu-central-2": "Switzerland",
+  "eu-north-1": "Sweden",
+  "eu-south-1": "Italy",
+  "eu-south-2": "Spain",
+  "ap-northeast-1": "Japan",
+  "ap-northeast-2": "South Korea",
+  "ap-northeast-3": "Japan",
+  "ap-southeast-1": "Singapore",
+  "ap-southeast-2": "Australia",
+  "ap-southeast-3": "Indonesia",
+  "ap-south-1": "India",
+  "ap-east-1": "Hong Kong",
+  "sa-east-1": "Brazil",
+  "af-south-1": "South Africa",
+  "me-central-1": "United Arab Emirates",
+  "me-south-1": "Bahrain",
+  "il-central-1": "Israel",
+};
+
+/** Best-guess country for a cloud region such as "iad1 (AWS us-east-1)" or "eu-west-2". */
+export function regionCountry(region: string | undefined) {
+  const code = region?.match(/\b[a-z]{2}(?:-gov)?-[a-z]+-\d\b/i)?.[0].toLowerCase();
+  if (!code) return null;
+  if (AWS_REGION_COUNTRY[code]) return AWS_REGION_COUNTRY[code];
+  if (code.startsWith("us-")) return "United States";
+  if (code.startsWith("ca-")) return "Canada";
+  return null;
 }
