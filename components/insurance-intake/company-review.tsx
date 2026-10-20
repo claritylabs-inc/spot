@@ -1,4 +1,9 @@
 "use client";
+import { isFixedVehicleFollowup, vehicleUnderwritingRows } from "@/lib/intake-vehicle-underwriting";
+import { intakeApplicantQuestion, intakeLocationHeading } from "@/lib/intake-applicant-wording";
+import { intakeCatalogCoverage } from "@/lib/intake-acord-questions";
+import { bakedCoverageQuestions } from "@/lib/intake-coverage-questions";
+import { followupQuestionVisible, formatIntakeFollowupAnswer, personalizeIntakeQuestion, type IntakeFollowupAnswer } from "@/lib/intake-followups";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 
 import { createContext, useContext, type ReactNode } from "react";
@@ -17,12 +22,21 @@ import {
 import {
   coverageOption,
   coverageRequestLabel,
+  addressText,
 } from "@/lib/insurance-intake-details";
 import type {
   IntakeAddress,
   IntakeDetails,
 } from "@/lib/insurance-intake-details";
 import { typeStyle } from "@/lib/typography";
+
+export function intakeReviewFollowupRows(answers: IntakeFollowupAnswer[], businessName?: string) {
+  return answers.map(row => ({
+    label: row.section === "acord" ? intakeApplicantQuestion(row).title : personalizeIntakeQuestion(row.label, businessName),
+    value: row.prefilled ? <div className="space-y-1"><div>{formatIntakeFollowupAnswer(row)}</div><span className={`text-muted-foreground ${typeStyle("body.large")}`}>Prefilled</span></div>
+      : formatIntakeFollowupAnswer(row) || (row.skipped ? "Skipped" : "Not answered"),
+  }));
+}
 
 export function IntakeReviewRows({
   rows,
@@ -92,6 +106,7 @@ function Address({
   address?: IntakeAddress;
   fallback?: string;
 }) {
+  const compact = useContext(IntakeReviewCompact);
   const structured =
     address &&
     (address.city || address.state || address.zip || address.country);
@@ -107,7 +122,7 @@ function Address({
     : (address?.formatted || address?.street1 || fallback || "").split(/,\s*/);
   const nonempty = lines.filter((line): line is string => !!line?.trim());
   return nonempty.length ? (
-    <address className={typeStyle("body.default")}>
+    <address className={typeStyle(compact ? "body.default" : "body.root")}>
       {nonempty.map((line, index) => (
         <div key={index}>{line}</div>
       ))}
@@ -364,6 +379,20 @@ export function IntakeRequestReview({
     /^\$?[\d,]+(?:\.\d{1,2})?$/.test(value.trim())
       ? `$${Number(value.replace(/[$,]/g, "")).toLocaleString("en-US", { maximumFractionDigits: 2 })}`
       : value;
+  const questionOrder = new Map(bakedCoverageQuestions({ answers, details }).map((question, index) => [question.id, index]));
+  const coverageAnswers = (details.followups ?? []).filter(row => row.section === "acord" &&
+    !isFixedVehicleFollowup(row) && followupQuestionVisible(row, details.followups))
+    .sort((a, b) => (questionOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (questionOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+  const normalizedAddress = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  const propertyAddresses = new Set(details.coverages.flatMap(line => line.properties ?? [])
+    .map(location => normalizedAddress(addressText(location.address))));
+  const locationAnswers = (address: string) => coverageAnswers.filter(row =>
+    normalizedAddress(intakeLocationHeading(row, details)?.address ?? "") === normalizedAddress(address));
+  const otherCoverageAnswers = coverageAnswers.filter(row => {
+    const location = intakeLocationHeading(row, details);
+    return !location || !propertyAddresses.has(normalizedAddress(location.address));
+  });
+  const coverageIds = details.coverages.map(line => line.coverage);
   return (
     <div className="space-y-6">
       {(!section || section === "request") && (
@@ -393,8 +422,8 @@ export function IntakeRequestReview({
             details.coverages.map((line, index) => {
               const option = coverageOption(line.coverage);
               return (
+                <div key={index} className="space-y-3">
                 <IntakeReviewRows
-                  key={index}
                   rows={[
                     {
                       label: "Coverage Requested",
@@ -408,6 +437,12 @@ export function IntakeRequestReview({
                           ? money(line.limits[limit.key])
                           : "Not provided",
                       })),
+                    ...intakeReviewFollowupRows(otherCoverageAnswers.filter(row =>
+                      intakeCatalogCoverage(row, coverageIds) === line.coverage), answers.legalName || answers.dba),
+                    ...(line.coverage === "cyber" ? [
+                      ...(details.cyberDocuments?.privacyPolicyUrl ? [{ label: "Privacy policy", value: details.cyberDocuments.privacyPolicyUrl }] : []),
+                      ...(details.cyberDocuments?.termsUrl ? [{ label: "Terms of service", value: details.cyberDocuments.termsUrl }] : []),
+                    ] : []),
                     ...(line.additionalCoverages
                       ? [
                           {
@@ -424,22 +459,6 @@ export function IntakeRequestReview({
                           },
                         ]
                       : []),
-                    ...(line.properties || []).map((location, i) => ({
-                      label: location.name?.trim() || `Property ${i + 1}`,
-                      value: (
-                        <div className="space-y-3 pt-1">
-                          <Address address={location.address} />
-                          {location.details?.trim() && (
-                            <p
-                              className="line-clamp-2 whitespace-normal"
-                              title={location.details}
-                            >
-                              {location.details}
-                            </p>
-                          )}
-                        </div>
-                      ),
-                    })),
                     ...(line.vehicles || []).map((vehicle, i) => ({
                       label: `Vehicle ${i + 1}`,
                       value: (
@@ -459,11 +478,28 @@ export function IntakeRequestReview({
                     })),
                   ]}
                 />
+                {(line.properties ?? []).map((location, locationIndex) => (
+                  <section key={locationIndex} className="space-y-3" aria-label={location.name?.trim() || `Location ${locationIndex + 1}`}>
+                    <h3 className={typeStyle("heading.micro")}>{location.name?.trim() || `Location ${locationIndex + 1}`}</h3>
+                    <IntakeReviewRows rows={[
+                      { label: "Address", value: <Address address={location.address} /> },
+                      { label: "Activities", value: location.details },
+                      { label: "Owned or leased", value: location.ownership === "owned" ? "Owned" : location.ownership === "leased" ? "Leased" : location.ownership === "unknown" ? "I'm not sure" : undefined },
+                      { label: "Staff", value: location.staff },
+                      ...intakeReviewFollowupRows(locationAnswers(addressText(location.address)), answers.legalName || answers.dba),
+                    ]} />
+                  </section>
+                ))}
+                </div>
               );
             })
           ) : (
             <IntakeReviewRows rows={rows(["coverage", "limits"])} />
           )}
+          {otherCoverageAnswers.some(row => !intakeCatalogCoverage(row, coverageIds)) && <IntakeReviewRows rows={intakeReviewFollowupRows(otherCoverageAnswers.filter(row => !intakeCatalogCoverage(row, coverageIds)), answers.legalName || answers.dba)} />}
+          <div data-review-content className="space-y-5">
+            {vehicleUnderwritingRows(details).map(group=><section key={group.title} className="space-y-3"><h2 className={typeStyle("heading.item")}>{group.title}</h2><IntakeReviewRows rows={group.rows}/></section>)}
+          </div>
           {(details.limitsNote ||
             details.additionalNote ||
             details.scopeNote ||

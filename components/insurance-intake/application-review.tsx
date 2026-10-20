@@ -46,7 +46,7 @@ export function IntakeApplicationReview({
       ? [{ title: "Driver schedule", section: "drivers" as const }]
       : []),
     ...(application.details.followups?.some((row) =>
-      followupQuestionVisible(row, application.details.followups),
+      row.section === "additional" && followupQuestionVisible(row, application.details.followups),
     )
       ? [{ title: "Follow-up answers", section: "followups" as const }]
       : []),
@@ -58,8 +58,9 @@ export function IntakeApplicationReview({
       <IntakeDriverReview details={application.details} />
     ) : section === "followups" ? (
       <IntakeFollowupReview
+        details={application.details}
         businessName={application.answers.legalName || application.answers.dba}
-        answers={application.details.followups ?? []}
+        answers={(application.details.followups ?? []).filter(row => row.section === "additional")}
       />
     ) : section ? (
       <IntakeRequestReview

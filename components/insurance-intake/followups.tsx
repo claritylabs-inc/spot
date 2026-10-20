@@ -1,10 +1,22 @@
 "use client";
+import { WorkJurisdictionsInput } from "./work-jurisdictions-input";
+import { PayrollInput } from "./payroll-input";
+import { intakeApplicantQuestion } from "@/lib/intake-applicant-wording";
+import { IntakeLoadingState } from "./loading-state";
 import { RouteInput } from "@/components/ui/route-input";
-import { parseRouteValue } from "@/lib/route-input";
+import { VehicleUnitInput, type VehicleNumberField } from "./vehicle-unit-input";
+import { IntakeUnknownChoice, INTAKE_UNSURE } from "./unknown-choice";
+import { SearchableMultiSelect } from "@claritylabs-inc/ui/components/searchable-select";
+import { INDUSTRIES } from "@/lib/insurance-intake-industries";
+import { emptyRouteValue, parseRouteValue } from "@/lib/route-input";
 import { typeStyle } from "@/lib/typography";
+import { Link as LinkIcon } from "lucide-react";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
+import { DateField } from "@claritylabs-inc/ui/components/date-field";
+import { parseCalendarDateInput } from "@/lib/date-format";
+import dayjs from "dayjs";
 import {
   Field,
   FieldLabel,
@@ -21,6 +33,7 @@ import {
   InputGroup,
   InputGroupAddon,
   InputGroupText,
+  InputGroupInput,
 } from "@claritylabs-inc/ui/components/input-group";
 import { IntakeValueInput, IntakeRadioChoices } from "./details-fields";
 import {
@@ -38,8 +51,10 @@ export function IntakeFollowups({
   answers = [],
   checking = false,
   businessName,
+  industry,
   answer,
   status,
+  dateQuestionIds = [],
   onChange,
 }: {
   question?: IntakeFollowupQuestion;
@@ -47,8 +62,10 @@ export function IntakeFollowups({
   answers?: IntakeFollowupAnswer[];
   checking?: boolean;
   businessName?: string;
+  industry?: string;
   answer: string;
   status?: "pending" | "prepared" | "ready" | "failed";
+  dateQuestionIds?: string[];
   onChange: (question: IntakeFollowupQuestion, answer: string) => void;
 }) {
   if (
@@ -58,39 +75,23 @@ export function IntakeFollowups({
     (!question && checking)
   )
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="flex items-center gap-3 text-muted-foreground"
-      >
-        <Spinner
-          aria-hidden="true"
-          className="size-4 shrink-0 motion-reduce:animate-none"
-        />
-        <span>Preparing questions for your business…</span>
-      </div>
+      <IntakeLoadingState
+        compact
+        title="Checking your coverage details"
+        description="Your answers are saved. We’re preparing the remaining questions."
+      />
     );
-  if (status === "failed")
-    return (
-      <p role="status" className="text-muted-foreground">
-        We couldn’t prepare these questions. You can continue; your existing
-        answers are saved.
-      </p>
-    );
-  if (!question)
-    return (
-      <p className="text-muted-foreground">
-        No additional questions for this section. Continue when you’re ready.
-      </p>
-    );
-  const grouped = !!intakeVehicleQuestionSubject(question);
-  return (
+  if (status === "failed" || !question) return null;
+  const grouped = !question.id.startsWith("vehicle_base_") && !!intakeVehicleQuestionSubject(question);
+  const fields = (
     <FieldGroup className="gap-6">
       {(questions ?? [question]).map((item) => (
         <IntakeFollowupField
           key={item.id}
           question={item}
+          dateInput={item.kind === "date" || dateQuestionIds.includes(item.id)}
           businessName={businessName}
+          industry={industry}
           grouped={grouped}
           answer={
             questions
@@ -104,7 +105,7 @@ export function IntakeFollowups({
         <div
           role="status"
           aria-live="polite"
-          className={`flex items-center gap-2 text-muted-foreground ${typeStyle("body.default")}`}
+          className={`flex items-center gap-3 rounded-xl border bg-card p-4 text-muted-foreground ${typeStyle("body.default")}`}
         >
           <Spinner
             aria-hidden="true"
@@ -115,23 +116,36 @@ export function IntakeFollowups({
       )}
     </FieldGroup>
   );
+  return fields;
 }
 
 function IntakeFollowupField({
   question,
+  dateInput,
   businessName,
+  industry,
   grouped,
   answer,
   onChange,
 }: {
   question: IntakeFollowupQuestion;
+  dateInput: boolean;
   businessName?: string;
+  industry?: string;
   grouped: boolean;
   answer: string;
   onChange: (question: IntakeFollowupQuestion, answer: string) => void;
 }) {
   const id = `followup-${question.id}`;
-  const fullLabel = personalizeIntakeQuestion(question.label, businessName);
+  const numericVehicleField = (question.source?.endsWith(" · eo.services.largest_client_share") ? "percentage" : question.section === "acord" && /^(vehicle_base_|catalog2_auto_vehicle_)/.test(question.id)
+    ? question.id.match(/_(annual_distance|gross_vehicle_weight|seats)(?:_s[a-z0-9]+)?$/)?.[1] as VehicleNumberField | undefined : undefined) ?? (question.kind === "number" ? "number" : undefined);
+  const presentation = intakeApplicantQuestion(question, industry);
+  const clientIndustries = question.source?.endsWith(" · eo.services.client_industries");
+  const industryValues = answer === INTAKE_UNSURE ? [INTAKE_UNSURE] : answer.split(";").map(value => value.trim()).filter(Boolean);
+  const unknown = answer === INTAKE_UNSURE;
+  const unknownInput = ((!question.source?.endsWith(" · shared.operations.annual_payroll") && !question.source?.endsWith(" · wc.terms.covered_jurisdictions")) || unknown) && !clientIndustries && !numericVehicleField && !["yes_no", "dropdown"].includes(question.kind);
+  const choiceOptions = question.kind === "yes_no" ? ["Yes", "No", INTAKE_UNSURE] : [...new Set([...question.options.map(intakeFollowupOptionLabel), INTAKE_UNSURE])];
+  const fullLabel = question.section === "acord" ? presentation.title : personalizeIntakeQuestion(question.label, businessName);
   const vehicleField = question.id.replace(/^catalog2_auto_vehicle_/, "");
   const labels: Record<string, string> = {
     gross_vehicle_weight: "Gross vehicle weight rating (GVWR)",
@@ -157,65 +171,78 @@ function IntakeFollowupField({
     ["gross_vehicle_weight", "annual_distance", "radius"].includes(
       fieldKey ?? "",
     );
-  const placeholder =
+  const placeholder = question.id.startsWith("cyber_document_") ? "https://yourwebsite.com/…" : presentation.placeholder ?? (
     fieldKey === "gross_vehicle_weight"
       ? "e.g. 26,000 lb"
       : fieldKey === "annual_distance"
         ? "e.g. 40,000 miles"
         : fieldKey === "radius"
           ? "e.g. 250 miles"
-          : undefined;
+          : question.kind === "number" ? "Enter a number" : question.kind === "long_text" ? "Describe the details" : "Enter your answer");
   return (
     <div className="space-y-6">
       <Field>
         <FieldLabel
           htmlFor={question.kind === "yes_no" && !grouped ? undefined : id}
-          className={grouped ? undefined : "sr-only"}
+          className={grouped ? typeStyle("body.root") : "sr-only"}
         >
           {label}
         </FieldLabel>
-        {question.kind === "routes" ? (
+        <div className={`relative ${unknownInput && !answer.trim() ? "[&_input]:pr-40 [&_textarea]:pr-40" : ""}`}>
+        {unknownInput && unknown ? <InputGroup className="h-12" /> : question.source?.endsWith(" · wc.terms.covered_jurisdictions") ? <WorkJurisdictionsInput value={answer} onChange={value=>onChange(question,value)}/> : question.source?.endsWith(" · shared.operations.annual_payroll") ? <PayrollInput value={answer} onChange={value=>onChange(question,value)}/> : clientIndustries ? (
+          <div className="[&_button]:min-h-12"><SearchableMultiSelect ariaLabel={fullLabel}
+            options={[...new Set([...INDUSTRIES.map(industry => industry.label), ...industryValues, INTAKE_UNSURE])].map(value => ({ value, label: value }))}
+            value={industryValues} placeholder="Choose your clients’ industries" maxSelected={20}
+            onChange={values => onChange(question, values.includes(INTAKE_UNSURE) && !industryValues.includes(INTAKE_UNSURE) ? INTAKE_UNSURE : values.filter(value => value !== INTAKE_UNSURE).join("; "))} /></div>
+        ) : numericVehicleField ? (
+          <VehicleUnitInput id={id} label={label} field={numericVehicleField} value={answer} onChange={value => onChange(question, value)} />
+        ) : dateInput ? (
+          <DateField
+            id={id}
+            label={label}
+            hideLabel
+            value={parseCalendarDateInput(answer)}
+            inputValue={parseCalendarDateInput(answer) ? dayjs(parseCalendarDateInput(answer)).format("MM/DD/YYYY") : answer}
+            onInputChange={value => onChange(question, value)}
+            onChange={value => onChange(question, value)}
+          />
+        ) : question.kind === "routes" ? (
           <RouteInput
             value={
-              parseRouteValue(answer) ?? {
-                version: 1,
-                stops: [],
-                maximumDistance: "",
-              }
+              parseRouteValue(answer) ?? emptyRouteValue()
             }
-            includeMaximumDistance
             onChange={(value) =>
               onChange(
                 question,
-                value.stops.every((stop) => !stop.name.trim()) &&
-                  !value.maximumDistance.trim()
+                value.routes.every((route) => route.stops.every((stop) => !stop.name.trim())) &&
+                  !value.legacyMaximumDistance?.trim()
                   ? ""
                   : JSON.stringify(value),
               )
             }
           />
-        ) : question.kind === "yes_no" && !grouped ? (
+        ) : question.kind === "yes_no" || (question.kind === "dropdown" && choiceOptions.length < 8) ? (
           <IntakeRadioChoices
             label={label}
-            value={answer}
-            choices={["Yes", "No", "I'm not sure"]}
-            onChange={(value) => onChange(question, value)}
+            value={intakeFollowupOptionLabel(answer)}
+            choices={choiceOptions}
+            onChange={(value) => onChange(question, question.options.find(option => intakeFollowupOptionLabel(option) === value) ?? value)}
           />
-        ) : question.kind === "dropdown" || question.kind === "yes_no" ? (
+        ) : question.kind === "dropdown" ? (
           <Select
             value={answer}
             onValueChange={(value) => onChange(question, value ?? "")}
           >
-            <SelectTrigger id={id}>
+            <SelectTrigger
+              id={id}
+              className={grouped ? `h-12 ${typeStyle("body.root")}` : undefined}
+            >
               <SelectValue placeholder="Choose an answer">
                 {answer ? intakeFollowupOptionLabel(answer) : undefined}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {(question.kind === "yes_no"
-                ? ["Yes", "No", "I'm not sure"]
-                : question.options
-              ).map((option) => (
+              {choiceOptions.map((option) => (
                 <SelectItem key={option} value={option}>
                   {intakeFollowupOptionLabel(option)}
                 </SelectItem>
@@ -231,13 +258,22 @@ function IntakeFollowupField({
               id={id}
               label={label}
               value={answer}
-              placeholder="0"
+              placeholder="Enter amount"
               onValueChange={(value) => onChange(question, value)}
             />
+          </InputGroup>
+        ) : question.id.startsWith("cyber_document_") ? (
+          <InputGroup className="h-12">
+            <InputGroupAddon><LinkIcon aria-hidden="true" className="size-4" /></InputGroupAddon>
+            <InputGroupInput id={id} type="url" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+              className={typeStyle("body.root")} placeholder={placeholder} value={answer} maxLength={2000}
+              onChange={event => onChange(question, event.target.value)} />
           </InputGroup>
         ) : question.kind === "long_text" && !compactText ? (
           <Textarea
             id={id}
+            placeholder={placeholder}
+            className={grouped ? typeStyle("body.root") : undefined}
             value={answer}
             maxLength={2000}
             onChange={(event) => onChange(question, event.target.value)}
@@ -245,6 +281,7 @@ function IntakeFollowupField({
         ) : (
           <Input
             id={id}
+            className={`h-12 ${typeStyle("body.root")}`}
             type={question.kind === "number" ? "number" : "text"}
             placeholder={placeholder}
             value={answer}
@@ -252,6 +289,10 @@ function IntakeFollowupField({
             onChange={(event) => onChange(question, event.target.value)}
           />
         )}
+        {unknownInput && (!answer.trim() || unknown) && <div className={`absolute right-4 top-2 ${unknown ? "left-3" : ""}`}>
+          <IntakeUnknownChoice label={label} checked={unknown} alignTop={question.kind === "long_text" && !unknown} onChange={checked => onChange(question, checked ? INTAKE_UNSURE : "")} />
+        </div>}
+        </div>
       </Field>
     </div>
   );

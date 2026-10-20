@@ -1,4 +1,6 @@
 "use client";
+import { IntakeRadioChoices } from "./radio-choices";
+export { IntakeRadioChoices } from "./radio-choices";
 import { RemoveButton } from "@/components/ui/remove-button";
 import {
   InlineFieldCard,
@@ -8,6 +10,8 @@ import {
 } from "@/components/ui/inline-fields";
 import { X } from "lucide-react";
 import dayjs from "dayjs";
+import { IntakeVehicleUnderwritingFields } from "./vehicle-underwriting-fields";
+import { vehicleUnderwritingValues } from "@/lib/intake-vehicle-underwriting";
 import { IntakeVehicleFields } from "./vehicle-fields";
 import {
   DateField,
@@ -42,8 +46,6 @@ import {
   FieldTitle,
 } from "@claritylabs-inc/ui/components/field";
 import { NumberField } from "@base-ui/react/number-field";
-import { RadioGroup } from "@base-ui/react/radio-group";
-import { Radio } from "@base-ui/react/radio";
 import { Button } from "@claritylabs-inc/ui/components/button";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -399,7 +401,7 @@ function Choice({
       <FieldLabel htmlFor={id} className={typeStyle("body.root")}>
         {label}
       </FieldLabel>
-      {choices.length < 4 ? (
+      {choices.length < 8 ? (
         <IntakeRadioChoices
           label={label}
           choices={choices}
@@ -449,65 +451,6 @@ function Choice({
         </Select>
       )}
     </Field>
-  );
-}
-export function IntakeRadioChoices({
-  label,
-  choices,
-  value,
-  onChange,
-  disabled = false,
-}: {
-  label: string;
-  choices: readonly string[];
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}) {
-  const inlineFields = useContext(InlineFieldsContext);
-  if (inlineFields)
-    return (
-      <Select
-        value={value || null}
-        disabled={disabled}
-        onValueChange={(next) => {
-          if (next) onChange(String(next));
-        }}
-      >
-        <SelectTrigger aria-label={label} className="w-full">
-          <SelectValue placeholder="Not provided">
-            {value || undefined}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {choices.map((choice) => (
-            <SelectItem key={choice} value={choice}>
-              {choice}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    );
-  return (
-    <RadioGroup
-      aria-label={label}
-      value={value || null}
-      onValueChange={(next) => onChange(next ?? "")}
-      disabled={disabled}
-      className="grid gap-3"
-    >
-      {choices.map((choice) => (
-        <Radio.Root
-          key={choice}
-          value={choice}
-          nativeButton
-          render={<Button variant={value === choice ? "default" : "outline"} />}
-          className={`min-h-16 w-full justify-center px-5 py-4 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground ${typeStyle("body.root")}`}
-        >
-          {choice}
-        </Radio.Root>
-      ))}
-    </RadioGroup>
   );
 }
 export function IntakeCheckboxCard({
@@ -564,9 +507,14 @@ export function IntakeCoverageSelection({
               ...current.filter((line) => line.coverage !== "unknown"),
               newCoverage(id),
             ];
+    const declined=new Set(details.declinedRequirementCoverages ?? []);
+    if(id==="unknown"){for(const line of current)if(line.coverage!=="unknown")declined.add(line.coverage);}
+    else if(current.some(line=>line.coverage===id))declined.add(id);
+    else declined.delete(id);
     onChange({
       ...details,
       coverages: next,
+      declinedRequirementCoverages:[...declined],
       coverageIndex: 0,
     });
   }
@@ -1036,7 +984,8 @@ export function IntakeLocations({
   onChange,
   disabled = false,
   defaultActivities = "",
-}: Props & { defaultActivities?: string }) {
+  identityOnly = false,
+}: Props & { defaultActivities?: string; identityOnly?: boolean }) {
   const inline = useContext(InlineFieldsContext);
   const externalActions = useContext(InlineCollectionActionsContext);
   if (inline)
@@ -1250,6 +1199,7 @@ export function IntakeLocations({
                 }
               />
             </Field>
+            {!identityOnly && <>
             <Field>
               <FieldLabel
                 htmlFor={`location-details-${index}`}
@@ -1334,6 +1284,7 @@ export function IntakeLocations({
                 }
               />
             </Field>
+            </>}
           </CardContent>
         </Card>
       ))}
@@ -1743,7 +1694,7 @@ export function IntakeAdditionalCoverages({ details, onChange }: Props) {
     </FieldGroup>
   );
 }
-export function IntakeCoverageScope({ details, onChange }: Props) {
+export function IntakeCoverageScope({ details, onChange, activeCoverageIndex }: Props & { activeCoverageIndex?: number }) {
   const inline = useContext(InlineFieldsContext);
   if (inline)
     return (
@@ -1911,6 +1862,7 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
                         })
                       }
                     />
+                    <IntakeVehicleUnderwritingFields id={`vehicle-details-${i}`} values={vehicleUnderwritingValues(vehicle,i,details.followups)} onChange={underwriting=>update({vehicles:(line.vehicles ?? []).map((row,j)=>j===i?{...row,underwriting}:row)})}/>
                   </InlineFieldCard>
                 ))}
               </div>
@@ -1936,6 +1888,7 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
   return (
     <FieldGroup>
       {details.coverages.map((line, index) => {
+        if (activeCoverageIndex !== undefined && index !== activeCoverageIndex) return null;
         const update = (patch: Partial<typeof line>) =>
           onChange({
             ...details,
@@ -1951,11 +1904,12 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
           return null;
         return (
           <div key={line.coverage} className="space-y-4">
-            <h2 className={`text-wrap-pretty ${typeStyle("heading.section")}`}>
+            {activeCoverageIndex === undefined && <h2 className={`text-wrap-pretty ${typeStyle("heading.section")}`}>
               {coverageRequestLabel(line)}
-            </h2>
+            </h2>}
             {line.coverage === "property" ? (
               <IntakeLocations
+                identityOnly
                 details={{ ...details, locations: line.properties ?? [] }}
                 onChange={(next) => update({ properties: next.locations })}
               />

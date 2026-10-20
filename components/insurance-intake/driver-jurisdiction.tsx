@@ -5,6 +5,7 @@ import flags from "react-phone-number-input/flags";
 import { Field, FieldLabel } from "@claritylabs-inc/ui/components/field";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { Input } from "@claritylabs-inc/ui/components/input";
+import { typeStyle } from "@/lib/typography";
 import { US_STATE_ABBREVIATIONS } from "@/components/ui/address-autofill-input";
 
 const names = new Intl.DisplayNames(["en"], { type: "region" });
@@ -43,30 +44,34 @@ const states = Object.keys(US_STATE_ABBREVIATIONS).map((name) =>
 );
 
 /** Keep the existing jurisdiction string compatible with saved applications. */
-export function DriverJurisdiction({
+export function JurisdictionFields({
   value,
   onChange,
+  countryLabel = "Country",
+  regionLabel = "State / province",
+  allowUnknown = false,
 }: {
   value: string;
   onChange: (value: string) => void;
+  countryLabel?: string;
+  regionLabel?: string;
+  allowUnknown?: boolean;
 }) {
-  const parts = value.split(",").map((part) => part.trim());
-  const country =
-    countries.find((option) => option.value === parts.at(-1))?.value ?? "";
-  const region = country ? parts.slice(0, -1).join(", ") : value;
+  const country = countries.find(option => value === option.value || value.endsWith(`, ${option.value}`))?.value ?? "";
+  const region = country ? value.slice(0, -country.length).replace(/,\s*$/, "") : value;
   const regions =
     country === "United States"
       ? states
       : country === "Canada"
         ? provinces
         : [];
-  const options = regions.map((label) => ({ value: label, label }));
+  const options = [...regions, ...(allowUnknown ? ["I'm not sure"] : [])].map((label) => ({ value: label, label }));
   return (
     <div className="space-y-4">
       <Field>
-        <FieldLabel>Country</FieldLabel>
+        <FieldLabel className={typeStyle("body.root")}>{countryLabel}</FieldLabel>
         <SearchableSelect
-          ariaLabel="License issuing country"
+          ariaLabel={countryLabel}
           placeholder="Select country"
           value={country}
           options={countries}
@@ -74,10 +79,10 @@ export function DriverJurisdiction({
         />
       </Field>
       <Field>
-        <FieldLabel>State / province</FieldLabel>
+        <FieldLabel className={typeStyle("body.root")}>{regionLabel}</FieldLabel>
         {regions.length ? (
           <SearchableSelect
-            ariaLabel="License issuing state or province"
+            ariaLabel={regionLabel}
             placeholder="Select state / province"
             value={region}
             options={options}
@@ -87,7 +92,7 @@ export function DriverJurisdiction({
           />
         ) : (
           <Input
-            aria-label="License issuing state or province"
+            aria-label={regionLabel}
             placeholder="State / province"
             value={region}
             disabled={!country && !region}
@@ -99,4 +104,12 @@ export function DriverJurisdiction({
       </Field>
     </div>
   );
+}
+
+export function DriverJurisdiction(props: {value: string; onChange: (value: string) => void}) {
+  return <JurisdictionFields {...props} countryLabel="License issuing country" regionLabel="License issuing state or province" />;
+}
+export function jurisdictionParts(value: string) {
+  const country = countries.find(option => value === option.value || value.endsWith(`, ${option.value}`))?.value ?? "";
+  return { country, region: country ? value.slice(0, -country.length).replace(/,\s*$/, "") : value };
 }
