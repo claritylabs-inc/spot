@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@claritylabs-inc/ui/components/dialog";
+import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -89,12 +90,11 @@ export function DeleteOrganizationButton({
           </DialogHeader>
           {type === "client" ? (
             <label className={`flex items-start gap-2 ${typeStyle("body.default")}`}>
-              <input
-                type="checkbox"
+              <Checkbox
                 className="mt-0.5"
                 checked={withUsers}
                 disabled={busy}
-                onChange={(event) => setWithUsers(event.target.checked)}
+                onCheckedChange={(checked) => setWithUsers(checked)}
               />
               <span>
                 Also permanently delete all users under this client. They lose
