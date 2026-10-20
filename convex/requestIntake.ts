@@ -83,6 +83,7 @@ export function submissionContent(
     "operatingLocationPrefilled",
     "activitiesPrefilled",
     "followupProgress",
+    "sectionIntroductions",
     "driverIndex",
     "autoVehicleIndex",
     "collectSensitiveDriverDetails",
@@ -923,6 +924,12 @@ export const useNewCompany = mutation({
       scopeNote: previous.scopeNote,
       additionalNote: previous.additionalNote,
       prefillSourceIds: previous.prefillSourceIds,
+      sectionIntroductions: previous.sectionIntroductions,
+      drivers: previous.drivers,
+      driverIndex: previous.driverIndex,
+      collectSensitiveDriverDetails: previous.collectSensitiveDriverDetails,
+      freightHauled: previous.freightHauled,
+      autoVehicleIndex: previous.autoVehicleIndex,
     };
     const revision = (request.intakeRevision ?? 0) + 1;
     await ctx.db.patch(request._id, {
@@ -1017,6 +1024,12 @@ export const useSavedCompany = mutation({
       scopeNote: current.scopeNote,
       additionalNote: current.additionalNote,
       prefillSourceIds: current.prefillSourceIds,
+      sectionIntroductions: current.sectionIntroductions,
+      drivers: current.drivers,
+      driverIndex: current.driverIndex,
+      collectSensitiveDriverDetails: current.collectSensitiveDriverDetails,
+      freightHauled: current.freightHauled,
+      autoVehicleIndex: current.autoVehicleIndex,
     };
     const revision = (request.intakeRevision ?? 0) + 1;
     await ctx.db.patch(request._id, {

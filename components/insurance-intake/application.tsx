@@ -1,4 +1,6 @@
 "use client";
+import { intakeSection, atIntakeSectionStart } from "@/lib/intake-sections";
+import { IntakeSectionIntroduction } from "./section-introduction";
 import { intakeSubmissionProblems } from "@/lib/intake-submission";
 import { driverQuestion, DRIVER_FIELDS, isDriverStep, hasCommercialAuto, newIntakeDriver, driverFieldValid } from "@/lib/intake-drivers";
 import { vinError } from "@/lib/intake-vehicles";
@@ -734,6 +736,12 @@ function Application({
   }
   function change(field: IntakeField, value: string) {
     setSubmissionConfirmed(false);
+    if (field === "trigger" && state.current.answers.intakeGoal &&
+      state.current.answers.intakeGoal !== (value === SAVINGS_INTAKE_REASON ? "savings" : "quote")) {
+      const next = {...(state.current.details ?? details), sectionIntroductions: (state.current.details?.sectionIntroductions ?? []).filter(section => section === 0 || section === 2)};
+      state.current.details = next;
+      setDetails(next);
+    }
     if (field === "timingUnknown" && value === "yes") {
       const next = {
         ...details,
@@ -1251,7 +1259,7 @@ function Application({
         autoVehicleIndex,
         ...(step===42 ? {coverages: previousDetails.coverages.map(line=>line.coverage==="commercial_auto"?{...line,vehicles:line.vehicles?.map((vehicle,index)=>index===(previousDetails.autoVehicleIndex??0)?{...vehicle,estimatedValueSkipped:!!skipped && !vehicle.estimatedValue?.trim()}:vehicle)}:line)} : {}),
         ...(isDriverStep(next) || isDriverStep(step) ? {driverIndex, drivers: previousDetails.drivers?.length ? previousDetails.drivers : [newIntakeDriver()]} : {}),
-        ...([29, 30].includes(step) && followupPage.length ? {
+        ...(!showSectionIntro && [29, 30].includes(step) && followupPage.length ? {
           followups: [
             ...(previousDetails.followups ?? []).map(row =>
               followupPage.some(question => question.id === row.id)
@@ -1938,6 +1946,60 @@ function Application({
     );
   }
   if (!data || !ready) return <IntakeApplicationLoading />;
+  const currentSection = intakeSection(step);
+  const showSectionIntro =
+    !data.submitted &&
+    !editingReview &&
+    atIntakeSectionStart(step, followupPageIndex, isSavings) &&
+    !(details.sectionIntroductions ?? []).includes(currentSection);
+  if (showSectionIntro)
+    return (
+      <IntakeSectionIntroduction
+        section={currentSection}
+        savings={isSavings}
+        status={status}
+        disabled={busy || uploading}
+        onSection={(next) => void navigate(next, false, false, true)}
+        onContinue={() => {
+          if (busy || uploading) return;
+          setBusy(true);
+          changeDetails({
+            ...details,
+            sectionIntroductions: [
+              ...new Set([
+                ...(details.sectionIntroductions ?? []),
+                currentSection,
+              ]),
+            ],
+          });
+          void flush().finally(() => setBusy(false));
+        }}
+        onBack={() => {
+          if (currentSection === 0) {
+            void (async () => {
+              if (await flush())
+                router.push(withQuoteProvider("/signup", params.get("provider")));
+            })();
+            return;
+          }
+          void navigate(
+            isSavings && step === 21
+              ? 1
+              : step === 28
+                ? isSavings
+                  ? 19
+                  : 30
+                : step === 29
+                  ? 25
+                  : step === 30
+                    ? 29
+                    : step === 20
+                      ? 19
+                      : step - 1,
+          );
+        }}
+      />
+    );
   const showSavedCompany =
     !!data.orgId &&
     !!answers.description &&
@@ -2278,19 +2340,7 @@ function Application({
   return (
     <IntakeFrame
       showSteps={!isSavings}
-      section={
-        step===43 ? 3 : step===41 || step===42 || isDriverStep(step) ? 1 : step < 6
-          ? 0
-          : step < 10
-            ? 1
-            : step < 20 || step === 27
-              ? 2
-              : step === 29
-                ? 4
-                : step === 30
-                  ? 5
-                  : step < 28 ? 3 : 6
-      }
+      section={currentSection}
       status={
         uploading
           ? "Uploading…"

@@ -135,6 +135,7 @@ type RelatedEntity = {
   insured: "" | "include" | "exclude" | "unsure";
 };
 export type IntakeDetails = {
+  sectionIntroductions?: number[];
   freightHauled?: string;
   noCurrentInsuranceReason?: string;
   autoVehicleIndex?: number;
@@ -381,6 +382,8 @@ export function detailsAnswers(details: IntakeDetails): IntakeAnswers {
   };
 }
 export function validateIntakeDetails(details: IntakeDetails) {
+  if (details.sectionIntroductions && (details.sectionIntroductions.length > 7 || new Set(details.sectionIntroductions).size !== details.sectionIntroductions.length || details.sectionIntroductions.some(section => !Number.isInteger(section) || section < 0 || section > 6)))
+    throw new Error("Invalid section introduction state");
   validateFollowupAnswers(details.followups);
   if ((details.freightHauled?.length??0)>2000 || (details.noCurrentInsuranceReason?.length??0)>2000 ||
       (details.autoVehicleIndex!==undefined && (!Number.isInteger(details.autoVehicleIndex)||details.autoVehicleIndex<0||details.autoVehicleIndex>29)) ||
@@ -514,6 +517,8 @@ export function shouldRequestLossRuns(
 
 /** Keep dormant auto drafts recoverable, but project only currently requested facts. */
 export function activeIntakeDetails(details: IntakeDetails, purpose?: string): IntakeDetails {
+  const {sectionIntroductions: _introductions, ...facts} = details;
+  details = facts;
   if(purpose === "savings") details={...details,coverages:[],followups:[]};
   if(details.coverages.some(line=>line.coverage==="commercial_auto"))return details;
   const {drivers:_drivers,driverIndex:_driverIndex,collectSensitiveDriverDetails:_private,freightHauled:_freight,autoVehicleIndex:_vehicleIndex,...active}=details;

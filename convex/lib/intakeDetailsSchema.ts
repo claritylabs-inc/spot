@@ -12,6 +12,7 @@ export const intakeAddressValidator = v.object({
   formatted: v.optional(v.string()),
 });
 export const intakeDetailsValidator = v.object({
+  sectionIntroductions: v.optional(v.array(v.number())),
   drivers: v.optional(v.array(v.object({
     id:v.string(),name:v.string(),dateOfBirth:v.string(),licenseNumber:v.string(),licenseJurisdiction:v.string(),licenseClass:v.string(),yearsExperience:v.string(),
     accidents:v.union(v.literal(""),v.literal("yes"),v.literal("no")),accidentDetails:v.string(),
