@@ -105,27 +105,26 @@ function hasVisibleRightPanel(node: React.ReactNode): boolean {
   return true;
 }
 
-/** Fades new route content in without remounting the persistent shell. */
+/** Top-level section of a path, so moves within one section don't re-animate. */
+function routeSection(pathname: string) {
+  return pathname.split("/").slice(0, 3).join("/");
+}
+
+/** Softly fades content in when switching sections; moves within a section swap in place. */
 function RouteContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const ref = useRef<HTMLDivElement>(null);
   const previousPathnameRef = useRef(pathname);
 
   useLayoutEffect(() => {
-    if (previousPathnameRef.current === pathname) return;
+    const previous = previousPathnameRef.current;
     previousPathnameRef.current = pathname;
-    const reduceMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    ref.current?.animate(
-      reduceMotion
-        ? [{ opacity: 0 }, { opacity: 1 }]
-        : [
-            { opacity: 0, transform: "translateY(4px)" },
-            { opacity: 1, transform: "none" },
-          ],
-      { duration: reduceMotion ? 120 : 180, easing: "cubic-bezier(0.2,0,0,1)" },
-    );
+    if (routeSection(previous) === routeSection(pathname)) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    ref.current?.animate([{ opacity: 0.5 }, { opacity: 1 }], {
+      duration: 120,
+      easing: "ease-out",
+    });
   }, [pathname]);
 
   return (
