@@ -1,0 +1,20 @@
+{
+  "candidate": "a19f6facba5867b875a1dda79214896ca78dfc33",
+  "oneSkillInvocation": true,
+  "spyCalls": 0,
+  "nativeInputCommands": 0,
+  "freshCaptureSeq": 13,
+  "gateScreenshotStepSeq": 14,
+  "modelRequestSeq": 15,
+  "captureAndAssetBytesEqual": true,
+  "captureAndAssetSha256": "f47e8d0cc37da2c401cfe906263b701a7e3288a6eba8ff63f5c3266031619bbb",
+  "assetMatchesStateScreenshotReference": true,
+  "initialCaptureSha256": "b892c5c5db086056eb889d31330f47698cbc8d561cbf59df25357ffbab4825d6",
+  "freshCaptureDistinctFromInitialBytes": true,
+  "harnessRecordedSteps": 5,
+  "extraScreenshotReadSteps": 1,
+  "budgetExhaustionTested": false,
+  "denialHashBehaviorTested": false,
+  "nativeAcceptanceTested": false,
+  "fullObservationRetained": false
+}

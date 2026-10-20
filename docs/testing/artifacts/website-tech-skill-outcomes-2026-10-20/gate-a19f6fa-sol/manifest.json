@@ -1,0 +1,18 @@
+{
+  "candidate": "a19f6facba5867b875a1dda79214896ca78dfc33",
+  "scope": "one gate-only live invocation with host diagnostic stop spy; no native acceptance",
+  "gateRelevance": 0.58,
+  "spyReached": false,
+  "fullObservationRetained": false,
+  "imagesVisuallyReviewed": true,
+  "files": {
+    "gate-capture.png": "f47e8d0cc37da2c401cfe906263b701a7e3288a6eba8ff63f5c3266031619bbb",
+    "visible-result.png": "73796549bd252214f7085b1d16bd6a6a4926891f6fbef30258eac0d50bdc11a8",
+    "skill-result.json": "abfef0bdb635bbb5ea2846e3cdac93e1d43dccd04ea88360ae686c0d1d6bfeb3",
+    "initial-model-capture.png": "b892c5c5db086056eb889d31330f47698cbc8d561cbf59df25357ffbab4825d6",
+    "protocol-model-trace.json": "3442770f2b0621d197df63a936f80ee99f5b6c7ee6d608fc16192d11dcbf7c9c",
+    "request-state-known-fields.json": "dc098cceb04faf007509b23cd65e8e000643b544d88392a9c432ebda935e7773",
+    "capture-proof.json": "77e1ebef8f727f91c91c8a13070e06b88eb5fc64b69d36b3af63518f8bf0e655",
+    "gate-seam-probe.mjs": "3c4916a926088635d35a6885a56019c876efb27c79a261a963ea89d9cd8993c6"
+  }
+}
