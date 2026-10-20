@@ -1,0 +1,11 @@
+{
+  "candidate": "101b96ba4daa6ef77faf884e863c9ca566ac1035",
+  "scope": "Actual imported consumer serializer, synthetic executeJob; checked-in schema. No router network call.",
+  "valid": true,
+  "requestKeys": [
+    "tenantId",
+    "input",
+    "executionBudgetMs"
+  ],
+  "errors": null
+}

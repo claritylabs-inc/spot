@@ -81,34 +81,37 @@ presentation scenarios below were subsequently repeated in the authenticated app
    runs cross the card's right edge and are hidden. The skill summary container
    in `website-tech-section.tsx` and the shared inline label have no emergency
    wrapping for unbroken text. The procedure label also collides with the status
-   area. `app-long-mobile-initial-f96d9219.png` reproduces the initial failure.
+   area. [app-long-mobile-initial-f96d9219.png](artifacts/website-tech-skill-outcomes-2026-10-20/screenshots/app-long-mobile-initial-f96d9219.png) reproduces the initial failure.
    Correction `49555270` adds wrapping within the skill label/value; final
-   `app-long-mobile.png` and `overflow-geometry.json` show both text runs within
+   [app-long-mobile.png](artifacts/website-tech-skill-outcomes-2026-10-20/screenshots/app-long-mobile.png) and [overflow-geometry.json](artifacts/website-tech-skill-outcomes-2026-10-20/results/overflow-geometry.json) show both text runs within
    the card. All 15 app check groups pass on 101b96ba. No product changes were
    authored in this QA workspace.
 3. **OPEN, separate mobile shell observation.** Even ordinary skills have a 416px-wide
    inner app-shell wrapper in a 390px viewport. Navbar actions exceed the visible
    right edge and an inner horizontal scrollbar appears. Document-level
    `scrollWidth` alone misses this; earlier document-only assertions are not
-   whole-shell acceptance. `app-inner-overflow.json` identifies the overflowing
+   whole-shell acceptance. [app-inner-overflow.json](artifacts/website-tech-skill-outcomes-2026-10-20/results/app-inner-overflow.json) identifies the overflowing
    wrapper. This observation is distinct from skill text wrapping and needs
    manager scope/triage; it is not silently counted as a passing mobile shell.
 
 ## Commands and results
 
+Script rows below use their durable replay paths. Recorded behavior comes from
+the original `.context` copies; relocated copies were statically checked only.
+
 | Command | Result |
 | --- | --- |
 | `node --version` | `v24.14.1` |
-| `npm run check:cl-router-contract` | PASS on final SHA: 19 fixtures, 10 operations; initial failure retained in contract.log. |
+| `npm run check:cl-router-contract` | PASS on final SHA: 19 fixtures, 10 operations; initial failure preserved in [validation.json](artifacts/website-tech-skill-outcomes-2026-10-20/results/validation.json). |
 | `npx tsc --noEmit` | PASS on final SHA. |
 | `npx tsc --noEmit -p convex/tsconfig.json` | PASS on final SHA. |
 | Focused ESLint: website-tech-section, websiteTech action/library, clRouterClient, websiteTech mutations | PASS on final SHA. |
 | `npm test` | PASS: 18 files, 127 tests on f96d9219. Final delta is only skill-row wrapping and fixture tenantId; no new unit tests written. |
-| `node .context/qa/skill-outcomes-sol/boundary.mjs` | PASS: 8 grouped consumer checks. |
-| `node .context/qa/skill-outcomes-sol/request-contract-diagnostic.mjs` | PASS: actual consumer request matches pinned schema. |
-| `node .context/qa/skill-outcomes-sol/access-qa.mjs` | PASS: 5 grouped access/catalog checks. |
-| `node .context/qa/skill-outcomes-sol/app-qa.mjs` | PASS: all 15 groups on final SHA; initial 14 PASS / 1 clipping FAIL retained separately. |
-| `node .context/qa/skill-outcomes-sol/app-followup.mjs` | PASS: keyboard, reload, scan/card lifecycle; separate inner-overflow observation. |
+| `node docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/boundary.mjs` | PASS: 8 grouped consumer checks. |
+| `node docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/request-contract-diagnostic.mjs` | PASS: actual consumer request matches pinned schema. |
+| `node docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/access-qa.mjs` | PASS: 5 grouped access/catalog checks. |
+| `node docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/app-qa.mjs` | PASS: all 15 groups on final SHA; initial 14 PASS / 1 clipping FAIL retained separately. |
+| `node docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/app-followup.mjs` | PASS: keyboard, reload, scan/card lifecycle; separate inner-overflow observation. |
 | `git diff --check` | PASS before report delivery. |
 
 No broad production build or deployment was run. The existing suite emitted its
@@ -119,13 +122,26 @@ lane before repeating acceptance. That interrupted attempt is not a product fail
 
 ## Artifacts and cleanup
 
-Sanitized scripts, results and screenshots: `.context/qa/skill-outcomes-sol/`.
-Principal files: `app-results.json`, `boundary-results.json`, `access-results.json`,
-`request-contract-diagnostic.json`, `app-followup-results.json`,
-`app-rescan-transitions.json`, `app-inner-overflow.json`, `overflow-geometry.json`.
-Screenshots: `not-scanned.png`, `app-known-desktop.png`, `app-known-mobile.png`,
-`app-known-mobile-dark.png`, `app-failed.png`, `app-legacy.png`,
-`app-40-mobile.png`, `app-rescan-terminal.png`, `app-long-mobile.png`.
+Durable evidence is committed under
+[artifacts/website-tech-skill-outcomes-2026-10-20/](artifacts/website-tech-skill-outcomes-2026-10-20/README.md).
+The [replay guide](artifacts/website-tech-skill-outcomes-2026-10-20/README.md#normal-local-prerequisites)
+documents normal native-local setup, fresh OTP authentication, private generated
+inputs, fixture preparation, execution order and restoration. Scripts write only
+to the gitignored runtime directory; no private files from this workspace are
+required. This preservation update performed no new behavioral runs. Relocated
+scripts received import-path, provenance, unique-invocation-key and preparation
+adjustments; only static syntax/import/link/content checks were run on the copies.
+
+| Preserved evidence | Relative link |
+| --- | --- |
+| Final / initial app scenarios | [Final](artifacts/website-tech-skill-outcomes-2026-10-20/results/app-results.json), [initial f96d9219](artifacts/website-tech-skill-outcomes-2026-10-20/results/app-results-initial-f96d9219.json) |
+| Consumer bounds and redaction | [Results](artifacts/website-tech-skill-outcomes-2026-10-20/results/boundary-results.json), [sanitized fixture](artifacts/website-tech-skill-outcomes-2026-10-20/results/projected-fixture.json) |
+| Access / request contract | [Access](artifacts/website-tech-skill-outcomes-2026-10-20/results/access-results.json), [request](artifacts/website-tech-skill-outcomes-2026-10-20/results/request-contract-diagnostic.json) |
+| Live Rescan / keyboard and reload | [Transitions](artifacts/website-tech-skill-outcomes-2026-10-20/results/app-rescan-transitions.json), [follow-up](artifacts/website-tech-skill-outcomes-2026-10-20/results/app-followup-results.json) |
+| Geometry before / after | [Initial](artifacts/website-tech-skill-outcomes-2026-10-20/results/overflow-geometry-initial-f96d9219.json), [corrected](artifacts/website-tech-skill-outcomes-2026-10-20/results/overflow-geometry.json) |
+| Separate existing mobile shell issue | [416px inner wrapper at 390px](artifacts/website-tech-skill-outcomes-2026-10-20/results/app-inner-overflow.json) |
+| Validation / cleanup | [Commands and restoration](artifacts/website-tech-skill-outcomes-2026-10-20/results/validation.json), [cleanup](artifacts/website-tech-skill-outcomes-2026-10-20/results/cleanup-results.json) |
+| Actual synthetic UI screenshots | [Desktop](artifacts/website-tech-skill-outcomes-2026-10-20/screenshots/app-known-desktop.png), [initial clipping](artifacts/website-tech-skill-outcomes-2026-10-20/screenshots/app-long-mobile-initial-f96d9219.png), [corrected wrapping](artifacts/website-tech-skill-outcomes-2026-10-20/screenshots/app-long-mobile.png) |
 
 The original synthetic fixture website is restored, automatic research has
 settled, and 50 prepared local router jobs were cancelled before restoring
