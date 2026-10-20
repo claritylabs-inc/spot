@@ -1,0 +1,258 @@
+{
+  "recordedAt": "2026-10-20T22:26:23.944Z",
+  "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+  "scope": "Single exposed public-image regression only; no native/direct-helper acceptance",
+  "presence": {
+    "CL_ROUTER_URL": true,
+    "CL_ROUTER_SECRET": true
+  },
+  "route": {
+    "provider": "openai",
+    "model": "gpt-5.6-sol"
+  },
+  "effort": "provider default; no effort field",
+  "maxTokens": 8192,
+  "executionBudgetMs": 30000,
+  "clientHardTimeoutMs": 45000,
+  "maxClientPosts": 1,
+  "clientRetry": false,
+  "redirects": "error",
+  "criterion": "Exact requested route/model, complete schema-valid finish, six yes; any no/uncertain/missing or invalid/refused/unknown is not PASS",
+  "untested": "No negatives or held-out corpus; no native calls or closure execution; no adoption",
+  "definitions": [
+    {
+      "id": "same_instruction",
+      "question": "Does the challenge in `after` show the same written instruction or checkbox label as in `before`?",
+      "before": "frame_before",
+      "after": "frame_after"
+    },
+    {
+      "id": "same_images",
+      "question": "Do `before` and `after` depict the same pictures in the same positions?",
+      "scope": "Pictures means depicted photographs, illustrations, logos and puzzle-tile content, rather than the screenshot files or a control's border. Added, removed, moved or replaced picture content is a difference. If both views contain no pictures, their picture content is the same.",
+      "before": "frame_before",
+      "after": "frame_after"
+    },
+    {
+      "id": "same_selection",
+      "question": "Are exactly the same tiles, boxes or checkboxes selected or checked in `after` as in `before`?",
+      "scope": "A checkbox, tile or option that is checked or selected in one and not the other is a difference. If neither contains anything selectable that is selected, the unchanged state counts as yes.",
+      "before": "frame_before",
+      "after": "frame_after"
+    },
+    {
+      "id": "same_control",
+      "question": "Do `before` and `after` show the same control, with the same shape, size and position?",
+      "before": "target_before",
+      "after": "target_after"
+    },
+    {
+      "id": "no_new_mark",
+      "question": "Do `before` and `after` contain exactly the same marks?",
+      "scope": "Marks include check marks, ticks, spinners, symbols, text and pictures. Any added, removed or replaced mark is a difference. Two empty controls have the same marks. A change of border color alone does not add or remove a mark.",
+      "before": "target_before",
+      "after": "target_after"
+    },
+    {
+      "id": "style_only",
+      "question": "Is every difference between `before` and `after` only a change of color, shade, border or outline?",
+      "scope": "Moved, resized, added, removed or replaced shapes, marks or text are not a change of color, shade, border or outline.",
+      "before": "target_before",
+      "after": "target_after"
+    }
+  ],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "same_instruction": {
+        "type": "string",
+        "enum": [
+          "yes",
+          "no",
+          "uncertain"
+        ]
+      },
+      "same_images": {
+        "type": "string",
+        "enum": [
+          "yes",
+          "no",
+          "uncertain"
+        ]
+      },
+      "same_selection": {
+        "type": "string",
+        "enum": [
+          "yes",
+          "no",
+          "uncertain"
+        ]
+      },
+      "same_control": {
+        "type": "string",
+        "enum": [
+          "yes",
+          "no",
+          "uncertain"
+        ]
+      },
+      "no_new_mark": {
+        "type": "string",
+        "enum": [
+          "yes",
+          "no",
+          "uncertain"
+        ]
+      },
+      "style_only": {
+        "type": "string",
+        "enum": [
+          "yes",
+          "no",
+          "uncertain"
+        ]
+      }
+    },
+    "required": [
+      "same_instruction",
+      "same_images",
+      "same_selection",
+      "same_control",
+      "no_new_mark",
+      "style_only"
+    ],
+    "additionalProperties": false
+  },
+  "sourceBinding": [
+    {
+      "path": "packages/server/src/browse/primitives.ts",
+      "sha256": "005e60212307cc2d5192d46dab4b63e73cc25db6ee1d97b8c6e26fb34fee7a50"
+    },
+    {
+      "path": "packages/server/src/api/contracts.ts",
+      "sha256": "34423ccee5990189477b2de72c8d743227a15f69179ae4bba5ebfc3d97f16311"
+    },
+    {
+      "path": "packages/server/src/providers/input.ts",
+      "sha256": "6858d981d98c3728d79970144ea4677a3f853afb96f77190cfd61b48023fabfc"
+    },
+    {
+      "path": "packages/server/src/providers/options.ts",
+      "sha256": "40f798edf4931872e0f2c23cb7d5c7f99acbb80d3956e5fb4d192cb233ee2f0b"
+    },
+    {
+      "path": "packages/server/src/providers/models.ts",
+      "sha256": "f93e7401d0b573c1552a9dac7ac4378a8f12020ddb123e1a45532ff6b560cc77"
+    },
+    {
+      "path": "packages/server/src/providers/output.ts",
+      "sha256": "c8c1d6df1a9898d05d8f4995e7bdfa3e5fa4558023e292ce112a1e13de896ca8"
+    },
+    {
+      "path": "packages/server/src/providers/attempts.ts",
+      "sha256": "5e528ddd9a2ef476b76f683ecb37424f6b8c043f9254ee8ba23be59751eb7f02"
+    },
+    {
+      "path": "packages/server/src/providers/failover.ts",
+      "sha256": "418826c804c6fa18e630dc1d1b3fe1ed87d249c40b9ca78e529562a30fb735a3"
+    },
+    {
+      "path": "packages/server/src/services/router-service.ts",
+      "sha256": "7d5818caa86230fc6077962f653b383215ee33b50799d3c40723688aff4c5498"
+    },
+    {
+      "path": "packages/server/src/providers/generation-decision.ts",
+      "sha256": "41b96d406343c280ff6eaf671735eaa586726dc0be40e654af910da5027f6631"
+    },
+    {
+      "path": "packages/server/src/api/generate.ts",
+      "sha256": "bc6c761727fa4e1e34cab2c261c5e7690ebf0ef8ff2576d15155d3be02458967"
+    },
+    {
+      "path": "packages/server/src/app.ts",
+      "sha256": "13688b3fbcca122857667250e312d106ff55f8ff5d31f0a6925fabbd3551ea9e"
+    },
+    {
+      "path": "packages/policy/src/registry.ts",
+      "sha256": "5c2c612fb2965843d4567e7c5094b5b14cd15ee869d00644a96fd4c298a48483"
+    },
+    {
+      "path": "packages/policy/src/capabilities.ts",
+      "sha256": "008f7964a7471fc118fa57be4e31b36c3540a16e0fb483fa438da7372bdb514c"
+    }
+  ],
+  "closureSha256": "0087d228841341f7de71e172c4d1424492a111c55124d0416dee995b86a276eb",
+  "controllerSha256": "b4a05893779d74ce136238898054cdaaed052778aa4f30c78a71b3956acb460b",
+  "requestBodySha256": "41aa09caaf89f1d6c5a9aa8c3b8d9bb0dd3e802a832759c80bfc0ef8b399f2d5",
+  "imageRoles": [
+    {
+      "role": "frame_before",
+      "file": "frame_before.png",
+      "sha256": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215",
+      "bytes": 13541
+    },
+    {
+      "role": "frame_after",
+      "file": "frame_after.png",
+      "sha256": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d",
+      "bytes": 13566
+    },
+    {
+      "role": "target_before",
+      "file": "target_before.png",
+      "sha256": "234478538ac49c7b08ca3b41491e45ae22c88edbf77b47d0521d316635f9ed82",
+      "bytes": 5040
+    },
+    {
+      "role": "target_after",
+      "file": "target_after.png",
+      "sha256": "7738abc94688b1876e9dcdfa8fd619b62ad992dae3fde617c75984178db3e0bf",
+      "bytes": 5049
+    }
+  ],
+  "geometry": {
+    "visible": {
+      "x": 283,
+      "y": 332,
+      "width": 304,
+      "height": 78
+    },
+    "located": {
+      "x": 296.6533333333333,
+      "y": 355.04,
+      "width": 27.306666666666672,
+      "height": 28.159999999999968
+    },
+    "region": {
+      "x": 9,
+      "y": 19,
+      "right": 45,
+      "bottom": 56
+    },
+    "targetScale": 8,
+    "delta": {
+      "changedPixels": 300,
+      "bounds": {
+        "left": 13,
+        "top": 23,
+        "right": 40,
+        "bottom": 50
+      }
+    }
+  },
+  "provenance": {
+    "originalCommit": "3965f4ec",
+    "comparisonCommit": "f299f7074ae13b1b9905ef37f6723810a453d936",
+    "priorSourceBindingSha256": "3dbda8ee844cfe5cc1be566297c7603b641a4f7efbb9cae4048cc2655edc0cc7",
+    "priorProvenanceSha256": "0c24136776e595b44fb98eb888aad92795a90dcb1fece4dae8f4a09d0bd2bde9",
+    "transformBytesMatchOriginal": true,
+    "pixelMappingVerified": true
+  },
+  "limits": {
+    "productionNoulThresholdUnchanged": 0.9,
+    "sdkProviderHttpAttemptCount": "not established by one client POST",
+    "storeFalse": "not requested or established",
+    "freeFormReasoning": "not requested or persisted",
+    "normalBrokerExecutionAndTelemetry": true
+  }
+}
