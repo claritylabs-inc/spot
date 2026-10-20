@@ -1,5 +1,59 @@
 # Platform workflow QA
 
+## Clairic fast-pass deadline — October 20, 2026
+
+Source `8af88b01a7afb1bca8b0437c9a963d15fb8933bc`. Only
+`declarationsFastPass.ts` and the section-extraction architecture doc changed;
+`clRouterClient.ts` and other router callers are unchanged.
+`runDeclarationsFastPass` races `clRouterExtract` against a 15-second timer.
+At expiry the timer first rejects with a `ClRouterRequestError` of kind
+`timeout`, then aborts the request through the existing `abortSignal`. The
+timer is cleared in `finally`. `executionStarted` is left unset, and source
+checks run before the timer starts.
+
+Failure modes were listed before the change: a fetch that stalls before
+headers, a body that stalls after headers, a late result after expiry,
+cleanup on success and error, no replay after an unknown outcome, and no
+effect on other router callers.
+
+Checks: focused ESLint on `declarationsFastPass.ts`, Convex `tsc --noEmit` and
+root `tsc --noEmit` passed. Each ran once. No unit tests were added.
+
+Scratch fault injection (not a test file) used real `fetch` against a loopback
+HTTP server, with the router URL overridden in-process:
+
+| Case | Result |
+| --- | --- |
+| No response headers | `timeout` at 15,003 ms; server socket closed at 15,004 ms |
+| 200 headers, then body stalls | `timeout` (not `invalid_response`) at 15,001 ms; socket closed at 15,002 ms |
+| Response scheduled 500 ms after the deadline | `timeout` at 15,000 ms; the connection had already closed, so no late result arrived |
+| Body arrives at 14 s, completion telemetry takes 2 s | `timeout` at 15,001 ms; the result is discarded |
+| Success | result returned in 30 ms; timer cleared, never fired |
+| Typed HTTP 500 | `server` / `router_internal`, `executionStarted: true` preserved; timer cleared |
+| Invalid JSON, connection refused | `invalid_response` and `connection`, unchanged; timer cleared |
+| No text layer | plain error; no request and no timer |
+| Direct `clRouterExtract`, reply at 16.5 s | succeeds at 16,505 ms; no global deadline |
+
+Timeout errors never set `executionStarted`. No unhandled rejection
+occurred. Source inspection of `policyExtraction.ts`: the `started` marker is
+saved before the call. Any error, including `timeout`, logs the failure class,
+records a trace error, marks the fast pass `skipped` and continues
+declarations-first. An interrupted `started` marker is also skipped, so the
+call is never replayed. The helper has no retry.
+
+Two telemetry notes, neither blocking: the deadline also covers the start
+telemetry mutation inside `clRouterExtract`; and when completion telemetry
+straddles the deadline, the model-call record says `complete` even though the
+fast pass fell back. After a timeout, the error telemetry mutation finishes
+after the helper has returned.
+
+Live: the original From/To fixture ran once through the wrapped helper on
+shared dev `tangible-warbler-253`. It returned 2026-01-15 / 2027-01-15, both
+cited, with router latency 477 ms and wall time 984 ms (request
+`1bdd3316-91d6-4425-9ac6-00925988e772`). The process exited after 1.08 s, so no
+15-second timer was left behind. Artifacts are in `.context/clairic/timeout/`.
+No preview, deployment, customer data, or Spot write was used.
+
 ## Clairic fast-pass dates and lists — October 20, 2026
 
 Source `1c0af6a084ea97a25142e9e8e6986945f7b3f67b`. Only
