@@ -225,10 +225,8 @@ installation with the required scopes.
 Internal operator chat reuses this same Clarity host installation.
 Production release health requires `OPERATOR_SLACK_ENABLED=true` and a
 configured `SLACK_CLARITY_TEAM_ID`; the active host installation remains
-covered by the existing Slack health contract. The `main`
-release workflow sets `OPERATOR_SLACK_ENABLED=true` on production Convex before
-running that health gate, so a release cannot promote with operator Slack
-silently disabled.
+covered by the existing Slack health contract. `OPERATOR_SLACK_ENABLED=true` is
+set once on production Convex with `npx convex env set --prod`.
 After customer workspace and persisted Slack Connect binding resolution have
 failed, Convex may route a Clarity App Home DM, a host-channel mention, or an
 authorized reply in an active host-channel thread to the operator agent only
