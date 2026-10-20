@@ -1528,6 +1528,13 @@ reports preserve failed candidates and their repeatable artifacts:
   fail-fast run stopped after two requests; nine eligible cases were not run and
   one case refused deterministically. The cutoff was rejected; runtime stays at
   0.9. This does not establish negative-case or native performance.
+- [Single stronger-model probe](browser-hover-reasoner-probe-sol-2026-10-20.md):
+  one frozen saved-widget pair returned all six `yes` from the configured
+  broker's `openai/gpt-5.6-sol` route. Manager verified the request reconstruction,
+  13 artifact hashes and 14 source blobs. This accepts only that exposed
+  regression: no negative corpus, native integration or cascade adoption was
+  tested. Provider-default effort and broker transport differ from the proposed
+  direct helper; internal provider attempt count and `store:false` are unproven.
 
 Controlled regressions on exact router `af229cc` are separately accepted:
 [616 distinct skill requirements](https://github.com/claritylabs-inc/cl-router/blob/0c503dc0fa77c1069a23be08752f66d24016a54b/test-harness/browser-agent/reports/final-af229cc.md)
