@@ -1,4 +1,6 @@
 "use client";
+import { RouteInput } from "@/components/ui/route-input";
+import { parseRouteValue } from "@/lib/route-input";
 import { typeStyle } from "@/lib/typography";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -172,7 +174,27 @@ function IntakeFollowupField({
         >
           {label}
         </FieldLabel>
-        {question.kind === "yes_no" && !grouped ? (
+        {question.kind === "routes" ? (
+          <RouteInput
+            value={
+              parseRouteValue(answer) ?? {
+                version: 1,
+                stops: [],
+                maximumDistance: "",
+              }
+            }
+            includeMaximumDistance
+            onChange={(value) =>
+              onChange(
+                question,
+                value.stops.every((stop) => !stop.name.trim()) &&
+                  !value.maximumDistance.trim()
+                  ? ""
+                  : JSON.stringify(value),
+              )
+            }
+          />
+        ) : question.kind === "yes_no" && !grouped ? (
           <IntakeRadioChoices
             label={label}
             value={answer}

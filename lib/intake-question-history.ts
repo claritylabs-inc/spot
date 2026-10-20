@@ -1,4 +1,7 @@
-import { followupQuestionVisible } from "./intake-followups";
+import {
+  followupQuestionVisible,
+  formatIntakeFollowupAnswer,
+} from "./intake-followups";
 import { autoQuoteQuestionHistory } from "./intake-auto-quote";
 import {
   DRIVER_QUESTIONS,
@@ -85,7 +88,7 @@ export function intakeQuestionHistory(
       id: row.id,
       section: row.section,
       question: row.label,
-      answer: row.answer,
+      answer: formatIntakeFollowupAnswer(row),
       kind: row.kind,
       options: row.options,
       conditions: row.conditions ?? [],

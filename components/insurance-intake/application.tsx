@@ -1,4 +1,5 @@
 "use client";
+import { routeAnswerComplete } from "@/lib/route-input";
 import { intakeSection, atIntakeSectionStart } from "@/lib/intake-sections";
 import { IntakeSectionIntroduction } from "./section-introduction";
 import { intakeSubmissionProblems } from "@/lib/intake-submission";
@@ -2184,10 +2185,11 @@ function Application({
         }
       />
     );
+  const routesIncomplete = [29,30].includes(step) && followupPage.some(question => question.kind === "routes" && !routeAnswerComplete(details.followups?.find(row => row.id === question.id)?.answer ?? ""));
   const canContinue =
     step===42 ? !estimatedVehicleValueError(autoVehicles(details)[details.autoVehicleIndex??0]?.estimatedValue) :
     isDriverStep(step) ? step === 31 ? !!details.drivers?.length && details.drivers.every(driver=>!!driver.name.trim()) : !!details.drivers?.[details.driverIndex??0] && driverFieldValid(details.drivers[details.driverIndex??0],step) :
-    [29, 30].includes(step) ? !followupsPending && !followupTailPending : isSavings && step === 21
+    [29, 30].includes(step) ? !followupsPending && !followupTailPending && !routesIncomplete : isSavings && step === 21
       ? data.files.some((file) => file.category === "policy")
       : step === 23 && details.hasClaims === "yes"
         ? !!answers.claims?.trim()
@@ -2332,7 +2334,7 @@ function Application({
     25: details.hasCancellations || answers.cancellations?.trim() || "",
   };
   // Empty notes, extra coverage requests, and website/DBA are valid answers.
-  const canSkipStep = !followupTailPending && !(step===42 && estimatedVehicleValueError(autoVehicles(details)[details.autoVehicleIndex??0]?.estimatedValue)) && !(isDriverStep(step) && (step === 31 || !driverFieldValid(details.drivers?.[details.driverIndex??0] ?? newIntakeDriver(), step))) && !(step === 9 && details.coverages.some(line=>(line.vehicles??[]).some(vehicle=>!!vinError(vehicle.vin, details.registrationCountry)))) && step !== 28 && !followupsPending && !(isSavings && step === 21);
+  const canSkipStep = !routesIncomplete && !followupTailPending && !(step===42 && estimatedVehicleValueError(autoVehicles(details)[details.autoVehicleIndex??0]?.estimatedValue)) && !(isDriverStep(step) && (step === 31 || !driverFieldValid(details.drivers?.[details.driverIndex??0] ?? newIntakeDriver(), step))) && !(step === 9 && details.coverages.some(line=>(line.vehicles??[]).some(vehicle=>!!vinError(vehicle.vin, details.registrationCountry)))) && step !== 28 && !followupsPending && !(isSavings && step === 21);
   const driverValue = details.drivers?.[details.driverIndex??0]?.[DRIVER_FIELDS[step-31]];
   const skipStep =
     canSkipStep && !([29,30].includes(step) && (!followupQuestion || (!data.submitted && followupBatch?.status !== "ready"))) &&

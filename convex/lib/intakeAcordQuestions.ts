@@ -10,26 +10,30 @@ import type { IntakeFollowupQuestion } from "../../lib/intake-followups";
  * Keep the source JSON intact. This adapter targets the intake's declarative primitives,
  * not the catalog's proposed typed/scoped answer storage contract.
  */
-export const INTAKE_ACORD_CATALOG_VERSION = `${catalog.catalogId}:${catalog.revision}:d982690a2e19bbeb3004d1c3fb920a201109daa0:adapter5-fixed-coverage-limits`;
+export const INTAKE_ACORD_CATALOG_VERSION = `${catalog.catalogId}:${catalog.revision}:d982690a2e19bbeb3004d1c3fb920a201109daa0:adapter6-city-routes`;
 
 export const INTAKE_ACORD_QUESTIONS = catalog.questions.map((definition) => {
   const group = catalog.groups.find((group) => group.id === definition.groupId);
   if (!group)
     throw new Error(`Unknown intake catalog group: ${definition.groupId}`);
   const kind: IntakeFollowupQuestion["kind"] =
-    definition.answerType === "money"
-      ? "currency"
-      : definition.answerType === "boolean"
-        ? "yes_no"
-        : definition.answerType === "single_choice"
-          ? "dropdown"
-          : ["count", "percentage", "decimal", "year"].includes(
-                definition.answerType,
-              )
-            ? "number"
-            : ["text", "email", "phone", "date"].includes(definition.answerType)
-              ? "short_text"
-              : "long_text";
+    definition.id === "supplement.transport.routes"
+      ? "routes"
+      : definition.answerType === "money"
+        ? "currency"
+        : definition.answerType === "boolean"
+          ? "yes_no"
+          : definition.answerType === "single_choice"
+            ? "dropdown"
+            : ["count", "percentage", "decimal", "year"].includes(
+                  definition.answerType,
+                )
+              ? "number"
+              : ["text", "email", "phone", "date"].includes(
+                    definition.answerType,
+                  )
+                ? "short_text"
+                : "long_text";
   const hints: string[] = [];
   if (definition.answerType === "multi_choice")
     hints.push(
@@ -45,9 +49,12 @@ export const INTAKE_ACORD_QUESTIONS = catalog.questions.map((definition) => {
     hints.push("Include the units.");
   if (definition.answerType === "date") hints.push("Use YYYY-MM-DD.");
   const question: IntakeFollowupQuestion = {
-    id: `catalog1_${definition.id.replaceAll(".", "_")}${kind === "currency" ? "_money_v1" : ""}`,
+    id: `catalog1_${definition.id.replaceAll(".", "_")}${kind === "routes" ? "_routes_v1" : kind === "currency" ? "_money_v1" : ""}`,
     section: "acord",
-    label: [definition.prompt, ...hints].join(" "),
+    label:
+      kind === "routes"
+        ? "Where do your vehicles usually travel?"
+        : [definition.prompt, ...hints].join(" "),
     kind,
     options:
       kind === "dropdown"

@@ -14,6 +14,7 @@ export const followupQuestionFields = {
     v.literal("number"),
     v.literal("currency"),
     v.literal("dropdown"),
+    v.literal("routes"),
   ),
   options: v.array(v.string()),
   source: v.optional(v.string()),

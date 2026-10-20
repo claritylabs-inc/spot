@@ -1,3 +1,4 @@
+import { parseRouteValue, formatRouteValue } from "./route-input";
 /** Bounded, declarative questions. Model output never contains executable UI. */
 export type IntakeFollowupQuestion = {
   id: string;
@@ -9,7 +10,8 @@ export type IntakeFollowupQuestion = {
     | "long_text"
     | "number"
     | "currency"
-    | "dropdown";
+    | "dropdown"
+    | "routes";
   options: string[];
   source?: string;
   conditions?: { questionId: string; answer: string }[];
@@ -101,6 +103,7 @@ export function validateFollowupAnswers(rows: IntakeFollowupAnswer[] = []) {
           !["Yes", "No"].includes(condition.answer),
       ) ||
       row.answer.length > 2000 ||
+      (row.kind === "routes" && !!row.answer && !parseRouteValue(row.answer)) ||
       row.options.length > 12 ||
       new Set(row.options).size !== row.options.length ||
       row.options.some((option) => !option.trim() || option.length > 150) ||
@@ -153,11 +156,13 @@ export function expandIntakeFollowupQuestion(
 }
 export function formatIntakeFollowupAnswer(row: IntakeFollowupAnswer): string {
   if (!row.answer) return "";
-  return row.kind === "currency"
-    ? `$ ${row.answer}`
-    : row.kind === "dropdown"
-      ? intakeFollowupOptionLabel(row.answer)
-      : row.answer;
+  return row.kind === "routes"
+    ? formatRouteValue(row.answer)
+    : row.kind === "currency"
+      ? `$ ${row.answer}`
+      : row.kind === "dropdown"
+        ? intakeFollowupOptionLabel(row.answer)
+        : row.answer;
 }
 
 /** Missing, skipped and unsure parent answers never satisfy a condition. */

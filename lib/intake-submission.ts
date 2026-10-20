@@ -1,3 +1,5 @@
+import { routeAnswerComplete } from "./route-input";
+import { followupQuestionVisible } from "./intake-followups";
 import dayjs from "dayjs";
 import {
   INTAKE_FIELDS,
@@ -40,7 +42,12 @@ export function intakeSubmissionProblems(
   const problems: IntakeSubmissionProblem[] = missingIntakeAnswers(answers).map(
     (label) => ({ label, step: steps[label] ?? 10 }),
   );
-  const add = (label: string, step: number, coverageIndex?: number, vehicleIndex?: number) =>
+  const add = (
+    label: string,
+    step: number,
+    coverageIndex?: number,
+    vehicleIndex?: number,
+  ) =>
     problems.push({
       label,
       step,
@@ -74,6 +81,16 @@ export function intakeSubmissionProblems(
   )
     add("Valid nine-digit Canadian business number", 13);
   if (answers.intakeGoal !== "savings") {
+    for (const row of details.followups ?? [])
+      if (
+        row.kind === "routes" &&
+        followupQuestionVisible(row, details.followups) &&
+        !routeAnswerComplete(row.answer)
+      )
+        add(
+          "Complete the route or clear it to skip",
+          row.section === "acord" ? 29 : 30,
+        );
     for (const label of driverScheduleErrors(details)) add(label, 31);
     if (details.hasClaims === "yes" && !answers.claims?.trim())
       add("Claims details", 23);
