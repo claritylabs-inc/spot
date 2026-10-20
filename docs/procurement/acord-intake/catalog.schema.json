@@ -1,0 +1,809 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Spot procurement follow-up catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "catalogId": {
+      "const": "spot.procurement.follow_up"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "const": "draft"
+    },
+    "language": {
+      "const": "en"
+    },
+    "authorship": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "coverageIds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "general_liability",
+              "property",
+              "workers_compensation",
+              "commercial_auto",
+              "professional_liability",
+              "cyber",
+              "umbrella"
+            ]
+          },
+          "maxItems": 500,
+          "uniqueItems": true
+        },
+        "includes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 500,
+          "uniqueItems": true
+        },
+        "excludes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 500,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "coverageIds",
+        "includes",
+        "excludes"
+      ]
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "audience": {
+          "const": "applicant"
+        },
+        "answerStatuses": {
+          "const": [
+            "unanswered",
+            "answered",
+            "unknown",
+            "not_applicable"
+          ]
+        },
+        "conditionEvaluation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "requiredness": {
+          "const": "not_determined"
+        },
+        "selection": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "audience",
+        "answerStatuses",
+        "conditionEvaluation",
+        "requiredness",
+        "selection"
+      ]
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/group"
+      },
+      "maxItems": 500,
+      "uniqueItems": true
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/question"
+      },
+      "maxItems": 10000,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "$schema",
+    "catalogId",
+    "revision",
+    "status",
+    "language",
+    "authorship",
+    "scope",
+    "defaults",
+    "groups",
+    "questions"
+  ],
+  "$defs": {
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "groupId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "subjectKind": {
+          "enum": [
+            "building",
+            "company",
+            "coverage",
+            "driver",
+            "employee_class",
+            "location",
+            "loss",
+            "person",
+            "prior_policy",
+            "vehicle"
+          ]
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "answerType": {
+          "enum": [
+            "text",
+            "long_text",
+            "sensitive_text",
+            "boolean",
+            "text_list",
+            "single_choice",
+            "multi_choice",
+            "year",
+            "date",
+            "sensitive_date",
+            "count",
+            "decimal",
+            "percentage",
+            "money",
+            "period_money",
+            "period_count",
+            "duration",
+            "distance",
+            "area",
+            "weight",
+            "address",
+            "email",
+            "phone",
+            "file_refs",
+            "entity_ref",
+            "entity_refs"
+          ]
+        },
+        "requiredness": {
+          "const": "not_determined"
+        },
+        "status": {
+          "const": "draft"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "questionId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "operator": {
+                "enum": [
+                  "eq"
+                ]
+              },
+              "value": {
+                "type": [
+                  "string",
+                  "boolean",
+                  "number"
+                ]
+              },
+              "subjectBinding": {
+                "const": "same_subject"
+              }
+            },
+            "required": [
+              "questionId",
+              "operator",
+              "value",
+              "subjectBinding"
+            ]
+          },
+          "maxItems": 500,
+          "uniqueItems": true
+        },
+        "existingAnswerCandidates": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "maxItems": 500,
+          "uniqueItems": true
+        },
+        "contextRequirements": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "historyPeriod"
+            ]
+          },
+          "maxItems": 500,
+          "uniqueItems": true
+        },
+        "sensitivity": {
+          "enum": [
+            "restricted",
+            "ordinary_business"
+          ]
+        },
+        "sourceMapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "original"
+            },
+            "acordQuestionCodes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "maxItems": 500,
+              "uniqueItems": true
+            },
+            "mappingStatus": {
+              "const": "not_verified"
+            }
+          },
+          "required": [
+            "kind",
+            "acordQuestionCodes",
+            "mappingStatus"
+          ]
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "value",
+              "label"
+            ]
+          },
+          "maxItems": 500,
+          "uniqueItems": true
+        },
+        "referenceTarget": {
+          "enum": [
+            "building",
+            "company",
+            "coverage",
+            "driver",
+            "employee_class",
+            "location",
+            "loss",
+            "person",
+            "prior_policy",
+            "vehicle"
+          ]
+        },
+        "answerConstraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "minimum": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "minimum"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "groupId",
+        "subjectKind",
+        "prompt",
+        "answerType",
+        "requiredness",
+        "status",
+        "conditions",
+        "existingAnswerCandidates",
+        "contextRequirements",
+        "sensitivity",
+        "sourceMapping"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "answerType": {
+                "enum": [
+                  "single_choice",
+                  "multi_choice"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "options"
+            ],
+            "properties": {
+              "options": {
+                "minItems": 2
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "options"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "answerType": {
+                "enum": [
+                  "entity_ref",
+                  "entity_refs"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "referenceTarget"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "referenceTarget"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "coverageIds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "general_liability",
+              "property",
+              "workers_compensation",
+              "commercial_auto",
+              "professional_liability",
+              "cyber",
+              "umbrella"
+            ]
+          },
+          "maxItems": 500,
+          "uniqueItems": true
+        },
+        "subjectKind": {
+          "enum": [
+            "building",
+            "company",
+            "coverage",
+            "driver",
+            "employee_class",
+            "location",
+            "loss",
+            "person",
+            "prior_policy",
+            "vehicle"
+          ]
+        },
+        "relevance": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "coverageIds",
+        "subjectKind",
+        "relevance"
+      ]
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "long_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "sensitive_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "boolean": {
+      "type": "boolean"
+    },
+    "text_list": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      },
+      "maxItems": 500,
+      "uniqueItems": true
+    },
+    "single_choice": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "multi_choice": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "maxItems": 500,
+      "uniqueItems": true
+    },
+    "year": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9999
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "sensitive_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "decimal": {
+      "type": "number"
+    },
+    "percentage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ]
+    },
+    "period_money": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "money": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "amount": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "amount",
+            "currency"
+          ]
+        },
+        "period": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "through": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "required": [
+            "from",
+            "through"
+          ]
+        }
+      },
+      "required": [
+        "money",
+        "period"
+      ]
+    },
+    "period_count": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "period": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "from": {
+              "type": "string",
+              "format": "date"
+            },
+            "through": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "required": [
+            "from",
+            "through"
+          ]
+        }
+      },
+      "required": [
+        "count",
+        "period"
+      ]
+    },
+    "duration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": [
+            "hours",
+            "days",
+            "weeks",
+            "months",
+            "years"
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ]
+    },
+    "distance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": [
+            "feet",
+            "meters",
+            "kilometers",
+            "miles"
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ]
+    },
+    "area": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": [
+            "square_feet",
+            "square_meters"
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ]
+    },
+    "weight": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": [
+            "pounds",
+            "kilograms",
+            "metric_tonnes"
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ]
+    },
+    "address": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "street1": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "street2": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "city": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "region": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "postalCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "countryCode": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        }
+      },
+      "required": [
+        "street1",
+        "city",
+        "countryCode"
+      ]
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "maxLength": 320
+    },
+    "phone": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 50
+    },
+    "file_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "maxItems": 500,
+      "uniqueItems": true
+    },
+    "entity_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "entity_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "maxItems": 500,
+      "uniqueItems": true
+    }
+  }
+}

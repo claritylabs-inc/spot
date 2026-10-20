@@ -57,6 +57,7 @@ node_modules/
 !/docs/procurement/
 /docs/procurement/*
 !/docs/procurement/data-inventory.md
+!/docs/procurement/acord-intake/
 !/docs/architecture/
 /docs/architecture/*
 !/docs/architecture/quote-provider-branding.md
