@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Globe, Layers, Loader2 } from "lucide-react";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
@@ -157,6 +158,82 @@ function TechCard({ title, rows, empty }: { title: string; rows: Row[]; empty: s
   );
 }
 
+type Browse = NonNullable<Profile["browse"]>;
+type SkillStatus = NonNullable<Browse["skills"]>[number]["status"];
+
+const SKILL_STATUS: Record<
+  SkillStatus,
+  { label: string; variant: "secondary" | "destructive" | "outline" }
+> = {
+  succeeded: { label: "Completed", variant: "secondary" },
+  blocked: { label: "Blocked", variant: "destructive" },
+  failed: { label: "Failed", variant: "destructive" },
+  skipped: { label: "Skipped", variant: "outline" },
+};
+
+/** Plain operator labels for browser procedures; unknown procedures fall back to their name. */
+function skillLabel(name: string) {
+  const key = name.toLowerCase();
+  if (key.includes("captcha")) return "CAPTCHA";
+  if (/inbox|email|verif/.test(key)) return "Email verification";
+  if (/sign_?up|register|account/.test(key)) return "Account signup";
+  if (/payment|checkout|billing/.test(key)) return "Payment page";
+  const words = name.replace(/[._-]+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function visitStatus(browse: Browse) {
+  if (browse.finished) return "Finished";
+  return browse.steps > 0 ? "Stopped before finishing" : "Did not run";
+}
+
+/** What the browser could do on the latest scan; outcomes are not proof of a vendor. */
+function BrowserResearchCard({ browse }: { browse: Profile["browse"] }) {
+  const skills = browse?.skills ?? [];
+  return (
+    <InlineFieldCard title="Browser research">
+      <p className={`px-4 py-3 text-muted-foreground ${typeStyle("caption.default")}`}>
+        From the latest scan. These show what the browser could reach on the site, not confirmed
+        vendors.
+      </p>
+      {browse ? (
+        <InlineFieldRow label="Site visit">
+          <div className="py-1.5">
+            <div>{visitStatus(browse)}</div>
+            {browse.steps > 0 && (
+              <div className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+                {browse.steps} {browse.steps === 1 ? "step" : "steps"}
+              </div>
+            )}
+          </div>
+        </InlineFieldRow>
+      ) : null}
+      {skills.map((skill, index) => {
+        const status = SKILL_STATUS[skill.status];
+        return (
+          <InlineFieldRow key={`${skill.name}:${index}`} label={skillLabel(skill.name)}>
+            <div className="space-y-1 py-1.5">
+              <Badge variant={status.variant}>{status.label}</Badge>
+              {skill.summary && (
+                <div className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+                  {skill.summary}
+                </div>
+              )}
+            </div>
+          </InlineFieldRow>
+        );
+      })}
+      {!skills.length && (
+        <p className={`px-4 py-3 text-muted-foreground ${typeStyle("body.default")}`}>
+          {browse
+            ? "No signup, email verification or checkout results were reported for this scan."
+            : "No browser visit is recorded for this scan. Rescan to run one."}
+        </p>
+      )}
+    </InlineFieldCard>
+  );
+}
+
 export type WebsiteTechScan = ReturnType<typeof useWebsiteTechScan>;
 
 /** Query and rescan control, owned by the page so Rescan can live in the top bar. */
@@ -253,6 +330,8 @@ export function WebsiteTechSection({ scan }: { scan: WebsiteTechScan }) {
           </>
         )
       )}
+      {/* Shown beside failed and empty scans too: blockers often explain thin findings. */}
+      {profile && !scanning && <BrowserResearchCard browse={profile.browse} />}
     </div>
   );
 }
