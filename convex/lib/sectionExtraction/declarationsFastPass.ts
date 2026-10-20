@@ -8,7 +8,7 @@ import type {
   ExtractFieldSpec,
   ExtractResponse,
 } from "../../../contracts/cl-router/policy";
-import { clRouterExtract } from "../clRouterClient";
+import { ClRouterRequestError, clRouterExtract } from "../clRouterClient";
 import type { PolicySection } from "../policySectioning";
 import type { PdfPageText } from "../pdfText";
 import type { DeclarationsSectionOutput } from "./schemas";
@@ -34,6 +34,8 @@ export type DeclarationsFastPass = {
 
 /** About 60k tokens of the model's 64k window. */
 export const MAX_DECLARATIONS_STATE_CHARS = 240_000;
+/** Caller wait for the Clairic request, including its response body. */
+export const DECLARATIONS_FAST_PASS_TIMEOUT_MS = 15_000;
 const MAX_LIST_ITEMS = 60;
 
 const SCALAR_TEXT_KEYS = [
@@ -315,15 +317,42 @@ export async function runDeclarationsFastPass(
   const built = buildDeclarationsState(params.parsed, params.sections);
   if (!built.state.trim() || built.pageOffsets.every((o) => o.end === o.start))
     throw new Error("declarations fast pass: declarations pages have no text");
-  const raw = await clRouterExtract(
-    {
-      task: "policy_declarations_fast_pass",
-      state: built.state,
-      fields: DECLARATIONS_FIELDS,
-      ...(params.traceId ? { trace: { traceId: params.traceId } } : {}),
-    },
-    { orgId: params.orgId, telemetry: ctx },
-  );
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // Settles before the abort so a late result or abort error cannot win. The
+  // router may already have run inference, so executionStarted stays unknown.
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new ClRouterRequestError(
+          "timeout",
+          `declarations fast pass: cl-router extract timed out after ${DECLARATIONS_FAST_PASS_TIMEOUT_MS} ms`,
+        ),
+      );
+      controller.abort();
+    }, DECLARATIONS_FAST_PASS_TIMEOUT_MS);
+  });
+  let raw: ExtractResponse;
+  try {
+    raw = await Promise.race([
+      clRouterExtract(
+        {
+          task: "policy_declarations_fast_pass",
+          state: built.state,
+          fields: DECLARATIONS_FIELDS,
+          ...(params.traceId ? { trace: { traceId: params.traceId } } : {}),
+        },
+        {
+          orgId: params.orgId,
+          telemetry: ctx,
+          abortSignal: controller.signal,
+        },
+      ),
+      deadline,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
   return { fields: mapDeclarationsAnswers(built, raw.answers), raw };
 }
 
