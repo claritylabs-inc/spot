@@ -1179,10 +1179,38 @@
                     "minLength": 12,
                     "maxLength": 128
                   },
+                  "mode": {
+                    "description": "Defaults to password, which requires password. Passwordless must omit password.",
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "passwordless"
+                    ]
+                  },
                   "name": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 120
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
                   },
                   "inboxUrl": {
                     "type": "string",
@@ -1192,8 +1220,60 @@
                 },
                 "required": [
                   "email",
-                  "password",
                   "name"
+                ],
+                "additionalProperties": false
+              },
+              "contact": {
+                "description": "Caller authorization for one contact submission. Mutually exclusive with signup; use a separate job.",
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "email",
+                  "name",
+                  "message"
                 ],
                 "additionalProperties": false
               }
@@ -1350,6 +1430,37 @@
           },
           "signupSubmitted": {
             "type": "boolean"
+          },
+          "formSubmissions": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "signup",
+                    "sign_in",
+                    "verification",
+                    "contact"
+                  ]
+                },
+                "dispatch": {
+                  "type": "string",
+                  "enum": [
+                    "not_sent",
+                    "sent",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "purpose",
+                "dispatch"
+              ],
+              "additionalProperties": false
+            }
           },
           "actions": {
             "type": "array",
@@ -1693,10 +1804,38 @@
                     "minLength": 12,
                     "maxLength": 128
                   },
+                  "mode": {
+                    "description": "Defaults to password, which requires password. Passwordless must omit password.",
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "passwordless"
+                    ]
+                  },
                   "name": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 120
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
                   },
                   "inboxUrl": {
                     "type": "string",
@@ -1706,8 +1845,60 @@
                 },
                 "required": [
                   "email",
-                  "password",
                   "name"
+                ],
+                "additionalProperties": false
+              },
+              "contact": {
+                "description": "Caller authorization for one contact submission. Mutually exclusive with signup; use a separate job.",
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "email",
+                  "name",
+                  "message"
                 ],
                 "additionalProperties": false
               },
@@ -1855,6 +2046,37 @@
           },
           "signupSubmitted": {
             "type": "boolean"
+          },
+          "formSubmissions": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "signup",
+                    "sign_in",
+                    "verification",
+                    "contact"
+                  ]
+                },
+                "dispatch": {
+                  "type": "string",
+                  "enum": [
+                    "not_sent",
+                    "sent",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "purpose",
+                "dispatch"
+              ],
+              "additionalProperties": false
+            }
           },
           "actions": {
             "type": "array",
