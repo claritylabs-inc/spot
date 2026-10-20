@@ -1,0 +1,7 @@
+{
+  "candidate": "7ad8e5e05cf5a3c076a9a67b190cef0f89f11a36",
+  "sourceFile": "packages/server/src/browse/primitives.ts",
+  "blockSha256": "f8983af43435111b25ee94a60953e216e01296719ba4c81aefd42a77fe0a5b7e",
+  "thresholdSource": "const CAPTCHA_HOVER_MIN = 0.9;",
+  "method": "verbatim private cosmeticHover closure extracted; TSX erases types; only wrapper captures request before actual candidate executeDecision"
+}
