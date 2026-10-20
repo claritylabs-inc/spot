@@ -1,7 +1,6 @@
 "use node";
 
 import dayjs from "dayjs";
-import customParseFormat from "dayjs/plugin/customParseFormat";
 import type { Id } from "../../_generated/dataModel";
 import type { ActionCtx } from "../../_generated/server";
 import type {
@@ -13,8 +12,6 @@ import { clRouterExtract } from "../clRouterClient";
 import type { PolicySection } from "../policySectioning";
 import type { PdfPageText } from "../pdfText";
 import type { DeclarationsSectionOutput } from "./schemas";
-
-dayjs.extend(customParseFormat);
 
 /** The parsed-source subset the fast pass reads. */
 export type ParsedPdfText = {
@@ -37,7 +34,6 @@ export type DeclarationsFastPass = {
 
 /** About 60k tokens of the model's 64k window. */
 export const MAX_DECLARATIONS_STATE_CHARS = 240_000;
-const MAX_NULL_PROBABILITY = 0.5;
 const MAX_LIST_ITEMS = 60;
 
 const SCALAR_TEXT_KEYS = [
@@ -185,41 +181,65 @@ type Answer = ExtractAnswer;
 function scalarValue(answer: Answer | undefined): string | null {
   if (!answer || answer.value === null || Array.isArray(answer.value))
     return null;
-  if (answer.pNull === undefined || answer.pNull > MAX_NULL_PROBABILITY)
-    return null;
   const value = String(answer.value).trim();
   return value || null;
 }
 
-const DATE_FORMATS = [
-  "YYYY-MM-DD",
-  "M/D/YYYY",
-  "M/D/YY",
-  "M-D-YYYY",
-  "MMMM D, YYYY",
-  "MMMM D YYYY",
-  "MMM D, YYYY",
-  "MMM D YYYY",
-  "D MMMM YYYY",
-  "D MMM YYYY",
+const MONTHS = [
+  "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
 ];
 
-const DATE_TOKEN =
-  /\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|[A-Za-z]{3,9}\.? +\d{1,2},? +\d{4}|\d{1,2} +[A-Za-z]{3,9}\.?,? +\d{4}/g;
+const DAY_PATTERN =
+  /(?<!\d)(?:(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})[/-](\d{1,2})[/-](\d{4}|\d{2})|([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})|(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,9})\.?,?\s+(\d{4}))(?!\d)/g;
+
+function monthNumber(name: string): number | null {
+  const index = MONTHS.indexOf(name.slice(0, 3).toLowerCase());
+  return index >= 0 ? index + 1 : null;
+}
+
+/** Calendar-valid date as `YYYY-MM-DD`, or null (e.g. Feb 30). */
+function calendarDay(year: number, month: number | null, day: number) {
+  if (month === null) return null;
+  const date = dayjs(new Date(year, month - 1, day));
+  if (
+    date.year() !== year ||
+    date.month() !== month - 1 ||
+    date.date() !== day
+  )
+    return null;
+  return date.format("YYYY-MM-DD");
+}
+
+/** Every calendar-valid date written in `text`, normalized to `YYYY-MM-DD`. */
+function datesIn(text: string): string[] {
+  const days: string[] = [];
+  for (const m of text.matchAll(DAY_PATTERN)) {
+    const day = m[1]
+      ? calendarDay(Number(m[1]), Number(m[2]), Number(m[3]))
+      : m[4]
+        ? calendarDay(
+            m[6].length === 2 ? 2000 + Number(m[6]) : Number(m[6]),
+            Number(m[4]),
+            Number(m[5]),
+          )
+        : m[7]
+          ? calendarDay(Number(m[9]), monthNumber(m[7]), Number(m[8]))
+          : calendarDay(Number(m[12]), monthNumber(m[11]), Number(m[10]));
+    if (day) days.push(day);
+  }
+  return days;
+}
 
 function parseDay(text: string): string | null {
-  const cleaned = text.replace(/\.(?=\s)/g, "").replace(/\s+/g, " ").trim();
-  const parsed = dayjs(cleaned, DATE_FORMATS, true);
-  return parsed.isValid() ? parsed.format("YYYY-MM-DD") : null;
+  const days = datesIn(text.trim());
+  const only = days.length === 1 ? days[0] : null;
+  return only && text.trim().match(DAY_PATTERN)?.[0] === text.trim() ? only : null;
 }
 
 /** True when the evidence text states the same calendar day as the date value. */
 function dateGrounded(value: string, evidence: string): boolean {
   const day = parseDay(value);
-  if (!day) return false;
-  return (evidence.match(DATE_TOKEN) ?? []).some(
-    (token) => parseDay(token) === day,
-  );
+  return day !== null && datesIn(evidence).includes(day);
 }
 
 function listItems(answer: Answer | undefined): string[] {
@@ -325,7 +345,6 @@ export async function runDeclarationsFastPass(
       task: "policy_declarations_fast_pass",
       state: built.state,
       fields: DECLARATIONS_FIELDS,
-      referenceDate: dayjs().format("YYYY-MM-DD"),
       ...(params.traceId ? { trace: { traceId: params.traceId } } : {}),
     },
     { orgId: params.orgId, telemetry: ctx },
