@@ -49,8 +49,11 @@ identifies validation failures separately from deployment failures. After
 validation, the workflow:
 
 1. deploys the commit's Convex functions to production;
-2. verifies Convex configuration, both iMessage webhook transports, Slack,
-   and cl-router health; and
+2. when the push contains breaking backend changes (edits to
+   `convex/schema.ts`, `convex/http.ts`, `convex/crons.ts`,
+   `convex/auth.config.ts` or `config/deployments.json`, or removed or renamed
+   Convex modules), verifies Convex configuration, both iMessage webhook
+   transports, Slack, and cl-router health; and
 3. verifies the commit is still the branch head before emitting
    `release-ready-production`.
 
