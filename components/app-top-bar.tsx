@@ -116,7 +116,6 @@ export function AppTopBar({
   const { label, href } = resolveAppBreadcrumb(pathname);
   return (
     <SharedAppTopBar
-      className="pr-3 lg:pr-3"
       breadcrumb={label}
       breadcrumbHref={href}
       breadcrumbRender={<Link href={href} />}
