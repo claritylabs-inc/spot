@@ -1503,6 +1503,10 @@ reports preserve failed candidates and their repeatable artifacts:
   gate decision passed with relevance 0.78 and reached the diagnostic stop spy.
   Goal and questions were unchanged. Zero native inputs; this does not establish
   a CAPTCHA solve or the cause of the changed score.
+- [857 inbox readiness](browser-inbox-readiness-sol-2026-10-20.md): actual
+  trusted-HTTPS refusal checks passed with zero messages exposed. Real delivery,
+  positive read and acceptance remain blocked on the exact sender address and
+  existing MCP conversation ID; no email was sent.
 
 These reports do not establish hosted sandbox isolation, production challenge
 solving, controlled inbox delivery, or customer submission acceptance. Final
