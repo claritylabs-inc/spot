@@ -1,0 +1,41 @@
+{
+  "candidate": "d28fb67ae6c5d05c4294f31b9f8b5d96712ff31d",
+  "oneSkillInvocation": true,
+  "spyCalls": 1,
+  "nativeInputCommands": 0,
+  "goalExactlyMatches4bbe": true,
+  "questionsExactlyMatch4bbe": true,
+  "goalUtf8Sha256": "eceb2b1944add88840e45f91e170b54beb05ba729912548475e321064b44eee4",
+  "questionsJsonSha256": "072e2ea4349dc04bb26cfedbc91830e55863de25187f249ddc27f9f88ae46060",
+  "descriptionEqualsProductionConstant": true,
+  "descriptionEqualsActorTool": true,
+  "actualAction": {
+    "tool": "captcha_click",
+    "arguments": {
+      "target": "the checkbox inside the Cloudflare \"Verify you are human\" widget"
+    },
+    "primitive": "captchaClick",
+    "description": "Locate the described checkbox, image tile or verify control with screenshot vision, move the top-page pointer, then send one trusted press and release. Before input the runtime checks the allowed page, recognized challenge frame, geometry, content and final hit; these checks can refuse the action. Drag, slider, audio and typed targets are unsupported. Page handlers may submit data or make network requests in response to the click."
+  },
+  "rootStateFields": [
+    "goal",
+    "skill",
+    "observation",
+    "action"
+  ],
+  "observationFields": [
+    "recent",
+    "screenshot",
+    "visualEvidence"
+  ],
+  "captureSeq": 13,
+  "modelRequestSeq": 15,
+  "captureAndAssetBytesEqual": true,
+  "gatePngSha256": "73796549bd252214f7085b1d16bd6a6a4926891f6fbef30258eac0d50bdc11a8",
+  "newCaptureDiffersFromInitial": true,
+  "harnessSteps": 5,
+  "extraGateCaptureReads": 1,
+  "denialHashBehaviorTested": false,
+  "nativeAcceptanceTested": false,
+  "fullRequestRetained": true
+}
