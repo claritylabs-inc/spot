@@ -1,0 +1,20 @@
+{
+  "candidate": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "actor": "Ordinary operator via fresh local capture OTP",
+  "fixture": "Fresh isolated native-local seed; Cove https://cove.dev; no tech profile",
+  "actions": [
+    "Prove website and profile absence with actual table query",
+    "Normal OTP sign-in",
+    "Actual authenticated getForOperator and registered get_organization read, assert null",
+    "Open actual Profile Tech stack and assert exact empty-state copy, absent browser outcomes",
+    "Screenshot, requery zero profiles/jobs, close browser and services"
+  ],
+  "expected": "Not scanned yet; websiteTech:null; zero browser outcomes",
+  "prohibited": [
+    "Rescan",
+    "website mutation",
+    "product endpoint/code edits",
+    "provider/hosted/customer/mail/inbox calls"
+  ],
+  "cleanup": "No original backend changes; remove auth, close owned Chrome/Next/Convex/Xvfb; retain isolated DB stopped"
+}

@@ -1,0 +1,29 @@
+{
+  "node": "v24.14.1",
+  "candidateTrackedClean": true,
+  "sourceBlobsVerified": 13,
+  "ports": [
+    {
+      "port": 8080,
+      "closed": true
+    },
+    {
+      "port": 8083,
+      "closed": true
+    },
+    {
+      "port": 8084,
+      "closed": true
+    },
+    {
+      "port": 9222,
+      "closed": true
+    }
+  ],
+  "authRemoved": true,
+  "bootstrapPrivateFileRemoved": true,
+  "screenshotVisuallyReviewed": true,
+  "priorReportsUnmodified": true,
+  "fullTypesBuildNotRepeated": true,
+  "originalBackendAndPrivateInboxUntouched": true
+}

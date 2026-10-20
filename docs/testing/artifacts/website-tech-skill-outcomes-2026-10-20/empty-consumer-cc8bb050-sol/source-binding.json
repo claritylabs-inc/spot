@@ -1,0 +1,70 @@
+{
+  "candidate": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "sources": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "70e5cd497c54b92c6866eb5ea41d75d0cc0699866f4254b55aadc93b85aa7eb6",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "CLAUDE.md",
+      "sha256": "c81e55d2a09c796fd19cb471ad53f75b57d41423fc9a8066153784dc011f2303",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "app/operator/clients/[clientOrgId]/wiki/website-tech-section.tsx",
+      "sha256": "f38c55fef3515bde335790427af02c614842edcf932542ef5648a510fe1b8830",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "app/operator/clients/[clientOrgId]/wiki/page.tsx",
+      "sha256": "b1e5ba7bae12f11de574d8ee367430a9273599e7919a973cdb9342e9b2070417",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "convex/websiteTech.ts",
+      "sha256": "621f0aed2a15fe94c22fb3280ece6cd5065d03b2e5072189d03af902993dbe81",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "convex/operatorAgent.ts",
+      "sha256": "2da806c290d7726301207b94c3404c0a8b7881e3c804fe3560dd657cd5e83d10",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "convex/lib/operatorAgentToolRegistry.ts",
+      "sha256": "5bb92ce74bb36bf50efb6523dbc0a5250598f3f0193497f25fd480efc8e62b29",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "convex/seed.ts",
+      "sha256": "36729a14f1430d6d5ab8009cffa3dd3d94a9264eb8167ca4367feb3baa060e07",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "convex/lib/localSeedData.ts",
+      "sha256": "adc172896a79170f15094a7c8e5524b8e41e57f4164a1de897a4943c43259df7",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "scripts/lib/conductor-workspace.mjs",
+      "sha256": "414f4fb7b8dc602059260716ebf7f6ced1770b2ad4ca4d6d90dd5723b84c61fd",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "scripts/watch-conductor-email-captures.mjs",
+      "sha256": "278557c4c25df48426c4d8daa33b9656ebafd1bddd51d983436bb8d2c45ccf2d",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "package.json",
+      "sha256": "dd8908ad274be8a712bed5993ead6de0b294003e378cc207492941a6f1e47735",
+      "matchesExactCandidate": true
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "c6550be1d46828c4c5045b8a2e98c67880b0d5fa52acbb6cffdf972a2eee8918",
+      "matchesExactCandidate": true
+    }
+  ]
+}
