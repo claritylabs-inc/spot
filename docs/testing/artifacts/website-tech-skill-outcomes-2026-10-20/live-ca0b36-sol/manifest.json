@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-20",
+  "candidate": "ca0b36a7871454929bfc2b64d5b9589d3e866cd5",
+  "scope": "baseline live native primitives + skills; blocked outcomes, no release acceptance",
+  "screenshotsVisuallyReviewed": true,
+  "unrelatedMailboxDataIncluded": false,
+  "credentialsIncluded": false,
+  "files": {
+    "runtime-trace.json": "3d204748b8ffbc5c1df20013ba5c1b9e4f2c9db3407caa398e54babd4ec4d245",
+    "v2-before.png": "f73c5bc6b1fe0de6fa364c216dbfe5c437903186cf11e07537bf44099b4389e1",
+    "v2-after-refused-motion.png": "3958528221ad389e5169abcb7a78cdd7bd7b42c3935fe31e1d94cd92d3cf3d64",
+    "turnstile-blocked.png": "3fdd367ee6c9af984e90ecc961be31d5ab15b9211970bd79619edd20fd6f5ec8",
+    "bankers-registration.png": "c5c6dd088f50d44051ad121de40af7d8e5f45b0018d9783cdfef33a5a2b7761b",
+    "pearson-canada-overlays.png": "774a220e958e8f0b16d8a4c6e82c8a3696ccb36044d05c17cd9a57c7e7fa5a28",
+    "pearson-netherlands-overlays.png": "d349491a61761e0bb27af16ade11c60972fadb05a16f7c4ad5a69a23a72e3373",
+    "results.json": "542bed9a837774a066e3a6b5acd635a37eb26dd02844039e91e90e681cc07711",
+    "runtime-probe.mjs": "b699194cfc1f244277d0a765d8084839dee699779c95ced48215e1ecb77538e2"
+  }
+}

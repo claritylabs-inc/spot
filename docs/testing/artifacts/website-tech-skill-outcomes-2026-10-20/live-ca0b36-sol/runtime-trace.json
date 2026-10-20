@@ -1,0 +1,1693 @@
+[
+  {
+    "seq": 1,
+    "time": "2026-10-20T19:16:22.170Z",
+    "site": "bootstrap",
+    "kind": "cdp",
+    "method": "Emulation.setDeviceMetricsOverride",
+    "sessionId": "session-1",
+    "params": {
+      "width": 1024,
+      "height": 768,
+      "deviceScaleFactor": 1,
+      "mobile": false
+    },
+    "durationMs": 7,
+    "result": {}
+  },
+  {
+    "seq": 2,
+    "time": "2026-10-20T19:16:27.080Z",
+    "site": "bootstrap",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "blue"
+    ],
+    "questionTypes": {
+      "blue": "noul"
+    },
+    "images": [],
+    "status": 200,
+    "durationMs": 103,
+    "model": "jev-1.13.0",
+    "answers": {
+      "blue": {
+        "type": "noul",
+        "noul": 0.81
+      }
+    },
+    "usage": {
+      "input_tokens": 283,
+      "output_tokens": 20
+    }
+  },
+  {
+    "seq": 3,
+    "time": "2026-10-20T19:16:27.155Z",
+    "site": "recaptcha-v2",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "relevant",
+      "external_instruction",
+      "credential_disclosure",
+      "unrequested_destruction"
+    ],
+    "questionTypes": {
+      "relevant": "noul",
+      "external_instruction": "noul",
+      "credential_disclosure": "noul",
+      "unrequested_destruction": "noul"
+    },
+    "images": [],
+    "status": 200,
+    "durationMs": 74,
+    "model": "jev-1.13.0",
+    "answers": {
+      "relevant": {
+        "type": "noul",
+        "noul": 0.89
+      },
+      "external_instruction": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "credential_disclosure": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "unrequested_destruction": {
+        "type": "noul",
+        "noul": 0.02
+      }
+    },
+    "usage": {
+      "input_tokens": 595,
+      "output_tokens": 80
+    }
+  },
+  {
+    "seq": 5,
+    "time": "2026-10-20T19:16:42.364Z",
+    "site": "recaptcha-v2",
+    "kind": "skill_action",
+    "tool": "skill_challenge_captcha:domains",
+    "input": "",
+    "result": "{\"allowed\":[\"2captcha.com\",\"beta.validate.bankersalmanac.com\",\"pearson.com\"],\"adopted\":[],\"redirects\":[]}"
+  },
+  {
+    "seq": 6,
+    "time": "2026-10-20T19:16:42.373Z",
+    "site": "recaptcha-v2",
+    "kind": "skill_action",
+    "tool": "skill_challenge_captcha:snapshot",
+    "input": "[]",
+    "result": "{\"url\":\"https://2captcha.com/demo/recaptcha-v2\",\"title\":\"Google reCAPTCHA v2 demo: Sample Form with Google reCAPTCHA v2\"}"
+  },
+  {
+    "seq": 8,
+    "time": "2026-10-20T19:16:42.515Z",
+    "site": "recaptcha-v2",
+    "kind": "skill_action",
+    "tool": "skill_challenge_captcha:screenshot",
+    "input": "[]",
+    "result": "(image)"
+  },
+  {
+    "seq": 9,
+    "time": "2026-10-20T19:16:42.659Z",
+    "site": "recaptcha-v2",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "present",
+      "checkbox",
+      "turnstile",
+      "image_grid",
+      "slider",
+      "audio",
+      "text_entry",
+      "verifying",
+      "completed",
+      "error",
+      "access_denied",
+      "payment_page"
+    ],
+    "questionTypes": {
+      "present": "noul",
+      "checkbox": "noul",
+      "turnstile": "noul",
+      "image_grid": "noul",
+      "slider": "noul",
+      "audio": "noul",
+      "text_entry": "noul",
+      "verifying": "noul",
+      "completed": "noul",
+      "error": "noul",
+      "access_denied": "noul",
+      "payment_page": "noul"
+    },
+    "images": [
+      {
+        "sha256": "4426591759998495e6e0d8e318df4d5bb9d0a11d9683470faa8e73d16754e810",
+        "bytes": 132884
+      }
+    ],
+    "status": 200,
+    "durationMs": 129,
+    "model": "jev-1.13.0",
+    "answers": {
+      "present": {
+        "type": "noul",
+        "noul": 0.17
+      },
+      "checkbox": {
+        "type": "noul",
+        "noul": 0.84
+      },
+      "turnstile": {
+        "type": "noul",
+        "noul": 0.01
+      },
+      "image_grid": {
+        "type": "noul",
+        "noul": 0.04
+      },
+      "slider": {
+        "type": "noul",
+        "noul": 0.07
+      },
+      "audio": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "text_entry": {
+        "type": "noul",
+        "noul": 0.12
+      },
+      "verifying": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "completed": {
+        "type": "noul",
+        "noul": 0.04
+      },
+      "error": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "access_denied": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "payment_page": {
+        "type": "noul",
+        "noul": 0.01
+      }
+    },
+    "usage": {
+      "input_tokens": 3839,
+      "output_tokens": 205
+    }
+  },
+  {
+    "seq": 10,
+    "time": "2026-10-20T19:16:42.661Z",
+    "site": "recaptcha-v2",
+    "kind": "skill_record",
+    "name": "challenge.captcha",
+    "version": "1.0.0",
+    "status": "skipped",
+    "summary": "No unsolved challenge is visible on this page.",
+    "steps": 3
+  },
+  {
+    "seq": 11,
+    "time": "2026-10-20T19:16:42.662Z",
+    "site": "recaptcha-v2",
+    "kind": "skill_outcome",
+    "result": {
+      "status": "skipped",
+      "summary": "No unsolved challenge is visible on this page.",
+      "evidence": [],
+      "data": {
+        "kind": "none",
+        "solved": false,
+        "attempts": 0,
+        "solver": "jev_box",
+        "page": "https://2captcha.com/demo/recaptcha-v2"
+      },
+      "steps": [
+        {
+          "action": "domains",
+          "input": "",
+          "result": "{\"allowed\":[\"2captcha.com\",\"beta.validate.bankersalmanac.com\",\"pearson.com\"],\"adopted\":[],\"redirects\":[]}"
+        },
+        {
+          "action": "snapshot",
+          "input": "[]",
+          "result": "{\"url\":\"https://2captcha.com/demo/recaptcha-v2\",\"title\":\"Google reCAPTCHA v2 demo: Sample Form with Google reCAPTCHA v2\"}"
+        },
+        {
+          "action": "screenshot",
+          "input": "[]",
+          "result": "(image)"
+        }
+      ]
+    },
+    "durationMs": 301
+  },
+  {
+    "seq": 13,
+    "time": "2026-10-20T19:16:53.884Z",
+    "site": "recaptcha-v2",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "relevant",
+      "external_instruction"
+    ],
+    "questionTypes": {
+      "relevant": "noul",
+      "external_instruction": "noul"
+    },
+    "images": [],
+    "status": 200,
+    "durationMs": 167,
+    "model": "jev-1.13.0",
+    "answers": {
+      "relevant": {
+        "type": "noul",
+        "noul": 0.16
+      },
+      "external_instruction": {
+        "type": "noul",
+        "noul": 0.08
+      }
+    },
+    "usage": {
+      "input_tokens": 2124,
+      "output_tokens": 39
+    }
+  },
+  {
+    "seq": 14,
+    "time": "2026-10-20T19:16:53.885Z",
+    "site": "recaptcha-v2",
+    "kind": "primitive",
+    "method": "wait",
+    "args": [
+      5
+    ],
+    "result": {
+      "allowed": false,
+      "error": "Jev guidance was uncertain or refused the action. Gather evidence or propose a more precise action.",
+      "signals": [
+        "relevant"
+      ]
+    }
+  },
+  {
+    "seq": 16,
+    "time": "2026-10-20T19:16:54.089Z",
+    "site": "turnstile",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "relevant",
+      "external_instruction",
+      "credential_disclosure",
+      "unrequested_destruction"
+    ],
+    "questionTypes": {
+      "relevant": "noul",
+      "external_instruction": "noul",
+      "credential_disclosure": "noul",
+      "unrequested_destruction": "noul"
+    },
+    "images": [],
+    "status": 200,
+    "durationMs": 57,
+    "model": "jev-1.13.0",
+    "answers": {
+      "relevant": {
+        "type": "noul",
+        "noul": 0.54
+      },
+      "external_instruction": {
+        "type": "noul",
+        "noul": 0.32
+      },
+      "credential_disclosure": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "unrequested_destruction": {
+        "type": "noul",
+        "noul": 0.02
+      }
+    },
+    "usage": {
+      "input_tokens": 2304,
+      "output_tokens": 80
+    }
+  },
+  {
+    "seq": 19,
+    "time": "2026-10-20T19:17:29.817Z",
+    "site": "recaptcha-v2",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "relevant",
+      "external_instruction",
+      "credential_disclosure",
+      "unrequested_destruction"
+    ],
+    "questionTypes": {
+      "relevant": "noul",
+      "external_instruction": "noul",
+      "credential_disclosure": "noul",
+      "unrequested_destruction": "noul"
+    },
+    "images": [],
+    "status": 200,
+    "durationMs": 98,
+    "model": "jev-1.13.0",
+    "answers": {
+      "relevant": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "external_instruction": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "credential_disclosure": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "unrequested_destruction": {
+        "type": "noul",
+        "noul": 0.02
+      }
+    },
+    "usage": {
+      "input_tokens": 716,
+      "output_tokens": 80
+    }
+  },
+  {
+    "seq": 36,
+    "time": "2026-10-20T19:17:46.036Z",
+    "site": "recaptcha-v2",
+    "kind": "skill_action",
+    "tool": "skill_challenge_captcha:domains",
+    "input": "",
+    "result": "{\"allowed\":[\"2captcha.com\",\"beta.validate.bankersalmanac.com\",\"pearson.com\"],\"adopted\":[],\"redirects\":[]}"
+  },
+  {
+    "seq": 37,
+    "time": "2026-10-20T19:17:46.047Z",
+    "site": "recaptcha-v2",
+    "kind": "skill_action",
+    "tool": "skill_challenge_captcha:snapshot",
+    "input": "[]",
+    "result": "{\"url\":\"https://2captcha.com/demo/recaptcha-v2\",\"title\":\"Google reCAPTCHA v2 demo: Sample Form with Google reCAPTCHA v2\"}"
+  },
+  {
+    "seq": 39,
+    "time": "2026-10-20T19:17:46.213Z",
+    "site": "recaptcha-v2",
+    "kind": "skill_action",
+    "tool": "skill_challenge_captcha:screenshot",
+    "input": "[]",
+    "result": "(image)"
+  },
+  {
+    "seq": 40,
+    "time": "2026-10-20T19:17:46.436Z",
+    "site": "recaptcha-v2",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "present",
+      "checkbox",
+      "turnstile",
+      "image_grid",
+      "slider",
+      "audio",
+      "text_entry",
+      "verifying",
+      "completed",
+      "error",
+      "access_denied",
+      "payment_page"
+    ],
+    "questionTypes": {
+      "present": "noul",
+      "checkbox": "noul",
+      "turnstile": "noul",
+      "image_grid": "noul",
+      "slider": "noul",
+      "audio": "noul",
+      "text_entry": "noul",
+      "verifying": "noul",
+      "completed": "noul",
+      "error": "noul",
+      "access_denied": "noul",
+      "payment_page": "noul"
+    },
+    "images": [
+      {
+        "sha256": "75444ce4b15c3ee146fb901455f318deb52f662f7ed9937a86307c90acddd313",
+        "bytes": 131378
+      }
+    ],
+    "status": 200,
+    "durationMs": 211,
+    "model": "jev-1.13.0",
+    "answers": {
+      "present": {
+        "type": "noul",
+        "noul": 0.49
+      },
+      "checkbox": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "turnstile": {
+        "type": "noul",
+        "noul": 0.01
+      },
+      "image_grid": {
+        "type": "noul",
+        "noul": 0.04
+      },
+      "slider": {
+        "type": "noul",
+        "noul": 0.06
+      },
+      "audio": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "text_entry": {
+        "type": "noul",
+        "noul": 0.07
+      },
+      "verifying": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "completed": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "error": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "access_denied": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "payment_page": {
+        "type": "noul",
+        "noul": 0.01
+      }
+    },
+    "usage": {
+      "input_tokens": 3838,
+      "output_tokens": 205
+    }
+  },
+  {
+    "seq": 41,
+    "time": "2026-10-20T19:17:46.438Z",
+    "site": "recaptcha-v2",
+    "kind": "skill_record",
+    "name": "challenge.captcha",
+    "version": "1.0.0",
+    "status": "blocked",
+    "summary": "Jev could not tell whether a challenge blocks this page; nothing was clicked.",
+    "steps": 3
+  },
+  {
+    "seq": 42,
+    "time": "2026-10-20T19:17:46.438Z",
+    "site": "recaptcha-v2",
+    "kind": "skill_outcome",
+    "result": {
+      "status": "blocked",
+      "summary": "Jev could not tell whether a challenge blocks this page; nothing was clicked.",
+      "evidence": [],
+      "data": {
+        "kind": "none",
+        "solved": false,
+        "attempts": 0,
+        "solver": "jev_box",
+        "blocker": "ambiguous_challenge",
+        "page": "https://2captcha.com/demo/recaptcha-v2"
+      },
+      "steps": [
+        {
+          "action": "domains",
+          "input": "",
+          "result": "{\"allowed\":[\"2captcha.com\",\"beta.validate.bankersalmanac.com\",\"pearson.com\"],\"adopted\":[],\"redirects\":[]}"
+        },
+        {
+          "action": "snapshot",
+          "input": "[]",
+          "result": "{\"url\":\"https://2captcha.com/demo/recaptcha-v2\",\"title\":\"Google reCAPTCHA v2 demo: Sample Form with Google reCAPTCHA v2\"}"
+        },
+        {
+          "action": "screenshot",
+          "input": "[]",
+          "result": "(image)"
+        }
+      ]
+    },
+    "durationMs": 406
+  },
+  {
+    "seq": 44,
+    "time": "2026-10-20T19:17:55.046Z",
+    "site": "recaptcha-v2",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "relevant",
+      "external_instruction",
+      "credential_disclosure",
+      "unrequested_destruction",
+      "payment_entry",
+      "identity_entry"
+    ],
+    "questionTypes": {
+      "relevant": "noul",
+      "external_instruction": "noul",
+      "credential_disclosure": "noul",
+      "unrequested_destruction": "noul",
+      "payment_entry": "noul",
+      "identity_entry": "noul"
+    },
+    "images": [],
+    "status": 200,
+    "durationMs": 66,
+    "model": "jev-1.13.0",
+    "answers": {
+      "relevant": {
+        "type": "noul",
+        "noul": 0.49
+      },
+      "external_instruction": {
+        "type": "noul",
+        "noul": 0.07
+      },
+      "credential_disclosure": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "unrequested_destruction": {
+        "type": "noul",
+        "noul": 0.04
+      },
+      "payment_entry": {
+        "type": "noul",
+        "noul": 0.01
+      },
+      "identity_entry": {
+        "type": "noul",
+        "noul": 0.01
+      }
+    },
+    "usage": {
+      "input_tokens": 769,
+      "output_tokens": 114
+    }
+  },
+  {
+    "seq": 45,
+    "time": "2026-10-20T19:17:55.047Z",
+    "site": "recaptcha-v2",
+    "kind": "primitive",
+    "method": "captchaClick",
+    "args": [
+      "the unticked CAPTCHA checkbox labeled I'm not a robot"
+    ],
+    "result": {
+      "allowed": false,
+      "error": "Jev guidance was uncertain or refused the action. Gather evidence or propose a more precise action.",
+      "signals": [
+        "relevant"
+      ]
+    }
+  },
+  {
+    "seq": 47,
+    "time": "2026-10-20T19:18:06.273Z",
+    "site": "recaptcha-v2",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "relevant",
+      "external_instruction",
+      "credential_disclosure",
+      "unrequested_destruction",
+      "payment_entry",
+      "identity_entry"
+    ],
+    "questionTypes": {
+      "relevant": "noul",
+      "external_instruction": "noul",
+      "credential_disclosure": "noul",
+      "unrequested_destruction": "noul",
+      "payment_entry": "noul",
+      "identity_entry": "noul"
+    },
+    "images": [],
+    "status": 200,
+    "durationMs": 68,
+    "model": "jev-1.13.0",
+    "answers": {
+      "relevant": {
+        "type": "noul",
+        "noul": 0.73
+      },
+      "external_instruction": {
+        "type": "noul",
+        "noul": 0.16
+      },
+      "credential_disclosure": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "unrequested_destruction": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "payment_entry": {
+        "type": "noul",
+        "noul": 0.01
+      },
+      "identity_entry": {
+        "type": "noul",
+        "noul": 0.01
+      }
+    },
+    "usage": {
+      "input_tokens": 2477,
+      "output_tokens": 114
+    }
+  },
+  {
+    "seq": 48,
+    "time": "2026-10-20T19:18:06.426Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Page.captureScreenshot",
+    "sessionId": "session-2",
+    "params": {
+      "format": "png"
+    },
+    "durationMs": 148,
+    "result": {
+      "sha256": "487cb53f23043c5a7a21e20e8e49c11249d1ea0bf801991205441c6c86450162"
+    }
+  },
+  {
+    "seq": 49,
+    "time": "2026-10-20T19:18:06.483Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "DOM.getFrameOwner",
+    "sessionId": "session-2",
+    "params": {
+      "frameId": "frame-3"
+    },
+    "durationMs": 1,
+    "result": {
+      "backendNodeId": 68
+    }
+  },
+  {
+    "seq": 50,
+    "time": "2026-10-20T19:18:06.484Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "DOM.getBoxModel",
+    "sessionId": "session-2",
+    "params": {
+      "backendNodeId": 68
+    },
+    "durationMs": 1,
+    "result": {
+      "model": {
+        "content": [
+          282.5,
+          332,
+          586.5,
+          332,
+          586.5,
+          410,
+          282.5,
+          410
+        ],
+        "padding": [
+          282.5,
+          332,
+          586.5,
+          332,
+          586.5,
+          410,
+          282.5,
+          410
+        ],
+        "border": [
+          282.5,
+          332,
+          586.5,
+          332,
+          586.5,
+          410,
+          282.5,
+          410
+        ],
+        "margin": [
+          282.5,
+          332,
+          586.5,
+          332,
+          586.5,
+          410,
+          282.5,
+          410
+        ],
+        "width": 304,
+        "height": 78
+      }
+    }
+  },
+  {
+    "seq": 51,
+    "time": "2026-10-20T19:18:06.485Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "DOM.getFrameOwner",
+    "sessionId": "session-2",
+    "params": {
+      "frameId": "frame-4"
+    },
+    "durationMs": 1,
+    "result": {
+      "backendNodeId": 70
+    }
+  },
+  {
+    "seq": 52,
+    "time": "2026-10-20T19:18:06.486Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "DOM.getBoxModel",
+    "sessionId": "session-2",
+    "params": {
+      "backendNodeId": 70
+    },
+    "durationMs": 1,
+    "result": {
+      "model": {
+        "content": [
+          1,
+          -9999,
+          301,
+          -9999,
+          301,
+          -9849,
+          1,
+          -9849
+        ],
+        "padding": [
+          1,
+          -9999,
+          301,
+          -9999,
+          301,
+          -9849,
+          1,
+          -9849
+        ],
+        "border": [
+          1,
+          -9999,
+          301,
+          -9999,
+          301,
+          -9849,
+          1,
+          -9849
+        ],
+        "margin": [
+          1,
+          -9999,
+          301,
+          -9999,
+          301,
+          -9849,
+          1,
+          -9849
+        ],
+        "width": 300,
+        "height": 150
+      }
+    }
+  },
+  {
+    "seq": 53,
+    "time": "2026-10-20T19:18:06.600Z",
+    "site": "recaptcha-v2",
+    "kind": "real_jev",
+    "modelRequested": "jev-1.14.0",
+    "questionIds": [
+      "target"
+    ],
+    "questionTypes": {
+      "target": "box"
+    },
+    "images": [
+      {
+        "sha256": "487cb53f23043c5a7a21e20e8e49c11249d1ea0bf801991205441c6c86450162",
+        "bytes": 130119
+      }
+    ],
+    "status": 200,
+    "durationMs": 104,
+    "model": "jev-1.14.0",
+    "answers": {
+      "target": {
+        "type": "box",
+        "box": {
+          "top": 0.46,
+          "bottom": 0.51,
+          "left": 0.29,
+          "right": 0.33
+        },
+        "confidence": 0.91
+      }
+    },
+    "usage": {
+      "input_tokens": 2461,
+      "output_tokens": 20
+    }
+  },
+  {
+    "seq": 54,
+    "time": "2026-10-20T19:18:06.612Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 500.03635108474685,
+      "y": 8.328604504095203
+    },
+    "durationMs": 11,
+    "result": {}
+  },
+  {
+    "seq": 55,
+    "time": "2026-10-20T19:18:06.644Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 499.6707047621027,
+      "y": 9.214271131546662
+    },
+    "durationMs": 16,
+    "result": {}
+  },
+  {
+    "seq": 56,
+    "time": "2026-10-20T19:18:06.677Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 498.5630108218752,
+      "y": 10.558494510836727
+    },
+    "durationMs": 13,
+    "result": {}
+  },
+  {
+    "seq": 57,
+    "time": "2026-10-20T19:18:06.694Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 495.58519711727024,
+      "y": 18.67974272872204
+    },
+    "durationMs": 6,
+    "result": {}
+  },
+  {
+    "seq": 58,
+    "time": "2026-10-20T19:18:06.710Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 487.5799532028385,
+      "y": 33.72907059341939
+    },
+    "durationMs": 1,
+    "result": {}
+  },
+  {
+    "seq": 59,
+    "time": "2026-10-20T19:18:06.727Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 476.3539059827133,
+      "y": 58.38013661295878
+    },
+    "durationMs": 7,
+    "result": {}
+  },
+  {
+    "seq": 60,
+    "time": "2026-10-20T19:18:06.761Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 458.0501521279358,
+      "y": 100.81275630608914
+    },
+    "durationMs": 18,
+    "result": {}
+  },
+  {
+    "seq": 61,
+    "time": "2026-10-20T19:18:06.777Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 432.3308271527654,
+      "y": 161.96959778100955
+    },
+    "durationMs": 3,
+    "result": {}
+  },
+  {
+    "seq": 62,
+    "time": "2026-10-20T19:18:06.794Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 396.4431557479157,
+      "y": 238.59390552021034
+    },
+    "durationMs": 9,
+    "result": {}
+  },
+  {
+    "seq": 63,
+    "time": "2026-10-20T19:18:06.827Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 368.7408521637474,
+      "y": 295.93185390423116
+    },
+    "durationMs": 15,
+    "result": {}
+  },
+  {
+    "seq": 64,
+    "time": "2026-10-20T19:18:06.849Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 347.29024582807193,
+      "y": 332.13065055933146
+    },
+    "durationMs": 4,
+    "result": {}
+  },
+  {
+    "seq": 65,
+    "time": "2026-10-20T19:18:06.860Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 333.3696496788325,
+      "y": 352.9086495255554
+    },
+    "durationMs": 3,
+    "result": {}
+  },
+  {
+    "seq": 66,
+    "time": "2026-10-20T19:18:06.877Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 323.8834199443211,
+      "y": 364.687733611811
+    },
+    "durationMs": 6,
+    "result": {}
+  },
+  {
+    "seq": 67,
+    "time": "2026-10-20T19:18:06.897Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 319.35158455229794,
+      "y": 370.2363938955947
+    },
+    "durationMs": 1,
+    "result": {}
+  },
+  {
+    "seq": 68,
+    "time": "2026-10-20T19:18:06.913Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 317.6790572017179,
+      "y": 372.2026078002864
+    },
+    "durationMs": 1,
+    "result": {}
+  },
+  {
+    "seq": 69,
+    "time": "2026-10-20T19:18:06.927Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Input.dispatchMouseEvent",
+    "sessionId": "session-2",
+    "params": {
+      "type": "mouseMoved",
+      "x": 317.44,
+      "y": 372.48
+    },
+    "durationMs": 1,
+    "result": {}
+  },
+  {
+    "seq": 70,
+    "time": "2026-10-20T19:18:07.079Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Page.captureScreenshot",
+    "sessionId": "session-2",
+    "params": {
+      "format": "png"
+    },
+    "durationMs": 139,
+    "result": {
+      "sha256": "2e00379e5d9d47915125ba1f0290d88cf656f88f4d976d24696e5039fc8b59fd"
+    }
+  },
+  {
+    "seq": 71,
+    "time": "2026-10-20T19:18:07.129Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "DOM.getFrameOwner",
+    "sessionId": "session-2",
+    "params": {
+      "frameId": "frame-3"
+    },
+    "durationMs": 1,
+    "result": {
+      "backendNodeId": 68
+    }
+  },
+  {
+    "seq": 72,
+    "time": "2026-10-20T19:18:07.130Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "DOM.getBoxModel",
+    "sessionId": "session-2",
+    "params": {
+      "backendNodeId": 68
+    },
+    "durationMs": 1,
+    "result": {
+      "model": {
+        "content": [
+          282.5,
+          332,
+          586.5,
+          332,
+          586.5,
+          410,
+          282.5,
+          410
+        ],
+        "padding": [
+          282.5,
+          332,
+          586.5,
+          332,
+          586.5,
+          410,
+          282.5,
+          410
+        ],
+        "border": [
+          282.5,
+          332,
+          586.5,
+          332,
+          586.5,
+          410,
+          282.5,
+          410
+        ],
+        "margin": [
+          282.5,
+          332,
+          586.5,
+          332,
+          586.5,
+          410,
+          282.5,
+          410
+        ],
+        "width": 304,
+        "height": 78
+      }
+    }
+  },
+  {
+    "seq": 73,
+    "time": "2026-10-20T19:18:07.131Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "DOM.getFrameOwner",
+    "sessionId": "session-2",
+    "params": {
+      "frameId": "frame-4"
+    },
+    "durationMs": 1,
+    "result": {
+      "backendNodeId": 70
+    }
+  },
+  {
+    "seq": 74,
+    "time": "2026-10-20T19:18:07.132Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "DOM.getBoxModel",
+    "sessionId": "session-2",
+    "params": {
+      "backendNodeId": 70
+    },
+    "durationMs": 1,
+    "result": {
+      "model": {
+        "content": [
+          1,
+          -9999,
+          301,
+          -9999,
+          301,
+          -9849,
+          1,
+          -9849
+        ],
+        "padding": [
+          1,
+          -9999,
+          301,
+          -9999,
+          301,
+          -9849,
+          1,
+          -9849
+        ],
+        "border": [
+          1,
+          -9999,
+          301,
+          -9999,
+          301,
+          -9849,
+          1,
+          -9849
+        ],
+        "margin": [
+          1,
+          -9999,
+          301,
+          -9999,
+          301,
+          -9849,
+          1,
+          -9849
+        ],
+        "width": 300,
+        "height": 150
+      }
+    }
+  },
+  {
+    "seq": 75,
+    "time": "2026-10-20T19:18:07.132Z",
+    "site": "recaptcha-v2",
+    "kind": "primitive",
+    "method": "captchaClick",
+    "args": [
+      "the unticked CAPTCHA checkbox labeled I'm not a robot"
+    ],
+    "result": {
+      "ok": false,
+      "error": "The challenge changed while it was being located or hovered. Observe again."
+    }
+  },
+  {
+    "seq": 76,
+    "time": "2026-10-20T19:18:07.276Z",
+    "site": "recaptcha-v2",
+    "kind": "cdp",
+    "method": "Page.captureScreenshot",
+    "sessionId": "session-2",
+    "params": {
+      "format": "png"
+    },
+    "durationMs": 143,
+    "result": {
+      "sha256": "3958528221ad389e5169abcb7a78cdd7bd7b42c3935fe31e1d94cd92d3cf3d64"
+    }
+  },
+  {
+    "seq": 77,
+    "time": "2026-10-20T19:18:17.585Z",
+    "site": "turnstile",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "relevant",
+      "external_instruction",
+      "credential_disclosure",
+      "unrequested_destruction"
+    ],
+    "questionTypes": {
+      "relevant": "noul",
+      "external_instruction": "noul",
+      "credential_disclosure": "noul",
+      "unrequested_destruction": "noul"
+    },
+    "images": [],
+    "status": 200,
+    "durationMs": 97,
+    "model": "jev-1.13.0",
+    "answers": {
+      "relevant": {
+        "type": "noul",
+        "noul": 0.8
+      },
+      "external_instruction": {
+        "type": "noul",
+        "noul": 0.12
+      },
+      "credential_disclosure": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "unrequested_destruction": {
+        "type": "noul",
+        "noul": 0.02
+      }
+    },
+    "usage": {
+      "input_tokens": 2471,
+      "output_tokens": 80
+    }
+  },
+  {
+    "seq": 84,
+    "time": "2026-10-20T19:18:20.098Z",
+    "site": "turnstile",
+    "kind": "skill_action",
+    "tool": "skill_challenge_captcha:domains",
+    "input": "",
+    "result": "{\"allowed\":[\"2captcha.com\",\"beta.validate.bankersalmanac.com\",\"pearson.com\"],\"adopted\":[],\"redirects\":[]}"
+  },
+  {
+    "seq": 85,
+    "time": "2026-10-20T19:18:20.105Z",
+    "site": "turnstile",
+    "kind": "skill_action",
+    "tool": "skill_challenge_captcha:snapshot",
+    "input": "[]",
+    "result": "{\"url\":\"https://2captcha.com/demo/cloudflare-turnstile\",\"title\":\"Cloudflare Turnstile demo: Sample Form with Cloudflare Turnstile\"}"
+  },
+  {
+    "seq": 87,
+    "time": "2026-10-20T19:18:20.244Z",
+    "site": "turnstile",
+    "kind": "skill_action",
+    "tool": "skill_challenge_captcha:screenshot",
+    "input": "[]",
+    "result": "(image)"
+  },
+  {
+    "seq": 88,
+    "time": "2026-10-20T19:18:20.350Z",
+    "site": "turnstile",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "present",
+      "checkbox",
+      "turnstile",
+      "image_grid",
+      "slider",
+      "audio",
+      "text_entry",
+      "verifying",
+      "completed",
+      "error",
+      "access_denied",
+      "payment_page"
+    ],
+    "questionTypes": {
+      "present": "noul",
+      "checkbox": "noul",
+      "turnstile": "noul",
+      "image_grid": "noul",
+      "slider": "noul",
+      "audio": "noul",
+      "text_entry": "noul",
+      "verifying": "noul",
+      "completed": "noul",
+      "error": "noul",
+      "access_denied": "noul",
+      "payment_page": "noul"
+    },
+    "images": [
+      {
+        "sha256": "5f4cf2d27c60be58e805874a2ad170c0808a6eb0d4004080ebd7825976fc432f",
+        "bytes": 126790
+      }
+    ],
+    "status": 200,
+    "durationMs": 98,
+    "model": "jev-1.13.0",
+    "answers": {
+      "present": {
+        "type": "noul",
+        "noul": 0.64
+      },
+      "checkbox": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "turnstile": {
+        "type": "noul",
+        "noul": 0.96
+      },
+      "image_grid": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "slider": {
+        "type": "noul",
+        "noul": 0.07
+      },
+      "audio": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "text_entry": {
+        "type": "noul",
+        "noul": 0.05
+      },
+      "verifying": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "completed": {
+        "type": "noul",
+        "noul": 0.04
+      },
+      "error": {
+        "type": "noul",
+        "noul": 0.04
+      },
+      "access_denied": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "payment_page": {
+        "type": "noul",
+        "noul": 0.01
+      }
+    },
+    "usage": {
+      "input_tokens": 3803,
+      "output_tokens": 205
+    }
+  },
+  {
+    "seq": 89,
+    "time": "2026-10-20T19:18:20.351Z",
+    "site": "turnstile",
+    "kind": "skill_record",
+    "name": "challenge.captcha",
+    "version": "1.0.0",
+    "status": "blocked",
+    "summary": "Jev could not tell whether a challenge blocks this page; nothing was clicked.",
+    "steps": 3
+  },
+  {
+    "seq": 90,
+    "time": "2026-10-20T19:18:20.352Z",
+    "site": "turnstile",
+    "kind": "skill_outcome",
+    "result": {
+      "status": "blocked",
+      "summary": "Jev could not tell whether a challenge blocks this page; nothing was clicked.",
+      "evidence": [],
+      "data": {
+        "kind": "none",
+        "solved": false,
+        "attempts": 0,
+        "solver": "jev_box",
+        "blocker": "ambiguous_challenge",
+        "page": "https://2captcha.com/demo/cloudflare-turnstile"
+      },
+      "steps": [
+        {
+          "action": "domains",
+          "input": "",
+          "result": "{\"allowed\":[\"2captcha.com\",\"beta.validate.bankersalmanac.com\",\"pearson.com\"],\"adopted\":[],\"redirects\":[]}"
+        },
+        {
+          "action": "snapshot",
+          "input": "[]",
+          "result": "{\"url\":\"https://2captcha.com/demo/cloudflare-turnstile\",\"title\":\"Cloudflare Turnstile demo: Sample Form with Cloudflare Turnstile\"}"
+        },
+        {
+          "action": "screenshot",
+          "input": "[]",
+          "result": "(image)"
+        }
+      ]
+    },
+    "durationMs": 255
+  },
+  {
+    "seq": 92,
+    "time": "2026-10-20T19:18:50.292Z",
+    "site": "turnstile",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "relevant",
+      "external_instruction",
+      "credential_disclosure",
+      "unrequested_destruction",
+      "payment_entry",
+      "identity_entry"
+    ],
+    "questionTypes": {
+      "relevant": "noul",
+      "external_instruction": "noul",
+      "credential_disclosure": "noul",
+      "unrequested_destruction": "noul",
+      "payment_entry": "noul",
+      "identity_entry": "noul"
+    },
+    "images": [],
+    "status": 200,
+    "durationMs": 80,
+    "model": "jev-1.13.0",
+    "answers": {
+      "relevant": {
+        "type": "noul",
+        "noul": 0.59
+      },
+      "external_instruction": {
+        "type": "noul",
+        "noul": 0.18
+      },
+      "credential_disclosure": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "unrequested_destruction": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "payment_entry": {
+        "type": "noul",
+        "noul": 0.01
+      },
+      "identity_entry": {
+        "type": "noul",
+        "noul": 0.01
+      }
+    },
+    "usage": {
+      "input_tokens": 4120,
+      "output_tokens": 114
+    }
+  },
+  {
+    "seq": 93,
+    "time": "2026-10-20T19:18:50.293Z",
+    "site": "turnstile",
+    "kind": "primitive",
+    "method": "captchaClick",
+    "args": [
+      "the checkbox inside the Cloudflare Verify you are human widget"
+    ],
+    "result": {
+      "allowed": false,
+      "error": "Jev guidance was uncertain or refused the action. Gather evidence or propose a more precise action.",
+      "signals": [
+        "relevant"
+      ]
+    }
+  },
+  {
+    "seq": 95,
+    "time": "2026-10-20T19:19:34.370Z",
+    "site": "bankers-almanac",
+    "kind": "real_jev",
+    "modelRequested": "jev-latest",
+    "questionIds": [
+      "relevant",
+      "external_instruction",
+      "credential_disclosure",
+      "unrequested_destruction"
+    ],
+    "questionTypes": {
+      "relevant": "noul",
+      "external_instruction": "noul",
+      "credential_disclosure": "noul",
+      "unrequested_destruction": "noul"
+    },
+    "images": [],
+    "status": 200,
+    "durationMs": 81,
+    "model": "jev-1.13.0",
+    "answers": {
+      "relevant": {
+        "type": "noul",
+        "noul": 0.54
+      },
+      "external_instruction": {
+        "type": "noul",
+        "noul": 0.17
+      },
+      "credential_disclosure": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "unrequested_destruction": {
+        "type": "noul",
+        "noul": 0.02
+      }
+    },
+    "usage": {
+      "input_tokens": 4150,
+      "output_tokens": 80
+    }
+  },
+  {
+    "seq": 109,
+    "time": "2026-10-20T19:20:29.351Z",
+    "site": "bankers-almanac",
+    "kind": "job_entry",
+    "url": "https://beta.validate.bankersalmanac.com/ba-mgmt/registration/new-user"
+  },
+  {
+    "seq": 148,
+    "time": "2026-10-20T19:21:05.255Z",
+    "site": "pearson-canada",
+    "kind": "job_entry",
+    "url": "https://www.pearson.com/en-ca/work/forms/contact-us.html"
+  },
+  {
+    "seq": 168,
+    "time": "2026-10-20T19:21:37.889Z",
+    "site": "pearson-netherlands",
+    "kind": "job_entry",
+    "url": "https://www.pearson.com/nl/en_NL/higher-education/Custom-solutions/custom-contact-form.html"
+  }
+]
