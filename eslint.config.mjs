@@ -12,6 +12,11 @@ const spotPlugin = {
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    files: ["docs/testing/artifacts/**/*.{js,mjs,cjs,ts,mts}"],
+    // Archived Node diagnostics are evidence, not Next.js modules.
+    rules: { "@next/next/no-assign-module-variable": "off" },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

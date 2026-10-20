@@ -1,0 +1,37 @@
+{
+  "status": "blocked",
+  "summary": "The click on the checkbox was refused; it did not run.",
+  "evidence": [
+    "Attempt 1 (checkbox): The click on the checkbox was refused; it did not run."
+  ],
+  "data": {
+    "kind": "checkbox",
+    "solved": false,
+    "attempts": 1,
+    "solver": "jev_box",
+    "blocker": "click_refused",
+    "page": "https://2captcha.com/demo/recaptcha-v2"
+  },
+  "steps": [
+    {
+      "action": "domains",
+      "input": "",
+      "result": "{\"allowed\":[\"2captcha.com\"],\"adopted\":[],\"redirects\":[]}"
+    },
+    {
+      "action": "snapshot",
+      "input": "[]",
+      "result": "{\"url\":\"https://2captcha.com/demo/recaptcha-v2\",\"title\":\"Google reCAPTCHA v2 demo: Sample Form with Google reCAPTCHA v2\"}"
+    },
+    {
+      "action": "screenshot",
+      "input": "[]",
+      "result": "(image)"
+    },
+    {
+      "action": "captchaClick",
+      "input": "[\"the unticked CAPTCHA checkbox labeled I'm not a robot or Verify you are human\"]",
+      "result": "{\"error\":\"The challenge changed while it was being located or hovered. Observe again.\"}"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "candidate": "a055d14d7bf565946e5e547117781e89c81777e3",
+  "scope": "Sanitized offline preserved-pixel diagnostic; no provider request or native acceptance",
+  "files": {
+    "cosmetic-closure.ts.txt": {
+      "sha256": "8ba7534171851d4d74e0ecb29e800943530ed19a01d43f6aa24ff2315a4d43aa",
+      "bytes": 6454
+    },
+    "diagnose.mjs": {
+      "sha256": "f764babd1b304767b0e099f57ec3922c0c4a67ebf08b3692e49c6cff8695854e",
+      "bytes": 8443
+    },
+    "result.json": {
+      "sha256": "774d931f0ec4ccb23bedbbed18a4630aa4748ec93fc505eac0e5385a3da21b09",
+      "bytes": 5329
+    },
+    "source-extraction.json": {
+      "sha256": "357d4b00d8ccefe1102f847946fc04512dcce9bb4c8baa56cf4a4ff9ec4e0d53",
+      "bytes": 927
+    }
+  }
+}

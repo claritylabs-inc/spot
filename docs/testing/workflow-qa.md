@@ -1461,3 +1461,100 @@ measured the website-row icon/text center difference falling from 2.20px to
 No horizontal overflow. Screenshots: `.context/trace-ux/aligned-1100.png` and
 `aligned-390.png`; repeatable measurement: `alignment.mjs`. Focused ESLint and
 root typechecking passed; no new unit tests.
+
+## Website tech browser skill outcomes — October 20, 2026
+
+Independent native-local consumer QA is recorded in
+[the focused report](website-tech-skill-outcomes-sol-2026-10-20.md). It covers
+normal operator OTP entry, actual Profile Tech stack rendering, all known and
+unknown skill labels, four statuses, legacy/empty/failed states, bounded consumer
+responses, sanitized storage and actual registered operator tool projections,
+role/tenant exclusion, and live Rescan updates. The report distinguishes local
+executor evidence from untested HTTP/OAuth MCP transport and provisional router
+configuration/provider execution. No product edits, new unit tests or deployments
+were part of the QA packet. Candidate corrections and final cleanup are recorded
+in that report rather than silently treating initial failures as passing.
+
+Native router CAPTCHA acceptance remains incomplete. These independent Sol
+reports preserve failed candidates and their repeatable artifacts:
+
+- [Live ca0 baseline](browser-native-live-sol-2026-10-20.md): real Jev/Box and
+  native cursor movement, followed by refusal; neither demo solved. The three
+  authorized customer forms were inspected without fields or submissions.
+- [Live 96d retest](browser-native-live-sol-96d1db5-2026-10-20.md): improved
+  presence classification, but small hover crops were rejected by the provider;
+  Turnstile's action gate also refused. Zero press/release events.
+- [7ad provider diagnostic](browser-provider-diagnostic-sol-7ad8e5e-2026-10-20.md):
+  one padded-image request reached the provider with exact embedded pixels, but
+  hover-only confidence remained below the required threshold. No browser input
+  or native-click acceptance is claimed.
+- [a19 gate diagnostic](browser-gate-live-sol-a19f6fa-2026-10-20.md): a fresh
+  screenshot reached the gate, but relevance was 0.58. The full historical
+  observation was not retained; the report marks reconstructed fields.
+- [4bbe gate diagnostic](browser-gate-live-sol-4bbe20e-2026-10-20.md): the full
+  actual request was retained before inference, with the screenshot inside the
+  observation and an explicit CAPTCHA action. Relevance was 0.65 against 0.7;
+  neither the native primitive nor any input command ran.
+- [a055 preserved-image diagnostic](browser-provider-diagnostic-sol-a055d14-2026-10-20.md):
+  the original native Box plus four-pixel margin excludes 108 of 300 changed
+  pixels. The unchanged comparison returns false before inference; that packet
+  never reached the six-question provider comparison.
+- [d28 gate reachability](browser-gate-live-sol-d28fb67-2026-10-20.md): one real
+  gate decision passed with relevance 0.78 and reached the diagnostic stop spy.
+  Goal and questions were unchanged. Zero native inputs; this does not establish
+  a CAPTCHA solve or the cause of the changed score.
+- [857 inbox readiness](browser-inbox-readiness-sol-2026-10-20.md): actual
+  trusted-HTTPS refusal checks passed with zero messages exposed. Real delivery,
+  positive read and acceptance remain blocked on the exact sender address and
+  existing MCP conversation ID; no email was sent.
+- [857 native demo run](browser-native-live-sol-857074d-2026-10-20.md): Turnstile's
+  testing-key widget showed Success after native top-page motion and one
+  press/release. V2 refused before pressing because two hover checks fell below
+  threshold; its quota warning was already present and unchanged. Neither result
+  establishes production challenge strength or host-form acceptance.
+- [af229cc comparison corpus](browser-comparison-sol-af229cc-2026-10-20.md): the
+  preserved v2 pair and an independent border-only hover both produced false
+  negatives at the unchanged threshold. Six semantic changes were refused, an
+  instruction change failed deterministic containment, and unchanged pixels
+  passed without inference. Eight real requests, no retries or native input;
+  exact image transforms and per-question wire references were verified. This
+  remains a functional failure, not native CAPTCHA acceptance.
+- [Frozen Jev 1.14 screen](browser-comparison-model114-sol-2026-10-20.md): eight
+  original requests changed only the model. The independent border-only case
+  passed, but the saved real-widget hover still failed; all six negative cases
+  refused. The candidate was rejected, with no production model change.
+- [Independent 0.8 cutoff screen](https://github.com/claritylabs-inc/cl-router/blob/ef3c3d836740271debb14ff52a5490ddc82e8850/test-harness/browser-agent/reports/heldout-calibration-af229cc.md):
+  the second cosmetic case failed with selection probability 0.56. The declared
+  fail-fast run stopped after two requests; nine eligible cases were not run and
+  one case refused deterministically. The cutoff was rejected; runtime stays at
+  0.9. This does not establish negative-case or native performance.
+- [Single stronger-model probe](browser-hover-reasoner-probe-sol-2026-10-20.md):
+  one frozen saved-widget pair returned all six `yes` from the configured
+  broker's `openai/gpt-5.6-sol` route. Manager verified the request reconstruction,
+  13 artifact hashes and 14 source blobs. This accepts only that exposed
+  regression: no negative corpus, native integration or cascade adoption was
+  tested. Provider-default effort and broker transport differ from the proposed
+  direct helper; internal provider attempt count and `store:false` are unproven.
+
+Controlled regressions on exact router `af229cc` are separately accepted:
+[616 distinct skill requirements](https://github.com/claritylabs-inc/cl-router/blob/0c503dc0fa77c1069a23be08752f66d24016a54b/test-harness/browser-agent/reports/final-af229cc.md)
+passed, while the
+[772-workflow runtime union](https://github.com/claritylabs-inc/cl-router/blob/47ce2cee428f27e1dbee88ad8f4bf772e13c6270/reports/runtime/af229/final/README.md)
+records 768 passes, three unverified cases and one limitation. These use actual
+local Chrome with scripted decisions. Pinned-Chrome OOPIF availability, competing
+client behavior, hosted isolation and external availability retain the report's
+explicit limits. These results do not clear the real-provider hover failures.
+
+[Final Spot consumer QA](website-tech-final-consumer-sol-2026-10-20.md) on
+`cc8bb050` verifies the exact `af229cc` contract bytes (22 fixtures, 11 operations),
+15 actual local UI groups, eight boundary groups, five access groups and six
+request-construction groups. Keyboard entry, reload and Rescan subscriptions
+pass. The existing 416px inner-shell overflow at a 390px viewport remains open;
+skill text wraps within its card. The [empty-state addendum](website-tech-empty-consumer-sol-2026-10-20.md)
+verifies an actual null tool/query result and the unscanned UI before any scan,
+with zero profiles and router jobs before and after. Synthetic request seams and local executor checks do not
+establish provider execution or HTTP/OAuth MCP acceptance.
+
+These reports do not establish hosted sandbox isolation, production challenge
+solving, controlled inbox delivery, or customer submission acceptance. Release
+acceptance remains incomplete.

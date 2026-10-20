@@ -1,0 +1,131 @@
+{
+  "candidate": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "scope": "Executed actual browseCompanySite/goal/schema source extracted via TypeScript, with in-memory identity and durable-options seams, through actual imported candidate clRouterBrowse. Strict Ajv validation; no full Convex action, router runtime, provider or UI acceptance.",
+  "checks": [
+    {
+      "name": "identity-and-inbox: source request + real serializer valid; exact nine skills, cleanup excluded, trace/options separated",
+      "status": "PASS"
+    },
+    {
+      "name": "identity-without-inbox: source request + real serializer valid; exact nine skills, cleanup excluded, trace/options separated",
+      "status": "PASS"
+    },
+    {
+      "name": "identity-creation-fails: source request + real serializer valid; exact nine skills, cleanup excluded, trace/options separated",
+      "status": "PASS"
+    },
+    {
+      "name": "No-config request and old response without skills remain compatible",
+      "status": "PASS"
+    },
+    {
+      "name": "Explicit empty skill list remains schema/transport compatible",
+      "status": "PASS"
+    },
+    {
+      "name": "Pinned contract supports all ten names; research selects nine rather than relying on defaults",
+      "status": "PASS"
+    }
+  ],
+  "captures": [
+    {
+      "mode": "identity-and-inbox",
+      "valid": true,
+      "bodyKeys": [
+        "tenantId",
+        "input",
+        "config",
+        "executionBudgetMs"
+      ],
+      "tenantInjected": true,
+      "skills": [
+        "site.find_pages",
+        "page.dismiss_overlays",
+        "account.signup",
+        "account.sign_in",
+        "inbox.wait_for_email",
+        "account.verify_email",
+        "account.enter_otp",
+        "challenge.captcha",
+        "checkout.observe_payment"
+      ],
+      "signupPresent": true,
+      "inboxPresent": true,
+      "traceInBody": false,
+      "durableTraceKeys": [
+        "traceId",
+        "channel",
+        "taskKind"
+      ],
+      "executionBudgetMs": 360000,
+      "maxSteps": 30,
+      "goalLength": 1195
+    },
+    {
+      "mode": "identity-without-inbox",
+      "valid": true,
+      "bodyKeys": [
+        "tenantId",
+        "input",
+        "config",
+        "executionBudgetMs"
+      ],
+      "tenantInjected": true,
+      "skills": [
+        "site.find_pages",
+        "page.dismiss_overlays",
+        "account.signup",
+        "account.sign_in",
+        "inbox.wait_for_email",
+        "account.verify_email",
+        "account.enter_otp",
+        "challenge.captcha",
+        "checkout.observe_payment"
+      ],
+      "signupPresent": true,
+      "inboxPresent": false,
+      "traceInBody": false,
+      "durableTraceKeys": [
+        "traceId",
+        "channel",
+        "taskKind"
+      ],
+      "executionBudgetMs": 360000,
+      "maxSteps": 30,
+      "goalLength": 1195
+    },
+    {
+      "mode": "identity-creation-fails",
+      "valid": true,
+      "bodyKeys": [
+        "tenantId",
+        "input",
+        "config",
+        "executionBudgetMs"
+      ],
+      "tenantInjected": true,
+      "skills": [
+        "site.find_pages",
+        "page.dismiss_overlays",
+        "account.signup",
+        "account.sign_in",
+        "inbox.wait_for_email",
+        "account.verify_email",
+        "account.enter_otp",
+        "challenge.captcha",
+        "checkout.observe_payment"
+      ],
+      "signupPresent": false,
+      "inboxPresent": false,
+      "traceInBody": false,
+      "durableTraceKeys": [
+        "traceId",
+        "channel",
+        "taskKind"
+      ],
+      "executionBudgetMs": 360000,
+      "maxSteps": 30,
+      "goalLength": 1195
+    }
+  ]
+}

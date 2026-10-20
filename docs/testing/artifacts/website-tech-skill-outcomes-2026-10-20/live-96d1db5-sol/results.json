@@ -1,0 +1,28 @@
+{
+  "candidate": "96d1db5a32882bab6c807ac8d1f3fb27a8d39b4d",
+  "verdict": "FAIL functional acceptance",
+  "date": "2026-10-20",
+  "directProvider": true,
+  "noulModel": "jev-1.13.0",
+  "boxModel": "jev-1.14.0",
+  "viewport": {
+    "width": 1024,
+    "height": 768
+  },
+  "oneInvocationPerSite": true,
+  "nativeMoves": 14,
+  "mousePressed": 0,
+  "mouseReleased": 0,
+  "customerWrites": 0,
+  "providerDiagnostic": {
+    "httpStatus": 400,
+    "error_type": "api_usage_error",
+    "message": "Invalid image dimensions.",
+    "imageBytesUnchanged": true,
+    "questionsUnchanged": true
+  },
+  "sourceProductEdits": false,
+  "spotBackendEnvChanges": false,
+  "newUnitTests": false,
+  "screenshotsVisuallyReviewed": true
+}

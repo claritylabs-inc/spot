@@ -1,0 +1,66 @@
+{
+  "candidate": "101b96ba4daa6ef77faf884e863c9ca566ac1035",
+  "scope": "Actual authenticated Next/Convex Profile Tech stack. Local fixtures use authorized rescan + existing claim/finish mutations with shared router credentials removed.",
+  "checks": [
+    {
+      "name": "All 10 exact known labels and unknown constructor/toString fallback render",
+      "status": "PASS"
+    },
+    {
+      "name": "All four statuses have visible badges",
+      "status": "PASS"
+    },
+    {
+      "name": "Zero observed steps says No steps recorded",
+      "status": "PASS"
+    },
+    {
+      "name": "No findings retains Browser research card",
+      "status": "PASS"
+    },
+    {
+      "name": "Failed scan retains procedure outcomes",
+      "status": "PASS"
+    },
+    {
+      "name": "Legacy missing browse has no invented Site visit",
+      "status": "PASS"
+    },
+    {
+      "name": "Browse without skills retains Site visit and distinct no-outcomes message",
+      "status": "PASS"
+    },
+    {
+      "name": "Finished and partial Site visit summaries and singular/plural steps",
+      "status": "PASS"
+    },
+    {
+      "name": "40 skill outcomes render plus one Site visit",
+      "status": "PASS"
+    },
+    {
+      "name": "40-row mobile document has no horizontal overflow",
+      "status": "PASS"
+    },
+    {
+      "name": "Mobile and dark render inspected in authenticated app",
+      "status": "PASS"
+    },
+    {
+      "name": "Registered local get_organization returns stored sanitized browse.skills",
+      "status": "PASS"
+    },
+    {
+      "name": "Registered local research_client_tech_stack.current returns saved skills when queuing",
+      "status": "PASS"
+    },
+    {
+      "name": "Actual navbar Rescan transitions Scanning to failed terminal through live subscription without reload",
+      "status": "PASS"
+    },
+    {
+      "name": "Maximum-length unknown name/summary remain readable",
+      "status": "PASS"
+    }
+  ]
+}

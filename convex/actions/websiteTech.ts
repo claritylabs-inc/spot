@@ -18,6 +18,7 @@ import {
 } from "../lib/routerJobClient";
 import { readWebsitePage, resolvePublicAddress } from "../lib/websiteBrand";
 import {
+  isResearchEmailAddress,
   regionCountry,
   type WebsiteTechDisclosure,
   type WebsiteTechInference,
@@ -61,6 +62,7 @@ const BROWSE_GOAL = [
   "2. Which cloud or hosting provider hosts its product and customer data, and in which countries or regions?",
   "3. Which subprocessors does it publish?",
   "Check footer, legal, trust, security, privacy, DPA and subprocessor pages, and pricing pages. Then follow the trial, signup or checkout flow: when a test identity is available, sign up by email and continue to plan, billing or checkout until the payment step, without entering payment details. Use network_hosts on checkout or billing pages to spot embedded payment providers.",
+  "Use the enabled skills to find pages, dismiss obstructing overlays, create the test account, handle its verification email or code, and observe the payment step. If a CAPTCHA interrupts the flow, handle it in this session and resume only from the observed state. Report blockers honestly; submitting signup is not proof of account creation. Do not delete accounts.",
   "Record each finding with the exact page URL it came from and a short verbatim quote from that page naming the vendor or region. Omit anything not stated on a page.",
 ].join("\n");
 
@@ -118,7 +120,7 @@ async function signupIdentity(ctx: ActionCtx) {
 async function browseCompanySite(ctx: ActionCtx, domain: string, trace: Trace) {
   const signup = await settle(signupIdentity(ctx), undefined);
   // Trace travels in the durable job options; the browse request body is strict.
-  return await clRouterBrowse(
+  const response = await clRouterBrowse(
     {
       input: {
         url: `https://${domain}/`,
@@ -128,6 +130,19 @@ async function browseCompanySite(ctx: ActionCtx, domain: string, trace: Trace) {
         outputSchema: z.toJSONSchema(findingsSchema) as Record<string, unknown>,
         ...(signup ? { signup } : {}),
       },
+      config: {
+        skills: [
+          "site.find_pages",
+          "page.dismiss_overlays",
+          "account.signup",
+          "account.sign_in",
+          "inbox.wait_for_email",
+          "account.verify_email",
+          "account.enter_otp",
+          "challenge.captcha",
+          "checkout.observe_payment",
+        ],
+      },
       executionBudgetMs: 6 * 60_000,
     },
     durableRouterClientOptionsWithTrace(ctx, {
@@ -135,6 +150,48 @@ async function browseCompanySite(ctx: ActionCtx, domain: string, trace: Trace) {
       taskKind: "website_tech_browse",
     }),
   );
+  return { response, signup };
+}
+
+/**
+ * Operators read skill summaries, so the run's test identity, inbox capability and any link
+ * (verification links carry tokens) are reduced to plain words or a hostname before storage.
+ */
+function skillOutcomes(
+  skills: ClRouterBrowseResponse["skills"],
+  signup: Awaited<ReturnType<typeof signupIdentity>> | undefined,
+) {
+  if (!skills) return undefined;
+  const redact = (text: string) => {
+    let summary = text;
+    if (signup) {
+      summary = summary
+        .split(signup.inboxUrl)
+        .join("the test inbox")
+        .split(signup.password)
+        .join("[password]");
+    }
+    return summary
+      .replace(/https?:\/\/[^\s"'<>)\]]+/gi, (url) => {
+        try {
+          return new URL(url).hostname;
+        } catch {
+          return "[link]";
+        }
+      })
+      .replace(/[^\s@"'<>()]+@[a-z0-9.-]+\.[a-z]{2,}/gi, (address) =>
+        isResearchEmailAddress(address) ? "the test email address" : "[email]",
+      )
+      .slice(0, 500);
+  };
+  // The router client already bounds these fields; copying them drops any keys the finish validator rejects.
+  return skills.slice(0, 40).map((skill) => ({
+    name: skill.name,
+    version: skill.version,
+    status: skill.status,
+    summary: redact(skill.summary),
+    steps: skill.steps,
+  }));
 }
 
 /** Canonical country name from Mapbox's country list, or null when it is not a country. */
@@ -471,7 +528,11 @@ export const run = internalAction({
     if (infrastructure.status === "rejected")
       errors.push(message(infrastructure.reason));
     if (browse.status === "rejected") errors.push(message(browse.reason));
-    const browsed = browse.status === "fulfilled" ? browse.value : null;
+    const browsed = browse.status === "fulfilled" ? browse.value.response : null;
+    const skills =
+      browse.status === "fulfilled"
+        ? skillOutcomes(browse.value.response.skills, browse.value.signup)
+        : undefined;
     // The two scans are additive: each contributes signals and a match from either one counts.
     const empty = { html: "", headers: {}, cnames: [], ptr: [], mx: [], txt: [], ns: [] };
     const fromInfrastructure =
@@ -533,6 +594,8 @@ export const run = internalAction({
           adoptedDomains: browsed.adoptedDomains ?? [],
           redirects: browsed.redirects ?? [],
           actions: browsed.actions ?? [],
+          // Older router responses omit skills; the stored summary then omits them too.
+          ...(skills ? { skills } : {}),
           ...(browsed.error ? { error: browsed.error } : {}),
         }
       : browse.status === "rejected"

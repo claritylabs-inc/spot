@@ -1,0 +1,46 @@
+{
+  "candidate": "d28fb67ae6c5d05c4294f31b9f8b5d96712ff31d",
+  "scope": "One live gate-only invocation; PASS reachability, no native acceptance",
+  "files": {
+    "capture-proof.json": {
+      "sha256": "b1f9276128b1bc38a4f55a7c82545bd36aca853b99886bda34b6227480f88f62",
+      "bytes": 1659
+    },
+    "gate-capture.png": {
+      "sha256": "73796549bd252214f7085b1d16bd6a6a4926891f6fbef30258eac0d50bdc11a8",
+      "bytes": 127057
+    },
+    "gate-request-sanitized.json": {
+      "sha256": "908e9f31dd961a31b29c9443e2e39f6a50fc81ef15af6b8bf9a5c5bbebcaf758",
+      "bytes": 9876
+    },
+    "gate-seam-probe.mjs": {
+      "sha256": "7da98f87439cd16ddf9fbbb8d2ae4f8cdb0abdfa5115ab5aabae0163c285023c",
+      "bytes": 7727
+    },
+    "initial-model-capture.png": {
+      "sha256": "98761bb34f279a923d1356186c11844a9c497b7e1b7f60cc05f3bd70f76c5d0c",
+      "bytes": 126880
+    },
+    "protocol-model-trace.json": {
+      "sha256": "874a6c6629c3422b0ed61e067989bb7ddca0e33aa8ef5eade7127bb17eae1883",
+      "bytes": 16549
+    },
+    "redaction-ledger.json": {
+      "sha256": "92959cc03a414f25c0925b49014920a792736bcac3497f0eae12d3f9bb1bc13c",
+      "bytes": 2312
+    },
+    "skill-result.json": {
+      "sha256": "9cfc1139eb69fc661b7daeba149436c19a208b5df972b1784074f4e20457eb1b",
+      "bytes": 1385
+    },
+    "source-binding.json": {
+      "sha256": "f76416bded0829b0a3a5a67dceb6343644869580019dcc45eb795d4b88719096",
+      "bytes": 1907
+    },
+    "visible-result.png": {
+      "sha256": "746fb8f29543701ab05e7a856482284497f036cf4821594c9beb1d3cbc7c3a8c",
+      "bytes": 126816
+    }
+  }
+}

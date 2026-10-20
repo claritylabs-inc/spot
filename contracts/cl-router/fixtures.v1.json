@@ -650,6 +650,61 @@
       }
     },
     {
+      "name": "Spot website research with explicit browser skills",
+      "schema": "BrowseRequest",
+      "value": {
+        "tenantId": "tenant_spot_fixture",
+        "input": {
+          "url": "https://example.com/",
+          "goal": "Read the company privacy and pricing pages.",
+          "allowedDomains": [
+            "example.com"
+          ],
+          "maxSteps": 30
+        },
+        "config": {
+          "skills": [
+            "site.find_pages",
+            "page.dismiss_overlays",
+            "account.signup",
+            "account.sign_in",
+            "inbox.wait_for_email",
+            "account.verify_email",
+            "account.enter_otp",
+            "challenge.captcha",
+            "checkout.observe_payment"
+          ]
+        },
+        "executionBudgetMs": 360000
+      }
+    },
+    {
+      "name": "Spot website research skill outcome",
+      "schema": "BrowseResponse",
+      "value": {
+        "provider": "sandbox",
+        "model": "fixture-model",
+        "text": "Email verification is pending.",
+        "finished": false,
+        "steps": 4,
+        "pages": [],
+        "networkHosts": [],
+        "redirects": [],
+        "adoptedDomains": [],
+        "signupSubmitted": true,
+        "actions": [],
+        "skills": [
+          {
+            "name": "inbox.wait_for_email",
+            "version": "1.0.0",
+            "status": "blocked",
+            "summary": "No verification email arrived.",
+            "steps": 4
+          }
+        ]
+      }
+    },
+    {
       "name": "Spot declarations fast-pass request",
       "schema": "ExtractRequest",
       "value": {

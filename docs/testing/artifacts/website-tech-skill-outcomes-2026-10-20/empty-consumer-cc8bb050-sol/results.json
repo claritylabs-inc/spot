@@ -1,0 +1,48 @@
+{
+  "candidate": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "browserVersion": "155.0.8059.84",
+  "normalFreshOtp": true,
+  "fixture": {
+    "name": "Cove",
+    "website": "https://cove.dev",
+    "type": "client"
+  },
+  "before": {
+    "websiteTechProfiles": 0,
+    "matchingDomainProfiles": 0,
+    "routerJobs": 0
+  },
+  "actualOperatorQuery": {
+    "profile": null,
+    "website": "https://cove.dev"
+  },
+  "registeredTool": {
+    "name": "get_organization",
+    "authorizedActor": "ordinary seeded operator",
+    "channel": "mcp",
+    "transport": "registered internal executor, not OAuth/HTTP MCP",
+    "websiteTech": null,
+    "ownWebsiteTechField": true
+  },
+  "ui": {
+    "title": "Not scanned yet",
+    "description": "Rescan to find public signals about this company’s payment processor, hosting and technology.",
+    "absent": {
+      "Browser research": 0,
+      "Site visit": 0,
+      "Account signup": 0,
+      "Account cleanup": 0,
+      "No steps recorded": 0,
+      "No website yet": 0,
+      "No technology found": 0,
+      "Scanning…": 0
+    }
+  },
+  "after": {
+    "websiteTechProfiles": 0,
+    "routerJobs": 0,
+    "routerUrlPresent": false,
+    "routerSecretPresent": false
+  },
+  "scanOrWebsiteMutations": 0
+}

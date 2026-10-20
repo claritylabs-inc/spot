@@ -1,0 +1,152 @@
+{
+  "dateUtc": "2026-10-20",
+  "browser": "Google Chrome 155.0.8059.84",
+  "mode": "Headed Chrome on Xvfb :99; fresh unauthenticated context; ordinary top-page Playwright mouse input. Not product/native/Jev/Box acceptance.",
+  "viewportCssPixels": {
+    "width": 1280,
+    "height": 900
+  },
+  "primary": {
+    "index": "https://2captcha.com/demo",
+    "v2": {
+      "url": "https://2captcha.com/demo/recaptcha-v2",
+      "anchor": {
+        "origin": "https://www.google.com",
+        "path": "/recaptcha/api2/anchor",
+        "title": "reCAPTCHA",
+        "rect": {
+          "x": 345,
+          "y": 282,
+          "width": 304,
+          "height": 78
+        },
+        "checkboxFrameLocal": {
+          "x": 13,
+          "y": 22.5,
+          "width": 28,
+          "height": 28
+        },
+        "ordinaryClick": {
+          "x": 372,
+          "y": 319
+        }
+      },
+      "challenge": {
+        "origin": "https://www.google.com",
+        "path": "/recaptcha/api2/bframe",
+        "title": "recaptcha challenge expires in two minutes",
+        "rect": {
+          "x": 397,
+          "y": 29.5,
+          "width": 400,
+          "height": 580
+        },
+        "promptCategory": "crosswalks",
+        "gridRows": 3,
+        "gridColumns": 3,
+        "cellSizeFrameLocal": 130,
+        "topLeftCellFrameLocal": {
+          "x": 5,
+          "y": 125
+        },
+        "verifyFrameLocal": {
+          "x": 292,
+          "y": 530,
+          "width": 100,
+          "height": 42
+        }
+      },
+      "oneTileClick": {
+        "pagePosition": {
+          "x": 467,
+          "y": 220
+        },
+        "waitAfterReleaseMs": 1500,
+        "observed": "Top-left image has selected/faded check overlay; same image still recognizable.",
+        "replacementContentObserved": false,
+        "replacementLatencyMeasured": false,
+        "completionClaimed": false
+      }
+    },
+    "turnstile": {
+      "url": "https://2captcha.com/demo/cloudflare-turnstile",
+      "attachedFrameOrigin": "https://challenges.cloudflare.com",
+      "normalizedAttachedFramePath": "/cdn-cgi/challenge-platform/.../turnstile/...",
+      "mainDocumentIframeSelectorFoundProvider": false,
+      "attachedFrameInventoryFoundProvider": true,
+      "hostWidgetRect": {
+        "x": 347,
+        "y": 352,
+        "width": 300,
+        "height": 65
+      },
+      "checkboxClick": {
+        "x": 368,
+        "y": 385
+      },
+      "waitAfterReleaseMs": 1800,
+      "observedWidgetStatus": "Success!",
+      "hostCheckRectBeforeSubmission": {
+        "x": 366.984375,
+        "y": 457,
+        "width": 120,
+        "height": 40
+      },
+      "hostCheckClick": {
+        "x": 427,
+        "y": 477
+      },
+      "observedFormStatus": "Captcha is passed successfully!",
+      "serverVisibleResult": {
+        "success": true,
+        "error-codes": [],
+        "hostname": "example.com",
+        "metadata": {
+          "result_with_testing_key": true
+        }
+      }
+    }
+  },
+  "secondary": {
+    "url": "https://neal.fun/not-a-robot/",
+    "levelObserved": "Level 1: Checkbox",
+    "completedLevels": 0,
+    "subsequentGameChallengesObserved": [],
+    "checkbox": {
+      "mainDocument": true,
+      "tag": "DIV",
+      "class": "captcha-box-checkbox-input",
+      "inputCheckboxOrRolePresent": false,
+      "rect": {
+        "x": 497.5,
+        "y": 159.5,
+        "width": 27,
+        "height": 27
+      }
+    },
+    "unrelatedFrames": {
+      "googleAframe": {
+        "origin": "https://www.google.com",
+        "path": "/recaptcha/api2/aframe",
+        "width": 0,
+        "height": 0
+      },
+      "visibleAdvertisement": {
+        "title": "3rd party ad content",
+        "x": 1120,
+        "y": 120,
+        "width": 160,
+        "height": 600
+      }
+    },
+    "freshSessionGate": "Separate Cloudflare Verify-you-are-human widget appeared before game; ordinary click reached Verifying state, no game completion observed before steering stopped Neal."
+  },
+  "limits": [
+    "No runtime candidate tested; final native actor test must use actual Jev/Box screenshot localization, local crop mapping, top-page CDP trajectory and trusted press/release.",
+    "DOM/frame geometry inspection informed this preflight only; it is not localization proof.",
+    "Existing skill has up to three replacement plans per manager update; no such planner/runtime was exercised.",
+    "No DOM.click, state injection, token injection, child-session coordinate input, paid solver API, account, extension or payment used.",
+    "No Spot backend/environment/fixture changes or deployments.",
+    "Public widget prompts and geometry may differ on replay."
+  ]
+}

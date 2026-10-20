@@ -1,0 +1,459 @@
+{
+  "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+  "model": "jev-1.14.0",
+  "httpAttempts": 8,
+  "sourceClosureInvocations": 0,
+  "nativeCalls": 0,
+  "results": [
+    {
+      "id": "preserved-857",
+      "expectedApproval": true,
+      "logicalRequestSha256": "b0f2ccb4b355373f49baf12a705480da5609d97a79f3508a3b70a55fbf96f439",
+      "httpAttempts": 1,
+      "wireOnlyModelChanged": true,
+      "wireSha256": "64cf295aa9037b997362307f33fe913e227f382c36443e00bd0d542703743ec4",
+      "httpStatus": 200,
+      "httpHeadersLatencyMs": 395,
+      "response": {
+        "contractVersion": 1,
+        "requestId": "14ca9986-c203-4d73-9eb7-6fb01dd1faa2",
+        "model": "jev-1.14.0",
+        "answers": {
+          "same_instruction": {
+            "type": "noul",
+            "noul": 0.96
+          },
+          "same_images": {
+            "type": "noul",
+            "noul": 0.91
+          },
+          "same_selection": {
+            "type": "noul",
+            "noul": 0.95
+          },
+          "same_control": {
+            "type": "noul",
+            "noul": 0.83
+          },
+          "no_new_mark": {
+            "type": "noul",
+            "noul": 0.94
+          },
+          "style_only": {
+            "type": "noul",
+            "noul": 0.81
+          }
+        },
+        "usage": {
+          "inputTokens": 26146,
+          "outputTokens": 107
+        },
+        "cost": {
+          "status": "priced",
+          "costNanoUsd": 1098132
+        },
+        "durationMs": 408
+      },
+      "modelMatches": true,
+      "validAnswers": true,
+      "computedApproval": false,
+      "criterionPass": false,
+      "classification": "semantic_false_negative",
+      "elapsedMs": 410
+    },
+    {
+      "id": "border-hover",
+      "expectedApproval": true,
+      "logicalRequestSha256": "2ba3aab772f3abff5258ec0a2beb0d36a36a6a754350e8ceb84878e30146fcb9",
+      "httpAttempts": 1,
+      "wireOnlyModelChanged": true,
+      "wireSha256": "aa8e14154f3e4e3187ac4349ec97cdfcca5acaddf1d3d800860223367a16ce06",
+      "httpStatus": 200,
+      "httpHeadersLatencyMs": 216,
+      "response": {
+        "contractVersion": 1,
+        "requestId": "656343bf-0133-4328-a0b0-f07b5575dea2",
+        "model": "jev-1.14.0",
+        "answers": {
+          "same_instruction": {
+            "type": "noul",
+            "noul": 0.98
+          },
+          "same_images": {
+            "type": "noul",
+            "noul": 0.98
+          },
+          "same_selection": {
+            "type": "noul",
+            "noul": 0.93
+          },
+          "same_control": {
+            "type": "noul",
+            "noul": 0.9
+          },
+          "no_new_mark": {
+            "type": "noul",
+            "noul": 0.98
+          },
+          "style_only": {
+            "type": "noul",
+            "noul": 0.91
+          }
+        },
+        "usage": {
+          "inputTokens": 26121,
+          "outputTokens": 107
+        },
+        "cost": {
+          "status": "priced",
+          "costNanoUsd": 1097082
+        },
+        "durationMs": 221
+      },
+      "modelMatches": true,
+      "validAnswers": true,
+      "computedApproval": true,
+      "criterionPass": true,
+      "classification": "semantic_true_positive",
+      "elapsedMs": 222
+    },
+    {
+      "id": "added-tick",
+      "expectedApproval": false,
+      "logicalRequestSha256": "8968fd89f9b664c47df2416bdb2e254c13da891b44ce4b49ac5a07c50bf318eb",
+      "httpAttempts": 1,
+      "wireOnlyModelChanged": true,
+      "wireSha256": "be3110c0ea617ded3251e0a7048e6b2aa395524622e5e61de50ffd3d4c75de81",
+      "httpStatus": 200,
+      "httpHeadersLatencyMs": 359,
+      "response": {
+        "contractVersion": 1,
+        "requestId": "b67dd49b-9448-443a-9765-73add01a6cf8",
+        "model": "jev-1.14.0",
+        "answers": {
+          "same_instruction": {
+            "type": "noul",
+            "noul": 0.98
+          },
+          "same_images": {
+            "type": "noul",
+            "noul": 0.95
+          },
+          "same_selection": {
+            "type": "noul",
+            "noul": 0.02
+          },
+          "same_control": {
+            "type": "noul",
+            "noul": 0.94
+          },
+          "no_new_mark": {
+            "type": "noul",
+            "noul": 0.01
+          },
+          "style_only": {
+            "type": "noul",
+            "noul": 0.01
+          }
+        },
+        "usage": {
+          "inputTokens": 26133,
+          "outputTokens": 107
+        },
+        "cost": {
+          "status": "priced",
+          "costNanoUsd": 1097586
+        },
+        "durationMs": 361
+      },
+      "modelMatches": true,
+      "validAnswers": true,
+      "computedApproval": false,
+      "criterionPass": true,
+      "classification": "semantic_true_negative",
+      "elapsedMs": 363
+    },
+    {
+      "id": "removed-mark",
+      "expectedApproval": false,
+      "logicalRequestSha256": "c16595fcaa21ca523ffa0068113d5f92d5c95d2942595d967289a4ba563a8b08",
+      "httpAttempts": 1,
+      "wireOnlyModelChanged": true,
+      "wireSha256": "093257b72bf5ebf9687b2c9f926954d2341e4315cc7d08c90e3573a4fd0400b9",
+      "httpStatus": 200,
+      "httpHeadersLatencyMs": 219,
+      "response": {
+        "contractVersion": 1,
+        "requestId": "4fc5f9d0-02fc-40df-94ba-e4eb67d9b57d",
+        "model": "jev-1.14.0",
+        "answers": {
+          "same_instruction": {
+            "type": "noul",
+            "noul": 0.98
+          },
+          "same_images": {
+            "type": "noul",
+            "noul": 0.84
+          },
+          "same_selection": {
+            "type": "noul",
+            "noul": 0.01
+          },
+          "same_control": {
+            "type": "noul",
+            "noul": 0.89
+          },
+          "no_new_mark": {
+            "type": "noul",
+            "noul": 0.01
+          },
+          "style_only": {
+            "type": "noul",
+            "noul": 0.02
+          }
+        },
+        "usage": {
+          "inputTokens": 26133,
+          "outputTokens": 107
+        },
+        "cost": {
+          "status": "priced",
+          "costNanoUsd": 1097586
+        },
+        "durationMs": 221
+      },
+      "modelMatches": true,
+      "validAnswers": true,
+      "computedApproval": false,
+      "criterionPass": true,
+      "classification": "semantic_true_negative",
+      "elapsedMs": 222
+    },
+    {
+      "id": "new-spinner",
+      "expectedApproval": false,
+      "logicalRequestSha256": "ad26020d7d2cb3cea560c8e63a9cc4d00aa11b0dca6487151669d752a064af6b",
+      "httpAttempts": 1,
+      "wireOnlyModelChanged": true,
+      "wireSha256": "077899ac1f24144b8be783d62cc566aa23d3efed787fcd58f13f7ea542306d1f",
+      "httpStatus": 200,
+      "httpHeadersLatencyMs": 260,
+      "response": {
+        "contractVersion": 1,
+        "requestId": "d86e5bd9-5da0-4bad-86a2-52719eaace09",
+        "model": "jev-1.14.0",
+        "answers": {
+          "same_instruction": {
+            "type": "noul",
+            "noul": 0.97
+          },
+          "same_images": {
+            "type": "noul",
+            "noul": 0.07
+          },
+          "same_selection": {
+            "type": "noul",
+            "noul": 0.82
+          },
+          "same_control": {
+            "type": "noul",
+            "noul": 0.9
+          },
+          "no_new_mark": {
+            "type": "noul",
+            "noul": 0.02
+          },
+          "style_only": {
+            "type": "noul",
+            "noul": 0.03
+          }
+        },
+        "usage": {
+          "inputTokens": 26112,
+          "outputTokens": 107
+        },
+        "cost": {
+          "status": "priced",
+          "costNanoUsd": 1096704
+        },
+        "durationMs": 262
+      },
+      "modelMatches": true,
+      "validAnswers": true,
+      "computedApproval": false,
+      "criterionPass": true,
+      "classification": "semantic_true_negative",
+      "elapsedMs": 263
+    },
+    {
+      "id": "replaced-picture",
+      "expectedApproval": false,
+      "logicalRequestSha256": "8eea5a30f85993f29047a508c0917b5719242751044511fb387e41b3e110d89c",
+      "httpAttempts": 1,
+      "wireOnlyModelChanged": true,
+      "wireSha256": "6fae5ae48e3188c347433d7d7b071bc6ee2b52e204de88b1d1ff0b6b9dd98969",
+      "httpStatus": 200,
+      "httpHeadersLatencyMs": 306,
+      "response": {
+        "contractVersion": 1,
+        "requestId": "0587bf4f-2cfb-45e0-ae6d-d7ab3eccc266",
+        "model": "jev-1.14.0",
+        "answers": {
+          "same_instruction": {
+            "type": "noul",
+            "noul": 0.98
+          },
+          "same_images": {
+            "type": "noul",
+            "noul": 0.01
+          },
+          "same_selection": {
+            "type": "noul",
+            "noul": 0.79
+          },
+          "same_control": {
+            "type": "noul",
+            "noul": 0.9
+          },
+          "no_new_mark": {
+            "type": "noul",
+            "noul": 0.02
+          },
+          "style_only": {
+            "type": "noul",
+            "noul": 0.01
+          }
+        },
+        "usage": {
+          "inputTokens": 26118,
+          "outputTokens": 107
+        },
+        "cost": {
+          "status": "priced",
+          "costNanoUsd": 1096956
+        },
+        "durationMs": 308
+      },
+      "modelMatches": true,
+      "validAnswers": true,
+      "computedApproval": false,
+      "criterionPass": true,
+      "classification": "semantic_true_negative",
+      "elapsedMs": 309
+    },
+    {
+      "id": "moved-resized",
+      "expectedApproval": false,
+      "logicalRequestSha256": "f47d0d0c2797b671de5f3fed8be759c22998b64b59e5ad46e9b494ed586ad87b",
+      "httpAttempts": 1,
+      "wireOnlyModelChanged": true,
+      "wireSha256": "fd263d36d44a2d69ea74823893f54606d6816cae79eaae9042e00cc6518b5486",
+      "httpStatus": 200,
+      "httpHeadersLatencyMs": 195,
+      "response": {
+        "contractVersion": 1,
+        "requestId": "3ef1fa3d-3cdd-431b-be8a-acd7d73a12e7",
+        "model": "jev-1.14.0",
+        "answers": {
+          "same_instruction": {
+            "type": "noul",
+            "noul": 0.97
+          },
+          "same_images": {
+            "type": "noul",
+            "noul": 0.98
+          },
+          "same_selection": {
+            "type": "noul",
+            "noul": 0.97
+          },
+          "same_control": {
+            "type": "noul",
+            "noul": 0.43
+          },
+          "no_new_mark": {
+            "type": "noul",
+            "noul": 0.94
+          },
+          "style_only": {
+            "type": "noul",
+            "noul": 0.59
+          }
+        },
+        "usage": {
+          "inputTokens": 26127,
+          "outputTokens": 107
+        },
+        "cost": {
+          "status": "priced",
+          "costNanoUsd": 1097334
+        },
+        "durationMs": 197
+      },
+      "modelMatches": true,
+      "validAnswers": true,
+      "computedApproval": false,
+      "criterionPass": true,
+      "classification": "semantic_true_negative",
+      "elapsedMs": 198
+    },
+    {
+      "id": "selected-state",
+      "expectedApproval": false,
+      "logicalRequestSha256": "35247d129d5c058e3279abaf891836e8f34e264867b0a0dd3cf5a8f91d935196",
+      "httpAttempts": 1,
+      "wireOnlyModelChanged": true,
+      "wireSha256": "e1c0daab487c706ab5a1dbd3eb5ec64db36e9cfba474a323031e811d169f90cc",
+      "httpStatus": 200,
+      "httpHeadersLatencyMs": 217,
+      "response": {
+        "contractVersion": 1,
+        "requestId": "421c5579-d5d1-4330-ae3c-0a550733cd5c",
+        "model": "jev-1.14.0",
+        "answers": {
+          "same_instruction": {
+            "type": "noul",
+            "noul": 0.97
+          },
+          "same_images": {
+            "type": "noul",
+            "noul": 0.3
+          },
+          "same_selection": {
+            "type": "noul",
+            "noul": 0.08
+          },
+          "same_control": {
+            "type": "noul",
+            "noul": 0.81
+          },
+          "no_new_mark": {
+            "type": "noul",
+            "noul": 0.01
+          },
+          "style_only": {
+            "type": "noul",
+            "noul": 0
+          }
+        },
+        "usage": {
+          "inputTokens": 26142,
+          "outputTokens": 107
+        },
+        "cost": {
+          "status": "priced",
+          "costNanoUsd": 1097964
+        },
+        "durationMs": 221
+      },
+      "modelMatches": true,
+      "validAnswers": true,
+      "computedApproval": false,
+      "criterionPass": true,
+      "classification": "semantic_true_negative",
+      "elapsedMs": 221
+    }
+  ],
+  "screenVerdict": "FAIL_SCREEN",
+  "finishedAt": "2026-10-20T21:36:52.566Z"
+}

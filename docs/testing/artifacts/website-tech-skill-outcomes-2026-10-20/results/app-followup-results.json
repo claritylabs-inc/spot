@@ -1,0 +1,14 @@
+{
+  "keyboardEntry": true,
+  "reloadRetainsStoredSkills": true,
+  "scanCardVisibility": [
+    {
+      "key": "Scanning…",
+      "card": false
+    },
+    {
+      "key": "Could not scan skill-qa.example",
+      "card": true
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "candidate": "4bbe20e208c7d3e38b1b6fbfc523606997685364",
+  "oneSkillInvocation": true,
+  "spyCalls": 0,
+  "nativeInputCommands": 0,
+  "goalExactlyMatchesA19": true,
+  "questionsExactlyMatchA19": true,
+  "actualAction": {
+    "tool": "captcha_click",
+    "arguments": {
+      "target": "the checkbox inside the Cloudflare \"Verify you are human\" widget"
+    }
+  },
+  "rootStateFields": [
+    "goal",
+    "skill",
+    "observation",
+    "action"
+  ],
+  "observationFields": [
+    "recent",
+    "screenshot",
+    "visualEvidence"
+  ],
+  "captureSeq": 13,
+  "modelRequestSeq": 15,
+  "captureAndAssetBytesEqual": true,
+  "gatePngSha256": "830a2f05819db2b366852859661d573685888c67d9cc16460a2bc7554e22e3b4",
+  "newCaptureDiffersFromInitial": true,
+  "harnessSteps": 5,
+  "extraGateCaptureReads": 1,
+  "denialHashBehaviorTested": false,
+  "nativeAcceptanceTested": false,
+  "fullRequestRetained": true
+}

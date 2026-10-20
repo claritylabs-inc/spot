@@ -1,0 +1,60 @@
+{
+  "evidence": "source reconstruction from retained pre-skill PageSnapshot, not a captured byte-for-byte old gate payload",
+  "url": "https://2captcha.com/demo/cloudflare-turnstile",
+  "title": "Cloudflare Turnstile demo: Sample Form with Cloudflare Turnstile",
+  "fullMainPageTextLength": 4502,
+  "boundedTextLength": 2000,
+  "textTruncated": true,
+  "containsVisibleCheckboxLabel": false,
+  "containsTestingOnlyLabel": false,
+  "containsSolverApiInstructions": true,
+  "boundedButtonsShape": {
+    "items": [
+      "Captcha solver",
+      "Scrapers",
+      "Data for AI",
+      "Resources",
+      "Toggle site navigation menu",
+      "Check",
+      "Reset",
+      "Copy code snippet",
+      "PHP",
+      "Python",
+      "Ruby",
+      "Toggle page navigation",
+      "English",
+      "Open support chat"
+    ],
+    "truncated": false
+  },
+  "boundedFormsShape": {
+    "items": [
+      {
+        "action": null,
+        "fields": {
+          "items": [],
+          "truncated": false
+        },
+        "submitLabels": {
+          "items": [
+            "Check",
+            "Reset"
+          ],
+          "truncated": false
+        },
+        "hasPassword": false
+      }
+    ],
+    "truncated": false
+  },
+  "topLevelFields": [
+    "url",
+    "title",
+    "text",
+    "truncated",
+    "links",
+    "buttons",
+    "forms"
+  ],
+  "boundedObservationSha256": "2676499b1a90afcbb9485768ad702426e406e8bda03ec8333a4de36550414a19"
+}

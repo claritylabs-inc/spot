@@ -1179,10 +1179,38 @@
                     "minLength": 12,
                     "maxLength": 128
                   },
+                  "mode": {
+                    "description": "Defaults to password, which requires password. Passwordless must omit password.",
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "passwordless"
+                    ]
+                  },
                   "name": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 120
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
                   },
                   "inboxUrl": {
                     "type": "string",
@@ -1192,8 +1220,60 @@
                 },
                 "required": [
                   "email",
-                  "password",
                   "name"
+                ],
+                "additionalProperties": false
+              },
+              "contact": {
+                "description": "Caller authorization for one contact submission. Mutually exclusive with signup; use a separate job.",
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "email",
+                  "name",
+                  "message"
                 ],
                 "additionalProperties": false
               }
@@ -1209,7 +1289,7 @@
             "type": "object",
             "properties": {
               "fallbackToBrowserbase": {
-                "description": "Defaults to true. Fall back only for an initial bot wall before agent actions.",
+                "description": "Defaults to true. Fall back when the sandbox is unavailable or encounters an initial bot wall, only before agent actions.",
                 "type": "boolean"
               },
               "route": {
@@ -1239,6 +1319,26 @@
                   "model"
                 ],
                 "additionalProperties": false
+              },
+              "skills": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "inbox.wait_for_email",
+                    "account.signup",
+                    "account.sign_in",
+                    "account.verify_email",
+                    "account.enter_otp",
+                    "account.cleanup",
+                    "challenge.captcha",
+                    "site.find_pages",
+                    "page.dismiss_overlays",
+                    "checkout.observe_payment"
+                  ]
+                },
+                "description": "Skills to offer the agent. Omit for the operation's defaults; an empty array disables skills."
               }
             },
             "additionalProperties": false
@@ -1331,6 +1431,37 @@
           "signupSubmitted": {
             "type": "boolean"
           },
+          "formSubmissions": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "signup",
+                    "sign_in",
+                    "verification",
+                    "contact"
+                  ]
+                },
+                "dispatch": {
+                  "type": "string",
+                  "enum": [
+                    "not_sent",
+                    "sent",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "purpose",
+                "dispatch"
+              ],
+              "additionalProperties": false
+            }
+          },
           "actions": {
             "type": "array",
             "items": {
@@ -1354,6 +1485,45 @@
               "additionalProperties": false
             }
           },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "succeeded",
+                    "blocked",
+                    "failed",
+                    "skipped"
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "steps": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "name",
+                "version",
+                "status",
+                "summary",
+                "steps"
+              ],
+              "additionalProperties": false
+            }
+          },
           "error": {
             "type": "string"
           }
@@ -1369,7 +1539,8 @@
           "redirects",
           "adoptedDomains",
           "signupSubmitted",
-          "actions"
+          "actions",
+          "skills"
         ],
         "additionalProperties": false
       },
@@ -1619,6 +1790,118 @@
                 },
                 "additionalProperties": {}
               },
+              "signup": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128
+                  },
+                  "mode": {
+                    "description": "Defaults to password, which requires password. Passwordless must omit password.",
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "passwordless"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "inboxUrl": {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "format": "uri"
+                  }
+                },
+                "required": [
+                  "email",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "contact": {
+                "description": "Caller authorization for one contact submission. Mutually exclusive with signup; use a separate job.",
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "email",
+                  "name",
+                  "message"
+                ],
+                "additionalProperties": false
+              },
               "files": {
                 "default": [],
                 "maxItems": 16,
@@ -1661,6 +1944,32 @@
               "type": "string"
             },
             "additionalProperties": {}
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "skills": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "inbox.wait_for_email",
+                    "account.signup",
+                    "account.sign_in",
+                    "account.verify_email",
+                    "account.enter_otp",
+                    "account.cleanup",
+                    "challenge.captcha",
+                    "site.find_pages",
+                    "page.dismiss_overlays",
+                    "checkout.observe_payment"
+                  ]
+                },
+                "description": "Skills to offer the agent. Omit for the operation's defaults; an empty array disables skills."
+              }
+            },
+            "additionalProperties": false
           }
         },
         "required": [
@@ -1738,6 +2047,37 @@
           "signupSubmitted": {
             "type": "boolean"
           },
+          "formSubmissions": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "signup",
+                    "sign_in",
+                    "verification",
+                    "contact"
+                  ]
+                },
+                "dispatch": {
+                  "type": "string",
+                  "enum": [
+                    "not_sent",
+                    "sent",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "purpose",
+                "dispatch"
+              ],
+              "additionalProperties": false
+            }
+          },
           "actions": {
             "type": "array",
             "items": {
@@ -1757,6 +2097,45 @@
                 "tool",
                 "input",
                 "result"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "succeeded",
+                    "blocked",
+                    "failed",
+                    "skipped"
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "steps": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "name",
+                "version",
+                "status",
+                "summary",
+                "steps"
               ],
               "additionalProperties": false
             }
@@ -1796,6 +2175,7 @@
           "adoptedDomains",
           "signupSubmitted",
           "actions",
+          "skills",
           "files"
         ],
         "additionalProperties": false

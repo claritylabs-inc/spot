@@ -1,0 +1,451 @@
+{
+  "recordedAt": "2026-10-20T21:36:43.182Z",
+  "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+  "baselineCommit": "f299f7074ae13b1b9905ef37f6723810a453d936",
+  "model": "jev-1.14.0",
+  "controllerSha256": "74e48827490989c9bff5855b8e3329b797ac77600d923da20b3c97c03d179d11",
+  "sourceBinding": {
+    "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+    "sourceFileSha256": "005e60212307cc2d5192d46dab4b63e73cc25db6ee1d97b8c6e26fb34fee7a50",
+    "closureSha256": "0087d228841341f7de71e172c4d1424492a111c55124d0416dee995b86a276eb",
+    "grayCanvasSha256": "f22163265867f7090d828ad249e72611edfc6e331f26f3abc6a56dfe68a3f9fa",
+    "constants": "const CAPTCHA_HOVER_MIN = 0.9;\nconst HOVER_MARGIN = 4;\nconst MAX_HOVER_SCALE = 8;",
+    "method": "Verbatim current cosmeticHover closure and grayCanvas helper, exact constants, actual candidate executeDecision; only observation/one-send transport guard wrapped."
+  },
+  "sourceFiles": {
+    "packages/server/src/browse/primitives.ts": "005e60212307cc2d5192d46dab4b63e73cc25db6ee1d97b8c6e26fb34fee7a50",
+    "packages/server/src/providers/decisions.ts": "290b09fe56f6ceada32dd359820eedaa31b18eacc6f1cfb64536110b71788ce2",
+    "packages/policy/src/decisions.ts": "c0e9757abca330e8af4105c745aaf982daac8008618ed89091f646baa99dc10e"
+  },
+  "caseOrder": [
+    "preserved-857",
+    "border-hover",
+    "added-tick",
+    "removed-mark",
+    "new-spinner",
+    "replaced-picture",
+    "moved-resized",
+    "selected-state"
+  ],
+  "cases": [
+    {
+      "id": "preserved-857",
+      "expectedApproval": true,
+      "originalLogicalSha256": "b0f2ccb4b355373f49baf12a705480da5609d97a79f3508a3b70a55fbf96f439",
+      "originalWireSha256": "2c8950240f6423a78e070edbf975ee02c3ffaaf85f0ff79d10ef5cb92319cdd9",
+      "stateSha256": "5ee69dabc385e6d804316fd682fabb5a9c1650fed8d00e5213887516baa29351",
+      "questionsSha256": "f8882c1a919df0e2218d7fce336a6f6a93090693800d3891e57d39feb732af66",
+      "images": [
+        {
+          "file": "preserved-857-transport-0.png",
+          "sha256": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215",
+          "bytes": 13541
+        },
+        {
+          "file": "preserved-857-transport-1.png",
+          "sha256": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d",
+          "bytes": 13566
+        },
+        {
+          "file": "preserved-857-transport-2.png",
+          "sha256": "234478538ac49c7b08ca3b41491e45ae22c88edbf77b47d0521d316635f9ed82",
+          "bytes": 5040
+        },
+        {
+          "file": "preserved-857-transport-3.png",
+          "sha256": "7738abc94688b1876e9dcdfa8fd619b62ad992dae3fde617c75984178db3e0bf",
+          "bytes": 5049
+        }
+      ],
+      "originalVisible": {
+        "x": 283,
+        "y": 332,
+        "width": 304,
+        "height": 78
+      },
+      "originalLocated": {
+        "x": 296.6533333333333,
+        "y": 355.04,
+        "width": 27.306666666666672,
+        "height": 28.159999999999968
+      },
+      "originalRegion": {
+        "x": 9,
+        "y": 19,
+        "right": 45,
+        "bottom": 56
+      },
+      "originalTargetScale": 8
+    },
+    {
+      "id": "border-hover",
+      "expectedApproval": true,
+      "originalLogicalSha256": "2ba3aab772f3abff5258ec0a2beb0d36a36a6a754350e8ceb84878e30146fcb9",
+      "originalWireSha256": "cfb33111a7dbe7a0b05a6c8847ebd7a53cd468576e5597d4fc3976c6344b4f73",
+      "stateSha256": "599e063585be18bc09f166c138081e04fd2a3df9cde4ce5e85f155002875cfb8",
+      "questionsSha256": "70797ddd528d6f4a91ed80c6906a55e784c8ae8d0561cdd328fa4b34c08c0a58",
+      "images": [
+        {
+          "file": "border-hover-transport-0.png",
+          "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "bytes": 7830
+        },
+        {
+          "file": "border-hover-transport-1.png",
+          "sha256": "2d1f4ba1fb7a5af754585663ef62d2db75d90557bb8e5fb63150e97bf9fcaa78",
+          "bytes": 7828
+        },
+        {
+          "file": "border-hover-transport-2.png",
+          "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "bytes": 4450
+        },
+        {
+          "file": "border-hover-transport-3.png",
+          "sha256": "e3ebfc60dedc120ca0d6c77a72170e484e97750dc4ced504f1a82e99a05ae6fb",
+          "bytes": 4450
+        }
+      ],
+      "originalVisible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "originalLocated": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "originalRegion": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "originalTargetScale": 8
+    },
+    {
+      "id": "added-tick",
+      "expectedApproval": false,
+      "originalLogicalSha256": "8968fd89f9b664c47df2416bdb2e254c13da891b44ce4b49ac5a07c50bf318eb",
+      "originalWireSha256": "29945b0f2095594d3e047d08208da240c189958403fc56c8605820241d8ddde5",
+      "stateSha256": "599e063585be18bc09f166c138081e04fd2a3df9cde4ce5e85f155002875cfb8",
+      "questionsSha256": "d72e8daa381b51803618beef2b5a1bb9480988547bf1b75aae18d1891650d199",
+      "images": [
+        {
+          "file": "added-tick-transport-0.png",
+          "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "bytes": 7830
+        },
+        {
+          "file": "added-tick-transport-1.png",
+          "sha256": "c1afadbd4cb50c471f6c28d393f6a7c31e088b032cc437089cdd279815ad6bbe",
+          "bytes": 8779
+        },
+        {
+          "file": "added-tick-transport-2.png",
+          "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "bytes": 4450
+        },
+        {
+          "file": "added-tick-transport-3.png",
+          "sha256": "e12fe37d7919113f877fa1d22ec1c4610b4e792d541de9c4134bdb5c56eb01b4",
+          "bytes": 5736
+        }
+      ],
+      "originalVisible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "originalLocated": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "originalRegion": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "originalTargetScale": 8
+    },
+    {
+      "id": "removed-mark",
+      "expectedApproval": false,
+      "originalLogicalSha256": "c16595fcaa21ca523ffa0068113d5f92d5c95d2942595d967289a4ba563a8b08",
+      "originalWireSha256": "328a53d9689733c231c533b0903f0f0c866aa7d2bee787b7807138004c69741b",
+      "stateSha256": "599e063585be18bc09f166c138081e04fd2a3df9cde4ce5e85f155002875cfb8",
+      "questionsSha256": "bb0c0b9a1842cd01ad45c976856cfb333c073e5880c17e5961a4089e7052f823",
+      "images": [
+        {
+          "file": "removed-mark-transport-0.png",
+          "sha256": "c1afadbd4cb50c471f6c28d393f6a7c31e088b032cc437089cdd279815ad6bbe",
+          "bytes": 8779
+        },
+        {
+          "file": "removed-mark-transport-1.png",
+          "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "bytes": 7830
+        },
+        {
+          "file": "removed-mark-transport-2.png",
+          "sha256": "e12fe37d7919113f877fa1d22ec1c4610b4e792d541de9c4134bdb5c56eb01b4",
+          "bytes": 5736
+        },
+        {
+          "file": "removed-mark-transport-3.png",
+          "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "bytes": 4450
+        }
+      ],
+      "originalVisible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "originalLocated": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "originalRegion": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "originalTargetScale": 8
+    },
+    {
+      "id": "new-spinner",
+      "expectedApproval": false,
+      "originalLogicalSha256": "ad26020d7d2cb3cea560c8e63a9cc4d00aa11b0dca6487151669d752a064af6b",
+      "originalWireSha256": "5cdebf29b11172d870c1a7b96ab6f8ee2c94ba38b42d293fa1eb47829e3bee8d",
+      "stateSha256": "599e063585be18bc09f166c138081e04fd2a3df9cde4ce5e85f155002875cfb8",
+      "questionsSha256": "efc1bed03da0ffdcf1c6717f9fe318d8ca4de99983a55a30a16685033f543acf",
+      "images": [
+        {
+          "file": "new-spinner-transport-0.png",
+          "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "bytes": 7830
+        },
+        {
+          "file": "new-spinner-transport-1.png",
+          "sha256": "51976df07732637924bfce3e8ae5efdad61a763c10432ced56942a96e369ec6a",
+          "bytes": 9293
+        },
+        {
+          "file": "new-spinner-transport-2.png",
+          "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "bytes": 4450
+        },
+        {
+          "file": "new-spinner-transport-3.png",
+          "sha256": "1a6d8b17c4af726a33e245666e46b86952e4efff6e1a1ee21b9eed99d1551eb3",
+          "bytes": 6398
+        }
+      ],
+      "originalVisible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "originalLocated": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "originalRegion": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "originalTargetScale": 8
+    },
+    {
+      "id": "replaced-picture",
+      "expectedApproval": false,
+      "originalLogicalSha256": "8eea5a30f85993f29047a508c0917b5719242751044511fb387e41b3e110d89c",
+      "originalWireSha256": "23052468f64b8bfe65f42c865e0e1a5621cee0228b22208139ab944a75f7cf9c",
+      "stateSha256": "599e063585be18bc09f166c138081e04fd2a3df9cde4ce5e85f155002875cfb8",
+      "questionsSha256": "1169fbb52819ea374196e6780d63369ef089a62d28b4be1214f63936fc3e4b80",
+      "images": [
+        {
+          "file": "replaced-picture-transport-0.png",
+          "sha256": "d8a51c0ce6a337decbce8aae572ab4dd7387389e5d2155f1bc7f159a84cc447e",
+          "bytes": 8932
+        },
+        {
+          "file": "replaced-picture-transport-1.png",
+          "sha256": "7de72fdc319d50356159e01624da62670610a74de5a65ae53d66dc101af0593f",
+          "bytes": 8518
+        },
+        {
+          "file": "replaced-picture-transport-2.png",
+          "sha256": "09c1d52d9103b21f8559309ea58ec45bf9c94fd54097d37d90eb75a4fcf26e2d",
+          "bytes": 6049
+        },
+        {
+          "file": "replaced-picture-transport-3.png",
+          "sha256": "980a51a5e514ea7b5dc7431c589907a578f116ad093eb9e676b1ee909b592e45",
+          "bytes": 5483
+        }
+      ],
+      "originalVisible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "originalLocated": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "originalRegion": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "originalTargetScale": 8
+    },
+    {
+      "id": "moved-resized",
+      "expectedApproval": false,
+      "originalLogicalSha256": "f47d0d0c2797b671de5f3fed8be759c22998b64b59e5ad46e9b494ed586ad87b",
+      "originalWireSha256": "4518af31fc862099366b2c5103821e0ca3eba8a9c07f7027cdcb52a70a31fbea",
+      "stateSha256": "599e063585be18bc09f166c138081e04fd2a3df9cde4ce5e85f155002875cfb8",
+      "questionsSha256": "ee532c5f7902c93bff88fd2bed56e391f62d6d915c4c829ec0ed26b96a00f97f",
+      "images": [
+        {
+          "file": "moved-resized-transport-0.png",
+          "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "bytes": 7830
+        },
+        {
+          "file": "moved-resized-transport-1.png",
+          "sha256": "484a67f71c36a85760bafc438dd1b9706ea4c9732e2947bc7eac8cd6e92db8a4",
+          "bytes": 7832
+        },
+        {
+          "file": "moved-resized-transport-2.png",
+          "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "bytes": 4450
+        },
+        {
+          "file": "moved-resized-transport-3.png",
+          "sha256": "4e14e82a75e4e94e7d18102295659144722c95a1a9d333361c491b02236dbd18",
+          "bytes": 4452
+        }
+      ],
+      "originalVisible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "originalLocated": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "originalRegion": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "originalTargetScale": 8
+    },
+    {
+      "id": "selected-state",
+      "expectedApproval": false,
+      "originalLogicalSha256": "35247d129d5c058e3279abaf891836e8f34e264867b0a0dd3cf5a8f91d935196",
+      "originalWireSha256": "13744c596ee8378cd5cd8724f491438f4d13b04b40e96dc50941deebe4f98e36",
+      "stateSha256": "599e063585be18bc09f166c138081e04fd2a3df9cde4ce5e85f155002875cfb8",
+      "questionsSha256": "5a0b634228a2844d75b11846a17e7e1971d6b134758e3d636e451c9cc4ca7d97",
+      "images": [
+        {
+          "file": "selected-state-transport-0.png",
+          "sha256": "d8a51c0ce6a337decbce8aae572ab4dd7387389e5d2155f1bc7f159a84cc447e",
+          "bytes": 8932
+        },
+        {
+          "file": "selected-state-transport-1.png",
+          "sha256": "e896f2984f229e4271b9513307cd8411be92c9a92d3f875080e5db00d38b82ef",
+          "bytes": 9398
+        },
+        {
+          "file": "selected-state-transport-2.png",
+          "sha256": "09c1d52d9103b21f8559309ea58ec45bf9c94fd54097d37d90eb75a4fcf26e2d",
+          "bytes": 6049
+        },
+        {
+          "file": "selected-state-transport-3.png",
+          "sha256": "a2e8e30a4dd0a7af8124eb58a34d5ddf1811ef596e30e52dacce2f8d969ec080",
+          "bytes": 6692
+        }
+      ],
+      "originalVisible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "originalLocated": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "originalRegion": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "originalTargetScale": 8
+    }
+  ],
+  "threshold": 0.9,
+  "questionIds": [
+    "same_instruction",
+    "same_images",
+    "same_selection",
+    "same_control",
+    "no_new_mark",
+    "style_only"
+  ],
+  "singleIntendedVariable": "executeDecision options.model='jev-1.14.0'; wire model only",
+  "maximumHttpAttempts": 8,
+  "httpAttemptsPerCase": 1,
+  "timeoutMsPerCase": 60000,
+  "retriesOrVariants": false,
+  "sourceClosureInvocations": 0,
+  "nativeCalls": 0,
+  "criteria": {
+    "positive": "Both positives require all six finite Noul answers >= .9",
+    "negative": "All six negatives require at least one Noul below .9",
+    "model": "Every response must report jev-1.14.0",
+    "incomplete": "Missing/invalid answers, model identity mismatch, transport or contract failure cannot pass",
+    "aggregate": "PASS frozen regression diagnostic only if every case passes; otherwise reject this screen. No automatic adoption or next stage."
+  },
+  "historicControlsOnly": [
+    "unchanged_fast_path",
+    "deterministic_containment_refusal"
+  ]
+}

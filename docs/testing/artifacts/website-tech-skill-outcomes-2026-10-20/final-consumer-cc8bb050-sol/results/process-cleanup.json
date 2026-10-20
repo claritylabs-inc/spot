@@ -1,0 +1,14 @@
+{
+  "allOwnedPortsClosed": {
+    "8080": true,
+    "8083": true,
+    "8084": true,
+    "9222": true
+  },
+  "authSnapshotRemoved": true,
+  "fixtureOriginalSnapshotRemoved": true,
+  "candidateTrackedClean": true,
+  "browserProfiles": "Ephemeral Playwright profiles closed by browser.close; no persisted profile created",
+  "xvfbStopped": true,
+  "originalBackendAndPrivateInboxUntouched": true
+}

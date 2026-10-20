@@ -1,0 +1,57 @@
+{
+  "candidate": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "node": "v24.14.1",
+  "commands": [
+    {
+      "command": "npm run check:cl-router-contract",
+      "exitCode": 0,
+      "result": "22 fixtures / 11 operations; exact pinned hash verified independently against af229cc Git blob"
+    },
+    {
+      "command": "./node_modules/.bin/tsc --noEmit",
+      "exitCode": 0,
+      "runs": 1
+    },
+    {
+      "command": "./node_modules/.bin/tsc --noEmit -p convex/tsconfig.json",
+      "exitCode": 0,
+      "runs": 1
+    },
+    {
+      "command": "./node_modules/.bin/eslint 'app/operator/clients/[clientOrgId]/wiki/website-tech-section.tsx' convex/actions/websiteTech.ts convex/lib/clRouterClient.ts convex/lib/websiteTech.ts convex/websiteTech.ts contracts/cl-router/policy.ts scripts/check-cl-router-contract.mjs",
+      "exitCode": 0,
+      "result": "Initial nonexistent-path command recorded separately; correct focused command passed"
+    },
+    {
+      "command": "boundary.mjs",
+      "exitCode": 0,
+      "groups": 8
+    },
+    {
+      "command": "access-qa.mjs",
+      "exitCode": 0,
+      "groups": 5
+    },
+    {
+      "command": "check-request.mjs <exact checkout>",
+      "exitCode": 0,
+      "groups": 6
+    },
+    {
+      "command": "app-qa.mjs",
+      "exitCode": 0,
+      "groups": 15,
+      "result": "Two interrupted fixture setup attempts preserved; final full replay passed"
+    },
+    {
+      "command": "app-followup.mjs",
+      "exitCode": 0,
+      "result": "keyboard/reload/live scan card lifecycle; shell overflow remains FAIL"
+    }
+  ],
+  "fullBuild": "Not run; manager supplied CIgreen710d381a. No independent full-build claim.",
+  "newUnitTests": 0,
+  "liveAIProviderCalls": 0,
+  "productionOrSharedDeployments": 0,
+  "scope": "Consumer UI/local storage/registered executor + offline request serialization only"
+}

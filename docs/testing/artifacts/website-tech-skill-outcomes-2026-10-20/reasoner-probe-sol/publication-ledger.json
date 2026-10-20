@@ -1,0 +1,50 @@
+{
+  "requestBodySha256": "41aa09caaf89f1d6c5a9aa8c3b8d9bb0dd3e802a832759c80bfc0ef8b399f2d5",
+  "changes": [
+    {
+      "jsonPointer": "/messages/0/content/2/image",
+      "operation": "Replace entire inline public PNG data URL with durable role/file/hash reference",
+      "originalUtf16Length": 18078,
+      "originalValueSha256": "2e7af7497180174e2a5fa1893be4e62bb6c72f75ece14830c30360d2d56c9510",
+      "replacement": {
+        "file": "frame_before.png",
+        "role": "frame_before",
+        "sha256": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215"
+      }
+    },
+    {
+      "jsonPointer": "/messages/0/content/4/image",
+      "operation": "Replace entire inline public PNG data URL with durable role/file/hash reference",
+      "originalUtf16Length": 18110,
+      "originalValueSha256": "bf7e180c50024318742cd9003080707dcff0d2543c74e7029ec66eff6200b945",
+      "replacement": {
+        "file": "frame_after.png",
+        "role": "frame_after",
+        "sha256": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d"
+      }
+    },
+    {
+      "jsonPointer": "/messages/0/content/6/image",
+      "operation": "Replace entire inline public PNG data URL with durable role/file/hash reference",
+      "originalUtf16Length": 6742,
+      "originalValueSha256": "89d3cb51d83eab270a8c60d9af389b87d9be7d9e0d742c922dd3103c41e9d61c",
+      "replacement": {
+        "file": "target_before.png",
+        "role": "target_before",
+        "sha256": "234478538ac49c7b08ca3b41491e45ae22c88edbf77b47d0521d316635f9ed82"
+      }
+    },
+    {
+      "jsonPointer": "/messages/0/content/8/image",
+      "operation": "Replace entire inline public PNG data URL with durable role/file/hash reference",
+      "originalUtf16Length": 6754,
+      "originalValueSha256": "96c989875de3a1e8ad9d2235a722120d9450fffaa1d7bb4479006c60fb6c2383",
+      "replacement": {
+        "file": "target_after.png",
+        "role": "target_after",
+        "sha256": "7738abc94688b1876e9dcdfa8fd619b62ad992dae3fde617c75984178db3e0bf"
+      }
+    }
+  ],
+  "omitted": "Authorization and configured base URL never written; no headers, cookies, credentials or raw exceptions archived. Public image bytes are linked separately. No other logical fields changed."
+}

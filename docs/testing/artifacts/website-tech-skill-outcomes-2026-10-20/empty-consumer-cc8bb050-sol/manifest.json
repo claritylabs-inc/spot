@@ -1,0 +1,89 @@
+{
+  "candidate": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "scope": "Fresh null/profile-empty actual consumer addendum only",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "0a0461b4d2c21e9ae7b2cdc6d3478d9c23f961023c70f1ead25032c48d85b574",
+      "bytes": 3398
+    },
+    {
+      "path": "bootstrap-results.json",
+      "sha256": "688844ae0a7a0d01bdd5be7709d6c5df71cb8ede8621aacb7804aa4d800f13cb",
+      "bytes": 457
+    },
+    {
+      "path": "cleanup.json",
+      "sha256": "90b175ab066e35d150a8f88b1998ec47b0e01769977df6729e41282094eb1b5e",
+      "bytes": 344
+    },
+    {
+      "path": "cleanup.mjs",
+      "sha256": "92ff8f7d87cc2f4ff80c30c8b86d14e79603bab40390a4c1fd27da816f3988b3",
+      "bytes": 967
+    },
+    {
+      "path": "empty-qa.mjs",
+      "sha256": "daed30b4f30f20bb8c68e2a06c4769f63f92329eff6fb90ecda436ea9d7ecca9",
+      "bytes": 5803
+    },
+    {
+      "path": "fast-local.mjs",
+      "sha256": "6ecbc48ca84f77d51b4872066fce39f5a21f78085f75ac674713d20c72f3aca4",
+      "bytes": 1505
+    },
+    {
+      "path": "finish-seed.mjs",
+      "sha256": "b1526b9ec5981febd2c00b5554cae3566acf13a70b4fa86bdb3dd6fedec16aa5",
+      "bytes": 1054
+    },
+    {
+      "path": "local-lane.mjs",
+      "sha256": "c20e6dec86dee40af72f924e8c051725d68e88c82f3acdd8da3acf6914994bf6",
+      "bytes": 4212
+    },
+    {
+      "path": "not-scanned-desktop.png",
+      "sha256": "0854b6d0dc7d1d1549e72996591ed97409e11cfc9d71e59056f4914680f6debd",
+      "bytes": 48301
+    },
+    {
+      "path": "protocol.json",
+      "sha256": "f63bc90b608c0ade26816e58a240cb6d587f322a46aabccb50d95f6d49330344",
+      "bytes": 701
+    },
+    {
+      "path": "publish.mjs",
+      "sha256": "b824e1874723617ad3a9adfc6d5ed74f8648aa9066026a0aa9152d0fcebfb54d",
+      "bytes": 2666
+    },
+    {
+      "path": "results.json",
+      "sha256": "a941af82f1c1cad78d6ec7a9dc0195cbc6317fa18f5331ef8a419989439b55e5",
+      "bytes": 1237
+    },
+    {
+      "path": "source-binding.json",
+      "sha256": "c9090fa696cc6f9d45d0694e9dec2ebfd00d09e466af15c44eed5495a243d051",
+      "bytes": 2404
+    },
+    {
+      "path": "validation.json",
+      "sha256": "1640d22ac182d73a9feb94be7f9d85b11a2f4e4eb42b6e5957904ce9a9f5039a",
+      "bytes": 542
+    },
+    {
+      "path": "workflow-plan.json",
+      "sha256": "6e2b650f76820a5d3231161c32d4ddd1e679fda6ac35d42adf1483f99d7887f1",
+      "bytes": 925
+    }
+  ],
+  "checks": {
+    "syntax": true,
+    "privateCredentialValuesAbsent": true,
+    "jwtAndPrivateKeyPatternsAbsent": true,
+    "relativeLinksResolve": true,
+    "screenshotVisuallyReviewed": true
+  },
+  "publication": "Whitelist copies only; no redaction edits needed to public receipts or synthetic screenshot. Logs/auth/env/config omitted."
+}

@@ -1,0 +1,21 @@
+{
+  "candidate": "4bbe20e208c7d3e38b1b6fbfc523606997685364",
+  "scope": "one fresh actual skill invocation with host stop spy; FAIL reachability; no native acceptance",
+  "relevance": 0.65,
+  "spyReached": false,
+  "inputCommands": 0,
+  "fullActualRequestStoredPrivatelyBeforeCall": true,
+  "publishedStateIsCapturedAndSanitized": true,
+  "screenshotsVisuallyReviewed": true,
+  "files": {
+    "gate-capture.png": "830a2f05819db2b366852859661d573685888c67d9cc16460a2bc7554e22e3b4",
+    "visible-result.png": "ea816ac6f51b939b456f38ccda125ef12655218af31d7db0dd3973dd3d4cc683",
+    "skill-result.json": "4c3420cb86f6d9fe662ce93a7dbd79a1550c0444eb69e7c570bd1d135163ed14",
+    "initial-model-capture.png": "632966401847f194493098d1781975580b3c9705113b283278e6e3d21afb1eda",
+    "gate-request-sanitized.json": "a1b54ade47708f570ca418e43804a5d6801fd26ccb77859049f30aa2f021f086",
+    "redaction-ledger.json": "fee47fd8678786b48dd9aedf46cfef25f10b0424e5443207cc9a9ac5b1b895b0",
+    "protocol-model-trace.json": "89a265a581a551a8019ee602ad2b22c20280eedcce8bf8bd6b815d92f231284a",
+    "capture-proof.json": "aff8d97f1622a1e95180465aaa1d3520ed60bed891625dee7d7e70cc7dc3eda4",
+    "gate-seam-probe.mjs": "11a4cce9e7ad1f6475cfb6bb982bc0394f0c9d00590e0e604fe1d83bf979aa4c"
+  }
+}

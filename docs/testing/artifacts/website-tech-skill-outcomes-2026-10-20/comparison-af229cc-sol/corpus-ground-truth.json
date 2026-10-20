@@ -1,0 +1,573 @@
+[
+  {
+    "id": "unchanged",
+    "before": "empty",
+    "after": "empty",
+    "expected": true,
+    "expectedPath": "unchanged fast path; zero inference",
+    "fixtureAction": "Apply identical empty state and capture twice",
+    "beforeObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "afterObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "delta": {
+      "changedPixels": 0,
+      "bounds": null
+    },
+    "expectedFrozenBeforeInference": true
+  },
+  {
+    "id": "border-hover",
+    "before": "empty",
+    "after": "hover",
+    "expected": true,
+    "expectedPath": "semantic comparison",
+    "fixtureAction": "Only border color changes from #555 to #aaa; shape, size, marks and selection unchanged",
+    "beforeObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "afterObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "hover",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(170, 170, 170)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "delta": {
+      "changedPixels": 636,
+      "bounds": {
+        "left": 120,
+        "top": 60,
+        "right": 175,
+        "bottom": 115
+      }
+    },
+    "expectedFrozenBeforeInference": true
+  },
+  {
+    "id": "added-tick",
+    "before": "empty",
+    "after": "tick",
+    "expected": false,
+    "expectedPath": "semantic comparison",
+    "fixtureAction": "Add a visible tick and set aria-checked true",
+    "beforeObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "afterObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "tick",
+      "role": "checkbox",
+      "checked": "true",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": "tick",
+      "badge": null
+    },
+    "delta": {
+      "changedPixels": 304,
+      "bounds": {
+        "left": 130,
+        "top": 72,
+        "right": 165,
+        "bottom": 101
+      }
+    },
+    "expectedFrozenBeforeInference": true
+  },
+  {
+    "id": "removed-mark",
+    "before": "tick",
+    "after": "empty",
+    "expected": false,
+    "expectedPath": "semantic comparison",
+    "fixtureAction": "Remove the visible existing tick and clear aria-checked",
+    "beforeObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "tick",
+      "role": "checkbox",
+      "checked": "true",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": "tick",
+      "badge": null
+    },
+    "afterObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "delta": {
+      "changedPixels": 304,
+      "bounds": {
+        "left": 130,
+        "top": 72,
+        "right": 165,
+        "bottom": 101
+      }
+    },
+    "expectedFrozenBeforeInference": true
+  },
+  {
+    "id": "new-spinner",
+    "before": "empty",
+    "after": "spinner",
+    "expected": false,
+    "expectedPath": "semantic comparison",
+    "fixtureAction": "Add a static visible spinner/symbol; no animation",
+    "beforeObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "afterObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "spinner",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": "static spinner",
+      "badge": null
+    },
+    "delta": {
+      "changedPixels": 576,
+      "bounds": {
+        "left": 130,
+        "top": 70,
+        "right": 165,
+        "bottom": 105
+      }
+    },
+    "expectedFrozenBeforeInference": true
+  },
+  {
+    "id": "replaced-picture",
+    "before": "landscape",
+    "after": "boat",
+    "expected": false,
+    "expectedPath": "semantic comparison",
+    "fixtureAction": "Replace the depicted mountain landscape illustration with a boat illustration inside the same control",
+    "beforeObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "landscape",
+      "role": "option",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": "mountain landscape",
+      "mark": null,
+      "badge": null
+    },
+    "afterObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "boat",
+      "role": "option",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": "boat on water",
+      "mark": null,
+      "badge": null
+    },
+    "delta": {
+      "changedPixels": 1398,
+      "bounds": {
+        "left": 124,
+        "top": 68,
+        "right": 171,
+        "bottom": 111
+      }
+    },
+    "expectedFrozenBeforeInference": true
+  },
+  {
+    "id": "changed-instruction",
+    "before": "empty",
+    "after": "instruction",
+    "expected": false,
+    "expectedPath": "deterministic containment refusal; zero inference",
+    "fixtureAction": "Change the written instruction above the control, outside the before-control-plus4 region",
+    "beforeObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "afterObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bus",
+      "state": "instruction",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "delta": {
+      "changedPixels": 280,
+      "bounds": {
+        "left": 97,
+        "top": 15,
+        "right": 135,
+        "bottom": 29
+      }
+    },
+    "expectedFrozenBeforeInference": true
+  },
+  {
+    "id": "moved-resized",
+    "before": "empty",
+    "after": "moved",
+    "expected": false,
+    "expectedPath": "semantic comparison",
+    "fixtureAction": "Move control +1px,+1px and enlarge width/height +2px; all changes remain within original control plus4",
+    "beforeObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "afterObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 404,
+        "y": 361,
+        "width": 58,
+        "height": 58
+      },
+      "instruction": "Select the bicycle",
+      "state": "moved",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "delta": {
+      "changedPixels": 852,
+      "bounds": {
+        "left": 120,
+        "top": 60,
+        "right": 178,
+        "bottom": 118
+      }
+    },
+    "expectedFrozenBeforeInference": true
+  },
+  {
+    "id": "selected-state",
+    "before": "landscape",
+    "after": "selected",
+    "expected": false,
+    "expectedPath": "semantic comparison",
+    "fixtureAction": "Select the same pictured tile, changing selection border/highlight and adding a visible selection badge; aria-selected true",
+    "beforeObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "landscape",
+      "role": "option",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": "mountain landscape",
+      "mark": null,
+      "badge": null
+    },
+    "afterObservation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "selected",
+      "role": "option",
+      "checked": "false",
+      "selected": "true",
+      "borderColor": "rgb(18, 101, 221)",
+      "picture": "mountain landscape",
+      "mark": null,
+      "badge": "✓"
+    },
+    "delta": {
+      "changedPixels": 1108,
+      "bounds": {
+        "left": 120,
+        "top": 60,
+        "right": 175,
+        "bottom": 115
+      }
+    },
+    "expectedFrozenBeforeInference": true
+  }
+]

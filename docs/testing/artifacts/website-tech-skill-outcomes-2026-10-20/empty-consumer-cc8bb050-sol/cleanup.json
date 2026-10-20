@@ -1,0 +1,12 @@
+{
+  "authSnapshotRemoved": true,
+  "browserClosed": true,
+  "websiteUnmodified": true,
+  "profiles": 0,
+  "routerJobs": 0,
+  "spotEnv": "local",
+  "routerUrlPresent": false,
+  "routerSecretPresent": false,
+  "restorationRequired": false,
+  "reason": "Both router values started absent; never removed or replaced. Original backend not opened."
+}
