@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation } from "convex/react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -64,6 +64,7 @@ export function DeleteOrganizationButton({
         disabled={disabled || busy}
         onClick={() => setOpen(true)}
       >
+        <Trash2 className="size-3.5" />
         Delete {typeLabel}
       </PillButton>
       <Dialog

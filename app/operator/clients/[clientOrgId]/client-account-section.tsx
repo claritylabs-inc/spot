@@ -56,6 +56,8 @@ export function ClientAccountSection({
         </OperationalLabelValueList>
       </section>
     );
+  const { label: statusLabel, ...statusPresentation } =
+    OPERATOR_CLIENT_STATUSES[value.status];
   return (
     <fieldset disabled={disabled} aria-label="Account">
       <InlineFieldCard>
@@ -91,7 +93,9 @@ export function ClientAccountSection({
             }}
           >
             <SelectTrigger className="w-full" aria-label="Status">
-              <SelectValue />
+              <SelectValue>
+                <StatusLabel {...statusPresentation}>{statusLabel}</StatusLabel>
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {Object.entries(OPERATOR_CLIENT_STATUSES).map(
