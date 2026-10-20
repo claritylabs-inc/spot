@@ -71,6 +71,9 @@ results write the provisional preview and supply context for concurrent section
 jobs. The declarations LLM still extracts parties, coverages, forms, insured
 details, premium breakdowns and taxes. Only non-null, source-grounded fast-pass
 scalars replace its corresponding fields before section results are stored.
+Each scalar stays on the declarations section containing its evidence; other
+declarations sections clear that scalar so merge cannot prefer an earlier
+conflicting LLM value.
 Dates use companion text fields to locate their original evidence because
 Clairic's normalized date answers need not contain spans. Existing citation
 resolution attaches source IDs during merge; fast-pass output does not bypass
