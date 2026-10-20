@@ -439,11 +439,20 @@ export type ClRouterBrowseRequest = {
       inboxUrl?: string;
     };
   };
+  config?: { skills?: Array<"inbox.wait_for_email"> };
   executionBudgetMs?: number;
 };
 
+export type ClRouterBrowseSkillOutcome = {
+  name: string;
+  version: string;
+  status: "succeeded" | "blocked" | "failed" | "skipped";
+  summary: string;
+  steps: number;
+};
+
 export type ClRouterBrowseResponse = {
-  provider: "browserbase";
+  provider: "browserbase" | "sandbox";
   model: string;
   output?: unknown;
   text: string;
@@ -455,6 +464,7 @@ export type ClRouterBrowseResponse = {
   adoptedDomains?: string[];
   signupSubmitted?: boolean;
   actions?: Array<{ tool: string; input: string; result: string }>;
+  skills?: ClRouterBrowseSkillOutcome[];
   error?: string;
 };
 
@@ -1651,6 +1661,7 @@ export async function clRouterRetrieve(
 const BROWSE_BODY_KEYS = [
   "orgId",
   "input",
+  "config",
   "executionBudgetMs",
 ] as const satisfies readonly (keyof ClRouterBrowseRequest)[];
 
@@ -1671,7 +1682,7 @@ export async function clRouterBrowse(
   );
   if (
     !isRecord(payload) ||
-    payload.provider !== "browserbase" ||
+    (payload.provider !== "browserbase" && payload.provider !== "sandbox") ||
     typeof payload.text !== "string" ||
     typeof payload.finished !== "boolean" ||
     !Array.isArray(payload.networkHosts) ||
@@ -1683,7 +1694,27 @@ export async function clRouterBrowse(
         typeof page.url === "string" &&
         typeof page.title === "string" &&
         typeof page.text === "string",
-    )
+    ) ||
+    (payload.skills !== undefined &&
+      (!Array.isArray(payload.skills) ||
+        payload.skills.length > 40 ||
+        !payload.skills.every(
+          (skill) =>
+            isRecord(skill) &&
+            typeof skill.name === "string" &&
+            skill.name.length <= 100 &&
+            typeof skill.version === "string" &&
+            skill.version.length <= 40 &&
+            typeof skill.status === "string" &&
+            ["succeeded", "blocked", "failed", "skipped"].includes(
+              skill.status,
+            ) &&
+            typeof skill.summary === "string" &&
+            skill.summary.length <= 500 &&
+            typeof skill.steps === "number" &&
+            Number.isInteger(skill.steps) &&
+            skill.steps >= 0,
+        )))
   ) {
     throw new ClRouterRequestError(
       "invalid_response",

@@ -48,6 +48,22 @@ export const websiteTechBrowseValidator = v.object({
   actions: v.array(
     v.object({ tool: v.string(), input: v.string(), result: v.string() }),
   ),
+  skills: v.optional(
+    v.array(
+      v.object({
+        name: v.string(),
+        version: v.string(),
+        status: v.union(
+          v.literal("succeeded"),
+          v.literal("blocked"),
+          v.literal("failed"),
+          v.literal("skipped"),
+        ),
+        summary: v.string(),
+        steps: v.number(),
+      }),
+    ),
+  ),
   error: v.optional(v.string()),
 });
 

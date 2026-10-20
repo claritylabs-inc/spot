@@ -328,7 +328,7 @@
           "cachedInputTokens": 0,
           "cacheWriteTokens": 0
         },
-        "costUsd": 0.000001,
+        "costUsd": 1e-06,
         "costStatus": "priced",
         "model": {
           "provider": "openai",
@@ -630,6 +630,52 @@
           "costNanoUsd": 233184
         },
         "durationMs": 412
+      }
+    },
+    {
+      "name": "Spot website research with inbox skill",
+      "schema": "BrowseRequest",
+      "value": {
+        "input": {
+          "url": "https://example.com/",
+          "goal": "Read the company privacy and pricing pages.",
+          "allowedDomains": [
+            "example.com"
+          ],
+          "maxSteps": 30
+        },
+        "config": {
+          "skills": [
+            "inbox.wait_for_email"
+          ]
+        },
+        "executionBudgetMs": 360000
+      }
+    },
+    {
+      "name": "Spot website research skill outcome",
+      "schema": "BrowseResponse",
+      "value": {
+        "provider": "sandbox",
+        "model": "fixture-model",
+        "text": "Email verification is pending.",
+        "finished": false,
+        "steps": 4,
+        "pages": [],
+        "networkHosts": [],
+        "redirects": [],
+        "adoptedDomains": [],
+        "signupSubmitted": true,
+        "actions": [],
+        "skills": [
+          {
+            "name": "inbox.wait_for_email",
+            "version": "1.0.0",
+            "status": "blocked",
+            "summary": "No verification email arrived.",
+            "steps": 4
+          }
+        ]
       }
     }
   ]
