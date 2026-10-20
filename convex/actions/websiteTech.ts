@@ -1,5 +1,6 @@
 "use node";
 
+import { randomBytes } from "node:crypto";
 import { Resolver } from "node:dns/promises";
 import { v } from "convex/values";
 import { z } from "zod";
@@ -56,7 +57,7 @@ const BROWSE_GOAL = [
   "1. Which payment processor does it use to take customer payments?",
   "2. Which cloud or hosting provider hosts its product and customer data, and in which countries or regions?",
   "3. Which subprocessors does it publish?",
-  "Check footer, legal, trust, security, privacy, DPA and subprocessor pages, and pricing, checkout or signup flows without submitting anything. Use network_hosts on checkout or pricing pages to spot embedded payment providers.",
+  "Check footer, legal, trust, security, privacy, DPA and subprocessor pages, and pricing pages. Then follow the trial, signup or checkout flow: when a test identity is available, sign up by email and continue to plan, billing or checkout until the payment step, without entering payment details. Use network_hosts on checkout or billing pages to spot embedded payment providers.",
   "Record each finding with the exact page URL it came from and a short verbatim quote from that page naming the vendor or region. Omit anything not stated on a page.",
 ].join("\n");
 
@@ -97,18 +98,36 @@ async function collectInfrastructure(
   };
 }
 
+/**
+ * A per-run test identity on the configured research inbox (plus-addressed, random password that
+ * is never stored). Without WEBSITE_TECH_SIGNUP_EMAIL the agent browses but does not sign up.
+ */
+function signupIdentity() {
+  const match = process.env.WEBSITE_TECH_SIGNUP_EMAIL?.trim().match(
+    /^([^@+\s]+)@([^@\s]+\.[^@\s]+)$/,
+  );
+  if (!match) return undefined;
+  return {
+    email: `${match[1]}+${randomBytes(4).toString("hex")}@${match[2]}`,
+    password: `Sp-${randomBytes(18).toString("base64url")}-9a`,
+    name: "Spot Research",
+  };
+}
+
 async function browseCompanySite(ctx: ActionCtx, domain: string, trace: Trace) {
+  const signup = signupIdentity();
+  // Trace travels in the durable job options; the browse request body is strict.
   return await clRouterBrowse(
     {
-      trace,
       input: {
         url: `https://${domain}/`,
         goal: BROWSE_GOAL,
         allowedDomains: [domain],
-        maxSteps: 20,
+        maxSteps: 30,
         outputSchema: z.toJSONSchema(findingsSchema) as Record<string, unknown>,
+        ...(signup ? { signup } : {}),
       },
-      executionBudgetMs: 5 * 60_000,
+      executionBudgetMs: 6 * 60_000,
     },
     durableRouterClientOptionsWithTrace(ctx, {
       ...trace,
@@ -462,6 +481,7 @@ export const run = internalAction({
       ? detectWebsiteTech({
           ...empty,
           requestHosts: [
+            ...(browsed.redirects ?? []),
             ...browsed.networkHosts,
             ...browsed.pages.map((page) => page.url),
           ],
