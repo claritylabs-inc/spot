@@ -31,7 +31,6 @@ import {
 import { useStopOperatorImpersonation } from "@/hooks/use-stop-operator-impersonation";
 import { formatDisplayDate } from "@/lib/date-format";
 import {
-  operatorClientDisplayStatus,
   type OperatorClientRow,
 } from "./client-model";
 import { typeStyle } from "@/lib/typography";
@@ -60,7 +59,10 @@ function applicationName(application: {
   );
 }
 
-type ClientFilter = "all" | "active" | "limited" | "onboarding";
+/** Highlights rows whose application has not been submitted yet. */
+const UNSUBMITTED_ROW_CLASS = "bg-warning/5 hover:bg-warning/10";
+
+type ClientFilter = "all" | "active" | "limited";
 
 export default function OperatorClientsScreen() {
   const [creating, setCreating] = useState(false);
@@ -78,7 +80,7 @@ export default function OperatorClientsScreen() {
     values.some((value) => value?.toLowerCase().includes(searchText));
   const filteredClients = clients?.filter(
     (client) =>
-      (filter === "all" || operatorClientDisplayStatus(client) === filter) &&
+      (filter === "all" || client.clientAccessStatus === filter) &&
       matchesSearch([
         client.name,
         client.dba,
@@ -89,7 +91,7 @@ export default function OperatorClientsScreen() {
   );
   // Applicants who have not named their company yet have no client record.
   const filteredApplications =
-    filter === "all" || filter === "onboarding"
+    filter === "all" || filter === "limited"
       ? (unlinkedApplications?.filter((application) =>
           matchesSearch([
             application.companyName,
@@ -171,7 +173,6 @@ export default function OperatorClientsScreen() {
               <TabsTrigger value="all">All</TabsTrigger>
               <TabsTrigger value="active">Active</TabsTrigger>
               <TabsTrigger value="limited">Limited</TabsTrigger>
-              <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
             </TabsList>
           </Tabs>
           <BulkDeleteBar
@@ -256,6 +257,11 @@ export default function OperatorClientsScreen() {
                     data-state={
                       selection.isSelected(client._id) ? "selected" : undefined
                     }
+                    className={
+                      client.applicationInProgress
+                        ? UNSUBMITTED_ROW_CLASS
+                        : undefined
+                    }
                   >
                     <TableCell className="pl-4 pr-0">
                       <Checkbox
@@ -311,7 +317,7 @@ export default function OperatorClientsScreen() {
                           ? "selected"
                           : undefined
                       }
-                      className="hover:bg-transparent"
+                      className={UNSUBMITTED_ROW_CLASS}
                     >
                       <TableCell className="pl-4 pr-0">
                         <Checkbox
@@ -343,9 +349,7 @@ export default function OperatorClientsScreen() {
                         />
                       </TableCell>
                       <TableCell>
-                        <ApplicationStatusField
-                          name={applicationName(application)}
-                        />
+                        <ApplicationStatusField />
                       </TableCell>
                       <TableCell className="px-4 text-muted-foreground">
                         {formatDisplayDate(application.createdAt)}
