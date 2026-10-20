@@ -20,19 +20,21 @@ import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 type OrgId = Id<"organizations">;
+type ApplicationId = Id<"procurementRequests">;
 
-export function useRowSelection(visibleIds: OrgId[]) {
-  const [selected, setSelected] = useState<Set<OrgId>>(new Set());
+export function useRowSelection<T extends string>(visibleIds: T[]) {
+  const [selected, setSelected] = useState<Set<T>>(new Set());
   // Rows can disappear (filters, deletes); only count what is still visible.
   const selectedIds = visibleIds.filter((id) => selected.has(id));
   const allSelected =
     visibleIds.length > 0 && selectedIds.length === visibleIds.length;
   return {
     selectedIds,
+    visibleCount: visibleIds.length,
     allSelected,
     someSelected: selectedIds.length > 0 && !allSelected,
-    isSelected: (id: OrgId) => selected.has(id),
-    toggle: (id: OrgId, checked: boolean) =>
+    isSelected: (id: T) => selected.has(id),
+    toggle: (id: T, checked: boolean) =>
       setSelected((prev) => {
         const next = new Set(prev);
         if (checked) next.add(id);
@@ -47,13 +49,18 @@ export function useRowSelection(visibleIds: OrgId[]) {
 
 export function BulkDeleteBar({
   type,
-  selectedIds,
+  orgIds,
+  applicationIds = [],
   disabled,
+  className,
   onClear,
 }: {
   type: "client" | "broker";
-  selectedIds: OrgId[];
+  orgIds: OrgId[];
+  /** Applicant drafts that have no client record yet. */
+  applicationIds?: ApplicationId[];
   disabled?: boolean;
+  className?: string;
   onClear: () => void;
 }) {
   const noun = type === "broker" ? "provider" : "client";
@@ -62,19 +69,30 @@ export function BulkDeleteBar({
   const [withUsers, setWithUsers] = useState(false);
   const remove = useMutation(api.operator.deleteOrganization);
   const removeWithUsers = useMutation(api.operator.deleteClientWithUsers);
-  const count = selectedIds.length;
+  const removeApplications = useMutation(
+    api.operator.deleteUnlinkedApplications,
+  );
+  const count = orgIds.length + applicationIds.length;
   const label = `${count} ${noun}${count === 1 ? "" : "s"}`;
 
   async function confirm() {
     setBusy(true);
     let failed = 0;
     let lastError: unknown;
-    for (const orgId of selectedIds) {
+    for (const orgId of orgIds) {
       try {
         if (type === "client" && withUsers) await removeWithUsers({ orgId });
         else await remove({ orgId, type });
       } catch (error) {
         failed += 1;
+        lastError = error;
+      }
+    }
+    if (applicationIds.length > 0) {
+      try {
+        await removeApplications({ requestIds: applicationIds });
+      } catch (error) {
+        failed += applicationIds.length;
         lastError = error;
       }
     }
@@ -98,7 +116,7 @@ export function BulkDeleteBar({
   return (
     <>
       <div
-        className={`flex items-center gap-3 ${typeStyle("body.default")}`}
+        className={`flex items-center gap-3 ${typeStyle("body.default")} ${className ?? ""}`}
       >
         <span className="text-muted-foreground">{count} selected</span>
         <PillButton
@@ -140,7 +158,7 @@ export function BulkDeleteBar({
                 : " Shared packet links will stop working."}
             </DialogDescription>
           </DialogHeader>
-          {type === "client" ? (
+          {type === "client" && orgIds.length > 0 ? (
             <label
               className={`flex items-start gap-2 ${typeStyle("body.default")}`}
             >
