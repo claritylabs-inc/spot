@@ -37,7 +37,17 @@ import {
   type OperatorClientRow,
 } from "./client-model";
 import { typeStyle } from "@/lib/typography";
-import { ClientStatusField, ClientWebsiteField } from "./client-row-fields";
+import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
+import {
+  BulkDeleteBar,
+  useRowSelection,
+} from "@/components/operator/bulk-delete";
+import {
+  ApplicationStatusField,
+  ApplicationWebsiteField,
+  ClientStatusField,
+  ClientWebsiteField,
+} from "./client-row-fields";
 
 function applicationName(application: {
   companyName?: string;
@@ -78,6 +88,9 @@ export default function OperatorClientsScreen() {
         client.primaryContactEmail,
         client.adminEmail,
       ]),
+  );
+  const selection = useRowSelection(
+    filteredClients?.map((client) => client._id) ?? [],
   );
   // Applicants who have not named their company yet have no client record.
   const filteredApplications =
@@ -156,11 +169,26 @@ export default function OperatorClientsScreen() {
               <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
             </TabsList>
           </Tabs>
+          <BulkDeleteBar
+            type="client"
+            selectedIds={selection.selectedIds}
+            disabled={readOnly}
+            onClear={selection.clear}
+          />
         </div>
         <OperationalPanel data-operator-inline-fields>
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
+                <TableHead className="w-10 pl-4 pr-0">
+                  <Checkbox
+                    aria-label="Select all clients"
+                    checked={selection.allSelected}
+                    indeterminate={selection.someSelected}
+                    disabled={readOnly || !filteredClients?.length}
+                    onCheckedChange={selection.toggleAll}
+                  />
+                </TableHead>
                 <TableHead
                   className={`w-[25%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
                 >
@@ -195,7 +223,7 @@ export default function OperatorClientsScreen() {
               {clients === undefined ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="h-32 text-center text-muted-foreground"
                   >
                     <Loader2 className="mx-auto h-5 w-5 animate-spin" />
@@ -206,7 +234,7 @@ export default function OperatorClientsScreen() {
                 !creating ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                   >
                     {searchText || filter !== "all"
@@ -216,7 +244,22 @@ export default function OperatorClientsScreen() {
                 </TableRow>
               ) : (
                 filteredClients?.map((client) => (
-                  <TableRow key={client._id}>
+                  <TableRow
+                    key={client._id}
+                    data-state={
+                      selection.isSelected(client._id) ? "selected" : undefined
+                    }
+                  >
+                    <TableCell className="w-10 pl-4 pr-0">
+                      <Checkbox
+                        aria-label={`Select ${client.dba ?? client.name}`}
+                        checked={selection.isSelected(client._id)}
+                        disabled={readOnly}
+                        onCheckedChange={(checked) =>
+                          selection.toggle(client._id, checked)
+                        }
+                      />
+                    </TableCell>
                     <TableCell className="px-4">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <OrgBrandIcon
@@ -258,6 +301,7 @@ export default function OperatorClientsScreen() {
                       key={application.requestId}
                       className="hover:bg-transparent"
                     >
+                      <TableCell className="w-10 pl-4 pr-0" />
                       <TableCell className="px-4">
                         <div className="flex min-w-0 items-center gap-2.5">
                           <OrgBrandIcon
@@ -272,16 +316,15 @@ export default function OperatorClientsScreen() {
                       <TableCell className="max-w-56 truncate text-muted-foreground">
                         {application.applicantEmail ?? "No email"}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        Not set
+                      <TableCell className="max-w-44">
+                        <ApplicationWebsiteField
+                          name={applicationName(application)}
+                        />
                       </TableCell>
                       <TableCell>
-                        <StatusTag
-                          tone={ONBOARDING_CLIENT_STATUS.tone}
-                          indicator={ONBOARDING_CLIENT_STATUS.indicator}
-                        >
-                          {ONBOARDING_CLIENT_STATUS.label}
-                        </StatusTag>
+                        <ApplicationStatusField
+                          name={applicationName(application)}
+                        />
                       </TableCell>
                       <TableCell className="px-4 text-muted-foreground">
                         {formatDisplayDate(application.createdAt)}

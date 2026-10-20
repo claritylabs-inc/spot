@@ -10,6 +10,11 @@ import { AppShell } from "@/components/app-shell";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { typeStyle } from "@/lib/typography";
+import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
+import {
+  BulkDeleteBar,
+  useRowSelection,
+} from "@/components/operator/bulk-delete";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import {
@@ -39,6 +44,7 @@ import {
 export default function OperatorBrokersPage() {
   const [creating, setCreating] = useState(false);
   const rows = useQuery(api.brokerProfiles.list, {});
+  const selection = useRowSelection(rows?.map((row) => row.broker._id) ?? []);
 
   return (
     <AppShell
@@ -58,10 +64,24 @@ export default function OperatorBrokersPage() {
       }
     >
       <div className="@container/brokers space-y-4">
+        <BulkDeleteBar
+          type="broker"
+          selectedIds={selection.selectedIds}
+          onClear={selection.clear}
+        />
         <OperationalPanel data-operator-inline-fields>
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10 pl-4 pr-0">
+                  <Checkbox
+                    aria-label="Select all providers"
+                    checked={selection.allSelected}
+                    indeterminate={selection.someSelected}
+                    disabled={!rows?.length}
+                    onCheckedChange={selection.toggleAll}
+                  />
+                </TableHead>
                 <TableHead className="w-[40%] px-4">Provider</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>States</TableHead>
@@ -74,14 +94,14 @@ export default function OperatorBrokersPage() {
               ) : null}
               {rows === undefined ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-32">
+                  <TableCell colSpan={5} className="h-32">
                     <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 && !creating ? (
                 <TableRow>
                   <TableCell
-                    colSpan={4}
+                    colSpan={5}
                     className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                   >
                     No insurance providers yet.
@@ -89,7 +109,23 @@ export default function OperatorBrokersPage() {
                 </TableRow>
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.broker._id}>
+                  <TableRow
+                    key={row.broker._id}
+                    data-state={
+                      selection.isSelected(row.broker._id)
+                        ? "selected"
+                        : undefined
+                    }
+                  >
+                    <TableCell className="w-10 pl-4 pr-0">
+                      <Checkbox
+                        aria-label={`Select ${row.broker.name}`}
+                        checked={selection.isSelected(row.broker._id)}
+                        onCheckedChange={(checked) =>
+                          selection.toggle(row.broker._id, checked)
+                        }
+                      />
+                    </TableCell>
                     <TableCell className="px-4">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <OrgBrandIcon

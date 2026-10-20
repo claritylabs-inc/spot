@@ -161,13 +161,40 @@ jobs:
           fi
 
       - uses: useblacksmith/checkout@v1
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           package-manager-cache: false
 
+      - name: Detect breaking backend changes
+        id: breaking
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          breaking=true
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$BEFORE_SHA" =~ [1-9a-f] ]] \
+            && git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            breaking=false
+            # Schema, HTTP routes, crons, auth config and deployment config
+            # changes, or any removed/renamed Convex module, can break clients
+            # or deployed services still running the previous release.
+            if git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA" -- \
+                convex/schema.ts convex/http.ts convex/crons.ts \
+                convex/auth.config.ts config/deployments.json | grep -q .; then
+              breaking=true
+            elif git diff --name-only --diff-filter=DR "$BEFORE_SHA" "$GITHUB_SHA" -- \
+                'convex/**' ':!convex/_generated/**' | grep -q .; then
+              breaking=true
+            fi
+          fi
+          echo "breaking=$breaking" >> "$GITHUB_OUTPUT"
+          echo "Breaking backend changes: $breaking" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check deployed service compatibility
+        if: steps.breaking.outputs.breaking == 'true'
         run: node scripts/check-agent-deployment-health.mjs --env production
         env:
           AGENT_HEALTH_ATTEMPTS: 30

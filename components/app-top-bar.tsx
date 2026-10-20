@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { AppTopBar as SharedAppTopBar } from "@claritylabs-inc/ui/components/app-shell/app-top-bar";
 import type { Ref } from "react";
 import { typeStyle } from "@/lib/typography";
+import { OperatorClientSwitcher } from "@/components/operator-client-switcher";
 
 const BREADCRUMB_MAP: Record<string, { label: string; href?: string }> = {
   "/": { label: "Dashboard" },
@@ -119,7 +120,16 @@ export function AppTopBar({
       breadcrumb={label}
       breadcrumbHref={href}
       breadcrumbRender={<Link href={href} />}
-      breadcrumbDetail={breadcrumbDetail}
+      breadcrumbDetail={
+        breadcrumbDetail && pathname.startsWith("/operator/clients/") ? (
+          <span className="flex items-center gap-1.5">
+            {breadcrumbDetail}
+            <OperatorClientSwitcher />
+          </span>
+        ) : (
+          breadcrumbDetail
+        )
+      }
       breadcrumbSeparator={<span className="text-muted-foreground/30">/</span>}
       breadcrumbListClassName={`gap-1.5 ${typeStyle("body.default")}`}
       onMobileMenuToggle={onMobileMenuToggle}
