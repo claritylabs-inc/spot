@@ -454,6 +454,8 @@ export type ClRouterBrowseResponse = {
   redirects?: string[];
   adoptedDomains?: string[];
   signupSubmitted?: boolean;
+  actions?: Array<{ tool: string; input: string; result: string }>;
+  error?: string;
 };
 
 export type ClRouterRetrieveResponse = {

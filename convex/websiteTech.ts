@@ -13,6 +13,7 @@ import { requireOperator } from "./lib/operatorIdentity";
 import {
   websiteTechDisclosureValidator,
   websiteTechDomain,
+  websiteTechBrowseValidator,
   websiteTechInferenceValidator,
   websiteTechSignalValidator,
 } from "./lib/websiteTech";
@@ -88,6 +89,7 @@ export async function readWebsiteTechProfile(
         signals: profile.signals,
         disclosures: profile.disclosures,
         inferences: profile.inferences ?? [],
+        browse: profile.browse ?? null,
         completedAt: profile.completedAt,
         updatedAt: profile.updatedAt,
       }
@@ -118,6 +120,7 @@ export const finish = internalMutation({
     signals: v.array(websiteTechSignalValidator),
     disclosures: v.array(websiteTechDisclosureValidator),
     inferences: v.array(websiteTechInferenceValidator),
+    browse: v.optional(websiteTechBrowseValidator),
     error: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -139,6 +142,7 @@ export const finish = internalMutation({
             completedAt: now,
           }
         : {}),
+      browse: args.browse,
       error: args.error?.slice(0, 500),
       updatedAt: now,
     });

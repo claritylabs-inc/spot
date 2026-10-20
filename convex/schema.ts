@@ -31,6 +31,7 @@ import { policyProductIdentityValidator } from "./lib/policyProductIdentity";
 import { certificateRequirementSnapshotValidator } from "./lib/certificateRequirementPlan";
 import {
   websiteTechDisclosureValidator,
+  websiteTechBrowseValidator,
   websiteTechInferenceValidator,
   websiteTechSignalValidator,
 } from "./lib/websiteTech";
@@ -617,6 +618,7 @@ export default defineSchema({
     signals: v.array(websiteTechSignalValidator),
     disclosures: v.array(websiteTechDisclosureValidator),
     inferences: v.optional(v.array(websiteTechInferenceValidator)),
+    browse: v.optional(websiteTechBrowseValidator),
     error: v.optional(v.string()),
     completedAt: v.optional(v.number()),
     updatedAt: v.number(),
