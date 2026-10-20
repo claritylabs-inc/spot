@@ -1,0 +1,70 @@
+name: Publish CLIs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - cli/**
+      - operator-cli/**
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+jobs:
+  publish-packages:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: useblacksmith/checkout@v1
+
+      - name: Check unpublished versions
+        id: unpublished
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version() { node -p "require('./$1/package.json').name + '@' + require('./$1/package.json').version"; }
+          cli="$(version cli)"
+          if NPM_CONFIG_USERCONFIG=/dev/null npm view "$cli" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "$cli is already published"
+          else
+            echo "cli=true" >> "$GITHUB_OUTPUT"
+          fi
+          operator="$(version operator-cli)"
+          printf '//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$RUNNER_TEMP/gh.npmrc"
+          if NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/gh.npmrc" npm view "$operator" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "$operator is already published"
+          else
+            echo "operator_cli=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.unpublished.outputs.cli == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish CLI
+        if: steps.unpublished.outputs.cli == 'true'
+        working-directory: cli
+        run: |
+          npm ci --no-audit --no-fund --loglevel=error
+          npm publish
+
+      - if: steps.unpublished.outputs.operator_cli == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+          registry-url: https://npm.pkg.github.com
+          scope: "@claritylabs-inc"
+
+      - name: Publish operator CLI
+        if: steps.unpublished.outputs.operator_cli == 'true'
+        working-directory: operator-cli
+        run: |
+          npm ci --no-audit --no-fund --loglevel=error
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
