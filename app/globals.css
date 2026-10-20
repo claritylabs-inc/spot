@@ -299,8 +299,10 @@
   background-color: var(--muted);
 }
 [data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"], [data-slot="website-input"]):is(:focus, :focus-visible, :focus-within) {
-  background-color: var(--background);
-  border-color: var(--input);
+  background-color: var(--muted);
+  border-color: transparent;
+  box-shadow: none;
+  outline: none;
 }
 /* All editable values share a left edge, including numbers and select values. */
 [data-operator-inline-fields] [data-inline-field-row] :is(input, textarea, [data-slot="select-trigger"], [data-slot="select-value"]) {
