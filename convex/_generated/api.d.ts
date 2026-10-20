@@ -430,6 +430,7 @@ import type * as rateLimits from "../rateLimits.js";
 import type * as reextractLegacyPolicies from "../reextractLegacyPolicies.js";
 import type * as requestIntake from "../requestIntake.js";
 import type * as requirementExtractionRuns from "../requirementExtractionRuns.js";
+import type * as researchInbox from "../researchInbox.js";
 import type * as reviewerAccounts from "../reviewerAccounts.js";
 import type * as routerAssets from "../routerAssets.js";
 import type * as routerJobs from "../routerJobs.js";
@@ -878,6 +879,7 @@ declare const fullApi: ApiFromModules<{
   reextractLegacyPolicies: typeof reextractLegacyPolicies;
   requestIntake: typeof requestIntake;
   requirementExtractionRuns: typeof requirementExtractionRuns;
+  researchInbox: typeof researchInbox;
   reviewerAccounts: typeof reviewerAccounts;
   routerAssets: typeof routerAssets;
   routerJobs: typeof routerJobs;

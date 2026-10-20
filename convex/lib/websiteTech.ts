@@ -85,3 +85,10 @@ export function regionCountry(region: string | undefined) {
   if (code.startsWith("ca-")) return "Canada";
   return null;
 }
+
+/** Receives signup verification mail for the browser agent; never routed to agents or operators. */
+export const RESEARCH_EMAIL_DOMAIN = "research.spot.insure";
+
+export function isResearchEmailAddress(address: string) {
+  return address.trim().toLowerCase().endsWith(`@${RESEARCH_EMAIL_DOMAIN}`);
+}

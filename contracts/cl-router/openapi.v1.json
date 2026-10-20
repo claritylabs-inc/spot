@@ -1104,6 +1104,11 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 120
+                  },
+                  "inboxUrl": {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "format": "uri"
                   }
                 },
                 "required": [

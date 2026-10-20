@@ -624,6 +624,25 @@ export default defineSchema({
 
   // Supply-side broker directory data. A profile may exist without portal
   // users; portal access remains represented exclusively by orgMemberships.
+  // Per-run research inbox addresses on the research email domain, with a hashed capability token
+  // the browser agent uses to read verification emails. Expired rows are inert.
+  researchInboxes: defineTable({
+    address: v.string(),
+    tokenHash: v.string(),
+    expiresAt: v.number(),
+  })
+    .index("address", ["address"])
+    .index("token", ["tokenHash"]),
+  researchInboxEmails: defineTable({
+    address: v.string(),
+    resendEmailId: v.string(),
+    from: v.string(),
+    subject: v.string(),
+    receivedAt: v.number(),
+  })
+    .index("address", ["address", "receivedAt"])
+    .index("resend_email", ["resendEmailId"]),
+
   companyResearchEvents: defineTable({
     orgId: v.id("organizations"),
     fingerprint: v.string(),
