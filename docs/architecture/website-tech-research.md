@@ -25,7 +25,7 @@ Skill outcomes describe what the browser could do on the site. They are not inde
 
 | Surface | Path | Notes |
 | --- | --- | --- |
-| Operator Profile, Tech stack tab | `websiteTech:getForOperator` → `readWebsiteTechProfile` → `profile.browse.skills` | Browser research card lists Site visit plus one row per outcome with a plain label (Account signup, Email verification, CAPTCHA, Payment page, or the procedure name), status and summary. It is shown for completed, empty and failed scans and hidden while a scan runs. Rescan in the navbar starts a new scan. |
+| Operator Profile, Tech stack tab | `websiteTech:getForOperator` → `readWebsiteTechProfile` → `profile.browse.skills` | Browser research card lists Site visit (Finished, Stopped before finishing or No steps recorded) plus one row per outcome with a plain label for known procedures (for example Account signup, Sign in, Verification code, Verification email, CAPTCHA, Payment page) or the readable procedure name, status and summary. It is shown for completed, empty and failed scans and hidden while a scan runs. Rescan in the navbar starts a new scan. |
 | Operator agent and operator MCP `get_organization` | `operatorAgent.ts` → `readWebsiteTechProfile` → `websiteTech.browse.skills` | Client organizations only. Operator-only (`operator.organizations.read`). |
 | `research_client_tech_stack` | `operatorAgent.ts` → `readWebsiteTechProfile` → `current.browse.skills` | Returns the stored result from before the queued run; read `get_organization` later. |
 

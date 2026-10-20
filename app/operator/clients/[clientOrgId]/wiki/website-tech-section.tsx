@@ -171,20 +171,30 @@ const SKILL_STATUS: Record<
   skipped: { label: "Skipped", variant: "outline" },
 };
 
-/** Plain operator labels for browser procedures; unknown procedures fall back to their name. */
+const SKILL_LABELS = new Map([
+  ["account.signup", "Account signup"],
+  ["account.sign_in", "Sign in"],
+  ["account.verify_email", "Email verification"],
+  ["account.enter_otp", "Verification code"],
+  ["account.cleanup", "Account cleanup"],
+  ["inbox.wait_for_email", "Verification email"],
+  ["challenge.captcha", "CAPTCHA"],
+  ["site.find_pages", "Site pages"],
+  ["page.dismiss_overlays", "Page overlays"],
+  ["checkout.observe_payment", "Payment page"],
+]);
+
+/** Plain operator labels for known browser procedures; unknown procedures fall back to their name. */
 function skillLabel(name: string) {
-  const key = name.toLowerCase();
-  if (key.includes("captcha")) return "CAPTCHA";
-  if (/inbox|email|verif/.test(key)) return "Email verification";
-  if (/sign_?up|register|account/.test(key)) return "Account signup";
-  if (/payment|checkout|billing/.test(key)) return "Payment page";
+  const known = SKILL_LABELS.get(name);
+  if (known) return known;
   const words = name.replace(/[._-]+/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 function visitStatus(browse: Browse) {
   if (browse.finished) return "Finished";
-  return browse.steps > 0 ? "Stopped before finishing" : "Did not run";
+  return browse.steps > 0 ? "Stopped before finishing" : "No steps recorded";
 }
 
 /** What the browser could do on the latest scan; outcomes are not proof of a vendor. */
