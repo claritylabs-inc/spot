@@ -339,6 +339,7 @@ import type * as lib_routerJobClient from "../lib/routerJobClient.js";
 import type * as lib_routerJobFailure from "../lib/routerJobFailure.js";
 import type * as lib_sdkCallbacks from "../lib/sdkCallbacks.js";
 import type * as lib_searchTokenizer from "../lib/searchTokenizer.js";
+import type * as lib_sectionExtraction_declarationsFastPass from "../lib/sectionExtraction/declarationsFastPass.js";
 import type * as lib_sectionExtraction_merge from "../lib/sectionExtraction/merge.js";
 import type * as lib_sectionExtraction_prompts from "../lib/sectionExtraction/prompts.js";
 import type * as lib_sectionExtraction_schemas from "../lib/sectionExtraction/schemas.js";
@@ -788,6 +789,7 @@ declare const fullApi: ApiFromModules<{
   "lib/routerJobFailure": typeof lib_routerJobFailure;
   "lib/sdkCallbacks": typeof lib_sdkCallbacks;
   "lib/searchTokenizer": typeof lib_searchTokenizer;
+  "lib/sectionExtraction/declarationsFastPass": typeof lib_sectionExtraction_declarationsFastPass;
   "lib/sectionExtraction/merge": typeof lib_sectionExtraction_merge;
   "lib/sectionExtraction/prompts": typeof lib_sectionExtraction_prompts;
   "lib/sectionExtraction/schemas": typeof lib_sectionExtraction_schemas;
