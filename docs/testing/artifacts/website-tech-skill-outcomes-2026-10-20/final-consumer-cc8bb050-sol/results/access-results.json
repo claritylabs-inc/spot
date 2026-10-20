@@ -1,0 +1,10 @@
+{
+  "scope": "Verified native-local backend; registered internal executor with channel mcp, not HTTP/OAuth transport",
+  "results": [
+    "Anonymous websiteTech query rejected",
+    "Signed-in tenant websiteTech query rejected",
+    "Actual registered operator executor rejects client actor",
+    "Actual local registered get_organization succeeds for authorized operator with current stored profile; null-before-scan is not a fresh final-run assertion",
+    "Actual imported tenant catalog and dispatcher exclude both operator tools"
+  ]
+}

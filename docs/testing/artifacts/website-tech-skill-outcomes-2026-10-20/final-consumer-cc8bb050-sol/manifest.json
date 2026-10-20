@@ -1,0 +1,224 @@
+{
+  "files": [
+    {
+      "file": "README.md",
+      "sha256": "d84e2cea2c321f3f15e62ad18c455c645c5dcd44d209505b8697a1d8615c268f",
+      "bytes": 5084
+    },
+    {
+      "file": "access-qa.mjs",
+      "sha256": "326ab25fae54d5fa01cc73e2f317bc4b7561d5e80830a5696fc10cdee20c62cb",
+      "bytes": 2901
+    },
+    {
+      "file": "app-followup.mjs",
+      "sha256": "a1121a97f121a8484ba4ab30b67ac2b1c64515bca610799ef3150741aa1a19ec",
+      "bytes": 2951
+    },
+    {
+      "file": "app-qa.mjs",
+      "sha256": "f4e3fd0a9a3a246ce8f5ba4308c19c59e7c041b03461dac29d3b193a481a9572",
+      "bytes": 8065
+    },
+    {
+      "file": "boundary.mjs",
+      "sha256": "a43343267771bd69eec623ecd26cee39f2a0333cf21d8edc5a2df526b0460075",
+      "bytes": 4957
+    },
+    {
+      "file": "check-request.mjs",
+      "sha256": "1856ff15221d203f3fea2fa0e0c8bae4651e9223eef81fbf466d0d088d491d95",
+      "bytes": 6947
+    },
+    {
+      "file": "cleanup-local.mjs",
+      "sha256": "386c622c1bce6e3ffde51617e56e3a501ad59c5153f62ef77544a6782a4b504f",
+      "bytes": 2106
+    },
+    {
+      "file": "contract-provenance.json",
+      "sha256": "04c587632fbb51d9ea03617c3afc7f3889dcbfda096d263430c257e1d345e4f7",
+      "bytes": 280
+    },
+    {
+      "file": "fast-local.mjs",
+      "sha256": "6ecbc48ca84f77d51b4872066fce39f5a21f78085f75ac674713d20c72f3aca4",
+      "bytes": 1505
+    },
+    {
+      "file": "fixtures.mjs",
+      "sha256": "c042f58b2e18a8525d5be7cc8d23b4fb4d530a66bfa2232903978a6da6aa88de",
+      "bytes": 3355
+    },
+    {
+      "file": "initial-setup-observations.json",
+      "sha256": "1a6f80c3cf9b725aa51b8d92f7a28eb128c761276ce00549fe7748950722d9c4",
+      "bytes": 1893
+    },
+    {
+      "file": "local-backend.mjs",
+      "sha256": "5111013fbfe0f1e4e59b2479adc6652bb9b9d0a731b88b7b494156df881533b3",
+      "bytes": 1402
+    },
+    {
+      "file": "local-lane.mjs",
+      "sha256": "298c87668252ad5aaf7c3f442737fab75b893a001e2d10ce1b4aca770a8ba118",
+      "bytes": 4212
+    },
+    {
+      "file": "login.mjs",
+      "sha256": "f67ba8c588cda17367e3617f6423e33138d55c983e808f4f6f3d08fb14a897a7",
+      "bytes": 2011
+    },
+    {
+      "file": "prepare-local.mjs",
+      "sha256": "02e11b12807f9d63128fc24f76715ff8adb950e86083ea89bea510c51fcf919d",
+      "bytes": 1089
+    },
+    {
+      "file": "protocol-observer.mjs",
+      "sha256": "f165d34d5388409ba4620902db99f909bb315fe60aaac20920fdcc6a267bc0a6",
+      "bytes": 1217
+    },
+    {
+      "file": "publication-sanitization.json",
+      "sha256": "b6bba8b8ae59b86ce84a9712997d045376795baaad8c525ccb54157f3e4d84f1",
+      "bytes": 622
+    },
+    {
+      "file": "publish.mjs",
+      "sha256": "ea13b8314f9d53c3abccb478ee739bf217d2d7e74b6e339d801e91bb5c49c840",
+      "bytes": 3502
+    },
+    {
+      "file": "replay-adaptations.json",
+      "sha256": "a3154d882eecd7b662fbb119ddf5341172106a45f86073eec51648655b545998",
+      "bytes": 5476
+    },
+    {
+      "file": "results/access-results.json",
+      "sha256": "b5d24aaf9556ce4eb9c95c2d0a3541f38859d23fbdc98eda650a494ff003d034",
+      "bytes": 540
+    },
+    {
+      "file": "results/app-followup-results.json",
+      "sha256": "b328cc442f819c2810ecadc6bed77be73471ff9657467353f7fc1a87f25cc282",
+      "bytes": 235
+    },
+    {
+      "file": "results/app-inner-overflow.json",
+      "sha256": "d12ce730bc6200e7a0f714ce8730ed58d8711e07a0f1e6dacfdfe557a9027abc",
+      "bytes": 279
+    },
+    {
+      "file": "results/app-rescan-transitions.json",
+      "sha256": "43dc8f46cc0cca43c247421f8019a8b99bcd18430d2ecea55997fb52b0b9a433",
+      "bytes": 21
+    },
+    {
+      "file": "results/app-results-initial.json",
+      "sha256": "009f487d7d636e871383b49de6e967cbb09a4891eaa73ee35b7f1f020d6c92c9",
+      "bytes": 1682
+    },
+    {
+      "file": "results/app-results-second-interrupted.json",
+      "sha256": "332922f763aaaaa91197dedcd0ff6b7705dfe9f10b68717528fdff6b23d6bf8f",
+      "bytes": 759
+    },
+    {
+      "file": "results/app-results.json",
+      "sha256": "3b2498052f8e3301971eb06b69e0a9e37bcf1df3d8f8769cee8ef5312afddb56",
+      "bytes": 1942
+    },
+    {
+      "file": "results/bootstrap-results.json",
+      "sha256": "06d076b12a93ec1bd519ee4e5d253d38230b4c6f6212d0d50c52e5abc8807da0",
+      "bytes": 355
+    },
+    {
+      "file": "results/boundary-results.json",
+      "sha256": "3994e30a5210ef601f28eb20d337dfffdce5b81fcc2a5a447d812c624979affa",
+      "bytes": 1075
+    },
+    {
+      "file": "results/cleanup-results.json",
+      "sha256": "9f395f70905f58ccef8a0048d959288b6e7f50bffac5d818d6b8e4b981077f95",
+      "bytes": 132
+    },
+    {
+      "file": "results/isolation-cleanup-receipt.json",
+      "sha256": "c2753cf5a7bc1ea968399b2f388852e54f8a60baa10bac261a36c46987f3ae8e",
+      "bytes": 578
+    },
+    {
+      "file": "results/overflow-geometry.json",
+      "sha256": "ee8692c0800f03c2a78c0f2c88723ff2043e9cc80c69f4624f9124694d892efe",
+      "bytes": 204
+    },
+    {
+      "file": "results/process-cleanup.json",
+      "sha256": "574af8d0a27e183852da521a0aba28dddacef6f8397b8a1efc47abf7a33d20ee",
+      "bytes": 393
+    },
+    {
+      "file": "results/projected-fixture.json",
+      "sha256": "5c00ea8f252b8b59a651657d3007b45caa28a1b37ea32d25e2e5f7fb1d48c3ff",
+      "bytes": 190
+    },
+    {
+      "file": "results/protocol-results.json",
+      "sha256": "40b15aae5dfe6b3719d7dfd920e4aaa531b52fa123216267658dfc67175b3a96",
+      "bytes": 8684
+    },
+    {
+      "file": "results/request-results.json",
+      "sha256": "4323c2154b7efb29ccc3a4e234e9442d9958cfeb2deab8f7940422a865c1119a",
+      "bytes": 3619
+    },
+    {
+      "file": "results/stage-diagnostic.json",
+      "sha256": "b0ba10fea29f25523069fe5d7b46f585a58956eb1777db2b6cda63ca118e5a4e",
+      "bytes": 1175
+    },
+    {
+      "file": "screenshots/app-failed.png",
+      "sha256": "75a59b9ae6c34100a5670071a5d694bd33717566ec1ab663cc6f7a4a2be87976",
+      "bytes": 100596
+    },
+    {
+      "file": "screenshots/app-known-desktop.png",
+      "sha256": "8c5a50080bc616a1aa0d3c90ec3c0a81e92bddb4bd8f35e9a706227a586f12f2",
+      "bytes": 100743
+    },
+    {
+      "file": "screenshots/app-legacy.png",
+      "sha256": "46280c9daf817d2bc5d38225f8138583148da59481ddcd507d11a31bc074fffc",
+      "bytes": 55330
+    },
+    {
+      "file": "screenshots/app-long-mobile.png",
+      "sha256": "505418f2194a0547ec5f2c12653b8299a0b1dd8e013a7544c5507a0f575ef541",
+      "bytes": 41111
+    },
+    {
+      "file": "screenshots/app-rescan-terminal.png",
+      "sha256": "e6210f9e6cb44ba9f3d40a1b6985d24a5709f8bc82f846d27b99356aaf504b5e",
+      "bytes": 39758
+    },
+    {
+      "file": "source-binding.json",
+      "sha256": "d36ffa6bee52f25bd458c051ca63434f5281d81a78ecfdc406d03af9ee822f5a",
+      "bytes": 2217
+    },
+    {
+      "file": "validation.json",
+      "sha256": "e421f06f8188b94d977355cee78d588b3738c3d0eede2577c271cb8bc7887d5f",
+      "bytes": 1852
+    },
+    {
+      "file": "workflow-plan.json",
+      "sha256": "eac24cc3d7b1c2cfb8a7148ba49fe43aa08369bbe69db273b99c9bf2918c7b99",
+      "bytes": 1258
+    }
+  ]
+}
