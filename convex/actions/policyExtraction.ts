@@ -1385,17 +1385,63 @@ async function loadDeclarationsFastPass(
     : undefined;
 }
 
-/**
- * Context for the other sections, only when the fast pass grounded the
- * policy's identity; otherwise declarations extract first.
- */
-function fastPassDeclarationsSummary(
-  fastPass: DeclarationsFastPass | undefined,
-): string | undefined {
-  if (!fastPass?.fields.policyNumber && !fastPass?.fields.namedInsured) {
-    return undefined;
+const DECLARATIONS_SCALAR_KEYS = [
+  "policyNumber",
+  "namedInsured",
+  "insurer",
+  "broker",
+  "effectiveDate",
+  "expirationDate",
+  "retroactiveDate",
+  "programName",
+  "operationsDescription",
+  "premium",
+  "totalCost",
+] as const satisfies ReadonlyArray<keyof DeclarationsSectionOutput>;
+
+/** A non-null value with at least one page citation and quote, within `pages` when given. */
+function isCitedScalar(
+  value: unknown,
+  pages?: Pick<PolicySection, "pageStart" | "pageEnd">,
+): boolean {
+  const cited = value as { value?: unknown; citations?: unknown } | null | undefined;
+  if (
+    typeof cited?.value !== "string" ||
+    !cited.value.trim() ||
+    !Array.isArray(cited.citations) ||
+    cited.citations.length === 0
+  ) {
+    return false;
   }
-  return buildDeclarationsSummary([fastPassAsOutput(fastPass)]);
+  return cited.citations.every((citation) => {
+    const { page, quote } = (citation ?? {}) as { page?: unknown; quote?: unknown };
+    return (
+      typeof page === "number" &&
+      Number.isInteger(page) &&
+      page >= (pages?.pageStart ?? 1) &&
+      page <= (pages?.pageEnd ?? Number.MAX_SAFE_INTEGER) &&
+      typeof quote === "string" &&
+      quote.trim() !== ""
+    );
+  });
+}
+
+/**
+ * The fast pass with only its cited scalars and its lists, or undefined when
+ * no scalar is cited; list-only results never stand in for declarations.
+ * Applied to fresh and stored fast passes alike.
+ */
+function usableFastPass(
+  fastPass: DeclarationsFastPass | undefined,
+): DeclarationsFastPass | undefined {
+  if (!fastPass) return undefined;
+  const fields = { ...fastPass.fields };
+  for (const key of DECLARATIONS_SCALAR_KEYS) {
+    if (!isCitedScalar(fields[key])) delete fields[key];
+  }
+  return DECLARATIONS_SCALAR_KEYS.some((key) => fields[key])
+    ? { ...fastPass, fields }
+    : undefined;
 }
 
 /**
@@ -1406,23 +1452,11 @@ function fastPassForSection(
   fastPass: DeclarationsFastPass,
   section: PolicySection,
 ): DeclarationsFastPass {
-  const fields = Object.fromEntries(
-    Object.entries(fastPass.fields).filter(([, value]) => {
-      if (!value || Array.isArray(value)) return false;
-      const citations = (value as { citations?: Array<{ page?: unknown }> })
-        .citations;
-      return (
-        Array.isArray(citations) &&
-        citations.length > 0 &&
-        citations.every(
-          ({ page }) =>
-            typeof page === "number" &&
-            page >= section.pageStart &&
-            page <= section.pageEnd,
-        )
-      );
-    }),
-  ) as DeclarationsFastPass["fields"];
+  const fields: DeclarationsFastPass["fields"] = {};
+  for (const key of DECLARATIONS_SCALAR_KEYS) {
+    const value = fastPass.fields[key];
+    if (value && isCitedScalar(value, section)) fields[key] = value;
+  }
   return { ...fastPass, fields };
 }
 
@@ -2075,15 +2109,14 @@ export function makePhases(
         saveState: pCtx.saveState,
       });
       state = prepared.state;
-      const { fastPass } = prepared;
-      const fastPassSummary = fastPassDeclarationsSummary(fastPass);
-      if (fastPassSummary && !state.previewWritten && !isReplacementRun(state)) {
+      const fastPass = usableFastPass(prepared.fastPass);
+      if (fastPass && !state.previewWritten && !isReplacementRun(state)) {
         // The preview is provisional; it never fails the extraction.
         try {
           const preview = await writeDeclarationsPreview(
             convexCtx,
             policyId,
-            [fastPassAsOutput(fastPass!)],
+            [fastPassAsOutput(fastPass)],
             "clairic",
           );
           await pCtx.log(
@@ -2100,28 +2133,28 @@ export function makePhases(
         state = { ...state, previewWritten: true };
       }
       const declarationsDone = declarations.every(succeeded);
-      // A grounded fast pass supplies the declarations summary, so every
+      // A usable fast pass supplies the declarations summary, so every
       // section runs at once. Otherwise declarations complete first and the
       // rest run with their summary as context. The summary source never
       // changes within a plan, which keeps section invocation keys stable.
       const pending = plan.sections.filter(
         (section) =>
           !succeeded(section) &&
-          (fastPassSummary !== undefined ||
+          (fastPass !== undefined ||
             declarationsDone ||
             section.kind === "declarations"),
       );
       const declarationOutputs =
-        fastPassSummary === undefined && declarationsDone
+        fastPass === undefined && declarationsDone
           ? ((await loadSectionOutputs(convexCtx, declarations, stored)) ?? [])
           : [];
-      const declarationsSummary =
-        fastPassSummary ??
-        buildDeclarationsSummary(
-          declarationOutputs.flatMap(({ result }) =>
-            result.kind === "declarations" ? [result.output] : [],
-          ),
-        );
+      const declarationsSummary = buildDeclarationsSummary(
+        fastPass
+          ? [fastPassAsOutput(fastPass)]
+          : declarationOutputs.flatMap(({ result }) =>
+              result.kind === "declarations" ? [result.output] : [],
+            ),
+      );
 
       const attempts = { ...state.sectionAttempts };
       const retries = { ...state.sectionRetries };
