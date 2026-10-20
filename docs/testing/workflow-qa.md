@@ -1495,6 +1495,10 @@ reports preserve failed candidates and their repeatable artifacts:
   actual request was retained before inference, with the screenshot inside the
   observation and an explicit CAPTCHA action. Relevance was 0.65 against 0.7;
   neither the native primitive nor any input command ran.
+- [a055 preserved-image diagnostic](browser-provider-diagnostic-sol-a055d14-2026-10-20.md):
+  the original native Box plus four-pixel margin excludes 108 of 300 changed
+  pixels. The unchanged comparison returns false before inference; the new
+  six-question comparison remains untested on those images.
 
 These reports do not establish hosted sandbox isolation, production challenge
 solving, controlled inbox delivery, or customer submission acceptance. Final
