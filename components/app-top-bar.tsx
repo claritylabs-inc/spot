@@ -122,10 +122,10 @@ export function AppTopBar({
       breadcrumbRender={<Link href={href} />}
       breadcrumbDetail={
         breadcrumbDetail && pathname.startsWith("/operator/clients/") ? (
-          <>
+          <span className="flex items-center gap-1.5">
             {breadcrumbDetail}
             <OperatorClientSwitcher />
-          </>
+          </span>
         ) : (
           breadcrumbDetail
         )
