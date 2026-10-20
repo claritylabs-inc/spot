@@ -1,0 +1,22 @@
+{
+  "candidate": "857074d99baa09792b66a45d65a3ca73aef53719",
+  "scope": "Blocked real-mail readiness; actual local TLS/refusal checks only",
+  "files": {
+    "adapter.mjs": {
+      "sha256": "e04cb8bdcec595c2342bc9936429cccaf46fb78dc65941fb391f8998f337d651",
+      "bytes": 3803
+    },
+    "local-http-result.json": {
+      "sha256": "5d50925b2d82d71b77d1fac66ee097becaf14b0ac78fa772c0cd3cdfce9c3814",
+      "bytes": 2163
+    },
+    "readiness.json": {
+      "sha256": "cb423760488f3aceb1ac9a642a6731b7fc7b35d3c82842e940a4f71bc9890291",
+      "bytes": 1442
+    },
+    "readiness.mjs": {
+      "sha256": "4507fd87498de4c9b842c79036ff4e4b71ea4a1254b9b882846df3703e189d10",
+      "bytes": 4955
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "candidate": "857074d99baa09792b66a45d65a3ca73aef53719",
+  "verdict": "BLOCKED for real recipient delivery/read/accept; local TLS/refusal preparation checks PASS",
+  "connectedMcpToolsPresent": [
+    "send_email",
+    "list_received_emails",
+    "get_received_email"
+  ],
+  "freshMcpCalls": 0,
+  "exactUserSuppliedFromAvailable": false,
+  "existingConversationIdRecovered": false,
+  "conversationIdReset": false,
+  "generatedAliases": 1,
+  "aliasSuffixEntropyBits": 128,
+  "recipientPublished": false,
+  "emailSends": 0,
+  "receivedMetadataPolls": 0,
+  "receivedBodiesFetched": 0,
+  "actualReceivedFeedAvailable": false,
+  "productionSpotAccessUsed": false,
+  "positiveReadTested": false,
+  "acceptTested": false,
+  "unrelatedActualMessageIsolationTested": false,
+  "manualBridgeNotProductionSpot": true,
+  "httpStopped": true,
+  "privateOutputMode": "0700",
+  "privateFilesMode": "0600",
+  "tlsTrust": "NODE_EXTRA_CA_CERTS with private local CA; verification enabled",
+  "limits": {
+    "ttlMs": 1800000,
+    "maxMessages": 20,
+    "maxResponseBytes": 262144,
+    "maxPrivateFeedBytes": 1048576
+  },
+  "pending": [
+    "Exact sender supplied by user",
+    "Exact prior server-issued Resend conversation_id recovery",
+    "One authorized send and actual catch-all receipt",
+    "Exact-recipient received body projection and positive actual candidate read/accept"
+  ],
+  "localHttpWorkflowRuns": 2,
+  "localHttpRequestsAcrossPacket": 14
+}

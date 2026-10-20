@@ -1,0 +1,67 @@
+{
+  "candidate": "857074d99baa09792b66a45d65a3ca73aef53719",
+  "recordedAt": "2026-10-20T20:39:05.047Z",
+  "scope": "Real local HTTPS refusal workflow; real mail and positive read/accept blocked",
+  "realMcpFeedPresent": false,
+  "emailSendAttempts": 0,
+  "receivedBodiesFetched": 0,
+  "positiveReadTested": false,
+  "acceptTested": false,
+  "modelCalls": 0,
+  "browserCalls": 0,
+  "checks": {
+    "isolatedCallbackHost": true,
+    "wrongCapability": {
+      "httpStatus": 404,
+      "candidateReadOk": false
+    },
+    "unboundRecipientQuery": {
+      "httpStatus": 404,
+      "mailDataExposed": false,
+      "actualMessageIsolationTested": false
+    },
+    "expiredCapability": {
+      "httpStatus": 404,
+      "candidateReadOk": false,
+      "method": "private expiry moved into past; original expiry restored in finally"
+    },
+    "missingActualReceipt": {
+      "httpStatus": 503,
+      "candidateReadOk": false,
+      "syntheticFallback": false
+    },
+    "tls": {
+      "trustedExtraCA": true,
+      "certificateHostname": "localhost",
+      "validationDisabled": false
+    }
+  },
+  "sourceBinding": {
+    "spotResearchInboxSha256": "cc65502fe65d3699542cc5296d7e4af643d3da08105140dca030cdbb9fdb8eb5",
+    "extractedVerificationSha256": "97b5d472dc7e52b18b0dac9f326735c154c2eea9e470982f6438319e0bd7d304",
+    "inboxClientSha256": "2d43617b308f1d243eaebc86788bc7831f8c1d7e0d47804b8c720a64159999f7",
+    "policySha256": "40862e6f76a9f20c4c3e70fbd9146f6bedffe22218deb348666bba0ef1aca52c"
+  },
+  "recipientSha256": "de4e1cb38731ef9061e32cacd588110931d3e1da08dc3f69580378dbb12a5441",
+  "adapterLimits": {
+    "ttlMs": 1800000,
+    "maxMessages": 20,
+    "maxResponseBytes": 262144,
+    "maxPrivateFeedBytes": 1048576
+  },
+  "acceptCalls": 0,
+  "httpStopped": true,
+  "counts": {
+    "requests": 7,
+    "refusedCapability": 2,
+    "refusedExpired": 2,
+    "refusedRecipient": 1,
+    "missingRealFeed": 2,
+    "successfulReads": 0,
+    "messagesExposed": 0
+  },
+  "finishedAt": "2026-10-20T20:39:05.138Z",
+  "workflowRuns": 2,
+  "httpRequestsAcrossPacket": 14,
+  "rerunReason": "QA adapter date handling changed to repository dayjs; final workflow rerun once."
+}
