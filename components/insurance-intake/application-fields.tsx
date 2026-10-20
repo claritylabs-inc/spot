@@ -1,4 +1,5 @@
 "use client";
+import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { RemoveButton } from "@/components/ui/remove-button";
 import {
   InlineFieldsContext,
@@ -182,7 +183,13 @@ export function IntakeApplicationFields({
   );
   const text = (key: IntakeField, multiline = false) => (
     <InlineFieldRow key={key} label={INTAKE_FIELDS[key]}>
-      {multiline ? (
+      {key === "website" ? (
+        <WebsiteInput
+          aria-label={INTAKE_FIELDS[key]}
+          value={answers[key] ?? ""}
+          onChange={(website) => onAnswersChange({ ...answers, website })}
+        />
+      ) : multiline ? (
         <Textarea
           rows={1}
           aria-label={INTAKE_FIELDS[key]}

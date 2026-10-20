@@ -1,4 +1,5 @@
 "use client";
+import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { captureAnalytics } from "@/lib/analytics";
 import dayjs from "dayjs";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
@@ -1322,7 +1323,7 @@ function Application({
     separateQuotes: "List any additional coverages you might need",
     coverageScope: "List the entities, locations, and activities to insure",
     legalName: "Enter your company’s legal name",
-    website: "https://company.com",
+    website: "company.com",
     dba: "Enter your trading name",
     formation: "Enter the state or country",
     fein: "Enter your FEIN, e.g. 12-3456789",
@@ -1418,6 +1419,15 @@ function Application({
             label={INTAKE_FIELDS[id]}
             value={answers[id] ?? ""}
             placeholder={placeholder}
+            onChange={(value) => change(id, value)}
+            onBlur={() => void flush()}
+          />
+        ) : id === "website" ? (
+          <WebsiteInput
+            id={`intake-${id}`}
+            size="lg"
+            placeholder={placeholder}
+            value={answers[id] ?? ""}
             onChange={(value) => change(id, value)}
             onBlur={() => void flush()}
           />

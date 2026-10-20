@@ -1,5 +1,7 @@
 "use client";
 
+import { normalizeWebsiteUrl } from "@claritylabs-inc/ui/lib/website";
+import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { isValidPhoneNumber } from "react-phone-number-input";
@@ -305,8 +307,9 @@ export default function ClientOnboardingSetupPage() {
 
   const handleStep1Next = useCallback(async (
     trimmedName: string,
-    trimmedSite: string,
+    rawSite: string,
   ): Promise<WebMcpResult> => {
+    const trimmedSite = normalizeWebsiteUrl(rawSite) ?? rawSite.trim();
     setSubmitting(true);
     setError("");
     try {
@@ -632,15 +635,11 @@ export default function ClientOnboardingSetupPage() {
                 <label htmlFor="onboarding-website" className={labelClass}>
                   Website (optional)
                 </label>
-                <input
+                <WebsiteInput
                   {...(webMcpEnabled ? webMcpParamAttributes("submit_company_profile", "website") : {})}
-                  type="text"
-                  inputMode="url"
                   value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
+                  onChange={setWebsite}
                   id="onboarding-website"
-                  placeholder="https://example.com"
-                  className={inputClass}
                 />
                 <p
                   className={`text-muted-foreground/70 ${typeStyle("caption.default")}`}
