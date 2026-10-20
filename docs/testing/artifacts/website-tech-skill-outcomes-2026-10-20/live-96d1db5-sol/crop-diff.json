@@ -1,0 +1,13 @@
+{
+  "width": 304,
+  "height": 78,
+  "totalPixels": 23712,
+  "changedPixels": 300,
+  "changedChannels": 900,
+  "differenceBoundsInclusive": {
+    "left": 13,
+    "top": 23,
+    "right": 40,
+    "bottom": 50
+  }
+}
