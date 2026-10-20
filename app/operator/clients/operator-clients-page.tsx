@@ -42,7 +42,12 @@ import {
   BulkDeleteBar,
   useRowSelection,
 } from "@/components/operator/bulk-delete";
-import { ClientStatusField, ClientWebsiteField } from "./client-row-fields";
+import {
+  ApplicationStatusField,
+  ApplicationWebsiteField,
+  ClientStatusField,
+  ClientWebsiteField,
+} from "./client-row-fields";
 
 function Field({
   label,
@@ -386,16 +391,15 @@ export default function OperatorClientsScreen() {
                       <TableCell className="max-w-56 truncate text-muted-foreground">
                         {application.applicantEmail ?? "No email"}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        Not set
+                      <TableCell className="max-w-44">
+                        <ApplicationWebsiteField
+                          name={applicationName(application)}
+                        />
                       </TableCell>
                       <TableCell>
-                        <StatusTag
-                          tone={ONBOARDING_CLIENT_STATUS.tone}
-                          indicator={ONBOARDING_CLIENT_STATUS.indicator}
-                        >
-                          {ONBOARDING_CLIENT_STATUS.label}
-                        </StatusTag>
+                        <ApplicationStatusField
+                          name={applicationName(application)}
+                        />
                       </TableCell>
                       <TableCell className="px-4 text-muted-foreground">
                         {formatDisplayDate(application.createdAt)}

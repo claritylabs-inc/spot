@@ -198,7 +198,10 @@ function BrokerStatusField({
         );
       }}
     >
-      <SelectTrigger className="w-full" aria-label={`Status for ${name}`}>
+      <SelectTrigger
+        className="-ml-[13px] w-[calc(100%+13px)]"
+        aria-label={`Status for ${name}`}
+      >
         <SelectValue>
           <StatusLabel {...NETWORK_STATUS_PRESENTATION[status]}>
             {NETWORK_STATUS_LABELS[status]}
