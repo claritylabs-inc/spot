@@ -1519,6 +1519,19 @@ reports preserve failed candidates and their repeatable artifacts:
   passed without inference. Eight real requests, no retries or native input;
   exact image transforms and per-question wire references were verified. This
   remains a functional failure, not native CAPTCHA acceptance.
+- [Frozen Jev 1.14 screen](browser-comparison-model114-sol-2026-10-20.md): eight
+  original requests changed only the model. The independent border-only case
+  passed, but the saved real-widget hover still failed; all six negative cases
+  refused. The candidate was rejected, with no production model change.
+
+Controlled regressions on exact router `af229cc` are separately accepted:
+[616 distinct skill requirements](https://github.com/claritylabs-inc/cl-router/blob/0c503dc0fa77c1069a23be08752f66d24016a54b/test-harness/browser-agent/reports/final-af229cc.md)
+passed, while the
+[772-workflow runtime union](https://github.com/claritylabs-inc/cl-router/blob/47ce2cee428f27e1dbee88ad8f4bf772e13c6270/reports/runtime/af229/final/README.md)
+records 768 passes, three unverified cases and one limitation. These use actual
+local Chrome with scripted decisions. Pinned-Chrome OOPIF availability, competing
+client behavior, hosted isolation and external availability retain the report's
+explicit limits. These results do not clear the real-provider hover failures.
 
 These reports do not establish hosted sandbox isolation, production challenge
 solving, controlled inbox delivery, or customer submission acceptance. Final
