@@ -1085,6 +1085,33 @@
                   "type": "string"
                 },
                 "additionalProperties": {}
+              },
+              "signup": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "email",
+                  "password",
+                  "name"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
@@ -1132,6 +1159,13 @@
             "type": "integer",
             "minimum": 10000,
             "maximum": 420000
+          },
+          "trace": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
           }
         },
         "required": [
@@ -1190,6 +1224,21 @@
             "items": {
               "type": "string"
             }
+          },
+          "redirects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "adoptedDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "signupSubmitted": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1199,7 +1248,10 @@
           "finished",
           "steps",
           "pages",
-          "networkHosts"
+          "networkHosts",
+          "redirects",
+          "adoptedDomains",
+          "signupSubmitted"
         ],
         "additionalProperties": false
       },

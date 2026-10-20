@@ -432,6 +432,7 @@ export type ClRouterBrowseRequest = {
     allowedDomains: string[];
     maxSteps?: number;
     outputSchema?: Record<string, unknown>;
+    signup?: { email: string; password: string; name: string };
   };
   executionBudgetMs?: number;
 };
@@ -445,6 +446,9 @@ export type ClRouterBrowseResponse = {
   steps: number;
   pages: Array<{ url: string; title: string; text: string }>;
   networkHosts: string[];
+  redirects?: string[];
+  adoptedDomains?: string[];
+  signupSubmitted?: boolean;
 };
 
 export type ClRouterRetrieveResponse = {
