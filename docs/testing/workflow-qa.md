@@ -1533,7 +1533,15 @@ local Chrome with scripted decisions. Pinned-Chrome OOPIF availability, competin
 client behavior, hosted isolation and external availability retain the report's
 explicit limits. These results do not clear the real-provider hover failures.
 
+[Final Spot consumer QA](website-tech-final-consumer-sol-2026-10-20.md) on
+`cc8bb050` verifies the exact `af229cc` contract bytes (22 fixtures, 11 operations),
+15 actual local UI groups, eight boundary groups, five access groups and six
+request-construction groups. Keyboard entry, reload and Rescan subscriptions
+pass. The existing 416px inner-shell overflow at a 390px viewport remains open;
+skill text wraps within its card. The fresh-null/unscanned path still needs its
+separate addendum. Synthetic request seams and local executor checks do not
+establish provider execution or HTTP/OAuth MCP acceptance.
+
 These reports do not establish hosted sandbox isolation, production challenge
-solving, controlled inbox delivery, or customer submission acceptance. Final
-router integration and the Spot contract pin require a new combined acceptance
-record; the earlier consumer UI checks do not prove provider execution.
+solving, controlled inbox delivery, or customer submission acceptance. Release
+acceptance remains incomplete.
