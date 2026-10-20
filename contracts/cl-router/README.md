@@ -1,7 +1,7 @@
 # cl-router API contract snapshot
 
 Spot validates its representative cl-router payloads against the checked-in
-OpenAPI 3.1 snapshot in this directory. `policy.ts` vendors the `/v1/decide`
+OpenAPI 3.1 snapshot in this directory. `policy.ts` vendors the `/v1/decide` and `/v1/extract`
 request/response parsers and primitive vocabulary used by Convex and the
 extraction worker. `npm run check:cl-router-contract` is
 offline: CI does not clone the private router repository, call a deployed
@@ -13,7 +13,7 @@ The checker enforces three boundaries:
 - the Spot-used operations still reference the expected request and response
   schemas; and
 -   representative generation, manual generation, typed Jev decisions, streaming, embedding, JSON transcription,
-  capabilities, retrieval, feedback, and health payloads in
+  capabilities, retrieval, fixed Clairic extraction, feedback, and health payloads in
   `fixtures.v1.json` validate with strict Ajv draft-2020-12 checks. Retired
   admin freeze/pin/policy/rollups/score schemas are intentionally absent;
   the router rates difficulty with Jev and selects the cheapest eligible model.

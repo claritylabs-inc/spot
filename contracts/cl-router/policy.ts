@@ -1,5 +1,5 @@
 /**
- * Vendored cl-router /v1/decide contract and primitive vocabulary.
+ * Vendored cl-router decision/extraction contracts and primitive vocabulary.
  *
  * Copied from the former published policy package 1.0.0 (`dist/*.js` + `.d.ts`)
  * as TypeScript. Model registry/capability/price tables are not vendored:
@@ -662,4 +662,145 @@ export function parseRoutingSelectionMetadata(
     text(route.model);
   }
   return metadata as unknown as RoutingSelectionMetadata;
+}
+
+/** Fixed Clairic extraction contract; spans use UTF-16 offsets with exclusive ends. */
+export type ExtractScalarType = "text" | "date" | "number";
+export type ExtractFieldSpec = {
+  type: ExtractScalarType | "list";
+  instructions?: string;
+  items?: ExtractScalarType;
+};
+export interface ExtractRequest {
+  tenantId: string;
+  task: string;
+  state: string;
+  fields: Record<string, ExtractFieldSpec>;
+  referenceDate?: string;
+  trace?: { traceId?: string; parentRequestId?: string; channel?: string };
+}
+export interface ExtractAnswer {
+  value: string | number | null | Array<string | number>;
+  pNull?: number;
+  confidence: number;
+  span?: { start: number; end: number };
+  items?: ExtractAnswer[];
+}
+export interface ExtractResponse {
+  requestId: string;
+  answers: Record<string, ExtractAnswer>;
+  usage: { inputTokens: number };
+  latencyMs: number;
+}
+
+export class ExtractionValidationError extends Error {
+  constructor() {
+    super("Invalid extraction contract");
+    this.name = "ExtractionValidationError";
+  }
+}
+function extractionInvalid(): never { throw new ExtractionValidationError(); }
+function extractionObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) extractionInvalid();
+  return value as Record<string, unknown>;
+}
+function extractionExact(value: Record<string, unknown>, keys: string[]) {
+  if (Object.keys(value).some(key => !keys.includes(key))) extractionInvalid();
+}
+function extractionText(value: unknown, max = 256): asserts value is string {
+  if (typeof value !== "string" || !value.trim() || value.length > max) extractionInvalid();
+}
+function extractionNumber(value: unknown, max = Number.MAX_SAFE_INTEGER): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > max) extractionInvalid();
+}
+function extractionDate(value: unknown): asserts value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) extractionInvalid();
+  const year = Number(value.slice(0, 4)), month = Number(value.slice(5, 7)), day = Number(value.slice(8, 10));
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > days[month - 1]!) extractionInvalid();
+}
+export function parseExtractRequest(value: unknown): ExtractRequest {
+  const r = extractionObject(value);
+  extractionExact(r, ["tenantId", "task", "state", "fields", "referenceDate", "trace"]);
+  extractionText(r.tenantId); extractionText(r.task); extractionText(r.state, 240_000);
+  const fields = extractionObject(r.fields);
+  if (!Object.keys(fields).length || Object.keys(fields).length > 128) extractionInvalid();
+  for (const [key, input] of Object.entries(fields)) {
+    extractionText(key);
+    if (!/^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/.test(key)) extractionInvalid();
+    const field = extractionObject(input);
+    extractionExact(field, ["type", "instructions", "items"]);
+    if (typeof field.type !== "string" || !["text", "date", "number", "list"].includes(field.type)) extractionInvalid();
+    if (field.instructions !== undefined) extractionText(field.instructions, 4_000);
+    if (field.type === "list") {
+      if (typeof field.items !== "string" || !["text", "date", "number"].includes(field.items)) extractionInvalid();
+    } else if (field.items !== undefined) extractionInvalid();
+  }
+  if (r.referenceDate !== undefined) extractionDate(r.referenceDate);
+  if (r.trace !== undefined) {
+    const trace = extractionObject(r.trace);
+    extractionExact(trace, ["traceId", "parentRequestId", "channel"]);
+    for (const item of Object.values(trace)) if (item !== undefined) extractionText(item);
+  }
+  return r as unknown as ExtractRequest;
+}
+function parseExtractAnswer(value: unknown, type?: ExtractScalarType | "list", state?: string, itemType?: ExtractScalarType, listItem = false): ExtractAnswer {
+  const a = extractionObject(value);
+  extractionExact(a, ["value", "pNull", "confidence", "span", "items"]);
+  extractionNumber(a.confidence, 1);
+  if ((type && type !== "list" || listItem) && Array.isArray(a.value)) extractionInvalid();
+  const list = type === "list" || Array.isArray(a.value);
+  if (a.pNull !== undefined) extractionNumber(a.pNull, 1);
+  else if (!list && !listItem) extractionInvalid();
+  if (list) {
+    if (!Array.isArray(a.value) || a.value.length > 8_192 || a.span !== undefined) extractionInvalid();
+    for (const item of a.value) validateExtractValue(item, itemType);
+    if (a.items !== undefined) {
+      if (!Array.isArray(a.items) || a.items.length !== a.value.length) extractionInvalid();
+      a.items.forEach((item, i) => {
+        const answer = parseExtractAnswer(item, itemType, state, undefined, true);
+        if (answer.value !== (a.value as unknown[])[i]) extractionInvalid();
+      });
+    }
+  } else {
+    if (a.items !== undefined || Array.isArray(a.value)) extractionInvalid();
+    if (a.value !== null) validateExtractValue(a.value, type);
+  }
+  if (a.span !== undefined) {
+    const span = extractionObject(a.span);
+    extractionExact(span, ["start", "end"]);
+    extractionNumber(span.start); extractionNumber(span.end);
+    if (!Number.isSafeInteger(span.start) || !Number.isSafeInteger(span.end) || span.end <= span.start) extractionInvalid();
+    if (state !== undefined) {
+      if (span.end > state.length) extractionInvalid();
+      if (type === "text" && a.value !== null && state.slice(span.start, span.end) !== a.value) extractionInvalid();
+    }
+  }
+  return a as unknown as ExtractAnswer;
+}
+function validateExtractValue(value: unknown, type?: string) {
+  if (typeof value !== "string" && typeof value !== "number") extractionInvalid();
+  if (typeof value === "number" && !Number.isFinite(value)) extractionInvalid();
+  if (type === "number" && typeof value !== "number") extractionInvalid();
+  if ((type === "text" || type === "date") && typeof value !== "string") extractionInvalid();
+  if (type === "date") extractionDate(value);
+}
+export function parseExtractResponse(value: unknown, request?: ExtractRequest): ExtractResponse {
+  const r = extractionObject(value);
+  extractionExact(r, ["requestId", "answers", "usage", "latencyMs"]);
+  extractionText(r.requestId); extractionNumber(r.latencyMs);
+  const usage = extractionObject(r.usage);
+  extractionExact(usage, ["inputTokens"]); extractionNumber(usage.inputTokens);
+  if (!Number.isSafeInteger(usage.inputTokens)) extractionInvalid();
+  const answers = extractionObject(r.answers);
+  if (!Object.keys(answers).length || Object.keys(answers).length > 128) extractionInvalid();
+  if (request && (Object.keys(answers).length !== Object.keys(request.fields).length || Object.keys(answers).some(key => !Object.hasOwn(request.fields, key)))) extractionInvalid();
+  for (const [key, answer] of Object.entries(answers)) {
+    extractionText(key);
+    if (!/^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/.test(key)) extractionInvalid();
+    const field = request?.fields[key];
+    parseExtractAnswer(answer, field?.type, request?.state, field?.items);
+  }
+  return r as unknown as ExtractResponse;
 }

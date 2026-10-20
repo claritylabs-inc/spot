@@ -38,6 +38,7 @@ const modelProviderValidator = v.union(
   v.literal("fireworks"),
   v.literal("moonshot"),
   v.literal("deepseek"),
+  v.literal("cloudflare"),
 );
 
 const extractionTraceRoutingValidator = v.object({

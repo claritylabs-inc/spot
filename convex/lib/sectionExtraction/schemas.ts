@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { PolicySectionKind } from "../policySectioning";
 
 /** Bump when section prompts or schemas change; binds section results to promotion. */
-export const SECTION_EXTRACTOR_VERSION = "convex-sections-v1.1";
+export const SECTION_EXTRACTOR_VERSION = "convex-sections-v1.2";
 
 export const sectionCitationSchema = z.object({
   page: z.number().int(),

@@ -15,6 +15,7 @@ import {
 import type { Phase, PhaseResult } from "@claritylabs/cl-pipelines";
 import { deletePolicyRowsInBatches } from "../lib/deletePolicyRowsInBatches";
 import { cancelDurableRouterRequest } from "../lib/routerJobClient";
+import { ClRouterRequestError } from "../lib/clRouterClient";
 import { makeGenerateObject } from "../lib/sdkCallbacks";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -73,6 +74,13 @@ import { decideNamedInsuredEquivalences } from "../lib/insuredNameDecisions";
 import { decideEndorsementJudgments } from "../lib/endorsementDecisions";
 import { buildDeclarationsSummary } from "../lib/sectionExtraction/prompts";
 import {
+  buildDeclarationsState,
+  fastPassAsOutput,
+  overlayFastPass,
+  runDeclarationsFastPass,
+  type DeclarationsFastPass,
+} from "../lib/sectionExtraction/declarationsFastPass";
+import {
   SECTION_EXTRACTOR_VERSION,
   type DeclarationsSectionOutput,
 } from "../lib/sectionExtraction/schemas";
@@ -117,7 +125,8 @@ type PipelineArtifactKind =
   | "source_bundle"
   | "section_result"
   | "parsed_source"
-  | "section_plan";
+  | "section_plan"
+  | "declarations_fast_pass";
 
 type LeasedPolicyCheckpoint = {
   nextPhase: string;
@@ -159,6 +168,15 @@ type SectionResultArtifact = {
   status: StoredSectionResult["status"];
   resultHash: string;
 };
+
+/** Clairic declarations scalars for one section plan, read by every later advance. */
+type DeclarationsFastPassArtifact = {
+  version: "declarations-fast-pass-v1";
+  planHash: string;
+  fastPass: DeclarationsFastPass;
+};
+
+const DECLARATIONS_FAST_PASS_TASK_KIND = "policy_declarations_fast_pass";
 
 // Checkpoints from before the section pipeline that still map to a phase.
 const LEGACY_PHASE_ALIASES: Record<string, string> = {
@@ -292,6 +310,15 @@ export type PolicyExtractionState = {
   /** Automatic retries used per section since the run or its latest Resume started. */
   sectionRetries?: Record<string, number>;
   previewWritten?: boolean;
+  /**
+   * Declarations fast pass for the current plan. "started" without a stored
+   * artifact is an unknown outcome: it is never replayed, and declarations
+   * extract first as without a fast pass.
+   */
+  declarationsFastPass?: {
+    planHash: string;
+    status: "started" | "stored" | "skipped";
+  };
   /** Set while extract_sections waits on router jobs between advances. */
   routerWaitStartedAt?: number;
 };
@@ -1316,6 +1343,281 @@ async function writeDeclarationsPreview(
   )) as { updated: boolean; reason?: string };
 }
 
+/** Failure class only; provider messages can echo source text. */
+function fastPassFailureReason(error: unknown): string {
+  if (error instanceof ClRouterRequestError) {
+    return error.routerCode ? `${error.kind}: ${error.routerCode}` : error.kind;
+  }
+  return "unexpected error";
+}
+
+async function loadDeclarationsFastPass(
+  ctx: ActionCtx,
+  jobId: string,
+  args: { runId: string; planHash: string; sourceFingerprint: string },
+): Promise<DeclarationsFastPass | undefined> {
+  const artifact = (await ctx.runQuery(internal.policies.pipelineGetArtifact, {
+    jobId,
+    kind: "declarations_fast_pass",
+  })) as {
+    storageId?: string;
+    runId?: string;
+    sourceFingerprint?: string;
+    extractorVersion?: string;
+    metadata?: { planHash?: unknown };
+  } | null;
+  if (
+    !artifact?.storageId ||
+    String(artifact.runId) !== args.runId ||
+    artifact.sourceFingerprint !== args.sourceFingerprint ||
+    artifact.extractorVersion !== SECTION_EXTRACTOR_VERSION ||
+    artifact.metadata?.planHash !== args.planHash
+  ) {
+    return undefined;
+  }
+  const stored = await loadJsonArtifact<DeclarationsFastPassArtifact>(
+    ctx,
+    String(artifact.storageId),
+  );
+  return stored?.version === "declarations-fast-pass-v1" &&
+    stored.planHash === args.planHash
+    ? stored.fastPass
+    : undefined;
+}
+
+const DECLARATIONS_SCALAR_KEYS = [
+  "policyNumber",
+  "namedInsured",
+  "insurer",
+  "broker",
+  "effectiveDate",
+  "expirationDate",
+  "retroactiveDate",
+  "programName",
+  "operationsDescription",
+  "premium",
+  "totalCost",
+] as const satisfies ReadonlyArray<keyof DeclarationsSectionOutput>;
+
+/** A non-null value with at least one page citation and quote, within `pages` when given. */
+function isCitedScalar(
+  value: unknown,
+  pages?: Pick<PolicySection, "pageStart" | "pageEnd">,
+): boolean {
+  const cited = value as { value?: unknown; citations?: unknown } | null | undefined;
+  if (
+    typeof cited?.value !== "string" ||
+    !cited.value.trim() ||
+    !Array.isArray(cited.citations) ||
+    cited.citations.length === 0
+  ) {
+    return false;
+  }
+  return cited.citations.every((citation) => {
+    const { page, quote } = (citation ?? {}) as { page?: unknown; quote?: unknown };
+    return (
+      typeof page === "number" &&
+      Number.isInteger(page) &&
+      page >= (pages?.pageStart ?? 1) &&
+      page <= (pages?.pageEnd ?? Number.MAX_SAFE_INTEGER) &&
+      typeof quote === "string" &&
+      quote.trim() !== ""
+    );
+  });
+}
+
+/**
+ * The fast pass with only its cited scalars and its lists, or undefined when
+ * no scalar is cited; list-only results never stand in for declarations.
+ * Applied to fresh and stored fast passes alike.
+ */
+function usableFastPass(
+  fastPass: DeclarationsFastPass | undefined,
+): DeclarationsFastPass | undefined {
+  if (!fastPass) return undefined;
+  const fields = { ...fastPass.fields };
+  for (const key of DECLARATIONS_SCALAR_KEYS) {
+    if (!isCitedScalar(fields[key])) delete fields[key];
+  }
+  return DECLARATIONS_SCALAR_KEYS.some((key) => fields[key])
+    ? { ...fastPass, fields }
+    : undefined;
+}
+
+/**
+ * The fast pass reads all declarations sections at once. A section takes only
+ * the scalars cited on its own pages, so its citations resolve against it.
+ */
+function fastPassForSection(
+  fastPass: DeclarationsFastPass,
+  section: PolicySection,
+): DeclarationsFastPass {
+  const fields: DeclarationsFastPass["fields"] = {};
+  for (const key of DECLARATIONS_SCALAR_KEYS) {
+    const value = fastPass.fields[key];
+    if (value && isCitedScalar(value, section)) fields[key] = value;
+  }
+  return { ...fastPass, fields };
+}
+
+/**
+ * Clairic scalars are authoritative: before a declarations result is stored,
+ * it takes the scalars cited on its own pages and drops any scalar the fast
+ * pass cited on another section, so merge's first declarations value is the
+ * Clairic one. LLM-only structures are kept.
+ */
+function withFastPassScalars(
+  section: PolicySection,
+  output: unknown,
+  fastPass: DeclarationsFastPass | undefined,
+): { output: unknown; applied: number; cleared: number } {
+  if (!fastPass || section.kind !== "declarations") {
+    return { output, applied: 0, cleared: 0 };
+  }
+  const parsed = parseSectionResult(section, output);
+  if (parsed?.kind !== "declarations") {
+    throw new Error("Declarations output does not match the section schema");
+  }
+  const scoped = fastPassForSection(fastPass, section);
+  const overlaid = { ...overlayFastPass(parsed.output, scoped) };
+  let cleared = 0;
+  for (const key of DECLARATIONS_SCALAR_KEYS) {
+    if (!fastPass.fields[key] || scoped.fields[key]) continue;
+    if (overlaid[key] !== null) cleared += 1;
+    overlaid[key] = null;
+  }
+  const validated = parseSectionResult(section, overlaid);
+  if (validated?.kind !== "declarations") {
+    throw new Error(
+      "Declarations output with fast-pass scalars does not match the section schema",
+    );
+  }
+  return {
+    output: validated.output,
+    applied: Object.keys(scoped.fields).length,
+    cleared,
+  };
+}
+
+/**
+ * Runs the Clairic declarations fast pass once per plan, before any section
+ * job is submitted, and reads its stored artifact on every later advance. A
+ * call whose outcome is unknown is never replayed; failures, scanned PDFs and
+ * runs that already have section results extract declarations first.
+ */
+async function ensureDeclarationsFastPass(
+  ctx: ActionCtx,
+  args: {
+    jobId: string;
+    runId: string;
+    state: PolicyExtractionState;
+    planHash: string;
+    sourceFingerprint: string;
+    declarations: PolicySection[];
+    hasSectionResults: boolean;
+    log: (message: string, level?: PipelineLogLevel) => Promise<void>;
+    saveState: (state: PolicyExtractionState) => Promise<void>;
+  },
+): Promise<{ fastPass?: DeclarationsFastPass; state: PolicyExtractionState }> {
+  const { state, planHash } = args;
+  if (args.declarations.length === 0) return { state };
+  const marked = (
+    status: NonNullable<PolicyExtractionState["declarationsFastPass"]>["status"],
+  ): PolicyExtractionState => ({
+    ...state,
+    declarationsFastPass: { planHash, status },
+  });
+  const stored = await loadDeclarationsFastPass(ctx, args.jobId, args);
+  if (stored) return { fastPass: stored, state: marked("stored") };
+
+  const marker =
+    state.declarationsFastPass?.planHash === planHash
+      ? state.declarationsFastPass.status
+      : undefined;
+  if (marker === "skipped") return { state };
+  const skip = async (reason?: string) => {
+    if (reason) {
+      await args.log(
+        `Declarations fast pass skipped (${reason}); declarations extract first`,
+        "warn",
+      );
+    }
+    return { state: marked("skipped") };
+  };
+  if (marker) return await skip("an earlier call has no recorded outcome");
+  if (args.hasSectionResults) return await skip();
+  const parsed = await loadParsedSource(ctx, args.jobId);
+  if (!parsed) return await skip("parsed source is missing");
+  if (parsed.textLayerMissing) return await skip();
+  const { state: text, pageOffsets } = buildDeclarationsState(
+    parsed,
+    args.declarations,
+  );
+  if (pageOffsets.every(({ start, end }) => !text.slice(start, end).trim())) {
+    return await skip("the declarations pages have no text");
+  }
+
+  await args.saveState(marked("started"));
+  const startedAt = nowMs();
+  const traceFields = {
+    kind: "model_call" as const,
+    phase: "extract_sections",
+    label: "Declarations fast pass",
+    task: "extraction",
+    taskKind: DECLARATIONS_FAST_PASS_TASK_KIND,
+    provider: "cloudflare",
+    model: "clairic",
+    transport: "cl-router",
+    attempt: 1,
+  };
+  let fastPass: DeclarationsFastPass;
+  try {
+    fastPass = await runDeclarationsFastPass(ctx, {
+      orgId: state.orgId as Id<"organizations">,
+      traceId: state.traceId,
+      parsed,
+      sections: args.declarations,
+    });
+    const artifact: DeclarationsFastPassArtifact = {
+      version: "declarations-fast-pass-v1",
+      planHash,
+      fastPass,
+    };
+    await storeJsonArtifact(ctx, args.jobId, "declarations_fast_pass", artifact, {
+      sourceFingerprint: args.sourceFingerprint,
+      extractorVersion: SECTION_EXTRACTOR_VERSION,
+      metadata: { planHash },
+    });
+  } catch (error) {
+    const reason = fastPassFailureReason(error);
+    await traceEvent(ctx, state.traceId, {
+      ...traceFields,
+      status: "error",
+      durationMs: nowMs() - startedAt,
+      error: reason,
+      routerRequestId:
+        error instanceof ClRouterRequestError ? error.requestId : undefined,
+    });
+    return await skip(`the call failed: ${reason}`);
+  }
+  const durationMs = nowMs() - startedAt;
+  const fieldCount = Object.values(fastPass.fields).filter((value) =>
+    Array.isArray(value) ? value.length > 0 : Boolean(value),
+  ).length;
+  await traceEvent(ctx, state.traceId, {
+    ...traceFields,
+    status: "complete",
+    durationMs,
+    inputTokens: fastPass.raw.usage.inputTokens,
+    routerRequestId: fastPass.raw.requestId,
+    details: { fieldCount, pageCount: pageOffsets.length },
+  });
+  await args.log(
+    `Declarations fast pass found ${fieldCount} ${fieldCount === 1 ? "field" : "fields"} on ${pageOffsets.length} ${pageOffsets.length === 1 ? "page" : "pages"} in ${durationMs} ms`,
+  );
+  return { fastPass, state: marked("stored") };
+}
+
 async function resolveCarrierDecision(params: {
   ctx: ActionCtx;
   orgId: Id<"organizations">;
@@ -1608,7 +1910,12 @@ export function makePhases(
       if (!pdfBytes)
         return { kind: "error", error: "File not found in storage" };
       // Section artifacts from an earlier attempt must not satisfy this one.
-      for (const kind of ["parsed_source", "section_plan", "section_result"] as const) {
+      for (const kind of [
+        "parsed_source",
+        "section_plan",
+        "section_result",
+        "declarations_fast_pass",
+      ] as const) {
         await clearArtifacts(convexCtx, pCtx.jobId, kind);
       }
       await pCtx.log(`PDF ready for extraction (${pdfBytes.byteLength} bytes)`);
@@ -1771,6 +2078,7 @@ export function makePhases(
           sectionAttempts: {},
           sectionRetries: {},
           previewWritten: false,
+          declarationsFastPass: undefined,
         },
       };
     },
@@ -1780,7 +2088,7 @@ export function makePhases(
   const extractSectionsPhase: Phase<PolicyExtractionState> = {
     name: "extract_sections",
     run: async (pCtx): Promise<PhaseResult<PolicyExtractionState>> => {
-      const { state } = pCtx.checkpoint;
+      let { state } = pCtx.checkpoint;
       const policyId = pCtx.jobId;
       if (await isExtractionCancelled(convexCtx, policyId)) {
         return { kind: "error", error: CANCELLED_BY_USER };
@@ -1811,20 +2119,63 @@ export function makePhases(
       const declarations = plan.sections.filter(
         (section) => section.kind === "declarations",
       );
+      const prepared = await ensureDeclarationsFastPass(convexCtx, {
+        jobId: policyId,
+        runId: String(runId),
+        state,
+        planHash: plan.planHash,
+        sourceFingerprint: state.sourceFingerprint,
+        declarations,
+        hasSectionResults: stored.size > 0,
+        log: pCtx.log,
+        saveState: pCtx.saveState,
+      });
+      state = prepared.state;
+      const fastPass = usableFastPass(prepared.fastPass);
+      if (fastPass && !state.previewWritten && !isReplacementRun(state)) {
+        // The preview is provisional; it never fails the extraction.
+        try {
+          const preview = await writeDeclarationsPreview(
+            convexCtx,
+            policyId,
+            [fastPassAsOutput(fastPass)],
+            "clairic",
+          );
+          await pCtx.log(
+            preview.updated
+              ? "Provisional policy details are ready from the declarations fast pass"
+              : `Provisional policy details skipped (${preview.reason ?? "not updated"})`,
+          );
+        } catch (error) {
+          await pCtx.log(
+            `Provisional policy details failed: ${error instanceof Error ? error.message : String(error)}`,
+            "warn",
+          );
+        }
+        state = { ...state, previewWritten: true };
+      }
       const declarationsDone = declarations.every(succeeded);
-      // Declarations complete first; the rest run with their summary as context.
+      // A usable fast pass supplies the declarations summary, so every
+      // section runs at once. Otherwise declarations complete first and the
+      // rest run with their summary as context. The summary source never
+      // changes within a plan, which keeps section invocation keys stable.
       const pending = plan.sections.filter(
         (section) =>
           !succeeded(section) &&
-          (declarationsDone || section.kind === "declarations"),
+          (fastPass !== undefined ||
+            declarationsDone ||
+            section.kind === "declarations"),
       );
-      const declarationOutputs = declarationsDone
-        ? ((await loadSectionOutputs(convexCtx, declarations, stored)) ?? [])
-        : [];
+      const declarationOutputs =
+        fastPass === undefined && declarationsDone
+          ? ((await loadSectionOutputs(convexCtx, declarations, stored)) ?? [])
+          : [];
       const declarationsSummary = buildDeclarationsSummary(
-        declarationOutputs.flatMap(({ result }) =>
-          result.kind === "declarations" ? [result.output] : [],
-        ),
+        fastPass
+          ? [fastPassAsOutput(fastPass)]
+          : declarationOutputs.flatMap(({ result }) =>
+              result.kind === "declarations" ? [result.output] : [],
+            ),
       );
 
       const attempts = { ...state.sectionAttempts };
@@ -1897,6 +2248,11 @@ export function makePhases(
         }
         if (outcome.status === "succeeded") {
           const { response } = outcome;
+          const { output, applied, cleared } = withFastPassScalars(
+            section,
+            outcome.output,
+            fastPass,
+          );
           await storeSectionResult(convexCtx, policyId, {
             state,
             planHash: plan.planHash,
@@ -1908,7 +2264,7 @@ export function makePhases(
               pageEnd: section.pageEnd,
               attempt,
               status: "succeeded",
-              output: outcome.output,
+              output,
               model: response.model,
               routerRequestId: response.requestId,
             },
@@ -1940,7 +2296,9 @@ export function makePhases(
             routing: response.routing,
             details: { sectionId: section.sectionId, kind: section.kind },
           });
-          await pCtx.log(`Extracted ${section.kind} pages ${section.pageStart}-${section.pageEnd}`);
+          await pCtx.log(
+            `Extracted ${section.kind} pages ${section.pageStart}-${section.pageEnd}${applied + cleared > 0 ? `; fast pass set ${applied} and cleared ${cleared} scalar fields` : ""}`,
+          );
           continue;
         }
         await storeSectionResult(convexCtx, policyId, {
