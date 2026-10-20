@@ -1,0 +1,22 @@
+{
+  "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+  "mode": "Actual candidate executeDecision on exact original logical requests; no closure regeneration/invocation or native/browser execution",
+  "sourceFiles": {
+    "packages/server/src/browse/primitives.ts": "005e60212307cc2d5192d46dab4b63e73cc25db6ee1d97b8c6e26fb34fee7a50",
+    "packages/server/src/providers/decisions.ts": "290b09fe56f6ceada32dd359820eedaa31b18eacc6f1cfb64536110b71788ce2",
+    "packages/policy/src/decisions.ts": "c0e9757abca330e8af4105c745aaf982daac8008618ed89091f646baa99dc10e"
+  },
+  "historicalOriginalClosureBinding": {
+    "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+    "sourceFileSha256": "005e60212307cc2d5192d46dab4b63e73cc25db6ee1d97b8c6e26fb34fee7a50",
+    "closureSha256": "0087d228841341f7de71e172c4d1424492a111c55124d0416dee995b86a276eb",
+    "grayCanvasSha256": "f22163265867f7090d828ad249e72611edfc6e331f26f3abc6a56dfe68a3f9fa",
+    "constants": "const CAPTCHA_HOVER_MIN = 0.9;\nconst HOVER_MARGIN = 4;\nconst MAX_HOVER_SCALE = 8;",
+    "method": "Verbatim current cosmeticHover closure and grayCanvas helper, exact constants, actual candidate executeDecision; only observation/one-send transport guard wrapped."
+  },
+  "controllerSha256": "74e48827490989c9bff5855b8e3329b797ac77600d923da20b3c97c03d179d11",
+  "originalEvidenceCommit": "f299f7074ae13b1b9905ef37f6723810a453d936",
+  "actualResponseModel": "jev-1.14.0",
+  "sourceClosureInvocations": 0,
+  "nativeCalls": 0
+}

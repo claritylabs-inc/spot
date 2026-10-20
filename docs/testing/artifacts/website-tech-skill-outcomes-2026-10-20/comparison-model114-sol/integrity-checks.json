@@ -1,0 +1,20 @@
+{
+  "originalLogicalObjectsAndOpaqueRefsPreserved": true,
+  "originalHashesVerifiedBeforeCalls": true,
+  "exactOriginalImageBytesPreserved": true,
+  "allLogicalPrivate0600BeforeInference": true,
+  "allCanonicalWireBytesDifferOnlyModel": true,
+  "allSixQuestionsAndPlacementUnchanged": true,
+  "allEightHttpStatuses200": true,
+  "allEightResponseModelsExactly114": true,
+  "allAnswersCompleteFiniteAndUnchanged": true,
+  "actualHttpAttempts": 8,
+  "httpAttemptsPerCase": 1,
+  "guardRetryTriggered": false,
+  "newClosureInvocations": 0,
+  "newBrowserInteractions": 0,
+  "newNativeCalls": 0,
+  "historicControlsNotRerun": true,
+  "configurationOrEnvironmentChanges": false,
+  "automaticNextStage": false
+}
