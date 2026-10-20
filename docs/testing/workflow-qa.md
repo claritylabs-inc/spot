@@ -1,5 +1,35 @@
 # Platform workflow QA
 
+## Clairic declarations fast-pass — October 20, 2026
+
+Independent Opus review covered the fixed router endpoint, request/response
+contract, citation offsets, null/list mapping, date evidence, once-per-plan
+execution and unknown outcomes, early preview/context, and scalar authority
+across multiple declarations sections. Sonnet implemented the router adapter
+and helper; Opus implemented pipeline orchestration. No unit tests were added.
+
+Router acceptance on Node 24.14.1: `npm run openapi:generate` and `npm run check`
+passed (lint, workspace typechecks, 439 existing tests passed / one skipped,
+build, OpenAPI consistency). The committed router snapshot source is
+`dce080468fcac24b96ca62c0aca50d45e76512bb`. Router credentials use `CF_API_KEY`
+and `CLOUDFLARE_ACCOUNT_ID`; Spot has no new credential configuration.
+
+Spot acceptance: `npm run check:cl-router-contract` passed (20 fixtures,
+11 operations); `npm run lint` passed with three warnings in untouched intake
+files. Root and Convex `tsc --noEmit` passed after completing the artifact-kind
+union and organization ID type boundary. Final reviewed code: `f00e03a6`.
+The extraction parser copy and exact OpenAPI bytes match the pinned router
+revision. No additional broad checks were repeated after the type-only fixes.
+
+Artifacts: `.context/clairic/review/` and `.context/clairic/review/logs/`.
+No Vercel preview, deployment, production mutation, or live policy re-extraction
+was used. Live Clairic latency under one second, preview-before-LLM timing,
+same-advance non-declarations submission, and final scalar `sourceSpanIds`
+remain unverified. Repeat the workflow in
+`docs/architecture/convex-section-extraction.md` on an explicitly selected
+development target with both updated services before claiming those results.
+
+
 ## Safari detail-panel dropdowns — October 19, 2026
 
 Reproduced through native Safari computer use on `/operator/clients`: opening
