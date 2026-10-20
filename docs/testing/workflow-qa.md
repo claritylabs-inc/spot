@@ -1338,3 +1338,16 @@ measured the website-row icon/text center difference falling from 2.20px to
 No horizontal overflow. Screenshots: `.context/trace-ux/aligned-1100.png` and
 `aligned-390.png`; repeatable measurement: `alignment.mjs`. Focused ESLint and
 root typechecking passed; no new unit tests.
+
+## Website tech browser skill outcomes — October 20, 2026
+
+Independent native-local consumer QA is recorded in
+[the focused report](website-tech-skill-outcomes-sol-2026-10-20.md). It covers
+normal operator OTP entry, actual Profile Tech stack rendering, all known and
+unknown skill labels, four statuses, legacy/empty/failed states, bounded consumer
+responses, sanitized storage and actual registered operator tool projections,
+role/tenant exclusion, and live Rescan updates. The report distinguishes local
+executor evidence from untested HTTP/OAuth MCP transport and provisional router
+configuration/provider execution. No product edits, new unit tests or deployments
+were part of the QA packet. Candidate corrections and final cleanup are recorded
+in that report rather than silently treating initial failures as passing.
