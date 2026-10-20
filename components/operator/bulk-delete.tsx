@@ -90,7 +90,7 @@ export function BulkDeleteBar({
     }
     if (applicationIds.length > 0) {
       try {
-        await removeApplications({ requestIds: applicationIds });
+        await removeApplications({ requestIds: applicationIds, withUsers });
       } catch (error) {
         failed += applicationIds.length;
         lastError = error;
@@ -158,7 +158,7 @@ export function BulkDeleteBar({
                 : " Shared packet links will stop working."}
             </DialogDescription>
           </DialogHeader>
-          {type === "client" && orgIds.length > 0 ? (
+          {type === "client" ? (
             <label
               className={`flex items-start gap-2 ${typeStyle("body.default")}`}
             >
