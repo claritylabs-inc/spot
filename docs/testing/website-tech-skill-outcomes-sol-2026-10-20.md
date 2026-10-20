@@ -1,14 +1,77 @@
 # Website tech skill outcomes — independent consumer QA
 
-Status: **PASS for the skill-outcome consumer changes**. Final tested Spot SHA:
+Status: **PASS for the skill-outcome consumer changes** and the focused offline
+request integration below. Latest integration candidate:
+`2c1b6d4fbb1570c065ea5e0470b74c74c41489bb` (isolated checkout; not production).
+Historical actual UI tested Spot SHA:
 `101b96ba4daa6ef77faf884e863c9ca566ac1035`. Initial behavioral SHA
 `f96d921916515d75f14e4a181cd305221c9b46ea` failed two checks, both corrected
 and retested on the final SHA. Setup baseline was
 `0c8dda83ff64b32289271b23f652c8dce932e049`. A separate mobile app-shell overflow
 remains open; full-shell mobile acceptance is not claimed. Branch:
-`conductor/spot-skill-outcomes-qa`. This packet covers Spot consumption, storage,
-presentation and access boundaries; final router skill configuration/pinning and
-provider execution are separate work.
+`conductor/spot-skill-outcomes-qa`. The original UI packet covers consumption,
+storage, presentation and access boundaries. The focused follow-up checks request
+configuration/pin compatibility offline; final router corrections and production
+provider execution remain separate work.
+
+## Focused request integration — 2c1b6d4f
+
+**PASS, scoped offline integration.** Exact Spot candidate
+`2c1b6d4fbb1570c065ea5e0470b74c74c41489bb`, fetched from
+`wkezhi/tech-stack-browse-trace` into a detached worktree. The QA branch and
+previous evidence were preserved. Node `v24.14.1`. No app/backend startup,
+shared/production/environment/fixture writes, provider calls, Vercel previews,
+new unit tests or new browser runs occurred in this packet.
+
+| Check | Result and evidence scope |
+| --- | --- |
+| Required contract check | PASS: **22 fixtures / 11 operations**. Includes extraction and all ten skill names. |
+| Snapshot provenance | PASS: checked-in bytes match the snapshot fetched from exact router revision `add09df452266e94bc724d4c764aec45c07c1896`; SHA-256 `1a5f4f44362222bb14fe40d0088738a28f40f00747d1aafd286ef1f155267d2a`; provenance marks clean source. |
+| Actual request construction | PASS: executed the actual `browseCompanySite`, goal and findings-schema source extracted with TypeScript, using in-memory identity/durable-options seams, through the actual candidate `clRouterBrowse` serializer. Every captured body passes strict Ajv validation against the pinned BrowseRequest schema. This is source-function/transport evidence, not the full Convex action or router runtime. |
+| Exact selection | PASS: nine names below, no `account.cleanup`. The ten-name contract vocabulary intentionally still includes cleanup. |
+| Trace and execution placement | PASS: tenantId injected; only tenantId/input/config/executionBudgetMs at the body root. `maxSteps:30` is inside input; root budget is `360000`. TraceId/channel/taskKind are passed to durable options with `taskKind:website_tech_browse`, absent from this action's request body. |
+| Identity unavailable | PASS: identity-creation rejection is handled by the actual `settle` source; signup is omitted and the serialized request remains valid. Identity without inbox is also valid. Spot still requests the same nine names; router capability filtering is separate. |
+| Optional config / old response | PASS: absent config remains absent and valid; an old response without skills is accepted. Explicit empty skill list also remains valid. These checks do not assert that router defaults exclude cleanup. |
+| Research goal | PASS: enabled atomic procedures, observed-state CAPTCHA continuation, honest blockers, signup submission not proving account creation, no payment entry, and explicit no account deletion. |
+| Root/Convex types and focused lint | PASS once on this exact isolated candidate. No full build or repeated full suite. |
+| Prior UI evidence | **CARRIED, not rerun**: 15 app groups from actual UI candidate `101b96ba`. Eleven relevant UI/shared-style/storage/operator/tenant/package blobs are identical; exact hashes are preserved in integration-results.json. This is not whole-app, extraction behavior, router-runtime or post-release acceptance. |
+
+The requested names, in order, are `site.find_pages`, `page.dismiss_overlays`,
+`account.signup`, `account.sign_in`, `inbox.wait_for_email`,
+`account.verify_email`, `account.enter_otp`, `challenge.captcha`, and
+`checkout.observe_payment`.
+
+Exact-pin router **source review only** confirms that
+[capabilities derive from signup, accepted inbox and configured Jev](https://github.com/claritylabs-inc/cl-router/blob/add09df452266e94bc724d4c764aec45c07c1896/packages/server/src/browse/index.ts#L224),
+then [registry selection intersects requested names with every required capability](https://github.com/claritylabs-inc/cl-router/blob/add09df452266e94bc724d4c764aec45c07c1896/packages/server/src/skills/registry.ts#L22).
+Signup/sign-in require identity and Jev; email verification/code entry require
+identity, inbox and Jev; inbox selection requires inbox and Jev. Missing identity
+is therefore a valid Spot request, not a promise those procedures will be offered.
+The [omitted-config defaults contain all ten names](https://github.com/claritylabs-inc/cl-router/blob/add09df452266e94bc724d4c764aec45c07c1896/packages/server/src/skills/catalog.ts#L19),
+including cleanup; Spot's explicit nine-name list is the exclusion boundary for
+this research flow. Router corrections are still pending, and this pin is not a
+production/provider acceptance claim.
+
+Durable evidence:
+[request captures](artifacts/website-tech-skill-outcomes-2026-10-20/integration-2c1b6d4f/request-results.json),
+[provenance, source carry and checks](artifacts/website-tech-skill-outcomes-2026-10-20/integration-2c1b6d4f/integration-results.json),
+and [offline replay script](artifacts/website-tech-skill-outcomes-2026-10-20/integration-2c1b6d4f/check-request.mjs).
+Captured JSON stores field presence, names and placement only; generated test
+passwords/inbox capabilities and full signup payloads are never persisted.
+
+Reproduction from the repository root, with dependencies available in a separate
+checkout pinned to the exact candidate:
+
+```sh
+node docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/integration-2c1b6d4f/check-request.mjs /absolute/path/to/exact-candidate-checkout
+```
+
+The script verifies the checkout SHA and writes only gitignored runtime results.
+In that candidate checkout, this packet also ran `npm run check:cl-router-contract`,
+`npx tsc --noEmit`, `npx tsc --noEmit -p convex/tsconfig.json`, and
+`npx eslint convex/actions/websiteTech.ts convex/lib/clRouterClient.ts contracts/cl-router/policy.ts scripts/check-cl-router-contract.mjs`.
+All exited 0. The separate existing 416px mobile shell overflow at 390px remains
+open; no shell fix or new mobile acceptance was included.
 
 ## Lane and fixture
 
@@ -37,7 +100,7 @@ A scratch harness importing the actual `WebsiteTechSection` and app CSS was used
 while isolation was pending. Its results are supplementary; the populated
 presentation scenarios below were subsequently repeated in the authenticated app.
 
-## Scenarios
+## Historical UI packet scenarios — 101b96ba
 
 | ID | Final outcome | Evidence / scope |
 | --- | --- | --- |
@@ -63,7 +126,7 @@ presentation scenarios below were subsequently repeated in the authenticated app
 | ACCESS-02 | PASS | Actual imported tenant catalog excludes both operator tools; tenant dispatcher rejects both even with write scope. |
 | MCP-HTTP | NOT RUN | No local OAuth/HTTP MCP transport integration. TOOL results prove the actual shared registered executor, not end-to-end MCP transport. |
 | CONTRACT | PASS after correction | Required offline command validates 19 fixtures / 10 operations. Fixture now includes synthetic tenantId, matching actual runtime consumer serialization. |
-| ROUTER-LIVE | NOT RUN | Provisional router snapshot `a8df40fd3c673b6bc4fcaf6904f80965a7fffe6e`; only inbox skill is in this request vocabulary. Full skill config/final pin and real provider results are outside this packet. |
+| ROUTER-LIVE | NOT RUN | Original UI packet snapshot `a8df40fd3c673b6bc4fcaf6904f80965a7fffe6e` only knew the inbox skill. The newer nine-skill request/pin is checked in the focused integration section above; real router/provider results remain untested. |
 
 ## Findings and correction evidence
 
@@ -94,7 +157,7 @@ presentation scenarios below were subsequently repeated in the authenticated app
    wrapper. This observation is distinct from skill text wrapping and needs
    manager scope/triage; it is not silently counted as a passing mobile shell.
 
-## Commands and results
+## Historical UI packet commands and results
 
 Script rows below use their durable replay paths. Recorded behavior comes from
 the original `.context` copies; relocated copies were statically checked only.

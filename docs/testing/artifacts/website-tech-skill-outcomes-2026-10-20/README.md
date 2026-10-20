@@ -117,3 +117,14 @@ Runtime outputs, auth/restoration data and raw local capture logs remain under
 `.context`, never this committed directory. Historical JSON and screenshots are
 copied evidence; replay scripts do not overwrite them. No product edits, provider
 calls, HTTP/OAuth MCP acceptance or new unit tests are implied by this bundle.
+
+## Focused request integration follow-up
+
+The separate [2c1b6d4f offline request packet](integration-2c1b6d4f/integration-results.json)
+checks the all-ten-name contract and explicit nine-skill Spot research request.
+[Captures](integration-2c1b6d4f/request-results.json) distinguish identity/inbox
+presence and trace/budget placement. The [replay script](integration-2c1b6d4f/check-request.mjs)
+takes an exact-candidate checkout as its first argument and writes only `.context`
+results; it uses the actual extracted request-construction source and imported
+consumer serializer with in-memory seams, not a provider or full Convex action.
+Previous browser evidence above remains historical; no new UI acceptance is implied.
