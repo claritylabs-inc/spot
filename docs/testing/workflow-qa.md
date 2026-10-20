@@ -1499,6 +1499,10 @@ reports preserve failed candidates and their repeatable artifacts:
   the original native Box plus four-pixel margin excludes 108 of 300 changed
   pixels. The unchanged comparison returns false before inference; the new
   six-question comparison remains untested on those images.
+- [d28 gate reachability](browser-gate-live-sol-d28fb67-2026-10-20.md): one real
+  gate decision passed with relevance 0.78 and reached the diagnostic stop spy.
+  Goal and questions were unchanged. Zero native inputs; this does not establish
+  a CAPTCHA solve or the cause of the changed score.
 
 These reports do not establish hosted sandbox isolation, production challenge
 solving, controlled inbox delivery, or customer submission acceptance. Final
