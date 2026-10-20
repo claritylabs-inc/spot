@@ -1523,6 +1523,11 @@ reports preserve failed candidates and their repeatable artifacts:
   original requests changed only the model. The independent border-only case
   passed, but the saved real-widget hover still failed; all six negative cases
   refused. The candidate was rejected, with no production model change.
+- [Independent 0.8 cutoff screen](https://github.com/claritylabs-inc/cl-router/blob/ef3c3d836740271debb14ff52a5490ddc82e8850/test-harness/browser-agent/reports/heldout-calibration-af229cc.md):
+  the second cosmetic case failed with selection probability 0.56. The declared
+  fail-fast run stopped after two requests; nine eligible cases were not run and
+  one case refused deterministically. The cutoff was rejected; runtime stays at
+  0.9. This does not establish negative-case or native performance.
 
 Controlled regressions on exact router `af229cc` are separately accepted:
 [616 distinct skill requirements](https://github.com/claritylabs-inc/cl-router/blob/0c503dc0fa77c1069a23be08752f66d24016a54b/test-harness/browser-agent/reports/final-af229cc.md)
@@ -1538,8 +1543,9 @@ explicit limits. These results do not clear the real-provider hover failures.
 15 actual local UI groups, eight boundary groups, five access groups and six
 request-construction groups. Keyboard entry, reload and Rescan subscriptions
 pass. The existing 416px inner-shell overflow at a 390px viewport remains open;
-skill text wraps within its card. The fresh-null/unscanned path still needs its
-separate addendum. Synthetic request seams and local executor checks do not
+skill text wraps within its card. The [empty-state addendum](website-tech-empty-consumer-sol-2026-10-20.md)
+verifies an actual null tool/query result and the unscanned UI before any scan,
+with zero profiles and router jobs before and after. Synthetic request seams and local executor checks do not
 establish provider execution or HTTP/OAuth MCP acceptance.
 
 These reports do not establish hosted sandbox isolation, production challenge
