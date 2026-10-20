@@ -18,10 +18,7 @@ import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
 import { useOperatorClientCacheActions } from "@/lib/sync/operator-cached-queries";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
-  ONBOARDING_CLIENT_STATUS,
   OPERATOR_CLIENT_STATUSES,
-  operatorClientStatusLabel,
-  operatorClientStatusPresentation,
   operatorClientStatuses,
   type OperatorClientRow,
 } from "./client-model";
@@ -73,7 +70,7 @@ export function ClientWebsiteField({
         }
       }}
       // The https:// prefix shows only while editing.
-      groupClassName="-ml-[13px] w-[calc(100%+13px)] [&>[data-slot=input-group-addon]]:pl-3 [&:not(:focus-within)>[data-slot=input-group-addon]]:hidden"
+      groupClassName="-ml-[13px] w-[calc(100%+13px)] [&>[data-slot=input-group-addon]]:pl-3! [&:not(:focus-within)>[data-slot=input-group-addon]]:hidden"
       className="truncate bg-transparent! not-focus:pl-3!"
     />
   );
@@ -101,6 +98,9 @@ export function ClientStatusField({
     }
   }
 
+  const { label, ...presentation } =
+    OPERATOR_CLIENT_STATUSES[client.clientAccessStatus];
+
   return (
     <Select
       value={client.clientAccessStatus}
@@ -115,9 +115,7 @@ export function ClientStatusField({
         className="-ml-[13px] w-[calc(100%+13px)]"
         aria-label={`Status for ${client.name}`}>
         <SelectValue>
-          <StatusLabel {...operatorClientStatusPresentation(client)}>
-            {operatorClientStatusLabel(client)}
-          </StatusLabel>
+          <StatusLabel {...presentation}>{label}</StatusLabel>
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
@@ -146,26 +144,8 @@ export function ApplicationWebsiteField({ name }: { name: string }) {
   );
 }
 
-export function ApplicationStatusField({ name }: { name: string }) {
+export function ApplicationStatusField() {
   return (
-    <Select
-      value="onboarding"
-      items={{ onboarding: ONBOARDING_CLIENT_STATUS.label }}
-      disabled
-    >
-      <SelectTrigger
-        className="-ml-[13px] w-[calc(100%+13px)]"
-        aria-label={`Status for ${name}`}
-      >
-        <SelectValue>
-          <StatusLabel
-            tone={ONBOARDING_CLIENT_STATUS.tone}
-            indicator={ONBOARDING_CLIENT_STATUS.indicator}
-          >
-            {ONBOARDING_CLIENT_STATUS.label}
-          </StatusLabel>
-        </SelectValue>
-      </SelectTrigger>
-    </Select>
+    <span className="text-muted-foreground">Not submitted</span>
   );
 }

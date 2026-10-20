@@ -28,35 +28,3 @@ export const operatorClientStatuses = Object.fromEntries(
     label,
   ]),
 ) as Record<keyof typeof OPERATOR_CLIENT_STATUSES, string>;
-
-export const ONBOARDING_CLIENT_STATUS = {
-  label: "Onboarding",
-  tone: "neutral",
-  indicator: "progress",
-} satisfies StatusPresentation & { label: string };
-
-/** Limited clients with an unsubmitted application are still onboarding. */
-export function operatorClientDisplayStatus(client: OperatorClientRow) {
-  return client.clientAccessStatus === "limited" &&
-    client.applicationInProgress
-    ? "onboarding"
-    : client.clientAccessStatus;
-}
-
-function displayStatus(client: OperatorClientRow) {
-  const status = operatorClientDisplayStatus(client);
-  return status === "onboarding"
-    ? ONBOARDING_CLIENT_STATUS
-    : OPERATOR_CLIENT_STATUSES[status];
-}
-
-export function operatorClientStatusLabel(client: OperatorClientRow) {
-  return displayStatus(client).label;
-}
-
-export function operatorClientStatusPresentation(
-  client: OperatorClientRow,
-): StatusPresentation {
-  const { tone, indicator } = displayStatus(client);
-  return { tone, indicator };
-}

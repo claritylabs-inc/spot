@@ -7,7 +7,7 @@ order. Run Convex commands against the intended deployment explicitly
 
 ## 0. Deploy Convex first
 
-Merge and let `deploy-convex.yml` deploy (or `npx convex deploy`). Every worker
+Merge and let the Vercel production build deploy Convex (or `npx convex deploy`). Every worker
 below must keep running until this deploy is live and verified.
 
 Before merging, update GitHub branch protection if `Spot - slack-worker` or

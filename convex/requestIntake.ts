@@ -149,15 +149,22 @@ async function ownedRequest(
     await getOrgAccess(ctx, request.clientOrgId);
   return { user, request };
 }
+/** Stands in until the applicant names their company; syncDraftClient replaces it. */
+function placeholderCompanyName(user: Doc<"users"> | null) {
+  const name =
+    user?.name?.trim() || user?.email?.split("@")[0] || "New applicant";
+  return name.replace(/\b\w/g, (char) => char.toUpperCase());
+}
 async function createIntakeClient(
   ctx: MutationCtx,
   userId: Id<"users">,
   answers: IntakeAnswers,
   draftRequestId?: Id<"procurementRequests">,
 ) {
+  const legalName = answers.legalName?.trim();
   const website = answers.website?.trim() || undefined;
   const orgId = await ctx.db.insert("organizations", {
-    name: answers.legalName!.trim(),
+    name: legalName || placeholderCompanyName(await ctx.db.get(userId)),
     website,
     type: "client",
     primaryInsuranceContactId: userId,
@@ -165,7 +172,7 @@ async function createIntakeClient(
     intakeDraftRequestId: draftRequestId,
   });
   await ctx.db.insert("orgMemberships", { orgId, userId, role: "admin" });
-  await scheduleCompanyResearch(ctx, orgId);
+  if (legalName) await scheduleCompanyResearch(ctx, orgId);
   if (website)
     await ctx.scheduler.runAfter(
       0,
@@ -258,6 +265,17 @@ async function newDraft(
     intakeStep: answers.intakeGoal === "savings" ? 21 : 1,
     intakeRevision: 0,
   });
+  // First-time applicants get a client right away so operators can open it before submission.
+  if (
+    !orgId &&
+    !(await ctx.db
+      .query("orgMemberships")
+      .withIndex("user", (q) => q.eq("userId", userId))
+      .first())
+  )
+    await ctx.db.patch(requestId, {
+      clientOrgId: await createIntakeClient(ctx, userId, answers, requestId),
+    });
   await queueIntakeSlack(ctx, requestId, "started", "Application started");
   return requestId;
 }
@@ -852,7 +870,7 @@ export const save = mutation({
         { requestId: request._id, fingerprint },
       );
     }
-    // Create the client once the applicant moves past naming their company, so operators see it before submission.
+    // Keep the draft client named after the company, or create one for an applicant starting a new company.
     let clientOrgId = request.clientOrgId;
     if (!request.intakeSubmittedAt && name && args.step !== request.intakeStep) {
       const company = await draftClient(ctx, request);
