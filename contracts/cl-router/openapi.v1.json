@@ -1244,6 +1244,32 @@
           },
           "signupSubmitted": {
             "type": "boolean"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string"
+                },
+                "input": {
+                  "type": "string"
+                },
+                "result": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tool",
+                "input",
+                "result"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "error": {
+            "type": "string"
           }
         },
         "required": [
@@ -1256,7 +1282,8 @@
           "networkHosts",
           "redirects",
           "adoptedDomains",
-          "signupSubmitted"
+          "signupSubmitted",
+          "actions"
         ],
         "additionalProperties": false
       },

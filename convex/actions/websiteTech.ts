@@ -525,11 +525,33 @@ export const run = internalAction({
         domain: args.domain,
         errors,
       });
+    const browseSummary = browsed
+      ? {
+          finished: browsed.finished,
+          steps: browsed.steps,
+          signupSubmitted: browsed.signupSubmitted ?? false,
+          adoptedDomains: browsed.adoptedDomains ?? [],
+          redirects: browsed.redirects ?? [],
+          actions: browsed.actions ?? [],
+          ...(browsed.error ? { error: browsed.error } : {}),
+        }
+      : browse.status === "rejected"
+        ? {
+            finished: false,
+            steps: 0,
+            signupSubmitted: false,
+            adoptedDomains: [],
+            redirects: [],
+            actions: [],
+            error: message(browse.reason).slice(0, 300),
+          }
+        : undefined;
     await ctx.runMutation(internal.websiteTech.finish, {
       ...args,
       signals,
       disclosures,
       inferences,
+      ...(browseSummary ? { browse: browseSummary } : {}),
       ...(!signals.length && !disclosures.length && errors.length
         ? { error: "Website, DNS and browser research did not complete" }
         : {}),

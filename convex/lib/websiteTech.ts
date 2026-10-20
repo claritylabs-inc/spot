@@ -38,6 +38,19 @@ export const websiteTechInferenceValidator = v.object({
   confidence: v.number(),
 });
 
+// What the browser agent did on the latest run, so operators and agents can see why findings are thin.
+export const websiteTechBrowseValidator = v.object({
+  finished: v.boolean(),
+  steps: v.number(),
+  signupSubmitted: v.boolean(),
+  adoptedDomains: v.array(v.string()),
+  redirects: v.array(v.string()),
+  actions: v.array(
+    v.object({ tool: v.string(), input: v.string(), result: v.string() }),
+  ),
+  error: v.optional(v.string()),
+});
+
 export type WebsiteTechInference = Infer<typeof websiteTechInferenceValidator>;
 export type WebsiteTechSignal = Infer<typeof websiteTechSignalValidator>;
 export type WebsiteTechDisclosure = Infer<typeof websiteTechDisclosureValidator>;
