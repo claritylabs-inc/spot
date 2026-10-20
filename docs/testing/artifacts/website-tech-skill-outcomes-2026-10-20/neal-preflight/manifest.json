@@ -1,0 +1,34 @@
+{
+  "dateUtc": "2026-10-20",
+  "scope": "Candidate-independent real-site preflight only; 2Captcha primary, Neal secondary.",
+  "screenshotsVisuallyInspected": true,
+  "screenshots": [
+    {
+      "file": "secondary-neal-checkbox.png",
+      "sha256": "34bc28ec2d47935359fe91d235484137b2bbbc7da8767bbb581b3730e1607788",
+      "textOrExifMetadata": false
+    },
+    {
+      "file": "primary-v2-grid.png",
+      "sha256": "b936f44049ec61bcb8c5b0b8062dffbe2a939b79d8b0d6d3c67f1e4d47eacd37",
+      "textOrExifMetadata": false
+    },
+    {
+      "file": "primary-v2-selected-tile.png",
+      "sha256": "b12efa15e7be11e6878661fb0f8e3ab581a6ffba6d25302c99651f496fe0dc02",
+      "textOrExifMetadata": false
+    },
+    {
+      "file": "primary-turnstile-checkbox.png",
+      "sha256": "0906228b080b3097d40b73548b4d88d34b0b5126bd9750fa7c412a057f73d92c",
+      "textOrExifMetadata": false
+    },
+    {
+      "file": "primary-turnstile-verified.png",
+      "sha256": "169093304dfdc7136a801b797688e380524ad3ec18832d3ad5b9ea6d0a3690cf",
+      "textOrExifMetadata": false
+    }
+  ],
+  "noProductOrSpotEnvironmentChanges": true,
+  "nativeRuntimeAcceptance": false
+}
