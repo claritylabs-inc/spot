@@ -501,7 +501,10 @@ export const get = query({
     return {
       requestId: request._id,
       answers: request.intakeAnswers ?? {},
-      followupBatches: request.intakeFollowups,
+      followupBatches: request.intakeFollowups ? {
+        acord: request.intakeFollowups.acord ? {...request.intakeFollowups.acord, questions: request.intakeFollowups.acord.status === "ready" ? request.intakeFollowups.acord.questions : []} : undefined,
+        additional: request.intakeFollowups.additional ? {...request.intakeFollowups.additional, questions: request.intakeFollowups.additional.status === "ready" ? request.intakeFollowups.additional.questions : []} : undefined,
+      } : undefined,
       details: {
         ...details,
         scopeNote:
@@ -735,8 +738,8 @@ export const save = mutation({
     if (args.details) {
       validateIntakeDetails(args.details);
       const approved = [
-        ...(request.intakeFollowups?.acord?.questions ?? []),
-        ...(request.intakeFollowups?.additional?.questions ?? []),
+        ...(request.intakeFollowups?.acord?.status === "ready" ? request.intakeFollowups.acord.questions : []),
+        ...(request.intakeFollowups?.additional?.status === "ready" ? request.intakeFollowups.additional.questions : []),
         ...(request.intakeDetails?.followups ?? []),
       ].flatMap((question) => [question, ...expandIntakeFollowupQuestion(question)]);
       for (const row of args.details.followups??[]) {
@@ -1683,6 +1686,7 @@ async function followupContextHash(
   ctx: QueryCtx | MutationCtx,
   request: Doc<"procurementRequests">,
   section: "acord" | "additional",
+  includeOwnAnswers = false,
 ) {
   const details =
     request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {});
@@ -1690,19 +1694,79 @@ async function followupContextHash(
     ...details,
     followups:
       section === "additional"
-        ? (details.followups ?? []).filter((row) => row.section === "acord")
+        ? (details.followups ?? []).filter(
+            (row) => includeOwnAnswers || row.section === "acord",
+          )
         : undefined,
   };
   const files = await ctx.db
     .query("requestIntakeFiles")
     .withIndex("request", (q) => q.eq("requestId", request._id))
     .take(50);
+  const issuedQuestions =
+    section === "additional"
+      ? {
+          acord:
+            request.intakeFollowups?.acord?.status === "ready"
+              ? request.intakeFollowups.acord.questions
+              : [],
+          additional:
+            includeOwnAnswers &&
+            request.intakeFollowups?.additional?.status === "ready"
+              ? request.intakeFollowups.additional.questions
+              : [],
+        }
+      : undefined;
   return hashIntakeToken(
-    `${INTAKE_ACORD_CATALOG_VERSION}:history-v4-active-quote:${JSON.stringify((request.intakeSkippedSteps ?? []).filter((step) => step < 28))}:${submissionContent(
+    `${INTAKE_ACORD_CATALOG_VERSION}:history-v5-issued-questions:${JSON.stringify(issuedQuestions)}:${JSON.stringify((request.intakeSkippedSteps ?? []).filter((step) => step < 28))}:${submissionContent(
       request.intakeAnswers ?? {},
       contextDetails,
       files.map((file) => String(file._id)),
     )}`,
+  );
+}
+/** A preload may survive history answers, but never a changed business/coverage/upload. */
+async function followupPreloadScopeHash(
+  ctx: QueryCtx | MutationCtx,
+  request: Doc<"procurementRequests">,
+) {
+  const {
+    currentInsurance: _insurance,
+    claims: _claims,
+    cancellations: _cancellations,
+    ...answers
+  } = request.intakeAnswers ?? {};
+  const {
+    followups: _followups,
+    hasClaims: _hasClaims,
+    hasCancellations: _hasCancellations,
+    ...details
+  } = request.intakeDetails ?? detailsFromAnswers(answers);
+  const files = await ctx.db
+    .query("requestIntakeFiles")
+    .withIndex("request", (q) => q.eq("requestId", request._id))
+    .take(50);
+  const risk = {
+    insured: _insurance === "Yes",
+    claims: _hasClaims === "yes" ? _claims || "Yes" : "",
+    cancellations: _hasCancellations === "yes" ? _cancellations || "Yes" : "",
+  };
+  const scopeDetails = {
+    ...details,
+    skippedBaseFields: details.skippedBaseFields?.filter(
+      (field) =>
+        !["claims", "cancellations", "currentInsurance"].includes(field),
+    ),
+  };
+  return hashIntakeToken(
+    JSON.stringify([
+      risk,
+      submissionContent(
+        answers,
+        scopeDetails,
+        files.map((file) => String(file._id)),
+      ),
+    ]),
   );
 }
 /** One generation per saved application context; revisiting after edits prepares a new context. */
@@ -1710,8 +1774,9 @@ export const prepareFollowups = mutation({
   args: {
     requestId: v.id("procurementRequests"),
     section: followupSectionValidator,
+    preload: v.optional(v.boolean()),
   },
-  handler: async (ctx, { requestId, section }) => {
+  handler: async (ctx, { requestId, section, preload }) => {
     const { request } = await ownedRequest(ctx, requestId);
     if (
       request.intakeSubmittedAt ||
@@ -1721,14 +1786,58 @@ export const prepareFollowups = mutation({
         "Follow-up generation is only available for quote drafts",
       );
     const contextHash = await followupContextHash(ctx, request, section);
+    const scopeHash = await followupPreloadScopeHash(ctx, request);
     const previous = request.intakeFollowups?.[section];
-    // Never automatically replay a pending, failed, or unknown inference outcome.
-    if (previous?.contextHash === contextHash) return null;
+    // Warm only the generation stage. Never restart a pending/failed inference.
+    if (
+      preload &&
+      (section !== "additional" ||
+        (request.intakeStep ?? 0) >= 30 ||
+        (previous &&
+          !(
+            previous.preloaded &&
+            previous.status === "prepared" &&
+            previous.preloadScopeHash !== scopeHash
+          )))
+    )
+      return null;
+    if (
+      !preload &&
+      previous?.preloaded &&
+      previous.status === "pending" &&
+      previous.preloadScopeHash === scopeHash
+    ) {
+      // The ongoing generator will screen its result against the latest context.
+      await ctx.db.patch(requestId, {
+        intakeFollowups: {
+          ...request.intakeFollowups,
+          [section]: {
+            ...previous,
+            preloaded: false,
+            enriching: true,
+            contextHash,
+          },
+        },
+      });
+      return null;
+    }
+    if (previous?.contextHash === contextHash && previous.status !== "prepared")
+      return null;
+    const reuseQuestions =
+      !preload &&
+      section === "additional" &&
+      previous?.status === "prepared" &&
+      previous.preloadScopeHash === scopeHash
+        ? previous.questions
+        : undefined;
     const batch = {
       status: "pending" as const,
       token: crypto.randomUUID(),
       contextHash,
       startedAt: dayjs().valueOf(),
+      preloaded: !!preload,
+      enriching: reuseQuestions !== undefined,
+      preloadScopeHash: scopeHash,
       questions: [],
     };
     await ctx.db.patch(requestId, {
@@ -1738,8 +1847,44 @@ export const prepareFollowups = mutation({
       requestId,
       section,
       token: batch.token,
+      ...(reuseQuestions ? { reuseQuestions } : {}),
     });
     return null;
+  },
+});
+
+/** Provisional candidates are never exposed as ready questions. */
+export const stageFollowupPreload = internalMutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    token: v.string(),
+    questions: v.array(followupQuestionValidator),
+  },
+  handler: async (ctx, { requestId, token, questions }) => {
+    const request = await ctx.db.get(requestId);
+    const batch = request?.intakeFollowups?.additional;
+    if (
+      !request ||
+      request.deletedAt ||
+      request.intakeSubmittedAt ||
+      batch?.token !== token ||
+      batch.status !== "pending" ||
+      !batch.preloaded ||
+      request.intakeStep === 30
+    )
+      return false;
+    if (
+      questions.length > 8 ||
+      questions.some((question) => question.section !== "additional")
+    )
+      throw new Error("Invalid preload");
+    await ctx.db.patch(requestId, {
+      intakeFollowups: {
+        ...request.intakeFollowups,
+        additional: { ...batch, status: "prepared", questions },
+      },
+    });
+    return true;
   },
 });
 export const followupContext = internalQuery({
@@ -1747,30 +1892,63 @@ export const followupContext = internalQuery({
     requestId: v.id("procurementRequests"),
     section: followupSectionValidator,
     token: v.string(),
+    enrich: v.optional(v.boolean()),
   },
-  handler: async (ctx, { requestId, section, token }) => {
+  handler: async (ctx, { requestId, section, token, enrich }) => {
     const request = await ctx.db.get(requestId);
     if (
       !request ||
       request.deletedAt ||
       request.intakeSubmittedAt ||
-      request.intakeFollowups?.[section]?.token !== token
+      request.intakeFollowups?.[section]?.token !== token ||
+      (enrich &&
+        (request.intakeFollowups?.[section]?.status !== "ready" ||
+          !request.intakeFollowups?.[section]?.enriching))
     )
       return null;
     const files = await ctx.db
       .query("requestIntakeFiles")
       .withIndex("request", (q) => q.eq("requestId", requestId))
       .take(50);
-    const historyDetails = activeIntakeDetails(request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {}),request.intakeAnswers?.intakeGoal);
+    const historyDetails = activeIntakeDetails(
+      request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {}),
+      request.intakeAnswers?.intakeGoal,
+    );
     return {
-      questionHistory: intakeQuestionHistory(request.intakeAnswers ?? {}, historyDetails, request.intakeSkippedSteps ?? []),
+      contextHash: await followupContextHash(ctx, request, section, enrich),
+      evaluationHash: await followupContextHash(
+        ctx,
+        request,
+        section,
+        section === "additional",
+      ),
+      preloadScopeHash: await followupPreloadScopeHash(ctx, request),
+      questionHistory: intakeQuestionHistory(
+        request.intakeAnswers ?? {},
+        historyDetails,
+        request.intakeSkippedSteps ?? [],
+      ),
       priorQuestions:
         section === "additional"
-          ? (request.intakeFollowups?.acord?.questions ?? [])
+          ? [
+              ...(request.intakeFollowups?.acord?.questions ?? []),
+              ...(enrich
+                ? (request.intakeFollowups?.additional?.questions ?? [])
+                : []),
+            ]
           : [],
-      reservedQuestions: request.intakeFollowups?.[section === "acord" ? "additional" : "acord"]?.status === "ready" ? request.intakeFollowups[section === "acord" ? "additional" : "acord"]!.questions : [],
+      reservedQuestions:
+        request.intakeFollowups?.[section === "acord" ? "additional" : "acord"]
+          ?.status === "ready"
+          ? request.intakeFollowups[
+              section === "acord" ? "additional" : "acord"
+            ]!.questions
+          : [],
       answers: request.intakeAnswers ?? {},
-      details: { ...historyDetails, drivers: (historyDetails.drivers ?? []).map(driverModelContext) },
+      details: {
+        ...historyDetails,
+        drivers: (historyDetails.drivers ?? []).map(driverModelContext),
+      },
       files: files.map(({ name, category }) => ({ name, category })),
     };
   },
@@ -1782,8 +1960,23 @@ export const finishFollowups = internalMutation({
     token: v.string(),
     questions: v.array(followupQuestionValidator),
     failed: v.boolean(),
+    evaluatedContextHash: v.optional(v.string()),
+    evaluatedBaseContextHash: v.optional(v.string()),
+    restartGeneration: v.optional(v.boolean()),
   },
-  handler: async (ctx, { requestId, section, token, questions, failed }) => {
+  handler: async (
+    ctx,
+    {
+      requestId,
+      section,
+      token,
+      questions,
+      failed,
+      evaluatedContextHash,
+      evaluatedBaseContextHash,
+      restartGeneration,
+    },
+  ) => {
     const request = await ctx.db.get(requestId);
     const batch = request?.intakeFollowups?.[section];
     if (
@@ -1800,20 +1993,178 @@ export const finishFollowups = internalMutation({
       questions.some((row) => row.section !== section)
     )
       throw new Error("Invalid follow-up batch");
-    failed ||=
-      batch.contextHash !== (await followupContextHash(ctx, request, section));
+    const currentContextHash = await followupContextHash(ctx, request, section);
+    const currentEvaluationHash =
+      section === "additional" && evaluatedContextHash
+        ? await followupContextHash(ctx, request, section, true)
+        : currentContextHash;
+    if (
+      !failed &&
+      (restartGeneration ||
+        (evaluatedContextHash ?? batch.contextHash) !== currentEvaluationHash)
+    ) {
+      // This inference completed successfully for an old context. Claim a new
+      // evaluation for the changed context; never retry a failed/unknown call.
+      const scopeHash = await followupPreloadScopeHash(ctx, request);
+      const next = {
+        ...batch,
+        token: crypto.randomUUID(),
+        contextHash: currentContextHash,
+        preloadScopeHash: scopeHash,
+        preloaded: false,
+        startedAt: dayjs().valueOf(),
+        questions: [],
+        status: "pending" as const,
+      };
+      await ctx.db.patch(requestId, {
+        intakeFollowups: { ...request.intakeFollowups, [section]: next },
+      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.actions.intakeFollowups.generate,
+        {
+          requestId,
+          section,
+          token: next.token,
+          ...(!restartGeneration &&
+          section === "additional" &&
+          batch.preloadScopeHash === scopeHash
+            ? { reuseQuestions: questions }
+            : {}),
+        },
+      );
+      return;
+    }
     if (failed) questions = [];
     else {
-      const other=request.intakeFollowups?.[section === "acord" ? "additional" : "acord"];
-      questions=boundIntakeFollowupQuestions(questions,request.intakeDetails?.followups??[],other?.status==="ready"?other.questions:[]);
+      const other =
+        request.intakeFollowups?.[section === "acord" ? "additional" : "acord"];
+      questions = boundIntakeFollowupQuestions(
+        questions,
+        request.intakeDetails?.followups ?? [],
+        other?.status === "ready" ? other.questions : [],
+      );
     }
     await ctx.db.patch(requestId, {
       intakeFollowups: {
         ...request.intakeFollowups,
         [section]: {
           ...batch,
+          contextHash: failed
+            ? (evaluatedBaseContextHash ?? batch.contextHash)
+            : currentContextHash,
+          preloaded: false,
+          enriching: !failed && !!batch.enriching && questions.length < 8,
           status: failed ? ("failed" as const) : ("ready" as const),
           questions,
+        },
+      },
+    });
+    if (
+      !failed &&
+      section === "additional" &&
+      batch.enriching &&
+      questions.length < 8
+    ) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.actions.intakeFollowups.generate,
+        { requestId, section, token, enrich: true },
+      );
+    }
+  },
+});
+
+/** Append screened new facts without replacing any issued question or answer. */
+export const appendFollowupEnrichment = internalMutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    token: v.string(),
+    questions: v.array(followupQuestionValidator),
+    evaluatedContextHash: v.string(),
+    failed: v.boolean(),
+    restartGeneration: v.optional(v.boolean()),
+  },
+  handler: async (
+    ctx,
+    {
+      requestId,
+      token,
+      questions,
+      evaluatedContextHash,
+      failed,
+      restartGeneration,
+    },
+  ) => {
+    const request = await ctx.db.get(requestId);
+    const batch = request?.intakeFollowups?.additional;
+    if (
+      !request ||
+      request.deletedAt ||
+      request.intakeSubmittedAt ||
+      batch?.token !== token ||
+      batch.status !== "ready" ||
+      !batch.enriching
+    )
+      return;
+    if (
+      questions.length > 8 ||
+      questions.some((question) => question.section !== "additional")
+    )
+      throw new Error("Invalid enrichment");
+    if (
+      !failed &&
+      (restartGeneration ||
+        evaluatedContextHash !==
+          (await followupContextHash(ctx, request, "additional", true)))
+    ) {
+      const sameScope =
+        batch.preloadScopeHash ===
+        (await followupPreloadScopeHash(ctx, request));
+      await ctx.scheduler.runAfter(
+        0,
+        internal.actions.intakeFollowups.generate,
+        {
+          requestId,
+          section: "additional",
+          token,
+          enrich: true,
+          ...(!restartGeneration && sameScope
+            ? { reuseQuestions: questions }
+            : {}),
+        },
+      );
+      return;
+    }
+    const other = request.intakeFollowups?.acord;
+    const additions = failed
+      ? []
+      : questions
+          .filter(
+            (question) =>
+              !batch.questions.some(
+                (existing) =>
+                  existing.id === question.id ||
+                  existing.label.toLocaleLowerCase().trim() ===
+                    question.label.toLocaleLowerCase().trim(),
+              ),
+          )
+          .slice(0, Math.max(0, 8 - batch.questions.length));
+    const bounded = boundIntakeFollowupQuestions(
+      additions,
+      request.intakeDetails?.followups ?? [],
+      [
+        ...batch.questions,
+        ...(other?.status === "ready" ? other.questions : []),
+      ],
+    );
+    await ctx.db.patch(requestId, {
+      intakeFollowups: {
+        ...request.intakeFollowups,
+        additional: {
+          ...batch,
+          enriching: false,
+          questions: [...batch.questions, ...bounded],
         },
       },
     });

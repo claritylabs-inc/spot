@@ -195,3 +195,57 @@ export function personalizeIntakeQuestion(
     businessName.trim(),
   );
 }
+
+/** Vehicle catalog facts share a page, while their approved answer IDs stay separate. */
+export function intakeFollowupPages(
+  questions: IntakeFollowupQuestion[],
+): IntakeFollowupQuestion[][] {
+  const pages: IntakeFollowupQuestion[][] = [];
+  const vehicles = new Map<string, IntakeFollowupQuestion[]>();
+  for (const question of questions) {
+    const subject = intakeVehicleQuestionSubject(question);
+    if (!subject) {
+      pages.push([question]);
+      continue;
+    }
+    const existing = vehicles.get(subject);
+    if (existing) existing.push(question);
+    else {
+      const page = [question];
+      vehicles.set(subject, page);
+      pages.push(page);
+    }
+  }
+  return pages;
+}
+
+export function intakeVehicleQuestionSubject(
+  question?: IntakeFollowupQuestion,
+): string | undefined {
+  if (
+    question?.section !== "acord" ||
+    !question.id.startsWith("catalog2_auto_vehicle_")
+  )
+    return;
+  return question.label.match(/^(Vehicle \d+ \(.+\)): /)?.[1];
+}
+
+export function intakeFollowupPageTitle(
+  question: IntakeFollowupQuestion,
+): string {
+  const subject = intakeVehicleQuestionSubject(question);
+  return subject
+    ? `More about ${subject.replace(/^Vehicle \d+ \((.+)\)$/, "$1")}`
+    : question.label;
+}
+
+/** Persist the first question index of the last page for reverse navigation. */
+export function intakeFollowupLastPageIndex(
+  questions: IntakeFollowupQuestion[],
+): number {
+  const last = intakeFollowupPages(questions).at(-1)?.[0];
+  return Math.max(
+    0,
+    questions.findIndex((question) => question.id === last?.id),
+  );
+}

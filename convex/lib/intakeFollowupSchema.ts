@@ -30,11 +30,15 @@ export const followupAnswerValidator = v.object({
 export const followupBatchValidator = v.object({
   status: v.union(
     v.literal("pending"),
+    v.literal("prepared"),
     v.literal("ready"),
     v.literal("failed"),
   ),
   token: v.string(),
   contextHash: v.string(),
   startedAt: v.number(),
+  preloaded: v.optional(v.boolean()),
+  enriching: v.optional(v.boolean()),
+  preloadScopeHash: v.optional(v.string()),
   questions: v.array(followupQuestionValidator),
 });
