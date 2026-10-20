@@ -73,7 +73,7 @@ export function ClientWebsiteField({
         }
       }}
       // The https:// prefix shows only while editing.
-      groupClassName="-ml-[13px] w-[calc(100%+13px)] [&>[data-slot=input-group-addon]]:pl-3 [&:not(:focus-within)>[data-slot=input-group-addon]]:hidden"
+      groupClassName="-ml-[13px] w-[calc(100%+13px)] [&>[data-slot=input-group-addon]]:pl-3! [&:not(:focus-within)>[data-slot=input-group-addon]]:hidden"
       className="truncate bg-transparent! not-focus:pl-3!"
     />
   );
