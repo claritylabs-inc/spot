@@ -1,0 +1,59 @@
+{
+  "visibleWarning": "This site is exceeding reCAPTCHA Enterprise free quota.",
+  "observationMethod": "Offline visual review of actual frame PNGs and actual transported target PNGs, plus decoded pixel equality; no DOM/OCR/model request.",
+  "presentBeforePointerMotion": true,
+  "warningIntroducedBetweenCaptures": false,
+  "warningBand": {
+    "frameCoordinates": {
+      "x": 0,
+      "y": 51,
+      "width": 304,
+      "height": 27
+    },
+    "description": "Entire lower band containing the visible quota warning and frame bottom, below all changed pixels",
+    "beforeRgbaSha256": "11f27386382a4c33cf25f40927dc69f380835f7fcfa39ab2c5d54feef65e67a3",
+    "afterRgbaSha256": "11f27386382a4c33cf25f40927dc69f380835f7fcfa39ab2c5d54feef65e67a3",
+    "allPixelsEqual": true
+  },
+  "images": [
+    {
+      "file": "recaptcha-v2-frame-before.png",
+      "completeWarningVisible": true
+    },
+    {
+      "file": "recaptcha-v2-frame-after.png",
+      "completeWarningVisible": true
+    },
+    {
+      "file": "recaptcha-v2-hover-frame-before.png",
+      "completeWarningVisible": true
+    },
+    {
+      "file": "recaptcha-v2-hover-frame-after.png",
+      "completeWarningVisible": true
+    },
+    {
+      "file": "recaptcha-v2-hover-target-before.png",
+      "completeWarningVisible": false,
+      "clippedWarningFragmentsAtBottom": true
+    },
+    {
+      "file": "recaptcha-v2-hover-target-after.png",
+      "completeWarningVisible": false,
+      "clippedWarningFragmentsAtBottom": true
+    }
+  ],
+  "targetFragmentPixels": {
+    "sourceRows": [
+      51,
+      56
+    ],
+    "targetRows": [
+      256,
+      296
+    ],
+    "intervals": "end-exclusive",
+    "equalBeforeAfter": true
+  },
+  "interpretation": "Pre-existing unchanged demo/provider warning; distinct from 300 changed checkbox-region pixels. No causal attribution of low model scores, and downstream v2 provider functionality remains untested."
+}
