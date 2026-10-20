@@ -1488,6 +1488,13 @@ reports preserve failed candidates and their repeatable artifacts:
   one padded-image request reached the provider with exact embedded pixels, but
   hover-only confidence remained below the required threshold. No browser input
   or native-click acceptance is claimed.
+- [a19 gate diagnostic](browser-gate-live-sol-a19f6fa-2026-10-20.md): a fresh
+  screenshot reached the gate, but relevance was 0.58. The full historical
+  observation was not retained; the report marks reconstructed fields.
+- [4bbe gate diagnostic](browser-gate-live-sol-4bbe20e-2026-10-20.md): the full
+  actual request was retained before inference, with the screenshot inside the
+  observation and an explicit CAPTCHA action. Relevance was 0.65 against 0.7;
+  neither the native primitive nor any input command ran.
 
 These reports do not establish hosted sandbox isolation, production challenge
 solving, controlled inbox delivery, or customer submission acceptance. Final
