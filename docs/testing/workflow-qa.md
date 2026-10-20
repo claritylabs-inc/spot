@@ -1381,3 +1381,22 @@ executor evidence from untested HTTP/OAuth MCP transport and provisional router
 configuration/provider execution. No product edits, new unit tests or deployments
 were part of the QA packet. Candidate corrections and final cleanup are recorded
 in that report rather than silently treating initial failures as passing.
+
+Native router CAPTCHA acceptance remains incomplete. These independent Sol
+reports preserve failed candidates and their repeatable artifacts:
+
+- [Live ca0 baseline](browser-native-live-sol-2026-10-20.md): real Jev/Box and
+  native cursor movement, followed by refusal; neither demo solved. The three
+  authorized customer forms were inspected without fields or submissions.
+- [Live 96d retest](browser-native-live-sol-96d1db5-2026-10-20.md): improved
+  presence classification, but small hover crops were rejected by the provider;
+  Turnstile's action gate also refused. Zero press/release events.
+- [7ad provider diagnostic](browser-provider-diagnostic-sol-7ad8e5e-2026-10-20.md):
+  one padded-image request reached the provider with exact embedded pixels, but
+  hover-only confidence remained below the required threshold. No browser input
+  or native-click acceptance is claimed.
+
+These reports do not establish hosted sandbox isolation, production challenge
+solving, controlled inbox delivery, or customer submission acceptance. Final
+router integration and the Spot contract pin require a new combined acceptance
+record; the earlier consumer UI checks do not prove provider execution.
