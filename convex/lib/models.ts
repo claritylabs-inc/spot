@@ -1387,10 +1387,13 @@ export async function generateObjectForPublicTask<T>(
   const { schema, ...textOptions } = options;
   // Bounded text-only local intake QA can use the router's synchronous endpoint.
   // Select this before submitting anything; never fall back after a job failure.
+  const localIntakeResearch = task === "triage" &&
+    ((callContext?.taskKind === "profile_research_intake_fields" && callContext?.trace?.traceId?.startsWith("intake-company:")) ||
+      (callContext?.taskKind === "intake_cyber_fact_extraction" && callContext?.trace?.traceId?.startsWith("intake-cyber:")));
+  const localIntakeTask = localIntakeResearch || (task === "analysis" && callContext?.taskKind === "intake_additional_questions") || (task === "requirement_extraction" && callContext?.taskKind === "intake_requirement_prefill");
   if (execution === "local-inline" && (
-    process.env.SPOT_ENV !== "local" || task !== "analysis" ||
-    callContext?.taskKind !== "intake_additional_questions" ||
-    typeof textOptions.prompt !== "string" || textOptions.messages !== undefined ||
+    process.env.SPOT_ENV !== "local" || !localIntakeTask ||
+    typeof textOptions.prompt !== "string" || textOptions.prompt.length > 100000 || textOptions.messages !== undefined ||
     textOptions.tools !== undefined || (textOptions.maxOutputTokens ?? Infinity) > 3000
   )) throw new Error("Inline generation is limited to bounded local intake text");
   const input = clRouterGenerateInputForEnabledTask(
