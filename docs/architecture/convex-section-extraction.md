@@ -74,6 +74,13 @@ scalars replace its corresponding fields before section results are stored.
 Each scalar stays on the declarations section containing its evidence; other
 declarations sections clear that scalar so merge cannot prefer an earlier
 conflicting LLM value.
+The request no longer asks for lines of business or coverage summaries, and
+`fastPassAsOutput` returns both empty even for restored artifacts whose stored
+fields contain them; the preview and context show them only after the LLM
+extraction. Valid form numbers and scalars are kept. Date instructions ask for
+the start and end of the policy period (including "From X to Y"), the date
+only, not issue or retroactive dates, and never an inferred date or year;
+the strict calendar and evidence-grounding gates are unchanged.
 Dates use companion text fields to locate their original evidence because
 Clairic's normalized date answers need not contain spans. Existing citation
 resolution attaches source IDs during merge; fast-pass output does not bypass
