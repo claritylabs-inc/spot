@@ -221,8 +221,12 @@ function BrowserResearchCard({ browse }: { browse: Profile["browse"] }) {
       {skills.map((skill, index) => {
         const status = SKILL_STATUS[skill.status];
         return (
-          <InlineFieldRow key={`${skill.name}:${index}`} label={skillLabel(skill.name)}>
-            <div className="space-y-1 py-1.5">
+          <InlineFieldRow
+            key={`${skill.name}:${index}`}
+            // Router names and summaries can be long unbroken strings; wrap them inside the row.
+            label={<span className="block min-w-0 wrap-anywhere">{skillLabel(skill.name)}</span>}
+          >
+            <div className="min-w-0 space-y-1 py-1.5 wrap-anywhere">
               <Badge variant={status.variant}>{status.label}</Badge>
               {skill.summary && (
                 <div className={`text-muted-foreground ${typeStyle("caption.default")}`}>
