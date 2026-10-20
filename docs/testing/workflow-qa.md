@@ -1497,8 +1497,8 @@ reports preserve failed candidates and their repeatable artifacts:
   neither the native primitive nor any input command ran.
 - [a055 preserved-image diagnostic](browser-provider-diagnostic-sol-a055d14-2026-10-20.md):
   the original native Box plus four-pixel margin excludes 108 of 300 changed
-  pixels. The unchanged comparison returns false before inference; the new
-  six-question comparison remains untested on those images.
+  pixels. The unchanged comparison returns false before inference; that packet
+  never reached the six-question provider comparison.
 - [d28 gate reachability](browser-gate-live-sol-d28fb67-2026-10-20.md): one real
   gate decision passed with relevance 0.78 and reached the diagnostic stop spy.
   Goal and questions were unchanged. Zero native inputs; this does not establish
@@ -1512,6 +1512,13 @@ reports preserve failed candidates and their repeatable artifacts:
   press/release. V2 refused before pressing because two hover checks fell below
   threshold; its quota warning was already present and unchanged. Neither result
   establishes production challenge strength or host-form acceptance.
+- [af229cc comparison corpus](browser-comparison-sol-af229cc-2026-10-20.md): the
+  preserved v2 pair and an independent border-only hover both produced false
+  negatives at the unchanged threshold. Six semantic changes were refused, an
+  instruction change failed deterministic containment, and unchanged pixels
+  passed without inference. Eight real requests, no retries or native input;
+  exact image transforms and per-question wire references were verified. This
+  remains a functional failure, not native CAPTCHA acceptance.
 
 These reports do not establish hosted sandbox isolation, production challenge
 solving, controlled inbox delivery, or customer submission acceptance. Final
