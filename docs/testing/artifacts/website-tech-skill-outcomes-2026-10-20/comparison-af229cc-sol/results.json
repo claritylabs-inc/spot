@@ -1,0 +1,1223 @@
+{
+  "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+  "providerRequests": 8,
+  "results": [
+    {
+      "id": "preserved-857",
+      "expected": true,
+      "source": "Actual preserved857 v2 captures, exact original refined Rect",
+      "visible": {
+        "x": 283,
+        "y": 332,
+        "width": 304,
+        "height": 78
+      },
+      "located": {
+        "x": 296.6533333333333,
+        "y": 355.04,
+        "width": 27.306666666666672,
+        "height": 28.159999999999968
+      },
+      "delta": {
+        "changedPixels": 300,
+        "bounds": {
+          "left": 13,
+          "top": 23,
+          "right": 40,
+          "bottom": 50
+        }
+      },
+      "region": {
+        "x": 9,
+        "y": 19,
+        "right": 45,
+        "bottom": 56
+      },
+      "targetScale": 8,
+      "contained": true,
+      "closureInvocations": 1,
+      "logicalRequests": 1,
+      "providerRequests": 1,
+      "beforeRgbaSha256": "22fd946f761182d648bd2436e196fcf47b96ed47992882dff7861f19bec07518",
+      "afterRgbaSha256": "afae2031ad610a11f6d131408fbd9c4d2694e80124ec189b0732b311a8f875b4",
+      "actualRequestSha256": "b0f2ccb4b355373f49baf12a705480da5609d97a79f3508a3b70a55fbf96f439",
+      "images": [
+        {
+          "file": "preserved-857-transport-0.png",
+          "sha256": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215",
+          "bytes": 13541
+        },
+        {
+          "file": "preserved-857-transport-1.png",
+          "sha256": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d",
+          "bytes": 13566
+        },
+        {
+          "file": "preserved-857-transport-2.png",
+          "sha256": "234478538ac49c7b08ca3b41491e45ae22c88edbf77b47d0521d316635f9ed82",
+          "bytes": 5040
+        },
+        {
+          "file": "preserved-857-transport-3.png",
+          "sha256": "7738abc94688b1876e9dcdfa8fd619b62ad992dae3fde617c75984178db3e0bf",
+          "bytes": 5049
+        }
+      ],
+      "questionImagePairs": [
+        {
+          "questionId": "same_instruction",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_images",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_selection",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_control",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "no_new_mark",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "style_only",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        }
+      ],
+      "transformsVerified": true,
+      "sharedStateHasNoImages": true,
+      "preservedByteIdentity": true,
+      "wireStateQuestionsAssetsEqual": true,
+      "httpStatus": 200,
+      "model": "jev-1.13.0",
+      "answers": {
+        "same_instruction": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "same_images": {
+          "type": "noul",
+          "noul": 0.97
+        },
+        "same_selection": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "same_control": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "no_new_mark": {
+          "type": "noul",
+          "noul": 0.9
+        },
+        "style_only": {
+          "type": "noul",
+          "noul": 0.87
+        }
+      },
+      "approved": false,
+      "elapsedMs": 872,
+      "path": "real_provider_comparison",
+      "classification": "semantic_false_negative"
+    },
+    {
+      "id": "unchanged",
+      "expected": true,
+      "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+      "visible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "located": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "delta": {
+        "changedPixels": 0,
+        "bounds": null
+      },
+      "region": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "targetScale": 8,
+      "contained": true,
+      "closureInvocations": 1,
+      "logicalRequests": 0,
+      "providerRequests": 0,
+      "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+      "afterRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+      "approved": true,
+      "elapsedMs": 6,
+      "path": "unchanged_fast_path",
+      "classification": "expected_code_path"
+    },
+    {
+      "id": "border-hover",
+      "expected": true,
+      "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+      "visible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "located": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "delta": {
+        "changedPixels": 636,
+        "bounds": {
+          "left": 120,
+          "top": 60,
+          "right": 175,
+          "bottom": 115
+        }
+      },
+      "region": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "targetScale": 8,
+      "contained": true,
+      "closureInvocations": 1,
+      "logicalRequests": 1,
+      "providerRequests": 1,
+      "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+      "afterRgbaSha256": "5de5d1620c6977f1405247b6c8fb9b116b9230177f9b1872f2d4d54dc89b3584",
+      "actualRequestSha256": "2ba3aab772f3abff5258ec0a2beb0d36a36a6a754350e8ceb84878e30146fcb9",
+      "images": [
+        {
+          "file": "border-hover-transport-0.png",
+          "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "bytes": 7830
+        },
+        {
+          "file": "border-hover-transport-1.png",
+          "sha256": "2d1f4ba1fb7a5af754585663ef62d2db75d90557bb8e5fb63150e97bf9fcaa78",
+          "bytes": 7828
+        },
+        {
+          "file": "border-hover-transport-2.png",
+          "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "bytes": 4450
+        },
+        {
+          "file": "border-hover-transport-3.png",
+          "sha256": "e3ebfc60dedc120ca0d6c77a72170e484e97750dc4ced504f1a82e99a05ae6fb",
+          "bytes": 4450
+        }
+      ],
+      "questionImagePairs": [
+        {
+          "questionId": "same_instruction",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_images",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_selection",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_control",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "no_new_mark",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "style_only",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        }
+      ],
+      "transformsVerified": true,
+      "sharedStateHasNoImages": true,
+      "preservedByteIdentity": false,
+      "wireStateQuestionsAssetsEqual": true,
+      "httpStatus": 200,
+      "model": "jev-1.13.0",
+      "answers": {
+        "same_instruction": {
+          "type": "noul",
+          "noul": 0.97
+        },
+        "same_images": {
+          "type": "noul",
+          "noul": 0.97
+        },
+        "same_selection": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "same_control": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "no_new_mark": {
+          "type": "noul",
+          "noul": 0.93
+        },
+        "style_only": {
+          "type": "noul",
+          "noul": 0.96
+        }
+      },
+      "approved": false,
+      "elapsedMs": 967,
+      "path": "real_provider_comparison",
+      "classification": "semantic_false_negative"
+    },
+    {
+      "id": "added-tick",
+      "expected": false,
+      "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+      "visible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "located": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "delta": {
+        "changedPixels": 304,
+        "bounds": {
+          "left": 130,
+          "top": 72,
+          "right": 165,
+          "bottom": 101
+        }
+      },
+      "region": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "targetScale": 8,
+      "contained": true,
+      "closureInvocations": 1,
+      "logicalRequests": 1,
+      "providerRequests": 1,
+      "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+      "afterRgbaSha256": "4970ca72f235fe697def407e0ad99a2fa9e4ea4fe7d2f6e8761a08c9b4e86a90",
+      "actualRequestSha256": "8968fd89f9b664c47df2416bdb2e254c13da891b44ce4b49ac5a07c50bf318eb",
+      "images": [
+        {
+          "file": "added-tick-transport-0.png",
+          "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "bytes": 7830
+        },
+        {
+          "file": "added-tick-transport-1.png",
+          "sha256": "c1afadbd4cb50c471f6c28d393f6a7c31e088b032cc437089cdd279815ad6bbe",
+          "bytes": 8779
+        },
+        {
+          "file": "added-tick-transport-2.png",
+          "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "bytes": 4450
+        },
+        {
+          "file": "added-tick-transport-3.png",
+          "sha256": "e12fe37d7919113f877fa1d22ec1c4610b4e792d541de9c4134bdb5c56eb01b4",
+          "bytes": 5736
+        }
+      ],
+      "questionImagePairs": [
+        {
+          "questionId": "same_instruction",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_images",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_selection",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_control",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "no_new_mark",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "style_only",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        }
+      ],
+      "transformsVerified": true,
+      "sharedStateHasNoImages": true,
+      "preservedByteIdentity": false,
+      "wireStateQuestionsAssetsEqual": true,
+      "httpStatus": 200,
+      "model": "jev-1.13.0",
+      "answers": {
+        "same_instruction": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "same_images": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "same_selection": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "same_control": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "no_new_mark": {
+          "type": "noul",
+          "noul": 0.01
+        },
+        "style_only": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "approved": false,
+      "elapsedMs": 930,
+      "path": "real_provider_comparison",
+      "classification": "semantic_true_negative"
+    },
+    {
+      "id": "removed-mark",
+      "expected": false,
+      "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+      "visible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "located": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "delta": {
+        "changedPixels": 304,
+        "bounds": {
+          "left": 130,
+          "top": 72,
+          "right": 165,
+          "bottom": 101
+        }
+      },
+      "region": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "targetScale": 8,
+      "contained": true,
+      "closureInvocations": 1,
+      "logicalRequests": 1,
+      "providerRequests": 1,
+      "beforeRgbaSha256": "4970ca72f235fe697def407e0ad99a2fa9e4ea4fe7d2f6e8761a08c9b4e86a90",
+      "afterRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+      "actualRequestSha256": "c16595fcaa21ca523ffa0068113d5f92d5c95d2942595d967289a4ba563a8b08",
+      "images": [
+        {
+          "file": "removed-mark-transport-0.png",
+          "sha256": "c1afadbd4cb50c471f6c28d393f6a7c31e088b032cc437089cdd279815ad6bbe",
+          "bytes": 8779
+        },
+        {
+          "file": "removed-mark-transport-1.png",
+          "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "bytes": 7830
+        },
+        {
+          "file": "removed-mark-transport-2.png",
+          "sha256": "e12fe37d7919113f877fa1d22ec1c4610b4e792d541de9c4134bdb5c56eb01b4",
+          "bytes": 5736
+        },
+        {
+          "file": "removed-mark-transport-3.png",
+          "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "bytes": 4450
+        }
+      ],
+      "questionImagePairs": [
+        {
+          "questionId": "same_instruction",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_images",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_selection",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_control",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "no_new_mark",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "style_only",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        }
+      ],
+      "transformsVerified": true,
+      "sharedStateHasNoImages": true,
+      "preservedByteIdentity": false,
+      "wireStateQuestionsAssetsEqual": true,
+      "httpStatus": 200,
+      "model": "jev-1.13.0",
+      "answers": {
+        "same_instruction": {
+          "type": "noul",
+          "noul": 0.97
+        },
+        "same_images": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "same_selection": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "same_control": {
+          "type": "noul",
+          "noul": 0.9
+        },
+        "no_new_mark": {
+          "type": "noul",
+          "noul": 0.01
+        },
+        "style_only": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "approved": false,
+      "elapsedMs": 967,
+      "path": "real_provider_comparison",
+      "classification": "semantic_true_negative"
+    },
+    {
+      "id": "new-spinner",
+      "expected": false,
+      "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+      "visible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "located": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "delta": {
+        "changedPixels": 576,
+        "bounds": {
+          "left": 130,
+          "top": 70,
+          "right": 165,
+          "bottom": 105
+        }
+      },
+      "region": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "targetScale": 8,
+      "contained": true,
+      "closureInvocations": 1,
+      "logicalRequests": 1,
+      "providerRequests": 1,
+      "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+      "afterRgbaSha256": "0122f4cbdccd8b96e4a9331a1e4f57ac9ec0e8c3bfc9ffc0e7add95f85592d01",
+      "actualRequestSha256": "ad26020d7d2cb3cea560c8e63a9cc4d00aa11b0dca6487151669d752a064af6b",
+      "images": [
+        {
+          "file": "new-spinner-transport-0.png",
+          "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "bytes": 7830
+        },
+        {
+          "file": "new-spinner-transport-1.png",
+          "sha256": "51976df07732637924bfce3e8ae5efdad61a763c10432ced56942a96e369ec6a",
+          "bytes": 9293
+        },
+        {
+          "file": "new-spinner-transport-2.png",
+          "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "bytes": 4450
+        },
+        {
+          "file": "new-spinner-transport-3.png",
+          "sha256": "1a6d8b17c4af726a33e245666e46b86952e4efff6e1a1ee21b9eed99d1551eb3",
+          "bytes": 6398
+        }
+      ],
+      "questionImagePairs": [
+        {
+          "questionId": "same_instruction",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_images",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_selection",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_control",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "no_new_mark",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "style_only",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        }
+      ],
+      "transformsVerified": true,
+      "sharedStateHasNoImages": true,
+      "preservedByteIdentity": false,
+      "wireStateQuestionsAssetsEqual": true,
+      "httpStatus": 200,
+      "model": "jev-1.13.0",
+      "answers": {
+        "same_instruction": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "same_images": {
+          "type": "noul",
+          "noul": 0.85
+        },
+        "same_selection": {
+          "type": "noul",
+          "noul": 0.68
+        },
+        "same_control": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "no_new_mark": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "style_only": {
+          "type": "noul",
+          "noul": 0.08
+        }
+      },
+      "approved": false,
+      "elapsedMs": 902,
+      "path": "real_provider_comparison",
+      "classification": "semantic_true_negative"
+    },
+    {
+      "id": "replaced-picture",
+      "expected": false,
+      "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+      "visible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "located": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "delta": {
+        "changedPixels": 1398,
+        "bounds": {
+          "left": 124,
+          "top": 68,
+          "right": 171,
+          "bottom": 111
+        }
+      },
+      "region": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "targetScale": 8,
+      "contained": true,
+      "closureInvocations": 1,
+      "logicalRequests": 1,
+      "providerRequests": 1,
+      "beforeRgbaSha256": "a2d2c41bdc5233c563b916ebb375c0fbfc2a1e68050c95800fc52f114bcbb480",
+      "afterRgbaSha256": "5a114b971302fcd296c9c8a58d19b374b3da29d4f3fa3bf32db0f3e7453ae780",
+      "actualRequestSha256": "8eea5a30f85993f29047a508c0917b5719242751044511fb387e41b3e110d89c",
+      "images": [
+        {
+          "file": "replaced-picture-transport-0.png",
+          "sha256": "d8a51c0ce6a337decbce8aae572ab4dd7387389e5d2155f1bc7f159a84cc447e",
+          "bytes": 8932
+        },
+        {
+          "file": "replaced-picture-transport-1.png",
+          "sha256": "7de72fdc319d50356159e01624da62670610a74de5a65ae53d66dc101af0593f",
+          "bytes": 8518
+        },
+        {
+          "file": "replaced-picture-transport-2.png",
+          "sha256": "09c1d52d9103b21f8559309ea58ec45bf9c94fd54097d37d90eb75a4fcf26e2d",
+          "bytes": 6049
+        },
+        {
+          "file": "replaced-picture-transport-3.png",
+          "sha256": "980a51a5e514ea7b5dc7431c589907a578f116ad093eb9e676b1ee909b592e45",
+          "bytes": 5483
+        }
+      ],
+      "questionImagePairs": [
+        {
+          "questionId": "same_instruction",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_images",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_selection",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_control",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "no_new_mark",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "style_only",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        }
+      ],
+      "transformsVerified": true,
+      "sharedStateHasNoImages": true,
+      "preservedByteIdentity": false,
+      "wireStateQuestionsAssetsEqual": true,
+      "httpStatus": 200,
+      "model": "jev-1.13.0",
+      "answers": {
+        "same_instruction": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "same_images": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "same_selection": {
+          "type": "noul",
+          "noul": 0.89
+        },
+        "same_control": {
+          "type": "noul",
+          "noul": 0.92
+        },
+        "no_new_mark": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "style_only": {
+          "type": "noul",
+          "noul": 0.01
+        }
+      },
+      "approved": false,
+      "elapsedMs": 803,
+      "path": "real_provider_comparison",
+      "classification": "semantic_true_negative"
+    },
+    {
+      "id": "changed-instruction",
+      "expected": false,
+      "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+      "visible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "located": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "delta": {
+        "changedPixels": 280,
+        "bounds": {
+          "left": 97,
+          "top": 15,
+          "right": 135,
+          "bottom": 29
+        }
+      },
+      "region": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "targetScale": 8,
+      "contained": false,
+      "closureInvocations": 1,
+      "logicalRequests": 0,
+      "providerRequests": 0,
+      "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+      "afterRgbaSha256": "2f29fc68dd725bae217c8f5c65e8a2011b9526ff53f59d6b92c5fb8344116f15",
+      "approved": false,
+      "elapsedMs": 2,
+      "path": "deterministic_containment_refusal",
+      "classification": "expected_code_path"
+    },
+    {
+      "id": "moved-resized",
+      "expected": false,
+      "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+      "visible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "located": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "delta": {
+        "changedPixels": 852,
+        "bounds": {
+          "left": 120,
+          "top": 60,
+          "right": 178,
+          "bottom": 118
+        }
+      },
+      "region": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "targetScale": 8,
+      "contained": true,
+      "closureInvocations": 1,
+      "logicalRequests": 1,
+      "providerRequests": 1,
+      "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+      "afterRgbaSha256": "6a81d2480defd402dfc259f533895e9085b29639853c7a28af3ee1b7228d0504",
+      "actualRequestSha256": "f47d0d0c2797b671de5f3fed8be759c22998b64b59e5ad46e9b494ed586ad87b",
+      "images": [
+        {
+          "file": "moved-resized-transport-0.png",
+          "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "bytes": 7830
+        },
+        {
+          "file": "moved-resized-transport-1.png",
+          "sha256": "484a67f71c36a85760bafc438dd1b9706ea4c9732e2947bc7eac8cd6e92db8a4",
+          "bytes": 7832
+        },
+        {
+          "file": "moved-resized-transport-2.png",
+          "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "bytes": 4450
+        },
+        {
+          "file": "moved-resized-transport-3.png",
+          "sha256": "4e14e82a75e4e94e7d18102295659144722c95a1a9d333361c491b02236dbd18",
+          "bytes": 4452
+        }
+      ],
+      "questionImagePairs": [
+        {
+          "questionId": "same_instruction",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_images",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_selection",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_control",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "no_new_mark",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "style_only",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        }
+      ],
+      "transformsVerified": true,
+      "sharedStateHasNoImages": true,
+      "preservedByteIdentity": false,
+      "wireStateQuestionsAssetsEqual": true,
+      "httpStatus": 200,
+      "model": "jev-1.13.0",
+      "answers": {
+        "same_instruction": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "same_images": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "same_selection": {
+          "type": "noul",
+          "noul": 0.98
+        },
+        "same_control": {
+          "type": "noul",
+          "noul": 0.58
+        },
+        "no_new_mark": {
+          "type": "noul",
+          "noul": 0.91
+        },
+        "style_only": {
+          "type": "noul",
+          "noul": 0.53
+        }
+      },
+      "approved": false,
+      "elapsedMs": 880,
+      "path": "real_provider_comparison",
+      "classification": "semantic_true_negative"
+    },
+    {
+      "id": "selected-state",
+      "expected": false,
+      "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+      "visible": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "located": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "delta": {
+        "changedPixels": 1108,
+        "bounds": {
+          "left": 120,
+          "top": 60,
+          "right": 175,
+          "bottom": 115
+        }
+      },
+      "region": {
+        "x": 116,
+        "y": 56,
+        "right": 180,
+        "bottom": 120
+      },
+      "targetScale": 8,
+      "contained": true,
+      "closureInvocations": 1,
+      "logicalRequests": 1,
+      "providerRequests": 1,
+      "beforeRgbaSha256": "a2d2c41bdc5233c563b916ebb375c0fbfc2a1e68050c95800fc52f114bcbb480",
+      "afterRgbaSha256": "93227a1be77cde13ce5e99b5bf8ca2ee4ed16f4785f5bf94e13b30b2c19e3617",
+      "actualRequestSha256": "35247d129d5c058e3279abaf891836e8f34e264867b0a0dd3cf5a8f91d935196",
+      "images": [
+        {
+          "file": "selected-state-transport-0.png",
+          "sha256": "d8a51c0ce6a337decbce8aae572ab4dd7387389e5d2155f1bc7f159a84cc447e",
+          "bytes": 8932
+        },
+        {
+          "file": "selected-state-transport-1.png",
+          "sha256": "e896f2984f229e4271b9513307cd8411be92c9a92d3f875080e5db00d38b82ef",
+          "bytes": 9398
+        },
+        {
+          "file": "selected-state-transport-2.png",
+          "sha256": "09c1d52d9103b21f8559309ea58ec45bf9c94fd54097d37d90eb75a4fcf26e2d",
+          "bytes": 6049
+        },
+        {
+          "file": "selected-state-transport-3.png",
+          "sha256": "a2e8e30a4dd0a7af8124eb58a34d5ddf1811ef596e30e52dacce2f8d969ec080",
+          "bytes": 6692
+        }
+      ],
+      "questionImagePairs": [
+        {
+          "questionId": "same_instruction",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_images",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_selection",
+          "imageIndexes": [
+            0,
+            1
+          ]
+        },
+        {
+          "questionId": "same_control",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "no_new_mark",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        },
+        {
+          "questionId": "style_only",
+          "imageIndexes": [
+            2,
+            3
+          ]
+        }
+      ],
+      "transformsVerified": true,
+      "sharedStateHasNoImages": true,
+      "preservedByteIdentity": false,
+      "wireStateQuestionsAssetsEqual": true,
+      "httpStatus": 200,
+      "model": "jev-1.13.0",
+      "answers": {
+        "same_instruction": {
+          "type": "noul",
+          "noul": 0.96
+        },
+        "same_images": {
+          "type": "noul",
+          "noul": 0.94
+        },
+        "same_selection": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "same_control": {
+          "type": "noul",
+          "noul": 0.88
+        },
+        "no_new_mark": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "style_only": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "approved": false,
+      "elapsedMs": 899,
+      "path": "real_provider_comparison",
+      "classification": "semantic_true_negative"
+    }
+  ]
+}

@@ -1,0 +1,4325 @@
+{
+  "coordinateConvention": "JSONPointer after asset-key normalization; UTF16 spans are zero-based/end-exclusive in each original string. Normalized asset key original hash and spans bind its original opaque UUID. No content besides image-reference normalization and raw-PNG omission changed.",
+  "requests": [
+    {
+      "id": "preserved-857",
+      "originalLogicalSha256": "b0f2ccb4b355373f49baf12a705480da5609d97a79f3508a3b70a55fbf96f439",
+      "originalWireSha256": "2c8950240f6423a78e070edbf975ee02c3ffaaf85f0ff79d10ef5cb92319cdd9",
+      "sanitizedLogicalSha256": "b805ff44f7801eb6ddcc1474196ecab58233fd7ddd13861e6f2a2c1b9072acee",
+      "sanitizedWireSha256": "3faba38bc6c1f6133a48b49a8051955c385244d485988b90fa85bd762d264c74",
+      "storedBeforeInference": true,
+      "privateMode": "0600",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "document": "logical",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "663e157c3cb0d6896e475d07fa40d6d8133bab49198bb7d6523e842466a28879",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-0/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              18056
+            ]
+          ],
+          "originalValueSha256": "6506898ede0c2f897faac899ffd952a606acbc50ff721a6447f51b83030cbe39",
+          "decodedSha256": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215",
+          "replacement": "[PNG omitted; exact bytes in preserved-857-transport-0.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "3fda49a6b9c2c65d1e82a44a15e6867f5962390b8db712730b8431440cd4936c",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              18088
+            ]
+          ],
+          "originalValueSha256": "201b8cd65bcb26febdee79147b5025e084436628671acb769e96a6521e5f67cc",
+          "decodedSha256": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d",
+          "replacement": "[PNG omitted; exact bytes in preserved-857-transport-1.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "4176681e67dd03588969a793a360177e498ece18099d8c0ce0c89be9d9857711",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              6720
+            ]
+          ],
+          "originalValueSha256": "9833e92a7ff18a41056b68e0d3aac51e55a5e9a4b24500b8e0a6c8d4baf15bbb",
+          "decodedSha256": "234478538ac49c7b08ca3b41491e45ae22c88edbf77b47d0521d316635f9ed82",
+          "replacement": "[PNG omitted; exact bytes in preserved-857-transport-2.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "83e9f19d10daef2ab20d01dff632eb005fb713ad50d179c584e5d0820f34f14f",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              6732
+            ]
+          ],
+          "originalValueSha256": "c8534cfbb45097fb8d468ed543f50c7a0fe79817963987129bd7b76383112083",
+          "decodedSha256": "7738abc94688b1876e9dcdfa8fd619b62ad992dae3fde617c75984178db3e0bf",
+          "replacement": "[PNG omitted; exact bytes in preserved-857-transport-3.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "663e157c3cb0d6896e475d07fa40d6d8133bab49198bb7d6523e842466a28879",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3fda49a6b9c2c65d1e82a44a15e6867f5962390b8db712730b8431440cd4936c",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "663e157c3cb0d6896e475d07fa40d6d8133bab49198bb7d6523e842466a28879",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3fda49a6b9c2c65d1e82a44a15e6867f5962390b8db712730b8431440cd4936c",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "663e157c3cb0d6896e475d07fa40d6d8133bab49198bb7d6523e842466a28879",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3fda49a6b9c2c65d1e82a44a15e6867f5962390b8db712730b8431440cd4936c",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4176681e67dd03588969a793a360177e498ece18099d8c0ce0c89be9d9857711",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "83e9f19d10daef2ab20d01dff632eb005fb713ad50d179c584e5d0820f34f14f",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4176681e67dd03588969a793a360177e498ece18099d8c0ce0c89be9d9857711",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "83e9f19d10daef2ab20d01dff632eb005fb713ad50d179c584e5d0820f34f14f",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4176681e67dd03588969a793a360177e498ece18099d8c0ce0c89be9d9857711",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "83e9f19d10daef2ab20d01dff632eb005fb713ad50d179c584e5d0820f34f14f",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "663e157c3cb0d6896e475d07fa40d6d8133bab49198bb7d6523e842466a28879",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              18056
+            ]
+          ],
+          "originalValueSha256": "6506898ede0c2f897faac899ffd952a606acbc50ff721a6447f51b83030cbe39",
+          "decodedSha256": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215",
+          "replacement": "[PNG omitted; exact bytes in preserved-857-transport-0.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "3fda49a6b9c2c65d1e82a44a15e6867f5962390b8db712730b8431440cd4936c",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              18088
+            ]
+          ],
+          "originalValueSha256": "201b8cd65bcb26febdee79147b5025e084436628671acb769e96a6521e5f67cc",
+          "decodedSha256": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d",
+          "replacement": "[PNG omitted; exact bytes in preserved-857-transport-1.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "4176681e67dd03588969a793a360177e498ece18099d8c0ce0c89be9d9857711",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              6720
+            ]
+          ],
+          "originalValueSha256": "9833e92a7ff18a41056b68e0d3aac51e55a5e9a4b24500b8e0a6c8d4baf15bbb",
+          "decodedSha256": "234478538ac49c7b08ca3b41491e45ae22c88edbf77b47d0521d316635f9ed82",
+          "replacement": "[PNG omitted; exact bytes in preserved-857-transport-2.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "83e9f19d10daef2ab20d01dff632eb005fb713ad50d179c584e5d0820f34f14f",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              6732
+            ]
+          ],
+          "originalValueSha256": "c8534cfbb45097fb8d468ed543f50c7a0fe79817963987129bd7b76383112083",
+          "decodedSha256": "7738abc94688b1876e9dcdfa8fd619b62ad992dae3fde617c75984178db3e0bf",
+          "replacement": "[PNG omitted; exact bytes in preserved-857-transport-3.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "663e157c3cb0d6896e475d07fa40d6d8133bab49198bb7d6523e842466a28879",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3fda49a6b9c2c65d1e82a44a15e6867f5962390b8db712730b8431440cd4936c",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "663e157c3cb0d6896e475d07fa40d6d8133bab49198bb7d6523e842466a28879",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3fda49a6b9c2c65d1e82a44a15e6867f5962390b8db712730b8431440cd4936c",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "663e157c3cb0d6896e475d07fa40d6d8133bab49198bb7d6523e842466a28879",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3fda49a6b9c2c65d1e82a44a15e6867f5962390b8db712730b8431440cd4936c",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4176681e67dd03588969a793a360177e498ece18099d8c0ce0c89be9d9857711",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "83e9f19d10daef2ab20d01dff632eb005fb713ad50d179c584e5d0820f34f14f",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4176681e67dd03588969a793a360177e498ece18099d8c0ce0c89be9d9857711",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "83e9f19d10daef2ab20d01dff632eb005fb713ad50d179c584e5d0820f34f14f",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4176681e67dd03588969a793a360177e498ece18099d8c0ce0c89be9d9857711",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "83e9f19d10daef2ab20d01dff632eb005fb713ad50d179c584e5d0820f34f14f",
+          "replacement": "image-3"
+        }
+      ]
+    },
+    {
+      "id": "border-hover",
+      "originalLogicalSha256": "2ba3aab772f3abff5258ec0a2beb0d36a36a6a754350e8ceb84878e30146fcb9",
+      "originalWireSha256": "cfb33111a7dbe7a0b05a6c8847ebd7a53cd468576e5597d4fc3976c6344b4f73",
+      "sanitizedLogicalSha256": "2dc10aafcbf5694d740be174e9d5b7fd8b62c498a4e96bb4b63350467345148b",
+      "sanitizedWireSha256": "6d649b5792aa1eb50dd001e9d1b2f047ac246024bd74962cffc9f365162bf926",
+      "storedBeforeInference": true,
+      "privateMode": "0600",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "document": "logical",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "78950a868e8dc6d4b76cbc6a0e16f6f069a7b0de6b0a398336c8fd80078c8cc7",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-0/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "4ea08672aa3b3f83a63769b88f986c1838124da10856211890e9010f347c4e52",
+          "decodedSha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "replacement": "[PNG omitted; exact bytes in border-hover-transport-0.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "aea32f3c81081c39732e4b4af540a263d44fdf4ad1f565da17f8e162f7e62bc5",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "12f25a7147ea06d7f394d40eadc485764898da613aadcdafdc3c841faebbaf2a",
+          "decodedSha256": "2d1f4ba1fb7a5af754585663ef62d2db75d90557bb8e5fb63150e97bf9fcaa78",
+          "replacement": "[PNG omitted; exact bytes in border-hover-transport-1.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "62d0ebb82d9df093695549ee4e2a4313cea669de6c32501baa6fbb73d4f39ddb",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "404151e7ae14f56682fc8b3a138cec310a41b1f6f6df792e440118401309c898",
+          "decodedSha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "replacement": "[PNG omitted; exact bytes in border-hover-transport-2.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "9f3ed992bdae12a80b50a0713cd36b2f9153d685ec1f4f318eba388d135aeb25",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "35dc935e3c52b5dd54951fe29c513eb1df2954822a476bf2585f9fac06b8b965",
+          "decodedSha256": "e3ebfc60dedc120ca0d6c77a72170e484e97750dc4ced504f1a82e99a05ae6fb",
+          "replacement": "[PNG omitted; exact bytes in border-hover-transport-3.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "78950a868e8dc6d4b76cbc6a0e16f6f069a7b0de6b0a398336c8fd80078c8cc7",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "aea32f3c81081c39732e4b4af540a263d44fdf4ad1f565da17f8e162f7e62bc5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "78950a868e8dc6d4b76cbc6a0e16f6f069a7b0de6b0a398336c8fd80078c8cc7",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "aea32f3c81081c39732e4b4af540a263d44fdf4ad1f565da17f8e162f7e62bc5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "78950a868e8dc6d4b76cbc6a0e16f6f069a7b0de6b0a398336c8fd80078c8cc7",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "aea32f3c81081c39732e4b4af540a263d44fdf4ad1f565da17f8e162f7e62bc5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "62d0ebb82d9df093695549ee4e2a4313cea669de6c32501baa6fbb73d4f39ddb",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9f3ed992bdae12a80b50a0713cd36b2f9153d685ec1f4f318eba388d135aeb25",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "62d0ebb82d9df093695549ee4e2a4313cea669de6c32501baa6fbb73d4f39ddb",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9f3ed992bdae12a80b50a0713cd36b2f9153d685ec1f4f318eba388d135aeb25",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "62d0ebb82d9df093695549ee4e2a4313cea669de6c32501baa6fbb73d4f39ddb",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9f3ed992bdae12a80b50a0713cd36b2f9153d685ec1f4f318eba388d135aeb25",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "78950a868e8dc6d4b76cbc6a0e16f6f069a7b0de6b0a398336c8fd80078c8cc7",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "4ea08672aa3b3f83a63769b88f986c1838124da10856211890e9010f347c4e52",
+          "decodedSha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "replacement": "[PNG omitted; exact bytes in border-hover-transport-0.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "aea32f3c81081c39732e4b4af540a263d44fdf4ad1f565da17f8e162f7e62bc5",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "12f25a7147ea06d7f394d40eadc485764898da613aadcdafdc3c841faebbaf2a",
+          "decodedSha256": "2d1f4ba1fb7a5af754585663ef62d2db75d90557bb8e5fb63150e97bf9fcaa78",
+          "replacement": "[PNG omitted; exact bytes in border-hover-transport-1.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "62d0ebb82d9df093695549ee4e2a4313cea669de6c32501baa6fbb73d4f39ddb",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "404151e7ae14f56682fc8b3a138cec310a41b1f6f6df792e440118401309c898",
+          "decodedSha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "replacement": "[PNG omitted; exact bytes in border-hover-transport-2.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "9f3ed992bdae12a80b50a0713cd36b2f9153d685ec1f4f318eba388d135aeb25",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "35dc935e3c52b5dd54951fe29c513eb1df2954822a476bf2585f9fac06b8b965",
+          "decodedSha256": "e3ebfc60dedc120ca0d6c77a72170e484e97750dc4ced504f1a82e99a05ae6fb",
+          "replacement": "[PNG omitted; exact bytes in border-hover-transport-3.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "78950a868e8dc6d4b76cbc6a0e16f6f069a7b0de6b0a398336c8fd80078c8cc7",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "aea32f3c81081c39732e4b4af540a263d44fdf4ad1f565da17f8e162f7e62bc5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "78950a868e8dc6d4b76cbc6a0e16f6f069a7b0de6b0a398336c8fd80078c8cc7",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "aea32f3c81081c39732e4b4af540a263d44fdf4ad1f565da17f8e162f7e62bc5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "78950a868e8dc6d4b76cbc6a0e16f6f069a7b0de6b0a398336c8fd80078c8cc7",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "aea32f3c81081c39732e4b4af540a263d44fdf4ad1f565da17f8e162f7e62bc5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "62d0ebb82d9df093695549ee4e2a4313cea669de6c32501baa6fbb73d4f39ddb",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9f3ed992bdae12a80b50a0713cd36b2f9153d685ec1f4f318eba388d135aeb25",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "62d0ebb82d9df093695549ee4e2a4313cea669de6c32501baa6fbb73d4f39ddb",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9f3ed992bdae12a80b50a0713cd36b2f9153d685ec1f4f318eba388d135aeb25",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "62d0ebb82d9df093695549ee4e2a4313cea669de6c32501baa6fbb73d4f39ddb",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9f3ed992bdae12a80b50a0713cd36b2f9153d685ec1f4f318eba388d135aeb25",
+          "replacement": "image-3"
+        }
+      ]
+    },
+    {
+      "id": "added-tick",
+      "originalLogicalSha256": "8968fd89f9b664c47df2416bdb2e254c13da891b44ce4b49ac5a07c50bf318eb",
+      "originalWireSha256": "29945b0f2095594d3e047d08208da240c189958403fc56c8605820241d8ddde5",
+      "sanitizedLogicalSha256": "06ce9cef7026282ea4afb1eb7a26bf6988ab71b58c0a346110b84572ed65c5a6",
+      "sanitizedWireSha256": "4d96ec88c9a449c052c2885daeab7c3110267d12db54c6fd3caa3544afd1b70c",
+      "storedBeforeInference": true,
+      "privateMode": "0600",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "document": "logical",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "6caa8518622e4987fb550c511283352f9c5fdb4657ade63b704869c8624aa807",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-0/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "4ea08672aa3b3f83a63769b88f986c1838124da10856211890e9010f347c4e52",
+          "decodedSha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "replacement": "[PNG omitted; exact bytes in added-tick-transport-0.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "b162c3ab65e51b3d8d8896f34d235bc778eb2ec7474ade7f194cef3370a5ccaf",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              11708
+            ]
+          ],
+          "originalValueSha256": "672c7db337274c3911b6717c985d62ce0461864f63e0aa2cf85639dc4c02ad14",
+          "decodedSha256": "c1afadbd4cb50c471f6c28d393f6a7c31e088b032cc437089cdd279815ad6bbe",
+          "replacement": "[PNG omitted; exact bytes in added-tick-transport-1.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "15e1a73d63a6a752873f0a9d6905658eb2178a31db46bf3819cecba31346e12d",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "404151e7ae14f56682fc8b3a138cec310a41b1f6f6df792e440118401309c898",
+          "decodedSha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "replacement": "[PNG omitted; exact bytes in added-tick-transport-2.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "a3ea76c996c1171bfe0061a570f04a686aa04a11f16fd9be780cc3070b87c456",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              7648
+            ]
+          ],
+          "originalValueSha256": "d67b73aee3930f629bb53943a54ea9bddf195e7f1c9321b577597a95e5672e2c",
+          "decodedSha256": "e12fe37d7919113f877fa1d22ec1c4610b4e792d541de9c4134bdb5c56eb01b4",
+          "replacement": "[PNG omitted; exact bytes in added-tick-transport-3.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "6caa8518622e4987fb550c511283352f9c5fdb4657ade63b704869c8624aa807",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "b162c3ab65e51b3d8d8896f34d235bc778eb2ec7474ade7f194cef3370a5ccaf",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "6caa8518622e4987fb550c511283352f9c5fdb4657ade63b704869c8624aa807",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "b162c3ab65e51b3d8d8896f34d235bc778eb2ec7474ade7f194cef3370a5ccaf",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "6caa8518622e4987fb550c511283352f9c5fdb4657ade63b704869c8624aa807",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "b162c3ab65e51b3d8d8896f34d235bc778eb2ec7474ade7f194cef3370a5ccaf",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "15e1a73d63a6a752873f0a9d6905658eb2178a31db46bf3819cecba31346e12d",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "a3ea76c996c1171bfe0061a570f04a686aa04a11f16fd9be780cc3070b87c456",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "15e1a73d63a6a752873f0a9d6905658eb2178a31db46bf3819cecba31346e12d",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "a3ea76c996c1171bfe0061a570f04a686aa04a11f16fd9be780cc3070b87c456",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "15e1a73d63a6a752873f0a9d6905658eb2178a31db46bf3819cecba31346e12d",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "a3ea76c996c1171bfe0061a570f04a686aa04a11f16fd9be780cc3070b87c456",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "6caa8518622e4987fb550c511283352f9c5fdb4657ade63b704869c8624aa807",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "4ea08672aa3b3f83a63769b88f986c1838124da10856211890e9010f347c4e52",
+          "decodedSha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "replacement": "[PNG omitted; exact bytes in added-tick-transport-0.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "b162c3ab65e51b3d8d8896f34d235bc778eb2ec7474ade7f194cef3370a5ccaf",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              11708
+            ]
+          ],
+          "originalValueSha256": "672c7db337274c3911b6717c985d62ce0461864f63e0aa2cf85639dc4c02ad14",
+          "decodedSha256": "c1afadbd4cb50c471f6c28d393f6a7c31e088b032cc437089cdd279815ad6bbe",
+          "replacement": "[PNG omitted; exact bytes in added-tick-transport-1.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "15e1a73d63a6a752873f0a9d6905658eb2178a31db46bf3819cecba31346e12d",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "404151e7ae14f56682fc8b3a138cec310a41b1f6f6df792e440118401309c898",
+          "decodedSha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "replacement": "[PNG omitted; exact bytes in added-tick-transport-2.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "a3ea76c996c1171bfe0061a570f04a686aa04a11f16fd9be780cc3070b87c456",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              7648
+            ]
+          ],
+          "originalValueSha256": "d67b73aee3930f629bb53943a54ea9bddf195e7f1c9321b577597a95e5672e2c",
+          "decodedSha256": "e12fe37d7919113f877fa1d22ec1c4610b4e792d541de9c4134bdb5c56eb01b4",
+          "replacement": "[PNG omitted; exact bytes in added-tick-transport-3.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "6caa8518622e4987fb550c511283352f9c5fdb4657ade63b704869c8624aa807",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "b162c3ab65e51b3d8d8896f34d235bc778eb2ec7474ade7f194cef3370a5ccaf",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "6caa8518622e4987fb550c511283352f9c5fdb4657ade63b704869c8624aa807",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "b162c3ab65e51b3d8d8896f34d235bc778eb2ec7474ade7f194cef3370a5ccaf",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "6caa8518622e4987fb550c511283352f9c5fdb4657ade63b704869c8624aa807",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "b162c3ab65e51b3d8d8896f34d235bc778eb2ec7474ade7f194cef3370a5ccaf",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "15e1a73d63a6a752873f0a9d6905658eb2178a31db46bf3819cecba31346e12d",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "a3ea76c996c1171bfe0061a570f04a686aa04a11f16fd9be780cc3070b87c456",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "15e1a73d63a6a752873f0a9d6905658eb2178a31db46bf3819cecba31346e12d",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "a3ea76c996c1171bfe0061a570f04a686aa04a11f16fd9be780cc3070b87c456",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "15e1a73d63a6a752873f0a9d6905658eb2178a31db46bf3819cecba31346e12d",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "a3ea76c996c1171bfe0061a570f04a686aa04a11f16fd9be780cc3070b87c456",
+          "replacement": "image-3"
+        }
+      ]
+    },
+    {
+      "id": "removed-mark",
+      "originalLogicalSha256": "c16595fcaa21ca523ffa0068113d5f92d5c95d2942595d967289a4ba563a8b08",
+      "originalWireSha256": "328a53d9689733c231c533b0903f0f0c866aa7d2bee787b7807138004c69741b",
+      "sanitizedLogicalSha256": "ecd16f43a3accee748fc8397f91b3f146851be6d44bfd1ace4e1184f9b856b56",
+      "sanitizedWireSha256": "d5df22ef87cc870f88223c0ebea8f21ef952cc144cc0bb8f3cd7f2cd226eff28",
+      "storedBeforeInference": true,
+      "privateMode": "0600",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "document": "logical",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "16d57025761fbd78a5a0a5e36f6f2ed614c24e5a294b378a7b102e1914b0dc36",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-0/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              11708
+            ]
+          ],
+          "originalValueSha256": "672c7db337274c3911b6717c985d62ce0461864f63e0aa2cf85639dc4c02ad14",
+          "decodedSha256": "c1afadbd4cb50c471f6c28d393f6a7c31e088b032cc437089cdd279815ad6bbe",
+          "replacement": "[PNG omitted; exact bytes in removed-mark-transport-0.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "86a0a55ab07cde4365fe5110c1b033306a08ccccf765337f7968caf6434ab5a5",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "4ea08672aa3b3f83a63769b88f986c1838124da10856211890e9010f347c4e52",
+          "decodedSha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "replacement": "[PNG omitted; exact bytes in removed-mark-transport-1.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "ab9cf0e26e52e16f2c53f7b2452572b32c3864fa319f3e55f107c3e3bd2e80cf",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              7648
+            ]
+          ],
+          "originalValueSha256": "d67b73aee3930f629bb53943a54ea9bddf195e7f1c9321b577597a95e5672e2c",
+          "decodedSha256": "e12fe37d7919113f877fa1d22ec1c4610b4e792d541de9c4134bdb5c56eb01b4",
+          "replacement": "[PNG omitted; exact bytes in removed-mark-transport-2.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "7330997c1ac99b8ac4bef4c21a3eb721c8c79d4ddfcd21ff811d090757d5034e",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "404151e7ae14f56682fc8b3a138cec310a41b1f6f6df792e440118401309c898",
+          "decodedSha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "replacement": "[PNG omitted; exact bytes in removed-mark-transport-3.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "16d57025761fbd78a5a0a5e36f6f2ed614c24e5a294b378a7b102e1914b0dc36",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "86a0a55ab07cde4365fe5110c1b033306a08ccccf765337f7968caf6434ab5a5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "16d57025761fbd78a5a0a5e36f6f2ed614c24e5a294b378a7b102e1914b0dc36",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "86a0a55ab07cde4365fe5110c1b033306a08ccccf765337f7968caf6434ab5a5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "16d57025761fbd78a5a0a5e36f6f2ed614c24e5a294b378a7b102e1914b0dc36",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "86a0a55ab07cde4365fe5110c1b033306a08ccccf765337f7968caf6434ab5a5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "ab9cf0e26e52e16f2c53f7b2452572b32c3864fa319f3e55f107c3e3bd2e80cf",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "7330997c1ac99b8ac4bef4c21a3eb721c8c79d4ddfcd21ff811d090757d5034e",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "ab9cf0e26e52e16f2c53f7b2452572b32c3864fa319f3e55f107c3e3bd2e80cf",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "7330997c1ac99b8ac4bef4c21a3eb721c8c79d4ddfcd21ff811d090757d5034e",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "ab9cf0e26e52e16f2c53f7b2452572b32c3864fa319f3e55f107c3e3bd2e80cf",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "7330997c1ac99b8ac4bef4c21a3eb721c8c79d4ddfcd21ff811d090757d5034e",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "16d57025761fbd78a5a0a5e36f6f2ed614c24e5a294b378a7b102e1914b0dc36",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              11708
+            ]
+          ],
+          "originalValueSha256": "672c7db337274c3911b6717c985d62ce0461864f63e0aa2cf85639dc4c02ad14",
+          "decodedSha256": "c1afadbd4cb50c471f6c28d393f6a7c31e088b032cc437089cdd279815ad6bbe",
+          "replacement": "[PNG omitted; exact bytes in removed-mark-transport-0.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "86a0a55ab07cde4365fe5110c1b033306a08ccccf765337f7968caf6434ab5a5",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "4ea08672aa3b3f83a63769b88f986c1838124da10856211890e9010f347c4e52",
+          "decodedSha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "replacement": "[PNG omitted; exact bytes in removed-mark-transport-1.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "ab9cf0e26e52e16f2c53f7b2452572b32c3864fa319f3e55f107c3e3bd2e80cf",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              7648
+            ]
+          ],
+          "originalValueSha256": "d67b73aee3930f629bb53943a54ea9bddf195e7f1c9321b577597a95e5672e2c",
+          "decodedSha256": "e12fe37d7919113f877fa1d22ec1c4610b4e792d541de9c4134bdb5c56eb01b4",
+          "replacement": "[PNG omitted; exact bytes in removed-mark-transport-2.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "7330997c1ac99b8ac4bef4c21a3eb721c8c79d4ddfcd21ff811d090757d5034e",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "404151e7ae14f56682fc8b3a138cec310a41b1f6f6df792e440118401309c898",
+          "decodedSha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "replacement": "[PNG omitted; exact bytes in removed-mark-transport-3.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "16d57025761fbd78a5a0a5e36f6f2ed614c24e5a294b378a7b102e1914b0dc36",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "86a0a55ab07cde4365fe5110c1b033306a08ccccf765337f7968caf6434ab5a5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "16d57025761fbd78a5a0a5e36f6f2ed614c24e5a294b378a7b102e1914b0dc36",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "86a0a55ab07cde4365fe5110c1b033306a08ccccf765337f7968caf6434ab5a5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "16d57025761fbd78a5a0a5e36f6f2ed614c24e5a294b378a7b102e1914b0dc36",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "86a0a55ab07cde4365fe5110c1b033306a08ccccf765337f7968caf6434ab5a5",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "ab9cf0e26e52e16f2c53f7b2452572b32c3864fa319f3e55f107c3e3bd2e80cf",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "7330997c1ac99b8ac4bef4c21a3eb721c8c79d4ddfcd21ff811d090757d5034e",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "ab9cf0e26e52e16f2c53f7b2452572b32c3864fa319f3e55f107c3e3bd2e80cf",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "7330997c1ac99b8ac4bef4c21a3eb721c8c79d4ddfcd21ff811d090757d5034e",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "ab9cf0e26e52e16f2c53f7b2452572b32c3864fa319f3e55f107c3e3bd2e80cf",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "7330997c1ac99b8ac4bef4c21a3eb721c8c79d4ddfcd21ff811d090757d5034e",
+          "replacement": "image-3"
+        }
+      ]
+    },
+    {
+      "id": "new-spinner",
+      "originalLogicalSha256": "ad26020d7d2cb3cea560c8e63a9cc4d00aa11b0dca6487151669d752a064af6b",
+      "originalWireSha256": "5cdebf29b11172d870c1a7b96ab6f8ee2c94ba38b42d293fa1eb47829e3bee8d",
+      "sanitizedLogicalSha256": "d0a451d590a9fcbca68ca0f432850e08b0fbf11de6214bc9399c26989fae4fb4",
+      "sanitizedWireSha256": "be82a120264db6fc4adaa6bdfa64c38ccca5a44b87b38797a7bd6505653aaabc",
+      "storedBeforeInference": true,
+      "privateMode": "0600",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "document": "logical",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "d137669955f391a5d59f4b9f0482fdbc2f473f030909d67c556be91efe105377",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-0/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "4ea08672aa3b3f83a63769b88f986c1838124da10856211890e9010f347c4e52",
+          "decodedSha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "replacement": "[PNG omitted; exact bytes in new-spinner-transport-0.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "0e392dd05924e5991cf4fa4690ebfa3ca5a93a9c7ec8b89add7b8ba4920972b3",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              12392
+            ]
+          ],
+          "originalValueSha256": "7c7c57581c00715cb982d84fa44b52eeef1e0e461d1073a3825920ccd5bdf8d2",
+          "decodedSha256": "51976df07732637924bfce3e8ae5efdad61a763c10432ced56942a96e369ec6a",
+          "replacement": "[PNG omitted; exact bytes in new-spinner-transport-1.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "c02c7e9298a81d8dcab313b09270c3dfa36df7585e135399069bd02b17a7f2cd",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "404151e7ae14f56682fc8b3a138cec310a41b1f6f6df792e440118401309c898",
+          "decodedSha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "replacement": "[PNG omitted; exact bytes in new-spinner-transport-2.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "fb7a3b26e42aabb4bbdb718d1de7b45b15dac34c118e4ac5161af3a7ba775f58",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              8532
+            ]
+          ],
+          "originalValueSha256": "1fcf85d48f9e9fd58d8ca3c26e3912354ffdf7f99dc891f8928dcd5022184228",
+          "decodedSha256": "1a6d8b17c4af726a33e245666e46b86952e4efff6e1a1ee21b9eed99d1551eb3",
+          "replacement": "[PNG omitted; exact bytes in new-spinner-transport-3.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "d137669955f391a5d59f4b9f0482fdbc2f473f030909d67c556be91efe105377",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "0e392dd05924e5991cf4fa4690ebfa3ca5a93a9c7ec8b89add7b8ba4920972b3",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "d137669955f391a5d59f4b9f0482fdbc2f473f030909d67c556be91efe105377",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "0e392dd05924e5991cf4fa4690ebfa3ca5a93a9c7ec8b89add7b8ba4920972b3",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "d137669955f391a5d59f4b9f0482fdbc2f473f030909d67c556be91efe105377",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "0e392dd05924e5991cf4fa4690ebfa3ca5a93a9c7ec8b89add7b8ba4920972b3",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "c02c7e9298a81d8dcab313b09270c3dfa36df7585e135399069bd02b17a7f2cd",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fb7a3b26e42aabb4bbdb718d1de7b45b15dac34c118e4ac5161af3a7ba775f58",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "c02c7e9298a81d8dcab313b09270c3dfa36df7585e135399069bd02b17a7f2cd",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fb7a3b26e42aabb4bbdb718d1de7b45b15dac34c118e4ac5161af3a7ba775f58",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "c02c7e9298a81d8dcab313b09270c3dfa36df7585e135399069bd02b17a7f2cd",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fb7a3b26e42aabb4bbdb718d1de7b45b15dac34c118e4ac5161af3a7ba775f58",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "d137669955f391a5d59f4b9f0482fdbc2f473f030909d67c556be91efe105377",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "4ea08672aa3b3f83a63769b88f986c1838124da10856211890e9010f347c4e52",
+          "decodedSha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "replacement": "[PNG omitted; exact bytes in new-spinner-transport-0.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "0e392dd05924e5991cf4fa4690ebfa3ca5a93a9c7ec8b89add7b8ba4920972b3",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              12392
+            ]
+          ],
+          "originalValueSha256": "7c7c57581c00715cb982d84fa44b52eeef1e0e461d1073a3825920ccd5bdf8d2",
+          "decodedSha256": "51976df07732637924bfce3e8ae5efdad61a763c10432ced56942a96e369ec6a",
+          "replacement": "[PNG omitted; exact bytes in new-spinner-transport-1.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "c02c7e9298a81d8dcab313b09270c3dfa36df7585e135399069bd02b17a7f2cd",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "404151e7ae14f56682fc8b3a138cec310a41b1f6f6df792e440118401309c898",
+          "decodedSha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "replacement": "[PNG omitted; exact bytes in new-spinner-transport-2.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "fb7a3b26e42aabb4bbdb718d1de7b45b15dac34c118e4ac5161af3a7ba775f58",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              8532
+            ]
+          ],
+          "originalValueSha256": "1fcf85d48f9e9fd58d8ca3c26e3912354ffdf7f99dc891f8928dcd5022184228",
+          "decodedSha256": "1a6d8b17c4af726a33e245666e46b86952e4efff6e1a1ee21b9eed99d1551eb3",
+          "replacement": "[PNG omitted; exact bytes in new-spinner-transport-3.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "d137669955f391a5d59f4b9f0482fdbc2f473f030909d67c556be91efe105377",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "0e392dd05924e5991cf4fa4690ebfa3ca5a93a9c7ec8b89add7b8ba4920972b3",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "d137669955f391a5d59f4b9f0482fdbc2f473f030909d67c556be91efe105377",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "0e392dd05924e5991cf4fa4690ebfa3ca5a93a9c7ec8b89add7b8ba4920972b3",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "d137669955f391a5d59f4b9f0482fdbc2f473f030909d67c556be91efe105377",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "0e392dd05924e5991cf4fa4690ebfa3ca5a93a9c7ec8b89add7b8ba4920972b3",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "c02c7e9298a81d8dcab313b09270c3dfa36df7585e135399069bd02b17a7f2cd",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fb7a3b26e42aabb4bbdb718d1de7b45b15dac34c118e4ac5161af3a7ba775f58",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "c02c7e9298a81d8dcab313b09270c3dfa36df7585e135399069bd02b17a7f2cd",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fb7a3b26e42aabb4bbdb718d1de7b45b15dac34c118e4ac5161af3a7ba775f58",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "c02c7e9298a81d8dcab313b09270c3dfa36df7585e135399069bd02b17a7f2cd",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fb7a3b26e42aabb4bbdb718d1de7b45b15dac34c118e4ac5161af3a7ba775f58",
+          "replacement": "image-3"
+        }
+      ]
+    },
+    {
+      "id": "replaced-picture",
+      "originalLogicalSha256": "8eea5a30f85993f29047a508c0917b5719242751044511fb387e41b3e110d89c",
+      "originalWireSha256": "23052468f64b8bfe65f42c865e0e1a5621cee0228b22208139ab944a75f7cf9c",
+      "sanitizedLogicalSha256": "42f2d98bcdaa128c56bac8b4042204de829f51a8229dde14143fad8ecd486e04",
+      "sanitizedWireSha256": "8c28e580bc37acb6a96e78d674773893dc7c920ca2066339b4a90cf18d2d1403",
+      "storedBeforeInference": true,
+      "privateMode": "0600",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "document": "logical",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "8ebbfa359535b4a7108b6197c18e59cd846476382fff9ee857890daac99d6aea",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-0/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              11912
+            ]
+          ],
+          "originalValueSha256": "58886f1200a5c3884035d2931838e574e288b530512a3103c518b1d4499bad6d",
+          "decodedSha256": "d8a51c0ce6a337decbce8aae572ab4dd7387389e5d2155f1bc7f159a84cc447e",
+          "replacement": "[PNG omitted; exact bytes in replaced-picture-transport-0.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "fca96a8cbbf070665cd54046096e7be97991641022aa0a2cb2c9c59d65131eec",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              11360
+            ]
+          ],
+          "originalValueSha256": "28cf41bd4835a6fa5d1fed0ae6579cc8ccd4edac79890708ffcec6c9bb9f1cc8",
+          "decodedSha256": "7de72fdc319d50356159e01624da62670610a74de5a65ae53d66dc101af0593f",
+          "replacement": "[PNG omitted; exact bytes in replaced-picture-transport-1.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "3a57abaa2eaef0bffed99fb53ed975cc17a1194308bb244d7d3f49954f792194",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              8068
+            ]
+          ],
+          "originalValueSha256": "78b69cb22740457c6734a284fc0d5fc8d3089b5d03d994ba8def97ccbe20493f",
+          "decodedSha256": "09c1d52d9103b21f8559309ea58ec45bf9c94fd54097d37d90eb75a4fcf26e2d",
+          "replacement": "[PNG omitted; exact bytes in replaced-picture-transport-2.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "94abdb81f19ad8c20c4764202414509877b41edf635a7ddaa503602154550a6c",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              7312
+            ]
+          ],
+          "originalValueSha256": "ec8cc7aaec28b45e00938c55ea44c6415ea6f825e457e509a9f8cd9c920edc97",
+          "decodedSha256": "980a51a5e514ea7b5dc7431c589907a578f116ad093eb9e676b1ee909b592e45",
+          "replacement": "[PNG omitted; exact bytes in replaced-picture-transport-3.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "8ebbfa359535b4a7108b6197c18e59cd846476382fff9ee857890daac99d6aea",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fca96a8cbbf070665cd54046096e7be97991641022aa0a2cb2c9c59d65131eec",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "8ebbfa359535b4a7108b6197c18e59cd846476382fff9ee857890daac99d6aea",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fca96a8cbbf070665cd54046096e7be97991641022aa0a2cb2c9c59d65131eec",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "8ebbfa359535b4a7108b6197c18e59cd846476382fff9ee857890daac99d6aea",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fca96a8cbbf070665cd54046096e7be97991641022aa0a2cb2c9c59d65131eec",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3a57abaa2eaef0bffed99fb53ed975cc17a1194308bb244d7d3f49954f792194",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "94abdb81f19ad8c20c4764202414509877b41edf635a7ddaa503602154550a6c",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3a57abaa2eaef0bffed99fb53ed975cc17a1194308bb244d7d3f49954f792194",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "94abdb81f19ad8c20c4764202414509877b41edf635a7ddaa503602154550a6c",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3a57abaa2eaef0bffed99fb53ed975cc17a1194308bb244d7d3f49954f792194",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "94abdb81f19ad8c20c4764202414509877b41edf635a7ddaa503602154550a6c",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "8ebbfa359535b4a7108b6197c18e59cd846476382fff9ee857890daac99d6aea",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              11912
+            ]
+          ],
+          "originalValueSha256": "58886f1200a5c3884035d2931838e574e288b530512a3103c518b1d4499bad6d",
+          "decodedSha256": "d8a51c0ce6a337decbce8aae572ab4dd7387389e5d2155f1bc7f159a84cc447e",
+          "replacement": "[PNG omitted; exact bytes in replaced-picture-transport-0.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "fca96a8cbbf070665cd54046096e7be97991641022aa0a2cb2c9c59d65131eec",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              11360
+            ]
+          ],
+          "originalValueSha256": "28cf41bd4835a6fa5d1fed0ae6579cc8ccd4edac79890708ffcec6c9bb9f1cc8",
+          "decodedSha256": "7de72fdc319d50356159e01624da62670610a74de5a65ae53d66dc101af0593f",
+          "replacement": "[PNG omitted; exact bytes in replaced-picture-transport-1.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "3a57abaa2eaef0bffed99fb53ed975cc17a1194308bb244d7d3f49954f792194",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              8068
+            ]
+          ],
+          "originalValueSha256": "78b69cb22740457c6734a284fc0d5fc8d3089b5d03d994ba8def97ccbe20493f",
+          "decodedSha256": "09c1d52d9103b21f8559309ea58ec45bf9c94fd54097d37d90eb75a4fcf26e2d",
+          "replacement": "[PNG omitted; exact bytes in replaced-picture-transport-2.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "94abdb81f19ad8c20c4764202414509877b41edf635a7ddaa503602154550a6c",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              7312
+            ]
+          ],
+          "originalValueSha256": "ec8cc7aaec28b45e00938c55ea44c6415ea6f825e457e509a9f8cd9c920edc97",
+          "decodedSha256": "980a51a5e514ea7b5dc7431c589907a578f116ad093eb9e676b1ee909b592e45",
+          "replacement": "[PNG omitted; exact bytes in replaced-picture-transport-3.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "8ebbfa359535b4a7108b6197c18e59cd846476382fff9ee857890daac99d6aea",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fca96a8cbbf070665cd54046096e7be97991641022aa0a2cb2c9c59d65131eec",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "8ebbfa359535b4a7108b6197c18e59cd846476382fff9ee857890daac99d6aea",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fca96a8cbbf070665cd54046096e7be97991641022aa0a2cb2c9c59d65131eec",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "8ebbfa359535b4a7108b6197c18e59cd846476382fff9ee857890daac99d6aea",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "fca96a8cbbf070665cd54046096e7be97991641022aa0a2cb2c9c59d65131eec",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3a57abaa2eaef0bffed99fb53ed975cc17a1194308bb244d7d3f49954f792194",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "94abdb81f19ad8c20c4764202414509877b41edf635a7ddaa503602154550a6c",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3a57abaa2eaef0bffed99fb53ed975cc17a1194308bb244d7d3f49954f792194",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "94abdb81f19ad8c20c4764202414509877b41edf635a7ddaa503602154550a6c",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "3a57abaa2eaef0bffed99fb53ed975cc17a1194308bb244d7d3f49954f792194",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "94abdb81f19ad8c20c4764202414509877b41edf635a7ddaa503602154550a6c",
+          "replacement": "image-3"
+        }
+      ]
+    },
+    {
+      "id": "moved-resized",
+      "originalLogicalSha256": "f47d0d0c2797b671de5f3fed8be759c22998b64b59e5ad46e9b494ed586ad87b",
+      "originalWireSha256": "4518af31fc862099366b2c5103821e0ca3eba8a9c07f7027cdcb52a70a31fbea",
+      "sanitizedLogicalSha256": "051c54b6884caba5851af339200d6df36d9cc42b9fa351fe39904d81a31bc49b",
+      "sanitizedWireSha256": "7a07a563e91f29916c3afafebd1a2b1f5ba2ab31d56eb0567bd1055e3d3a93ce",
+      "storedBeforeInference": true,
+      "privateMode": "0600",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "document": "logical",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "2959051d75529f3c8f7a67f59cf2d80ccf33d57b182ed06180eb4b48c49bc010",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-0/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "4ea08672aa3b3f83a63769b88f986c1838124da10856211890e9010f347c4e52",
+          "decodedSha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "replacement": "[PNG omitted; exact bytes in moved-resized-transport-0.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "f97ca7a9e2ab413a86586a24994ccbd4797fdde777e02d7dc250f4ecb0e11b8b",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10444
+            ]
+          ],
+          "originalValueSha256": "6b4a482a5207fe000adcfb2e361248576f85a2c23ac4dd4e949c73c1af1332ce",
+          "decodedSha256": "484a67f71c36a85760bafc438dd1b9706ea4c9732e2947bc7eac8cd6e92db8a4",
+          "replacement": "[PNG omitted; exact bytes in moved-resized-transport-1.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "9852b1e3c3e7ff3f38deb5a72f521bffccb1012bf8f03c5dc7554924308de2a2",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "404151e7ae14f56682fc8b3a138cec310a41b1f6f6df792e440118401309c898",
+          "decodedSha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "replacement": "[PNG omitted; exact bytes in moved-resized-transport-2.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "eb870ef2cba7d8f02abc6f1df5eb9d097624e8c1739e837c0913dc5ba26d7b82",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "d0de77b03d43c7cab8a30e9cee46b6c1ebb882d2c9accde178ee5410a422c53e",
+          "decodedSha256": "4e14e82a75e4e94e7d18102295659144722c95a1a9d333361c491b02236dbd18",
+          "replacement": "[PNG omitted; exact bytes in moved-resized-transport-3.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "2959051d75529f3c8f7a67f59cf2d80ccf33d57b182ed06180eb4b48c49bc010",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "f97ca7a9e2ab413a86586a24994ccbd4797fdde777e02d7dc250f4ecb0e11b8b",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "2959051d75529f3c8f7a67f59cf2d80ccf33d57b182ed06180eb4b48c49bc010",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "f97ca7a9e2ab413a86586a24994ccbd4797fdde777e02d7dc250f4ecb0e11b8b",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "2959051d75529f3c8f7a67f59cf2d80ccf33d57b182ed06180eb4b48c49bc010",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "f97ca7a9e2ab413a86586a24994ccbd4797fdde777e02d7dc250f4ecb0e11b8b",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9852b1e3c3e7ff3f38deb5a72f521bffccb1012bf8f03c5dc7554924308de2a2",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "eb870ef2cba7d8f02abc6f1df5eb9d097624e8c1739e837c0913dc5ba26d7b82",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9852b1e3c3e7ff3f38deb5a72f521bffccb1012bf8f03c5dc7554924308de2a2",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "eb870ef2cba7d8f02abc6f1df5eb9d097624e8c1739e837c0913dc5ba26d7b82",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9852b1e3c3e7ff3f38deb5a72f521bffccb1012bf8f03c5dc7554924308de2a2",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "eb870ef2cba7d8f02abc6f1df5eb9d097624e8c1739e837c0913dc5ba26d7b82",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "2959051d75529f3c8f7a67f59cf2d80ccf33d57b182ed06180eb4b48c49bc010",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10440
+            ]
+          ],
+          "originalValueSha256": "4ea08672aa3b3f83a63769b88f986c1838124da10856211890e9010f347c4e52",
+          "decodedSha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+          "replacement": "[PNG omitted; exact bytes in moved-resized-transport-0.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "f97ca7a9e2ab413a86586a24994ccbd4797fdde777e02d7dc250f4ecb0e11b8b",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              10444
+            ]
+          ],
+          "originalValueSha256": "6b4a482a5207fe000adcfb2e361248576f85a2c23ac4dd4e949c73c1af1332ce",
+          "decodedSha256": "484a67f71c36a85760bafc438dd1b9706ea4c9732e2947bc7eac8cd6e92db8a4",
+          "replacement": "[PNG omitted; exact bytes in moved-resized-transport-1.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "9852b1e3c3e7ff3f38deb5a72f521bffccb1012bf8f03c5dc7554924308de2a2",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "404151e7ae14f56682fc8b3a138cec310a41b1f6f6df792e440118401309c898",
+          "decodedSha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+          "replacement": "[PNG omitted; exact bytes in moved-resized-transport-2.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "eb870ef2cba7d8f02abc6f1df5eb9d097624e8c1739e837c0913dc5ba26d7b82",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              5936
+            ]
+          ],
+          "originalValueSha256": "d0de77b03d43c7cab8a30e9cee46b6c1ebb882d2c9accde178ee5410a422c53e",
+          "decodedSha256": "4e14e82a75e4e94e7d18102295659144722c95a1a9d333361c491b02236dbd18",
+          "replacement": "[PNG omitted; exact bytes in moved-resized-transport-3.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "2959051d75529f3c8f7a67f59cf2d80ccf33d57b182ed06180eb4b48c49bc010",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "f97ca7a9e2ab413a86586a24994ccbd4797fdde777e02d7dc250f4ecb0e11b8b",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "2959051d75529f3c8f7a67f59cf2d80ccf33d57b182ed06180eb4b48c49bc010",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "f97ca7a9e2ab413a86586a24994ccbd4797fdde777e02d7dc250f4ecb0e11b8b",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "2959051d75529f3c8f7a67f59cf2d80ccf33d57b182ed06180eb4b48c49bc010",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "f97ca7a9e2ab413a86586a24994ccbd4797fdde777e02d7dc250f4ecb0e11b8b",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9852b1e3c3e7ff3f38deb5a72f521bffccb1012bf8f03c5dc7554924308de2a2",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "eb870ef2cba7d8f02abc6f1df5eb9d097624e8c1739e837c0913dc5ba26d7b82",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9852b1e3c3e7ff3f38deb5a72f521bffccb1012bf8f03c5dc7554924308de2a2",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "eb870ef2cba7d8f02abc6f1df5eb9d097624e8c1739e837c0913dc5ba26d7b82",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "9852b1e3c3e7ff3f38deb5a72f521bffccb1012bf8f03c5dc7554924308de2a2",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "eb870ef2cba7d8f02abc6f1df5eb9d097624e8c1739e837c0913dc5ba26d7b82",
+          "replacement": "image-3"
+        }
+      ]
+    },
+    {
+      "id": "selected-state",
+      "originalLogicalSha256": "35247d129d5c058e3279abaf891836e8f34e264867b0a0dd3cf5a8f91d935196",
+      "originalWireSha256": "13744c596ee8378cd5cd8724f491438f4d13b04b40e96dc50941deebe4f98e36",
+      "sanitizedLogicalSha256": "968d63d8d844625305c1eb3e130f17bc46763f39616a8c89f163d7bfbaa4a2fb",
+      "sanitizedWireSha256": "bc6dd549b3cb16effd3616d3e47904240842d5ec5eec2f6789be9a8f6f6f9e7c",
+      "storedBeforeInference": true,
+      "privateMode": "0600",
+      "sanitizedStateSentToProvider": false,
+      "changes": [
+        {
+          "document": "logical",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "877d1d9dfc855cfed8eb96c2d23e9216655d8ba851c8eb4746b97e985e2671ef",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-0/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              11912
+            ]
+          ],
+          "originalValueSha256": "58886f1200a5c3884035d2931838e574e288b530512a3103c518b1d4499bad6d",
+          "decodedSha256": "d8a51c0ce6a337decbce8aae572ab4dd7387389e5d2155f1bc7f159a84cc447e",
+          "replacement": "[PNG omitted; exact bytes in selected-state-transport-0.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "4b97022da79aabb2651bc45821b709d57e73817909a23e628722af89c4d17cab",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-1/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              12532
+            ]
+          ],
+          "originalValueSha256": "269029e1ebec851cadd6eb77349e6c27ace17f1380dfd0e832ae91bf3aa5535c",
+          "decodedSha256": "e896f2984f229e4271b9513307cd8411be92c9a92d3f875080e5db00d38b82ef",
+          "replacement": "[PNG omitted; exact bytes in selected-state-transport-1.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "4d40ce375dc92a959edf5114e729c0f90837793d54766e37be9532c99f68dd91",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-2/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              8068
+            ]
+          ],
+          "originalValueSha256": "78b69cb22740457c6734a284fc0d5fc8d3089b5d03d994ba8def97ccbe20493f",
+          "decodedSha256": "09c1d52d9103b21f8559309ea58ec45bf9c94fd54097d37d90eb75a4fcf26e2d",
+          "replacement": "[PNG omitted; exact bytes in selected-state-transport-2.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "66968b12300ea79be9b2c3f172149971793746e57cb99ba19bca5f94dd552930",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/assets/image-3/dataBase64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              8924
+            ]
+          ],
+          "originalValueSha256": "c82e0aaaf3581fd21eafa1fe831cc7e1aaf6320d0c165fd961e7d2be0c963d25",
+          "decodedSha256": "a2e8e30a4dd0a7af8124eb58a34d5ddf1811ef596e30e52dacce2f8d969ec080",
+          "replacement": "[PNG omitted; exact bytes in selected-state-transport-3.png]"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "877d1d9dfc855cfed8eb96c2d23e9216655d8ba851c8eb4746b97e985e2671ef",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4b97022da79aabb2651bc45821b709d57e73817909a23e628722af89c4d17cab",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "877d1d9dfc855cfed8eb96c2d23e9216655d8ba851c8eb4746b97e985e2671ef",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4b97022da79aabb2651bc45821b709d57e73817909a23e628722af89c4d17cab",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "877d1d9dfc855cfed8eb96c2d23e9216655d8ba851c8eb4746b97e985e2671ef",
+          "replacement": "image-0"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4b97022da79aabb2651bc45821b709d57e73817909a23e628722af89c4d17cab",
+          "replacement": "image-1"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4d40ce375dc92a959edf5114e729c0f90837793d54766e37be9532c99f68dd91",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "66968b12300ea79be9b2c3f172149971793746e57cb99ba19bca5f94dd552930",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4d40ce375dc92a959edf5114e729c0f90837793d54766e37be9532c99f68dd91",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "66968b12300ea79be9b2c3f172149971793746e57cb99ba19bca5f94dd552930",
+          "replacement": "image-3"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4d40ce375dc92a959edf5114e729c0f90837793d54766e37be9532c99f68dd91",
+          "replacement": "image-2"
+        },
+        {
+          "document": "logical",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "66968b12300ea79be9b2c3f172149971793746e57cb99ba19bca5f94dd552930",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0",
+          "operation": "normalize object key",
+          "originalKeySha256": "877d1d9dfc855cfed8eb96c2d23e9216655d8ba851c8eb4746b97e985e2671ef",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-0/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              11912
+            ]
+          ],
+          "originalValueSha256": "58886f1200a5c3884035d2931838e574e288b530512a3103c518b1d4499bad6d",
+          "decodedSha256": "d8a51c0ce6a337decbce8aae572ab4dd7387389e5d2155f1bc7f159a84cc447e",
+          "replacement": "[PNG omitted; exact bytes in selected-state-transport-0.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1",
+          "operation": "normalize object key",
+          "originalKeySha256": "4b97022da79aabb2651bc45821b709d57e73817909a23e628722af89c4d17cab",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-1/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              12532
+            ]
+          ],
+          "originalValueSha256": "269029e1ebec851cadd6eb77349e6c27ace17f1380dfd0e832ae91bf3aa5535c",
+          "decodedSha256": "e896f2984f229e4271b9513307cd8411be92c9a92d3f875080e5db00d38b82ef",
+          "replacement": "[PNG omitted; exact bytes in selected-state-transport-1.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2",
+          "operation": "normalize object key",
+          "originalKeySha256": "4d40ce375dc92a959edf5114e729c0f90837793d54766e37be9532c99f68dd91",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-2/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              8068
+            ]
+          ],
+          "originalValueSha256": "78b69cb22740457c6734a284fc0d5fc8d3089b5d03d994ba8def97ccbe20493f",
+          "decodedSha256": "09c1d52d9103b21f8559309ea58ec45bf9c94fd54097d37d90eb75a4fcf26e2d",
+          "replacement": "[PNG omitted; exact bytes in selected-state-transport-2.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3",
+          "operation": "normalize object key",
+          "originalKeySha256": "66968b12300ea79be9b2c3f172149971793746e57cb99ba19bca5f94dd552930",
+          "originalKeyUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "replacementKey": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/assets/image-3/data_base64",
+          "operation": "omit PNG base64",
+          "originalUtf16Spans": [
+            [
+              0,
+              8924
+            ]
+          ],
+          "originalValueSha256": "c82e0aaaf3581fd21eafa1fe831cc7e1aaf6320d0c165fd961e7d2be0c963d25",
+          "decodedSha256": "a2e8e30a4dd0a7af8124eb58a34d5ddf1811ef596e30e52dacce2f8d969ec080",
+          "replacement": "[PNG omitted; exact bytes in selected-state-transport-3.png]"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "877d1d9dfc855cfed8eb96c2d23e9216655d8ba851c8eb4746b97e985e2671ef",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_instruction/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4b97022da79aabb2651bc45821b709d57e73817909a23e628722af89c4d17cab",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "877d1d9dfc855cfed8eb96c2d23e9216655d8ba851c8eb4746b97e985e2671ef",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_images/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4b97022da79aabb2651bc45821b709d57e73817909a23e628722af89c4d17cab",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "877d1d9dfc855cfed8eb96c2d23e9216655d8ba851c8eb4746b97e985e2671ef",
+          "replacement": "image-0"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_selection/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4b97022da79aabb2651bc45821b709d57e73817909a23e628722af89c4d17cab",
+          "replacement": "image-1"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4d40ce375dc92a959edf5114e729c0f90837793d54766e37be9532c99f68dd91",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/same_control/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "66968b12300ea79be9b2c3f172149971793746e57cb99ba19bca5f94dd552930",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4d40ce375dc92a959edf5114e729c0f90837793d54766e37be9532c99f68dd91",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/no_new_mark/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "66968b12300ea79be9b2c3f172149971793746e57cb99ba19bca5f94dd552930",
+          "replacement": "image-3"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/before",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "4d40ce375dc92a959edf5114e729c0f90837793d54766e37be9532c99f68dd91",
+          "replacement": "image-2"
+        },
+        {
+          "document": "wire",
+          "path": "/questions/style_only/instructions/after",
+          "operation": "normalize opaque image reference",
+          "originalUtf16Spans": [
+            [
+              0,
+              36
+            ]
+          ],
+          "originalValueSha256": "66968b12300ea79be9b2c3f172149971793746e57cb99ba19bca5f94dd552930",
+          "replacement": "image-3"
+        }
+      ]
+    }
+  ]
+}

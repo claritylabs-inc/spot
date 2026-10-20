@@ -1,0 +1,112 @@
+{
+  "recordedAt": "2026-10-20T21:15:09.467Z",
+  "planSha256": "b68f0d6aa1c7651f9417d8a31fe6ad43e03399abbfa9fefa48c3ea173d1621e5",
+  "fixtureSha256": "068d5089daa09521c22a652fa34b0aae3163fbf635987363e46856855e5bf776",
+  "plan": {
+    "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+    "scope": "Predeclared controlled browser-rendered comparison corpus, not native CAPTCHA acceptance",
+    "fixedBeforeAnyInference": true,
+    "viewport": {
+      "width": 1024,
+      "height": 768
+    },
+    "frameCssRect": {
+      "x": 283,
+      "y": 300,
+      "width": 304,
+      "height": 140
+    },
+    "controlCssRectWithinFrame": {
+      "x": 120,
+      "y": 60,
+      "width": 56,
+      "height": 56
+    },
+    "actualLocatedRectSource": "Before capture DOM getBoundingClientRect of the controlled fixture's control; same rect supplied unchanged to the closure",
+    "target": "the square control below the written challenge instruction",
+    "maximumRealProviderRequests": 10,
+    "retryOrPromptVariants": false,
+    "cases": [
+      {
+        "id": "unchanged",
+        "before": "empty",
+        "after": "empty",
+        "expected": true,
+        "expectedPath": "unchanged fast path; zero inference",
+        "fixtureAction": "Apply identical empty state and capture twice"
+      },
+      {
+        "id": "border-hover",
+        "before": "empty",
+        "after": "hover",
+        "expected": true,
+        "expectedPath": "semantic comparison",
+        "fixtureAction": "Only border color changes from #555 to #aaa; shape, size, marks and selection unchanged"
+      },
+      {
+        "id": "added-tick",
+        "before": "empty",
+        "after": "tick",
+        "expected": false,
+        "expectedPath": "semantic comparison",
+        "fixtureAction": "Add a visible tick and set aria-checked true"
+      },
+      {
+        "id": "removed-mark",
+        "before": "tick",
+        "after": "empty",
+        "expected": false,
+        "expectedPath": "semantic comparison",
+        "fixtureAction": "Remove the visible existing tick and clear aria-checked"
+      },
+      {
+        "id": "new-spinner",
+        "before": "empty",
+        "after": "spinner",
+        "expected": false,
+        "expectedPath": "semantic comparison",
+        "fixtureAction": "Add a static visible spinner/symbol; no animation"
+      },
+      {
+        "id": "replaced-picture",
+        "before": "landscape",
+        "after": "boat",
+        "expected": false,
+        "expectedPath": "semantic comparison",
+        "fixtureAction": "Replace the depicted mountain landscape illustration with a boat illustration inside the same control"
+      },
+      {
+        "id": "changed-instruction",
+        "before": "empty",
+        "after": "instruction",
+        "expected": false,
+        "expectedPath": "deterministic containment refusal; zero inference",
+        "fixtureAction": "Change the written instruction above the control, outside the before-control-plus4 region"
+      },
+      {
+        "id": "moved-resized",
+        "before": "empty",
+        "after": "moved",
+        "expected": false,
+        "expectedPath": "semantic comparison",
+        "fixtureAction": "Move control +1px,+1px and enlarge width/height +2px; all changes remain within original control plus4"
+      },
+      {
+        "id": "selected-state",
+        "before": "landscape",
+        "after": "selected",
+        "expected": false,
+        "expectedPath": "semantic comparison",
+        "fixtureAction": "Select the same pictured tile, changing selection border/highlight and adding a visible selection badge; aria-selected true"
+      }
+    ]
+  },
+  "sourceBinding": {
+    "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+    "sourceFileSha256": "005e60212307cc2d5192d46dab4b63e73cc25db6ee1d97b8c6e26fb34fee7a50",
+    "closureSha256": "0087d228841341f7de71e172c4d1424492a111c55124d0416dee995b86a276eb",
+    "grayCanvasSha256": "f22163265867f7090d828ad249e72611edfc6e331f26f3abc6a56dfe68a3f9fa",
+    "constants": "const CAPTCHA_HOVER_MIN = 0.9;\nconst HOVER_MARGIN = 4;\nconst MAX_HOVER_SCALE = 8;",
+    "method": "Verbatim current cosmeticHover closure and grayCanvas helper, exact constants, actual candidate executeDecision; only observation/one-send transport guard wrapped."
+  }
+}
