@@ -66,6 +66,12 @@ at 240,000 characters. `clRouterExtract` sends typed fields to the fixed
 Cloudflare credentials belong to cl-router. No route is added to the model
 catalog or operator settings.
 
+The caller waits at most 15 seconds for the request, including the response
+body. Source checks run before the deadline starts. At the deadline the request
+is aborted and fails as a `timeout`, a late result is ignored, and the existing
+declarations-first fallback runs without a replay. Aborting does not guarantee
+that cl-router cancels remote inference.
+
 The `declarations_fast_pass` artifact is bound to the section plan. Usable
 results write the provisional preview and supply context for concurrent section
 jobs. The declarations LLM still extracts parties, coverages, forms, insured
