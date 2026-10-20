@@ -1,3 +1,4 @@
+import { vehicleUnderwritingRows } from "./intake-vehicle-underwriting";
 import {
   INTAKE_FIELDS,
   type IntakeAnswers,
@@ -228,6 +229,7 @@ function reviewValues(version: IntakeReviewVersion) {
     put("legacyCoverage", "Requested coverages", answers.coverage);
     put("legacyLimits", "Desired limits", answers.limits);
   }
+  for(const group of vehicleUnderwritingRows(details))for(const row of group.rows)put(`vehicle-question:${group.title}:${row.label}`,`${group.title}: ${row.label}`,row.value==="Not provided"?"":row.value);
   put("limitsNote", "Other limits", details.limitsNote);
   put(
     "additionalNote",

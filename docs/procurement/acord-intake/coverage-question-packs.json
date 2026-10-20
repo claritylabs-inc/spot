@@ -1,0 +1,89 @@
+{
+  "version": 2,
+  "purpose": "Applicant-answerable facts for initial quotes; fixed base fields and conditional child definitions remain owned by the catalog adapter.",
+  "coverages": {
+    "general_liability": [
+      "gl.coverage.additional_insureds",
+      "gl.coverage.waiver_requirements",
+      "gl.coverage.primary_requirement",
+      "gl.exposure.work_offsite",
+      "gl.exposure.products",
+      "gl.exposure.customer_property",
+      "gl.exposure.subcontractor_controls",
+      "gl.exposure.recreation",
+      "gl.exposure.pollutants"
+    ],
+    "property": [
+      "property.terms.property_deductible",
+      "property.terms.valuation",
+      "property.terms.business_income",
+      "property.terms.equipment_breakdown",
+      "property.terms.flood",
+      "property.terms.earthquake",
+      "property.contents.contents_description",
+      "property.contents.owned_contents_value",
+      "property.contents.others_contents",
+      "property.contents.flammable_storage",
+      "property.contents.refrigerated_stock",
+      "property.contents.critical_equipment"
+    ],
+    "workers_compensation": [
+      "wc.terms.covered_jurisdictions",
+      "wc.terms.other_state_work",
+      "wc.terms.owner_elections",
+      "shared.operations.annual_payroll",
+      "wc.safety.leased_workers",
+      "wc.safety.temporary_workers",
+      "wc.safety.workers_leased_out",
+      "wc.safety.hazardous_work",
+      "wc.safety.return_to_work"
+    ],
+    "commercial_auto": [
+      "auto.terms.hired_vehicles",
+      "auto.terms.nonowned_vehicles",
+      "auto.terms.collision_deductible",
+      "auto.terms.other_damage_deductible",
+      "auto.terms.filings",
+      "auto.terms.foreign_travel",
+      "auto.fleet.maintenance",
+      "auto.fleet.passengers_for_hire",
+      "auto.fleet.hazardous_cargo",
+      "supplement.transport.routes",
+      "supplement.transport.maximum_cargo_value"
+    ],
+    "professional_liability": [
+      "eo.terms.retention",
+      "eo.services.client_industries",
+      "eo.services.largest_client_share",
+      "eo.services.largest_contract",
+      "eo.services.credentials",
+      "eo.services.written_contracts",
+      "eo.services.quality_review",
+      "eo.services.subcontracted_services",
+      "eo.services.performance_guarantees",
+      "eo.services.known_service_disputes"
+    ],
+    "cyber": [
+      "cyber.terms.retention",
+      "cyber.data.records_categories",
+      "cyber.data.people_records",
+      "cyber.data.payment_processing",
+      "cyber.data.critical_providers",
+      "cyber.access.mfa_email",
+      "cyber.access.mfa_remote",
+      "cyber.access.mfa_admin",
+      "cyber.defense.endpoint_protection",
+      "cyber.recovery.backups",
+      "cyber.recovery.restore_testing",
+      "cyber.recovery.response_plan",
+      "cyber.people.security_training",
+      "cyber.people.payment_verification"
+    ],
+    "umbrella": [
+      "umbrella.terms.contract_limit",
+      "umbrella.exposure.large_loss_potential",
+      "umbrella.exposure.aviation",
+      "umbrella.exposure.watercraft"
+    ]
+  }
+}

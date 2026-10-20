@@ -1,4 +1,8 @@
+import { parseWorkJurisdictions, formatWorkJurisdictions } from "./intake-jurisdictions";
+import { parsePayrollAnswer, formatPayrollAnswer } from "./intake-payroll";
+import { intakeApplicantQuestion } from "./intake-applicant-wording";
 import { parseRouteValue, formatRouteValue } from "./route-input";
+import { formatDisplayDate } from "./date-format";
 /** Bounded, declarative questions. Model output never contains executable UI. */
 export type IntakeFollowupQuestion = {
   id: string;
@@ -10,6 +14,7 @@ export type IntakeFollowupQuestion = {
     | "long_text"
     | "number"
     | "currency"
+    | "date"
     | "dropdown"
     | "routes";
   options: string[];
@@ -19,8 +24,10 @@ export type IntakeFollowupQuestion = {
 export type IntakeFollowupAnswer = IntakeFollowupQuestion & {
   answer: string;
   skipped?: boolean;
+  prefilled?: { confidence: number; contextHash: string };
 };
-export const MAX_INTAKE_FOLLOWUPS = 60;
+export const MAX_INTAKE_FOLLOWUPS = 160;
+export const MAX_INTAKE_CATALOG_QUESTIONS = 120;
 
 /** Reserve capacity for saved history and the other section before offering new
  * questions. Parent/details groups fit together; saved history is never pruned.
@@ -29,6 +36,7 @@ export function boundIntakeFollowupQuestions(
   questions: IntakeFollowupQuestion[],
   history: IntakeFollowupQuestion[] = [],
   reservedQuestions: IntakeFollowupQuestion[] = [],
+  maxQuestions = 40,
 ): IntakeFollowupQuestion[] {
   const occupied = new Set(
     [...history, ...reservedQuestions].map((row) => row.id),
@@ -68,7 +76,7 @@ export function boundIntakeFollowupQuestions(
     const newCount = group.filter((row) => !occupied.has(row.id)).length;
     if (
       occupied.size + newCount > MAX_INTAKE_FOLLOWUPS ||
-      output.length + group.length > 40
+      output.length + group.length > maxQuestions
     )
       return;
     for (const question of group) {
@@ -94,6 +102,9 @@ export function validateFollowupAnswers(rows: IntakeFollowupAnswer[] = []) {
       !row.label.trim() ||
       (row.skipped !== undefined && typeof row.skipped !== "boolean") ||
       (row.skipped === true && !!row.answer.trim()) ||
+      (row.prefilled !== undefined && ((!row.prefilled.contextHash.startsWith("cyber:") && (row.kind !== "yes_no" || !["Yes", "No"].includes(row.answer))) || !Number.isFinite(row.prefilled.confidence) || row.prefilled.confidence < .7 || row.prefilled.confidence > 1 || !row.prefilled.contextHash || row.prefilled.contextHash.length > 200)) ||
+      (row.source?.endsWith(" · shared.operations.annual_payroll") && row.answer.trim().startsWith("{") && !parsePayrollAnswer(row.answer)) ||
+      (row.source?.endsWith(" · wc.terms.covered_jurisdictions") && row.answer.trim().startsWith("{") && !parseWorkJurisdictions(row.answer)) ||
       row.label.length > 500 ||
       (row.conditions?.length ?? 0) > 5 ||
       (row.conditions ?? []).some(
@@ -102,8 +113,8 @@ export function validateFollowupAnswers(rows: IntakeFollowupAnswer[] = []) {
           condition.questionId === row.id ||
           !["Yes", "No"].includes(condition.answer),
       ) ||
-      row.answer.length > 2000 ||
-      (row.kind === "routes" && !!row.answer && !parseRouteValue(row.answer)) ||
+      row.answer.length > (row.kind === "routes" ? 16000 : (row.source?.endsWith(" · shared.operations.annual_payroll") || row.source?.endsWith(" · wc.terms.covered_jurisdictions")) ? 12000 : 2000) ||
+      (row.kind === "routes" && !!row.answer && row.answer !== "I'm not sure" && !parseRouteValue(row.answer)) ||
       row.options.length > 12 ||
       new Set(row.options).size !== row.options.length ||
       row.options.some((option) => !option.trim() || option.length > 150) ||
@@ -111,16 +122,16 @@ export function validateFollowupAnswers(rows: IntakeFollowupAnswer[] = []) {
       (row.kind !== "dropdown" && row.options.length > 0) ||
       (row.kind === "dropdown" &&
         (row.options.length < 2 ||
-          (row.answer && !row.options.includes(row.answer)))) ||
+          (row.answer && row.answer !== "I'm not sure" && !row.options.includes(row.answer)))) ||
       (row.kind === "yes_no" &&
         row.answer &&
         !["Yes", "No", "I'm not sure"].includes(row.answer)) ||
       (row.kind === "currency" &&
-        row.answer &&
+        row.answer && row.answer !== "I'm not sure" &&
         (!/^(?:\d[\d,]*(?:\.\d{0,2})?|\.\d{1,2})$/.test(row.answer) ||
           !Number.isFinite(Number(row.answer.replaceAll(",", ""))))) ||
       (row.kind === "number" &&
-        row.answer &&
+        row.answer && row.answer !== "I'm not sure" &&
         !Number.isFinite(Number(row.answer)))
     )
       throw new Error("Invalid follow-up answer");
@@ -156,8 +167,14 @@ export function expandIntakeFollowupQuestion(
 }
 export function formatIntakeFollowupAnswer(row: IntakeFollowupAnswer): string {
   if (!row.answer) return "";
+  if (row.answer === "I'm not sure") return row.answer;
+  if (row.source?.endsWith(" · wc.terms.covered_jurisdictions")) return formatWorkJurisdictions(row.answer);
+  if (row.source?.endsWith(" · shared.operations.annual_payroll")) return formatPayrollAnswer(row.answer);
+  if (row.source?.endsWith(" · eo.services.largest_client_share")) return `${row.answer}%`;
   return row.kind === "routes"
     ? formatRouteValue(row.answer)
+    : row.kind === "date"
+      ? formatDisplayDate(row.answer, row.answer)
     : row.kind === "currency"
       ? `$ ${row.answer}`
       : row.kind === "dropdown"
@@ -166,6 +183,11 @@ export function formatIntakeFollowupAnswer(row: IntakeFollowupAnswer): string {
 }
 
 /** Missing, skipped and unsure parent answers never satisfy a condition. */
+export function isRetiredIntakeFollowup(question: IntakeFollowupQuestion): boolean {
+  return question.source?.endsWith(" · eo.terms.extended_reporting") === true ||
+    /^catalog[12]_eo_terms_extended_reporting(?:_|$)/.test(question.id);
+}
+
 export function followupQuestionVisible(
   question: IntakeFollowupQuestion,
   answers: IntakeFollowupAnswer[] = [],
@@ -174,6 +196,7 @@ export function followupQuestionVisible(
     candidate: IntakeFollowupQuestion,
     path: Set<string>,
   ): boolean => {
+    if (isRetiredIntakeFollowup(candidate)) return false;
     if (path.has(candidate.id)) return false;
     const nextPath = new Set(path).add(candidate.id);
     return (candidate.conditions ?? []).every((condition) => {
@@ -208,7 +231,7 @@ export function intakeFollowupPages(
   const pages: IntakeFollowupQuestion[][] = [];
   const vehicles = new Map<string, IntakeFollowupQuestion[]>();
   for (const question of questions) {
-    const subject = intakeVehicleQuestionSubject(question);
+    const subject = question.id.startsWith("vehicle_base_") ? undefined : intakeVehicleQuestionSubject(question);
     if (!subject) {
       pages.push([question]);
       continue;
@@ -235,13 +258,18 @@ export function intakeVehicleQuestionSubject(
   return question.label.match(/^(Vehicle \d+ \(.+\)): /)?.[1];
 }
 
+export function intakeLocationQuestionSubject(question?: IntakeFollowupQuestion): string | undefined {
+  if (question?.section !== "acord") return;
+  return question.label.match(/^((?:Location|Property) \d+ \(.+\)):\s*/)?.[1];
+}
+
 export function intakeFollowupPageTitle(
   question: IntakeFollowupQuestion,
 ): string {
-  const subject = intakeVehicleQuestionSubject(question);
+  const subject = question.id.startsWith("vehicle_base_") ? undefined : intakeVehicleQuestionSubject(question);
   return subject
     ? `More about ${subject.replace(/^Vehicle \d+ \((.+)\)$/, "$1")}`
-    : question.label;
+    : intakeApplicantQuestion(question).title;
 }
 
 /** Persist the first question index of the last page for reverse navigation. */

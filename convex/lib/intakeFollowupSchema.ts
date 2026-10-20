@@ -13,6 +13,7 @@ export const followupQuestionFields = {
     v.literal("long_text"),
     v.literal("number"),
     v.literal("currency"),
+    v.literal("date"),
     v.literal("dropdown"),
     v.literal("routes"),
   ),
@@ -27,6 +28,7 @@ export const followupAnswerValidator = v.object({
   ...followupQuestionFields,
   answer: v.string(),
   skipped: v.optional(v.boolean()),
+  prefilled: v.optional(v.object({confidence:v.number(),contextHash:v.string()})),
 });
 export const followupBatchValidator = v.object({
   status: v.union(
@@ -43,3 +45,5 @@ export const followupBatchValidator = v.object({
   preloadScopeHash: v.optional(v.string()),
   questions: v.array(followupQuestionValidator),
 });
+
+export const followupPrefillValidator = v.object({questionId:v.string(),answer:v.union(v.literal("Yes"),v.literal("No")),confidence:v.number()});

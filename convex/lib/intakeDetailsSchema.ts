@@ -12,7 +12,9 @@ export const intakeAddressValidator = v.object({
   formatted: v.optional(v.string()),
 });
 export const intakeDetailsValidator = v.object({
+  cyberDocuments: v.optional(v.object({ privacyPolicyUrl: v.optional(v.string()), termsUrl: v.optional(v.string()) })),
   sectionIntroductions: v.optional(v.array(v.number())),
+  subsectionIntroductions: v.optional(v.array(v.string())),
   drivers: v.optional(v.array(v.object({
     id:v.string(),name:v.string(),dateOfBirth:v.string(),licenseNumber:v.string(),licenseJurisdiction:v.string(),licenseClass:v.string(),yearsExperience:v.string(),
     accidents:v.union(v.literal(""),v.literal("yes"),v.literal("no")),accidentDetails:v.string(),
@@ -28,6 +30,7 @@ export const intakeDetailsValidator = v.object({
   followupProgress: v.optional(v.object({ acord: v.number(), additional: v.number() })),
   companyResearchSource: v.optional(v.string()),
   prefillSourceIds: v.optional(v.array(v.string())),
+  declinedRequirementCoverages: v.optional(v.array(v.union(v.literal("unknown"),v.literal("general_liability"),v.literal("property"),v.literal("workers_compensation"),v.literal("commercial_auto"),v.literal("professional_liability"),v.literal("cyber"),v.literal("umbrella"),v.literal("other")))),
   coverages: v.array(
     v.object({
       coverage: v.union(
@@ -52,7 +55,7 @@ export const intakeDetailsValidator = v.object({
             details: v.string(),
             activitiesPrefilled: v.optional(v.boolean()),
             ownership: v.optional(
-              v.union(v.literal("owned"), v.literal("leased")),
+              v.union(v.literal("owned"), v.literal("leased"), v.literal("unknown")),
             ),
             staff: v.optional(v.string()),
           }),
@@ -65,6 +68,7 @@ export const intakeDetailsValidator = v.object({
             make: v.string(),
             model: v.string(),
             vin: v.string(),
+            underwriting: v.optional(v.record(v.string(),v.string())),
             estimatedValue: v.optional(v.string()),
               estimatedValueSkipped: v.optional(v.boolean()),
           }),
@@ -90,7 +94,7 @@ export const intakeDetailsValidator = v.object({
       address: intakeAddressValidator,
       details: v.string(),
       activitiesPrefilled: v.optional(v.boolean()),
-      ownership: v.optional(v.union(v.literal("owned"), v.literal("leased"))),
+      ownership: v.optional(v.union(v.literal("owned"), v.literal("leased"), v.literal("unknown"))),
       staff: v.optional(v.string()),
     }),
   ),

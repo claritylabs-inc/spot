@@ -1,3 +1,6 @@
+import { workJurisdictionsComplete } from "./intake-jurisdictions";
+import { cyberDocumentUrlValid } from "./intake-cyber-research";
+import { payrollAnswerComplete } from "./intake-payroll";
 import { routeAnswerComplete } from "./route-input";
 import { followupQuestionVisible } from "./intake-followups";
 import dayjs from "dayjs";
@@ -15,6 +18,7 @@ import {
 import { driverScheduleErrors } from "./intake-drivers";
 import { vinError } from "./intake-vehicles";
 import { estimatedVehicleValueError } from "./intake-auto-quote";
+import { parseCalendarDateInput } from "./date-format";
 
 export type IntakeSubmissionProblem = {
   label: string;
@@ -35,7 +39,6 @@ export function intakeSubmissionProblems(
     [INTAKE_FIELDS.coverage]: 6,
     [INTAKE_FIELDS.legalName]: 10,
     [INTAKE_FIELDS.description]: 16,
-    [INTAKE_FIELDS.locations]: 19,
     [INTAKE_FIELDS.currentInsurance]: 20,
     "Desired effective date": 2,
   };
@@ -54,10 +57,11 @@ export function intakeSubmissionProblems(
       ...(coverageIndex === undefined ? {} : { coverageIndex }),
       ...(vehicleIndex === undefined ? {} : { vehicleIndex }),
     });
+  if (details.coverages.some(line => line.coverage === "cyber") && Object.values(details.cyberDocuments ?? {}).some(value => !cyberDocumentUrlValid(value))) add("Valid privacy policy and terms links, or choose I’m not sure", 29);
+  if (details.followups?.some(row => row.source?.endsWith(" · wc.terms.covered_jurisdictions") && followupQuestionVisible(row, details.followups) && !workJurisdictionsComplete(row.answer))) add("Complete employee work locations or choose I’m not sure", 29);
+  if (details.followups?.some(row => row.source?.endsWith(" · shared.operations.annual_payroll") && followupQuestionVisible(row, details.followups) && !payrollAnswerComplete(row.answer))) add("Complete payroll groups or choose I’m not sure", 29);
   if (answers.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email.trim()))
     add("Valid work email", 0);
-  if (answers.phone && !/^\+?[\d\s().-]{7,40}$/.test(answers.phone.trim()))
-    add("Valid phone number", 0);
   for (const key of ["effectiveDate", "deadline"] as const)
     if (
       answers[key] &&
@@ -81,6 +85,13 @@ export function intakeSubmissionProblems(
   )
     add("Valid nine-digit Canadian business number", 13);
   if (answers.intakeGoal !== "savings") {
+    for (const row of details.followups ?? [])
+      if (row.source?.endsWith(" · eo.services.largest_client_share") && row.answer.trim() && row.answer !== "I'm not sure" &&
+        (!Number.isFinite(Number(row.answer)) || Number(row.answer) < 0 || Number(row.answer) > 100))
+        add("Enter a percentage from 0 to 100, or choose I’m not sure", 29);
+    for (const row of details.followups ?? [])
+      if (row.kind === "date" && row.answer.trim() && row.answer !== "I'm not sure" && followupQuestionVisible(row, details.followups) && !parseCalendarDateInput(row.answer))
+        add("Enter a valid date or clear it to skip", row.section === "acord" ? 29 : 30);
     for (const row of details.followups ?? [])
       if (
         row.kind === "routes" &&

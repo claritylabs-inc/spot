@@ -1,3 +1,4 @@
+import { isFixedVehicleFollowup, vehicleUnderwritingRows } from "./intake-vehicle-underwriting";
 import { AUTO_QUOTE_QUESTIONS } from "./intake-auto-quote";
 import { DRIVER_QUESTIONS } from "./intake-drivers";
 import { followupQuestionVisible, formatIntakeFollowupAnswer } from "./intake-followups";
@@ -37,8 +38,8 @@ export const INTAKE_STEPS = [
   "What limits and deductibles do you need?",
   "Are there any additional coverages you might need?",
   "What are you looking to get insured?",
-  "What is your business’s legal name?",
-  "What name and website does your business use?",
+  "What is your company name?",
+  "What is your company’s legal name and website?",
   "How did you set up your business?",
   "What is your business’s tax ID?",
   "Is your registered business address also your mailing address?",
@@ -113,10 +114,8 @@ export function missingIntakeAnswers(a: IntakeAnswers) {
       [
         "name",
         "email",
-        "phone",
         "legalName",
         "description",
-        "locations",
       ] as const
     )
       .filter((key) => !a[key]?.trim())
@@ -125,12 +124,10 @@ export function missingIntakeAnswers(a: IntakeAnswers) {
   for (const key of [
     "name",
     "email",
-    "phone",
     "trigger",
     "coverage",
     "legalName",
     "description",
-    "locations",
     "currentInsurance",
   ] as const)
     if (!a[key]?.trim()) missing.push(INTAKE_FIELDS[key]);
@@ -172,10 +169,10 @@ export function legacyIntakeMarkdown(
 
 export function completedIntakeSteps(a: IntakeAnswers) {
   const steps: number[] = [];
-  if (a.name && a.email && a.phone && a.trigger && a.effectiveDate)
+  if (a.name && a.email && a.trigger && a.effectiveDate)
     steps.push(0);
   if (a.coverage && a.coverageScope) steps.push(1);
-  if (a.legalName && a.description && a.locations) steps.push(2);
+  if (a.legalName && a.description) steps.push(2);
   if (a.currentInsurance) steps.push(3);
   return steps;
 }
@@ -281,6 +278,7 @@ export function intakeMarkdown(
                     .join(" ") + (vehicle.vin ? `\nVIN # ${vehicle.vin}` : ""),
                 ]),
               );
+              if(line.coverage==="commercial_auto")for(const group of vehicleUnderwritingRows(details!))for(const row of group.rows)if(row.value!=="Not provided")rows.push([`${group.title}: ${row.label}`,row.value]);
               line.properties?.forEach((property, index) =>
                 rows.push([
                   property.name || `Property ${index + 1}`,
@@ -364,8 +362,8 @@ ${table(
       ];
     })
     .concat(fields.length === Object.keys(INTAKE_FIELDS).length ? (["acord", "additional"] as const).flatMap((section) => {
-      const rows = details?.followups?.filter((row) => row.section === section && row.answer.trim() && followupQuestionVisible(row,details?.followups)) ?? [];
-      return rows.length ? [`## ${section === "acord" ? "Application questions" : "Additional details"}\n\n${table(rows.map((row) => [row.source ? `${row.label} (${row.source})` : row.label, formatIntakeFollowupAnswer(row)]))}`] : [];
+      const rows = details?.followups?.filter((row) => !isFixedVehicleFollowup(row) && row.section === section && row.answer.trim() && followupQuestionVisible(row,details?.followups)) ?? [];
+      return rows.length ? [`## ${section === "acord" ? "Coverage details" : "Additional details"}\n\n${table(rows.map((row) => [row.source ? `${row.label} (${row.source})` : row.label, formatIntakeFollowupAnswer(row)]))}`] : [];
     }) : [])
     .join("\n\n");
   const drivers = details?.coverages.some(line=>line.coverage==="commercial_auto") && details.drivers?.length && allowed.size === Object.keys(INTAKE_FIELDS).length

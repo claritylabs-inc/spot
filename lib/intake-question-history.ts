@@ -1,3 +1,6 @@
+import { cyberDocumentQuestions } from "./intake-cyber-research";
+import { propertySubsectionQuestions } from "./intake-property-subsections";
+import { isFixedVehicleFollowup, vehicleUnderwritingRows } from "./intake-vehicle-underwriting";
 import {
   followupQuestionVisible,
   formatIntakeFollowupAnswer,
@@ -30,8 +33,8 @@ export const INTAKE_STEP_FIELDS: Partial<Record<number, IntakeField[]>> = {
   7: ["limits"],
   8: ["separateQuotes"],
   9: ["coverageScope"],
-  10: ["legalName"],
-  11: ["website", "dba"],
+  10: ["dba"],
+  11: ["legalName", "website"],
   12: ["entityType", "formation"],
   13: ["fein", "businessNumber"],
   14: ["registeredAddress", "mailingAddress"],
@@ -82,9 +85,18 @@ export function intakeQuestionHistory(
           })),
         }))
       : [],
+    propertyQuestions: propertySubsectionQuestions(details).map(row => ({
+      id: row.question.id, question: row.question.label, answer: row.answer,
+      reservedForBaseIntake: true, status: row.answer.trim() ? "answered" : "unanswered",
+    })),
+    cyberDocumentQuestions: cyberDocumentQuestions(details).map(row => ({
+      id: row.question.id, question: row.question.label, answer: row.answer,
+      reservedForBaseIntake: true, status: row.answer.trim() ? "answered" : "unanswered",
+    })),
     autoQuoteQuestions: autoQuoteQuestionHistory(details, skippedSteps),
+    vehicleQuestions: vehicleUnderwritingRows(details).map(group=>({...group,reservedForBaseIntake:true})),
     scheduledDriverCount: details.drivers?.length ?? 0,
-    followupQuestions: (details.followups ?? []).map((row) => ({
+    followupQuestions: (details.followups ?? []).filter(row=>!isFixedVehicleFollowup(row)).map((row) => ({
       id: row.id,
       section: row.section,
       question: row.label,

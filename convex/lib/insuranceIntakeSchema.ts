@@ -25,6 +25,18 @@ export const intakeBusinessProfileValidator = v.object({
   sourceRequestId: v.optional(v.id("procurementRequests")),
 });
 export const requestIntakeFields = {
+  intakeCyberResearch: v.optional(v.object({
+    fingerprint: v.string(), sourceKey: v.string(), startedAt: v.number(), attempts: v.number(),
+    status: v.union(v.literal("pending"), v.literal("running"), v.literal("completed"), v.literal("failed")),
+    privacyPolicyUrl: v.optional(v.string()), termsUrl: v.optional(v.string()),
+    technologies: v.optional(v.array(v.object({ name: v.string(), evidence: v.string(), sourceUrl: v.string() }))),
+    suggestions: v.optional(v.array(v.object({ questionId: v.string(), answer: v.string(), confidence: v.number(), evidence: v.string(), sourceUrl: v.string() }))),
+  })),
+  intakeGapAssessment: v.optional(v.object({
+    token: v.string(), contextHash: v.string(), startedAt: v.number(),
+    status: v.union(v.literal("pending"), v.literal("complete"), v.literal("failed")),
+    needsAdditional: v.optional(v.boolean()),
+  })),
   intakeFollowups: v.optional(v.object({ acord: v.optional(followupBatchValidator), additional: v.optional(followupBatchValidator) })),
   intakeSubmittedApplication: v.optional(intakeApplicationValidator),
   ownerUserId: v.optional(v.id("users")), // Existing requests retain createdByUserId ownership.
@@ -55,6 +67,7 @@ export const requestIntakeFields = {
       startedAt: v.number(),
       attempts: v.number(),
       suggestions: v.optional(intakeAnswersValidator),
+      evidence: v.optional(v.string()),
     }),
   ),
   intakeSkippedSteps: v.optional(v.array(v.number())),
