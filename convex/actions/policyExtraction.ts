@@ -1573,7 +1573,7 @@ async function ensureDeclarationsFastPass(
   let fastPass: DeclarationsFastPass;
   try {
     fastPass = await runDeclarationsFastPass(ctx, {
-      orgId: state.orgId,
+      orgId: state.orgId as Id<"organizations">,
       traceId: state.traceId,
       parsed,
       sections: args.declarations,

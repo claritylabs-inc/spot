@@ -1,5 +1,5 @@
 /**
- * Vendored cl-router /v1/decide contract and primitive vocabulary.
+ * Vendored cl-router decision/extraction contracts and primitive vocabulary.
  *
  * Copied from the former published policy package 1.0.0 (`dist/*.js` + `.d.ts`)
  * as TypeScript. Model registry/capability/price tables are not vendored:

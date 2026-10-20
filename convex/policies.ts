@@ -72,7 +72,8 @@ type PolicyExtractionArtifactKind =
   | "source_bundle"
   | "section_result"
   | "parsed_source"
-  | "section_plan";
+  | "section_plan"
+  | "declarations_fast_pass";
 type PolicyPipelineLogEntry = {
   timestamp: number;
   message: string;
