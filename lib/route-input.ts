@@ -1,66 +1,102 @@
-/** Reusable, bounded route value. Coordinates are optional for manually entered cities. */
+/** Bounded route groups; legacy single-route values remain readable. */
 export type RouteStop = { name: string; longitude?: number; latitude?: number };
+export type RoutePath = { stops: RouteStop[] };
 export type RouteValue = {
-  version: 1;
-  stops: RouteStop[];
-  maximumDistance: string;
+  version: 2;
+  routes: RoutePath[];
+  legacyMaximumDistance?: string;
 };
-export const MAX_ROUTE_STOPS = 8;
+export const MAX_ROUTE_STOPS = 12;
+export const MAX_ROUTES = 6;
+export function emptyRouteValue(): RouteValue {
+  return { version: 2, routes: [{ stops: [{ name: "" }, { name: "" }] }] };
+}
 export function parseRouteValue(value: string): RouteValue | null {
   try {
-    const route = JSON.parse(value);
+    const input = JSON.parse(value);
     if (
-      route.version !== 1 ||
-      !Array.isArray(route.stops) ||
-      route.stops.length > MAX_ROUTE_STOPS ||
-      typeof route.maximumDistance !== "string" ||
-      route.maximumDistance.length > 100
+      input.version === 1 &&
+      (typeof input.maximumDistance !== "string" ||
+        input.maximumDistance.length > 100)
     )
       return null;
+    const route: RouteValue =
+      input.version === 1
+        ? {
+            version: 2,
+            routes: [{ stops: input.stops }],
+            ...(input.maximumDistance
+              ? { legacyMaximumDistance: input.maximumDistance }
+              : {}),
+          }
+        : input;
     if (
-      route.stops.some(
-        (stop: RouteStop) =>
-          !stop ||
-          typeof stop.name !== "string" ||
-          stop.name.length > 140 ||
-          (stop.longitude !== undefined &&
-            (!Number.isFinite(stop.longitude) ||
-              Math.abs(stop.longitude) > 180)) ||
-          (stop.latitude !== undefined &&
-            (!Number.isFinite(stop.latitude) ||
-              Math.abs(stop.latitude) > 85)) ||
-          (stop.longitude === undefined) !== (stop.latitude === undefined),
+      route.version !== 2 ||
+      !Array.isArray(route.routes) ||
+      route.routes.length > MAX_ROUTES ||
+      (route.legacyMaximumDistance !== undefined &&
+        (typeof route.legacyMaximumDistance !== "string" ||
+          route.legacyMaximumDistance.length > 100))
+    )
+      return null;
+    for (const path of route.routes) {
+      if (
+        !path ||
+        !Array.isArray(path.stops) ||
+        path.stops.length > MAX_ROUTE_STOPS
       )
-    )
-      return null;
+        return null;
+      if (
+        path.stops.some(
+          (stop: RouteStop) =>
+            !stop ||
+            typeof stop.name !== "string" ||
+            stop.name.length > 140 ||
+            (stop.longitude !== undefined &&
+              (!Number.isFinite(stop.longitude) ||
+                Math.abs(stop.longitude) > 180)) ||
+            (stop.latitude !== undefined &&
+              (!Number.isFinite(stop.latitude) ||
+                Math.abs(stop.latitude) > 85)) ||
+            (stop.longitude === undefined) !== (stop.latitude === undefined),
+        )
+      )
+        return null;
+    }
     return route;
   } catch {
     return null;
   }
 }
 export function routeAnswerComplete(value: string): boolean {
-  if (!value.trim()) return true;
+  if (!value.trim() || value === "I'm not sure") return true;
   const route = parseRouteValue(value);
-  return (
-    !!route &&
-    ((route.stops.length >= 2 &&
-      route.stops.every((stop) => !!stop.name.trim())) ||
-      (route.stops.every((stop) => !stop.name.trim()) &&
-        !!route.maximumDistance.trim()))
+  if (!route) return false;
+  const entered = route.routes.filter((path) =>
+    path.stops.some((stop) => stop.name.trim()),
   );
+  return entered.length > 0
+    ? entered.every(
+        (path) =>
+          path.stops.length >= 2 &&
+          path.stops.every((stop) => !!stop.name.trim()),
+      )
+    : !!route.legacyMaximumDistance?.trim();
 }
 export function formatRouteValue(value: string): string {
   const route = parseRouteValue(value);
   if (!route) return value;
   return [
-    route.stops
-      .map((stop) => stop.name)
-      .filter(Boolean)
-      .join(" → "),
-    route.maximumDistance.trim()
-      ? `Maximum travel distance: ${route.maximumDistance.trim()}`
-      : "",
+    ...route.routes
+      .filter((path) => path.stops.some((stop) => stop.name.trim()))
+      .map(
+        (path, index) =>
+          `${route.routes.length > 1 ? `Route ${index + 1}: ` : ""}${path.stops
+            .map((stop) => stop.name)
+            .filter(Boolean)
+            .join(" → ")}`,
+      ),
   ]
     .filter(Boolean)
-    .join("; ");
+    .join("\n");
 }

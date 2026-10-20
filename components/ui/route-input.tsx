@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState, useRef } from "react";
 import Image from "next/image";
-import { ArrowDown, ArrowUp, MapPin, Plus } from "lucide-react";
+import { ArrowRight, MapPin, Plus } from "lucide-react";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Field, FieldLabel } from "@claritylabs-inc/ui/components/field";
 import { Card } from "@claritylabs-inc/ui/components/card";
@@ -13,6 +13,8 @@ import { useTheme } from "@/hooks/use-theme";
 import { typeStyle } from "@/lib/typography";
 import {
   MAX_ROUTE_STOPS,
+  MAX_ROUTES,
+  emptyRouteValue,
   type RouteStop,
   type RouteValue,
 } from "@/lib/route-input";
@@ -60,147 +62,145 @@ async function searchCities(
 export function RouteInput({
   value,
   onChange,
-  includeMaximumDistance = false,
 }: {
   value: RouteValue;
   onChange: (value: RouteValue) => void;
-  includeMaximumDistance?: boolean;
 }) {
-  const stops = value.stops.length ? value.stops : [{ name: "" }, { name: "" }];
-  function update(stops: RouteStop[]) {
-    onChange({ ...value, stops });
-  }
-  function move(index: number, offset: number) {
-    const next = [...stops];
-    [next[index], next[index + offset]] = [next[index + offset], next[index]];
-    update(next);
+  const paths = value.routes.length ? value.routes : emptyRouteValue().routes;
+  function update(routeIndex: number, stops: RouteStop[]) {
+    onChange({
+      ...value,
+      routes: paths.map((path, index) =>
+        index === routeIndex ? { stops } : path,
+      ),
+    });
   }
   return (
     <div className="space-y-5">
-      <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-        Add up to 8 cities in the order you usually visit them.
-      </p>
-      <div className="space-y-3">
-        {stops.map((stop, index) => (
-          <div
-            key={index}
-            className="flex flex-wrap items-start gap-2 sm:flex-nowrap sm:gap-3"
-          >
-            <span
-              aria-hidden="true"
-              className={`mt-7 flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground text-background ${typeStyle("body.default")}`}
-            >
-              {index + 1}
-            </span>
-            <CityInput
-              label={
-                index === 0
-                  ? "Starting city"
-                  : index === stops.length - 1
-                    ? "Destination"
-                    : `Stop ${index + 1}`
-              }
-              value={stop}
-              autoFocus={index >= 2 && !stop.name}
-              onChange={(city) =>
-                update(
-                  stops.map((current, i) => (i === index ? city : current)),
-                )
-              }
-            />
-            <div className="flex w-full pl-9 shrink-0 items-center justify-end gap-0 sm:w-auto sm:pl-0 sm:pt-6">
-              <PillButton
-                type="button"
-                variant="ghost"
-                size="xs"
-                iconOnly
-                label={`Move stop ${index + 1} up`}
-                disabled={index === 0}
-                onClick={() => move(index, -1)}
+      {paths.map((path, routeIndex) => {
+        const stops = path.stops.length
+          ? path.stops
+          : [{ name: "" }, { name: "" }];
+        const startName = stops[0].name.split(",")[0].trim();
+        const endName = stops
+          .slice(1)
+          .filter((stop) => stop.name.trim())
+          .at(-1)
+          ?.name.split(",")[0]
+          .trim();
+        const routeName =
+          startName && endName
+            ? `${startName} to ${endName}`
+            : `Route ${routeIndex + 1}`;
+        return (
+          <Card key={routeIndex} className="gap-5 p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2
+                aria-label={routeName}
+                className={`flex min-w-0 flex-wrap items-center gap-2 text-pretty ${typeStyle("heading.section")}`}
               >
-                <ArrowUp className="size-3.5" />
-              </PillButton>
-              <PillButton
-                type="button"
-                variant="ghost"
-                size="xs"
-                iconOnly
-                label={`Move stop ${index + 1} down`}
-                disabled={index === stops.length - 1}
-                onClick={() => move(index, 1)}
-              >
-                <ArrowDown className="size-3.5" />
-              </PillButton>
-              <RemoveButton
-                label={`Remove stop ${index + 1}`}
-                disabled={stops.length <= 2 && !stop.name}
-                onClick={() =>
-                  update(
-                    stops.length <= 2
-                      ? stops.map((current, i) =>
-                          i === index ? { name: "" } : current,
-                        )
-                      : stops.filter((_, i) => i !== index),
-                  )
-                }
-              />
+                {startName && endName ? (
+                  <>
+                    <span>{startName}</span>
+                    <ArrowRight
+                      aria-hidden="true"
+                      className="size-4 shrink-0"
+                    />
+                    <span>{endName}</span>
+                  </>
+                ) : (
+                  routeName
+                )}
+              </h2>
+              {paths.length > 1 && (
+                <RemoveButton
+                  label={`Remove Route ${routeIndex + 1}`}
+                  onClick={() =>
+                    onChange({
+                      ...value,
+                      routes: paths.filter((_, i) => i !== routeIndex),
+                    })
+                  }
+                />
+              )}
             </div>
-          </div>
-        ))}
-      </div>
-      {stops.some((stop) => stop.name.trim()) &&
-        stops.some((stop) => !stop.name.trim()) && (
-          <p
-            role="status"
-            className={`text-muted-foreground ${typeStyle("body.default")}`}
-          >
-            Enter a city for each stop, or remove unused stops to continue.
-          </p>
-        )}
-      <div className="flex items-center gap-3">
-        <PillButton
-          type="button"
-          variant="secondary"
-          size="small"
-          disabled={
-            stops.length >= MAX_ROUTE_STOPS ||
-            stops.every((stop) => !stop.name.trim())
-          }
-          onClick={() => update([...stops, { name: "" }])}
-        >
-          <Plus className="size-4" />
-          Add a stop
-        </PillButton>
-        {stops.some((stop) => stop.name.trim()) || value.maximumDistance ? (
-          <PillButton
-            type="button"
-            variant="ghost"
-            size="small"
-            onClick={() =>
-              onChange({ version: 1, stops: [], maximumDistance: "" })
-            }
-          >
-            Clear route
-          </PillButton>
-        ) : null}
-      </div>
-      <RouteMap stops={stops} />
-      {includeMaximumDistance && (
-        <Field>
-          <FieldLabel htmlFor="route-maximum-distance">
-            Maximum travel distance (optional)
-          </FieldLabel>
-          <Input
-            id="route-maximum-distance"
-            value={value.maximumDistance}
-            placeholder="e.g. Up to 500 miles from our base"
-            maxLength={100}
-            onChange={(event) =>
-              onChange({ ...value, maximumDistance: event.target.value })
-            }
-          />
-        </Field>
-      )}
+            <div className="space-y-4">
+              {stops.map((stop, index) => (
+                <div
+                  key={index}
+                  data-route-group={routeIndex}
+                  data-route-stop={index}
+                  className="flex items-start gap-2 sm:gap-3"
+                >
+                  <CityInput
+                    label={
+                      index === 0
+                        ? "Start"
+                        : stops.length === 2
+                          ? "Stop"
+                          : `Stop ${index}`
+                    }
+                    value={stop}
+                    onChange={(city) =>
+                      update(
+                        routeIndex,
+                        stops.map((current, i) =>
+                          i === index ? city : current,
+                        ),
+                      )
+                    }
+                  />
+                  <div className="mt-8 flex h-12 shrink-0 items-center">
+                    <RemoveButton
+                      label={`Remove Route ${routeIndex + 1} city ${index + 1}`}
+                      disabled={stops.length <= 2 && !stop.name}
+                      onClick={() =>
+                        update(
+                          routeIndex,
+                          stops.length <= 2
+                            ? stops.map((current, i) =>
+                                i === index ? { name: "" } : current,
+                              )
+                            : stops.filter((_, i) => i !== index),
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <PillButton
+                type="button"
+                variant="secondary"
+                size="large"
+                disabled={stops.length >= MAX_ROUTE_STOPS}
+                onClick={() => update(routeIndex, [...stops, { name: "" }])}
+              >
+                <Plus className="size-4" />
+                Add a stop
+              </PillButton>
+            </div>
+            <RouteMap stops={stops} />
+          </Card>
+        );
+      })}
+      <PillButton
+        type="button"
+        variant="secondary"
+        size="large"
+        disabled={paths.length >= MAX_ROUTES}
+        onClick={() =>
+          onChange({
+            ...value,
+            routes: [...paths, { stops: [{ name: "" }, { name: "" }] }],
+          })
+        }
+      >
+        <Plus className="size-4" />
+        Add route
+      </PillButton>
     </div>
   );
 }
@@ -262,9 +262,12 @@ function CityInput({
     (status !== "ready" || resultQuery === query);
   return (
     <Field className="relative min-w-0 flex-1 gap-2">
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <FieldLabel htmlFor={id} className={typeStyle("body.root")}>
+        {label}
+      </FieldLabel>
       <Input
         id={id}
+        className={`h-12 ${typeStyle("body.root")}`}
         autoFocus={autoFocus}
         role="combobox"
         aria-autocomplete="list"
@@ -472,22 +475,19 @@ function RouteMap({ stops }: { stops: RouteStop[] }) {
           </div>
         )}
       </div>
-      <div
-        role="status"
-        aria-live="polite"
-        className={`flex items-center gap-2 border-t px-4 py-3 text-muted-foreground ${typeStyle("body.default")}`}
-      >
-        {loading && <Spinner className="size-3.5" />}
-        {loading
-          ? "Drawing your route…"
-          : complete && route?.key === key && !route.failed
-            ? "Approximate driving route"
-            : points.length
-              ? route?.key === key && route.failed && complete
-                ? "Route unavailable · your numbered stops are saved"
-                : "Numbered stops · select each city to preview the full route"
-              : "Start with a starting city and a destination"}
-      </div>
+      {loading && (
+        <div role="status" className="sr-only">
+          Drawing your route…
+        </div>
+      )}
+      {complete && route?.key === key && route.failed && (
+        <p
+          role="status"
+          className={`px-4 py-3 text-muted-foreground ${typeStyle("body.default")}`}
+        >
+          Route preview unavailable. Your cities are still saved.
+        </p>
+      )}
     </Card>
   );
 }
