@@ -432,7 +432,12 @@ export type ClRouterBrowseRequest = {
     allowedDomains: string[];
     maxSteps?: number;
     outputSchema?: Record<string, unknown>;
-    signup?: { email: string; password: string; name: string };
+    signup?: {
+      email: string;
+      password: string;
+      name: string;
+      inboxUrl?: string;
+    };
   };
   executionBudgetMs?: number;
 };

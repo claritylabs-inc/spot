@@ -12,7 +12,10 @@ import {
 } from "../lib/clRouterClient";
 import { decideComposite, type CompositeGroup } from "../lib/jevComposite";
 import { jevProceedThreshold } from "../lib/jevThreshold";
-import { durableRouterClientOptionsWithTrace } from "../lib/routerJobClient";
+import {
+  callbackSiteUrl,
+  durableRouterClientOptionsWithTrace,
+} from "../lib/routerJobClient";
 import { readWebsitePage, resolvePublicAddress } from "../lib/websiteBrand";
 import {
   regionCountry,
@@ -99,23 +102,21 @@ async function collectInfrastructure(
 }
 
 /**
- * A per-run test identity on the configured research inbox (plus-addressed, random password that
- * is never stored). Without WEBSITE_TECH_SIGNUP_EMAIL the agent browses but does not sign up.
+ * A per-run test identity: a fresh research-domain address whose mail the agent reads through a
+ * short-lived capability URL, and a random password that is never stored.
  */
-function signupIdentity() {
-  const match = process.env.WEBSITE_TECH_SIGNUP_EMAIL?.trim().match(
-    /^([^@+\s]+)@([^@\s]+\.[^@\s]+)$/,
-  );
-  if (!match) return undefined;
+async function signupIdentity(ctx: ActionCtx) {
+  const inbox = await ctx.runMutation(internal.researchInbox.issue, {});
   return {
-    email: `${match[1]}+${randomBytes(4).toString("hex")}@${match[2]}`,
+    email: inbox.address,
     password: `Sp-${randomBytes(18).toString("base64url")}-9a`,
-    name: "Spot Research",
+    name: inbox.name,
+    inboxUrl: `${callbackSiteUrl()}/research-inbox?token=${inbox.token}`,
   };
 }
 
 async function browseCompanySite(ctx: ActionCtx, domain: string, trace: Trace) {
-  const signup = signupIdentity();
+  const signup = await settle(signupIdentity(ctx), undefined);
   // Trace travels in the durable job options; the browse request body is strict.
   return await clRouterBrowse(
     {
