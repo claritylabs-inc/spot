@@ -1,0 +1,8 @@
+{
+  "httpStatus": 200,
+  "status": "ok",
+  "database": true,
+  "releaseSha": "12ca9ec27d6fd87fb560d27c3e91a1e7afd633ac",
+  "configuredEndpoint": "withheld; HTTPS, no userinfo/query/hash, not vercel.app",
+  "responseBodyNotRetained": true
+}

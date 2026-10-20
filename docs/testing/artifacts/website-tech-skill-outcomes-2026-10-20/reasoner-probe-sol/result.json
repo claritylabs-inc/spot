@@ -1,0 +1,56 @@
+{
+  "startedAt": "2026-10-20T22:26:52.950Z",
+  "requestBodySha256": "41aa09caaf89f1d6c5a9aa8c3b8d9bb0dd3e802a832759c80bfc0ef8b399f2d5",
+  "controllerSha256": "b4a05893779d74ce136238898054cdaaed052778aa4f30c78a71b3956acb460b",
+  "clientPostAttempts": 1,
+  "clientRetries": 0,
+  "clientHardTimeoutMs": 45000,
+  "endpointPath": "/v1/manual",
+  "authorizationPersisted": false,
+  "actualProviderHttpAttempts": "unknown; broker/SDK internal attempts not proven",
+  "httpStatus": 200,
+  "responseBytes": 618,
+  "responseContractValid": true,
+  "model": {
+    "provider": "openai",
+    "model": "gpt-5.6-sol"
+  },
+  "routing": {
+    "decision": "manual",
+    "primitive": "multimodal",
+    "difficulty": null,
+    "requiredTier": 3,
+    "selectedTier": 3,
+    "route": {
+      "provider": "openai",
+      "model": "gpt-5.6-sol"
+    },
+    "source": "manual",
+    "attemptCount": 1
+  },
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 4365,
+    "outputTokens": 114,
+    "cachedInputTokens": 0,
+    "cacheWriteTokens": 4362,
+    "reasoningTokens": 73
+  },
+  "costUsd": 0.0306975,
+  "costStatus": "priced",
+  "requestId": "558464ba-6b9b-4966-81e8-b9663418aa6e",
+  "outputSchemaValid": true,
+  "outputs": {
+    "same_instruction": "yes",
+    "same_images": "yes",
+    "same_selection": "yes",
+    "same_control": "yes",
+    "no_new_mark": "yes",
+    "style_only": "yes"
+  },
+  "exactRoute": true,
+  "providerVersion": "Not separately exposed; returned route label only",
+  "verdict": "PASS",
+  "elapsedMs": 4240,
+  "finishedAt": "2026-10-20T22:26:57.190Z"
+}
