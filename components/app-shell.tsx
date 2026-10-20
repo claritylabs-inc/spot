@@ -128,7 +128,7 @@ function RouteContent({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   return (
-    <div ref={ref} className="w-full min-w-0 px-6 py-6 pb-32 lg:px-8">
+    <div ref={ref} className="w-full min-w-0 px-6 py-6 lg:px-8">
       {children}
     </div>
   );
