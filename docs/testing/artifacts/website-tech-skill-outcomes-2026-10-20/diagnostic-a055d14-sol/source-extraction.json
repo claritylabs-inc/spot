@@ -1,0 +1,11 @@
+{
+  "candidate": "a055d14d7bf565946e5e547117781e89c81777e3",
+  "sourcePath": "packages/server/src/browse/primitives.ts",
+  "sourceFileSha256": "591ed479a3a3e43564ec3c232940d80f236d07248061a163ebc01cf205c6f6d2",
+  "closureSha256": "8ba7534171851d4d74e0ecb29e800943530ed19a01d43f6aa24ff2315a4d43aa",
+  "closureStartLine": 480,
+  "closureEndLine": 569,
+  "constants": "const CAPTCHA_HOVER_MIN = 0.9;\nconst HOVER_MARGIN = 4;\nconst MAX_HOVER_SCALE = 8;",
+  "rectSource": "        const located = {\n          x: answer.box.left * SANDBOX_VIEWPORT.width, y: answer.box.top * SANDBOX_VIEWPORT.height,\n          width: (answer.box.right - answer.box.left) * SANDBOX_VIEWPORT.width, height: (answer.box.bottom - answer.box.top) * SANDBOX_VIEWPORT.height,\n        };",
+  "method": "Verbatim closure plus exact source constants; TSX erases types. Only executeDecision is observed before delegation to the actual candidate function."
+}
