@@ -164,6 +164,23 @@
           "schema": "DecideResponse"
         }
       ]
+    },
+    {
+      "name": "Clairic extraction",
+      "method": "post",
+      "path": "/v1/extract",
+      "request": {
+        "required": true,
+        "mediaType": "application/json",
+        "schema": "ExtractRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "mediaType": "application/json",
+          "schema": "ExtractResponse"
+        }
+      ]
     }
   ],
   "fixtures": [
@@ -328,7 +345,7 @@
           "cachedInputTokens": 0,
           "cacheWriteTokens": 0
         },
-        "costUsd": 0.000001,
+        "costUsd": 1e-06,
         "costStatus": "priced",
         "model": {
           "provider": "openai",
@@ -630,6 +647,93 @@
           "costNanoUsd": 233184
         },
         "durationMs": 412
+      }
+    },
+    {
+      "name": "Spot declarations fast-pass request",
+      "schema": "ExtractRequest",
+      "value": {
+        "tenantId": "glass",
+        "task": "policy_declarations_fast_pass",
+        "state": "Page 1:\nPolicy A123 effective 2026-10-20. General Liability.\n\n",
+        "fields": {
+          "policyNumber": {
+            "type": "text",
+            "instructions": "Policy number as written"
+          },
+          "effectiveDate": {
+            "type": "date"
+          },
+          "linesOfBusiness": {
+            "type": "list",
+            "items": "text"
+          }
+        },
+        "trace": {
+          "traceId": "trace_contract_fixture",
+          "channel": "policy_extraction"
+        }
+      }
+    },
+    {
+      "name": "Clairic scalar date list response",
+      "schema": "ExtractResponse",
+      "value": {
+        "requestId": "extract_contract_fixture",
+        "answers": {
+          "policyNumber": {
+            "value": "A123",
+            "pNull": 0.01,
+            "confidence": 0.99,
+            "span": {
+              "start": 15,
+              "end": 19
+            }
+          },
+          "effectiveDate": {
+            "value": "2026-10-20",
+            "pNull": 0.01,
+            "confidence": 0.98
+          },
+          "linesOfBusiness": {
+            "value": [
+              "General Liability"
+            ],
+            "confidence": 0.99,
+            "items": [
+              {
+                "value": "General Liability",
+                "confidence": 0.99,
+                "span": {
+                  "start": 42,
+                  "end": 59
+                }
+              }
+            ]
+          }
+        },
+        "usage": {
+          "inputTokens": 500
+        },
+        "latencyMs": 500
+      }
+    },
+    {
+      "name": "Clairic absent scalar response",
+      "schema": "ExtractResponse",
+      "value": {
+        "requestId": "extract_null_fixture",
+        "answers": {
+          "policyNumber": {
+            "value": null,
+            "pNull": 1,
+            "confidence": 0.9
+          }
+        },
+        "usage": {
+          "inputTokens": 200
+        },
+        "latencyMs": 100
       }
     }
   ]

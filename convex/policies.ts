@@ -3075,6 +3075,7 @@ const pipelineArtifactKindValidator = v.union(
   v.literal("section_result"),
   v.literal("parsed_source"),
   v.literal("section_plan"),
+      v.literal("declarations_fast_pass"),
 );
 
 export const pipelineSaveArtifact = internalMutation({

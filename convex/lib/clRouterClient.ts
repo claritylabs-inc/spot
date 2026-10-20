@@ -7,6 +7,10 @@ import { modelCallContext, modelCallResult } from "./modelCallTelemetry";
 import {
   DIFFICULTIES,
   QUALITY_TIERS,
+  parseExtractRequest,
+  parseExtractResponse,
+  type ExtractRequest,
+  type ExtractResponse,
   parseDecideRequest,
   parseDecideResponse,
   type DecideRequest,
@@ -1523,6 +1527,59 @@ export async function clRouterDecide(
         status: "error",
         error: error instanceof Error ? error.message : "Decision failed",
       });
+    throw error;
+  }
+}
+
+export async function clRouterExtract(
+  request: Omit<ExtractRequest, "tenantId">,
+  options: ClRouterClientOptions & { orgId?: Id<"organizations"> } = {},
+): Promise<ExtractResponse> {
+  const body = parseExtractRequest({ ...request, tenantId: CL_ROUTER_TENANT_ID });
+  const callKey = crypto.randomUUID();
+  const telemetry = options.telemetry;
+  if (telemetry) {
+    await telemetry.runMutation(internal.modelRoutingEvents.startCall, {
+      callKey,
+      operation: "extract",
+      context: {
+        ...modelCallContext(body, "extract"),
+        orgId: options.orgId,
+        model: "clairic",
+        callProvider: "cloudflare",
+        routeSource: "fixed",
+      },
+    });
+  }
+  try {
+    const payload = await postJson("/v1/extract", body, options);
+    let result: ExtractResponse;
+    try {
+      result = parseExtractResponse(payload, body);
+    } catch (error) {
+      throw new ClRouterRequestError("invalid_response", "cl-router extraction response is invalid", { cause: error });
+    }
+    if (telemetry) {
+      await telemetry.runMutation(internal.modelRoutingEvents.finishCall, {
+        callKey,
+        status: "complete",
+        result: {
+          ...modelCallResult(result),
+          model: "clairic",
+          callProvider: "cloudflare",
+          routeSource: "fixed",
+        },
+      });
+    }
+    return result;
+  } catch (error) {
+    if (telemetry) {
+      await telemetry.runMutation(internal.modelRoutingEvents.finishCall, {
+        callKey,
+        status: "error",
+        error: error instanceof Error ? error.message : "Extraction failed",
+      });
+    }
     throw error;
   }
 }
