@@ -19,7 +19,9 @@ export const suggest = action({
       : request.answers.requestDetails;
     if (request.submitted || request.answers.intakeGoal === "savings" ||
       !text || text.length > 8000 || savedText?.trim() !== text) return null;
-    const candidates = COVERAGE_OPTIONS.filter(option => !["unknown", "other"].includes(option.id));
+    const candidates = COVERAGE_OPTIONS.filter(option => !["unknown", "other"].includes(option.id) &&
+      !request.details.coverages.some(line => line.coverage === option.id));
+    if (!candidates.length) return [];
     try {
       const result = await clRouterDecide({
         task: source === "unknown_scope" ? "intake_unknown_scope_coverage" : "intake_request_notes_coverage",

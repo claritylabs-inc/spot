@@ -125,7 +125,7 @@ export const RequirementImportSchema = z.object({
 });
 
 type ImportedRequirement = z.infer<typeof RequirementSchema>;
-/** Keep each request below the 128-question cap (eight rows, seven each). */
+/** Sixteen independent rows × seven judgments = 112, below the 128-question cap. */
 export async function judgeRequirementFields(
   ctx: ActionCtx,
   requirements: ImportedRequirement[],
@@ -137,8 +137,8 @@ export async function judgeRequirementFields(
   },
 ): Promise<Array<ImportedRequirement & { classificationReview?: true }>> {
   const rows: Array<ImportedRequirement & { classificationReview?: true }> = [];
-  for (let offset = 0; offset < requirements.length; offset += 8) {
-    const batch = requirements.slice(offset, offset + 8);
+  for (let offset = 0; offset < requirements.length; offset += 16) {
+    const batch = requirements.slice(offset, offset + 16);
     const parts = await runWithPayloadSplitting(batch, async (part) => {
       try {
         return await judgeRequirementBatch(ctx, part, args);

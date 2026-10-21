@@ -309,7 +309,7 @@ function Application({
   const data = useQuery(api.requestIntake.get, { requestId });
   const router = useRouter();
   const save = useMutation(api.requestIntake.save);
-  const suggestIndustry = useAction(api.actions.intakeIndustry.suggest);
+  const suggestIndustry = useAction(api.actions.intakeIndustry.suggestProfile);
   const suggestRequestCoverages = useAction(api.actions.intakeCoverage.suggest);
   const requestCoverageAttempts = useRef(new Set<string>());
   const scopeCoverageSuggestions = useRef(new Map<string, string[] | null>());
@@ -868,7 +868,8 @@ function Application({
   }
   function change(field: IntakeField, value: string) {
     if (field === "phone" && (state.current.answers.phone ?? "") === value) return;
-    if (field === "industry") industrySelectionVersion.current++;
+    if (field === "industry" || field === "industryVertical")
+      industrySelectionVersion.current++;
     const previousAnswers=state.current.answers;
     const previousDetails=state.current.details ?? details;
     setSubmissionConfirmed(false);
@@ -1094,12 +1095,18 @@ function Application({
     const selectionVersion = industrySelectionVersion.current;
     const requestVersion = industryRequestVersion.current;
     try {
-      const industry = await suggestIndustry({ requestId, description });
+      const suggestion = await suggestIndustry({ requestId, description });
       const latest = state.current;
-      if (!industry || requestVersion !== industryRequestVersion.current ||
+      if (!suggestion?.industry || requestVersion !== industryRequestVersion.current ||
         selectionVersion !== industrySelectionVersion.current ||
         latest.answers.description?.trim() !== description || latest.answers.industry?.trim()) return;
-      const nextAnswers = { ...latest.answers, industry };
+      const nextAnswers = {
+        ...latest.answers,
+        industry: suggestion.industry,
+        ...(!latest.answers.industryVertical?.trim() && suggestion.industryVertical
+          ? { industryVertical: suggestion.industryVertical }
+          : {}),
+      };
       const previousDetails = latest.details ?? detailsFromAnswers(latest.answers);
       const nextDetails = invalidateIntakePrefills(latest.answers, previousDetails, nextAnswers, previousDetails);
       state.current = { ...latest, answers: nextAnswers, details: nextDetails, dirty: true };

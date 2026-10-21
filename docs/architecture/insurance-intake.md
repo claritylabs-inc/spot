@@ -163,10 +163,7 @@ projected revenue skips on shared step 18. Follow-up answers retain an optional
 `skipped` flag, cleared when edited. Legacy blank follow-ups are asked/unanswered
 and receive the same no-repeat treatment. Existing typed answers/details and
 upload metadata are sent alongside the history. Skip metadata and the history
-contract version participate in generation context hashing. Generated follow-ups
-pass a separate atomic Jev novelty screen against base facts, history, answers
-and earlier candidates; only confident new facts qualify. Exact normalized
-duplicates are removed in code. Unanswered retired questions outside the current
+contract version participate in generation context hashing. The terminal structured generation assesses semantic novelty together with gap detection and primitive choice; no separate Jev novelty request runs. Exact normalized duplicates are removed in code. Unanswered retired questions outside the current
 ready batch stay in history instead of being appended back to the UI; answered
 rows remain available for review/editing.
 
@@ -232,18 +229,8 @@ additional details, review. Persisted ACORD step 29 and generated step 30 retain
 their IDs and share Additional details; there is no standalone Application
 questions section. Remaining catalog answers appear under Coverage in review.
 
-For selected/generated yes/no follow-ups, one independent Jev Choice per question
-selects Yes, No or Unknown from application evidence. Only Yes/No whose confidence
-and chosen probability meet `max(0.70, JEV_PROCEED_THRESHOLD)` produce proposals.
-Unknowns, invalid results and router failures leave ordinary questions visible.
-Final writers recheck batch token, status, capacity, base context and the complete
-human-answer evidence hash. They never overwrite a human answer or explicit skip,
-or fill an inactive conditional child. Saved prefills carry server-owned confidence
-and context provenance; public saves reject forged provenance. Prefills are omitted
-from ordinary question navigation, labeled in review, and editable through review.
-Evidence edits revoke untouched inferences, while manual corrections survive.
-Provenance is excluded from semantic submission comparisons. No failed or unknown
-inference is automatically replayed.
+Legacy inferred yes/no answers retain their server-owned provenance and context checks. New terminal questions do not launch a Boolean-prefill pass: they are already screened against all original facts in their single generation. Cyber and workforce document prefills use explicit cited evidence with Jev verification, preserving human answers and skips; uncertainty remains an unanswered field. Evidence edits revoke untouched inferences, while manual corrections survive. No failed or unknown inference is automatically replayed.
+
 
 The route primitive writes version 2 with up to six independent routes of up to
 twelve ordered cities. It reads legacy version-1 single routes without rewriting
@@ -261,9 +248,9 @@ Intake and operator multiline controls grow with their content using the shared 
 
 Company identity intake asks for the optional Company name (typed DBA/trading name) first, then legal name and website together. Saved question history uses that same field ordering. These two question titles stay static. Intake treats the applicant-provided website as the confirmed source and retrieves its cited content directly, without a company-name identity match. A website alone can start research; legal/trading names are optional context. Local request-owned research selects synchronous router retrieval and bounded text generation before submission (description output at most 1,500 tokens); hosted research stays durable. Facts still need website support, entered answers are preserved, and failed/unknown attempts never automatically replay.
 
-Business-description industry prefill uses the request-owner-authorized `actions/intakeIndustry:suggest` action and `clRouterDecide` (`/v1/decide`) against the shared industry taxonomy. It runs for a prefilled description on its page or after description blur, only when industry is blank. Client guards reject stale descriptions, changed requests, manual industry selections and values filled while the decision was pending. Decisions are attempted once per description per mounted request and never automatically replayed after failure. Empty ready follow-up batches skip their intro and answer pages after entry screening; pending/enriching batches wait, and failed batches skip directly to review without an empty question page.
+Business-description industry prefill uses the request-owner-authorized `actions/intakeIndustry:suggestProfile` action and `clRouterDecide` (`/v1/decide`) against the shared industry taxonomy. It runs for a prefilled description on its page or after description blur, only when industry is blank. Client guards reject stale descriptions, changed requests, manual industry selections and values filled while the decision was pending. Decisions are attempted once per description per mounted request and never automatically replayed after failure. Empty ready follow-up batches skip their intro and answer pages after entry screening; pending/enriching batches wait, and failed batches skip directly to review without an empty question page.
 
-Generated follow-up controls are chosen by Jev Choice during the existing novelty screen, including the shared DateField for a single calendar date. The approved `date` kind persists like other declarative controls; partial date typing is recoverable, while navigation and final submission require a valid entered date or an empty skipped answer. Existing approved text questions receive request-owner-authorized, read-only date presentation hints through `actions/intakeFollowupInputs:dates`, without rewriting question definitions or saved answers.
+New generated follow-up controls are returned by the terminal structured generation, including the shared DateField for a single calendar date. Only legacy text definitions use Jev date hints. The approved `date` kind persists like other declarative controls; partial date typing is recoverable, while navigation and final submission require a valid entered date or an empty skipped answer. Existing approved text questions receive request-owner-authorized, read-only date presentation hints through `actions/intakeFollowupInputs:dates`, without rewriting question definitions or saved answers.
 
 The final additional-question pass makes exactly one structured generation call.
 That call assesses remaining gaps, checks semantic novelty and chooses primitives
@@ -443,3 +430,24 @@ Premium estimates accept either positive bound independently: both bounds show a
 Professional-liability credentials now use a Boolean parent (`eo.services.has_credentials`) and Yes-only `eo.services.credentials_list` child. The list editor uses one removable shared Input per item plus an Add qualification action; up to 15 items of 120 characters fit the existing 2,000-character answer contract as newline-delimited prose. Existing original credential answers remain readable, while blank legacy prompts expand into the new approved pair. Parent changes use existing conditional-answer clearing.
 
 Small intake editors preserve keyboard context: qualifications focus the new or surviving row on add/remove, split multiline pasted lists within their existing 15-row/120-character bounds, and keep entered values on an oversized paste. Country pills wrap long labels within the field, reserve one two-line row above the trigger, and return focus to that trigger after removal. Screen-reader-only follow-up labels explicitly keep one-pixel width so primitive defaults cannot cause mobile overflow. The optional vehicle-specification UI waits for year/make/model and scopes cached results/configurations to that identity and field; VIN edits do not restart model-based lookup. RouteInput keeps all-blank editing rows locally so Add works before city entry while the accepted empty answer remains blank/skippable.
+
+
+## Intake decision and generation audit (2026-10-21)
+
+The [System One design guidance](https://docs.typesafe.ai/concepts/how-to-build-with-system-one) separates deterministic rules, narrow typed judgments and freeform extraction/generation. The intake uses the following bounded paths (retrieval is separate from the generation/decision counts):
+
+| Stage | Code / Jev / generation | Result and safeguards |
+| --- | --- | --- |
+| Website prefill | One structured extraction of at most eight standalone operations and an optional founding year, each with an exact excerpt; one Jev request batches statement support, founding-year support and independent industry/category Choices. | Verification uses the grounded excerpts rather than repeating the full website. Known taxonomy labels; code derives category parent and discards conflicting pairs. Description generation failure still permits classification. Source evidence is bounded before JSON serialization, including escaping overhead, so Cyber can reuse it. |
+| Typed description | One Jev request with industry and category Choices; no generative call. | Fills both missing fields; request/description/manual-selection versions guard stale results. Unknown classifications leave manual choices. |
+| Coverage from applicant prose | One Noul per still-missing known coverage in one request. | Already selected coverages need no judgment. No inferred limits, ownership or eligibility. |
+| Requirement / workforce uploads | Existing bounded structured extraction; grounded facts verified with atomic Jev checks. Requirement classification batches 16 rows × seven judgments (112 questions), with existing known-payload splitting. | Exact excerpts or page-image verification, typed limits and known IDs. Workforce verification retains structured question objects. |
+| Cyber / technology prefill | One structured extraction, then one batched Jev verification. | Candidate question/answer/evidence/URL data is nested state, never interpolated instructions. Missing optional document URLs are explicit nulls, so request validation accepts them. Discovered privacy/terms pages require exact excerpts and are verified from compact candidate evidence rather than full website text. Extraction uses an enum of supplied question IDs; primitive validators reject malformed values. Conflicting duplicate answers are discarded; identical technologies are deduplicated. Website technology cannot establish internal security practices. |
+| Vehicle body type | Known Choice, no generative call. | Ambiguous variants stay manual. |
+| Vehicle specifications | Structured manufacturer-evidence extraction, then batched support Nouls; universal-variant Noul only for candidates claiming universality. | Exact quotes, source URL allowlist, seat/weight unit and numeric invariants in code. Variant selection stays explicit. |
+| Vehicle question relevance | One Jev request for at most 100 independent candidates, rather than serial groups of 12. | Threshold-confident inapplicability only; per-vehicle and fleet scope retained; failures keep ordinary pages. |
+| Standard catalog | Local typed coverage/subject/dependency gates. | No runtime model selection. |
+| Final additional questions | Exactly one bounded structured generation. | Gaps, semantic duplicates and primitive choice share one response; no extra Jev gate, Boolean-prefill, repair or date classifier for new definitions. Full history reserves skipped/unknown facts. |
+| Monthly premium | One structured generation of nullable numeric bounds. | Code validates bounds/currency/context and handles partial ranges; optional failure remains hidden. |
+
+All inference remains on the CL router with task/trace metadata. Jev confidence uses the shared configured threshold, with existing stricter prefill floors preserved. The shared requirement classifier retains its existing scope, evidence and payload-splitting semantics while doubling its row batch from eight to 16. No new direct-provider calls, autonomous agent loops, automatic unknown-outcome retry, or production migration is introduced. Confidence thresholds have not been recalibrated against a labeled insurance dataset in this audit; the applicant remains the fallback for unsupported facts.
