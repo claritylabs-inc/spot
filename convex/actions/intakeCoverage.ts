@@ -7,19 +7,22 @@ import { clRouterDecide } from "../lib/clRouterClient";
 import { jevProceeds } from "../lib/jevThreshold";
 import { COVERAGE_OPTIONS } from "../../lib/insurance-intake-details";
 
-/** Applicant request notes are coverage evidence, alongside uploaded requirements. */
+/** Saved applicant prose supplies evidence for editable coverage suggestions. */
 export const suggest = action({
-  args: { requestId: v.id("procurementRequests"), notes: v.string() },
+  args: { requestId: v.id("procurementRequests"), notes: v.string(), source: v.optional(v.union(v.literal("request_notes"), v.literal("unknown_scope"))) },
   returns: v.union(v.array(v.string()), v.null()),
-  handler: async (ctx, { requestId, notes }): Promise<string[] | null> => {
+  handler: async (ctx, { requestId, notes, source }): Promise<string[] | null> => {
     const request = await ctx.runQuery(api.requestIntake.get, { requestId });
     const text = notes.trim();
+    const savedText = source === "unknown_scope"
+      ? request.details.coverages.find(line => line.coverage === "unknown")?.scopeDescription
+      : request.answers.requestDetails;
     if (request.submitted || request.answers.intakeGoal === "savings" ||
-      !text || text.length > 8000 || request.answers.requestDetails?.trim() !== text) return null;
+      !text || text.length > 8000 || savedText?.trim() !== text) return null;
     const candidates = COVERAGE_OPTIONS.filter(option => !["unknown", "other"].includes(option.id));
     try {
       const result = await clRouterDecide({
-        task: "intake_request_notes_coverage",
+        task: source === "unknown_scope" ? "intake_unknown_scope_coverage" : "intake_request_notes_coverage",
         trace: { traceId: String(requestId), channel: "web" },
         state: { requestNotes: text },
         questions: Object.fromEntries(candidates.map(option => [option.id, {

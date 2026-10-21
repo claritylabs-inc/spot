@@ -33,7 +33,7 @@ export const VEHICLE_UNDERWRITING_FIELDS = [
   {
     key: "gross_vehicle_weight",
     label: "Gross vehicle weight rating (GVWR)",
-    placeholder: "e.g. 26,000 lb",
+    placeholder: "e.g. 26,000 lbs",
   },
   { key: "seats", label: "Number of passenger seats", placeholder: "e.g. 2" },
   {
@@ -43,8 +43,9 @@ export const VEHICLE_UNDERWRITING_FIELDS = [
   },
   {
     key: "custom_equipment_detail",
-    label: "Equipment description and replacement value",
+    label: "Equipment description",
   },
+  { key: "custom_equipment_value", label: "Equipment replacement cost" },
   {
     key: "personal_use",
     label: "Used for personal trips",
@@ -100,7 +101,7 @@ export function vehicleUnderwritingValues(
   ) as IntakeVehicleUnderwriting;
   if (values.ownership === "Owned") values.ownership = "Business owned";
   if (values.ownership === "Leased") values.ownership = "Leased by business";
-  if (values.custom_equipment !== "Yes") values.custom_equipment_detail = "";
+  if (values.custom_equipment !== "Yes") { values.custom_equipment_detail = ""; values.custom_equipment_value = ""; }
   return values;
 }
 export function vehicleUnderwritingRows(details: IntakeDetails) {

@@ -27,6 +27,7 @@ export const intakeDetailsValidator = v.object({
   collectSensitiveDriverDetails: v.optional(v.boolean()),
   followups: v.optional(v.array(followupAnswerValidator)),
   skippedBaseFields: v.optional(v.array(v.string())),
+  payrollPage: v.optional(v.number()),
   followupProgress: v.optional(v.object({ acord: v.number(), additional: v.number() })),
   companyResearchSource: v.optional(v.string()),
   prefillSourceIds: v.optional(v.array(v.string())),

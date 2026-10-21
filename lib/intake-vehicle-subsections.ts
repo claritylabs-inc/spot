@@ -13,7 +13,8 @@ const prompts: Record<string, string> = {
   gross_vehicle_weight: "What is this vehicle’s gross vehicle weight rating?",
   seats: "How many passenger seats does this vehicle have?",
   custom_equipment: "Does this vehicle have any nonstandard permanently installed equipment?",
-  custom_equipment_detail: "What equipment has been added, and how much would it cost to replace?",
+  custom_equipment_detail: "What equipment has been added to this vehicle?",
+  custom_equipment_value: "How much would it cost to replace the equipment added to this vehicle?",
   personal_use: "Is this vehicle also used for personal trips?",
 };
 
@@ -26,14 +27,14 @@ export function vehicleSubsectionQuestions(details: IntakeDetails) {
       for (const char of JSON.stringify([vehicle.year, vehicle.make, vehicle.model, vehicle.vin])) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
       const values = vehicleUnderwritingValues(vehicle, vehicleIndex, details.followups);
       return VEHICLE_UNDERWRITING_FIELDS.filter(field => !("retired" in field) &&
-        (field.key !== "custom_equipment_detail" || values.custom_equipment === "Yes"))
+        (!["custom_equipment_detail","custom_equipment_value"].includes(field.key) || values.custom_equipment === "Yes"))
         .map(field => ({
           coverageIndex, vehicleIndex, field: field.key,
           question: {
             id: `vehicle_base_${coverageIndex}_${vehicleIndex}_${(hash >>> 0).toString(36)}_${field.key}`,
             label: `Vehicle ${vehicleIndex + 1} (${name}): ${prompts[field.key]}`,
             section: "acord" as const, source: "Base vehicle details",
-            kind: ("options" in field ? field.key === "ownership" ? "dropdown" : "yes_no" : field.key === "seats" ? "number" : ["use", "custom_equipment_detail"].includes(field.key) ? "long_text" : "short_text") as IntakeFollowupQuestion["kind"],
+            kind: ("options" in field ? field.key === "ownership" ? "dropdown" : "yes_no" : field.key === "custom_equipment_value" ? "currency" : field.key === "seats" ? "number" : ["use", "custom_equipment_detail"].includes(field.key) ? "long_text" : "short_text") as IntakeFollowupQuestion["kind"],
             options: "options" in field ? [...field.options] : [],
           } satisfies IntakeFollowupQuestion,
           answer: values[field.key] ?? "",

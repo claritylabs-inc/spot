@@ -14,6 +14,7 @@ const presentationKeys = new Set([
   "operatingLocationPrefilled",
   "activitiesPrefilled",
   "followupProgress",
+  "payrollPage",
   "sectionIntroductions",
     "subsectionIntroductions",
   "driverIndex",
@@ -67,6 +68,10 @@ export function invalidateIntakePrefills(
   return {
     ...details,
     followups: details.followups.filter((row) => !row.prefilled ||
+      (row.prefilled.contextHash.startsWith("workforce:") && details.coverages.some(line=>line.coverage==="workers_compensation") && previousAnswers.legalName===answers.legalName && previousAnswers.dba===answers.dba) ||
+      (row.prefilled.contextHash.startsWith("requirements:") &&
+        details.coverages.some(line => line.coverage === "general_liability") &&
+        previousAnswers.legalName === answers.legalName && previousAnswers.dba === answers.dba) ||
       (row.prefilled.contextHash.startsWith("cyber:") &&
         details.coverages.some(line => line.coverage === "cyber") &&
         intakeCyberResearchKey(previousAnswers, previousDetails) === intakeCyberResearchKey(answers, details))),

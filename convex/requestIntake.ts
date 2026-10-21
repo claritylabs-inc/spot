@@ -1,9 +1,12 @@
+import { workforcePolicyQuestion } from "../lib/intake-workforce-policy";
+import { vehicleRelevanceKey, vehicleRelevanceEvidence, vehicleRelevanceCandidates } from "../lib/intake-vehicle-relevance";
 import { bakedCoverageQuestions, BAKED_COVERAGE_QUESTIONS_VERSION } from "../lib/intake-coverage-questions";
 import { intakeCyberResearchKey } from "../lib/intake-cyber-research";
 import { isFixedVehicleFollowup } from "../lib/intake-vehicle-underwriting";
 import { intakePrefillEvidence, invalidateIntakePrefills } from "../lib/intake-prefill-state";
 import { followupPrefillValidator } from "./lib/intakeFollowupSchema";
 import { mergeIntakePrefills } from "./lib/intakePrefills";
+import { jevProceedThreshold } from "./lib/jevThreshold";
 import { intakeSubmissionProblems } from "../lib/intake-submission";
 import { driverModelContext } from "../lib/intake-drivers";
 import { intakeQuestionHistory } from "../lib/intake-question-history";
@@ -91,6 +94,7 @@ export function submissionContent(
     "operatingLocationPrefilled",
     "activitiesPrefilled",
     "followupProgress",
+    "payrollPage",
     "sectionIntroductions",
     "subsectionIntroductions",
     "driverIndex",
@@ -505,6 +509,7 @@ export const get = query({
       .take(30);
     const details =
       request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {});
+    const premiumDraftContentHash = await hashIntakeToken(submissionContent(request.intakeAnswers ?? {}, activeIntakeDetails(details,request.intakeAnswers?.intakeGoal), files.map(file=>String(file._id))));
     const hasTypedScope = details.coverages.some(
       (line) =>
         line.properties !== undefined ||
@@ -516,6 +521,7 @@ export const get = query({
     );
     return {
       requestId: request._id,
+      vehicleRelevance: request.intakeVehicleRelevance,
       answers: request.intakeAnswers ?? {},
       followupBatches: {
         acord: {
@@ -584,6 +590,8 @@ export const get = query({
           ? request.intakeCompanyResearch
           : undefined,
       cyberResearch: request.intakeCyberResearch,
+      premiumDraftContentHash,
+      premiumEstimate: request.intakePremiumEstimate && (request.intakePremiumEstimate.provisional ? request.intakePremiumEstimate.contentHash === premiumDraftContentHash : !request.intakeSubmittedContentHash || request.intakePremiumEstimate.contentHash === request.intakeSubmittedContentHash) ? request.intakePremiumEstimate : undefined,
       orgId: request.clientOrgId,
       canUseSavedCompany:
         !!request.intakeSavedCompany || !!request.intakeNewCompany,
@@ -847,6 +855,16 @@ export const save = mutation({
         /^https?:\/\//i.test(website) ? website : `https://${website}`,
       );
     const fingerprint = JSON.stringify([name, website]);
+    if (details && !request.intakeSubmittedAt && answers.intakeGoal !== "savings" &&
+      vehicleRelevanceEvidence(answers,details).vehicles.some(vehicle=>vehicle.use.trim() && vehicle.use!=="I'm not sure")) {
+      const sourceKey=vehicleRelevanceKey(answers,details);
+      const previous=request.intakeVehicleRelevance;
+      if(previous?.sourceKey!==sourceKey && (previous?.attempts ?? 0)<40){
+        const fingerprint=await hashIntakeToken(sourceKey);
+        await ctx.db.patch(request._id,{intakeVehicleRelevance:{sourceKey,fingerprint,status:"pending",startedAt:dayjs().valueOf(),attempts:previous?.attempts??0,excludedIds:[]}});
+        await ctx.scheduler.runAfter(1500,internal.actions.intakeVehicleRelevance.run,{requestId:request._id,fingerprint});
+      }
+    }
     const previousResearch = request.intakeCompanyResearch;
     if (url && details?.coverages.some(line => line.coverage === "cyber") && answers.intakeGoal !== "savings" && !request.intakeSubmittedAt) {
       const sourceKey = intakeCyberResearchKey(answers, details);
@@ -1193,14 +1211,14 @@ export const attachFile = mutation({
     };
     const intakeFileId = await ctx.db.insert("requestIntakeFiles", {
       ...fileArgs,
-      ...(args.category === "requirements" ? {prefillStatus:"pending" as const} : {}),
+      ...((args.category === "requirements" || (args.category === "supporting" && request.intakeDetails?.coverages.some(line=>line.coverage==="workers_compensation"))) ? {prefillStatus:"pending" as const} : {}),
       name: args.name.slice(0, 200),
       ownerUserId: user._id,
       contentType: metadata.contentType!,
       size: metadata.size,
       createdAt: dayjs().valueOf(),
     });
-    if (args.category === "requirements")
+    if (args.category === "requirements" || (args.category === "supporting" && request.intakeDetails?.coverages.some(line=>line.coverage==="workers_compensation")))
       await ctx.scheduler.runAfter(
         0,
         internal.actions.intakeRequirementPrefill.extract,
@@ -1285,6 +1303,10 @@ export const removeFile = mutation({
     await ctx.db.patch(request._id, {
       updatedAt: now,
       ...(request.intakeSubmittedAt ? { intakeAmendedAt: now } : {}),
+      ...(!request.intakeSubmittedAt && request.intakeDetails?.followups?.some(row => [`requirements:${file._id}`,`workforce:${file._id}`].includes(row.prefilled?.contextHash??"")) ? {
+        intakeDetails: { ...request.intakeDetails, followups: request.intakeDetails.followups.filter(row => ![`requirements:${file._id}`,`workforce:${file._id}`].includes(row.prefilled?.contextHash??"")) },
+        intakeRevision: (request.intakeRevision ?? 0) + 1,
+      } : {}),
       ...(file.clientFileId
         ? { packetRevision: (request.packetRevision ?? 0) + 1 }
         : {}),
@@ -1385,6 +1407,7 @@ export const submit = mutation({
 
           updatedAt: dayjs().valueOf(),
         });
+        await ctx.scheduler.runAfter(0, internal.requestIntake.preparePremiumEstimateInternal, { requestId: request._id });
         if (request.clientOrgId)
           await saveIntakeBusinessProfile(
             ctx,
@@ -1511,6 +1534,7 @@ export const submit = mutation({
       );
       return { requestId: request._id, orgId };
     }
+    await ctx.scheduler.runAfter(0, internal.requestIntake.preparePremiumEstimateInternal, { requestId: request._id });
     await seedRequestIntake(ctx, {
       requestId: request._id,
       clientOrgId: orgId,
@@ -1633,7 +1657,7 @@ export const claimRequirementPrefill = internalMutation({
     const file = await ctx.db.get(intakeFileId);
     if (
       !file ||
-      file.category !== "requirements" ||
+      !["requirements","supporting"].includes(file.category) ||
       file.prefillStartedAt !== undefined
     )
       return null;
@@ -1650,12 +1674,21 @@ export const claimRequirementPrefill = internalMutation({
       fileId: file.fileId,
       name: file.name,
       contentType: file.contentType,
+      workforce: file.category === "supporting",
+      companyIdentity: JSON.stringify([request.intakeAnswers?.legalName??"",request.intakeAnswers?.dba??""]),
+      businessName: request.intakeAnswers?.legalName || request.intakeAnswers?.dba || "",
+      workforceQuestions: file.category === "supporting" ? bakedCoverageQuestions({answers:request.intakeAnswers??{},details:request.intakeDetails??detailsFromAnswers(request.intakeAnswers??{})}).filter(workforcePolicyQuestion) : [],
     };
   },
 });
 export const finishRequirementPrefill = internalMutation({
-  args: { intakeFileId: v.id("requestIntakeFiles"), coveragesJson: v.string() },
-  handler: async (ctx, { intakeFileId, coveragesJson }) => {
+  args: {
+    intakeFileId: v.id("requestIntakeFiles"), coveragesJson: v.string(),
+    workforceProposals: v.optional(v.array(v.object({questionId:v.string(),answer:v.string(),confidence:v.number()}))),
+    companyIdentity: v.optional(v.string()),
+    provisionRequirements: v.optional(v.array(v.object({ coverage: v.string(), provisions: v.array(v.union(v.literal("additional_insured"), v.literal("waiver_of_subrogation"), v.literal("primary_non_contributory"))) }))),
+  },
+  handler: async (ctx, { intakeFileId, coveragesJson, provisionRequirements, workforceProposals, companyIdentity }) => {
     const file = await ctx.db.get(intakeFileId);
     const request = file ? await ctx.db.get(file.requestId) : null;
     if (
@@ -1673,6 +1706,39 @@ export const finishRequirementPrefill = internalMutation({
     details.coverages = JSON.parse(coveragesJson);
     validateIntakeDetails(details);
     await ctx.db.patch(file._id, { prefillCoveragesJson: coveragesJson,prefillStatus:"complete" });
+    if (file.category === "supporting" && !request.intakeSubmittedAt && companyIdentity === JSON.stringify([request.intakeAnswers?.legalName??"",request.intakeAnswers?.dba??""]) && request.intakeDetails?.coverages.some(line=>line.coverage==="workers_compensation")) {
+      const current=request.intakeDetails;
+      const questions=bakedCoverageQuestions({answers:request.intakeAnswers??{},details:current}).filter(workforcePolicyQuestion);
+      const followups=[...(current.followups??[])];
+      for(const question of questions) {
+        const proposal=workforceProposals?.find(row=>row.questionId===question.id);
+        const saved=followups.find(row=>row.id===question.id);
+        if(!proposal || !Number.isFinite(proposal.confidence) || proposal.confidence<Math.max(.7,jevProceedThreshold()) || proposal.confidence>1 || saved?.answer.trim() || saved?.skipped || !followupQuestionVisible(question,followups))continue;
+        const row={...question,answer:proposal.answer,prefilled:{confidence:proposal.confidence,contextHash:`workforce:${file._id}`}};
+        validateFollowupAnswers([row]);
+        if(saved)followups[followups.indexOf(saved)]=row;else followups.push(row);
+      }
+      validateFollowupAnswers(followups);
+      if(JSON.stringify(followups)!==JSON.stringify(current.followups??[]))await ctx.db.patch(request._id,{intakeDetails:{...current,followups},intakeRevision:(request.intakeRevision??0)+1});
+    }
+    if (!request.intakeSubmittedAt && request.intakeAnswers?.intakeGoal !== "savings" && provisionRequirements?.length) {
+      const current = request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {});
+      const questions = bakedCoverageQuestions({ answers: request.intakeAnswers ?? {}, details: current });
+      const glProvisions = new Set(provisionRequirements.filter(row => row.coverage === "general_liability").flatMap(row => row.provisions));
+      const targets = [
+        ["additional_insured", "gl.coverage.additional_insureds"],
+        ["waiver_of_subrogation", "gl.coverage.waiver_requirements"],
+        ["primary_non_contributory", "gl.coverage.primary_requirement"],
+      ] as const;
+      const proposals = targets.flatMap(([provision, source]) => {
+        const question = questions.find(row => row.source?.endsWith(` · ${source}`));
+        // Classification already passed Jev's threshold and source-excerpt grounding.
+        return glProvisions.has(provision) && question ? [{ questionId: question.id, answer: "Yes" as const, confidence: jevProceedThreshold() }] : [];
+      });
+      const followups = mergeIntakePrefills(current.followups ?? [], questions, proposals, `requirements:${file._id}`);
+      if (JSON.stringify(followups) !== JSON.stringify(current.followups ?? []))
+        await ctx.db.patch(request._id, { intakeDetails: { ...current, followups }, intakeRevision: (request.intakeRevision ?? 0) + 1 });
+    }
     return null;
   },
 });
@@ -1682,7 +1748,7 @@ export const failRequirementPrefill = internalMutation({
   args:{intakeFileId:v.id("requestIntakeFiles")},
   handler:async(ctx,{intakeFileId})=>{
     const file=await ctx.db.get(intakeFileId);
-    if(file?.category === "requirements" && file.prefillStartedAt!==undefined && file.prefillCoveragesJson===undefined)await ctx.db.patch(file._id,{prefillStatus:"failed"});
+    if(file && ["requirements","supporting"].includes(file.category) && file.prefillStartedAt!==undefined && file.prefillCoveragesJson===undefined)await ctx.db.patch(file._id,{prefillStatus:"failed"});
     return null;
   }
 });
@@ -1758,6 +1824,34 @@ export const finishCompanyResearch = internalMutation({
         ...(evidence ? { evidence: evidence.slice(0, 30000) } : {}),
       },
     });
+    return null;
+  },
+});
+
+export const claimVehicleRelevance = internalMutation({
+  args:{requestId:v.id("procurementRequests"),fingerprint:v.string()},
+  handler:async(ctx,{requestId,fingerprint})=>{
+    const request=await ctx.db.get(requestId);
+    const job=request?.intakeVehicleRelevance;
+    const details=request?.intakeDetails;
+    const answers=request?.intakeAnswers??{};
+    if(!request?.ownerUserId || request.deletedAt || request.intakeSubmittedAt || answers.intakeGoal==="savings" || !details ||
+      !job || job.status!=="pending" || job.fingerprint!==fingerprint || job.sourceKey!==vehicleRelevanceKey(answers,details))return null;
+    await ctx.db.patch(requestId,{intakeVehicleRelevance:{...job,status:"running",attempts:job.attempts+1}});
+    return {evidence:vehicleRelevanceEvidence(answers,details),candidates:vehicleRelevanceCandidates(answers,details)};
+  },
+});
+export const finishVehicleRelevance = internalMutation({
+  args:{requestId:v.id("procurementRequests"),fingerprint:v.string(),failed:v.boolean(),decisions:v.array(v.object({id:v.string(),irrelevantProbability:v.number()}))},
+  handler:async(ctx,{requestId,fingerprint,failed,decisions})=>{
+    const request=await ctx.db.get(requestId);
+    const job=request?.intakeVehicleRelevance;
+    const details=request?.intakeDetails;
+    if(!request?.ownerUserId || request.deletedAt || request.intakeSubmittedAt || !details || !job || job.status!=="running" || job.fingerprint!==fingerprint ||
+      job.sourceKey!==vehicleRelevanceKey(request.intakeAnswers??{},details))return null;
+    const allowed=new Set(vehicleRelevanceCandidates(request.intakeAnswers??{},details).map(candidate=>candidate.id));
+    const excludedIds=failed?[]:[...new Set(decisions.filter(row=>allowed.has(row.id) && Number.isFinite(row.irrelevantProbability) && row.irrelevantProbability>=jevProceedThreshold() && row.irrelevantProbability<=1).map(row=>row.id))];
+    await ctx.db.patch(requestId,{intakeVehicleRelevance:{...job,status:failed?"failed":"completed",excludedIds}});
     return null;
   },
 });
@@ -1887,6 +1981,7 @@ async function prepareFollowupBatch(
   request: Doc<"procurementRequests">,
   section: "acord" | "additional",
   preload = false,
+  retryFailed = false,
 ) {
   const requestId = request._id;
   // Catalog questions are projected synchronously from the shared baked packs.
@@ -1933,7 +2028,7 @@ async function prepareFollowupBatch(
       return null;
     }
     if (previous?.status === "pending") return null;
-    if (previous?.contextHash === contextHash && previous.status !== "prepared")
+    if (previous?.contextHash === contextHash && previous.status !== "prepared" && !(retryFailed && previous.status === "failed"))
       return null;
     const reuseQuestions =
       !preload &&
@@ -1969,10 +2064,10 @@ async function prepareFollowupBatch(
     return null;
 }
 export const prepareFollowups = mutation({
-  args: { requestId: v.id("procurementRequests"), section: followupSectionValidator, preload: v.optional(v.boolean()) },
-  handler: async (ctx, { requestId, section, preload }) => {
+  args: { requestId: v.id("procurementRequests"), section: followupSectionValidator, preload: v.optional(v.boolean()), retry: v.optional(v.boolean()) },
+  handler: async (ctx, { requestId, section, preload, retry }) => {
     const { request } = await ownedRequest(ctx, requestId);
-    return prepareFollowupBatch(ctx, request, section, preload);
+    return prepareFollowupBatch(ctx, request, section, preload, !!retry);
   },
 });
 
@@ -2396,6 +2491,183 @@ export const finishFollowupGapAssessment = internalMutation({
       await ctx.db.patch(requestId, { intakeFollowups: { ...request.intakeFollowups, additional: batch } });
       await ctx.scheduler.runAfter(0, internal.actions.intakeFollowups.generate, { requestId, section: "additional", token: batch.token, gapApprovedHash: await followupContextHash(ctx, request, "additional") });
     }
+    return null;
+  },
+});
+
+/** Local/operator diagnostics without disclosing applicant answer contents. */
+export const inspectFollowupPreparation = internalQuery({
+  args:{requestId:v.id("procurementRequests")},
+  handler:async(ctx,{requestId})=>{
+    const request=await ctx.db.get(requestId);if(!request)return null;
+    const batch=request.intakeFollowups?.additional;
+    return {vehicleRelevance:request.intakeVehicleRelevance?{status:request.intakeVehicleRelevance.status,excludedIds:request.intakeVehicleRelevance.excludedIds,current:!!request.intakeDetails && request.intakeVehicleRelevance.sourceKey===vehicleRelevanceKey(request.intakeAnswers??{},request.intakeDetails)}:null,step:request.intakeStep,submitted:!!request.intakeSubmittedAt,batch:batch?{status:batch.status,questionCount:batch.questions.length,preloaded:batch.preloaded,enriching:batch.enriching,startedAt:batch.startedAt,current:batch.contextHash===await followupContextHash(ctx,request,"additional"),preloadScopeCurrent:batch.preloadScopeHash===await followupPreloadScopeHash(ctx,request)}:null};
+  },
+});
+
+export const inspectCyberResearch = internalQuery({
+  args:{requestId:v.id("procurementRequests")},
+  handler:async(ctx,{requestId})=>{
+    const request=await ctx.db.get(requestId);
+    if(!request)return null;
+    const research=request.intakeCyberResearch;
+    const jobs=research?(await ctx.db.query("routerJobs").order("desc").take(100)).filter(job=>job.operation==="retrieve" && job.createdAt>=research.startedAt && job.createdAt<research.startedAt+5000):[];
+    return {hasOwner:!!request.ownerUserId,deleted:!!request.deletedAt,submitted:!!request.intakeSubmittedAt,coverages:request.intakeDetails?.coverages.map(line=>line.coverage),website:request.intakeAnswers?.website,documents:request.intakeDetails?.cyberDocuments,
+      research:research?{status:research.status,startedAt:research.startedAt,attempts:research.attempts,current:!!request.intakeDetails && research.sourceKey===intakeCyberResearchKey(request.intakeAnswers??{},request.intakeDetails),fingerprint:research.fingerprint,technologyCount:research.technologies?.length??0,suggestionCount:research.suggestions?.length??0}:null,
+      retrievalJobs:jobs.map(job=>({status:job.status,submitted:!!job.routerJobId,error:job.error,failure:job.failure})),
+      savedPrefillCount:request.intakeDetails?.followups?.filter(row=>row.prefilled?.contextHash.startsWith("cyber:")).length??0};
+  },
+});
+
+/** Explicit operator recovery only; inference never replays on its own. */
+export const retryCyberResearchInternal = internalMutation({
+  args:{requestId:v.id("procurementRequests")},
+  handler:async(ctx,{requestId})=>{
+    const request=await ctx.db.get(requestId);
+    const details=request?.intakeDetails;
+    const previous=request?.intakeCyberResearch;
+    if(!request?.ownerUserId || request.deletedAt || request.intakeSubmittedAt || !details ||
+      !details.coverages.some(line=>line.coverage==="cyber") || request.intakeAnswers?.intakeGoal==="savings" || !previous || !["failed","completed"].includes(previous.status))throw new Error("No completed or failed draft cyber research to retry");
+    const sourceKey=intakeCyberResearchKey(request.intakeAnswers??{},details);
+    const fingerprint=await hashIntakeToken(`${sourceKey}:${crypto.randomUUID()}`);
+    await ctx.db.patch(requestId,{intakeCyberResearch:{sourceKey,fingerprint,startedAt:dayjs().valueOf(),attempts:previous.attempts,status:"pending"}});
+    await ctx.scheduler.runAfter(0,internal.actions.intakeCyberResearch.run,{requestId,fingerprint});
+    return {scheduled:true};
+  },
+});
+
+async function premiumEstimateSource(ctx: QueryCtx | MutationCtx, request: Doc<"procurementRequests">, draft: boolean) {
+  if (!draft) {
+    const application = submittedIntakeApplication(request);
+    return application ? {application, contentHash:request.intakeSubmittedContentHash ?? await hashIntakeToken(JSON.stringify(application))} : null;
+  }
+  const answers=request.intakeAnswers??{};
+  const details=activeIntakeDetails(request.intakeDetails??detailsFromAnswers(answers),answers.intakeGoal);
+  const files=await ctx.db.query("requestIntakeFiles").withIndex("request",q=>q.eq("requestId",request._id)).take(30);
+  return {application:{answers,details,files:files.map(file=>({id:String(file._id),name:file.name})),submittedAt:dayjs().valueOf(),revision:request.intakeRevision??0},contentHash:await hashIntakeToken(submissionContent(answers,details,files.map(file=>String(file._id))))};
+}
+async function preparePremiumEstimateForRequest(ctx: MutationCtx, request: Doc<"procurementRequests">, preferDraft = false) {
+  const provisional=!request.intakeSubmittedAt || preferDraft;
+  const source=await premiumEstimateSource(ctx,request,provisional);
+  if (!source || !request.ownerUserId || source.application.answers.intakeGoal === "savings" || !source.application.details.coverages.length) return;
+  const {application,contentHash}=source;
+  // Includes failed and unknown outcomes: opening the page cannot replay a call.
+  if (request.intakePremiumEstimate?.contentHash === contentHash) {
+    if(!provisional && request.intakePremiumEstimate.provisional)await ctx.db.patch(request._id,{intakePremiumEstimate:{...request.intakePremiumEstimate,provisional:false}});
+    return;
+  }
+  const country = application.details.registrationCountry || application.details.mailingAddress.country;
+  const currency = country === "Canada" || country === "CA" ? "CAD" : country === "United Kingdom" || country === "GB" ? "GBP" : "USD";
+  const token = crypto.randomUUID();
+  await ctx.db.patch(request._id, { intakePremiumEstimate: {
+    contentHash, token, currency, provisional, status: "pending", startedAt: dayjs().valueOf(),
+  } });
+  await ctx.scheduler.runAfter(0, internal.actions.intakePremiumEstimate.run, {requestId: request._id, token});
+}
+
+/** Also supports an already-submitted owner's final page without a data migration. */
+export const preparePremiumEstimate = mutation({
+  args: {requestId: v.id("procurementRequests"), preferDraft:v.optional(v.boolean())},
+  handler: async (ctx, {requestId,preferDraft}) => {
+    const {request} = await ownedRequest(ctx, requestId);
+    await preparePremiumEstimateForRequest(ctx, request,preferDraft);
+    return null;
+  },
+});
+export const preparePremiumEstimateInternal = internalMutation({
+  args: {requestId: v.id("procurementRequests")},
+  handler: async (ctx, {requestId}) => {
+    const request = await ctx.db.get(requestId);
+    if (request && !request.deletedAt) await preparePremiumEstimateForRequest(ctx, request);
+    return null;
+  },
+});
+export const claimPremiumEstimate = internalMutation({
+  args: {requestId:v.id("procurementRequests"),token:v.string()},
+  handler: async(ctx,{requestId,token}) => {
+    const request=await ctx.db.get(requestId);
+    const estimate=request?.intakePremiumEstimate;
+    const source=request && await premiumEstimateSource(ctx,request,!!estimate?.provisional);
+    const application=source?.application;
+    if (!request || request.deletedAt || !application || application.answers.intakeGoal === "savings" || !estimate || estimate.token !== token || estimate.status !== "pending" || source?.contentHash!==estimate.contentHash) return null;
+    await ctx.db.patch(requestId,{intakePremiumEstimate:{...estimate,status:"running"}});
+    const answers={...application.answers};
+    for (const key of ["name","email","phone","fein","businessNumber"] as const) delete answers[key];
+    const details=activeIntakeDetails(application.details,application.answers.intakeGoal);
+    return {currency:estimate.currency,application:{answers,details:{...details,
+      drivers:(details.drivers??[]).map((driver,index)=>({...driverModelContext(driver),name:`Driver ${index+1}`,
+        ...(driver.dateOfBirth && dayjs(driver.dateOfBirth).isValid() ? {age:dayjs(application.submittedAt).diff(dayjs(driver.dateOfBirth),"year")} : {}),
+      })),
+      followups:details.followups?.filter(row=>!/auto\.driver\.(?:name|date_of_birth|license_number)/.test(row.source??"")),
+      coverages:details.coverages.map(line=>({...line,vehicles:line.vehicles?.map(vehicle=>({...vehicle,vin:vehicle.vin?"[provided]":""}))})),
+    }}};
+  },
+});
+export const finishPremiumEstimate = internalMutation({
+  args: {requestId:v.id("procurementRequests"),token:v.string(),failed:v.boolean(),minimumMonthly:v.optional(v.number()),maximumMonthly:v.optional(v.number())},
+  handler:async(ctx,args)=>{
+    const request=await ctx.db.get(args.requestId);
+    const estimate=request?.intakePremiumEstimate;
+    if(!request || request.deletedAt || !estimate || estimate.token!==args.token || estimate.status!=="running")return null;
+    const source=await premiumEstimateSource(ctx,request,!!estimate.provisional);
+    if(source?.contentHash!==estimate.contentHash)return null;
+    const validBound=(value:number|undefined)=>value===undefined || (Number.isSafeInteger(value) && value>0 && value<=10000000);
+    const valid=!args.failed && (args.minimumMonthly!==undefined || args.maximumMonthly!==undefined) &&
+      validBound(args.minimumMonthly) && validBound(args.maximumMonthly) &&
+      (args.minimumMonthly===undefined || args.maximumMonthly===undefined || args.maximumMonthly>args.minimumMonthly);
+    await ctx.db.patch(args.requestId,{intakePremiumEstimate:{...estimate,status:valid?"completed":"failed",
+      ...(valid?{minimumMonthly:args.minimumMonthly,maximumMonthly:args.maximumMonthly}:{}),
+    }});
+    return null;
+  },
+});
+
+export const inspectPremiumEstimate = internalQuery({
+  args: {requestId:v.id("procurementRequests")},
+  handler:async(ctx,{requestId})=>{
+    const request=await ctx.db.get(requestId);
+    const estimate=request?.intakePremiumEstimate;
+    const source=request ? await premiumEstimateSource(ctx,request,!!estimate?.provisional) : null;
+    return {submitted:!!request?.intakeSubmittedAt,estimate:estimate?{
+      status:estimate.status,startedAt:estimate.startedAt,currency:estimate.currency,minimumMonthly:estimate.minimumMonthly,maximumMonthly:estimate.maximumMonthly,
+      current:!request?.intakeSubmittedContentHash || estimate.contentHash===request.intakeSubmittedContentHash,
+    }:null,inputSummary:source ? {
+      country:source.application.details.registrationCountry,
+      operations:source.application.answers.description,
+      coverages:source.application.details.coverages.map(line=>({coverage:line.coverage,vehicles:line.vehicles?.length??0})),
+      drivers:source.application.details.drivers?.length??0,
+      followupAnswers:source.application.details.followups?.filter(row=>!row.skipped && row.answer.trim()).length??0,
+      underwriting:source.application.details.followups?.filter(row=>!row.skipped && row.answer.trim() && !/auto\.driver\./.test(row.source??"")).slice(0,160).map(row=>({source:row.source,label:row.label,answer:row.answer})),
+    }:null};
+  },
+});
+
+/** Explicit operator-requested retry of a known failed attempt; never automatic. */
+export const retryFailedPremiumEstimateInternal = internalMutation({
+  args:{requestId:v.id("procurementRequests"),expectedStartedAt:v.number()},
+  handler:async(ctx,{requestId,expectedStartedAt})=>{
+    const request=await ctx.db.get(requestId);
+    const estimate=request?.intakePremiumEstimate;
+    if(!request || request.deletedAt || !request.intakeSubmittedAt || !estimate || estimate.status!=="failed" || estimate.startedAt!==expectedStartedAt)
+      throw new Error("Estimate is not the expected failed submitted attempt");
+    const source=await premiumEstimateSource(ctx,request,false);
+    if(!source || source.contentHash!==estimate.contentHash)throw new Error("Submitted application changed since the failed attempt");
+    await ctx.db.patch(requestId,{intakePremiumEstimate:undefined});
+    await preparePremiumEstimateForRequest(ctx,{...request,intakePremiumEstimate:undefined});
+    return null;
+  },
+});
+
+/** Administrative recovery after logs confirm failure BEFORE inference submission.
+ * Never use for a timeout, unknown outcome, or a previously completed estimate.
+ */
+export const recoverUnstartedPremiumEstimateInternal = internalMutation({
+  args:{requestId:v.id("procurementRequests"),expectedStartedAt:v.number()},
+  handler:async(ctx,{requestId,expectedStartedAt})=>{
+    const request=await ctx.db.get(requestId);
+    if(!request || request.deletedAt || request.intakePremiumEstimate?.status!=="failed" || request.intakePremiumEstimate.startedAt!==expectedStartedAt)throw new Error("Estimate is not the expected failed attempt");
+    await ctx.db.patch(requestId,{intakePremiumEstimate:undefined});
+    await preparePremiumEstimateForRequest(ctx,{...request,intakePremiumEstimate:undefined});
     return null;
   },
 });

@@ -17,7 +17,7 @@ export const DRIVER_QUESTIONS = [
   "Who will drive the insured vehicles?",
   "What is this driver’s date of birth?",
   "What is this driver’s license number?",
-  "Where was this driver’s license issued?",
+  "What are this driver’s details?",
   "What license class and endorsements does this driver hold?",
   "How many years has this driver operated this type of vehicle?",
   "Has this driver had any vehicle accidents in the past five years?",
@@ -63,6 +63,7 @@ export function newIntakeDriver(): IntakeDriver {
   };
 }
 export function driverFieldValid(driver: IntakeDriver, step: number): boolean {
+  if(step===34 && (!driverFieldValid(driver,32) || !driverFieldValid(driver,33)))return false;
   const value = driver[DRIVER_FIELDS[step - 31]];
   if (typeof value !== "string") return false;
   // Names define the schedule. Other fields can be supplied later for carriers

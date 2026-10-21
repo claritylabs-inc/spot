@@ -1,4 +1,5 @@
 "use node";
+import { extractWorkforcePolicy } from "../lib/intakeWorkforcePrefill";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -73,6 +74,11 @@ export const extract = internalAction({
       });
       const text = material.text.slice(0, 80000);
       const images = material.images;
+      if(source.workforce) {
+        const workforceProposals=await extractWorkforcePolicy(ctx,{text,images,questions:source.workforceQuestions,businessName:source.businessName,traceId:String(intakeFileId)});
+        await ctx.runMutation(internal.requestIntake.finishRequirementPrefill,{intakeFileId,coveragesJson:"[]",workforceProposals,companyIdentity:source.companyIdentity});
+        return null;
+      }
       const prompt = buildPrompt({
         sourceText: text || IMAGE_SOURCE_PLACEHOLDER,
         existingRequirements: [],
@@ -138,6 +144,7 @@ export const extract = internalAction({
           })
         : undefined;
       const coverages = new Map<CoverageId, CoverageRequest>();
+      const provisionRequirements: { coverage: string; provisions: ("additional_insured" | "waiver_of_subrogation" | "primary_non_contributory")[] }[] = [];
       for (const [requirementIndex, requirement] of requirements.entries()) {
         const coverage = lines[requirement.lineOfBusiness ?? ""];
         if (!coverage || requirement.scope === "vendors") continue;
@@ -149,6 +156,7 @@ export const extract = internalAction({
           !imageVerdicts?.get(requirementIndex)?.verified
         )
           continue;
+        provisionRequirements.push({ coverage, provisions: requirement.provisions ?? [] });
         const row = coverages.get(coverage) ?? newCoverage(coverage);
         for (const limit of requirement.limits ?? []) {
           const key = intakeLimitKey(coverage, limit);
@@ -210,6 +218,7 @@ export const extract = internalAction({
       await ctx.runMutation(internal.requestIntake.finishRequirementPrefill, {
         intakeFileId,
         coveragesJson: JSON.stringify([...coverages.values()]),
+        provisionRequirements,
       });
     } catch (error) {
       await ctx.runMutation(internal.requestIntake.failRequirementPrefill,{intakeFileId});

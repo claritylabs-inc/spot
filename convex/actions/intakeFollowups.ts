@@ -53,7 +53,7 @@ export const generate = internalAction({
     enrich: v.optional(v.boolean()),
     gapApprovedHash: v.optional(v.string()),
   },
-  handler: async (ctx, { reuseQuestions, enrich, gapApprovedHash, ...args }) => {
+  handler: async (ctx, { reuseQuestions, enrich, gapApprovedHash: _gapApprovedHash, ...args }) => {
     if (args.section === "acord") return;
     let context = await ctx.runQuery(internal.requestIntake.followupContext, {
       ...args,
@@ -69,8 +69,6 @@ export const generate = internalAction({
       let questions: IntakeFollowupQuestion[];
       if (reuseQuestions) {
         questions = reuseQuestions;
-      } else if (gapApprovedHash !== context.evaluationHash && !(await intakeNeedsAdditionalQuestions(ctx, String(args.requestId), context))) {
-        questions = [];
       } else {
         const result = await generateObjectForPublicTask(
           ctx,

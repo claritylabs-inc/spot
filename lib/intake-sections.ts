@@ -1,6 +1,6 @@
 /** Shared section identity for progress, introductions and draft recovery. */
 export function intakeSection(step: number): number {
-  if (step === 41 || step === 42 || (step >= 31 && step <= 40)) return 1;
+  if (step === 44 || step === 41 || step === 42 || (step >= 31 && step <= 40)) return 1;
   if (step === 43) return 3;
   if (step < 6) return 0;
   if (step < 10) return 1;

@@ -1,10 +1,10 @@
 import { INDUSTRIES } from "./insurance-intake-industries";
 import { INTAKE_CATALOG_WORDING } from "./intake-catalog-wording";
 import { addressText, type IntakeDetails } from "./insurance-intake-details";
-import type { IntakeFollowupQuestion } from "./intake-followups";
+import type { IntakeFollowupAnswer, IntakeFollowupQuestion } from "./intake-followups";
 
 /** Presentation only: saved definitions/IDs remain the server's approval contract. */
-export function intakeApplicantQuestion(question: IntakeFollowupQuestion, industry?: string) {
+export function intakeApplicantQuestion(question: IntakeFollowupQuestion, industry?: string, answers?: IntakeFollowupAnswer[]) {
   const scoped = question.section === "acord"
     ? question.label.match(/^((?:Location|Property|Vehicle) \d+ \(.+\)):\s*([\s\S]*)$/)
     : null;
@@ -43,6 +43,14 @@ export function intakeApplicantQuestion(question: IntakeFollowupQuestion, indust
       { description = "For example, computers, office furniture, equipment or inventory.";
         placeholder = intakeContentsPlaceholder(industry); }
   }
+  if (question.source?.endsWith(" · gl.coverage.additional_insured_agreement")) {
+    const entered = answers?.find(row => row.source?.endsWith(" · gl.coverage.additional_insured_detail"))?.answer.trim();
+    const name = entered && entered !== "I'm not sure" ? entered.slice(0, 180) : "this party";
+    title = `Does ${name} need to be added because of an agreement? If so, upload it.`;
+  }
+  if (question.source?.endsWith(" · wc.safety.leased_out_detail")) placeholder = "Include the names of the businesses you lease employees to and the work those employees perform.";
+  if (question.source?.endsWith(" · wc.safety.leased_out_responsibilities")) { title = "Explain who handles workers’ compensation, pay, supervision and workplace safety under these contracts."; placeholder = "Describe the responsibilities"; }
+  if (question.source?.endsWith(" · gl.coverage.additional_insured_detail")) placeholder = "Enter the person or company’s name";
   return { title, context, description, placeholder };
 }
 

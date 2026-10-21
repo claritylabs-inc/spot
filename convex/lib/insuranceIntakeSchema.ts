@@ -25,6 +25,16 @@ export const intakeBusinessProfileValidator = v.object({
   sourceRequestId: v.optional(v.id("procurementRequests")),
 });
 export const requestIntakeFields = {
+  intakePremiumEstimate: v.optional(v.object({
+    contentHash: v.string(), token: v.string(), startedAt: v.number(), provisional: v.optional(v.boolean()),
+    status: v.union(v.literal("pending"), v.literal("running"), v.literal("completed"), v.literal("failed")),
+    currency: v.string(), minimumMonthly: v.optional(v.number()), maximumMonthly: v.optional(v.number()),
+  })),
+  intakeVehicleRelevance: v.optional(v.object({
+    sourceKey:v.string(), fingerprint:v.string(), startedAt:v.number(), attempts:v.number(),
+    status:v.union(v.literal("pending"),v.literal("running"),v.literal("completed"),v.literal("failed")),
+    excludedIds:v.array(v.string()),
+  })),
   intakeCyberResearch: v.optional(v.object({
     fingerprint: v.string(), sourceKey: v.string(), startedAt: v.number(), attempts: v.number(),
     status: v.union(v.literal("pending"), v.literal("running"), v.literal("completed"), v.literal("failed")),

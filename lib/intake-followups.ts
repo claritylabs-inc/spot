@@ -1,3 +1,5 @@
+import { isIntakePercentageQuestion } from "./intake-percentages";
+import { isWorkforceProviderSource, parseWorkforceProvider, formatWorkforceProvider } from "./intake-workforce-provider";
 import { parseWorkJurisdictions, formatWorkJurisdictions } from "./intake-jurisdictions";
 import { parsePayrollAnswer, formatPayrollAnswer } from "./intake-payroll";
 import { intakeApplicantQuestion } from "./intake-applicant-wording";
@@ -102,7 +104,8 @@ export function validateFollowupAnswers(rows: IntakeFollowupAnswer[] = []) {
       !row.label.trim() ||
       (row.skipped !== undefined && typeof row.skipped !== "boolean") ||
       (row.skipped === true && !!row.answer.trim()) ||
-      (row.prefilled !== undefined && ((!row.prefilled.contextHash.startsWith("cyber:") && (row.kind !== "yes_no" || !["Yes", "No"].includes(row.answer))) || !Number.isFinite(row.prefilled.confidence) || row.prefilled.confidence < .7 || row.prefilled.confidence > 1 || !row.prefilled.contextHash || row.prefilled.contextHash.length > 200)) ||
+      (row.prefilled !== undefined && ((!row.prefilled.contextHash.startsWith("cyber:") && !row.prefilled.contextHash.startsWith("workforce:") && (row.kind !== "yes_no" || !["Yes", "No"].includes(row.answer))) || !Number.isFinite(row.prefilled.confidence) || row.prefilled.confidence < .7 || row.prefilled.confidence > 1 || !row.prefilled.contextHash || row.prefilled.contextHash.length > 200)) ||
+      (isWorkforceProviderSource(row.source) && row.answer.trim().startsWith("{") && !parseWorkforceProvider(row.answer)) ||
       (row.source?.endsWith(" · shared.operations.annual_payroll") && row.answer.trim().startsWith("{") && !parsePayrollAnswer(row.answer)) ||
       (row.source?.endsWith(" · wc.terms.covered_jurisdictions") && row.answer.trim().startsWith("{") && !parseWorkJurisdictions(row.answer)) ||
       row.label.length > 500 ||
@@ -147,6 +150,19 @@ export function intakeFollowupOptionLabel(value: string): string {
 export function expandIntakeFollowupQuestion(
   question: IntakeFollowupQuestion,
 ): IntakeFollowupQuestion[] {
+  if (question.source?.endsWith(" · eo.services.credentials")) {
+    const parentId = "catalog1_eo_services_has_credentials";
+    return [{
+      ...question, id:parentId, kind:"yes_no", options:[],
+      label:"Do you have any licenses, certifications, or professional qualifications for the services you provide?",
+      source:question.source.replace(/eo\.services\.credentials$/, "eo.services.has_credentials"),
+    }, {
+      ...question, id:"catalog1_eo_services_credentials_list", kind:"long_text", options:[],
+      label:"List your licenses, certifications, or professional qualifications.",
+      source:question.source.replace(/eo\.services\.credentials$/, "eo.services.credentials_list"),
+      conditions:[{questionId:parentId,answer:"Yes"}],
+    }];
+  }
   if (question.id !== "acord126_subcontracted_work") return [question];
   return [
     {
@@ -168,9 +184,11 @@ export function expandIntakeFollowupQuestion(
 export function formatIntakeFollowupAnswer(row: IntakeFollowupAnswer): string {
   if (!row.answer) return "";
   if (row.answer === "I'm not sure") return row.answer;
+  if (row.source?.endsWith(" · eo.services.credentials_list")) return row.answer.split("\n").map(item=>item.trim()).filter(Boolean).join("; ");
   if (row.source?.endsWith(" · wc.terms.covered_jurisdictions")) return formatWorkJurisdictions(row.answer);
+  if (isWorkforceProviderSource(row.source)) return formatWorkforceProvider(row.answer);
   if (row.source?.endsWith(" · shared.operations.annual_payroll")) return formatPayrollAnswer(row.answer);
-  if (row.source?.endsWith(" · eo.services.largest_client_share")) return `${row.answer}%`;
+  if (isIntakePercentageQuestion(row)) return `${row.answer}%`;
   return row.kind === "routes"
     ? formatRouteValue(row.answer)
     : row.kind === "date"
@@ -184,7 +202,11 @@ export function formatIntakeFollowupAnswer(row: IntakeFollowupAnswer): string {
 
 /** Missing, skipped and unsure parent answers never satisfy a condition. */
 export function isRetiredIntakeFollowup(question: IntakeFollowupQuestion): boolean {
-  return question.source?.endsWith(" · eo.terms.extended_reporting") === true ||
+  const sourceId = question.source?.split(" · ").at(-1);
+  return sourceId === "auto.terms.filings" || sourceId === "auto.terms.filing_details" ||
+    sourceId?.startsWith("auto.terms.transportation_permit") === true ||
+    /^catalog[12]_auto_terms_(?:transportation_permit|filings(?:_|$)|filing_details(?:_|$))/.test(question.id) ||
+    question.source?.endsWith(" · eo.terms.extended_reporting") === true ||
     /^catalog[12]_eo_terms_extended_reporting(?:_|$)/.test(question.id);
 }
 
@@ -265,11 +287,12 @@ export function intakeLocationQuestionSubject(question?: IntakeFollowupQuestion)
 
 export function intakeFollowupPageTitle(
   question: IntakeFollowupQuestion,
+  answers?: IntakeFollowupAnswer[],
 ): string {
   const subject = question.id.startsWith("vehicle_base_") ? undefined : intakeVehicleQuestionSubject(question);
   return subject
     ? `More about ${subject.replace(/^Vehicle \d+ \((.+)\)$/, "$1")}`
-    : intakeApplicantQuestion(question).title;
+    : intakeApplicantQuestion(question, undefined, answers).title;
 }
 
 /** Persist the first question index of the last page for reverse navigation. */

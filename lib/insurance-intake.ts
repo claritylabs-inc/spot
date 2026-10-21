@@ -61,6 +61,7 @@ export const INTAKE_STEPS = [
   "What else should insurers know?",
   ...DRIVER_QUESTIONS,
   ...AUTO_QUOTE_QUESTIONS,
+  "We suggest",
 ] as const;
 export const INTAKE_FIELDS = {
   intakeGoal: "What would you like help with?",

@@ -147,6 +147,7 @@ export type IntakeDetails = {
   collectSensitiveDriverDetails?: boolean;
   followups?: IntakeFollowupAnswer[];
   skippedBaseFields?: string[];
+  payrollPage?: number;
   followupProgress?: { acord: number; additional: number };
   coverages: CoverageRequest[];
   prefillSourceIds?: string[];
@@ -405,6 +406,7 @@ export function validateIntakeDetails(details: IntakeDetails) {
   if (details.skippedBaseFields && (details.skippedBaseFields.length > 60 ||
       details.skippedBaseFields.some((field) => !Object.hasOwn(INTAKE_FIELDS, field))))
     throw new Error("Invalid skipped base question");
+  if (details.payrollPage !== undefined && (!Number.isInteger(details.payrollPage) || details.payrollPage < 0 || details.payrollPage > 24)) throw new Error("Invalid payroll position");
   if (details.followupProgress && Object.values(details.followupProgress).some((index) => !Number.isInteger(index) || index < 0 || index > 1000))
     throw new Error("Invalid follow-up position");
   if (

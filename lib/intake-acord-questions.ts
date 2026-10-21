@@ -12,10 +12,128 @@ import type { IntakeFollowupQuestion } from "./intake-followups";
  * Keep the source JSON intact. This adapter targets the intake's declarative primitives,
  * not the catalog's proposed typed/scoped answer storage contract.
  */
-export const INTAKE_ACORD_CATALOG_VERSION = `${catalog.catalogId}:${catalog.revision}:d982690a2e19bbeb3004d1c3fb920a201109daa0:adapter8-owner-elections`;
+export const INTAKE_ACORD_CATALOG_VERSION = `${catalog.catalogId}:${catalog.revision}:d982690a2e19bbeb3004d1c3fb920a201109daa0:adapter20-credential-list`;
 
 // Product follow-ups extend the adapter without rewriting the imported source catalog.
-const questionDefinitions = catalog.questions.flatMap(definition => definition.id !== "wc.terms.owner_elections" ? [definition] : [definition, {
+type CatalogDefinition = Omit<(typeof catalog.questions)[number], "conditions" | "options"> & { conditions: {questionId:string;operator:string;value:boolean|string;subjectBinding:string}[]; options?: {value:string;label:string}[] };
+// Each prompt owns one answer. New IDs keep historical compound answers intact.
+export const ATOMIC_CATALOG_PROMPTS: Record<string, string[]> = {
+  "umbrella.exposure.aviation_detail": ["How do you use aircraft?", "What insurance do you already have for the aircraft you use?"],
+  "umbrella.exposure.watercraft_detail": ["What vessels do you use?", "What do you use those vessels for?", "What passenger risks arise from your use of watercraft?", "What insurance do you already have for the watercraft you use?"],
+  "gl.exposure.offsite_detail": ["What work do you do offsite?", "At what kinds of customer locations do you work?"],
+  "gl.exposure.product_detail": ["What products do you supply?", "What is your role in supplying those products?"],
+  "gl.exposure.customer_property_detail": ["What property belonging to others do you hold?", "What do you do with property belonging to others?", "What is the maximum value of other people’s property you hold?"],
+  "gl.exposure.subcontractor_controls": ["How do you check your subcontractors’ qualifications?", "How do you check your subcontractors’ insurance?"],
+  "gl.exposure.recreation_detail": ["What recreational activities do you provide?", "Who takes part in those activities?", "How do you keep participants safe?"],
+  "gl.exposure.pollution_controls": ["What substances could cause pollution in your operations?", "How do you prevent spills?", "How do you respond to spills?"],
+  "property.contents.storage_controls": ["What flammable materials do you store here?", "How do you store those materials safely?"],
+  "wc.terms.other_state_details": ["Which additional states or provinces will your employees work in?", "How long will your employees work in those additional jurisdictions?", "What work will your employees do in those additional jurisdictions?"],
+  "auto.terms.nonowned_detail": ["Who uses personal vehicles for your business?", "How often are personal vehicles used for your business?", "What business work are personal vehicles used for?"],
+  "auto.fleet.maintenance": ["How do you schedule vehicle inspections, maintenance, or repairs?", "How do you record vehicle inspections, maintenance, or repairs?"],
+  "auto.fleet.passenger_detail": ["What passenger services do you provide?", "Where do your passenger services operate?", "How do you supervise your passenger services?"],
+  "eo.services.subcontractor_review": ["How do you check your subcontractors’ work?", "How do you check your subcontractors’ qualifications?", "How do you check your subcontractors’ insurance?"],
+  "eo.services.guarantee_detail": ["What results or performance do you guarantee?", "What happens if you do not meet those guarantees?"],
+  "eo.services.service_dispute_detail": ["What unresolved complaints or circumstances could lead to a professional liability claim?", "What is the current status of those complaints or circumstances?"],
+  "cyber.data.payment_arrangement": ["How do you handle payment-card transactions?", "Which payment-card providers do you use?"],
+  "cyber.defense.endpoint_response": ["Who responds to your security alerts?", "During what hours are your security alerts monitored?"],
+};
+const atomicDefinitions = catalog.questions.flatMap<CatalogDefinition>(definition => {
+  const prompts = ATOMIC_CATALOG_PROMPTS[definition.id];
+  return prompts ? prompts.map((prompt, index) => ({...definition, id: `${definition.id}_part_${index + 1}`, prompt,
+    ...(definition.id === "gl.exposure.customer_property_detail" && index === 2 ? {answerType:"money"} : {}),
+  })) : [definition];
+});
+const questionDefinitions = atomicDefinitions.flatMap<CatalogDefinition>(definition => definition.id === "eo.services.credentials" ? [{
+  ...definition,
+  id: "eo.services.has_credentials",
+  prompt: "Do you have any licenses, certifications, or professional qualifications for the services you provide?",
+  answerType: "boolean",
+}, {
+  ...definition,
+  id: "eo.services.credentials_list",
+  prompt: "List your licenses, certifications, or professional qualifications.",
+  conditions: [{questionId:"eo.services.has_credentials",operator:"eq",value:true,subjectBinding:"same_subject"}],
+}] : definition.id === "umbrella.exposure.large_loss_potential" ? [{
+  ...definition,
+  id:"umbrella.exposure.has_large_loss_potential",
+  prompt:"Could any of your operations cause multiple injuries or major damage to other people’s property in one event?",
+  answerType:"boolean",
+}, {
+  ...definition,
+  id:"umbrella.exposure.large_loss_operations_details",
+  prompt:"Which operations could cause multiple injuries or major property damage? Describe what could happen.",
+  conditions:[{questionId:"umbrella.exposure.has_large_loss_potential",operator:"eq",value:true,subjectBinding:"same_subject"}],
+}] : definition.id === "auto.fleet.hazardous_cargo_detail" ? [{
+  ...definition,
+  id: "auto.fleet.hazardous_materials",
+  prompt: "What hazardous materials do you transport?",
+}, {
+  ...definition,
+  id: "auto.fleet.hazardous_quantities",
+  prompt: "What quantities of hazardous materials do you transport?",
+}, {
+  ...definition,
+  id: "auto.fleet.hazardous_permits",
+  prompt: "Which permits do you hold for transporting hazardous materials?",
+}, {
+  ...definition,
+  id: "auto.fleet.hazardous_safety",
+  prompt: "What safety procedures do you use when transporting hazardous materials?",
+}] : definition.id === "auto.terms.foreign_travel_detail" ? [{
+  ...definition,
+  id: "auto.terms.foreign_travel_countries",
+  prompt: "Which countries outside your policy’s home country will you drive in?",
+  answerType: "text",
+}, {
+  ...definition,
+  id: "auto.terms.foreign_travel_frequency",
+  prompt: "How often will you drive outside your policy’s home country?",
+  answerType: "text",
+}, {
+  ...definition,
+  id: "auto.terms.foreign_travel_purpose",
+  prompt: "What is the purpose of your driving outside your policy’s home country?",
+}] : definition.id === "auto.terms.filings" ? [{
+  ...definition,
+  id: "auto.terms.insurance_filings",
+  prompt: "Does your insurer need to file proof of insurance with FMCSA?",
+}] : definition.id === "auto.terms.filing_details" ? [] : definition.id === "gl.coverage.additional_insured_detail" ? [definition, {
+  ...definition,
+  id: "gl.coverage.additional_insured_agreement",
+  prompt: "Does this party need to be added because of an agreement? If so, upload it.",
+  answerType: "boolean",
+}] : ["wc.safety.leasing_details", "wc.safety.staffing_controls"].includes(definition.id) ? [definition, {
+  ...definition,
+  id: `${definition.id}_responsibility`,
+  prompt: "Who is responsible for providing workers’ compensation for these employees?",
+  answerType: "single_choice",
+  options: ["I'm responsible", definition.id === "wc.safety.leasing_details" ? "PEO is responsible" : "Staffing agency is responsible"].map(label=>({value:label,label})),
+}, {
+  ...definition,
+  id: `${definition.id}_certificate`,
+  prompt: definition.id === "wc.safety.leasing_details" ? "Do you have a workers’ compensation certificate of insurance from your PEO?" : "Do you have a workers’ compensation certificate of insurance from your staffing agency?",
+  answerType: "boolean",
+}] : definition.id === "wc.safety.return_to_work_detail" ? [definition, {
+  ...definition,
+  id: "wc.safety.return_to_work_coordinator",
+  prompt: "Who coordinates your return-to-work program?",
+  answerType: "text",
+}] : definition.id === "wc.safety.leased_out_detail" ? [definition, {
+  ...definition,
+  id: "wc.safety.leased_out_responsibilities",
+  prompt: "How do your contracts for employees leased to other businesses divide responsibilities?",
+  answerType: "long_text",
+}] : definition.id === "wc.safety.hazardous_work" ? [{
+  ...definition,
+  id: "wc.safety.has_hazardous_work",
+  prompt: "Does your work involve heights, excavation, machinery, chemicals, confined spaces, or other major injury risks?",
+  answerType: "boolean",
+}, {
+  ...definition,
+  id: "wc.safety.hazardous_work_details",
+  prompt: "Describe your work involving heights, excavation, machinery, chemicals, confined spaces, or other major injury risks.",
+  conditions: [{questionId:"wc.safety.has_hazardous_work",operator:"eq",value:true,subjectBinding:"same_subject"}],
+}] : definition.id !== "wc.terms.owner_elections" ? [definition] : [definition, {
   ...definition,
   id: "wc.terms.owner_election_details",
   prompt: "Who should be included in or excluded from workers’ compensation coverage? Give each person’s name, role in your business, and whether to include or exclude them.",
@@ -66,7 +184,7 @@ export const INTAKE_ACORD_QUESTIONS = questionDefinitions.map((definition) => {
     section: "acord",
     label:
       kind === "routes"
-        ? "Where do your vehicles usually travel?"
+        ? "What routes do your vehicles usually travel?"
         : [definition.prompt, ...hints].join(" "),
     kind,
     options:
