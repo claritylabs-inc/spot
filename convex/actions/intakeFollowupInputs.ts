@@ -51,7 +51,7 @@ export const dates = action({
       ...(request.details.followups ?? []),
     ];
     const questions = [...new Map(definitions.filter(question =>
-      questionIds.includes(question.id) && ["short_text", "long_text"].includes(question.kind),
+      questionIds.includes(question.id) && !question.source?.startsWith("single-pass-v1") && ["short_text", "long_text"].includes(question.kind),
     ).map(question => [question.id, question])).values()];
     if (!questions.length) return [];
     try {

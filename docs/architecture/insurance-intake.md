@@ -115,11 +115,9 @@ Unknown parents do not qualify: dependent questions can qualify on a later
 preparation with known parent answers, not dynamically during the same batch.
 Restricted identifiers, upload-reference questions, and questions requiring an
 unspecified history period stay out of this adapter. Uploads use existing flows.
-Each eligible candidate gets an atomic Jev Noul with the full saved application
-and source metadata. Twelve decisions share a request, with at most three
-requests in flight; only answers meeting `jevProceeds` qualify. At most 40
-questions are retained, ordered by probability. Catalog revision and adapter
-version participate in the context hash so old boilerplate batches refresh.
+Reviewed coverage packs select catalog questions locally with typed coverage,
+subject and dependency gates; there is no runtime catalog selection call.
+Catalog revision and adapter version participate in the context hash.
 
 `convex/actions/intakeFollowups.ts` then asks the routed `analysis` task for up
 to eight further questions using the saved application, previous ACORD
@@ -210,7 +208,7 @@ Intake review uses shared row primitives for follow-up answers and driver summar
 
 Vehicle-scoped catalog questions share one “More about [vehicle]” intake page per vehicle, using shared Field/Select/Input primitives and concise labels with unit examples. Ordinary business and generated follow-ups retain one question per page. Each answer keeps its server-approved ID/definition; hidden equipment children remain conditional and clear on parent edits. Navigation persists the first question index of each group, preserving existing draft cursor compatibility, and records blank visible fields as skipped when leaving the page.
 
-Additional questions prepare provisionally during insurance history. A prepared batch exposes no answer controls and cannot authorize saves. Section entry screens current original base and catalog facts; generated answers never recursively trigger more questions. Only changed base/catalog facts or uploads invalidate the terminal list. Failed/unknown outcomes do not replay automatically. Empty or unavailable batches skip their introduction and question page directly to review, preserving saved answers.
+Additional questions prepare once at terminal section entry using current original base and catalog facts; generated answers never recursively trigger more questions. Only changed base/catalog facts or uploads invalidate the terminal list. Failed/unknown outcomes do not replay automatically. Empty or unavailable batches skip their introduction and question page directly to review, preserving saved answers.
 
 Intake section introductions use the shared frame, typography and pill controls, with short copy for each of the seven quote sections and savings-specific policy/review copy. `IntakeDetails.sectionIntroductions` records acknowledged sections as draft-only UI metadata; it is excluded from accepted facts and model context/hash. Review edits and mid-section resumes bypass introductions. Switching purposes resets introductions for changed sections, while company switching retains seen state and request-owned vehicle/driver details entered earlier.
 
@@ -267,17 +265,33 @@ Business-description industry prefill uses the request-owner-authorized `actions
 
 Generated follow-up controls are chosen by Jev Choice during the existing novelty screen, including the shared DateField for a single calendar date. The approved `date` kind persists like other declarative controls; partial date typing is recoverable, while navigation and final submission require a valid entered date or an empty skipped answer. Existing approved text questions receive request-owner-authorized, read-only date presentation hints through `actions/intakeFollowupInputs:dates`, without rewriting question definitions or saved answers.
 
-Each successful Continue save schedules a request-owned Jev gap assessment over the current typed application, paired question history, file metadata and planned follow-ups. Assessments are deduplicated by application context and token; stale/unknown results do not authorize generation. Only a confident Yes starts terminal LLM follow-up generation; a confident No preserves planned questions without generating more. The same Jev gate protects ordinary section-entry generation and preloads. Pending inference is retained, and provisional results are screened before acceptance. Driver birth dates/license identifiers remain redacted.
+The final additional-question pass makes exactly one structured generation call.
+That call assesses remaining gaps, checks semantic novelty and chooses primitives
+against the full base/catalog history, including skipped, blank and unsure facts.
+It returns at most eight questions, or an empty list. There is no separate Jev gap
+gate, novelty screen, Boolean prefill or repair call. New definitions carry a
+`single-pass-v1` source marker so the legacy date-control hint action cannot
+launch another classifier for them. All prompts retain the applicant audience
+rule from `convex/lib/intakeQuestionGuidance.ts` and redact driver identifiers.
+History autosaves/Continue do not run model warmups; legacy warmup/gap endpoints
+remain callable for rollout compatibility without inference.
 
-All intake question generation, relevance/novelty, input-selection, Boolean-prefill and gap-gate prompts share the applicant audience rule in `convex/lib/intakeQuestionGuidance.ts`: ask only facts an applicant can reasonably know, never insurer reserves, paid/incurred totals or internal underwriting/claims data. The question-context version includes this policy and input-control change so cached batches are rescreened on entry; saved answer history is retained. Review address values use the same typography role as surrounding row values.
+`lib/intake-question-reference.ts` selects at most 50 coverage-mapped historical
+concepts within 12,000 characters, balancing multiple coverage lines. Existing
+catalog definitions reserve their canonical concepts; location concepts require
+an existing location. Hints are trimmed before complete application history when
+approaching the local transport limit. The pack is source-controlled at
+`docs/procurement/acord-intake/quote-question-reference.json`; its applicability
+notes distinguish subjects, reporting periods, prerequisites and separate facts.
+Historical carrier questions are candidates, never universal requirements.
+See [question-reference import](../procurement/acord-intake/quote-question-reference.md).
 
 Final additional-question generation is a terminal layer over original base and
-ACORD/catalog facts. Its context hash, gap assessment, generation evidence and
+ACORD/catalog facts. Its context hash, generation evidence and
 stale-result checks exclude generated additional answers. Existing generated
 question definitions are supplied only to prevent duplicates. Completing or
 revisiting the final list cannot generate another list; only changed base or
-catalog facts/uploads invalidate it. Accepting a screened provisional list no
-longer schedules an automatic enrichment pass. Current ready batches open
+catalog facts/uploads invalidate it. No provisional or automatic enrichment pass runs for a completed context. Current ready batches open
 without a preparation screen, and completed/skipped additional answers receive
 the same Complete badge as other review sections.
 
@@ -298,7 +312,7 @@ separate business-location page (19) is retired; resumes redirect past it and
 submission no longer requires that duplicate field. Historical location data
 remains readable.
 
-Saved history progress schedules `warmFollowupsAfterSave` in Convex for provisional additional candidates. Standard catalog packs are local and require no warmup. Existing pending tokens retain ownership; failed or unknown inference does not replay. Structural preparation logs carry no answers.
+Saved history progress makes no additional-question model calls. Standard catalog packs are local and require no warmup. Existing pending tokens retain ownership; failed or unknown inference does not replay. Structural preparation logs carry no answers.
 
 `lib/intake-applicant-wording.ts` owns applicant-facing catalog presentation without
 rewriting approved definitions. Scoped location/property questions keep one page

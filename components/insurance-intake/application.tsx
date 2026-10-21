@@ -324,7 +324,6 @@ function Application({
   const industryRequestVersion = useRef(0);
   useEffect(() => () => { industryRequestVersion.current++; }, [requestId]);
   const prepareFollowups = useMutation(api.requestIntake.prepareFollowups);
-  const assessFollowupGaps = useMutation(api.requestIntake.assessFollowupGaps);
   const preparingFollowups = useRef<string | null>(null);
   const [checkedFollowupEntry, setCheckedFollowupEntry] = useState<string | null>(null);
   const prepareVerification = useMutation(
@@ -439,7 +438,7 @@ function Application({
   const showSubsectionIntro = !data?.submitted && !editingReview && step === 29 &&
     !!subsectionKey && (followupBatch?.status === "ready" || isTypedScopeQuestion(followupQuestion)) &&
     !(details.subsectionIntroductions ?? []).includes(subsectionKey);
-  const textQuestionIds = followupPage.filter(question => question.section !== "acord" && ["short_text", "long_text"].includes(question.kind) && !isTypedScopeQuestion(question)).map(question => question.id).join(",");
+  const textQuestionIds = followupPage.filter(question => question.section !== "acord" && !question.source?.startsWith("single-pass-v1") && ["short_text", "long_text"].includes(question.kind) && !isTypedScopeQuestion(question)).map(question => question.id).join(",");
   const dateQuestionIds = followupPage.filter(question => dateInputHints[`${requestId}:${question.id}`]).map(question => question.id);
   const visiblePreparedQuestions = (section: "acord" | "additional") =>
     (data?.followupBatches?.[section]?.questions ?? [])
@@ -1722,8 +1721,6 @@ function Application({
         return;
       }
       if (next !== previousStep) setCheckedFollowupEntry(null);
-      if (confirmSave && !skipped && !data?.submitted && !isSavings)
-        void assessFollowupGaps({ requestId }).catch(() => { /* Section entry retains its own assessment. */ });
       setStep(next);
       setDetails(persistedNextDetails);
       if (data?.submitted && !editingReview && !fromReview)

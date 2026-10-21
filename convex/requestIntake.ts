@@ -1,3 +1,4 @@
+import { INTAKE_QUESTION_REFERENCE_VERSION } from "../lib/intake-question-reference";
 import { workforcePolicyQuestion } from "../lib/intake-workforce-policy";
 import { vehicleRelevanceKey, vehicleRelevanceEvidence, vehicleRelevanceCandidates } from "../lib/intake-vehicle-relevance";
 import { bakedCoverageQuestions, BAKED_COVERAGE_QUESTIONS_VERSION } from "../lib/intake-coverage-questions";
@@ -936,11 +937,6 @@ export const save = mutation({
       updatedAt: dayjs().valueOf(),
       updatedByUserId: user._id,
     });
-    if (!request.intakeSubmittedAt && answers.intakeGoal !== "savings" && args.step >= 20 && args.step <= 25 &&
-      (args.step !== request.intakeStep || answersChanged ||
-        JSON.stringify(details) !== JSON.stringify(request.intakeDetails))) {
-      await ctx.scheduler.runAfter(0, internal.requestIntake.warmFollowupsAfterSave, { requestId: request._id });
-    }
     if (
       args.step !== request.intakeStep ||
       details?.revenueStep !== request.intakeDetails?.revenueStep ||
@@ -1924,7 +1920,7 @@ async function followupContextHash(
         }
       : undefined;
   return hashIntakeToken(
-      `${INTAKE_ACORD_CATALOG_VERSION}:${BAKED_COVERAGE_QUESTIONS_VERSION}:history-v7-base-and-acord-only:${JSON.stringify(issuedQuestions)}:${JSON.stringify((request.intakeSkippedSteps ?? []).filter((step) => step < 28))}:${submissionContent(
+      `${INTAKE_ACORD_CATALOG_VERSION}:${BAKED_COVERAGE_QUESTIONS_VERSION}:${INTAKE_QUESTION_REFERENCE_VERSION}:history-v8-single-pass:${JSON.stringify(issuedQuestions)}:${JSON.stringify((request.intakeSkippedSteps ?? []).filter((step) => step < 28))}:${submissionContent(
       request.intakeAnswers ?? {},
       contextDetails,
       files.map((file) => String(file._id)),
@@ -1994,49 +1990,11 @@ async function prepareFollowupBatch(
     const contextHash = await followupContextHash(ctx, request, section);
     const scopeHash = await followupPreloadScopeHash(ctx, request);
     const previous = request.intakeFollowups?.[section];
-    // Warm only the generation stage. Never restart a pending/failed inference.
-    if (
-      preload &&
-      (section !== "additional" ||
-        (request.intakeStep ?? 0) >= 30 ||
-        (previous &&
-          !(
-            previous.preloaded &&
-            previous.status === "prepared" &&
-            previous.preloadScopeHash !== scopeHash
-          )))
-    )
-      return null;
-    if (
-      !preload &&
-      previous?.preloaded &&
-      previous.status === "pending" &&
-      previous.preloadScopeHash === scopeHash
-    ) {
-      // The ongoing generator will screen its result against the latest context.
-      await ctx.db.patch(requestId, {
-        intakeFollowups: {
-          ...request.intakeFollowups,
-          [section]: {
-            ...previous,
-            preloaded: false,
-            enriching: true,
-            contextHash,
-          },
-        },
-      });
-      return null;
-    }
+    // One pass starts only at the terminal section, with complete history.
+    // Legacy warmup callers remain compatible but cannot spend model calls.
+    if (preload) return null;
     if (previous?.status === "pending") return null;
-    if (previous?.contextHash === contextHash && previous.status !== "prepared" && !(retryFailed && previous.status === "failed"))
-      return null;
-    const reuseQuestions =
-      !preload &&
-      section === "additional" &&
-      previous?.status === "prepared" &&
-      previous.preloadScopeHash === scopeHash
-        ? previous.questions
-        : undefined;
+    if (previous?.contextHash === contextHash && previous.status !== "prepared" && !(retryFailed && previous.status === "failed")) return null;
     console.info("[intakeFollowups] preparing batch", {
       requestId, section, background: preload,
       reason: previous ? "application_facts_changed" : "first_preparation",
@@ -2048,7 +2006,7 @@ async function prepareFollowupBatch(
       contextHash,
       startedAt: dayjs().valueOf(),
       preloaded: !!preload,
-      enriching: reuseQuestions !== undefined,
+      enriching: false,
       preloadScopeHash: scopeHash,
       questions: [],
     };
@@ -2059,7 +2017,6 @@ async function prepareFollowupBatch(
       requestId,
       section,
       token: batch.token,
-      ...(reuseQuestions ? { reuseQuestions } : {}),
     });
     return null;
 }
@@ -2071,18 +2028,10 @@ export const prepareFollowups = mutation({
   },
 });
 
-/** Saved progress owns warmup; leaving the page cannot cancel it. */
+/** Compatibility for already scheduled warmup jobs; no provisional inference. */
 export const warmFollowupsAfterSave = internalMutation({
   args: { requestId: v.id("procurementRequests") },
-  handler: async (ctx, { requestId }) => {
-    const request = await ctx.db.get(requestId);
-    if (!request || request.deletedAt || request.intakeSubmittedAt ||
-      request.intakeAnswers?.intakeGoal === "savings") return null;
-    const step = request.intakeStep ?? 0;
-    if (step >= 20 && step <= 25)
-      await prepareFollowupBatch(ctx, request, "additional", true);
-    return null;
-  },
+  handler: async () => null,
 });
 
 /** Provisional candidates are never exposed as ready questions. */
@@ -2266,11 +2215,6 @@ export const finishFollowups = internalMutation({
           requestId,
           section,
           token: next.token,
-          ...(!restartGeneration &&
-          section === "additional" &&
-          batch.preloadScopeHash === scopeHash
-            ? { reuseQuestions: questions }
-            : {}),
         },
       );
       return;
@@ -2355,9 +2299,6 @@ export const appendFollowupEnrichment = internalMutation({
         evaluatedContextHash !==
           (await followupContextHash(ctx, request, "additional")))
     ) {
-      const sameScope =
-        batch.preloadScopeHash ===
-        (await followupPreloadScopeHash(ctx, request));
       await ctx.scheduler.runAfter(
         0,
         internal.actions.intakeFollowups.generate,
@@ -2366,9 +2307,6 @@ export const appendFollowupEnrichment = internalMutation({
           section: "additional",
           token,
           enrich: true,
-          ...(!restartGeneration && sameScope
-            ? { reuseQuestions: questions }
-            : {}),
         },
       );
       return;
@@ -2416,23 +2354,11 @@ export const appendFollowupEnrichment = internalMutation({
   },
 });
 
-/** Continue-only gap assessment; autosaves and Back never schedule this. */
+/** Compatibility endpoint. Final section entry owns the sole model pass. */
 export const assessFollowupGaps = mutation({
   args: { requestId: v.id("procurementRequests") },
   handler: async (ctx, { requestId }) => {
-    const { request } = await ownedRequest(ctx, requestId);
-    if (request.intakeSubmittedAt || request.intakeAnswers?.intakeGoal === "savings") return null;
-    if (!request.intakeAnswers?.legalName?.trim() || !request.intakeAnswers.description?.trim() ||
-      !request.intakeAnswers.currentInsurance?.trim() || !request.intakeDetails?.hasClaims || !request.intakeDetails?.hasCancellations) return null;
-    const contextHash = await followupContextHash(ctx, request, "additional");
-    if (request.intakeGapAssessment?.contextHash === contextHash) return null;
-    // Completing the issued questions is not a new gap. Only changed base or
-    // catalog facts can invalidate the additional-question batch.
-    const batch = request.intakeFollowups?.additional;
-    if (batch?.contextHash === contextHash && batch.status !== "prepared") return null;
-    const token = crypto.randomUUID();
-    await ctx.db.patch(requestId, { intakeGapAssessment: { token, contextHash, status: "pending", startedAt: dayjs().valueOf() } });
-    await ctx.scheduler.runAfter(0, internal.actions.intakeFollowups.assessGaps, { requestId, token });
+    await ownedRequest(ctx, requestId);
     return null;
   },
 });
@@ -2467,30 +2393,7 @@ export const finishFollowupGapAssessment = internalMutation({
     if (!request || request.deletedAt || request.intakeSubmittedAt || assessment?.token !== token || assessment.status !== "pending") return null;
     if (assessment.contextHash !== await followupContextHash(ctx, request, "additional")) return null;
     await ctx.db.patch(requestId, { intakeGapAssessment: { ...assessment, status: needsAdditional === undefined ? "failed" : "complete", ...(needsAdditional === undefined ? {} : { needsAdditional }) } });
-    if (!needsAdditional) return null;
-    const previous = request.intakeFollowups?.additional;
-    // Existing work owns its result. Never replace a pending/provisional job or
-    // replay a failed inference for the same application context.
-    if (previous?.status === "pending" || previous?.enriching) return null;
-    const contextHash = await followupContextHash(ctx, request, "additional");
-    if (previous?.status === "failed" && previous.contextHash === contextHash) return null;
-    if (previous?.status === "prepared") {
-      // Screen the provisional list against changed base/catalog facts once.
-      // Completing that list must not schedule another generation pass.
-      const batch = { ...previous, token: crypto.randomUUID(), status: "pending" as const,
-        contextHash, preloaded: false, enriching: true, startedAt: dayjs().valueOf(),
-        preloadScopeHash: await followupPreloadScopeHash(ctx, request), questions: [] };
-      await ctx.db.patch(requestId, { intakeFollowups: { ...request.intakeFollowups, additional: batch } });
-      await ctx.scheduler.runAfter(0, internal.actions.intakeFollowups.generate, { requestId, section: "additional", token: batch.token, reuseQuestions: previous.questions });
-    } else if (previous?.status === "ready") {
-      if (previous.questions.length >= 8) return null;
-      await ctx.db.patch(requestId, { intakeFollowups: { ...request.intakeFollowups, additional: { ...previous, enriching: true } } });
-      await ctx.scheduler.runAfter(0, internal.actions.intakeFollowups.generate, { requestId, section: "additional", token: previous.token, enrich: true, gapApprovedHash: await followupContextHash(ctx, request, "additional") });
-    } else {
-      const batch = { token: crypto.randomUUID(), status: "pending" as const, contextHash, startedAt: dayjs().valueOf(), preloaded: (request.intakeStep ?? 0) < 30, preloadScopeHash: await followupPreloadScopeHash(ctx, request), questions: [] };
-      await ctx.db.patch(requestId, { intakeFollowups: { ...request.intakeFollowups, additional: batch } });
-      await ctx.scheduler.runAfter(0, internal.actions.intakeFollowups.generate, { requestId, section: "additional", token: batch.token, gapApprovedHash: await followupContextHash(ctx, request, "additional") });
-    }
+
     return null;
   },
 });
