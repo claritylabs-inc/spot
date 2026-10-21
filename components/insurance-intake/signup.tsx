@@ -1,4 +1,6 @@
 "use client";
+import { ArrowRight } from "lucide-react";
+import { IntakeLoadingState } from "./loading-state";
 import { toast } from "sonner";
 import { initializeIntakeGoogleAds, trackIntakeContactSaved } from "@/lib/google-ads";
 import { captureAnalytics } from "@/lib/analytics";
@@ -74,7 +76,9 @@ function SignupForm() {
   const start = useMutation(api.requestIntake.start);
   const [name, setName] = useState("");
   const [email, setEmail] = useState(params.get("email") ?? "");
-  const [phone, setPhone] = useState("");
+  // The phone primitive uses undefined for an empty value. Keep that exact
+  // controlled value instead of feeding an empty string back into its effects.
+  const [phone, setPhone] = useState<string | undefined>(undefined);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -118,7 +122,7 @@ function SignupForm() {
       queueMicrotask(() => {
         setName(handoff.name);
         setEmail(handoff.email);
-        setPhone(handoff.phone);
+        setPhone(handoff.phone || undefined);
       });
     }
   }, [handoff]);
@@ -194,7 +198,7 @@ function SignupForm() {
           body: JSON.stringify({
             name,
             email,
-            phone,
+            phone: phone ?? "",
             handoffKey: handoffKey.current,
             intakeGoal: "quote",
           }),
@@ -319,6 +323,7 @@ function SignupForm() {
               }}
             >
               {busy ? "Continuing…" : "Continue"}
+              {!busy && <ArrowRight aria-hidden="true" className="size-4" />}
             </PillButton>
           </>
         ) : (
@@ -347,6 +352,7 @@ function SignupForm() {
                 : codeSent
                   ? "Confirm and continue"
                   : "Continue"}
+              {!busy && <ArrowRight aria-hidden="true" className="size-4" />}
             </PillButton>
           </>
         )
@@ -384,7 +390,7 @@ function SignupForm() {
       (isAuthenticated &&
         !token &&
         (drafts === undefined || submitted === undefined)) ? (
-        <p>Loading…</p>
+        <IntakeLoadingState title="Loading your requests" description="Getting your saved drafts and submitted applications ready." />
       ) : isAuthenticated && !token && !handoffTransition ? (
         <div className="space-y-4">
           {[
@@ -549,7 +555,7 @@ function SignupForm() {
                   autoComplete="tel"
                   placeholder="Phone number"
                   value={phone}
-                  onChange={(value) => setPhone(value ?? "")}
+                  onChange={setPhone}
                   required
                   readOnly={!!token}
                 />

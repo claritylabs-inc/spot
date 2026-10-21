@@ -1,0 +1,92 @@
+diff --git a/node_modules/react-phone-number-input/commonjs/usePhoneDigits.js b/node_modules/react-phone-number-input/commonjs/usePhoneDigits.js
+index 4759e26..36e40c9 100644
+--- a/node_modules/react-phone-number-input/commonjs/usePhoneDigits.js
++++ b/node_modules/react-phone-number-input/commonjs/usePhoneDigits.js
+@@ -158,6 +158,7 @@ function usePhoneDigits(_ref) {
+       setPhoneDigits(_phoneDigits);
+       if (_countryMismatchDetected) {
+         setValueForPhoneDigits(getValueForPhoneDigits(_phoneDigits));
++        onChange(getValueForPhoneDigits(_phoneDigits));
+       }
+     }
+   }, [country]);
+@@ -170,12 +171,9 @@ function usePhoneDigits(_ref) {
+     }
+   }, [defaultCountry]);
+ 
+-  // Update the `value` after `valueForPhoneDigits` has been updated.
+-  (0, _react.useEffect)(function () {
+-    if (valueForPhoneDigits !== value) {
+-      onChange(valueForPhoneDigits);
+-    }
+-  }, [valueForPhoneDigits]);
++  // Notify the owner in the input event, never while synchronizing a prop.
++  // Effect-based notifications can echo stale values back into a controlled
++  // owner and alternate indefinitely while the user is typing.
+   var onSetPhoneDigits = (0, _react.useCallback)(function (phoneDigits) {
+     var value;
+     if (country) {
+@@ -210,6 +208,7 @@ function usePhoneDigits(_ref) {
+               // forcefully rerendered here.
+               setPhoneDigits(prefix);
+               setValueForPhoneDigits(undefined);
++              onChange(undefined);
+               // Force a re-render of the `<input/>` with previous `phoneDigits` value.
+               return rerender();
+             }
+@@ -237,7 +236,8 @@ function usePhoneDigits(_ref) {
+     }
+     setPhoneDigits(phoneDigits);
+     setValueForPhoneDigits(value);
+-  }, [country, inputFormat, defaultCountry, metadata, setPhoneDigits, setValueForPhoneDigits, rerender, countryMismatchDetected]);
++    onChange(value);
++  }, [onChange, country, inputFormat, defaultCountry, metadata, setPhoneDigits, setValueForPhoneDigits, rerender, countryMismatchDetected]);
+   return {
+     phoneDigits: phoneDigits,
+     setPhoneDigits: onSetPhoneDigits,
+diff --git a/node_modules/react-phone-number-input/modules/usePhoneDigits.js b/node_modules/react-phone-number-input/modules/usePhoneDigits.js
+index 408c1e0..e696106 100644
+--- a/node_modules/react-phone-number-input/modules/usePhoneDigits.js
++++ b/node_modules/react-phone-number-input/modules/usePhoneDigits.js
+@@ -152,6 +152,7 @@ export default function usePhoneDigits(_ref) {
+       setPhoneDigits(_phoneDigits);
+       if (_countryMismatchDetected) {
+         setValueForPhoneDigits(getValueForPhoneDigits(_phoneDigits));
++        onChange(getValueForPhoneDigits(_phoneDigits));
+       }
+     }
+   }, [country]);
+@@ -164,12 +165,9 @@ export default function usePhoneDigits(_ref) {
+     }
+   }, [defaultCountry]);
+ 
+-  // Update the `value` after `valueForPhoneDigits` has been updated.
+-  useEffect(function () {
+-    if (valueForPhoneDigits !== value) {
+-      onChange(valueForPhoneDigits);
+-    }
+-  }, [valueForPhoneDigits]);
++  // Notify the owner in the input event, never while synchronizing a prop.
++  // Effect-based notifications can echo stale values back into a controlled
++  // owner and alternate indefinitely while the user is typing.
+   var onSetPhoneDigits = useCallback(function (phoneDigits) {
+     var value;
+     if (country) {
+@@ -204,6 +202,7 @@ export default function usePhoneDigits(_ref) {
+               // forcefully rerendered here.
+               setPhoneDigits(prefix);
+               setValueForPhoneDigits(undefined);
++              onChange(undefined);
+               // Force a re-render of the `<input/>` with previous `phoneDigits` value.
+               return rerender();
+             }
+@@ -231,7 +230,8 @@ export default function usePhoneDigits(_ref) {
+     }
+     setPhoneDigits(phoneDigits);
+     setValueForPhoneDigits(value);
+-  }, [country, inputFormat, defaultCountry, metadata, setPhoneDigits, setValueForPhoneDigits, rerender, countryMismatchDetected]);
++    onChange(value);
++  }, [onChange, country, inputFormat, defaultCountry, metadata, setPhoneDigits, setValueForPhoneDigits, rerender, countryMismatchDetected]);
+   return {
+     phoneDigits: phoneDigits,
+     setPhoneDigits: onSetPhoneDigits,

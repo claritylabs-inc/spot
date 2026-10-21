@@ -29,7 +29,7 @@ export function IntakeReviewChanges({
   if (!changes.length) return null;
   return (
     <section
-      className="mt-6 space-y-4 border-t border-border-subtle pt-6"
+      className="ph-no-capture mt-6 space-y-4 border-t border-border-subtle pt-6"
       aria-label="Changes to resubmit"
     >
       <h2 className={typeStyle("heading.item")}>Changes to resubmit</h2>

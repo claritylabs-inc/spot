@@ -35,7 +35,9 @@ The former Railway extraction worker, LiteParse/Poppler/OCR, preview queue, `sou
 
 ## Insurance request intake
 
-`convex/requestIntake.ts` owns user-owned drafts, revision saves, upload staging, and submission before optional email confirmation. `procurementRequests.clientOrgId` is optional before company attachment; fulfillment and shared packets require a company. A new self-serve applicant gets a limited client organization and admin membership as soon as they move past the legal-name question; `organizations.intakeDraftRequestId` marks it until submission so name/website edits keep it in sync, and switching to a saved company soft-deletes it. Operator Clients lists every client in one table with All/Active/Limited/Onboarding filters. Limited clients with an unsubmitted intake draft display as Onboarding instead of Limited, and applicants who have not named a company yet appear as Onboarding rows (`operator.listUnlinkedApplications`). Restricted unverified users can access only their own drafts and uploads. `/api/intake` and `requestHandoffs` provide an expiring, hashed landing handoff; existing emails require OTP before access and new accounts can submit before verifying, then confirm email from the submitted application banner. `components/insurance-intake/` owns focused conditional questions, the shared intake frame, local recovery, and the editable post-submission application overview. Website entry schedules request-owned prefill through `convex/actions/intakeCompanyResearch.ts`, reusing verified `researchCompanyProfile` without creating an organization or overriding user answers. Requirement uploads reuse `convex/actions/complianceRequirements.ts` through one-shot `convex/actions/intakeRequirementPrefill.ts` and request-owned suggestions; failures stay server-only and suggestions never overwrite entered answers. Coverage lines own their limits, additional requests, and bounded property/vehicle scope; company-level lines bypass item scope. Submitted edits preserve the original snapshot. Submission preserves the original snapshot and writes the canonical typed `intakeSubmittedApplication`; admin submissions promote an allowlisted `intakeBusinessProfile`. Draft saves never publish facts. Markdown is a sharing/export projection, with authored notes and control markers retained. The manual intake readiness checklist and lifecycle gate are removed; procurement uses its ordinary lifecycle controls. Application and company views render typed facts through shared intake row-card components. Shared packet exports generate Markdown tables from the accepted application, hiding control comments only in presentation and retaining them in source. `convex/intakeSlack.ts` owns the request-scoped Slack outbox: one #submissions thread, untagged step progress, and @here only on submitted/resubmitted events, delivered through the Convex Slack Web API transport (`convex/lib/slackWebApi.ts`). See `docs/architecture/insurance-intake.md`.
+`convex/requestIntake.ts` owns user-owned drafts, revision saves, upload staging, and submission before optional email confirmation. `procurementRequests.clientOrgId` is optional before company attachment; fulfillment and shared packets require a company. A new self-serve applicant gets a limited client organization and admin membership as soon as they move past the legal-name question; `organizations.intakeDraftRequestId` marks it until submission so name/website edits keep it in sync, and switching to a saved company soft-deletes it. Operator Clients lists every client in one table with All/Active/Limited/Onboarding filters. Limited clients with an unsubmitted intake draft display as Onboarding instead of Limited, and applicants who have not named a company yet appear as Onboarding rows (`operator.listUnlinkedApplications`). Restricted unverified users can access only their own drafts and uploads. `/api/intake` and `requestHandoffs` provide an expiring, hashed landing handoff; existing emails require OTP before access and new accounts can submit before verifying, then confirm email from the submitted application banner. `components/insurance-intake/` owns focused conditional questions, the shared intake frame, local recovery, and the editable post-submission application overview. Website entry schedules request-owned prefill through `convex/actions/intakeCompanyResearch.ts`, reading the applicant-provided website directly without a company-name identity gate, creating an organization, or overriding user answers. Requirement uploads reuse `convex/actions/complianceRequirements.ts` through one-shot `convex/actions/intakeRequirementPrefill.ts` and request-owned suggestions; failures stay server-only and suggestions never overwrite entered answers. Coverage lines own their limits, additional requests, and bounded property/vehicle scope; company-level lines bypass item scope. Submitted edits preserve the original snapshot. Submission preserves the original snapshot and writes the canonical typed `intakeSubmittedApplication`; admin submissions promote an allowlisted `intakeBusinessProfile`. Draft saves never publish facts. Markdown is a sharing/export projection, with authored notes and control markers retained. The manual intake readiness checklist and lifecycle gate are removed; procurement uses its ordinary lifecycle controls. Application and company views render typed facts through shared intake row-card components. Shared packet exports generate Markdown tables from the accepted application, hiding control comments only in presentation and retaining them in source. `convex/intakeSlack.ts` owns the request-scoped Slack outbox: one #submissions thread, untagged step progress, and @here only on submitted/resubmitted events, delivered through the Convex Slack Web API transport (`convex/lib/slackWebApi.ts`). See `docs/architecture/insurance-intake.md`.
+
+Quote intake uses reviewed local catalog packs in Coverage, then terminal routed LLM follow-ups after history, before review. Each follow-up is one page within its section; `IntakeDetails.followupProgress` persists its position (sections 29/30, legacy review 28). `docs/procurement/acord-intake/question-catalog.json` owns the original Spot catalog imported from PR #519 (unverified ACORD mappings); `lib/intake-acord-questions.ts` adapts it to intake primitives and coverage/dependency gates; `convex/actions/intakeFollowups.ts` and `requestIntake.prepareFollowups` own bounded, context-versioned generation. `lib/intake-question-history.ts` pairs base/follow-up questions with answers and skip status for generation and gap assessment; base facts are reserved even when blank. The terminal pass uses one structured generation call for gap assessment, semantic novelty and input choice; it has no separate model gate, screening or Boolean-prefill call. `lib/intake-question-reference.ts` selects at most 50 reviewed, coverage-mapped historical question concepts (12,000 characters) as hints, never universal requirements. Raw source accounts and answers never enter the pack. Saved question definitions/answers remain request-owned, survive submission, and are excluded from company-profile promotion. Savings reviews skip both sections. Bounded local additional-question generation explicitly uses the router synchronous endpoint (text-only, no tools, at most 3,000 output tokens); hosted calls remain durable, and unknown inference outcomes never replay.
 
 `organizations.clientAccessStatus` (`limited` by default, or `active`) is the only client status. Operators set it from the client list/detail/editor (`operator:setSoloClientStatus`), the `set_client_access_status` operator tool, and launch emails, which activate the client. Limited clients are routed to `/signup`; active client home routes to `/requests`. The retired `operatorStatus` is gone; there are no lost/churned states, pending-live screens, or onboarding-only gates. Operator impersonation passes org auth gates as target-org admin (`OrgAccess.impersonated`) and every guarded write is audited as `impersonated_write` by `recordImpersonatedWrite`; operator-console-only actions still reject during impersonation. This does not replace server resource authorization.
 
@@ -81,3 +83,131 @@ Operator navbar action sizing is enforced at the shared `app-top-bar-actions` sl
 Policy savings is selected as “Save money on my current policies” in the shared buying-reason question, with no separate entry goal question. That answer sets `intakeGoal: savings`; applicants upload at least one PDF policy, then provide business information. Coverage selection is skipped on normal navigation, review edits and resumed links. The existing owner-scoped intake record stores recovery and the accepted snapshot with `intakeGoal: savings`; it remains excluded from Procurement lists and resource access. Submission creates idempotently linked policy uploads through `createOwnedIntakePolicyUpload` and the existing policy extraction pipeline, without procurement packets, file items, or marketing lifecycle. Admin follow-up is under the business’s Policies page. The received confirmation makes no fixed turnaround promise, and accepted savings reviews are read-only.
 
 Password sign-in is optional. Accounts use email codes by default; verified users can set a password in profile settings through `convex/passwordAccounts.ts`. The normal `/login` page offers both methods. `convex/reviewerAccounts.ts` seeds an ordinary client account and synthetic policies for extension review/testing; it adds no special runtime authentication or membership rules. The manual reviewer workflow stores its preset password in a repository secret. See `docs/architecture/reviewer-account.md`.
+
+
+Commercial-auto intake always includes a request-scoped driver roster after
+vehicle scope (persisted steps 31–40, repeated per driver). Names establish the
+schedule; licensing jurisdiction/class, experience and five-year driving history
+can be skipped for initial quoting. Birth date and license number always appear beside issuing country/province on
+the shared driver-details page (step 34); entered dates remain validated and blank
+values remain optional. Legacy steps 32–33 redirect to that page. Blank optional
+values remain unknown, never clean-history assumptions. Entered VINs must pass
+17-character/alphabet and applicable US/Canadian-market check-digit validation;
+blank VINs remain allowed. Draft typing stays recoverable; frontend navigation
+and `requestIntake.submit` enforce final validity. `lib/intake-vehicles.ts` and
+`lib/intake-drivers.ts` own shared rules. Driver facts remain request-owned and
+excluded from company-profile promotion. Driver inputs/reviews/change diffs block
+session replay; follow-up inference redacts birth dates/license identifiers, and
+Markdown packets summarize the schedule without those identifiers.
+
+Commercial-auto quote intake collects freight hauled and approximate current value per vehicle (optional currency) in fixed steps 41–42 before the driver schedule. The retired uninsured-reason step 43 redirects to the existing claims-history step 23. Typed details (`freightHauled`, per-vehicle `estimatedValue`, `noCurrentInsuranceReason`) persist in accepted applications, review/export, Slack summaries, and both model stages’ answered/skipped question history. UI cursor `autoVehicleIndex` is excluded from submission-change comparison. Legacy scope notes remain saved but their redundant intake textarea is hidden.
+
+Catalog adapter v8 binds vehicle, driver, location and property questions to known typed subjects before deterministic coverage-pack selection. Subjects without typed records are omitted rather than merged into one yes/no answer. Typed money uses currency; scoped prompts do not request identifiers through Boolean/dropdown controls. Catalog-authored Boolean child questions carry server-approved `conditions` (questionId/answer), appear on a separate page only when the same subject’s parent matches, and clear obsolete child answers when parents change. Saved skipped child history is retained; server saves enforce exact condition definitions and reject entered inactive answers. Review/export hides inactive children. The uninsured-reason question is retired (legacy step 43 redirects to claims step 23); its old typed field remains readable and reserved against AI re-asking. Intake presentation substitutes the saved legal business name (DBA fallback) into generic business/company wording without mutating approved definitions.
+
+Intake review uses shared row primitives for follow-up answers and driver summaries. `lib/intake-submission.ts` shares final validation between review completion links and server submission. `activeIntakeDetails` omits dormant driver/freight data when commercial auto is removed and omits quote details for savings, while retaining the editable draft for recovery. Coverage limit facts already owned by fixed questions are excluded from catalog selection even when blank or unsure. Baked coverage packs are bounded to 120 questions, generated batches to 40, with 160 saved/reserved questions overall; conditional groups fit together or are omitted. Finalization rechecks current capacity, token and context. Failed/unknown outcomes never replay automatically. Only the current approved batch appears on ordinary forward navigation; historical questions remain editable from review.
+
+Vehicle scope collects Year/Make/Model/VIN first, then `lib/intake-vehicle-subsections.ts` composes typed underwriting pages within a named vehicle subsection. Legacy vehicle-scoped catalog answers retain their grouped editor, using shared Field/Select/Input primitives and concise labels with unit examples. Ordinary business and generated follow-ups retain one question per page. Each answer keeps its server-approved ID/definition; hidden equipment children remain conditional and clear on parent edits. Navigation persists the first question index of each group, preserving existing draft cursor compatibility, and records blank visible fields as skipped when leaving the page.
+
+Additional questions prepare once at terminal section entry using complete original base and catalog facts. History saves do not preload or assess gaps with a model. Legacy scheduler endpoints drain without new inference; generated answers never recursively trigger more questions. Only changed base/catalog facts or uploads invalidate the terminal list. Failed/unknown outcomes do not replay automatically. Empty or unavailable batches skip their introduction and question page directly to review, preserving saved answers.
+
+Intake section introductions use the shared frame, typography and pill controls, with short copy for each of the seven quote sections and savings-specific policy/review copy. `IntakeDetails.sectionIntroductions` records acknowledged sections as draft-only UI metadata; it is excluded from accepted facts and model context/hash. Review edits and mid-section resumes bypass introductions. Switching purposes resets introductions for changed sections, while company switching retains seen state and request-owned vehicle/driver details entered earlier.
+
+The shared route primitive is `components/ui/route-input.tsx`, with bounded values/formatting in `lib/route-input.ts`. Commercial-auto catalog routes and generated `routes` questions share ordered searchable city stops, optional maximum distance, and a responsive Mapbox driving preview. Keep provider coordinates and distance previews separate from insurance eligibility and truck navigation. Preserve legacy text answers and manual city entry during provider failures; incomplete route drafts remain recoverable but cannot be submitted.
+
+
+Intake standard vehicle underwriting facts now live in optional request-owned
+`vehicles[].underwriting` fields in Coverage, with exact-subject legacy ACORD
+fallbacks in `lib/intake-vehicle-underwriting.ts`. Review nests vehicle facts,
+commercial-auto quote details and drivers under Coverage. Six visible sections
+retain legacy persisted step/section IDs; ACORD step 29 belongs to Coverage; generated step 30 remains Additional details. Selected/generated Boolean follow-ups use independent
+Jev Yes/No/Unknown Choices; only evidence-supported Yes/No meeting at least 0.70
+and the configured threshold are atomically saved and hidden during forward
+navigation. Review labels them Prefilled and permits edits. Token, evidence hash,
+capacity, conditions and server-owned provenance guards apply; human answers and
+skips win, evidence edits revoke untouched inferences, and failures remain visible.
+Routes use version-2 multiple route groups, legacy single-route reads, endpoint
+names and icon arrows, equal large add buttons, and no reorder, clear-route or
+maximum-distance controls. Legacy distances stay stored but are hidden in exports
+and UI; travel-radius questions remain reserved and retired.
+
+Local request-owned intake requirement extraction and company website research select bounded synchronous cl-router calls before submitting inference, avoiding development callback dependence. Hosted calls remain durable; no unknown outcome is replayed automatically. Company name (DBA/trading name) precedes legal name and website, and their question titles remain static. Ordinary Back navigation from a section’s first question reopens that section’s introduction.
+
+Request intake uses the applicant-provided public website directly as their confirmed research source; no company-name identity match gates website autofill. Research can start with a website alone. Other automatic company research retains its existing identity verification. Website content remains evidence, never instructions, and cannot overwrite entered answers.
+
+Description-based intake industry suggestions use the existing Jev decide primitive through `convex/actions/intakeIndustry.ts`, with owner authorization and a known taxonomy. Prefilled descriptions and blur trigger it only for blank industries; stale results and manual selections win. Ready empty follow-up batches bypass their introduction and answer pages after current entry screening, while pending work is awaited; failed or unavailable optional questions are skipped.
+
+The terminal structured generation selects new follow-up input kinds, including `date`, in its single response. New `single-pass-v1` questions do not run a separate Jev novelty or input-classification pass. Date questions use the shared DateField and strict calendar-date validation on navigation/submission; drafts preserve partial typing. `convex/actions/intakeFollowupInputs.ts` supplies owner-authorized, read-only date rendering hints for existing text questions without migrating their saved definitions.
+
+Legacy `requestIntake.assessFollowupGaps` and scheduled gap jobs perform no inference. Terminal additional questions assess gaps, novelty and primitive choice in one bounded generation per saved base/catalog context; ready/failed/pending context guards prevent duplicate or unknown-outcome replay.
+
+`convex/lib/intakeQuestionGuidance.ts` owns the shared applicant-knowledge rule for every intake question prompt. The respondent is the insured applicant, not an insurer; do not ask insurer reserves, paid/incurred totals or internal claims/underwriting data. Changed question policy participates in the follow-up context version, preserving saved history while rescreening cached questions.
+
+Final generated intake questions are terminal: generation and gap-assessment
+contexts use only original base and ACORD/catalog facts, never answers to final
+LLM questions. Generated definitions are exclusions only. Unchanged Continue or
+review visits reuse the ready list without inference; only changed base/catalog
+facts/uploads can invalidate it. No automatic post-list enrichment pass runs.
+
+Coverage preselection also uses saved request notes through owner-authorized
+`actions/intakeCoverage:suggest` and atomic Jev Nouls. Existing requirement-merge
+rules preserve entered fields and explicit coverage removals; consumed-note hashes
+prevent reload replay. Notes can suggest coverage types, never fabricated limits
+or property ownership.
+
+ACORD/catalog questions (29) are part of Coverage after fixed scope/vehicles/drivers,
+with Company next; final generated questions (30) remain a terminal pass after
+history. The duplicate business-location page (19) is retired, including required
+validation. Convex saved-progress warmup replaces browser timers and retains
+pending-token/non-replay guards for additional questions. Applicant wording and named location subsection
+presentation live in `lib/intake-applicant-wording.ts`; original approved question
+definitions remain unchanged. `subsectionIntroductions` is request UI metadata,
+excluded from inference/prefill hashes and accepted facts. Location questions are
+one per page with subsection hierarchy and a shared introduction card.
+
+Property scope is name/address only in applicant intake. Activities, ownership
+and staffing live as fixed typed pages in location subsections through
+`lib/intake-property-subsections.ts`, persisting directly to coverage properties,
+not follow-up answers. They remain reserved base facts for both model stages and
+are composed with the local catalog pack. Operator inline location editing
+retains its full fields.
+
+
+Standard Coverage questions come from reviewed IDs in `docs/procurement/acord-intake/coverage-question-packs.json`, projected by `lib/intake-coverage-questions.ts` and the shared `lib/intake-acord-questions.ts` adapter. No runtime ACORD Jev selection or question fetch is required. Typed coverage, industry, subject and parent-answer gates determine applicability; specialized tail/extended-reporting elections are excluded from initial quote packs. Conditional child definitions are approved up front, and saves compare condition fields independent of object key order. Final generated questions remain a separate bounded terminal pass. Applicant choice questions with fewer than eight options use the shared large radio controls; larger sets use shared Select primitives.
+
+Coverage review has no Other coverage details subsection. Property identity, address, activities, occupancy, staff and scoped catalog answers share one named location row card, using the common review primitives. General catalog answers appear directly under Coverage. Saved inactive child answers remain hidden.
+
+The retired `eo.terms.extended_reporting` question is hidden by shared follow-up visibility, including historical answers in draft/review/export; saved history remains intact and does not prevent saves. Coverage review sorts catalog answers in pack order under their owning coverage before named location cards. Location subheadings use `heading.micro`, and question navigation keeps general coverage terms before each grouped location subsection.
+
+Quote intake now collects business facts before Coverage while retaining persisted
+step IDs. `lib/intake-vehicle-subsections.ts` owns typed per-vehicle pages;
+`lib/intake-catalog-wording.ts` owns applicant-facing catalog copy. Shared numeric
+follow-up controls support unsure values, units and bounded percentages. Payroll
+uses request-owned versioned employee groups via `lib/intake-payroll.ts`; legacy
+prose remains readable. Workers’ compensation owner elections have an adapter
+conditional detail child. `convex/actions/intakeCyberResearch.ts` schedules bounded
+request-owned public website/policy/terms/technology research. Exact evidence and
+Jev verification gate proposals; ordinary owner revision saves merge only untouched
+answers, preserving manual/unsure/skipped/current-page values. Source changes
+invalidate untouched proposals; same-context failures never automatically replay.
+Optional missing-policy links use shared URL primitives. Navigation introduction
+state must initialize before loading/empty returns, and unavailable question
+batches must never reset persisted cursors.
+
+Coverage intake groups each line's limits, scope and follow-ups before the next
+line through `lib/intake-coverage-navigation.ts`. Payroll collects employee group
+names first, then named per-group headcount, period, dates and amount pages, reusing
+payroll-v1 and the bounded UI-only `payrollPage` cursor. Payroll details can be
+skipped without inventing values. Additional-insured agreements reuse requirement
+uploads and grounded, provenance-linked prefills for unanswered GL provision facts.
+Jurisdiction country defaults are editable hints from business country, host country
+or browser timezone/locale and never authorization or proof of business location.
+
+Vehicle-use question relevance is request-owned metadata (`intakeVehicleRelevance`) with exact evidence matching. `lib/intake-vehicle-relevance.ts` and `convex/actions/intakeVehicleRelevance.ts` own bounded atomic Jev inapplicability decisions. Hide only threshold-confident irrelevant pages, preserve saved answers, retain uncertainty, and never block navigation or replay failed/unknown inference. One vehicle’s activity cannot exclude fleet questions applicable to another.
+
+Catalog adapter v20 separates compound underwriting prompts into individual pages with new IDs, retaining parent gates, typed subjects, and historical compound answers. Applicant-supplied cyber privacy/terms URLs can use different domains or branding from the business website. Each document is retrieved within its own domain; exact evidence and Jev verification still gate suggestions. Cyber suggestions fill only untouched answers and remain visible for review.
+
+Post-submission premium ranges are request-owned, hash-bound to the accepted quote application and generated once per accepted content via `convex/actions/intakePremiumEstimate.ts`. The model returns monthly lower/upper totals; the final page labels these as estimated monthly premiums. A single lower bound shows “Starting from”, a single upper bound shows “About”, and no usable bounds stays hidden. Savings skips estimation. Existing owner checks, redacted identifiers, bounded local execution and durable hosted routing apply; failed/unknown calls do not replay on refresh. Coverage review and submitted pages share the existing small row-card/topic presentation and muted subsection headings.
+
+Premium estimation preloads on review using a provisional canonical submission hash; matching Submit promotes the prepared result without a duplicate inference. Accepted results appear on the submitted page, with a loading card while pending/running and no visible failed state. Intake unknown actions use `components/insurance-intake/unknown-choice.tsx` as input-styled buttons. On desktop single-line fields, the right edge stays fixed while width expands leftward; multiline fields place the full-width action below. All mobile actions sit below at full width. Deselecting restores the previous value. Structured routes, locations and vehicle identity forms omit the unknown action.
+
+Intake System One decisions use nested typed evidence, known Choice candidates and threshold-gated atomic Nouls. `convex/lib/intakeIndustry.ts` shares batched industry/category Choices and deterministic parent/child consistency between website and description prefills. Website operations and an optional founding year are extracted once with exact supporting excerpts, then verified alongside taxonomy decisions in one Jev request using compact excerpt state. Failed summary generation still allows classification; retained website evidence is bounded before JSON serialization for Cyber reuse. Vehicle relevance batches all at most 100 independent candidates in one request. Variant-specific specifications skip universal-variant judgments. Cyber candidate data lives in structured state rather than instructions; conflicting duplicate answers are omitted. Ordinary user answers/skips, provenance, revision checks and no-replay rules remain authoritative.

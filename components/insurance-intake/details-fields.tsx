@@ -1,4 +1,7 @@
 "use client";
+import { IntakeUnknownRow } from "./unknown-choice";
+import { IntakeRadioChoices } from "./radio-choices";
+export { IntakeRadioChoices } from "./radio-choices";
 import { RemoveButton } from "@/components/ui/remove-button";
 import {
   InlineFieldCard,
@@ -9,12 +12,14 @@ import {
 import { Building2, MapPin, X } from "lucide-react";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import dayjs from "dayjs";
+import { IntakeVehicleUnderwritingFields } from "./vehicle-underwriting-fields";
+import { vehicleUnderwritingValues } from "@/lib/intake-vehicle-underwriting";
 import { IntakeVehicleFields } from "./vehicle-fields";
 import {
   DateField,
   parseDateText,
 } from "@claritylabs-inc/ui/components/date-field";
-import { useRef, useState, useContext, type ReactNode } from "react";
+import { useState, useContext, type ReactNode } from "react";
 import {
   FiShield,
   FiHome,
@@ -43,8 +48,7 @@ import {
   FieldTitle,
 } from "@claritylabs-inc/ui/components/field";
 import { NumberField } from "@base-ui/react/number-field";
-import { RadioGroup } from "@base-ui/react/radio-group";
-import { Radio } from "@base-ui/react/radio";
+import { GroupedNumberInput } from "@/components/ui/grouped-number-input";
 import { Button } from "@claritylabs-inc/ui/components/button";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -90,7 +94,7 @@ function formatDollarInput(value: string) {
   );
 }
 
-function IntakeValueInput({
+export function IntakeValueInput({
   id,
   label,
   value,
@@ -322,16 +326,17 @@ export function IntakeCountInput({
 }) {
   return (
     <NumberField.Root
+      locale="en-US"
       id={id}
       min={0}
       step={1}
       smallStep={1}
       value={value === "" ? null : Number(value)}
       onValueChange={(next) => onChange(next === null ? "" : String(next))}
-      format={{ maximumFractionDigits: 0, useGrouping: false }}
+      format={{ maximumFractionDigits: 0, useGrouping: true }}
       render={<InputGroup className="h-12" />}
     >
-      <NumberField.Input
+      <GroupedNumberInput
         aria-label={label}
         placeholder={placeholder}
         onBlur={onBlur}
@@ -400,7 +405,7 @@ function Choice({
       <FieldLabel htmlFor={id} className={typeStyle("body.root")}>
         {label}
       </FieldLabel>
-      {choices.length < 4 ? (
+      {choices.length < 8 ? (
         <IntakeRadioChoices
           label={label}
           choices={choices}
@@ -450,65 +455,6 @@ function Choice({
         </Select>
       )}
     </Field>
-  );
-}
-export function IntakeRadioChoices({
-  label,
-  choices,
-  value,
-  onChange,
-  disabled = false,
-}: {
-  label: string;
-  choices: readonly string[];
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}) {
-  const inlineFields = useContext(InlineFieldsContext);
-  if (inlineFields)
-    return (
-      <Select
-        value={value || null}
-        disabled={disabled}
-        onValueChange={(next) => {
-          if (next) onChange(String(next));
-        }}
-      >
-        <SelectTrigger aria-label={label} className="w-full">
-          <SelectValue placeholder="Not provided">
-            {value || undefined}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {choices.map((choice) => (
-            <SelectItem key={choice} value={choice}>
-              {choice}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    );
-  return (
-    <RadioGroup
-      aria-label={label}
-      value={value || null}
-      onValueChange={(next) => onChange(next ?? "")}
-      disabled={disabled}
-      className="grid gap-3"
-    >
-      {choices.map((choice) => (
-        <Radio.Root
-          key={choice}
-          value={choice}
-          nativeButton
-          render={<Button variant={value === choice ? "default" : "outline"} />}
-          className={`min-h-16 w-full justify-center px-5 py-4 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground ${typeStyle("body.root")}`}
-        >
-          {choice}
-        </Radio.Root>
-      ))}
-    </RadioGroup>
   );
 }
 export function IntakeCheckboxCard({
@@ -565,9 +511,14 @@ export function IntakeCoverageSelection({
               ...current.filter((line) => line.coverage !== "unknown"),
               newCoverage(id),
             ];
+    const declined=new Set(details.declinedRequirementCoverages ?? []);
+    if(id==="unknown"){for(const line of current)if(line.coverage!=="unknown")declined.add(line.coverage);}
+    else if(current.some(line=>line.coverage===id))declined.add(id);
+    else declined.delete(id);
     onChange({
       ...details,
       coverages: next,
+      declinedRequirementCoverages:[...declined],
       coverageIndex: 0,
     });
   }
@@ -696,7 +647,6 @@ export function IntakeCoverageLimits({
 }: Props) {
   const inline = useContext(InlineFieldsContext);
   const LimitRow = inline ? InlineFieldRow : Field;
-  const previousLimits = useRef<Record<string, string>>({});
   const [openHelp, setOpenHelp] = useState<Record<string, boolean>>({});
   const help: Record<string, string> = {
     each_occurrence: "The maximum coverage for one covered incident.",
@@ -836,6 +786,7 @@ export function IntakeCoverageLimits({
                     <CircleHelp className="size-4" />
                   </Button>
                 </div>
+                <IntakeUnknownRow label={limit.label} value={value} disabled={disabled} onChange={next=>setLimit(limit.key,next)}>
                 <InputGroup
                   className={`${inline ? "min-h-9 h-9" : "min-h-12 h-auto"} ${typeStyle(inline ? "body.default" : "body.root")} ${unknown ? "bg-primary/5" : ""}`}
                 >
@@ -861,37 +812,8 @@ export function IntakeCoverageLimits({
                       onValueChange={(next) => setLimit(limit.key, next)}
                     />
                   )}
-                  {(!value.trim() || unknown) && (
-                    <InputGroupAddon
-                      align="inline-end"
-                      className={`shrink-0 pr-4 ${unknown ? "w-full justify-start px-3" : ""}`}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <label
-                        className={`flex ${inline ? "min-h-7" : "min-h-10"} items-center gap-2 cursor-pointer whitespace-nowrap ${typeStyle("body.default")}`}
-                      >
-                        <Checkbox
-                          id={`limit-${line.coverage}-${limit.key}-unknown`}
-                          aria-label={`${limit.label}: ${UNKNOWN_ANSWER}`}
-                          checked={unknown}
-                          disabled={disabled}
-                          onCheckedChange={(checked) => {
-                            const savedKey = `${line.coverage}:${limit.key}`;
-                            if (checked)
-                              previousLimits.current[savedKey] = value;
-                            setLimit(
-                              limit.key,
-                              checked
-                                ? UNKNOWN_ANSWER
-                                : (previousLimits.current[savedKey] ?? ""),
-                            );
-                          }}
-                        />
-                        {UNKNOWN_ANSWER}
-                      </label>
-                    </InputGroupAddon>
-                  )}
                 </InputGroup>
+                </IntakeUnknownRow>
                 {openHelp[`${line.coverage}:${limit.key}`] && (
                   <FieldDescription
                     id={`limit-help-${line.coverage}-${limit.key}`}
@@ -1037,7 +959,8 @@ export function IntakeLocations({
   onChange,
   disabled = false,
   defaultActivities = "",
-}: Props & { defaultActivities?: string }) {
+  identityOnly = false,
+}: Props & { defaultActivities?: string; identityOnly?: boolean }) {
   const inline = useContext(InlineFieldsContext);
   const externalActions = useContext(InlineCollectionActionsContext);
   if (inline)
@@ -1253,6 +1176,7 @@ export function IntakeLocations({
                 }
               />
             </Field>
+            {!identityOnly && <>
             <Field>
               <FieldLabel
                 htmlFor={`location-details-${index}`}
@@ -1337,6 +1261,7 @@ export function IntakeLocations({
                 }
               />
             </Field>
+            </>}
           </CardContent>
         </Card>
       ))}
@@ -1748,7 +1673,7 @@ export function IntakeAdditionalCoverages({ details, onChange }: Props) {
     </FieldGroup>
   );
 }
-export function IntakeCoverageScope({ details, onChange }: Props) {
+export function IntakeCoverageScope({ details, onChange, activeCoverageIndex, disabled = false }: Props & { activeCoverageIndex?: number }) {
   const inline = useContext(InlineFieldsContext);
   if (inline)
     return (
@@ -1905,6 +1830,7 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
                     }
                   >
                     <IntakeVehicleFields
+                      country={details.registrationCountry}
                       id={`insured-vehicle-${i}`}
                       vehicle={vehicle}
                       onChange={(next) =>
@@ -1915,6 +1841,7 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
                         })
                       }
                     />
+                    <IntakeVehicleUnderwritingFields id={`vehicle-details-${i}`} values={vehicleUnderwritingValues(vehicle,i,details.followups)} onChange={underwriting=>update({vehicles:(line.vehicles ?? []).map((row,j)=>j===i?{...row,underwriting}:row)})}/>
                   </InlineFieldCard>
                 ))}
               </div>
@@ -1923,7 +1850,8 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
             return (
               <InlineFieldRow key={line.coverage} label="What to insure">
                 <Textarea
-                  aria-label={`What to insure for ${coverageRequestLabel(line)}`}
+                  disabled={disabled}
+                aria-label={line.coverage === "unknown" ? "What are you looking to get insured?" : `What to insure for ${coverageRequestLabel(line)}`}
                   rows={1}
                   placeholder="Not provided"
                   value={line.scopeDescription ?? ""}
@@ -1939,17 +1867,8 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
     );
   return (
     <FieldGroup>
-      {!!details.scopeNote && (
-        <Textarea
-          aria-label="Previous scope details"
-          placeholder="Previous scope details"
-          value={details.scopeNote}
-          onChange={(event) =>
-            onChange({ ...details, scopeNote: event.target.value })
-          }
-        />
-      )}
       {details.coverages.map((line, index) => {
+        if (activeCoverageIndex !== undefined && index !== activeCoverageIndex) return null;
         const update = (patch: Partial<typeof line>) =>
           onChange({
             ...details,
@@ -1965,11 +1884,12 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
           return null;
         return (
           <div key={line.coverage} className="space-y-4">
-            <h2 className={`text-wrap-pretty ${typeStyle("heading.section")}`}>
+            {activeCoverageIndex === undefined && <h2 className={`text-wrap-pretty ${typeStyle("heading.section")}`}>
               {coverageRequestLabel(line)}
-            </h2>
+            </h2>}
             {line.coverage === "property" ? (
               <IntakeLocations
+                identityOnly
                 details={{ ...details, locations: line.properties ?? [] }}
                 onChange={(next) => update({ properties: next.locations })}
               />
@@ -1981,6 +1901,7 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
                   <Card key={vehicleIndex} className="border border-border">
                     <CardContent className="space-y-4">
                       <IntakeVehicleFields
+                      country={details.registrationCountry}
                         vehicle={vehicle}
                         id={`vehicle-${index}-${vehicleIndex}`}
                         onChange={(next) =>
@@ -2028,8 +1949,9 @@ export function IntakeCoverageScope({ details, onChange }: Props) {
               </FieldGroup>
             ) : (
               <Textarea
-                aria-label={`What to insure for ${coverageRequestLabel(line)}`}
-                placeholder="Describe what you are looking to get insured"
+                disabled={disabled}
+                aria-label={line.coverage === "unknown" ? "What are you looking to get insured?" : `What to insure for ${coverageRequestLabel(line)}`}
+                placeholder={line.coverage === "unknown" ? "Describe what you want to protect in your own words. We’ll help work out the coverage." : "Describe what you are looking to get insured"}
                 value={line.scopeDescription ?? ""}
                 onChange={(event) =>
                   update({ scopeDescription: event.target.value })

@@ -215,7 +215,11 @@ async function runWebRetrievalWithConfig(
         ...(config.route ? { route: config.route } : {}),
       },
     },
-    durableRouterClientOptionsWithTrace(ctx, {
+    // Choose local intake's synchronous transport before submission. Hosted
+    // research stays durable; a failed/unknown call never triggers a replay.
+    process.env.SPOT_ENV === "local" && !orgId && /^intake-(company|cyber|vehicle):/.test(rawInput.trace?.traceId ?? "")
+      ? { telemetry: ctx }
+      : durableRouterClientOptionsWithTrace(ctx, {
       ...rawInput.trace,
       taskKind: rawInput.taskKind ?? "web_research",
     }),

@@ -6,6 +6,12 @@ dayjs.extend(customParseFormat);
 const DISPLAY_DATE_FORMAT = "MMM D, YYYY";
 const DISPLAY_DATE_TIME_FORMAT = "MMM D, YYYY [at] h:mm A";
 
+/** Strict calendar input shared by intake navigation and final validation. */
+export function parseCalendarDateInput(value: string): string {
+  const parsed = dayjs(value.trim(), ["MM/DD/YYYY", "YYYY-MM-DD"], true);
+  return parsed.isValid() ? parsed.format("YYYY-MM-DD") : "";
+}
+
 const CALENDAR_DATE_INPUT_FORMATS = [
   "MM/DD/YYYY",
   "M/D/YYYY",

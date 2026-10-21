@@ -1,3 +1,8 @@
+import { validateVehicleUnderwriting, type IntakeVehicleUnderwriting } from "./intake-vehicle-underwriting";
+import { vinError } from "./intake-vehicles";
+import type { IntakeDriver } from "./intake-drivers";
+import { INTAKE_FIELDS } from "./insurance-intake";
+import { validateFollowupAnswers, type IntakeFollowupAnswer } from "./intake-followups";
 import dayjs from "dayjs";
 import type { IntakeAnswers } from "./insurance-intake";
 export const UNKNOWN_ANSWER = "I'm not sure";
@@ -91,7 +96,7 @@ export type CoverageRequest = {
   additionalCoverages?: string;
   scopeDescription?: string;
   properties?: IntakeLocation[];
-  vehicles?: { year: string; make: string; model: string; vin: string }[];
+  vehicles?: { year: string; make: string; model: string; vin: string; estimatedValue?: string; estimatedValueSkipped?: boolean; underwriting?: IntakeVehicleUnderwriting }[];
 };
 export type IntakeAddress = {
   longitude?: number;
@@ -109,7 +114,7 @@ export type IntakeLocation = {
   address: IntakeAddress;
   details: string;
   activitiesPrefilled?: boolean;
-  ownership?: "owned" | "leased";
+  ownership?: "owned" | "leased" | "unknown";
   staff?: string;
 };
 function locationText(location: IntakeLocation) {
@@ -118,7 +123,7 @@ function locationText(location: IntakeLocation) {
     addressText(location.address),
     location.details,
     location.ownership
-      ? `Occupancy: ${location.ownership === "owned" ? "Owned" : "Leased"}`
+      ? `Occupancy: ${location.ownership === "owned" ? "Owned" : location.ownership === "unknown" ? "I'm not sure" : "Leased"}`
       : "",
     location.staff?.trim() ? `Staff: ${location.staff}` : "",
   ]
@@ -131,8 +136,22 @@ type RelatedEntity = {
   insured: "" | "include" | "exclude" | "unsure";
 };
 export type IntakeDetails = {
+  cyberDocuments?: { privacyPolicyUrl?: string; termsUrl?: string };
+  sectionIntroductions?: number[];
+  subsectionIntroductions?: string[];
+  freightHauled?: string;
+  noCurrentInsuranceReason?: string;
+  autoVehicleIndex?: number;
+  drivers?: IntakeDriver[];
+  driverIndex?: number;
+  collectSensitiveDriverDetails?: boolean;
+  followups?: IntakeFollowupAnswer[];
+  skippedBaseFields?: string[];
+  payrollPage?: number;
+  followupProgress?: { acord: number; additional: number };
   coverages: CoverageRequest[];
   prefillSourceIds?: string[];
+  declinedRequirementCoverages?: CoverageId[];
   companyResearchSource?: string;
   mailingAddress: IntakeAddress;
   registrationCountry?: string;
@@ -368,6 +387,28 @@ export function detailsAnswers(details: IntakeDetails): IntakeAnswers {
   };
 }
 export function validateIntakeDetails(details: IntakeDetails) {
+  if (details.cyberDocuments && Object.values(details.cyberDocuments).some(value => typeof value !== "string" || value.length > 2000))
+    throw new Error("Invalid cyber policy links");
+  if (details.subsectionIntroductions && (details.subsectionIntroductions.length > 60 || details.subsectionIntroductions.some(id => !id || id.length > 150)))
+    throw new Error("Invalid subsection introductions");
+  if (details.sectionIntroductions && (details.sectionIntroductions.length > 7 || new Set(details.sectionIntroductions).size !== details.sectionIntroductions.length || details.sectionIntroductions.some(section => !Number.isInteger(section) || section < 0 || section > 6)))
+    throw new Error("Invalid section introduction state");
+  if(details.declinedRequirementCoverages && (details.declinedRequirementCoverages.length>COVERAGE_OPTIONS.length || new Set(details.declinedRequirementCoverages).size!==details.declinedRequirementCoverages.length || details.declinedRequirementCoverages.some(id=>!COVERAGE_OPTIONS.some(option=>option.id===id))))throw new Error("Invalid declined coverage list");
+  validateFollowupAnswers(details.followups);
+  for(const line of details.coverages)for(const vehicle of line.vehicles ?? [])validateVehicleUnderwriting(vehicle.underwriting);
+  if ((details.freightHauled?.length??0)>2000 || (details.noCurrentInsuranceReason?.length??0)>2000 ||
+      (details.autoVehicleIndex!==undefined && (!Number.isInteger(details.autoVehicleIndex)||details.autoVehicleIndex<0||details.autoVehicleIndex>29)) ||
+      details.coverages.some(line=>line.vehicles?.some(vehicle=>(vehicle.estimatedValue?.length??0)>100))) throw new Error("Invalid auto quote details");
+  if ((details.drivers?.length ?? 0) > 30 || (details.drivers && new Set(details.drivers.map(row=>row.id)).size !== details.drivers.length) ||
+      details.drivers?.some(row => Object.values(row).some(value => typeof value !== "string" || value.length > 2000)) ||
+      (details.driverIndex !== undefined && (!Number.isInteger(details.driverIndex) || details.driverIndex < 0 || details.driverIndex > 29)))
+    throw new Error("Invalid driver schedule");
+  if (details.skippedBaseFields && (details.skippedBaseFields.length > 60 ||
+      details.skippedBaseFields.some((field) => !Object.hasOwn(INTAKE_FIELDS, field))))
+    throw new Error("Invalid skipped base question");
+  if (details.payrollPage !== undefined && (!Number.isInteger(details.payrollPage) || details.payrollPage < 0 || details.payrollPage > 24)) throw new Error("Invalid payroll position");
+  if (details.followupProgress && Object.values(details.followupProgress).some((index) => !Number.isInteger(index) || index < 0 || index > 1000))
+    throw new Error("Invalid follow-up position");
   if (
     details.prefillSourceIds &&
     (details.prefillSourceIds.length > 20 ||
@@ -394,7 +435,8 @@ export function validateIntakeDetails(details: IntakeDetails) {
       throw new Error("Invalid address coordinates");
   }
   if (
-    JSON.stringify(details).length > 32000 ||
+    JSON.stringify(details).length > 256000 ||
+    JSON.stringify({ ...details, followups: undefined }).length > 128000 ||
     details.coverages.length > COVERAGE_OPTIONS.length ||
     details.locations.length > 30 ||
     details.relatedEntities.length > 30
@@ -454,6 +496,7 @@ export function needsCoverageScope(id: CoverageId) {
 export function validCoverageScope(
   line: CoverageRequest,
   legacyScope?: string,
+  country?: string,
 ) {
   if (
     legacyScope?.trim() &&
@@ -468,7 +511,7 @@ export function validCoverageScope(
       line.properties.every((row) => !!addressText(row.address).trim())
     );
   // Vehicle details are optional, including VIN and partially known vehicles.
-  if (line.coverage === "commercial_auto") return true;
+  if (line.coverage === "commercial_auto") return (line.vehicles ?? []).every(vehicle => !vinError(vehicle.vin, country));
   if (needsCoverageScope(line.coverage)) return !!line.scopeDescription?.trim();
   return true;
 }
@@ -482,4 +525,18 @@ export function shouldRequestLossRuns(
     details?.hasClaims !== "no" &&
     !/^(none|no|0)$/i.test(answers.claims?.trim() ?? "")
   );
+}
+
+/** Keep dormant auto drafts recoverable, but project only currently requested facts. */
+export function activeIntakeDetails(details: IntakeDetails, purpose?: string): IntakeDetails {
+  const {sectionIntroductions: _introductions, subsectionIntroductions: _subsections, ...facts} = details;
+  details = facts;
+  if(purpose === "savings") details={...details,coverages:[],followups:[]};
+  if (!details.coverages.some(line => line.coverage === "cyber")) {
+    const {cyberDocuments: _cyberDocuments, ...active} = details;
+    details = active;
+  }
+  if(details.coverages.some(line=>line.coverage==="commercial_auto"))return details;
+  const {drivers:_drivers,driverIndex:_driverIndex,collectSensitiveDriverDetails:_private,freightHauled:_freight,autoVehicleIndex:_vehicleIndex,...active}=details;
+  return active;
 }

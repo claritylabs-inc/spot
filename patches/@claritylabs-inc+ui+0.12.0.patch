@@ -328,7 +328,7 @@ diff --git a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.t
 index 0a23de6..2447339 100644
 --- a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
 +++ b/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
-@@ -11,6 +11,7 @@ interface SearchableSelectOption {
+@@ -11,6 +11,7 @@
    value: string
    label: string
    icon?: ReactNode
@@ -336,7 +336,7 @@ index 0a23de6..2447339 100644
  }
  
  interface SearchableSelectProps {
-@@ -115,7 +116,7 @@ function SearchableSelectControl(props: ControlProps) {
+@@ -115,7 +116,7 @@
      >
        <Combobox.Trigger
          aria-label={ariaLabel}
@@ -345,7 +345,7 @@ index 0a23de6..2447339 100644
        >
          {selected?.icon ? (
            <span aria-hidden="true" className="shrink-0">
-@@ -139,7 +140,7 @@ function SearchableSelectControl(props: ControlProps) {
+@@ -139,7 +140,7 @@
          >
            <Combobox.Popup
              data-blink={blinkClose.blink}
@@ -354,7 +354,7 @@ index 0a23de6..2447339 100644
            >
              <div className="border-b border-border p-1.5">
                <div className="relative">
-@@ -151,11 +152,11 @@ function SearchableSelectControl(props: ControlProps) {
+@@ -151,11 +152,11 @@
                </div>
              </div>
              <Combobox.Empty
@@ -368,7 +368,7 @@ index 0a23de6..2447339 100644
                {(option: SearchableSelectOption) => (
                  <Combobox.Item
                    key={option.value}
-@@ -167,7 +168,7 @@ function SearchableSelectControl(props: ControlProps) {
+@@ -167,7 +168,7 @@
                      props.value.length >= props.maxSelected &&
                      !props.value.includes(option.value)
                    }
@@ -377,11 +377,24 @@ index 0a23de6..2447339 100644
                  >
                    {option.icon ? (
                      <span aria-hidden="true" className="shrink-0">
+diff --git a/node_modules/@claritylabs-inc/ui/src/components/input-group.tsx b/node_modules/@claritylabs-inc/ui/src/components/input-group.tsx
+index 8eeed9a..890dfc3 100644
+--- a/node_modules/@claritylabs-inc/ui/src/components/input-group.tsx
++++ b/node_modules/@claritylabs-inc/ui/src/components/input-group.tsx
+@@ -16,7 +16,7 @@
+       data-slot="input-group"
+       role="group"
+       className={cn(
+-        "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-lg border border-input transition-colors outline-none in-data-[slot=combobox-content]:focus-within:border-inherit in-data-[slot=combobox-content]:focus-within:ring-0 has-disabled:bg-input/50 has-disabled:opacity-50 has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-3 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot][aria-invalid=true]]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>textarea]:h-auto dark:bg-input/30 dark:has-disabled:bg-input/80 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40 has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=inline-start]]:[&>input]:pl-1.5",
++        "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-lg border border-input bg-popover transition-colors outline-none in-data-[slot=combobox-content]:focus-within:border-inherit in-data-[slot=combobox-content]:focus-within:ring-0 has-disabled:bg-input/50 has-disabled:opacity-50 has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-3 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot][aria-invalid=true]]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>textarea]:h-auto dark:has-disabled:bg-input/80 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40 has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=inline-start]]:[&>input]:pl-1.5",
+         className
+       )}
+       {...props}
 diff --git a/node_modules/@claritylabs-inc/ui/src/components/select.tsx b/node_modules/@claritylabs-inc/ui/src/components/select.tsx
 index dc2a5c0..aee2d36 100644
 --- a/node_modules/@claritylabs-inc/ui/src/components/select.tsx
 +++ b/node_modules/@claritylabs-inc/ui/src/components/select.tsx
-@@ -62,7 +62,7 @@ function SelectTrigger({
+@@ -62,7 +62,7 @@
        data-slot="select-trigger"
        data-size={size}
        className={cn(
@@ -390,7 +403,7 @@ index dc2a5c0..aee2d36 100644
          className
        )}
        {...props}
-@@ -146,7 +146,7 @@ function SelectItem({
+@@ -146,7 +146,7 @@
      <SelectPrimitive.Item
        data-slot="select-item"
        className={cn(
@@ -403,7 +416,7 @@ diff --git a/node_modules/@claritylabs-inc/ui/src/lib/typography.ts b/node_modul
 index 823d1dd..1474874 100644
 --- a/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
 +++ b/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
-@@ -53,7 +53,7 @@ export const typographyRoles = {
+@@ -53,7 +53,7 @@
    "control.buttonCompact":
      "font-sans text-label font-medium leading-4 tracking-normal normal-case not-italic normal-nums",
    "control.input":

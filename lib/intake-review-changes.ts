@@ -1,3 +1,4 @@
+import { vehicleUnderwritingRows } from "./intake-vehicle-underwriting";
 import {
   INTAKE_FIELDS,
   type IntakeAnswers,
@@ -10,6 +11,12 @@ import {
   type IntakeDetails,
   type IntakeLocation,
 } from "./insurance-intake-details";
+import { hasCommercialAuto } from "./intake-drivers";
+import {
+  followupQuestionVisible,
+  formatIntakeFollowupAnswer,
+  personalizeIntakeQuestion,
+} from "./intake-followups";
 import { vehicleMakeLabel } from "./vehicle-display";
 
 export type IntakeReviewVersion = {
@@ -28,6 +35,49 @@ function reviewValues(version: IntakeReviewVersion) {
   const put = (key: string, label: string, value?: string) =>
     values.set(key, { label, value: value?.trim() || "" });
   const { answers, details } = version;
+  const driverLabels: Record<string, string> = {
+    name: "Name",
+    dateOfBirth: "Date of birth",
+    licenseNumber: "License number",
+    licenseJurisdiction: "License issued in",
+    licenseClass: "License class and endorsements",
+    yearsExperience: "Years of driving experience",
+    accidents: "Accidents in the past five years",
+    accidentDetails: "Accident details",
+    violations: "Violations or suspensions in the past five years",
+    violationDetails: "Violation or suspension details",
+  };
+  if (hasCommercialAuto(details)) {
+    for (const driver of details.drivers ?? []) {
+      for (const [field, value] of Object.entries(driver)) {
+        if (
+          field === "id" ||
+          (field === "accidentDetails" && driver.accidents !== "yes") ||
+          (field === "violationDetails" && driver.violations !== "yes")
+        )
+          continue;
+        put(
+          `driver:${driver.id}:${field}`,
+          `${driver.name || "Driver"}: ${driverLabels[field] || field}`,
+          field === "accidents" || field === "violations"
+            ? value === "yes"
+              ? "Yes"
+              : value === "no"
+                ? "No"
+                : ""
+            : value,
+        );
+      }
+    }
+  }
+  for (const row of details.followups ?? []) {
+    if (followupQuestionVisible(row, details.followups ?? []))
+      put(
+        `followup:${row.id}`,
+        personalizeIntakeQuestion(row.label, answers.legalName || answers.dba),
+        formatIntakeFollowupAnswer(row),
+      );
+  }
   const structured = new Set([
     "companyConfirmed",
     "changes",
@@ -168,18 +218,26 @@ function reviewValues(version: IntakeReviewVersion) {
         `${label}: Vehicle ${index + 1} VIN`,
         vehicle.vin,
       );
+      put(
+        `${key}:vehicle:${index}:value`,
+        `${label}: Vehicle ${index + 1} approximate value`,
+        vehicle.estimatedValue ? `$${vehicle.estimatedValue}` : "",
+      );
     });
   });
   if (!details.coverages.length) {
     put("legacyCoverage", "Requested coverages", answers.coverage);
     put("legacyLimits", "Desired limits", answers.limits);
   }
+  for(const group of vehicleUnderwritingRows(details))for(const row of group.rows)put(`vehicle-question:${group.title}:${row.label}`,`${group.title}: ${row.label}`,row.value==="Not provided"?"":row.value);
   put("limitsNote", "Other limits", details.limitsNote);
   put(
     "additionalNote",
     "Additional coverage requests",
     details.additionalNote || answers.separateQuotes,
   );
+  if (hasCommercialAuto(details))
+    put("freightHauled", "Freight hauled", details.freightHauled);
   put("scopeNote", "Scope notes", details.scopeNote);
   version.files.forEach((file) =>
     put(`file:${file.id}`, "Supporting document", file.name),

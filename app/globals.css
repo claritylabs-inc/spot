@@ -204,6 +204,13 @@
 }
 
 /* Intake uses the stronger shared border tokens in both themes. */
+/* Include labels rendered inside shared controls such as DateField. */
+:where([data-intake-form]) [data-slot="field-label"]:not(:where(.sr-only)) {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 400;
+}
+
 [data-intake-form] {
   --border: var(--border-emphasized);
   --input: var(--border-emphasized);

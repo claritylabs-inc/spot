@@ -2740,6 +2740,7 @@ export default defineSchema({
   }).index("request", ["requestId"]),
 
   requestIntakeFiles: defineTable({
+    prefillStatus: v.optional(v.union(v.literal("pending"),v.literal("running"),v.literal("complete"),v.literal("failed"))),
     policyId: v.optional(v.id("policies")),
     prefillStartedAt: v.optional(v.number()),
     prefillCoveragesJson: v.optional(v.string()),

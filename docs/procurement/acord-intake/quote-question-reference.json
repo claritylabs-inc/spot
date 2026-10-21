@@ -1,0 +1,840 @@
+{
+  "version": "quote-reference-v1",
+  "stage": "initial_quote",
+  "requiredness": "candidate_only",
+  "references": [
+    {
+      "id": "shared.operations.annual_revenue",
+      "question": "What revenue did the business earn in its latest completed reporting period?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "commercial_auto",
+        "professional_liability",
+        "cyber",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Reserved base fact; preserve completed reporting period.",
+      "matchPattern": "annual (revenue|sales|gross)|annual.*receipts"
+    },
+    {
+      "id": "shared.operations.projected_revenue",
+      "question": "What revenue does the business project for the next reporting period?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "commercial_auto",
+        "professional_liability",
+        "cyber",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Reserved base fact; preserve projected reporting period.",
+      "matchPattern": "projected revenue|sales.*next 12|revenue.*next"
+    },
+    {
+      "id": "shared.operations.annual_payroll",
+      "question": "What is the employee payroll for the stated reporting period?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "commercial_auto",
+        "professional_liability",
+        "cyber",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only when payroll is not already collected for the same period.",
+      "matchPattern": "annual payroll|payroll.*annual"
+    },
+    {
+      "id": "shared.operations.subcontracts",
+      "question": "Does the business hire other businesses to perform work on its behalf?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "commercial_auto",
+        "professional_liability",
+        "cyber",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only if hiring other businesses is relevant; do not assume subcontracting.",
+      "matchPattern": "subcontract|sub contracted"
+    },
+    {
+      "id": "shared.operations.subcontracted_share",
+      "question": "What percentage of the business's work is performed by subcontractors?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "commercial_auto",
+        "professional_liability",
+        "cyber",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only for subcontracted work; percentage, not spending.",
+      "matchPattern": "percent.*subcontract|subcontract.*percent"
+    },
+    {
+      "id": "shared.operations.operating_territories",
+      "question": "In which countries and states or provinces does the business perform work or sell products?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "commercial_auto",
+        "professional_liability",
+        "cyber",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Never replace or repeat the existing routes/geographic questions.",
+      "matchPattern": "countries.*operat|states.*operat|territor"
+    },
+    {
+      "id": "shared.operations.business_continuity",
+      "question": "Does the business maintain a documented plan for continuing operations after a major disruption?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "commercial_auto",
+        "professional_liability",
+        "cyber",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Company continuity plan, distinct from data backups.",
+      "matchPattern": "continuity plan|disaster recovery plan"
+    },
+    {
+      "id": "shared.operations.safety_training",
+      "question": "What safety training is provided, and how is completion recorded?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "commercial_auto",
+        "professional_liability",
+        "cyber",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only for relevant workplace exposures.",
+      "matchPattern": "safety training|safety meetings|safety program"
+    },
+    {
+      "id": "gl.exposure.products",
+      "question": "Does the business manufacture, distribute, import, or sell physical products?",
+      "coverageIds": [
+        "general_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Physical products only.",
+      "matchPattern": "manufactur|distribut.*goods|supply.*products"
+    },
+    {
+      "id": "gl.exposure.product_detail",
+      "question": "Describe the product categories and the business's role in supplying them.",
+      "coverageIds": [
+        "general_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only for physical products; ask one detail at a time.",
+      "matchPattern": "product categories|products.*manufactur"
+    },
+    {
+      "id": "gl.exposure.customer_property",
+      "question": "Does the business take possession of property belonging to customers or other parties?",
+      "coverageIds": [
+        "general_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only if others\u2019 property could be in the applicant\u2019s care.",
+      "matchPattern": "customer.*property|property.*customers"
+    },
+    {
+      "id": "gl.exposure.contractual_liability",
+      "question": "Does the business accept responsibility for another party's losses under written agreements?",
+      "coverageIds": [
+        "general_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only where agreements transfer liability.",
+      "matchPattern": "hold.*harmless|assume.*responsibility|indemnif"
+    },
+    {
+      "id": "gl.exposure.subcontractor_controls",
+      "question": "How does the business check subcontractor qualifications and insurance?",
+      "coverageIds": [
+        "general_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only for subcontractors; distinguish checking insurance from requiring limits.",
+      "matchPattern": "subcontractor.*insurance|certificates of insurance.*subcontract|subcontract.*certificates"
+    },
+    {
+      "id": "gl.exposure.children_vulnerable_people",
+      "question": "Do operations involve caring for, supervising, or transporting children or vulnerable adults?",
+      "coverageIds": [
+        "general_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only where operations involve these groups.",
+      "matchPattern": "children|vulnerable"
+    },
+    {
+      "id": "gl.exposure.security_staff",
+      "question": "Does the business use security personnel?",
+      "coverageIds": [
+        "general_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only for relevant physical security operations.",
+      "matchPattern": "security personnel|security at.*event"
+    },
+    {
+      "id": "gl.exposure.pollutants",
+      "question": "Do operations involve substances that could contaminate air, soil, or water?",
+      "coverageIds": [
+        "general_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only for relevant operations.",
+      "matchPattern": "pollut|hazardous substances"
+    },
+    {
+      "id": "property.building.year_built",
+      "question": "In what year was the building constructed?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "building",
+      "applicability": "Per existing insured location.",
+      "matchPattern": "year built|year.*building.*construct"
+    },
+    {
+      "id": "property.building.construction",
+      "question": "What materials form the structural frame and exterior walls?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "building",
+      "applicability": "Per existing insured location.",
+      "matchPattern": "construction type|building type|construction material"
+    },
+    {
+      "id": "property.building.floor_area",
+      "question": "What is the building's total floor area?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "building",
+      "applicability": "Per existing insured location; do not merge areas.",
+      "matchPattern": "square footage|floor area|square feet"
+    },
+    {
+      "id": "property.building.roof_update",
+      "question": "In what year was the roof most recently replaced?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "building",
+      "applicability": "Per existing insured location.",
+      "matchPattern": "roof.*(year|replace|update)"
+    },
+    {
+      "id": "property.building.sprinklered",
+      "question": "Does the building have an automatic sprinkler system?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "building",
+      "applicability": "Per existing insured location.",
+      "matchPattern": "sprinkler system|sprinklered"
+    },
+    {
+      "id": "property.building.sprinkler_inspection",
+      "question": "When was the sprinkler system last inspected?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "building",
+      "applicability": "Only where a sprinkler system exists; inspection is distinct from flow testing.",
+      "matchPattern": "sprinkler.*inspect"
+    },
+    {
+      "id": "property.building.fire_alarm",
+      "question": "Does the building have a fire-detection alarm?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "building",
+      "applicability": "Per existing insured location.",
+      "matchPattern": "fire alarm|fire detection"
+    },
+    {
+      "id": "property.building.intrusion_alarm",
+      "question": "Does the building have an intrusion alarm?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "building",
+      "applicability": "Per existing insured location.",
+      "matchPattern": "burglar alarm|intrusion alarm|security alarm"
+    },
+    {
+      "id": "property.building.unrepaired_damage",
+      "question": "Does the building have existing damage that has not been repaired?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "building",
+      "applicability": "Per existing insured location.",
+      "matchPattern": "unrepaired|existing damage"
+    },
+    {
+      "id": "property.terms.stock_peak",
+      "question": "What is the highest inventory value expected during the policy term?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "coverage",
+      "applicability": "Per existing location; peak value, not annual sales.",
+      "matchPattern": "peak.*(stock|inventory)|maximum.*inventory"
+    },
+    {
+      "id": "property.contents.critical_equipment",
+      "question": "Which machines or systems are essential to operating this location?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "location",
+      "applicability": "Per existing insured location.",
+      "matchPattern": "critical equipment|essential.*equipment"
+    },
+    {
+      "id": "property.contents.replacement_lead_time",
+      "question": "How long would replacing the most critical equipment normally take?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "location",
+      "applicability": "Only for identified critical equipment.",
+      "matchPattern": "lead time|equipment.*replac.*time"
+    },
+    {
+      "id": "wc.terms.owner_elections",
+      "question": "Do any owners, officers, partners, or members need individual inclusion or exclusion elections?",
+      "coverageIds": [
+        "workers_compensation"
+      ],
+      "subject": "coverage",
+      "applicability": "Only workers compensation owner/officer elections.",
+      "matchPattern": "owners.*(includ|exclud)|officers.*(includ|exclud)"
+    },
+    {
+      "id": "wc.terms.maritime_work",
+      "question": "Do employees perform work on navigable waters or related maritime facilities?",
+      "coverageIds": [
+        "workers_compensation"
+      ],
+      "subject": "coverage",
+      "applicability": "Only for relevant work.",
+      "matchPattern": "maritime|navigable waters|longshore"
+    },
+    {
+      "id": "auto.fleet.driver_checks",
+      "question": "How are driver qualifications and driving records checked before and after hiring?",
+      "coverageIds": [
+        "commercial_auto"
+      ],
+      "subject": "company",
+      "applicability": "Company screening process, distinct from each driver\u2019s history.",
+      "matchPattern": "driving records.*check|driver.*screen|mvr"
+    },
+    {
+      "id": "auto.fleet.maintenance",
+      "question": "How are vehicle inspections, maintenance, and repairs scheduled and recorded?",
+      "coverageIds": [
+        "commercial_auto"
+      ],
+      "subject": "company",
+      "applicability": "Fleet process, distinct from vehicle identity.",
+      "matchPattern": "vehicle.*maint|maintenance.*vehicle"
+    },
+    {
+      "id": "auto.fleet.telematics",
+      "question": "Does the business use vehicle tracking or driver-behavior monitoring?",
+      "coverageIds": [
+        "commercial_auto"
+      ],
+      "subject": "company",
+      "applicability": "Only if relevant to the fleet.",
+      "matchPattern": "telematics|gps tracking|dash.?cam"
+    },
+    {
+      "id": "auto.fleet.hazardous_cargo",
+      "question": "Are hazardous materials transported?",
+      "coverageIds": [
+        "commercial_auto"
+      ],
+      "subject": "company",
+      "applicability": "Do not repeat the existing freight description.",
+      "matchPattern": "hazardous.*(cargo|materials)|hazmat"
+    },
+    {
+      "id": "supplement.transport.owner_operators",
+      "question": "Does the business use independent owner-operators?",
+      "coverageIds": [
+        "commercial_auto",
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only for transport operations.",
+      "matchPattern": "owner.operator"
+    },
+    {
+      "id": "supplement.transport.maximum_cargo_value",
+      "question": "What is the highest cargo value on one vehicle or conveyance?",
+      "coverageIds": [
+        "commercial_auto",
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Maximum cargo on one conveyance, distinct from vehicle value.",
+      "matchPattern": "cargo.*value|value.*cargo"
+    },
+    {
+      "id": "supplement.transport.load_security",
+      "question": "How are loads secured and checked during transport?",
+      "coverageIds": [
+        "commercial_auto",
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only when transporting goods.",
+      "matchPattern": "load.*secur|cargo.*secur"
+    },
+    {
+      "id": "supplement.transport.temperature_control",
+      "question": "Does any cargo require controlled temperature?",
+      "coverageIds": [
+        "commercial_auto",
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only when transporting goods.",
+      "matchPattern": "temperature.control|refrigerated cargo"
+    },
+    {
+      "id": "eo.services.largest_client_share",
+      "question": "What percentage of revenue comes from the largest client?",
+      "coverageIds": [
+        "professional_liability"
+      ],
+      "subject": "company",
+      "applicability": "Client concentration; percentage of revenue.",
+      "matchPattern": "largest client|largest customer"
+    },
+    {
+      "id": "eo.services.largest_contract",
+      "question": "What is the largest contract value expected during the requested policy period?",
+      "coverageIds": [
+        "professional_liability"
+      ],
+      "subject": "company",
+      "applicability": "Money for the requested policy period.",
+      "matchPattern": "largest contract|maximum contract|largest project"
+    },
+    {
+      "id": "eo.services.written_contracts",
+      "question": "Are client engagements governed by written contracts?",
+      "coverageIds": [
+        "professional_liability"
+      ],
+      "subject": "company",
+      "applicability": "Whether written contracts are used; do not also request a document.",
+      "matchPattern": "written contract|standard.*contract|client contract"
+    },
+    {
+      "id": "eo.services.quality_review",
+      "question": "What review occurs before advice or deliverables are sent to clients?",
+      "coverageIds": [
+        "professional_liability"
+      ],
+      "subject": "company",
+      "applicability": "Professional work review process.",
+      "matchPattern": "quality.*review|peer review|review.*deliverable"
+    },
+    {
+      "id": "eo.services.performance_guarantees",
+      "question": "Does the business guarantee financial results, outcomes, or delivery performance?",
+      "coverageIds": [
+        "professional_liability"
+      ],
+      "subject": "company",
+      "applicability": "Only for services with performance commitments.",
+      "matchPattern": "guarantee.*(result|performance|outcome)"
+    },
+    {
+      "id": "eo.services.known_service_disputes",
+      "question": "Are there unresolved complaints or circumstances that may lead to a professional liability claim?",
+      "coverageIds": [
+        "professional_liability"
+      ],
+      "subject": "company",
+      "applicability": "Only unresolved service matters not covered by existing history.",
+      "matchPattern": "circumstance.*claim|unresolved.*complaint|potential.*claim"
+    },
+    {
+      "id": "cyber.data.records_categories",
+      "question": "What types of nonpublic information does the business handle?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Categories only; never actual personal records.",
+      "matchPattern": "data types|types.*data|what.*data.*(collect|store)|data inventory"
+    },
+    {
+      "id": "cyber.data.people_records",
+      "question": "Approximately how many individuals have nonpublic information held by the business?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Count of individuals, not files or transactions.",
+      "matchPattern": "record count|number.*records|how many.*records"
+    },
+    {
+      "id": "cyber.data.payment_processing",
+      "question": "Does the business accept or process payment cards?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Do not infer internal payment handling from a detected payment vendor.",
+      "matchPattern": "accept.*payment.card|process.*payment.card"
+    },
+    {
+      "id": "cyber.data.payment_arrangement",
+      "question": "Describe how payment-card transactions are handled and which vendors are involved.",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Ask only one missing payment-processing fact; existing tech-stack evidence can answer it.",
+      "matchPattern": "payment.*provider|payment.*vendor|who.*process.*payment|handle.*payment"
+    },
+    {
+      "id": "cyber.data.critical_providers",
+      "question": "Which outside technology providers are essential to operations?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Existing tech-stack facts may answer provider identity.",
+      "matchPattern": "hosting.*provider|hosting.*database|where.*hosted"
+    },
+    {
+      "id": "cyber.access.mfa_email",
+      "question": "Is multifactor authentication enforced for business email accounts?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Email enforcement specifically; a generic MFA statement does not establish email scope.",
+      "matchPattern": "mfa|2fa|multi.factor"
+    },
+    {
+      "id": "cyber.access.mfa_remote",
+      "question": "Is multifactor authentication enforced for remote access to business systems?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Remote access enforcement specifically.",
+      "matchPattern": "mfa.*remote|multi.factor.*remote"
+    },
+    {
+      "id": "cyber.access.mfa_admin",
+      "question": "Is multifactor authentication enforced for privileged accounts?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Privileged account enforcement specifically.",
+      "matchPattern": "mfa.*admin|multi.factor.*(admin|privileg)"
+    },
+    {
+      "id": "cyber.defense.endpoint_protection",
+      "question": "Is security monitoring installed on supported workstations and servers?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Do not infer deployment from a vendor name alone.",
+      "matchPattern": "endpoint|anti.virus|antimalware|edr"
+    },
+    {
+      "id": "cyber.defense.patch_process",
+      "question": "How are security updates prioritized, deployed, and checked?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Patching process; not proof of a particular patch level.",
+      "matchPattern": "patch.*(process|manage)|security updates"
+    },
+    {
+      "id": "cyber.defense.penetration_testing",
+      "question": "Are independent attempts made to test whether important systems can be compromised?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Whether testing occurs; date is separate.",
+      "matchPattern": "penetration test|pen test"
+    },
+    {
+      "id": "cyber.defense.encryption_devices",
+      "question": "Is sensitive information encrypted on portable devices?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Portable-device encryption specifically.",
+      "matchPattern": "encrypt.*(device|laptop)|device.*encrypt"
+    },
+    {
+      "id": "cyber.recovery.backups",
+      "question": "Are critical systems and data backed up?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Backup existence; frequency and isolation are separate facts.",
+      "matchPattern": "backup"
+    },
+    {
+      "id": "cyber.recovery.backup_frequency",
+      "question": "How much time passes between backups of critical information?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Only when backups exist; interval distinct from existence.",
+      "matchPattern": "backup.*(frequen|often|daily|hour)|automatic.*backup"
+    },
+    {
+      "id": "cyber.recovery.backup_isolation",
+      "question": "Is at least one recovery copy protected from alteration using ordinary production credentials?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Only when backups exist; no inference from frequency.",
+      "matchPattern": "offline.*backup|immutable|isolat.*backup"
+    },
+    {
+      "id": "cyber.recovery.restore_testing",
+      "question": "Are backups tested by restoring representative systems or data?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Testing by restoration, not backup creation.",
+      "matchPattern": "restor.*test|test.*backup"
+    },
+    {
+      "id": "cyber.recovery.response_plan",
+      "question": "Is there a documented cyber incident response plan?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Existence; exercise date is separate.",
+      "matchPattern": "incident.response plan"
+    },
+    {
+      "id": "cyber.recovery.response_exercise",
+      "question": "When was the incident response plan last exercised?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Only when a response plan exists.",
+      "matchPattern": "incident.response.*(test|practi|exercis)"
+    },
+    {
+      "id": "cyber.people.security_training",
+      "question": "Do employees receive training on phishing, data handling, and incident reporting?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Employee training; frequency is separate.",
+      "matchPattern": "phishing.*train|security.*train"
+    },
+    {
+      "id": "cyber.people.payment_verification",
+      "question": "Are new or changed payment instructions verified through an independently established contact method?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Independent verification of payment instructions; never collect banking details.",
+      "matchPattern": "verif.*(wire|transfer|payment)|second.*(wire|transfer)|secondary.*communication"
+    },
+    {
+      "id": "cyber.people.payment_dual_approval",
+      "question": "Do material transfers require approval from more than one person?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Two approvers, distinct from independent verification.",
+      "matchPattern": "dual.*approv|two.*approv"
+    },
+    {
+      "id": "supplement.contractor.maximum_height",
+      "question": "What is the greatest working height involved in the business's work?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "professional_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only construction/trade work.",
+      "matchPattern": "working height|maximum height"
+    },
+    {
+      "id": "supplement.contractor.excavation",
+      "question": "Does the business excavate or perform below-ground work?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "professional_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only construction/trade work.",
+      "matchPattern": "excavat"
+    },
+    {
+      "id": "supplement.contractor.hot_work",
+      "question": "Does work involve welding, cutting, or other ignition sources?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "professional_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only construction/trade work.",
+      "matchPattern": "hot work|welding"
+    },
+    {
+      "id": "supplement.products.recall_plan",
+      "question": "Is there a documented process for withdrawing unsafe products?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "professional_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only physical-product operations.",
+      "matchPattern": "recall.*(plan|process)"
+    },
+    {
+      "id": "supplement.hospitality.alcohol",
+      "question": "Is alcohol sold, served, or supplied at this location?",
+      "coverageIds": [
+        "general_liability",
+        "property",
+        "workers_compensation",
+        "umbrella"
+      ],
+      "subject": "location",
+      "applicability": "Only where alcohol is supplied, served or sold.",
+      "matchPattern": "alcohol|liquor"
+    },
+    {
+      "id": "quote.property.sprinkler_flow_test",
+      "question": "When was this location\u2019s sprinkler system last flow-tested?",
+      "coverageIds": [
+        "property"
+      ],
+      "subject": "location",
+      "applicability": "Only an existing location with sprinklers. Flow testing is distinct from inspection.",
+      "matchPattern": "flow test.*sprinkler|sprinkler.*flow test"
+    },
+    {
+      "id": "quote.gl.subcontractor_minimum_limit",
+      "question": "What minimum general liability limit do you require from subcontractors?",
+      "coverageIds": [
+        "general_liability",
+        "professional_liability",
+        "umbrella"
+      ],
+      "subject": "company",
+      "applicability": "Only when subcontractors are used and insurance requirements exist. Do not request limits without an affirmative parent fact.",
+      "matchPattern": "minimum limit.*subcontract|subcontractor.*policy.*1.000.000"
+    },
+    {
+      "id": "quote.cyber.payment_providers",
+      "question": "Which payment-card providers do you use?",
+      "coverageIds": [
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Only when payment cards are accepted. Reuse existing tech-stack evidence; never infer PCI compliance.",
+      "matchPattern": "payment.card providers|payment.*provider|who.*process.*payment"
+    },
+    {
+      "id": "quote.eo.contract_liability_cap",
+      "question": "Do your standard customer contracts limit your liability?",
+      "coverageIds": [
+        "professional_liability",
+        "cyber"
+      ],
+      "subject": "company",
+      "applicability": "Only when customer contracts exist. Do not assume enforceability.",
+      "matchPattern": "limitation of liability|liability.*cap"
+    }
+  ]
+}

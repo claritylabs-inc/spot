@@ -1,4 +1,9 @@
 "use client";
+import { hasCommercialAuto } from "@/lib/intake-drivers";
+import { IntakeAutoQuoteReview } from "./auto-quote-fields";
+import { IntakeDriverReview } from "./driver-fields";
+import { followupQuestionVisible } from "@/lib/intake-followups";
+import { IntakeFollowupReview } from "./followup-review";
 import { useState, type ReactNode } from "react";
 import {
   Tabs,
@@ -29,9 +34,35 @@ export function IntakeApplicationReview({
     { title: "Coverage Requested", section: "coverage" as const },
     { title: "Business details", section: null },
     { title: "Insurance history", section: "history" as const },
+    ...(hasCommercialAuto(application.details) &&
+    (application.details.freightHauled ||
+      application.details.coverages.some((line) =>
+        line.vehicles?.some((vehicle) => vehicle.estimatedValue),
+      ))
+      ? [{ title: "Quote details", section: "autoQuote" as const }]
+      : []),
+    ...(hasCommercialAuto(application.details) &&
+    application.details.drivers?.length
+      ? [{ title: "Driver schedule", section: "drivers" as const }]
+      : []),
+    ...(application.details.followups?.some((row) =>
+      row.section === "additional" && followupQuestionVisible(row, application.details.followups),
+    )
+      ? [{ title: "Follow-up answers", section: "followups" as const }]
+      : []),
   ];
   const content = (section: (typeof groups)[number]["section"]) =>
-    section ? (
+    section === "autoQuote" ? (
+      <IntakeAutoQuoteReview details={application.details} hideHeading />
+    ) : section === "drivers" ? (
+      <IntakeDriverReview details={application.details} />
+    ) : section === "followups" ? (
+      <IntakeFollowupReview
+        details={application.details}
+        businessName={application.answers.legalName || application.answers.dba}
+        answers={(application.details.followups ?? []).filter(row => row.section === "additional")}
+      />
+    ) : section ? (
       <IntakeRequestReview
         answers={application.answers}
         details={application.details}
@@ -60,7 +91,11 @@ export function IntakeApplicationReview({
   if (tabbed)
     return (
       <Tabs
-        value={selected}
+        value={
+          groups.some((group) => group.title === selected)
+            ? selected
+            : groups[0].title
+        }
         onValueChange={(value) => setSelected(String(value))}
         className="gap-5"
       >
@@ -87,20 +122,7 @@ export function IntakeApplicationReview({
       {groups.map(({ title, section }) => (
         <section key={title} className="space-y-3">
           <h2 className={typeStyle("heading.item")}>{title}</h2>
-          {section ? (
-            <IntakeRequestReview
-              answers={application.answers}
-              details={application.details}
-              section={section}
-              hideHeading
-            />
-          ) : (
-            <IntakeCompanyReview
-              hideHeading
-              answers={application.answers}
-              details={application.details}
-            />
-          )}
+          {content(section)}
         </section>
       ))}
     </div>

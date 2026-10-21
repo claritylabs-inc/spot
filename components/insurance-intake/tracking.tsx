@@ -1,4 +1,10 @@
 "use client";
+import { IntakeAutoQuoteReview } from "./auto-quote-fields";
+import { IntakeDriverReview } from "./driver-fields";
+import { hasCommercialAuto } from "@/lib/intake-drivers";
+import { followupQuestionVisible } from "@/lib/intake-followups";
+import { IntakeFollowupReview } from "./followup-review";
+import { IntakePremiumEstimate } from "./premium-estimate";
 import { ChevronDown } from "lucide-react";
 import {
   OperationalLabelValueList,
@@ -8,7 +14,7 @@ import { IntakeReviewChanges } from "./review-changes";
 import { useEffect, type ReactNode, type MouseEvent } from "react";
 import { IntakeCompanyReview, IntakeRequestReview } from "./company-review";
 import { api } from "@/convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { PillButton } from "@/components/ui/pill-button";
@@ -24,11 +30,57 @@ import {
 } from "@/lib/insurance-intake-details";
 
 const sections = [
-  { title: "Your request", step: 1 },
-  { title: "Coverage", step: 6 },
-  { title: "Your business", step: 10 },
-  { title: "Insurance history", step: 20 },
+  { title: "Your request", step: 1, index: 0 },
+  { title: "Your business", step: 10, index: 2 },
+  { title: "Coverage", step: 6, index: 1 },
+  { title: "Insurance history", step: 20, index: 3 },
 ];
+/** Match the review disclosures while keeping Edit separate from toggling. */
+function ReviewSection({
+  title,
+  step,
+  onEdit,
+  children,
+  complete,
+}: {
+  title: string;
+  step: number;
+  onEdit?: (step: number) => void;
+  children: ReactNode;
+  complete?: boolean;
+}) {
+  return (
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <h2 className={typeStyle("heading.item")}>{title}</h2>
+        <div className="flex items-center gap-3">
+          {complete !== undefined && (
+            <StatusTag className={typeStyle("body.large")} tone={complete ? "success" : "neutral"} indicator={complete ? "complete" : "progress"}>
+              {complete ? "Complete" : "In Progress"}
+            </StatusTag>
+          )}
+          {onEdit && (
+            <PillButton
+              variant="ghost"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onEdit(step);
+              }}
+            >
+              Edit
+            </PillButton>
+          )}
+          <ChevronDown
+            aria-hidden="true"
+            className="size-4 transition-transform group-open:rotate-180"
+          />
+        </div>
+      </summary>
+      <div className="space-y-4 pb-3 pt-1">{children}</div>
+    </details>
+  );
+}
 export function IntakeTracking({
   data,
   banner,
@@ -72,6 +124,12 @@ export function IntakeTracking({
     ]).size > 1;
   const a = data.answers;
   const isSavings = a.intakeGoal === "savings";
+  const preparePremiumEstimate = useMutation(api.requestIntake.preparePremiumEstimate);
+  useEffect(() => {
+    const preferDraft=!data.submitted || data.hasUnsubmittedChanges;
+    if (!isSavings && (!data.premiumEstimate || (preferDraft && data.premiumEstimate.contentHash!==data.premiumDraftContentHash)))
+      void preparePremiumEstimate({requestId:data.requestId,preferDraft}).catch(() => undefined);
+  }, [data.submitted, data.hasUnsubmittedChanges, data.requestId, data.premiumEstimate, data.premiumDraftContentHash, isSavings, preparePremiumEstimate]);
   const has = (...keys: (keyof typeof a)[]) =>
     keys.every((key) => !!a[key]?.trim());
   const complete = [
@@ -90,7 +148,6 @@ export function IntakeTracking({
       "entityType",
       "mailingAddress",
       "description",
-      "locations",
       "industry",
     ),
     has("currentInsurance"),
@@ -127,7 +184,7 @@ export function IntakeTracking({
   return (
     <IntakeFrame
       showSteps={!isSavings}
-      section={4}
+      section={6}
       footer={
         footer ?? (
           <>
@@ -155,7 +212,7 @@ export function IntakeTracking({
             : "Review your policies and business details"
           : data.submitted
             ? "Your insurance application has been submitted"
-            : "Your insurance application"}
+            : "Review your insurance application before submitting"}
       </h1>
       {data.submitted && (
         <p className={`mt-3 text-muted-foreground ${typeStyle("body.root")}`}>
@@ -164,6 +221,7 @@ export function IntakeTracking({
             : "We’ll have quotes ready for you within 24 hours"}
         </p>
       )}
+      {data.submitted && !isSavings && !data.premiumEstimate?.provisional && <IntakePremiumEstimate estimate={data.premiumEstimate}/>}
       <div className="mt-8 space-y-2">
         {banner}
         <>
@@ -175,11 +233,11 @@ export function IntakeTracking({
                   { title: "Current policies", step: 21, index: 4 },
                   { title: "Your business", step: 10, index: 2 },
                 ]
-              : sections.map((item, index) => ({ ...item, index }))),
+              : sections),
           ].map(({ index, ...item }) => {
             const isComplete =
               index === -1
-                ? has("name", "email", "phone")
+                ? has("name", "email")
                 : index === 4
                   ? data.files.some((file) => file.category === "policy")
                   : complete[index];
@@ -225,8 +283,13 @@ export function IntakeTracking({
                     ) : (
                       <PillButton
                         variant="ghost"
-                        href={withQuoteProvider(`/intake?request=${data.requestId}&step=${item.step}&section=${item.step}`, params.get("provider"))}
-                        onClick={(event: MouseEvent<HTMLAnchorElement>) => event.stopPropagation()}
+                        href={withQuoteProvider(
+                          `/intake?request=${data.requestId}&step=${item.step}&section=${item.step}`,
+                          params.get("provider"),
+                        )}
+                        onClick={(event: MouseEvent<HTMLAnchorElement>) =>
+                          event.stopPropagation()
+                        }
                       >
                         Edit
                       </PillButton>
@@ -277,6 +340,47 @@ export function IntakeTracking({
                       hideHeading
                     />
                   )}
+                  {index === 1 &&
+                    !isSavings &&
+                    hasCommercialAuto(data.details) && (
+                      <div data-review-content className="space-y-5">
+                        <section className="space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <h2 className={typeStyle("heading.item")}>
+                              Commercial auto details
+                            </h2>
+                            {onEdit && (
+                              <PillButton
+                                variant="ghost"
+                                onClick={() => onEdit(41)}
+                              >
+                                Edit
+                              </PillButton>
+                            )}
+                          </div>
+                          <IntakeAutoQuoteReview
+                            details={data.details}
+                            hideHeading
+                          />
+                        </section>
+                        <section className="space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <h2 className={typeStyle("heading.item")}>
+                              Driver schedule
+                            </h2>
+                            {onEdit && (
+                              <PillButton
+                                variant="ghost"
+                                onClick={() => onEdit(31)}
+                              >
+                                Edit
+                              </PillButton>
+                            )}
+                          </div>
+                          <IntakeDriverReview details={data.details} />
+                        </section>
+                      </div>
+                    )}
                   {index === 2 && (
                     <IntakeCompanyReview
                       answers={a}
@@ -327,6 +431,36 @@ export function IntakeTracking({
               }}
             />
           )}
+        {!isSavings &&
+          (["additional"] as const).map((section) => {
+            const rows =
+              data.details.followups?.filter(
+                (row) =>
+                  row.section === section &&
+                  followupQuestionVisible(row, data.details.followups),
+              ) ?? [];
+            if (!rows.length) return null;
+            return (
+              <ReviewSection
+                key={section}
+                title={"Additional details"}
+                complete={(data.followupBatches?.additional?.status === "failed" ||
+                  (data.followupBatches?.additional?.status === "ready" && data.followupBatches.additional.current && !data.followupBatches.additional.enriching)) &&
+                  rows.every(row => !!row.answer.trim() || !!row.skipped) &&
+                  (data.followupBatches?.additional?.questions ?? [])
+                    .filter(question => followupQuestionVisible(question, data.details.followups))
+                    .every(question => rows.some(row => row.id === question.id && (!!row.answer.trim() || !!row.skipped)))}
+                step={30}
+                onEdit={onEdit}
+              >
+                <IntakeFollowupReview
+                  details={data.details}
+                  businessName={a.legalName || a.dba}
+                  answers={rows}
+                />
+              </ReviewSection>
+            );
+          })}
         {confirmation}
       </div>
     </IntakeFrame>

@@ -1382,8 +1382,21 @@ export async function generateObjectForPublicTask<T>(
   task: ModelTask,
   options: RoutedGenerateObjectOptions<T>,
   callContext?: ModelCallContext,
+  execution: "durable" | "local-inline" = "durable",
 ): Promise<RoutedGenerateObjectResult<T>> {
   const { schema, ...textOptions } = options;
+  // Bounded text-only local intake QA can use the router's synchronous endpoint.
+  // Select this before submitting anything; never fall back after a job failure.
+  const localIntakeResearch = task === "triage" &&
+    ((callContext?.taskKind === "profile_research_intake_fields" && callContext?.trace?.traceId?.startsWith("intake-company:")) ||
+      (callContext?.taskKind === "intake_cyber_fact_extraction" && callContext?.trace?.traceId?.startsWith("intake-cyber:")) ||
+      (callContext?.taskKind === "intake_monthly_premium_estimate" && callContext?.trace?.traceId?.startsWith("intake-premium:")));
+  const localIntakeTask = localIntakeResearch || (task === "analysis" && callContext?.taskKind === "intake_vehicle_specifications" && !!callContext.trace?.traceId?.startsWith("intake-vehicle:")) || (task === "analysis" && callContext?.taskKind === "intake_additional_questions") || (task === "requirement_extraction" && callContext?.taskKind === "intake_requirement_prefill");
+  if (execution === "local-inline" && (
+    process.env.SPOT_ENV !== "local" || !localIntakeTask ||
+    typeof textOptions.prompt !== "string" || textOptions.prompt.length > 100000 || textOptions.messages !== undefined ||
+    textOptions.tools !== undefined || (textOptions.maxOutputTokens ?? Infinity) > 3000
+  )) throw new Error("Inline generation is limited to bounded local intake text");
   const input = clRouterGenerateInputForEnabledTask(
     task,
     callContext?.taskKind,
@@ -1401,7 +1414,9 @@ export async function generateObjectForPublicTask<T>(
         label: "convex.models.generateObjectForPublicTask",
       }),
       clRouterPinForCall(settings, task, callContext?.taskKind),
-      durableRouterClientOptions(ctx, undefined, textOptions.abortSignal),
+      execution === "local-inline"
+        ? { telemetry: ctx, abortSignal: textOptions.abortSignal }
+        : durableRouterClientOptions(ctx, undefined, textOptions.abortSignal),
     ),
     schema,
   );
