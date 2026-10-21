@@ -435,6 +435,22 @@ function RouteMap({ stops }: { stops: RouteStop[] }) {
     overlays.unshift(
       `path-4+2563eb-0.85(${encodeURIComponent(route.geometry)})`,
     );
+  else {
+    // Keep consecutive stops connected while directions load or are unavailable.
+    // Do not bridge an empty/unlocated stop or imply these are driving directions.
+    const segments = stops.slice(1).flatMap((stop, index) => {
+      const previous = stops[index];
+      return previous.longitude !== undefined && previous.latitude !== undefined &&
+        stop.longitude !== undefined && stop.latitude !== undefined
+        ? [[[previous.longitude, previous.latitude], [stop.longitude, stop.latitude]]]
+        : [];
+    });
+    if (segments.length) overlays.unshift(`geojson(${encodeURIComponent(JSON.stringify({
+      type: "Feature",
+      properties: { stroke: "#2563eb", "stroke-width": 4, "stroke-opacity": 0.85 },
+      geometry: { type: "MultiLineString", coordinates: segments },
+    }))})`);
+  }
   const source =
     token && points.length
       ? `https://api.mapbox.com/styles/v1/mapbox/${resolved === "dark" ? "dark-v11" : "light-v11"}/static/${overlays.join(",")}/${points.length === 1 ? `${points[0].longitude},${points[0].latitude},6` : "auto"}/${size.width}x${size.height}@2x?${points.length > 1 ? "padding=60&" : ""}access_token=${encodeURIComponent(token)}`
@@ -480,12 +496,12 @@ function RouteMap({ stops }: { stops: RouteStop[] }) {
           Drawing your route…
         </div>
       )}
-      {complete && route?.key === key && route.failed && (
+      {complete && route?.key === key && route.failed && failedImage !== source && (
         <p
           role="status"
           className={`px-4 py-3 text-muted-foreground ${typeStyle("body.default")}`}
         >
-          Route preview unavailable. Your cities are still saved.
+          Showing connections between stops. Driving directions are unavailable.
         </p>
       )}
     </Card>

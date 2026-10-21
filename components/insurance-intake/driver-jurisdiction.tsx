@@ -1,6 +1,8 @@
 "use client";
 
 import { getCountries } from "react-phone-number-input";
+import { useState } from "react";
+import { useCountryHint } from "@/hooks/use-country-hint";
 import flags from "react-phone-number-input/flags";
 import { Field, FieldLabel } from "@claritylabs-inc/ui/components/field";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
@@ -9,7 +11,7 @@ import { typeStyle } from "@/lib/typography";
 import { US_STATE_ABBREVIATIONS } from "@/components/ui/address-autofill-input";
 
 const names = new Intl.DisplayNames(["en"], { type: "region" });
-const countries = getCountries()
+export const countryOptions = getCountries()
   .map((code) => {
     const label = names.of(code) || code;
     const Flag = flags[code];
@@ -24,6 +26,7 @@ const countries = getCountries()
     };
   })
   .sort((a, b) => a.label.localeCompare(b.label));
+const countries = countryOptions;
 const provinces = [
   "Alberta",
   "British Columbia",
@@ -50,15 +53,20 @@ export function JurisdictionFields({
   countryLabel = "Country",
   regionLabel = "State / province",
   allowUnknown = false,
+  defaultCountry,
 }: {
   value: string;
   onChange: (value: string) => void;
   countryLabel?: string;
   regionLabel?: string;
   allowUnknown?: boolean;
+  defaultCountry?: string;
 }) {
-  const country = countries.find(option => value === option.value || value.endsWith(`, ${option.value}`))?.value ?? "";
-  const region = country ? value.slice(0, -country.length).replace(/,\s*$/, "") : value;
+  const hint = useCountryHint(defaultCountry);
+  const [touched, setTouched] = useState(false);
+  const savedCountry = countries.find(option => value === option.value || value.endsWith(`, ${option.value}`))?.value ?? "";
+  const country = savedCountry || (!value && !touched ? hint : "");
+  const region = savedCountry ? value.slice(0, -savedCountry.length).replace(/,\s*$/, "") : value;
   const regions =
     country === "United States"
       ? states
@@ -75,7 +83,7 @@ export function JurisdictionFields({
           placeholder="Select country"
           value={country}
           options={countries}
-          onChange={(next) => onChange(next)}
+          onChange={(next) => { setTouched(true); onChange(next); }}
         />
       </Field>
       <Field>
@@ -106,7 +114,7 @@ export function JurisdictionFields({
   );
 }
 
-export function DriverJurisdiction(props: {value: string; onChange: (value: string) => void}) {
+export function DriverJurisdiction(props: {value: string; onChange: (value: string) => void; defaultCountry?: string}) {
   return <JurisdictionFields {...props} countryLabel="License issuing country" regionLabel="License issuing state or province" />;
 }
 export function jurisdictionParts(value: string) {
