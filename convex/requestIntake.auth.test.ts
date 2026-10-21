@@ -3,6 +3,8 @@
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
 import dayjs from "dayjs";
+import { detailsFromAnswers } from "../lib/insurance-intake-details";
+import { INTAKE_TERMS_VERSION } from "../lib/intake-terms";
 import schema from "./schema";
 import { api, internal } from "./_generated/api";
 const modules = import.meta.glob("./**/*.ts");
@@ -144,22 +146,27 @@ test("submitted answers cannot attach an unauthorized company or duplicate promo
   await f.t.run((ctx) =>
     ctx.db.patch(f.requestId, { intakeVerifiedAccess: true }),
   );
+  const answers = {
+    name: "Owner",
+    email: "draft@example.com",
+    phone: "+12025550123",
+    trigger: "New business",
+    requirements: "None",
+    effectiveDate: "2026-11-01",
+    coverage: "Not sure—advise me",
+    coverageScope: "Main entity",
+    legalName: "Synthetic company",
+    description: "Consulting",
+    locations: "Toronto",
+    currentInsurance: "No",
+    companyConfirmed: "yes",
+  };
   await actor.mutation(api.requestIntake.save, {
     requestId: f.requestId,
-    answers: {
-      name: "Owner",
-      email: "draft@example.com",
-      phone: "+12025550123",
-      trigger: "New business",
-      requirements: "None",
-      effectiveDate: "2026-11-01",
-      coverage: "Not sure—advise me",
-      coverageScope: "Main entity",
-      legalName: "Synthetic company",
-      description: "Consulting",
-      locations: "Toronto",
-      currentInsurance: "No",
-      companyConfirmed: "yes",
+    answers,
+    details: {
+      ...detailsFromAnswers(answers),
+      termsAcceptedVersion: INTAKE_TERMS_VERSION,
     },
     step: 4,
     expectedRevision: 0,

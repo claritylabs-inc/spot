@@ -1,4 +1,5 @@
 "use client";
+import { INTAKE_TERMS_VERSION } from "@/lib/intake-terms";
 import { isIntakePercentageQuestion } from "@/lib/intake-percentages";
 import { vehicleRelevanceKey, filterVehicleRelevantQuestions } from "@/lib/intake-vehicle-relevance";
 import { isWorkforceProviderSource, workforceProviderComplete } from "@/lib/intake-workforce-provider";
@@ -452,12 +453,13 @@ function Application({
   const currentSection = intakeSection(step);
   const sectionStart = atIntakeSectionStart(step, followupPageIndex, isSavings) ||
     (step === 30 && followupPageIndex === 0);
-  const showSectionIntro =
-    !!data && !data.submitted &&
-    !editingReview &&
-    sectionStart &&
-    (![29, 30].includes(step) || (followupEntryChecked && followupBatch?.status === "ready" && followupQuestions.length > 0)) &&
-    !(details.sectionIntroductions ?? []).includes(currentSection);
+  const needsTermsConsent = !isSavings && details.termsAcceptedVersion !== INTAKE_TERMS_VERSION;
+  const showSectionIntro = !!data && (
+    (!data.submitted && !editingReview && sectionStart &&
+      (![29, 30].includes(step) || (followupEntryChecked && followupBatch?.status === "ready" && followupQuestions.length > 0)) &&
+      !(details.sectionIntroductions ?? []).includes(currentSection)) ||
+    (currentSection === 1 && needsTermsConsent)
+  );
   const followupTailPending = !followupWaitExpired && followupPageIndex >= followupPages.length - 1 &&
     ((step === 30 && followupBatch?.status === "ready" && !!followupBatch.enriching) ||
       (step === 29 && typedScopeQuestions.length > 0 && (!followupBatch || ["pending", "prepared"].includes(followupBatch.status))));
@@ -2422,12 +2424,19 @@ function Application({
       <IntakeSectionIntroduction
         section={currentSection}
         applicantName={answers.name}
+        termsConsent={currentSection === 1 && !isSavings ? {
+          checked: !needsTermsConsent,
+          onCheckedChange: checked => changeDetails({ ...details, termsAcceptedVersion: checked ? INTAKE_TERMS_VERSION : undefined }),
+        } : undefined}
         savings={isSavings}
         status={status}
         disabled={busy || uploading}
-        onSection={(next) => void navigate(next, false, false, true)}
+        onSection={(next) => {
+          if (currentSection === 1 && needsTermsConsent) return;
+          void navigate(next, false, false, true);
+        }}
         onContinue={() => {
-          if (busy || uploading) return;
+          if (busy || uploading || (currentSection === 1 && needsTermsConsent)) return;
           setBusy(true);
           changeDetails({
             ...details,

@@ -1,3 +1,4 @@
+import { INTAKE_TERMS_VERSION } from "./intake-terms";
 import { isIntakePercentageQuestion } from "./intake-percentages";
 import { isWorkforceProviderSource, workforceProviderComplete } from "./intake-workforce-provider";
 import { workJurisdictionsComplete } from "./intake-jurisdictions";
@@ -88,6 +89,8 @@ export function intakeSubmissionProblems(
   )
     add("Valid nine-digit Canadian business number", 13);
   if (answers.intakeGoal !== "savings") {
+    if (details.termsAcceptedVersion !== INTAKE_TERMS_VERSION)
+      add("Accept Spot’s Terms of Service", 6);
     for (const row of details.followups ?? [])
       if (isIntakePercentageQuestion(row) && row.answer.trim() && row.answer !== "I'm not sure" &&
         (!Number.isFinite(Number(row.answer)) || Number(row.answer) < 0 || Number(row.answer) > 100))

@@ -1,4 +1,7 @@
 "use client";
+import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
+import { Field, FieldLabel, FieldTitle, FieldDescription } from "@claritylabs-inc/ui/components/field";
+import { INTAKE_TERMS_URL } from "@/lib/intake-terms";
 import { typeStyle } from "@/lib/typography";
 import { INTAKE_SECTION_INTRODUCTIONS } from "@/lib/intake-sections";
 import { PillButton } from "@/components/ui/pill-button";
@@ -21,6 +24,7 @@ export function IntakeSectionIntroduction({
   onSection,
   content: suppliedContent,
   applicantName,
+  termsConsent,
 }: {
   section: number;
   savings: boolean;
@@ -31,6 +35,7 @@ export function IntakeSectionIntroduction({
   onSection: (step: number) => void;
   content?: { title: string; description: string; topics: string[] };
   applicantName?: string;
+  termsConsent?: { checked: boolean; onCheckedChange: (checked: boolean) => void };
 }) {
   const firstName = applicantName?.trim().split(/\s+/)[0];
   const content = suppliedContent ?? (
@@ -61,7 +66,7 @@ export function IntakeSectionIntroduction({
       showSteps={!savings}
       status={status}
       disabled={disabled}
-      onSection={onSection}
+      onSection={termsConsent && !termsConsent.checked ? undefined : onSection}
       footer={
         <>
           <PillButton
@@ -79,7 +84,7 @@ export function IntakeSectionIntroduction({
               </>
             )}
           </PillButton>
-          <PillButton size="large" disabled={disabled} onClick={onContinue}>
+          <PillButton size="large" disabled={disabled || (!!termsConsent && !termsConsent.checked)} onClick={onContinue}>
             Let’s begin
             <ArrowRight aria-hidden="true" className="size-4" />
           </PillButton>
@@ -129,6 +134,34 @@ export function IntakeSectionIntroduction({
             </ul>
           </CardContent>
         </Card>
+        {termsConsent && (
+          <FieldLabel
+            htmlFor="intake-terms-consent"
+            className="w-full cursor-pointer rounded-xl border border-border bg-card p-0 text-card-foreground transition-colors hover:bg-accent/50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 [&>[data-slot=field]]:px-6 [&>[data-slot=field]]:py-4"
+          >
+            <Field orientation="horizontal" className="items-start gap-4">
+              <Checkbox
+                id="intake-terms-consent"
+                className="mt-1"
+                checked={termsConsent.checked}
+                disabled={disabled}
+                onCheckedChange={(checked) => termsConsent.onCheckedChange(checked === true)}
+                aria-describedby="intake-terms-description"
+              />
+              <div className="min-w-0 space-y-2">
+                <FieldTitle className={typeStyle("body.root")}>
+                  By continuing, I agree to Spot’s Terms of Service.
+                </FieldTitle>
+                <FieldDescription id="intake-terms-description">
+                  I authorize Spot to act as my legal representative to obtain quotes and purchase insurance on my behalf, subject to my approval of the coverage and cost.{" "}
+                  <a href={INTAKE_TERMS_URL} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} className="underline underline-offset-4">
+                    Read the Terms of Service (opens in a new tab)
+                  </a>.
+                </FieldDescription>
+              </div>
+            </Field>
+          </FieldLabel>
+        )}
       </section>
     </IntakeFrame>
   );

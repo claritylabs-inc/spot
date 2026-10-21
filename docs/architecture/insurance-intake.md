@@ -451,3 +451,20 @@ The [System One design guidance](https://docs.typesafe.ai/concepts/how-to-build-
 | Monthly premium | One structured generation of nullable numeric bounds. | Code validates bounds/currency/context and handles partial ranges; optional failure remains hidden. |
 
 All inference remains on the CL router with task/trace metadata. Jev confidence uses the shared configured threshold, with existing stricter prefill floors preserved. The shared requirement classifier retains its existing scope, evidence and payload-splitting semantics while doubling its row batch from eight to 16. No new direct-provider calls, autonomous agent loops, automatic unknown-outcome retry, or production migration is introduced. Confidence thresholds have not been recalibrated against a labeled insurance dataset in this audit; the applicant remains the fallback for unsupported facts.
+
+### Coverage terms acceptance
+
+The Coverage introduction requires an unchecked-by-default consent card built
+from shared Field, FieldLabel, FieldTitle, FieldDescription and Checkbox primitives.
+The full consent card is the checkbox label; its terms link opens independently.
+`lib/intake-terms.ts` versions the consent text and the public `/intake/terms`
+page, which incorporates the organization terms and adds limited insurance
+representation authority; purchases remain subject to the applicant’s approval
+of coverage and cost. The terms open in a separate tab without leaving the draft.
+Draft details retain `termsAcceptedVersion`; the existing owner/revision-checked
+save records `intakeTermsAcceptance` with the authenticated actor, server time,
+version, URL and statement. Unchecking clears current acceptance. Quote submission
+requires the current server record and detail version; review links missing
+acceptance back to Coverage. Legacy unfinished quotes must accept before
+submission. Savings reviews skip Coverage and retain their existing submission
+authorization. Company-profile promotion excludes request consent.
