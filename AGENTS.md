@@ -88,8 +88,9 @@ Password sign-in is optional. Accounts use email codes by default; verified user
 Commercial-auto intake always includes a request-scoped driver roster after
 vehicle scope (persisted steps 31–40, repeated per driver). Names establish the
 schedule; licensing jurisdiction/class, experience and five-year driving history
-can be skipped for initial quoting. Birth-date and license-number pages are
-opt-in and optional, with carrier-specific collection later. Blank optional
+can be skipped for initial quoting. Birth date and license number always appear beside issuing country/province on
+the shared driver-details page (step 34); entered dates remain validated and blank
+values remain optional. Legacy steps 32–33 redirect to that page. Blank optional
 values remain unknown, never clean-history assumptions. Entered VINs must pass
 17-character/alphabet and applicable US/Canadian-market check-digit validation;
 blank VINs remain allowed. Draft typing stays recoverable; frontend navigation
@@ -191,3 +192,20 @@ invalidate untouched proposals; same-context failures never automatically replay
 Optional missing-policy links use shared URL primitives. Navigation introduction
 state must initialize before loading/empty returns, and unavailable question
 batches must never reset persisted cursors.
+
+Coverage intake groups each line's limits, scope and follow-ups before the next
+line through `lib/intake-coverage-navigation.ts`. Payroll collects employee group
+names first, then named per-group headcount, period, dates and amount pages, reusing
+payroll-v1 and the bounded UI-only `payrollPage` cursor. Payroll details can be
+skipped without inventing values. Additional-insured agreements reuse requirement
+uploads and grounded, provenance-linked prefills for unanswered GL provision facts.
+Jurisdiction country defaults are editable hints from business country, host country
+or browser timezone/locale and never authorization or proof of business location.
+
+Vehicle-use question relevance is request-owned metadata (`intakeVehicleRelevance`) with exact evidence matching. `lib/intake-vehicle-relevance.ts` and `convex/actions/intakeVehicleRelevance.ts` own bounded atomic Jev inapplicability decisions. Hide only threshold-confident irrelevant pages, preserve saved answers, retain uncertainty, and never block navigation or replay failed/unknown inference. One vehicle’s activity cannot exclude fleet questions applicable to another.
+
+Catalog adapter v20 separates compound underwriting prompts into individual pages with new IDs, retaining parent gates, typed subjects, and historical compound answers. Applicant-supplied cyber privacy/terms URLs can use different domains or branding from the business website. Each document is retrieved within its own domain; exact evidence and Jev verification still gate suggestions. Cyber suggestions fill only untouched answers and remain visible for review.
+
+Post-submission premium ranges are request-owned, hash-bound to the accepted quote application and generated once per accepted content via `convex/actions/intakePremiumEstimate.ts`. The model returns monthly lower/upper totals; the final page labels these as estimated monthly premiums. A single lower bound shows “Starting from”, a single upper bound shows “About”, and no usable bounds stays hidden. Savings skips estimation. Existing owner checks, redacted identifiers, bounded local execution and durable hosted routing apply; failed/unknown calls do not replay on refresh. Coverage review and submitted pages share the existing small row-card/topic presentation and muted subsection headings.
+
+Premium estimation preloads on review using a provisional canonical submission hash; matching Submit promotes the prepared result without a duplicate inference. Accepted results appear on the submitted page, with a loading card while pending/running and no visible failed state. Intake unknown actions use `components/insurance-intake/unknown-choice.tsx` as input-styled buttons. On desktop single-line fields, the right edge stays fixed while width expands leftward; multiline fields place the full-width action below. All mobile actions sit below at full width. Deselecting restores the previous value. Structured routes, locations and vehicle identity forms omit the unknown action.

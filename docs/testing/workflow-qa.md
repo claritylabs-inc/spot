@@ -1628,3 +1628,108 @@ the form responsive, and captured console warnings/errors stayed empty. No form
 submission/account creation. Screenshot:
 `.context/qa/intake-walkthrough/signup-phone-fixed.png`. Root type check and focused
 lint pass (the application's prior effect-dependency warning remains). No new tests.
+
+### Application contact phone synchronization — 2026-10-21
+Reproduced digit truncation, a stalled Saving state and repeated React maximum
+update depth errors in Helium incognito. The expanded stack pointed to
+`react-phone-number-input`'s `usePhoneDigits` controlled-value synchronization.
+A version-pinned patch now emits edits in the input handler rather than echoing
+values from its synchronization effect (both ESM and CommonJS); country mismatch
+normalization still notifies the owner. The intake writer ignores unchanged phone
+values without marking the draft dirty.
+
+Browser QA covered signup and application contact controls in an isolated local
+session, including clearing, sequential typing, removing/restoring the final digit,
+blur autosave, and a reload followed by review confirming the complete number.
+Captured console errors were empty. Helium incognito also verified clearing and
+retyping Anthony's complete supplied number, followed by Saved with no issue badge.
+TypeScript and whitespace checks pass; focused ESLint has only the existing
+application effect-dependency warning. No tests or migrations were written and no
+application was submitted. A synthetic local Phone Input QA draft remains unsubmitted.
+
+### Coverage grouping and named payroll steps — 2026-10-21
+Coverage navigation now composes each selected line's limits, scope, catalog and
+vehicle/driver pages before advancing to the next line, retaining existing step
+IDs and question indices. Isolated browser QA verified GL limits/details through
+the named additional-insured agreement/upload page, then property limits/scope
+and property questions. Back from property limits returned to the last GL page.
+Property valuation omitted Other, restoration accepted 12 months, and location
+headers displayed coverage and WeWork at matching 17.6px sizes with the address
+below. Selected numeric uncertainty aligned left. A synthetic agreement upload
+completed extraction and supplied GL limits plus grounded waiver/primary answers;
+entered additional-insured answers stayed intact. Country suggestions displayed
+Canada on a blank workers' compensation jurisdiction, with no location prompt.
+The additional-state conditional question explicitly repeated states/provinces.
+
+Payroll browser QA used two synthetic groups, Company Drivers and Management
+Team. The first page contained only group names and the shared 48px large Add
+employee group pill. Each group received separate named headcount, period, optional
+custom-date and amount/currency pages. Payroll uncertainty controls were absent;
+blank fields exposed Skip. Entered 3 employees, Per month and USD 20,000 for
+Company Drivers; skipped Management Team headcount and custom dates/amount.
+Reload restored Management Team's active step, Back preserved Company Drivers'
+amount, and Back from the next catalog question returned to the last payroll
+page. Compact roster screenshot: `.context/qa/intake-walkthrough/payroll-groups.jpg`.
+Payroll remains the existing payroll-v1 answer; only its optional UI cursor is new.
+Skipped details stay blank; submission validates entered dates and group names.
+
+Local Convex sync and TypeScript pass. Focused ESLint reports only the existing
+application effect-dependency warning; whitespace checks pass. No tests, database
+migrations, production deployment or application submission were performed.
+
+### Shared input-group fill alignment — 2026-10-21
+The version-pinned shared UI patch gives InputGroup the same bg-popover fill as
+Input and SelectTrigger, retaining transparent inner controls and disabled styles.
+Payroll browser QA confirmed both currency selector and total-pay group render
+rgb(31, 33, 37), the same rgba(255, 255, 255, 0.24) border and 48px height.
+Screenshot: `.context/qa/intake-walkthrough/payroll-matching-fields.jpg`.
+The complete UI patch passes a reverse dry-run against installed sources; no tests
+were added. Currency selection continues to use the unchanged Select primitive.
+
+### Vehicle relevance, driver details, and percentage controls — 2026-10-21
+Used only synthetic draft `zh71v0s8jb90eeq1fte39rtqjd8gp3zc`; no submission. Entered a 2018 Toyota Camry used only for Uber passenger rideshare. The request-owned Jev assessment completed with a current evidence key and excluded freight and maximum-cargo-value pages; general vehicle questions stayed available. Diagnostic: `requestIntake:inspectFollowupPreparation` exposes status/IDs/currentness, not applicant answers.
+Driver roster no longer shows the explanatory paragraph or optional-sensitive-details toggle, and Add driver uses size large. Continue opens one driver-details page with country, province, DOB and license number. Confirmed country trigger height 48px, one name in the heading, no repeated name/generic error prose, and successful Continue after a synthetic past DOB and example license number. Screenshot: `.context/qa/intake-walkthrough/driver-details-verified.jpg`.
+Mileage editing displayed `1,234,567` immediately. Entering `999` in the largest-client percentage field displayed/stored `100`; `99.5` remained valid and Continue saved successfully. Screenshot: `.context/qa/intake-walkthrough/percentage-cap-verified.jpg`. Credentials heading now asks what qualifications the applicant has. Hazardous-cargo detail definitions are split into materials, quantities, permits and safety procedures under the existing Yes gate. Local Convex sync, TypeScript, focused lint and whitespace checks passed (existing application effect-dependency warning remains). No tests or data migrations were written.
+
+### Atomic questions, cyber evidence, review grouping and unknown input rows — 2026-10-21
+Synthetic draft `zh71v0s8jb90eeq1fte39rtqjd8gp3zc` was not submitted. Cross-domain QA used a Bonita business URL with explicitly supplied Tools for Enlightenment privacy/terms URLs. Research completed with two grounded, Jev-verified answers and one technology; the two answers were saved with provenance and visible in review. Quote wrappers/joins previously rejected otherwise exact excerpts; the matcher now requires every quoted excerpt to occur verbatim after typography normalization, with full-answer Jev verification retained. Unsupported controls remain blank.
+Coverage review uses distinct small topic cards shared with submitted tracking, and computed subsection typography is 14px/500/muted, matching Addresses. Snapshot: `.context/qa/intake-walkthrough/coverage-review-subsections.jpg`. Aircraft and watercraft source prompts now split into two/four conditional pages; the active applicant screenshot independently showed these split answers grouped under the correct headings. TypeScript, focused lint and local Convex sync passed; no tests or data migrations were created.
+Browser QA confirmed adjacent unknown buttons on currency and the cyber response-plan date field, selection replacing the field with one full-width pressed button, and deselection restoring `250,000` exactly. Date calendar/action no longer share overlay space. Screenshots: `.context/qa/intake-walkthrough/date-unknown-inline.jpg` and `.context/qa/intake-walkthrough/unknown-row-expanded.jpg`. Fresh reload removed development hot-refresh warnings; no continuing runtime error appeared.
+Premium preparation was observed on the synthetic review while `submitted:false`, without a visible estimate/loading card; the deliberately incomplete application returned no usable range and remained hidden. The applicant-provided submitted-page screenshot showed a completed USD range on their submitted application. Pending/failed estimates now render nothing, and the requested paragraph was removed. Matching provisional/accepted hashes reuse the result; new content creates a distinct attempt, with stale token/hash completion rejected.
+
+## Unknown coverage suggestions — October 21, 2026
+
+Implementation uses saved unknown-scope prose, owner checks and the shared Jev
+confidence threshold. New persisted step 44 reuses the coverage picker and existing
+coverage navigation. Root TypeScript validation passed; touched-file lint has only
+the existing application effect-dependency warning. No tests were added.
+
+The local backend at 127.0.0.1:3220 was synchronized after the frontend initially
+hit the old action validator (which rejected `source`). Live function metadata now
+accepts `unknown_scope`, and an owner-scoped invocation against the saved trucking
+description returned `["commercial_auto"]` with no error. Convex typechecking passed.
+No production deployment or data migration ran. Full browser verification remains
+pending because the local port-3207 browser session redirects intake to signup.
+Repeat with an owned draft: select “I’m not sure”, describe a trucking company
+requesting truck/driver insurance, and continue. Confirm “We suggest” selects
+Commercial auto; change selections and continue to limits, vehicles and driver
+questions. Reload the suggestion page to confirm saved selections; Back must
+restore the prose. Check multiple matches, removing all selections (Continue
+disabled), selecting “I’m not sure” again, blank/no-match prose, stale prose during
+matching and router failure. Savings and submitted records must stay unchanged.
+
+Unknown-action visual alignment follow-up: commercial-auto limit input and adjacent action both measured 50px with identical top/bottom edges, 10px corner radius, `rgb(31, 33, 37)` fill and 1px `rgba(255,255,255,0.24)` borders. Typography now matches the input at 16px; selected state retains the fill, with a check and emphasized outline. Expansion/deselection verified. Screenshot: `.context/qa/intake-walkthrough/unknown-input-matched.jpg`. Vehicle introduction copy adds “your” before the vehicle name and uses actual `text-wrap: pretty`.
+
+- October 21 intake unknown-action responsive QA: desktop single-line unit input and button both 48px high on the same row; desktop textarea and below-button both 624px wide with a 12px gap. At 390px mobile width the unknown button occupies the full 342px content width below the field. Currency overrides of legacy long-text questions retain desktop inline placement. Focused ESLint passed; no tests added or applications submitted. Screenshot: `.context/qa/intake-walkthrough/unknown-responsive-desktop.jpg`. Vehicle lookup callback routing no longer throws to the client (completed in 25.7s); its optional evidence decision returned `Invalid decision contract`, so specifications remained empty.
+
+- October 21 unknown-action anchoring: replaced competing flex/width transitions with a desktop button positioned at right: 0, animating width only. Browser QA on the synthetic mileage field measured the same right edge (952px) and height (48px) at 144px collapsed and 624px expanded widths; deselection restored the blank input. Multiline/mobile controls retain stacked layout. Focused ESLint passed. Evidence: `.context/qa/intake-walkthrough/unknown-right-anchor-expanded.jpg`.
+
+- October 21 route-map connectors: consecutive located stops now retain a GeoJSON line overlay while road directions load or fail; successful directions replace it. Blank/unlocated intermediate stops are not bridged. A bounded three-city cross-border Mapbox Static Images API request returned HTTP 200/image/png with line and marker overlays. ESLint and TypeScript passed; no tests added.
+
+- October 21 monthly-estimate diagnosis: local Convex logs showed a completed model attempt followed by `No usable monthly premium range` after approximately 4.6 seconds; the accepted estimate is current and failed. Restored the submitted-page pending/running loading card and added a terminal unavailable message. No replay, retry, inferred price, submission or data migration performed. Focused ESLint and TypeScript passed. Applicant browser verification was unavailable in the separate QA browser account because owner authorization denied opening the request.
+
+- October 21 explicitly requested premium retry: expected failed timestamp/content hash guarded the single manual retry; accepted application remained unchanged. Convex reports completed/current USD bounds 25,000–500,000 per month. Inspection found extraordinary hazardous-material answers in the saved application; no claim was made that the output is a validated carrier price. Added independent-bound handling (minimum-only Starting from; maximum-only About; neither hidden), retaining two-bound ordering and per-amount bounds. ESLint, TypeScript and local Convex typecheck/sync passed; no tests or migrations added.
+
+- October 21 qualifications flow: in the synthetic draft, Yes opened the separate list page; add created a second row, entered two qualifications, and remove restored one. Changing parent to No skipped the child; changing back to Yes showed an empty list, confirming old answers were cleared. No application submitted. Focused ESLint, TypeScript and local Convex checks passed. Evidence: `.context/qa/intake-walkthrough/credentials-list.jpg`.
+
+- October 21 PR packaging: root and Convex TypeScript checks passed; changed-file ESLint passed with the existing application effect-dependency warning. Reverse-application checks confirmed both dependency patches match installed source. No tests added. Review also identified the optional vehicle verifier’s extra trace `phase` key, which the strict Jev contract rejects; removed that key while retaining task kind and trace ID. The latest premium card uses compact outer padding with larger internal row gaps.

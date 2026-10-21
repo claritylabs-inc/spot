@@ -186,9 +186,9 @@ Commercial-auto coverage routes vehicle scope into driver steps 31–40 before
 company details. The roster collects names; subsequent questions repeat per
 driver for licensing jurisdiction/class, experience and a clearly stated
 five-year accident/violation history, including conditional detail pages. These
-fields can be skipped; unknown does not mean No. Birth-date and license-number
-pages are optional and off by default, enabled on the roster when the applicant
-wants to provide them. Valid entered dates/experience remain enforced. Names are
+fields can be skipped; unknown does not mean No. Birth date and license number always appear with issuing country/province on
+the shared driver-details page (step 34). Legacy steps 32–33 redirect there; the
+roster has no optional-details toggle. Blank values remain optional. Valid entered dates/experience remain enforced. Names are
 the only required driver data for initial application submission; this is not a
 claim that every carrier can produce a firm quote without more information.
 Progressive's commercial-auto quote checklist explicitly allows driving-history
@@ -339,7 +339,7 @@ are request-owned typed pages in named vehicle subsections, composed by
 `lib/intake-vehicle-subsections.ts`, with a subsection introduction and coverage
 header. Body type uses a bounded Jev suggestion from make/model/year and only fills
 an unchanged blank field. Vehicle distance/weight/count inputs use shared number
-primitives with explicit miles/lb/seats; legacy metric units remain preserved.
+primitives with explicit miles/lbs/seats; legacy metric units remain preserved.
 Applicant presentation uses the authored `lib/intake-catalog-wording.ts` map without
 rewriting saved approved definitions. Numeric, currency, date, text and choice
 follow-ups accept the intentional “I'm not sure” answer across UI/save/review.
@@ -350,12 +350,12 @@ research evidence is reused. A bounded structured LLM extraction proposes facts;
 exact retrieved quotes/source URLs and independent Jev Nouls gate each answer and
 technology. Public website technologies never establish internal security controls
 or vendor-feature adoption. The request stores context-keyed proposals, not direct
-answer writes. The owner UI merges only untouched, unskipped, non-current questions
-through ordinary revision saves; server saves bind provenance to exact approved
+answer writes. The owner UI merges only untouched, unskipped questions (including the current blank question)
+through ordinary revision saves. Cyber-prefilled pages remain visible for review/editing; server saves bind provenance to exact approved
 proposals. Entered/unsure/cleared/skipped answers always win. Changed source facts
 revoke untouched inferred answers. Failed/unknown outcomes do not replay for the
 same context, do not block navigation, and never imply No. Missing policy links
-have optional shared URL fields in Cyber; accepted user links remain request-owned.
+have optional shared URL fields in Cyber; accepted user links remain request-owned. Explicitly supplied privacy/terms links are applicant-declared evidence even on another domain or under different branding; retrieval scopes each link to its own domain and does not impose a business-name/domain identity gate. Exact source grounding and the security-control evidence restrictions remain enforced. Local public cyber retrieval uses the router synchronous transport; hosted retrieval remains durable.
 
 Workers’ compensation owner elections have an adapter-authored conditional child
 for names, roles and include/exclude choices. No/unsure hides and clears obsolete
@@ -372,3 +372,58 @@ The raw entered value remains in the accepted application. Updating the user's
 normalized phone is best-effort: invalid/blank values are omitted, an existing
 profile phone is preserved, and numbers belonging to another user are not assigned.
 Initial contact capture and explicit profile phone changes retain their own rules.
+
+Coverage navigation is composed by `lib/intake-coverage-navigation.ts`: all pages
+for one selected coverage precede the next line while retaining saved step and
+question IDs. Payroll uses the existing payroll-v1 structured answer, with names
+collected first and named per-group headcount, pay-period, custom-date and amount
+pages next. `details.payrollPage` is a bounded presentation cursor, excluded from
+submission-content comparisons. Blank payroll details remain unknown and skippable.
+Additional-insured names precede a named agreement question and the existing
+requirements uploader. Grounded provision extraction can suggest unanswered GL
+provision facts using request-owned prefill provenance; entered/skipped answers
+are preserved and removing the file removes its untouched suggestions.
+Jurisdiction country selectors use saved business country first, then the host's
+country hint or browser timezone/locale, as editable defaults without precise
+geolocation permission or a third-party IP lookup.
+
+Vehicle specification lookup stays silent while pending or unavailable; only verified manufacturer candidates appear. It never blocks manual entry or navigation and does not expose automatic retry controls. Numeric intake controls share `GroupedNumberInput`, retaining Base UI parsing/validation with comma grouping during typing; unit fields use the same formatting as ordinary count fields.
+
+Commercial-auto transportation permits and insurer proof-of-insurance filings are separate Boolean questions. Only permits have a Yes-only detail question; FMCSA filings remain Yes/No/unsure without a filing-details page. Their new question IDs keep the historical combined answer from being treated as an answer to either individual question.
+
+Foreign driving has three separate Yes-gated pages: destination countries (shared searchable country options with flags and multiple selection), frequency, and purpose. Separate IDs preserve historical combined answers without inferring destinations from prose or the applicant’s home location.
+
+Vehicle-use relevance runs as a request-owned, one-shot Jev job after a saved use answer. `lib/intake-vehicle-relevance.ts` owns exact evidence keys, bounded candidates, and dependent-question filtering; `convex/actions/intakeVehicleRelevance.ts` assesses each candidate with an atomic inapplicability Noul through the router. Only threshold-confident inapplicability hides a page. Vehicle questions bind to that vehicle; fleet questions consider all vehicles and retain unknown/mixed uses. Blank, vague, failed, pending or stale assessments leave ordinary questions visible. Changes to uses, vehicle identity/order, operations, or catalog version invalidate previous exclusions. The job retains no driver identifiers, changes no applicant answers or submission facts, does not increment the intake revision, and never retries unknown inference outcomes automatically. Freight and specialized vehicle/catalog pages use the same presentation exclusions; normal navigation stays available. Hazardous-cargo details are four separate Yes-gated pages for materials, quantities, permits and safety procedures.
+
+Driver roster and details use 48px shared inputs/selectors, the large add-button primitive, and a single driver name in the headline. Generic driver validation prose is omitted; valid entered dates still gate navigation/submission. All catalog percentage questions share source-based identification in `lib/intake-percentages.ts`, the percentage numeric primitive caps editing at 100, and final validation rejects out-of-range percentages. `GroupedNumberInput` composes the shared input with Base UI state so comma grouping remains visible during editing, without nesting competing formatting state.
+
+Catalog adapter v20 splits compound prompts into independently answerable pages, including aircraft use/insurance and watercraft identity/use/passenger risks/insurance. New part IDs preserve old compound answers as history; each split retains its original parent condition and subject. The umbrella large-loss prompt first asks Could, with Which/describe only on Yes. Generated-question guidance also requires one independently answerable fact per page.
+
+Cyber evidence matching normalizes typography and accepts up to four verbatim quoted excerpts joined only by punctuation or “and”; every excerpt must occur in retrieved text and Jev must still verify the complete proposed answer. Diagnostics log retrieval/extraction/grounding/verification counts, never public-document bodies or applicant answer contents. Explicit internal recovery schedules a fresh run only for a completed/failed owned draft with cyber selected; unknown/pending/running outcomes never replay.
+
+### Post-submission monthly estimate
+`requestIntake.preparePremiumEstimate` uses existing owner authorization and prepares a quote estimate on the review draft before submission, or on an accepted application. Submission/resubmission also schedules the internal preparation path. `intakePremiumEstimate` stores a submitted-content hash, token, currency, bounded status and optional monthly lower/upper totals. One atomic claim prevents duplicate calls; completion rechecks token and accepted content hash. A provisional estimate is keyed with the same canonical content hash as submission; accepting matching content promotes it without a new call. Only an accepted current result is displayed. Draft edits invalidate provisional results, unchanged page opens do not rerun failed/unknown calls, and changed content prepares a new estimate. No data migration is involved.
+`convex/actions/intakePremiumEstimate.ts` uses the shared structured generation route with all accepted underwriting facts, redacted driver identifiers (age retained), masked VINs and omitted contact/tax identifiers. It asks for two positive whole-unit monthly amounts across the requested portfolio, with null for an unpriceable application. Numeric bounds/order are checked server-side. Currency is explicit (CAD for Canadian registration/address, GBP for UK, otherwise USD). The final page uses the shared Card primitive and an accessible range graphic, labels the result an estimated monthly premium, and keeps submission/navigation independent of model completion. Pending/running estimates display a loading card on the submitted page; failed or unusable results stay hidden rather than spinning indefinitely. The removed explanatory paragraph stays absent. Savings intake skips estimation.
+Coverage review and post-submission views share smaller topic cards: limits, catalog topics, documents, per-location details and vehicle details/use/specifications/equipment. Catalog topics are capped at five rows per card; aircraft, watercraft and potential losses have distinct headings. The existing `data-review-content` styling supplies the same 14px muted subsection titles as Addresses.
+
+Unknown answers use `IntakeUnknownRow`: a shared input-styled action beside desktop single-line text/date/currency/unit controls and below multiline/mobile fields. Selection expands the action to fill the row, hides the input from interaction/accessibility, and a second click restores the prior typed value. CSS transitions respect reduced motion. The coverage-unknown scope page asks “What are you looking to get insured?” without an uncertainty eyebrow or subheader; guidance lives in the textarea placeholder.
+
+When an applicant chooses “I’m not sure” and continues after describing what they
+want insured, `actions/intakeCoverage.suggest` checks that saved, owner-authorized
+unknown scope and asks one Jev Noul per supported coverage. Confident matches
+use the shared threshold and open persisted step 44 (“We suggest”) with editable
+coverage selections. Continue enters the existing per-coverage questions, including
+commercial-auto vehicles and drivers; Back restores the description. The original
+prose remains in scope notes. Empty descriptions, no confident matches and router
+failures retain ordinary navigation; failed/unknown calls are not automatically
+replayed. Savings reviews and submitted applications do not run this matching.
+
+Large textareas place a full-width unknown action below the field through `IntakeUnknownRow placement="below"`; single-line/date/unit/currency controls keep it beside the input on desktop. On mobile all unknown actions sit below at full width. Placement follows the rendered control, including monetary overrides of legacy long-text definitions. All unit suffixes align at the field’s right edge. Local public vehicle-specification retrieval/generation select their explicitly allowlisted bounded synchronous route before inference submission; hosted routing remains durable. The owner lookup still validates identity, exact manufacturer evidence and Jev support. Optional retrieval/model failures return no specifications without throwing a client action error, and never initiate a fallback inference or automatic replay.
+
+Commercial-auto intake retains only the specific FMCSA insurance-filing question. The broad transportation-permit question and its permit detail/holder/jurisdiction children are retired from selection and hidden in saved draft navigation/review without deleting historical answers.
+
+Premium estimate instructions distinguish broad budgeting estimates from carrier rating: missing optional underwriting answers widen uncertainty rather than automatically requiring null. Null remains allowed when coverage/operations/jurisdiction cannot support a responsible range. Explicit operator-requested retry uses `retryFailedPremiumEstimateInternal` with expected failed-attempt timestamp and matching accepted content hash; normal page loads still never retry failures or unknown outcomes. Diagnostics distinguish null bounds from invalid numeric ordering.
+
+Premium estimates accept either positive bound independently: both bounds show a range, minimum only shows “Starting from”, maximum only shows “About”. Both missing remain hidden; reversed/equal supplied bounds remain invalid. The range graphic appears only with two bounds. Pending/running status retains the loading card.
+
+Professional-liability credentials now use a Boolean parent (`eo.services.has_credentials`) and Yes-only `eo.services.credentials_list` child. The list editor uses one removable shared Input per item plus an Add qualification action; up to 15 items of 120 characters fit the existing 2,000-character answer contract as newline-delimited prose. Existing original credential answers remain readable, while blank legacy prompts expand into the new approved pair. Parent changes use existing conditional-answer clearing.
