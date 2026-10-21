@@ -1,0 +1,33 @@
+{
+  "testedProductCandidate": "101b96ba4daa6ef77faf884e863c9ca566ac1035",
+  "initialBehavioralCandidate": "f96d921916515d75f14e4a181cd305221c9b46ea",
+  "sourceReportCommit": "abe1d93c79b8d0c221c2e04b04295f0e2e708369",
+  "preservationOnly": true,
+  "newBehavioralRuns": 0,
+  "screenshotsVisuallyInspected": true,
+  "screenshots": [
+    {
+      "file": "screenshots/app-known-desktop.png",
+      "sha256": "8c5a50080bc616a1aa0d3c90ec3c0a81e92bddb4bd8f35e9a706227a586f12f2",
+      "textualMetadata": false
+    },
+    {
+      "file": "screenshots/app-long-mobile-initial-f96d9219.png",
+      "sha256": "626a6c03297ff29165c8fc5d1f894b0db8fb25b7e9c909223fb3a1ebb793ba95",
+      "textualMetadata": false
+    },
+    {
+      "file": "screenshots/app-long-mobile.png",
+      "sha256": "505418f2194a0547ec5f2c12653b8299a0b1dd8e013a7544c5507a0f575ef541",
+      "textualMetadata": false
+    }
+  ],
+  "excluded": [
+    "private browser storage states",
+    "private router-restoration values",
+    "private fixture-original snapshots",
+    "raw capture/development logs",
+    "workspace fixture IDs",
+    "scratch harness and unrelated workspace files"
+  ]
+}

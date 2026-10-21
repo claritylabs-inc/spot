@@ -9,7 +9,8 @@ import {
   InlineFieldsContext,
   InlineCollectionActionsContext,
 } from "@/components/ui/inline-fields";
-import { X } from "lucide-react";
+import { Building2, MapPin, X } from "lucide-react";
+import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import dayjs from "dayjs";
 import { IntakeVehicleUnderwritingFields } from "./vehicle-underwriting-fields";
 import { vehicleUnderwritingValues } from "@/lib/intake-vehicle-underwriting";
@@ -991,9 +992,11 @@ export function IntakeLocations({
           </div>
         )}
         {!details.locations.length && (
-          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-            No locations
-          </p>
+          <EmptyStateCard
+            icon={<MapPin className="size-6" />}
+            title="No locations yet"
+            description="Add the places where this company operates."
+          />
         )}
         {details.locations.map((location, index) => {
           const update = (patch: Partial<typeof location>) =>
@@ -1321,9 +1324,11 @@ export function IntakeRelatedEntities({
           </div>
         )}
         {!details.relatedEntities.length && (
-          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-            No related entities
-          </p>
+          <EmptyStateCard
+            icon={<Building2 className="size-6" />}
+            title="No related entities yet"
+            description="Add parents, subsidiaries or affiliates of this company."
+          />
         )}
         {details.relatedEntities.map((entity, index) => {
           const update = (patch: Partial<typeof entity>) =>

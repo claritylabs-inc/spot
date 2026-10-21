@@ -19,6 +19,7 @@ import {
 } from "./lib/brokerProfileValidation";
 import { researchBrokerValidator } from "./lib/companyResearch";
 import { reconcileExtractedCompanyFacts } from "./orgWiki";
+import { scheduleWebsiteTechScan } from "./websiteTech";
 
 const LEASE_MS = 15 * 60 * 1_000;
 const MAX_ATTEMPTS = 3;
@@ -84,6 +85,7 @@ export async function scheduleCompanyResearch(
     (org.type === "broker" && isSpotOwnedBrokerIdentity(org))
   )
     return false;
+  if (org.type === "client") await scheduleWebsiteTechScan(ctx, org.website);
   const fingerprint = companyResearchFingerprint(org);
   if (
     org.companyResearch?.fingerprint === fingerprint &&

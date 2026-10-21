@@ -1,0 +1,8 @@
+{
+  "spotCandidate": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "routerCandidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+  "exactBytesMatch": true,
+  "sha256": "39aed5a439bb5c9ed636ac30929fcb9e3367b4239295f608de375c7134c68393",
+  "fixtureCount": 22,
+  "operations": 11
+}

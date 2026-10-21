@@ -1,0 +1,123 @@
+{
+  "candidate": "857074d99baa09792b66a45d65a3ca73aef53719",
+  "results": [
+    {
+      "site": "recaptcha-v2",
+      "outcome": {
+        "status": "blocked",
+        "summary": "The click on the checkbox was refused; it did not run.",
+        "evidence": [
+          "Attempt 1 (checkbox): The click on the checkbox was refused; it did not run."
+        ],
+        "data": {
+          "kind": "checkbox",
+          "solved": false,
+          "attempts": 1,
+          "solver": "jev_box",
+          "blocker": "click_refused",
+          "page": "https://2captcha.com/demo/recaptcha-v2"
+        },
+        "steps": [
+          {
+            "action": "domains",
+            "input": "",
+            "result": "{\"allowed\":[\"2captcha.com\"],\"adopted\":[],\"redirects\":[]}"
+          },
+          {
+            "action": "snapshot",
+            "input": "[]",
+            "result": "{\"url\":\"https://2captcha.com/demo/recaptcha-v2\",\"title\":\"Google reCAPTCHA v2 demo: Sample Form with Google reCAPTCHA v2\"}"
+          },
+          {
+            "action": "screenshot",
+            "input": "[]",
+            "result": "(image)"
+          },
+          {
+            "action": "screenshot",
+            "input": "action gate",
+            "result": "(image)"
+          },
+          {
+            "action": "captchaClick",
+            "input": "[\"the unticked CAPTCHA checkbox labeled I'm not a robot or Verify you are human\"]",
+            "result": "{\"error\":\"The challenge changed while it was being located or hovered. Observe again.\"}"
+          }
+        ]
+      },
+      "resultImage": {
+        "file": "recaptcha-v2-result.png",
+        "sha256": "9d7d20c5293c5d55db8153b6d9cbe6cc4f51475b8492915605bdb54922f20474"
+      },
+      "nativeCalls": 1,
+      "inputCommands": 16
+    },
+    {
+      "site": "turnstile",
+      "outcome": {
+        "status": "succeeded",
+        "summary": "Solved the turnstile challenge in 1 attempt(s); fresh page state confirms it.",
+        "evidence": [
+          "Attempt 1 (turnstile): Clicked the challenge checkbox.",
+          "A fresh screenshot shows the challenge widget completed."
+        ],
+        "data": {
+          "kind": "turnstile",
+          "solved": true,
+          "attempts": 1,
+          "solver": "jev_box",
+          "verifiedBy": "completed_widget",
+          "page": "https://2captcha.com/demo/cloudflare-turnstile"
+        },
+        "steps": [
+          {
+            "action": "domains",
+            "input": "",
+            "result": "{\"allowed\":[\"2captcha.com\"],\"adopted\":[],\"redirects\":[]}"
+          },
+          {
+            "action": "snapshot",
+            "input": "[]",
+            "result": "{\"url\":\"https://2captcha.com/demo/cloudflare-turnstile\",\"title\":\"Cloudflare Turnstile demo: Sample Form with Cloudflare Turnstile\"}"
+          },
+          {
+            "action": "screenshot",
+            "input": "[]",
+            "result": "(image)"
+          },
+          {
+            "action": "screenshot",
+            "input": "action gate",
+            "result": "(image)"
+          },
+          {
+            "action": "captchaClick",
+            "input": "[\"the checkbox inside the Cloudflare \\\"Verify you are human\\\" widget\"]",
+            "result": "{\"url\":\"https://2captcha.com/demo/cloudflare-turnstile\",\"title\":\"Cloudflare Turnstile demo: Sample Form with Cloudflare Turnstile\"}"
+          },
+          {
+            "action": "wait",
+            "input": "[3]",
+            "result": "{\"url\":\"https://2captcha.com/demo/cloudflare-turnstile\"}"
+          },
+          {
+            "action": "snapshot",
+            "input": "[]",
+            "result": "{\"url\":\"https://2captcha.com/demo/cloudflare-turnstile\",\"title\":\"Cloudflare Turnstile demo: Sample Form with Cloudflare Turnstile\"}"
+          },
+          {
+            "action": "screenshot",
+            "input": "[]",
+            "result": "(image)"
+          }
+        ]
+      },
+      "resultImage": {
+        "file": "turnstile-result.png",
+        "sha256": "0191348eb2c98c6fcf0ec4b44d150637ff30ed339452fb8c579e6e0bbd8afde4"
+      },
+      "nativeCalls": 1,
+      "inputCommands": 18
+    }
+  ]
+}

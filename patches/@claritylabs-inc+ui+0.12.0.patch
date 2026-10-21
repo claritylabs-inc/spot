@@ -1,0 +1,427 @@
+diff --git a/node_modules/@claritylabs-inc/ui/src/components/calendar.tsx b/node_modules/@claritylabs-inc/ui/src/components/calendar.tsx
+new file mode 100644
+index 0000000..23a2544
+--- /dev/null
++++ b/node_modules/@claritylabs-inc/ui/src/components/calendar.tsx
+@@ -0,0 +1,221 @@
++"use client"
++
++import * as React from "react"
++import { cn } from "cn"
++import {
++  DayPicker,
++  getDefaultClassNames,
++  type DayButton,
++  type Locale,
++} from "react-day-picker"
++
++import { Button, buttonVariants } from "@claritylabs-inc/ui/components/button"
++import { ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "lucide-react"
++
++function Calendar({
++  className,
++  classNames,
++  showOutsideDays = true,
++  captionLayout = "label",
++  buttonVariant = "ghost",
++  locale,
++  formatters,
++  components,
++  ...props
++}: React.ComponentProps<typeof DayPicker> & {
++  buttonVariant?: React.ComponentProps<typeof Button>["variant"]
++}) {
++  const defaultClassNames = getDefaultClassNames()
++
++  return (
++    <DayPicker
++      showOutsideDays={showOutsideDays}
++      className={cn(
++        "group/calendar bg-background p-2 [--cell-radius:var(--radius-md)] [--cell-size:--spacing(7)] in-data-[slot=card-content]:bg-transparent in-data-[slot=popover-content]:bg-transparent",
++        String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
++        String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
++        className
++      )}
++      captionLayout={captionLayout}
++      locale={locale}
++      formatters={{
++        formatMonthDropdown: (date) =>
++          date.toLocaleString(locale?.code, { month: "short" }),
++        ...formatters,
++      }}
++      classNames={{
++        root: cn("w-fit", defaultClassNames.root),
++        months: cn(
++          "relative flex flex-col gap-4 md:flex-row",
++          defaultClassNames.months
++        ),
++        month: cn("flex w-full flex-col gap-4", defaultClassNames.month),
++        nav: cn(
++          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1",
++          defaultClassNames.nav
++        ),
++        button_previous: cn(
++          buttonVariants({ variant: buttonVariant }),
++          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50",
++          defaultClassNames.button_previous
++        ),
++        button_next: cn(
++          buttonVariants({ variant: buttonVariant }),
++          "size-(--cell-size) p-0 select-none aria-disabled:opacity-50",
++          defaultClassNames.button_next
++        ),
++        month_caption: cn(
++          "flex h-(--cell-size) w-full items-center justify-center px-(--cell-size)",
++          defaultClassNames.month_caption
++        ),
++        dropdowns: cn(
++          "flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-sm font-medium",
++          defaultClassNames.dropdowns
++        ),
++        dropdown_root: cn(
++          "relative rounded-(--cell-radius)",
++          defaultClassNames.dropdown_root
++        ),
++        dropdown: cn(
++          "absolute inset-0 bg-popover opacity-0",
++          defaultClassNames.dropdown
++        ),
++        caption_label: cn(
++          "font-medium select-none",
++          captionLayout === "label"
++            ? "text-sm"
++            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-muted-foreground",
++          defaultClassNames.caption_label
++        ),
++        month_grid: cn("w-full border-collapse", defaultClassNames.month_grid),
++        weekdays: cn("flex", defaultClassNames.weekdays),
++        weekday: cn(
++          "flex-1 rounded-(--cell-radius) text-[0.8rem] font-normal text-muted-foreground select-none",
++          defaultClassNames.weekday
++        ),
++        week: cn("mt-2 flex w-full", defaultClassNames.week),
++        week_number_header: cn(
++          "w-(--cell-size) select-none",
++          defaultClassNames.week_number_header
++        ),
++        week_number: cn(
++          "text-[0.8rem] text-muted-foreground select-none",
++          defaultClassNames.week_number
++        ),
++        day: cn(
++          "group/day relative aspect-square h-full w-full rounded-(--cell-radius) p-0 text-center select-none [&:last-child[data-selected=true]_button]:rounded-r-(--cell-radius)",
++          props.showWeekNumber
++            ? "[&:nth-child(2)[data-selected=true]_button]:rounded-l-(--cell-radius)"
++            : "[&:first-child[data-selected=true]_button]:rounded-l-(--cell-radius)",
++          defaultClassNames.day
++        ),
++        range_start: cn(
++          "relative isolate z-0 rounded-l-(--cell-radius) bg-muted after:absolute after:inset-y-0 after:right-0 after:w-4 after:bg-muted",
++          defaultClassNames.range_start
++        ),
++        range_middle: cn("rounded-none", defaultClassNames.range_middle),
++        range_end: cn(
++          "relative isolate z-0 rounded-r-(--cell-radius) bg-muted after:absolute after:inset-y-0 after:left-0 after:w-4 after:bg-muted",
++          defaultClassNames.range_end
++        ),
++        today: cn(
++          "rounded-(--cell-radius) bg-muted text-foreground data-[selected=true]:rounded-none",
++          defaultClassNames.today
++        ),
++        outside: cn(
++          "text-muted-foreground aria-selected:text-muted-foreground",
++          defaultClassNames.outside
++        ),
++        disabled: cn(
++          "text-muted-foreground opacity-50",
++          defaultClassNames.disabled
++        ),
++        hidden: cn("invisible", defaultClassNames.hidden),
++        ...classNames,
++      }}
++      components={{
++        Root: ({ className, rootRef, ...props }) => {
++          return (
++            <div
++              data-slot="calendar"
++              ref={rootRef}
++              className={cn(className)}
++              {...props}
++            />
++          )
++        },
++        Chevron: ({ className, orientation, ...props }) => {
++          if (orientation === "left") {
++            return (
++              <ChevronLeftIcon className={cn("size-4", className)} {...props} />
++            )
++          }
++
++          if (orientation === "right") {
++            return (
++              <ChevronRightIcon className={cn("size-4", className)} {...props} />
++            )
++          }
++
++          return (
++            <ChevronDownIcon className={cn("size-4", className)} {...props} />
++          )
++        },
++        DayButton: ({ ...props }) => (
++          <CalendarDayButton locale={locale} {...props} />
++        ),
++        WeekNumber: ({ children, ...props }) => {
++          return (
++            <td {...props}>
++              <div className="flex size-(--cell-size) items-center justify-center text-center">
++                {children}
++              </div>
++            </td>
++          )
++        },
++        ...components,
++      }}
++      {...props}
++    />
++  )
++}
++
++function CalendarDayButton({
++  className,
++  day,
++  modifiers,
++  locale,
++  ...props
++}: React.ComponentProps<typeof DayButton> & { locale?: Partial<Locale> }) {
++  const defaultClassNames = getDefaultClassNames()
++
++  const ref = React.useRef<HTMLButtonElement>(null)
++  React.useEffect(() => {
++    if (modifiers.focused) ref.current?.focus()
++  }, [modifiers.focused])
++
++  return (
++    <Button
++      variant="ghost"
++      size="icon"
++      data-day={day.date.toLocaleDateString(locale?.code)}
++      data-selected-single={
++        modifiers.selected &&
++        !modifiers.range_start &&
++        !modifiers.range_end &&
++        !modifiers.range_middle
++      }
++      data-range-start={modifiers.range_start}
++      data-range-end={modifiers.range_end}
++      data-range-middle={modifiers.range_middle}
++      className={cn(
++        "relative isolate z-10 flex aspect-square size-auto w-full min-w-(--cell-size) flex-col gap-1 border-0 leading-none font-normal group-data-[focused=true]/day:relative group-data-[focused=true]/day:z-10 group-data-[focused=true]/day:border-ring group-data-[focused=true]/day:ring-[3px] group-data-[focused=true]/day:ring-ring/50 data-[range-end=true]:rounded-(--cell-radius) data-[range-end=true]:rounded-r-(--cell-radius) data-[range-end=true]:bg-primary data-[range-end=true]:text-primary-foreground data-[range-middle=true]:rounded-none data-[range-middle=true]:bg-muted data-[range-middle=true]:text-foreground data-[range-start=true]:rounded-(--cell-radius) data-[range-start=true]:rounded-l-(--cell-radius) data-[range-start=true]:bg-primary data-[range-start=true]:text-primary-foreground data-[selected-single=true]:bg-primary data-[selected-single=true]:text-primary-foreground dark:hover:text-foreground [&>span]:text-xs [&>span]:opacity-70",
++        defaultClassNames.day,
++        className
++      )}
++      {...props}
++    />
++  )
++}
++
++export { Calendar, CalendarDayButton }
+diff --git a/node_modules/@claritylabs-inc/ui/src/components/date-field.tsx b/node_modules/@claritylabs-inc/ui/src/components/date-field.tsx
+new file mode 100644
+index 0000000..1444bb4
+--- /dev/null
++++ b/node_modules/@claritylabs-inc/ui/src/components/date-field.tsx
+@@ -0,0 +1,93 @@
++"use client"
++
++import * as React from "react"
++import dayjs from "dayjs"
++import customParseFormat from "dayjs/plugin/customParseFormat"
++import { CalendarIcon } from "lucide-react"
++import { Button } from "./button"
++import { Calendar } from "./calendar"
++import { Field, FieldLabel } from "./field"
++import { InputGroup, InputGroupInput, InputGroupAddon, InputGroupButton } from "./input-group"
++import { Popover, PopoverContent, PopoverTrigger } from "./popover"
++import { cn } from "../lib/utils"
++
++dayjs.extend(customParseFormat)
++
++function parseDateText(text: string): string {
++  for (const format of ["MM/DD/YYYY", "YYYY-MM-DD"]) {
++    const date = dayjs(text.trim(), format, true)
++    if (date.isValid()) return date.format("YYYY-MM-DD")
++  }
++  return ""
++}
++
++type DateFieldProps = {
++  id: string
++  label: string
++  /** ISO calendar date, without timezone conversion; empty means no selection. */
++  value: string
++  onChange: (value: string) => void
++  /** Optional controlled text for preserving partially typed dates. */
++  inputValue?: string
++  onInputChange?: (text: string) => void
++  /** Earliest selectable ISO calendar date. */
++  minDate?: string
++  hideLabel?: boolean
++  disabled?: boolean
++  className?: string
++}
++
++function DateField({ id, label, value, onChange, inputValue, onInputChange, hideLabel = false, disabled, className, minDate }: DateFieldProps) {
++  const [open, setOpen] = React.useState(false)
++  const [draft, setDraft] = React.useState({ value, text: value ? dayjs(value).format("MM/DD/YYYY") : "" })
++  if (draft.value !== value) setDraft({ value, text: value ? dayjs(value).format("MM/DD/YYYY") : "" })
++  const text = inputValue ?? draft.text
++  const selected = value && dayjs(value).isValid() ? dayjs(value).toDate() : undefined
++  const parsed = parseDateText(text)
++  const invalid = !!text && (!parsed || (!!minDate && parsed < minDate))
++  return (
++    <Field>
++      <FieldLabel htmlFor={id} className={hideLabel ? "sr-only" : undefined}>{label}</FieldLabel>
++      <Popover open={open} onOpenChange={setOpen}>
++        <InputGroup className={cn("h-12", className)}>
++          <InputGroupInput id={id} value={text} inputMode="numeric" maxLength={10} placeholder="MM/DD/YYYY" disabled={disabled} aria-invalid={invalid || undefined}
++            onChange={(event) => {
++              const digits = event.target.value.replace(/[^0-9]/g, "").slice(0, 8)
++              const next = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)].filter(Boolean).join("/")
++              setDraft({ value, text: next })
++              if (onInputChange) onInputChange(next)
++              else {
++                const parsed = parseDateText(next)
++                const date = parsed && (!minDate || parsed >= minDate) ? parsed : ""
++                onChange(date)
++              }
++            }} />
++          <InputGroupAddon align="inline-end">
++            <PopoverTrigger render={<InputGroupButton size="icon-sm" disabled={disabled} aria-label={`Choose ${label.toLowerCase()}`} />}>
++              <CalendarIcon aria-hidden="true" className="size-4" />
++            </PopoverTrigger>
++          </InputGroupAddon>
++        </InputGroup>
++        <PopoverContent align="end" className="w-auto p-0">
++          <Calendar className="p-3 [--cell-size:--spacing(9)] sm:[--cell-size:--spacing(11)] [&_button]:text-base [&_th]:text-sm [&_.rdp-caption_label]:text-lg [&_button:disabled]:opacity-20" mode="single" disabled={minDate ? { before: dayjs(minDate).startOf("day").toDate() } : undefined} selected={selected} defaultMonth={selected} autoFocus onSelect={(date) => {
++            const next = date ? dayjs(date).format("YYYY-MM-DD") : ""
++            setDraft({ value: next, text: date ? dayjs(date).format("MM/DD/YYYY") : "" })
++            onChange(next)
++            setOpen(false)
++          }} />
++          <div className="border-t p-3">
++            <Button variant="ghost" className="h-11 w-full text-base" disabled={!text && !value} onClick={() => {
++              setDraft({value: "", text: ""})
++              onInputChange?.("")
++              onChange("")
++              setOpen(false)
++            }}>Clear</Button>
++          </div>
++        </PopoverContent>
++      </Popover>
++    </Field>
++  )
++}
++
++export { DateField, parseDateText }
++export type { DateFieldProps }
+diff --git a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx b/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
+index 0a23de6..2447339 100644
+--- a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
++++ b/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
+@@ -11,6 +11,7 @@ interface SearchableSelectOption {
+   value: string
+   label: string
+   icon?: ReactNode
++  separatorBefore?: boolean
+ }
+ 
+ interface SearchableSelectProps {
+@@ -115,7 +116,7 @@ function SearchableSelectControl(props: ControlProps) {
+     >
+       <Combobox.Trigger
+         aria-label={ariaLabel}
+-        className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-popover px-3 text-left transition-colors hover:border-border-hover hover:bg-foreground/1.5 focus:border-border-focus focus:ring-1 focus:ring-input focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-input disabled:hover:bg-popover ${typeStyle("control.menu")}`}
++        className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-popover px-3 text-left transition-colors hover:border-border-hover hover:bg-foreground/1.5 focus:border-border-focus focus:ring-1 focus:ring-input focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-input disabled:hover:bg-popover ${typeStyle("control.input")}`}
+       >
+         {selected?.icon ? (
+           <span aria-hidden="true" className="shrink-0">
+@@ -139,7 +140,7 @@ function SearchableSelectControl(props: ControlProps) {
+         >
+           <Combobox.Popup
+             data-blink={blinkClose.blink}
+-            className={`z-50 w-max max-w-(--available-width) min-w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-border-emphasized outline-hidden duration-75 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 ${typeStyle("control.menu")}`}
++            className={`z-50 w-max max-w-(--available-width) min-w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-border-emphasized outline-hidden duration-75 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 ${typeStyle("control.input")}`}
+           >
+             <div className="border-b border-border p-1.5">
+               <div className="relative">
+@@ -151,11 +152,11 @@ function SearchableSelectControl(props: ControlProps) {
+               </div>
+             </div>
+             <Combobox.Empty
+-              className={`px-3 py-2 text-muted-foreground/50 ${typeStyle("control.menu")}`}
++              className={`px-3 py-2 empty:p-0 text-muted-foreground/50 ${typeStyle("control.input")}`}
+             >
+               No results
+             </Combobox.Empty>
+-            <Combobox.List className="max-h-dropdown overflow-y-auto py-1">
++            <Combobox.List className="max-h-dropdown overflow-y-auto">
+               {(option: SearchableSelectOption) => (
+                 <Combobox.Item
+                   key={option.value}
+@@ -167,7 +168,7 @@ function SearchableSelectControl(props: ControlProps) {
+                     props.value.length >= props.maxSelected &&
+                     !props.value.includes(option.value)
+                   }
+-                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 in-data-[blink=off]:bg-transparent! data-disabled:opacity-40 ${typeStyle("control.menu")}`}
++                  className={`${option.separatorBefore ? "mt-2 border-t border-border pt-3!" : ""} flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 in-data-[blink=off]:bg-transparent! data-disabled:opacity-40 ${typeStyle("control.input")}`}
+                 >
+                   {option.icon ? (
+                     <span aria-hidden="true" className="shrink-0">
+diff --git a/node_modules/@claritylabs-inc/ui/src/components/input-group.tsx b/node_modules/@claritylabs-inc/ui/src/components/input-group.tsx
+--- a/node_modules/@claritylabs-inc/ui/src/components/input-group.tsx
++++ b/node_modules/@claritylabs-inc/ui/src/components/input-group.tsx
+@@ -16,7 +16,7 @@
+       data-slot="input-group"
+       role="group"
+       className={cn(
+-        "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-lg border border-input transition-colors outline-none in-data-[slot=combobox-content]:focus-within:border-inherit in-data-[slot=combobox-content]:focus-within:ring-0 has-disabled:bg-input/50 has-disabled:opacity-50 has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-3 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot][aria-invalid=true]]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>textarea]:h-auto dark:bg-input/30 dark:has-disabled:bg-input/80 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40 has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=inline-start]]:[&>input]:pl-1.5",
++        "group/input-group relative flex h-8 w-full min-w-0 items-center rounded-lg border border-input bg-popover transition-colors outline-none in-data-[slot=combobox-content]:focus-within:border-inherit in-data-[slot=combobox-content]:focus-within:ring-0 has-disabled:bg-input/50 has-disabled:opacity-50 has-[[data-slot=input-group-control]:focus-visible]:border-ring has-[[data-slot=input-group-control]:focus-visible]:ring-3 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/50 has-[[data-slot][aria-invalid=true]]:border-destructive has-[[data-slot][aria-invalid=true]]:ring-3 has-[[data-slot][aria-invalid=true]]:ring-destructive/20 has-[>[data-align=block-end]]:h-auto has-[>[data-align=block-end]]:flex-col has-[>[data-align=block-start]]:h-auto has-[>[data-align=block-start]]:flex-col has-[>textarea]:h-auto dark:has-disabled:bg-input/80 dark:has-[[data-slot][aria-invalid=true]]:ring-destructive/40 has-[>[data-align=block-end]]:[&>input]:pt-3 has-[>[data-align=block-start]]:[&>input]:pb-3 has-[>[data-align=inline-end]]:[&>input]:pr-1.5 has-[>[data-align=inline-start]]:[&>input]:pl-1.5",
+         className
+       )}
+       {...props}
+
+diff --git a/node_modules/@claritylabs-inc/ui/src/components/select.tsx b/node_modules/@claritylabs-inc/ui/src/components/select.tsx
+index dc2a5c0..aee2d36 100644
+--- a/node_modules/@claritylabs-inc/ui/src/components/select.tsx
++++ b/node_modules/@claritylabs-inc/ui/src/components/select.tsx
+@@ -62,7 +62,7 @@ function SelectTrigger({
+       data-slot="select-trigger"
+       data-size={size}
+       className={cn(
+-        `flex w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-popover py-2 pr-2 pl-3 whitespace-nowrap transition-colors outline-none select-none hover:border-border-hover focus-visible:border-border-focus focus-visible:ring-1 focus-visible:ring-input disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 ${typeStyle("control.menu")}`,
++        `flex w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-popover py-2 pr-2 pl-3 whitespace-nowrap transition-colors outline-none select-none hover:border-border-hover focus-visible:border-border-focus focus-visible:ring-1 focus-visible:ring-input disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground/40 data-[size=default]:h-9 data-[size=sm]:h-8 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 ${typeStyle("control.input")}`,
+         className
+       )}
+       {...props}
+@@ -146,7 +146,7 @@ function SelectItem({
+     <SelectPrimitive.Item
+       data-slot="select-item"
+       className={cn(
+-        `relative my-0.5 flex w-full in-data-[blink=off]:bg-transparent! cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 outline-hidden transition-colors select-none focus:bg-foreground/[0.035] focus:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2 ${typeStyle("control.menu")}`,
++        `relative my-0.5 flex w-full in-data-[blink=off]:bg-transparent! cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 outline-hidden transition-colors select-none focus:bg-foreground/[0.035] focus:text-foreground data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2 ${typeStyle("control.input")}`,
+         className
+       )}
+       {...props}
+diff --git a/node_modules/@claritylabs-inc/ui/src/lib/typography.ts b/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
+index 823d1dd..1474874 100644
+--- a/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
++++ b/node_modules/@claritylabs-inc/ui/src/lib/typography.ts
+@@ -53,7 +53,7 @@ export const typographyRoles = {
+   "control.buttonCompact":
+     "font-sans text-label font-medium leading-4 tracking-normal normal-case not-italic normal-nums",
+   "control.input":
+-    "font-sans text-base font-normal leading-normal tracking-normal normal-case not-italic normal-nums file:font-sans file:text-base file:font-medium file:leading-normal file:tracking-normal file:normal-case file:not-italic file:normal-nums max-md:text-[16px]",
++    "font-sans text-[1rem] font-normal leading-normal tracking-normal normal-case not-italic normal-nums file:font-sans file:text-[1rem] file:font-medium file:leading-normal file:tracking-normal file:normal-case file:not-italic file:normal-nums max-md:text-[16px]",
+   "control.tab":
+     "font-sans text-label font-normal leading-normal tracking-normal normal-case not-italic normal-nums data-active:font-medium",
+   "control.menu":

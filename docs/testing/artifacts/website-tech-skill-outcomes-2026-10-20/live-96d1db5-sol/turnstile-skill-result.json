@@ -1,0 +1,37 @@
+{
+  "status": "blocked",
+  "summary": "The click on the checkbox was refused (gate signals: relevant); it did not run.",
+  "evidence": [
+    "Attempt 1 (turnstile): The click on the checkbox was refused (gate signals: relevant); it did not run."
+  ],
+  "data": {
+    "kind": "turnstile",
+    "solved": false,
+    "attempts": 1,
+    "solver": "jev_box",
+    "blocker": "click_refused",
+    "page": "https://2captcha.com/demo/cloudflare-turnstile"
+  },
+  "steps": [
+    {
+      "action": "domains",
+      "input": "",
+      "result": "{\"allowed\":[\"2captcha.com\"],\"adopted\":[],\"redirects\":[]}"
+    },
+    {
+      "action": "snapshot",
+      "input": "[]",
+      "result": "{\"url\":\"https://2captcha.com/demo/cloudflare-turnstile\",\"title\":\"Cloudflare Turnstile demo: Sample Form with Cloudflare Turnstile\"}"
+    },
+    {
+      "action": "screenshot",
+      "input": "[]",
+      "result": "(image)"
+    },
+    {
+      "action": "captchaClick",
+      "input": "[\"the checkbox inside the Cloudflare \\\"Verify you are human\\\" widget\"]",
+      "result": "{\"refused\":\"Jev guidance was uncertain or refused the action. Gather evidence or propose a more precise action.\",\"signals\":[\"relevant\"]}"
+    }
+  ]
+}

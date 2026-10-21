@@ -15,11 +15,18 @@ export async function traceStage<T>(
   stageId: string,
   stage: MessageActivityStage["stage"],
   run: () => Promise<T>,
+  describe?: (result: T) => string,
 ): Promise<T> {
   await record({ kind: "stage", stageId, stage, status: "running" });
   try {
     const result = await run();
-    await record({ kind: "stage", stageId, stage, status: "completed" });
+    await record({
+      kind: "stage",
+      stageId,
+      stage,
+      status: "completed",
+      ...(describe ? { detail: describe(result) } : {}),
+    });
     return result;
   } catch (error) {
     await record({ kind: "stage", stageId, stage, status: "failed" });

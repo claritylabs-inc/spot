@@ -33,6 +33,7 @@ import {
   handleMcpEventRequest,
 } from "./lib/mcpEventHttp";
 import { getEmailDeliveryMode } from "./lib/resend";
+import { readInbox as readResearchInbox } from "./researchInbox";
 import {
   parseSlackEventPayload,
   parseSlackLifecyclePayload,
@@ -578,6 +579,13 @@ http.route({
     });
     return new Response("OK", { status: 200 });
   }),
+});
+
+// Browser-agent research inbox (capability token, read-only).
+http.route({
+  path: "/research-inbox",
+  method: "GET",
+  handler: readResearchInbox,
 });
 
 // Photon Spectrum webhooks.

@@ -2,9 +2,9 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { InlineCollectionActionsContext } from "@/components/ui/inline-fields";
-import { Loader2, Plus, StickyNote } from "lucide-react";
+import { Loader2, Plus, RefreshCw, StickyNote } from "lucide-react";
 
 import { useMutation, useQuery } from "convex/react";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -12,6 +12,7 @@ import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { api } from "@/convex/_generated/api";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AppShellPortal } from "@/components/app-shell-slots";
+import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import {
   Tabs,
   TabsList,
@@ -44,6 +45,7 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
+import { useWebsiteTechScan, WebsiteTechSection } from "./website-tech-section";
 
 function ProfileContent({
   client,
@@ -87,6 +89,7 @@ function LoadedProfile({
     >
   >;
 }) {
+  const router = useRouter();
   const update = useMutation(api.orgWiki.updateBusinessProfileForOperator);
   const [profileTab, setProfileTab] = useState("Business details");
   const account = {
@@ -108,6 +111,7 @@ function LoadedProfile({
     version: wiki.businessProfile?.submittedAt ?? 0,
     account,
   });
+  const techScan = useWebsiteTechScan(client._id, profileTab === "Tech stack");
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesToolbar, setNotesToolbar] = useState<HTMLDivElement | null>(null);
   const autoSave = useLocalFirstAutoSave({
@@ -165,6 +169,21 @@ function LoadedProfile({
             Notes
           </PillButton>
           {!readOnly && <AutoSaveStatus status={autoSave.status} />}
+          {!readOnly && profileTab === "Tech stack" && techScan.canRescan && (
+            <PillButton
+              variant="secondary"
+              size="compact"
+              disabled={techScan.scanning}
+              onClick={techScan.rescan}
+            >
+              {techScan.scanning ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              Rescan
+            </PillButton>
+          )}
           {!readOnly && profileTab === "Related legal entities" && (
             <PillButton
               variant="secondary"
@@ -208,6 +227,15 @@ function LoadedProfile({
               Add location
             </PillButton>
           )}
+          {!readOnly && (
+            <DeleteOrganizationButton
+              orgId={client._id}
+              name={client.name}
+              type="client"
+              beforeDelete={async () => true}
+              onDeleted={() => router.push("/operator/clients")}
+            />
+          )}
         </AppShellPortal>
       }
       <IntakeReviewCompact.Provider value={true}>
@@ -228,6 +256,7 @@ function LoadedProfile({
               ["Related legal entities", "Related entities"],
               ["Revenue", "Revenue"],
               ["Locations", "Locations"],
+              ["Tech stack", "Tech stack"],
             ].map(([value, label]) => (
               <TabsTrigger key={value} value={value}>
                 {label}
@@ -235,7 +264,9 @@ function LoadedProfile({
             ))}
           </TabsList>
           <TabsContent value={profileTab}>
-            {profileTab === "Account" ? (
+            {profileTab === "Tech stack" ? (
+              <WebsiteTechSection scan={techScan} />
+            ) : profileTab === "Account" ? (
               <ClientAccountSection
                 client={client}
                 editing={!readOnly}
@@ -307,7 +338,7 @@ export default function OperatorClientWikiPage() {
             href={`/operator/clients/${clientOrgId}`}
             className="truncate text-muted-foreground/80 transition-colors hover:text-foreground"
           >
-            {client?.name ?? "Client"}
+            {client ? (client.dba ?? client.name) : "Client"}
           </Link>
           <span
             className={`text-muted-foreground/30 ${typeStyle("body.default")}`}
@@ -324,7 +355,7 @@ export default function OperatorClientWikiPage() {
           pageType: "operator_client_wiki",
           entityId: clientOrgId,
           summary: client
-            ? `Profile for ${client.name}`
+            ? `Profile for ${client.dba ?? client.name}`
             : "Current client profile",
         }}
       />

@@ -1,4 +1,5 @@
 "use client";
+import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import {
@@ -56,6 +57,8 @@ export function ClientAccountSection({
         </OperationalLabelValueList>
       </section>
     );
+  const { label: statusLabel, ...statusPresentation } =
+    OPERATOR_CLIENT_STATUSES[value.status];
   return (
     <fieldset disabled={disabled} aria-label="Account">
       <InlineFieldCard>
@@ -69,12 +72,10 @@ export function ClientAccountSection({
           />
         </InlineFieldRow>
         <InlineFieldRow label="Website">
-          <Input
+          <WebsiteInput
             aria-label="Website"
             value={value.website}
-            onChange={(event) =>
-              onChange({ ...value, website: event.target.value })
-            }
+            onChange={(website) => onChange({ ...value, website })}
           />
         </InlineFieldRow>
         <InlineFieldRow label="Status">
@@ -91,7 +92,9 @@ export function ClientAccountSection({
             }}
           >
             <SelectTrigger className="w-full" aria-label="Status">
-              <SelectValue />
+              <SelectValue>
+                <StatusLabel {...statusPresentation}>{statusLabel}</StatusLabel>
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {Object.entries(OPERATOR_CLIENT_STATUSES).map(

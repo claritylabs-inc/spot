@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation } from "convex/react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -14,7 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@claritylabs-inc/ui/components/dialog";
+import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { PillButton } from "@/components/ui/pill-button";
+import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 export function DeleteOrganizationButton({
@@ -36,11 +38,14 @@ export function DeleteOrganizationButton({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const remove = useMutation(api.operator.deleteOrganization);
+  const removeWithUsers = useMutation(api.operator.deleteClientWithUsers);
+  const [withUsers, setWithUsers] = useState(false);
   async function confirm() {
     setBusy(true);
     try {
       if (!(await beforeDelete())) return;
-      await remove({ orgId, type });
+      if (type === "client" && withUsers) await removeWithUsers({ orgId });
+      else await remove({ orgId, type });
       setOpen(false);
       onDeleted();
       toast.success(`${type === "client" ? "Client" : "Provider"} deleted`);
@@ -60,12 +65,15 @@ export function DeleteOrganizationButton({
         disabled={disabled || busy}
         onClick={() => setOpen(true)}
       >
+        <Trash2 className="size-3.5" />
         Delete {typeLabel}
       </PillButton>
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (!busy) setOpen(next);
+          if (busy) return;
+          setOpen(next);
+          if (!next) setWithUsers(false);
         }}
       >
         <DialogContent showCloseButton={!busy}>
@@ -80,6 +88,20 @@ export function DeleteOrganizationButton({
                 : " Shared packet links will stop working."}
             </DialogDescription>
           </DialogHeader>
+          {type === "client" ? (
+            <label className={`flex items-start gap-2 ${typeStyle("body.default")}`}>
+              <Checkbox
+                className="mt-0.5"
+                checked={withUsers}
+                disabled={busy}
+                onCheckedChange={(checked) => setWithUsers(checked)}
+              />
+              <span>
+                Also permanently delete all users under this client. They lose
+                login access and cannot be restored.
+              </span>
+            </label>
+          ) : null}
           <DialogFooter>
             <PillButton
               type="button"
@@ -96,7 +118,11 @@ export function DeleteOrganizationButton({
               onClick={() => void confirm()}
             >
               {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              {busy ? "Deleting…" : `Delete ${typeLabel}`}
+              {busy
+                ? "Deleting…"
+                : withUsers
+                  ? `Delete ${typeLabel} and users`
+                  : `Delete ${typeLabel}`}
             </PillButton>
           </DialogFooter>
         </DialogContent>

@@ -1,0 +1,2737 @@
+[
+  {
+    "seq": 1,
+    "time": "2026-10-20T21:15:09.667Z",
+    "kind": "predeclared",
+    "planSha256": "b68f0d6aa1c7651f9417d8a31fe6ad43e03399abbfa9fefa48c3ea173d1621e5",
+    "fixtureSha256": "068d5089daa09521c22a652fa34b0aae3163fbf635987363e46856855e5bf776",
+    "sourceBinding": {
+      "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+      "sourceFileSha256": "005e60212307cc2d5192d46dab4b63e73cc25db6ee1d97b8c6e26fb34fee7a50",
+      "closureSha256": "0087d228841341f7de71e172c4d1424492a111c55124d0416dee995b86a276eb",
+      "grayCanvasSha256": "f22163265867f7090d828ad249e72611edfc6e331f26f3abc6a56dfe68a3f9fa",
+      "constants": "const CAPTCHA_HOVER_MIN = 0.9;\nconst HOVER_MARGIN = 4;\nconst MAX_HOVER_SCALE = 8;",
+      "method": "Verbatim current cosmeticHover closure and grayCanvas helper, exact constants, actual candidate executeDecision; only observation/one-send transport guard wrapped."
+    }
+  },
+  {
+    "seq": 2,
+    "time": "2026-10-20T21:15:10.036Z",
+    "kind": "logical_request",
+    "id": "preserved-857",
+    "sha256": "b0f2ccb4b355373f49baf12a705480da5609d97a79f3508a3b70a55fbf96f439",
+    "questions": {
+      "same_instruction": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Does the challenge in `after` show the same written instruction or checkbox label as in `before`?"
+        }
+      },
+      "same_images": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Do `before` and `after` depict the same pictures in the same positions?",
+          "scope": "Pictures means depicted photographs, illustrations, logos and puzzle-tile content, rather than the screenshot files or a control's border. Added, removed, moved or replaced picture content is a difference. If both views contain no pictures, their picture content is the same."
+        }
+      },
+      "same_selection": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Are exactly the same tiles, boxes or checkboxes selected or checked in `after` as in `before`?",
+          "scope": "A checkbox, tile or option that is checked or selected in one and not the other is a difference. If neither contains anything selectable that is selected, the unchanged state counts as yes."
+        }
+      },
+      "same_control": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` show the same control, with the same shape, size and position?"
+        }
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` contain exactly the same marks?",
+          "scope": "Marks include check marks, ticks, spinners, symbols, text and pictures. Any added, removed or replaced mark is a difference. Two empty controls have the same marks. A change of border color alone does not add or remove a mark."
+        }
+      },
+      "style_only": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Is every difference between `before` and `after` only a change of color, shade, border or outline?",
+          "scope": "Moved, resized, added, removed or replaced shapes, marks or text are not a change of color, shade, border or outline."
+        }
+      }
+    },
+    "stateFields": [
+      "target",
+      "evidence",
+      "padding",
+      "target_region"
+    ]
+  },
+  {
+    "seq": 3,
+    "time": "2026-10-20T21:15:10.548Z",
+    "kind": "provider_http",
+    "id": "preserved-857",
+    "status": 200,
+    "providerRequests": 1
+  },
+  {
+    "seq": 4,
+    "time": "2026-10-20T21:15:10.553Z",
+    "kind": "model_response",
+    "id": "preserved-857",
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.85
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.9
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.87
+      }
+    }
+  },
+  {
+    "seq": 5,
+    "time": "2026-10-20T21:15:10.553Z",
+    "kind": "case_result",
+    "id": "preserved-857",
+    "expected": true,
+    "source": "Actual preserved857 v2 captures, exact original refined Rect",
+    "visible": {
+      "x": 283,
+      "y": 332,
+      "width": 304,
+      "height": 78
+    },
+    "located": {
+      "x": 296.6533333333333,
+      "y": 355.04,
+      "width": 27.306666666666672,
+      "height": 28.159999999999968
+    },
+    "delta": {
+      "changedPixels": 300,
+      "bounds": {
+        "left": 13,
+        "top": 23,
+        "right": 40,
+        "bottom": 50
+      }
+    },
+    "region": {
+      "x": 9,
+      "y": 19,
+      "right": 45,
+      "bottom": 56
+    },
+    "targetScale": 8,
+    "contained": true,
+    "closureInvocations": 1,
+    "logicalRequests": 1,
+    "providerRequests": 1,
+    "beforeRgbaSha256": "22fd946f761182d648bd2436e196fcf47b96ed47992882dff7861f19bec07518",
+    "afterRgbaSha256": "afae2031ad610a11f6d131408fbd9c4d2694e80124ec189b0732b311a8f875b4",
+    "actualRequestSha256": "b0f2ccb4b355373f49baf12a705480da5609d97a79f3508a3b70a55fbf96f439",
+    "images": [
+      {
+        "file": "preserved-857-transport-0.png",
+        "sha256": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215",
+        "bytes": 13541
+      },
+      {
+        "file": "preserved-857-transport-1.png",
+        "sha256": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d",
+        "bytes": 13566
+      },
+      {
+        "file": "preserved-857-transport-2.png",
+        "sha256": "234478538ac49c7b08ca3b41491e45ae22c88edbf77b47d0521d316635f9ed82",
+        "bytes": 5040
+      },
+      {
+        "file": "preserved-857-transport-3.png",
+        "sha256": "7738abc94688b1876e9dcdfa8fd619b62ad992dae3fde617c75984178db3e0bf",
+        "bytes": 5049
+      }
+    ],
+    "questionImagePairs": [
+      {
+        "questionId": "same_instruction",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_images",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_selection",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_control",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "no_new_mark",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "style_only",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      }
+    ],
+    "transformsVerified": true,
+    "sharedStateHasNoImages": true,
+    "preservedByteIdentity": true,
+    "wireStateQuestionsAssetsEqual": true,
+    "httpStatus": 200,
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.85
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.9
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.87
+      }
+    },
+    "approved": false,
+    "elapsedMs": 872,
+    "path": "real_provider_comparison",
+    "classification": "semantic_false_negative"
+  },
+  {
+    "seq": 6,
+    "time": "2026-10-20T21:19:12.470Z",
+    "kind": "corpus_resume_no_preserved_call",
+    "planSha256": "b68f0d6aa1c7651f9417d8a31fe6ad43e03399abbfa9fefa48c3ea173d1621e5",
+    "fixtureSha256": "068d5089daa09521c22a652fa34b0aae3163fbf635987363e46856855e5bf776",
+    "sourceBinding": {
+      "candidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+      "sourceFileSha256": "005e60212307cc2d5192d46dab4b63e73cc25db6ee1d97b8c6e26fb34fee7a50",
+      "closureSha256": "0087d228841341f7de71e172c4d1424492a111c55124d0416dee995b86a276eb",
+      "grayCanvasSha256": "f22163265867f7090d828ad249e72611edfc6e331f26f3abc6a56dfe68a3f9fa",
+      "constants": "const CAPTCHA_HOVER_MIN = 0.9;\nconst HOVER_MARGIN = 4;\nconst MAX_HOVER_SCALE = 8;",
+      "method": "Verbatim current cosmeticHover closure and grayCanvas helper, exact constants, actual candidate executeDecision; only observation/one-send transport guard wrapped."
+    }
+  },
+  {
+    "seq": 7,
+    "time": "2026-10-20T21:19:12.878Z",
+    "kind": "browser_ready",
+    "browser": "Chrome/155.0.8059.84",
+    "node": "v24.14.1",
+    "viewport": {
+      "width": 1024,
+      "height": 768
+    }
+  },
+  {
+    "seq": 8,
+    "time": "2026-10-20T21:19:13.032Z",
+    "kind": "fixture_capture",
+    "id": "unchanged",
+    "phase": "before",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "cc1552f0fea9ad1b560793bef98ba7d788d9f48e443fc986eba5c32bd04b8d05",
+    "frameRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953"
+  },
+  {
+    "seq": 9,
+    "time": "2026-10-20T21:19:13.148Z",
+    "kind": "fixture_capture",
+    "id": "unchanged",
+    "phase": "after",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "cc1552f0fea9ad1b560793bef98ba7d788d9f48e443fc986eba5c32bd04b8d05",
+    "frameRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953"
+  },
+  {
+    "seq": 10,
+    "time": "2026-10-20T21:19:13.257Z",
+    "kind": "fixture_capture",
+    "id": "border-hover",
+    "phase": "before",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "cc1552f0fea9ad1b560793bef98ba7d788d9f48e443fc986eba5c32bd04b8d05",
+    "frameRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953"
+  },
+  {
+    "seq": 11,
+    "time": "2026-10-20T21:19:13.369Z",
+    "kind": "fixture_capture",
+    "id": "border-hover",
+    "phase": "after",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "hover",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(170, 170, 170)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "a69744ee96f2aa8f1adaae6eb68c6da75a5ac9fd0a3989fb1fbbdce2ef4fb7b0",
+    "frameRgbaSha256": "5de5d1620c6977f1405247b6c8fb9b116b9230177f9b1872f2d4d54dc89b3584"
+  },
+  {
+    "seq": 12,
+    "time": "2026-10-20T21:19:13.488Z",
+    "kind": "fixture_capture",
+    "id": "added-tick",
+    "phase": "before",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "cc1552f0fea9ad1b560793bef98ba7d788d9f48e443fc986eba5c32bd04b8d05",
+    "frameRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953"
+  },
+  {
+    "seq": 13,
+    "time": "2026-10-20T21:19:13.615Z",
+    "kind": "fixture_capture",
+    "id": "added-tick",
+    "phase": "after",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "tick",
+      "role": "checkbox",
+      "checked": "true",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": "tick",
+      "badge": null
+    },
+    "viewportSha256": "b99fbcf98ffa4b70b9c1e6624b450055834a7b6873719037b38cc3d1e0ec008e",
+    "frameRgbaSha256": "4970ca72f235fe697def407e0ad99a2fa9e4ea4fe7d2f6e8761a08c9b4e86a90"
+  },
+  {
+    "seq": 14,
+    "time": "2026-10-20T21:19:13.755Z",
+    "kind": "fixture_capture",
+    "id": "removed-mark",
+    "phase": "before",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "tick",
+      "role": "checkbox",
+      "checked": "true",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": "tick",
+      "badge": null
+    },
+    "viewportSha256": "b99fbcf98ffa4b70b9c1e6624b450055834a7b6873719037b38cc3d1e0ec008e",
+    "frameRgbaSha256": "4970ca72f235fe697def407e0ad99a2fa9e4ea4fe7d2f6e8761a08c9b4e86a90"
+  },
+  {
+    "seq": 15,
+    "time": "2026-10-20T21:19:13.876Z",
+    "kind": "fixture_capture",
+    "id": "removed-mark",
+    "phase": "after",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "cc1552f0fea9ad1b560793bef98ba7d788d9f48e443fc986eba5c32bd04b8d05",
+    "frameRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953"
+  },
+  {
+    "seq": 16,
+    "time": "2026-10-20T21:19:13.984Z",
+    "kind": "fixture_capture",
+    "id": "new-spinner",
+    "phase": "before",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "cc1552f0fea9ad1b560793bef98ba7d788d9f48e443fc986eba5c32bd04b8d05",
+    "frameRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953"
+  },
+  {
+    "seq": 17,
+    "time": "2026-10-20T21:19:14.101Z",
+    "kind": "fixture_capture",
+    "id": "new-spinner",
+    "phase": "after",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "spinner",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": "static spinner",
+      "badge": null
+    },
+    "viewportSha256": "9ccf288e0ead7a14d756ea4487057b098f98f274bbadc4e2fee798daf31db5f4",
+    "frameRgbaSha256": "0122f4cbdccd8b96e4a9331a1e4f57ac9ec0e8c3bfc9ffc0e7add95f85592d01"
+  },
+  {
+    "seq": 18,
+    "time": "2026-10-20T21:19:14.224Z",
+    "kind": "fixture_capture",
+    "id": "replaced-picture",
+    "phase": "before",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "landscape",
+      "role": "option",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": "mountain landscape",
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "4bfda340eb4f818c457871680f38082637366d782623bf517f9aa5e5a1e3cf9c",
+    "frameRgbaSha256": "a2d2c41bdc5233c563b916ebb375c0fbfc2a1e68050c95800fc52f114bcbb480"
+  },
+  {
+    "seq": 19,
+    "time": "2026-10-20T21:19:14.332Z",
+    "kind": "fixture_capture",
+    "id": "replaced-picture",
+    "phase": "after",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "boat",
+      "role": "option",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": "boat on water",
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "b613e3ea4f27fdb1ed856c90f9b6033ae67d89c8a3bbcaba29d600c8faec9ac2",
+    "frameRgbaSha256": "5a114b971302fcd296c9c8a58d19b374b3da29d4f3fa3bf32db0f3e7453ae780"
+  },
+  {
+    "seq": 20,
+    "time": "2026-10-20T21:19:14.451Z",
+    "kind": "fixture_capture",
+    "id": "changed-instruction",
+    "phase": "before",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "cc1552f0fea9ad1b560793bef98ba7d788d9f48e443fc986eba5c32bd04b8d05",
+    "frameRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953"
+  },
+  {
+    "seq": 21,
+    "time": "2026-10-20T21:19:14.575Z",
+    "kind": "fixture_capture",
+    "id": "changed-instruction",
+    "phase": "after",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bus",
+      "state": "instruction",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "f281bb25a962e2f7a985002a00528cfac7f5c6fcfa4c743d9495c297d0429521",
+    "frameRgbaSha256": "2f29fc68dd725bae217c8f5c65e8a2011b9526ff53f59d6b92c5fb8344116f15"
+  },
+  {
+    "seq": 22,
+    "time": "2026-10-20T21:19:14.683Z",
+    "kind": "fixture_capture",
+    "id": "moved-resized",
+    "phase": "before",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "empty",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "cc1552f0fea9ad1b560793bef98ba7d788d9f48e443fc986eba5c32bd04b8d05",
+    "frameRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953"
+  },
+  {
+    "seq": 23,
+    "time": "2026-10-20T21:19:14.828Z",
+    "kind": "fixture_capture",
+    "id": "moved-resized",
+    "phase": "after",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 404,
+        "y": 361,
+        "width": 58,
+        "height": 58
+      },
+      "instruction": "Select the bicycle",
+      "state": "moved",
+      "role": "checkbox",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": null,
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "90396ad6a5d6d979f99868b2d1fd68f1b8185bddd2ac8025f0ae21614f25158d",
+    "frameRgbaSha256": "6a81d2480defd402dfc259f533895e9085b29639853c7a28af3ee1b7228d0504"
+  },
+  {
+    "seq": 24,
+    "time": "2026-10-20T21:19:14.930Z",
+    "kind": "fixture_capture",
+    "id": "selected-state",
+    "phase": "before",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "landscape",
+      "role": "option",
+      "checked": "false",
+      "selected": "false",
+      "borderColor": "rgb(85, 85, 85)",
+      "picture": "mountain landscape",
+      "mark": null,
+      "badge": null
+    },
+    "viewportSha256": "4bfda340eb4f818c457871680f38082637366d782623bf517f9aa5e5a1e3cf9c",
+    "frameRgbaSha256": "a2d2c41bdc5233c563b916ebb375c0fbfc2a1e68050c95800fc52f114bcbb480"
+  },
+  {
+    "seq": 25,
+    "time": "2026-10-20T21:19:15.032Z",
+    "kind": "fixture_capture",
+    "id": "selected-state",
+    "phase": "after",
+    "observation": {
+      "frame": {
+        "x": 283,
+        "y": 300,
+        "width": 304,
+        "height": 140
+      },
+      "control": {
+        "x": 403,
+        "y": 360,
+        "width": 56,
+        "height": 56
+      },
+      "instruction": "Select the bicycle",
+      "state": "selected",
+      "role": "option",
+      "checked": "false",
+      "selected": "true",
+      "borderColor": "rgb(18, 101, 221)",
+      "picture": "mountain landscape",
+      "mark": null,
+      "badge": "✓"
+    },
+    "viewportSha256": "890c8596f44540aa098c25662d6e2356aa1bdebbe82dc660dae14bb7e2eb59da",
+    "frameRgbaSha256": "93227a1be77cde13ce5e99b5bf8ca2ee4ed16f4785f5bf94e13b30b2c19e3617"
+  },
+  {
+    "seq": 26,
+    "time": "2026-10-20T21:19:15.033Z",
+    "kind": "all_corpus_truth_frozen",
+    "sha256": "954d0403a2ddf606737a2efb2ea11643e3bb8bd9812b311c0dbb8bf3a6839e8d",
+    "cases": 9
+  },
+  {
+    "seq": 27,
+    "time": "2026-10-20T21:19:15.041Z",
+    "kind": "case_result",
+    "id": "unchanged",
+    "expected": true,
+    "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+    "visible": {
+      "x": 283,
+      "y": 300,
+      "width": 304,
+      "height": 140
+    },
+    "located": {
+      "x": 403,
+      "y": 360,
+      "width": 56,
+      "height": 56
+    },
+    "delta": {
+      "changedPixels": 0,
+      "bounds": null
+    },
+    "region": {
+      "x": 116,
+      "y": 56,
+      "right": 180,
+      "bottom": 120
+    },
+    "targetScale": 8,
+    "contained": true,
+    "closureInvocations": 1,
+    "logicalRequests": 0,
+    "providerRequests": 0,
+    "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+    "afterRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+    "approved": true,
+    "elapsedMs": 6,
+    "path": "unchanged_fast_path",
+    "classification": "expected_code_path"
+  },
+  {
+    "seq": 28,
+    "time": "2026-10-20T21:19:15.410Z",
+    "kind": "logical_request",
+    "id": "border-hover",
+    "sha256": "2ba3aab772f3abff5258ec0a2beb0d36a36a6a754350e8ceb84878e30146fcb9",
+    "questions": {
+      "same_instruction": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Does the challenge in `after` show the same written instruction or checkbox label as in `before`?"
+        }
+      },
+      "same_images": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Do `before` and `after` depict the same pictures in the same positions?",
+          "scope": "Pictures means depicted photographs, illustrations, logos and puzzle-tile content, rather than the screenshot files or a control's border. Added, removed, moved or replaced picture content is a difference. If both views contain no pictures, their picture content is the same."
+        }
+      },
+      "same_selection": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Are exactly the same tiles, boxes or checkboxes selected or checked in `after` as in `before`?",
+          "scope": "A checkbox, tile or option that is checked or selected in one and not the other is a difference. If neither contains anything selectable that is selected, the unchanged state counts as yes."
+        }
+      },
+      "same_control": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` show the same control, with the same shape, size and position?"
+        }
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` contain exactly the same marks?",
+          "scope": "Marks include check marks, ticks, spinners, symbols, text and pictures. Any added, removed or replaced mark is a difference. Two empty controls have the same marks. A change of border color alone does not add or remove a mark."
+        }
+      },
+      "style_only": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Is every difference between `before` and `after` only a change of color, shade, border or outline?",
+          "scope": "Moved, resized, added, removed or replaced shapes, marks or text are not a change of color, shade, border or outline."
+        }
+      }
+    },
+    "stateFields": [
+      "target",
+      "evidence",
+      "padding",
+      "target_region"
+    ]
+  },
+  {
+    "seq": 29,
+    "time": "2026-10-20T21:19:16.003Z",
+    "kind": "provider_http",
+    "id": "border-hover",
+    "status": 200,
+    "providerRequests": 2
+  },
+  {
+    "seq": 30,
+    "time": "2026-10-20T21:19:16.008Z",
+    "kind": "model_response",
+    "id": "border-hover",
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.8
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.92
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.93
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.96
+      }
+    }
+  },
+  {
+    "seq": 31,
+    "time": "2026-10-20T21:19:16.009Z",
+    "kind": "case_result",
+    "id": "border-hover",
+    "expected": true,
+    "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+    "visible": {
+      "x": 283,
+      "y": 300,
+      "width": 304,
+      "height": 140
+    },
+    "located": {
+      "x": 403,
+      "y": 360,
+      "width": 56,
+      "height": 56
+    },
+    "delta": {
+      "changedPixels": 636,
+      "bounds": {
+        "left": 120,
+        "top": 60,
+        "right": 175,
+        "bottom": 115
+      }
+    },
+    "region": {
+      "x": 116,
+      "y": 56,
+      "right": 180,
+      "bottom": 120
+    },
+    "targetScale": 8,
+    "contained": true,
+    "closureInvocations": 1,
+    "logicalRequests": 1,
+    "providerRequests": 1,
+    "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+    "afterRgbaSha256": "5de5d1620c6977f1405247b6c8fb9b116b9230177f9b1872f2d4d54dc89b3584",
+    "actualRequestSha256": "2ba3aab772f3abff5258ec0a2beb0d36a36a6a754350e8ceb84878e30146fcb9",
+    "images": [
+      {
+        "file": "border-hover-transport-0.png",
+        "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+        "bytes": 7830
+      },
+      {
+        "file": "border-hover-transport-1.png",
+        "sha256": "2d1f4ba1fb7a5af754585663ef62d2db75d90557bb8e5fb63150e97bf9fcaa78",
+        "bytes": 7828
+      },
+      {
+        "file": "border-hover-transport-2.png",
+        "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+        "bytes": 4450
+      },
+      {
+        "file": "border-hover-transport-3.png",
+        "sha256": "e3ebfc60dedc120ca0d6c77a72170e484e97750dc4ced504f1a82e99a05ae6fb",
+        "bytes": 4450
+      }
+    ],
+    "questionImagePairs": [
+      {
+        "questionId": "same_instruction",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_images",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_selection",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_control",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "no_new_mark",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "style_only",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      }
+    ],
+    "transformsVerified": true,
+    "sharedStateHasNoImages": true,
+    "preservedByteIdentity": false,
+    "wireStateQuestionsAssetsEqual": true,
+    "httpStatus": 200,
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.8
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.92
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.93
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.96
+      }
+    },
+    "approved": false,
+    "elapsedMs": 967,
+    "path": "real_provider_comparison",
+    "classification": "semantic_false_negative"
+  },
+  {
+    "seq": 32,
+    "time": "2026-10-20T21:19:16.362Z",
+    "kind": "logical_request",
+    "id": "added-tick",
+    "sha256": "8968fd89f9b664c47df2416bdb2e254c13da891b44ce4b49ac5a07c50bf318eb",
+    "questions": {
+      "same_instruction": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Does the challenge in `after` show the same written instruction or checkbox label as in `before`?"
+        }
+      },
+      "same_images": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Do `before` and `after` depict the same pictures in the same positions?",
+          "scope": "Pictures means depicted photographs, illustrations, logos and puzzle-tile content, rather than the screenshot files or a control's border. Added, removed, moved or replaced picture content is a difference. If both views contain no pictures, their picture content is the same."
+        }
+      },
+      "same_selection": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Are exactly the same tiles, boxes or checkboxes selected or checked in `after` as in `before`?",
+          "scope": "A checkbox, tile or option that is checked or selected in one and not the other is a difference. If neither contains anything selectable that is selected, the unchanged state counts as yes."
+        }
+      },
+      "same_control": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` show the same control, with the same shape, size and position?"
+        }
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` contain exactly the same marks?",
+          "scope": "Marks include check marks, ticks, spinners, symbols, text and pictures. Any added, removed or replaced mark is a difference. Two empty controls have the same marks. A change of border color alone does not add or remove a mark."
+        }
+      },
+      "style_only": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Is every difference between `before` and `after` only a change of color, shade, border or outline?",
+          "scope": "Moved, resized, added, removed or replaced shapes, marks or text are not a change of color, shade, border or outline."
+        }
+      }
+    },
+    "stateFields": [
+      "target",
+      "evidence",
+      "padding",
+      "target_region"
+    ]
+  },
+  {
+    "seq": 33,
+    "time": "2026-10-20T21:19:16.937Z",
+    "kind": "provider_http",
+    "id": "added-tick",
+    "status": 200,
+    "providerRequests": 3
+  },
+  {
+    "seq": 34,
+    "time": "2026-10-20T21:19:16.939Z",
+    "kind": "model_response",
+    "id": "added-tick",
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.95
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.04
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.95
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.01
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.03
+      }
+    }
+  },
+  {
+    "seq": 35,
+    "time": "2026-10-20T21:19:16.939Z",
+    "kind": "case_result",
+    "id": "added-tick",
+    "expected": false,
+    "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+    "visible": {
+      "x": 283,
+      "y": 300,
+      "width": 304,
+      "height": 140
+    },
+    "located": {
+      "x": 403,
+      "y": 360,
+      "width": 56,
+      "height": 56
+    },
+    "delta": {
+      "changedPixels": 304,
+      "bounds": {
+        "left": 130,
+        "top": 72,
+        "right": 165,
+        "bottom": 101
+      }
+    },
+    "region": {
+      "x": 116,
+      "y": 56,
+      "right": 180,
+      "bottom": 120
+    },
+    "targetScale": 8,
+    "contained": true,
+    "closureInvocations": 1,
+    "logicalRequests": 1,
+    "providerRequests": 1,
+    "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+    "afterRgbaSha256": "4970ca72f235fe697def407e0ad99a2fa9e4ea4fe7d2f6e8761a08c9b4e86a90",
+    "actualRequestSha256": "8968fd89f9b664c47df2416bdb2e254c13da891b44ce4b49ac5a07c50bf318eb",
+    "images": [
+      {
+        "file": "added-tick-transport-0.png",
+        "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+        "bytes": 7830
+      },
+      {
+        "file": "added-tick-transport-1.png",
+        "sha256": "c1afadbd4cb50c471f6c28d393f6a7c31e088b032cc437089cdd279815ad6bbe",
+        "bytes": 8779
+      },
+      {
+        "file": "added-tick-transport-2.png",
+        "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+        "bytes": 4450
+      },
+      {
+        "file": "added-tick-transport-3.png",
+        "sha256": "e12fe37d7919113f877fa1d22ec1c4610b4e792d541de9c4134bdb5c56eb01b4",
+        "bytes": 5736
+      }
+    ],
+    "questionImagePairs": [
+      {
+        "questionId": "same_instruction",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_images",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_selection",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_control",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "no_new_mark",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "style_only",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      }
+    ],
+    "transformsVerified": true,
+    "sharedStateHasNoImages": true,
+    "preservedByteIdentity": false,
+    "wireStateQuestionsAssetsEqual": true,
+    "httpStatus": 200,
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.95
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.04
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.95
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.01
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.03
+      }
+    },
+    "approved": false,
+    "elapsedMs": 930,
+    "path": "real_provider_comparison",
+    "classification": "semantic_true_negative"
+  },
+  {
+    "seq": 36,
+    "time": "2026-10-20T21:19:17.309Z",
+    "kind": "logical_request",
+    "id": "removed-mark",
+    "sha256": "c16595fcaa21ca523ffa0068113d5f92d5c95d2942595d967289a4ba563a8b08",
+    "questions": {
+      "same_instruction": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Does the challenge in `after` show the same written instruction or checkbox label as in `before`?"
+        }
+      },
+      "same_images": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Do `before` and `after` depict the same pictures in the same positions?",
+          "scope": "Pictures means depicted photographs, illustrations, logos and puzzle-tile content, rather than the screenshot files or a control's border. Added, removed, moved or replaced picture content is a difference. If both views contain no pictures, their picture content is the same."
+        }
+      },
+      "same_selection": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Are exactly the same tiles, boxes or checkboxes selected or checked in `after` as in `before`?",
+          "scope": "A checkbox, tile or option that is checked or selected in one and not the other is a difference. If neither contains anything selectable that is selected, the unchanged state counts as yes."
+        }
+      },
+      "same_control": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` show the same control, with the same shape, size and position?"
+        }
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` contain exactly the same marks?",
+          "scope": "Marks include check marks, ticks, spinners, symbols, text and pictures. Any added, removed or replaced mark is a difference. Two empty controls have the same marks. A change of border color alone does not add or remove a mark."
+        }
+      },
+      "style_only": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Is every difference between `before` and `after` only a change of color, shade, border or outline?",
+          "scope": "Moved, resized, added, removed or replaced shapes, marks or text are not a change of color, shade, border or outline."
+        }
+      }
+    },
+    "stateFields": [
+      "target",
+      "evidence",
+      "padding",
+      "target_region"
+    ]
+  },
+  {
+    "seq": 37,
+    "time": "2026-10-20T21:19:17.905Z",
+    "kind": "provider_http",
+    "id": "removed-mark",
+    "status": 200,
+    "providerRequests": 4
+  },
+  {
+    "seq": 38,
+    "time": "2026-10-20T21:19:17.906Z",
+    "kind": "model_response",
+    "id": "removed-mark",
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.91
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.9
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.01
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.03
+      }
+    }
+  },
+  {
+    "seq": 39,
+    "time": "2026-10-20T21:19:17.907Z",
+    "kind": "case_result",
+    "id": "removed-mark",
+    "expected": false,
+    "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+    "visible": {
+      "x": 283,
+      "y": 300,
+      "width": 304,
+      "height": 140
+    },
+    "located": {
+      "x": 403,
+      "y": 360,
+      "width": 56,
+      "height": 56
+    },
+    "delta": {
+      "changedPixels": 304,
+      "bounds": {
+        "left": 130,
+        "top": 72,
+        "right": 165,
+        "bottom": 101
+      }
+    },
+    "region": {
+      "x": 116,
+      "y": 56,
+      "right": 180,
+      "bottom": 120
+    },
+    "targetScale": 8,
+    "contained": true,
+    "closureInvocations": 1,
+    "logicalRequests": 1,
+    "providerRequests": 1,
+    "beforeRgbaSha256": "4970ca72f235fe697def407e0ad99a2fa9e4ea4fe7d2f6e8761a08c9b4e86a90",
+    "afterRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+    "actualRequestSha256": "c16595fcaa21ca523ffa0068113d5f92d5c95d2942595d967289a4ba563a8b08",
+    "images": [
+      {
+        "file": "removed-mark-transport-0.png",
+        "sha256": "c1afadbd4cb50c471f6c28d393f6a7c31e088b032cc437089cdd279815ad6bbe",
+        "bytes": 8779
+      },
+      {
+        "file": "removed-mark-transport-1.png",
+        "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+        "bytes": 7830
+      },
+      {
+        "file": "removed-mark-transport-2.png",
+        "sha256": "e12fe37d7919113f877fa1d22ec1c4610b4e792d541de9c4134bdb5c56eb01b4",
+        "bytes": 5736
+      },
+      {
+        "file": "removed-mark-transport-3.png",
+        "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+        "bytes": 4450
+      }
+    ],
+    "questionImagePairs": [
+      {
+        "questionId": "same_instruction",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_images",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_selection",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_control",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "no_new_mark",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "style_only",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      }
+    ],
+    "transformsVerified": true,
+    "sharedStateHasNoImages": true,
+    "preservedByteIdentity": false,
+    "wireStateQuestionsAssetsEqual": true,
+    "httpStatus": 200,
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.97
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.91
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.9
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.01
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.03
+      }
+    },
+    "approved": false,
+    "elapsedMs": 967,
+    "path": "real_provider_comparison",
+    "classification": "semantic_true_negative"
+  },
+  {
+    "seq": 40,
+    "time": "2026-10-20T21:19:18.267Z",
+    "kind": "logical_request",
+    "id": "new-spinner",
+    "sha256": "ad26020d7d2cb3cea560c8e63a9cc4d00aa11b0dca6487151669d752a064af6b",
+    "questions": {
+      "same_instruction": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Does the challenge in `after` show the same written instruction or checkbox label as in `before`?"
+        }
+      },
+      "same_images": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Do `before` and `after` depict the same pictures in the same positions?",
+          "scope": "Pictures means depicted photographs, illustrations, logos and puzzle-tile content, rather than the screenshot files or a control's border. Added, removed, moved or replaced picture content is a difference. If both views contain no pictures, their picture content is the same."
+        }
+      },
+      "same_selection": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Are exactly the same tiles, boxes or checkboxes selected or checked in `after` as in `before`?",
+          "scope": "A checkbox, tile or option that is checked or selected in one and not the other is a difference. If neither contains anything selectable that is selected, the unchanged state counts as yes."
+        }
+      },
+      "same_control": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` show the same control, with the same shape, size and position?"
+        }
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` contain exactly the same marks?",
+          "scope": "Marks include check marks, ticks, spinners, symbols, text and pictures. Any added, removed or replaced mark is a difference. Two empty controls have the same marks. A change of border color alone does not add or remove a mark."
+        }
+      },
+      "style_only": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Is every difference between `before` and `after` only a change of color, shade, border or outline?",
+          "scope": "Moved, resized, added, removed or replaced shapes, marks or text are not a change of color, shade, border or outline."
+        }
+      }
+    },
+    "stateFields": [
+      "target",
+      "evidence",
+      "padding",
+      "target_region"
+    ]
+  },
+  {
+    "seq": 41,
+    "time": "2026-10-20T21:19:18.807Z",
+    "kind": "provider_http",
+    "id": "new-spinner",
+    "status": 200,
+    "providerRequests": 5
+  },
+  {
+    "seq": 42,
+    "time": "2026-10-20T21:19:18.809Z",
+    "kind": "model_response",
+    "id": "new-spinner",
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.85
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.68
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.91
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.08
+      }
+    }
+  },
+  {
+    "seq": 43,
+    "time": "2026-10-20T21:19:18.811Z",
+    "kind": "case_result",
+    "id": "new-spinner",
+    "expected": false,
+    "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+    "visible": {
+      "x": 283,
+      "y": 300,
+      "width": 304,
+      "height": 140
+    },
+    "located": {
+      "x": 403,
+      "y": 360,
+      "width": 56,
+      "height": 56
+    },
+    "delta": {
+      "changedPixels": 576,
+      "bounds": {
+        "left": 130,
+        "top": 70,
+        "right": 165,
+        "bottom": 105
+      }
+    },
+    "region": {
+      "x": 116,
+      "y": 56,
+      "right": 180,
+      "bottom": 120
+    },
+    "targetScale": 8,
+    "contained": true,
+    "closureInvocations": 1,
+    "logicalRequests": 1,
+    "providerRequests": 1,
+    "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+    "afterRgbaSha256": "0122f4cbdccd8b96e4a9331a1e4f57ac9ec0e8c3bfc9ffc0e7add95f85592d01",
+    "actualRequestSha256": "ad26020d7d2cb3cea560c8e63a9cc4d00aa11b0dca6487151669d752a064af6b",
+    "images": [
+      {
+        "file": "new-spinner-transport-0.png",
+        "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+        "bytes": 7830
+      },
+      {
+        "file": "new-spinner-transport-1.png",
+        "sha256": "51976df07732637924bfce3e8ae5efdad61a763c10432ced56942a96e369ec6a",
+        "bytes": 9293
+      },
+      {
+        "file": "new-spinner-transport-2.png",
+        "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+        "bytes": 4450
+      },
+      {
+        "file": "new-spinner-transport-3.png",
+        "sha256": "1a6d8b17c4af726a33e245666e46b86952e4efff6e1a1ee21b9eed99d1551eb3",
+        "bytes": 6398
+      }
+    ],
+    "questionImagePairs": [
+      {
+        "questionId": "same_instruction",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_images",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_selection",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_control",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "no_new_mark",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "style_only",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      }
+    ],
+    "transformsVerified": true,
+    "sharedStateHasNoImages": true,
+    "preservedByteIdentity": false,
+    "wireStateQuestionsAssetsEqual": true,
+    "httpStatus": 200,
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.85
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.68
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.91
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.08
+      }
+    },
+    "approved": false,
+    "elapsedMs": 902,
+    "path": "real_provider_comparison",
+    "classification": "semantic_true_negative"
+  },
+  {
+    "seq": 44,
+    "time": "2026-10-20T21:19:19.163Z",
+    "kind": "logical_request",
+    "id": "replaced-picture",
+    "sha256": "8eea5a30f85993f29047a508c0917b5719242751044511fb387e41b3e110d89c",
+    "questions": {
+      "same_instruction": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Does the challenge in `after` show the same written instruction or checkbox label as in `before`?"
+        }
+      },
+      "same_images": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Do `before` and `after` depict the same pictures in the same positions?",
+          "scope": "Pictures means depicted photographs, illustrations, logos and puzzle-tile content, rather than the screenshot files or a control's border. Added, removed, moved or replaced picture content is a difference. If both views contain no pictures, their picture content is the same."
+        }
+      },
+      "same_selection": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Are exactly the same tiles, boxes or checkboxes selected or checked in `after` as in `before`?",
+          "scope": "A checkbox, tile or option that is checked or selected in one and not the other is a difference. If neither contains anything selectable that is selected, the unchanged state counts as yes."
+        }
+      },
+      "same_control": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` show the same control, with the same shape, size and position?"
+        }
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` contain exactly the same marks?",
+          "scope": "Marks include check marks, ticks, spinners, symbols, text and pictures. Any added, removed or replaced mark is a difference. Two empty controls have the same marks. A change of border color alone does not add or remove a mark."
+        }
+      },
+      "style_only": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Is every difference between `before` and `after` only a change of color, shade, border or outline?",
+          "scope": "Moved, resized, added, removed or replaced shapes, marks or text are not a change of color, shade, border or outline."
+        }
+      }
+    },
+    "stateFields": [
+      "target",
+      "evidence",
+      "padding",
+      "target_region"
+    ]
+  },
+  {
+    "seq": 45,
+    "time": "2026-10-20T21:19:19.611Z",
+    "kind": "provider_http",
+    "id": "replaced-picture",
+    "status": 200,
+    "providerRequests": 6
+  },
+  {
+    "seq": 46,
+    "time": "2026-10-20T21:19:19.613Z",
+    "kind": "model_response",
+    "id": "replaced-picture",
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.89
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.92
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.01
+      }
+    }
+  },
+  {
+    "seq": 47,
+    "time": "2026-10-20T21:19:19.614Z",
+    "kind": "case_result",
+    "id": "replaced-picture",
+    "expected": false,
+    "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+    "visible": {
+      "x": 283,
+      "y": 300,
+      "width": 304,
+      "height": 140
+    },
+    "located": {
+      "x": 403,
+      "y": 360,
+      "width": 56,
+      "height": 56
+    },
+    "delta": {
+      "changedPixels": 1398,
+      "bounds": {
+        "left": 124,
+        "top": 68,
+        "right": 171,
+        "bottom": 111
+      }
+    },
+    "region": {
+      "x": 116,
+      "y": 56,
+      "right": 180,
+      "bottom": 120
+    },
+    "targetScale": 8,
+    "contained": true,
+    "closureInvocations": 1,
+    "logicalRequests": 1,
+    "providerRequests": 1,
+    "beforeRgbaSha256": "a2d2c41bdc5233c563b916ebb375c0fbfc2a1e68050c95800fc52f114bcbb480",
+    "afterRgbaSha256": "5a114b971302fcd296c9c8a58d19b374b3da29d4f3fa3bf32db0f3e7453ae780",
+    "actualRequestSha256": "8eea5a30f85993f29047a508c0917b5719242751044511fb387e41b3e110d89c",
+    "images": [
+      {
+        "file": "replaced-picture-transport-0.png",
+        "sha256": "d8a51c0ce6a337decbce8aae572ab4dd7387389e5d2155f1bc7f159a84cc447e",
+        "bytes": 8932
+      },
+      {
+        "file": "replaced-picture-transport-1.png",
+        "sha256": "7de72fdc319d50356159e01624da62670610a74de5a65ae53d66dc101af0593f",
+        "bytes": 8518
+      },
+      {
+        "file": "replaced-picture-transport-2.png",
+        "sha256": "09c1d52d9103b21f8559309ea58ec45bf9c94fd54097d37d90eb75a4fcf26e2d",
+        "bytes": 6049
+      },
+      {
+        "file": "replaced-picture-transport-3.png",
+        "sha256": "980a51a5e514ea7b5dc7431c589907a578f116ad093eb9e676b1ee909b592e45",
+        "bytes": 5483
+      }
+    ],
+    "questionImagePairs": [
+      {
+        "questionId": "same_instruction",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_images",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_selection",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_control",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "no_new_mark",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "style_only",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      }
+    ],
+    "transformsVerified": true,
+    "sharedStateHasNoImages": true,
+    "preservedByteIdentity": false,
+    "wireStateQuestionsAssetsEqual": true,
+    "httpStatus": 200,
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.89
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.92
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.01
+      }
+    },
+    "approved": false,
+    "elapsedMs": 803,
+    "path": "real_provider_comparison",
+    "classification": "semantic_true_negative"
+  },
+  {
+    "seq": 48,
+    "time": "2026-10-20T21:19:19.618Z",
+    "kind": "case_result",
+    "id": "changed-instruction",
+    "expected": false,
+    "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+    "visible": {
+      "x": 283,
+      "y": 300,
+      "width": 304,
+      "height": 140
+    },
+    "located": {
+      "x": 403,
+      "y": 360,
+      "width": 56,
+      "height": 56
+    },
+    "delta": {
+      "changedPixels": 280,
+      "bounds": {
+        "left": 97,
+        "top": 15,
+        "right": 135,
+        "bottom": 29
+      }
+    },
+    "region": {
+      "x": 116,
+      "y": 56,
+      "right": 180,
+      "bottom": 120
+    },
+    "targetScale": 8,
+    "contained": false,
+    "closureInvocations": 1,
+    "logicalRequests": 0,
+    "providerRequests": 0,
+    "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+    "afterRgbaSha256": "2f29fc68dd725bae217c8f5c65e8a2011b9526ff53f59d6b92c5fb8344116f15",
+    "approved": false,
+    "elapsedMs": 2,
+    "path": "deterministic_containment_refusal",
+    "classification": "expected_code_path"
+  },
+  {
+    "seq": 49,
+    "time": "2026-10-20T21:19:19.977Z",
+    "kind": "logical_request",
+    "id": "moved-resized",
+    "sha256": "f47d0d0c2797b671de5f3fed8be759c22998b64b59e5ad46e9b494ed586ad87b",
+    "questions": {
+      "same_instruction": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Does the challenge in `after` show the same written instruction or checkbox label as in `before`?"
+        }
+      },
+      "same_images": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Do `before` and `after` depict the same pictures in the same positions?",
+          "scope": "Pictures means depicted photographs, illustrations, logos and puzzle-tile content, rather than the screenshot files or a control's border. Added, removed, moved or replaced picture content is a difference. If both views contain no pictures, their picture content is the same."
+        }
+      },
+      "same_selection": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Are exactly the same tiles, boxes or checkboxes selected or checked in `after` as in `before`?",
+          "scope": "A checkbox, tile or option that is checked or selected in one and not the other is a difference. If neither contains anything selectable that is selected, the unchanged state counts as yes."
+        }
+      },
+      "same_control": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` show the same control, with the same shape, size and position?"
+        }
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` contain exactly the same marks?",
+          "scope": "Marks include check marks, ticks, spinners, symbols, text and pictures. Any added, removed or replaced mark is a difference. Two empty controls have the same marks. A change of border color alone does not add or remove a mark."
+        }
+      },
+      "style_only": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Is every difference between `before` and `after` only a change of color, shade, border or outline?",
+          "scope": "Moved, resized, added, removed or replaced shapes, marks or text are not a change of color, shade, border or outline."
+        }
+      }
+    },
+    "stateFields": [
+      "target",
+      "evidence",
+      "padding",
+      "target_region"
+    ]
+  },
+  {
+    "seq": 50,
+    "time": "2026-10-20T21:19:20.495Z",
+    "kind": "provider_http",
+    "id": "moved-resized",
+    "status": 200,
+    "providerRequests": 7
+  },
+  {
+    "seq": 51,
+    "time": "2026-10-20T21:19:20.497Z",
+    "kind": "model_response",
+    "id": "moved-resized",
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.58
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.91
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.53
+      }
+    }
+  },
+  {
+    "seq": 52,
+    "time": "2026-10-20T21:19:20.498Z",
+    "kind": "case_result",
+    "id": "moved-resized",
+    "expected": false,
+    "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+    "visible": {
+      "x": 283,
+      "y": 300,
+      "width": 304,
+      "height": 140
+    },
+    "located": {
+      "x": 403,
+      "y": 360,
+      "width": 56,
+      "height": 56
+    },
+    "delta": {
+      "changedPixels": 852,
+      "bounds": {
+        "left": 120,
+        "top": 60,
+        "right": 178,
+        "bottom": 118
+      }
+    },
+    "region": {
+      "x": 116,
+      "y": 56,
+      "right": 180,
+      "bottom": 120
+    },
+    "targetScale": 8,
+    "contained": true,
+    "closureInvocations": 1,
+    "logicalRequests": 1,
+    "providerRequests": 1,
+    "beforeRgbaSha256": "ecfdbf51a6e306e8afd74d4a21e30ab854ece88dc501cd0a309d696a4fc0c953",
+    "afterRgbaSha256": "6a81d2480defd402dfc259f533895e9085b29639853c7a28af3ee1b7228d0504",
+    "actualRequestSha256": "f47d0d0c2797b671de5f3fed8be759c22998b64b59e5ad46e9b494ed586ad87b",
+    "images": [
+      {
+        "file": "moved-resized-transport-0.png",
+        "sha256": "9d6ba9ee12fd42c9b10ccf2ae92807ca7b88f3733fca1b6b8de6ba0915a65b1a",
+        "bytes": 7830
+      },
+      {
+        "file": "moved-resized-transport-1.png",
+        "sha256": "484a67f71c36a85760bafc438dd1b9706ea4c9732e2947bc7eac8cd6e92db8a4",
+        "bytes": 7832
+      },
+      {
+        "file": "moved-resized-transport-2.png",
+        "sha256": "6093ccf9e62bd73a2b6c97e84e1d225c69f551453446c81295e7205a353f9ee9",
+        "bytes": 4450
+      },
+      {
+        "file": "moved-resized-transport-3.png",
+        "sha256": "4e14e82a75e4e94e7d18102295659144722c95a1a9d333361c491b02236dbd18",
+        "bytes": 4452
+      }
+    ],
+    "questionImagePairs": [
+      {
+        "questionId": "same_instruction",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_images",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_selection",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_control",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "no_new_mark",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "style_only",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      }
+    ],
+    "transformsVerified": true,
+    "sharedStateHasNoImages": true,
+    "preservedByteIdentity": false,
+    "wireStateQuestionsAssetsEqual": true,
+    "httpStatus": 200,
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.98
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.58
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.91
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.53
+      }
+    },
+    "approved": false,
+    "elapsedMs": 880,
+    "path": "real_provider_comparison",
+    "classification": "semantic_true_negative"
+  },
+  {
+    "seq": 53,
+    "time": "2026-10-20T21:19:20.860Z",
+    "kind": "logical_request",
+    "id": "selected-state",
+    "sha256": "35247d129d5c058e3279abaf891836e8f34e264867b0a0dd3cf5a8f91d935196",
+    "questions": {
+      "same_instruction": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Does the challenge in `after` show the same written instruction or checkbox label as in `before`?"
+        }
+      },
+      "same_images": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Do `before` and `after` depict the same pictures in the same positions?",
+          "scope": "Pictures means depicted photographs, illustrations, logos and puzzle-tile content, rather than the screenshot files or a control's border. Added, removed, moved or replaced picture content is a difference. If both views contain no pictures, their picture content is the same."
+        }
+      },
+      "same_selection": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-0",
+          "after": "image-1",
+          "question": "Are exactly the same tiles, boxes or checkboxes selected or checked in `after` as in `before`?",
+          "scope": "A checkbox, tile or option that is checked or selected in one and not the other is a difference. If neither contains anything selectable that is selected, the unchanged state counts as yes."
+        }
+      },
+      "same_control": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` show the same control, with the same shape, size and position?"
+        }
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Do `before` and `after` contain exactly the same marks?",
+          "scope": "Marks include check marks, ticks, spinners, symbols, text and pictures. Any added, removed or replaced mark is a difference. Two empty controls have the same marks. A change of border color alone does not add or remove a mark."
+        }
+      },
+      "style_only": {
+        "type": "noul",
+        "instructions": {
+          "before": "image-2",
+          "after": "image-3",
+          "question": "Is every difference between `before` and `after` only a change of color, shade, border or outline?",
+          "scope": "Moved, resized, added, removed or replaced shapes, marks or text are not a change of color, shade, border or outline."
+        }
+      }
+    },
+    "stateFields": [
+      "target",
+      "evidence",
+      "padding",
+      "target_region"
+    ]
+  },
+  {
+    "seq": 54,
+    "time": "2026-10-20T21:19:21.396Z",
+    "kind": "provider_http",
+    "id": "selected-state",
+    "status": 200,
+    "providerRequests": 8
+  },
+  {
+    "seq": 55,
+    "time": "2026-10-20T21:19:21.398Z",
+    "kind": "model_response",
+    "id": "selected-state",
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.96
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.94
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.88
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.02
+      }
+    }
+  },
+  {
+    "seq": 56,
+    "time": "2026-10-20T21:19:21.399Z",
+    "kind": "case_result",
+    "id": "selected-state",
+    "expected": false,
+    "source": "Controlled browser-rendered fixture; supplied before-DOM geometry",
+    "visible": {
+      "x": 283,
+      "y": 300,
+      "width": 304,
+      "height": 140
+    },
+    "located": {
+      "x": 403,
+      "y": 360,
+      "width": 56,
+      "height": 56
+    },
+    "delta": {
+      "changedPixels": 1108,
+      "bounds": {
+        "left": 120,
+        "top": 60,
+        "right": 175,
+        "bottom": 115
+      }
+    },
+    "region": {
+      "x": 116,
+      "y": 56,
+      "right": 180,
+      "bottom": 120
+    },
+    "targetScale": 8,
+    "contained": true,
+    "closureInvocations": 1,
+    "logicalRequests": 1,
+    "providerRequests": 1,
+    "beforeRgbaSha256": "a2d2c41bdc5233c563b916ebb375c0fbfc2a1e68050c95800fc52f114bcbb480",
+    "afterRgbaSha256": "93227a1be77cde13ce5e99b5bf8ca2ee4ed16f4785f5bf94e13b30b2c19e3617",
+    "actualRequestSha256": "35247d129d5c058e3279abaf891836e8f34e264867b0a0dd3cf5a8f91d935196",
+    "images": [
+      {
+        "file": "selected-state-transport-0.png",
+        "sha256": "d8a51c0ce6a337decbce8aae572ab4dd7387389e5d2155f1bc7f159a84cc447e",
+        "bytes": 8932
+      },
+      {
+        "file": "selected-state-transport-1.png",
+        "sha256": "e896f2984f229e4271b9513307cd8411be92c9a92d3f875080e5db00d38b82ef",
+        "bytes": 9398
+      },
+      {
+        "file": "selected-state-transport-2.png",
+        "sha256": "09c1d52d9103b21f8559309ea58ec45bf9c94fd54097d37d90eb75a4fcf26e2d",
+        "bytes": 6049
+      },
+      {
+        "file": "selected-state-transport-3.png",
+        "sha256": "a2e8e30a4dd0a7af8124eb58a34d5ddf1811ef596e30e52dacce2f8d969ec080",
+        "bytes": 6692
+      }
+    ],
+    "questionImagePairs": [
+      {
+        "questionId": "same_instruction",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_images",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_selection",
+        "imageIndexes": [
+          0,
+          1
+        ]
+      },
+      {
+        "questionId": "same_control",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "no_new_mark",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      },
+      {
+        "questionId": "style_only",
+        "imageIndexes": [
+          2,
+          3
+        ]
+      }
+    ],
+    "transformsVerified": true,
+    "sharedStateHasNoImages": true,
+    "preservedByteIdentity": false,
+    "wireStateQuestionsAssetsEqual": true,
+    "httpStatus": 200,
+    "model": "jev-1.13.0",
+    "answers": {
+      "same_instruction": {
+        "type": "noul",
+        "noul": 0.96
+      },
+      "same_images": {
+        "type": "noul",
+        "noul": 0.94
+      },
+      "same_selection": {
+        "type": "noul",
+        "noul": 0.02
+      },
+      "same_control": {
+        "type": "noul",
+        "noul": 0.88
+      },
+      "no_new_mark": {
+        "type": "noul",
+        "noul": 0.03
+      },
+      "style_only": {
+        "type": "noul",
+        "noul": 0.02
+      }
+    },
+    "approved": false,
+    "elapsedMs": 899,
+    "path": "real_provider_comparison",
+    "classification": "semantic_true_negative"
+  }
+]

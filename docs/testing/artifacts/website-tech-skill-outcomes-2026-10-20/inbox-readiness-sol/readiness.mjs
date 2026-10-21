@@ -1,0 +1,65 @@
+import {readFileSync,writeFileSync,statSync} from 'node:fs';
+import {join,resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {createHash,randomBytes} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import assert from 'node:assert/strict';
+import dayjs from 'dayjs';
+import {createAdapter} from './adapter.mjs';
+
+const privateRoot=resolve(process.env.QA_PRIVATE_ROOT);
+const checkout=resolve(process.env.QA_ROUTER_CHECKOUT);
+const spot=resolve(process.env.QA_SPOT_CHECKOUT);
+const candidate='857074d99baa09792b66a45d65a3ca73aef53719';
+assert.equal(execFileSync('git',['rev-parse','HEAD'],{cwd:checkout,encoding:'utf8'}).trim(),candidate);
+assert.equal(statSync(privateRoot).mode&0o777,0o700);
+assert(process.env.NODE_EXTRA_CA_CERTS);
+assert.notEqual(process.env.NODE_TLS_REJECT_UNAUTHORIZED,'0');
+const hash=value=>createHash('sha256').update(value).digest('hex');
+const save=(name,value)=>writeFileSync(join(privateRoot,name),JSON.stringify(value,null,2),{mode:0o600});
+const source=readFileSync(join(spot,'convex/researchInbox.ts'),'utf8');
+const block=source.slice(source.indexOf('function decodeEntities('),source.indexOf('/** GET /research-inbox'));
+assert(block.includes('function extractVerification('));
+const extracted=join(privateRoot,'verification-extract.mts');
+writeFileSync(extracted,block+'\nexport {extractVerification};\n',{mode:0o600});
+const {extractVerification}=await import(pathToFileURL(extracted));
+const {createInboxClient}=await import(pathToFileURL(join(checkout,'packages/server/src/skills/inbox/client.ts')));
+const {permittedInboxUrl}=await import(pathToFileURL(join(checkout,'packages/server/src/browse/policy.ts')));
+const configPath=join(privateRoot,'config.json');
+const config=JSON.parse(readFileSync(configPath));
+assert.equal(config.sendAttempts,0,'This bounded preparation has no send authorization resolved yet');
+const result={candidate,recordedAt:dayjs().toISOString(),scope:'Real local HTTPS refusal workflow; real mail and positive read/accept blocked',realMcpFeedPresent:false,emailSendAttempts:0,receivedBodiesFetched:0,positiveReadTested:false,acceptTested:false,modelCalls:0,browserCalls:0,checks:{},sourceBinding:{spotResearchInboxSha256:hash(source),extractedVerificationSha256:hash(block),inboxClientSha256:hash(readFileSync(join(checkout,'packages/server/src/skills/inbox/client.ts'))),policySha256:hash(readFileSync(join(checkout,'packages/server/src/browse/policy.ts')))},recipientSha256:hash(config.recipient)};
+const {server,counts,limits}=createAdapter(privateRoot,extractVerification);result.adapterLimits=limits;
+let accepted=0;
+const client=url=>createInboxClient(url,{signal:AbortSignal.timeout(15000),onAccept:()=>{accepted++;}});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const port=server.address().port;
+const url=new URL(`https://localhost:${port}/research-inbox`);url.searchParams.set('token',config.capability);
+try{
+ const isolated={CL_ROUTER_JOB_CALLBACK_HOSTS:'localhost'};
+ assert(permittedInboxUrl(url.href,isolated));assert.equal(permittedInboxUrl(url.href,{}),null);
+ result.checks.isolatedCallbackHost=true;
+ const wrong=new URL(url);wrong.searchParams.set('token',randomBytes(32).toString('hex'));
+ const wrongHttp=await fetch(wrong);assert.equal(wrongHttp.status,404);await wrongHttp.body.cancel();
+ assert.equal((await client(wrong).read()).ok,false);result.checks.wrongCapability={httpStatus:404,candidateReadOk:false};
+ const unrelated=new URL(url);unrelated.searchParams.set('recipient','unbound-recipient');
+ const unrelatedHttp=await fetch(unrelated);assert.equal(unrelatedHttp.status,404);await unrelatedHttp.body.cancel();
+ result.checks.unboundRecipientQuery={httpStatus:404,mailDataExposed:false,actualMessageIsolationTested:false};
+ // Controlled private deadline transition, not a claim that thirty minutes elapsed.
+ save('config.json',{...config,expiresAt:dayjs().valueOf()-1});
+ const expiredHttp=await fetch(url);assert.equal(expiredHttp.status,404);await expiredHttp.body.cancel();
+ assert.equal((await client(url).read()).ok,false);result.checks.expiredCapability={httpStatus:404,candidateReadOk:false,method:'private expiry moved into past; original expiry restored in finally'};
+ save('config.json',config);
+ const pendingHttp=await fetch(url);assert.equal(pendingHttp.status,503);await pendingHttp.body.cancel();
+ assert.equal((await client(url).read()).ok,false);result.checks.missingActualReceipt={httpStatus:503,candidateReadOk:false,syntheticFallback:false};
+ result.checks.tls={trustedExtraCA:true,certificateHostname:'localhost',validationDisabled:false};
+ assert.equal(accepted,0);result.acceptCalls=accepted;
+}finally{
+ save('config.json',config);
+ await new Promise(resolve=>server.close(resolve));
+ result.httpStopped=!server.listening;
+ result.counts=counts;
+ result.finishedAt=dayjs().toISOString();
+ save('local-http-result.json',result);
+}
+console.log(JSON.stringify(result));

@@ -119,6 +119,147 @@ existing authorization/context tests and both typechecks passed. See
 not-run cases. Evidence: `.context/qa/intake-followups-single-question.png` and
 `.context/qa/followups-runtime/snapshot-check.json`.
 
+## Clairic fast-pass deadline — October 20, 2026
+
+Source `8af88b01a7afb1bca8b0437c9a963d15fb8933bc`. Only
+`declarationsFastPass.ts` and the section-extraction architecture doc changed;
+`clRouterClient.ts` and other router callers are unchanged.
+`runDeclarationsFastPass` races `clRouterExtract` against a 15-second timer.
+At expiry the timer first rejects with a `ClRouterRequestError` of kind
+`timeout`, then aborts the request through the existing `abortSignal`. The
+timer is cleared in `finally`. `executionStarted` is left unset, and source
+checks run before the timer starts.
+
+Failure modes were listed before the change: a fetch that stalls before
+headers, a body that stalls after headers, a late result after expiry,
+cleanup on success and error, no replay after an unknown outcome, and no
+effect on other router callers.
+
+Checks: focused ESLint on `declarationsFastPass.ts`, Convex `tsc --noEmit` and
+root `tsc --noEmit` passed. Each ran once. No unit tests were added.
+
+Scratch fault injection (not a test file) used real `fetch` against a loopback
+HTTP server, with the router URL overridden in-process:
+
+| Case | Result |
+| --- | --- |
+| No response headers | `timeout` at 15,003 ms; server socket closed at 15,004 ms |
+| 200 headers, then body stalls | `timeout` (not `invalid_response`) at 15,001 ms; socket closed at 15,002 ms |
+| Response scheduled 500 ms after the deadline | `timeout` at 15,000 ms; the connection had already closed, so no late result arrived |
+| Body arrives at 14 s, completion telemetry takes 2 s | `timeout` at 15,001 ms; the result is discarded |
+| Success | result returned in 30 ms; timer cleared, never fired |
+| Typed HTTP 500 | `server` / `router_internal`, `executionStarted: true` preserved; timer cleared |
+| Invalid JSON, connection refused | `invalid_response` and `connection`, unchanged; timer cleared |
+| No text layer | plain error; no request and no timer |
+| Direct `clRouterExtract`, reply at 16.5 s | succeeds at 16,505 ms; no global deadline |
+
+Timeout errors never set `executionStarted`. No unhandled rejection
+occurred. Source inspection of `policyExtraction.ts`: the `started` marker is
+saved before the call. Any error, including `timeout`, logs the failure class,
+records a trace error, marks the fast pass `skipped` and continues
+declarations-first. An interrupted `started` marker is also skipped, so the
+call is never replayed. The helper has no retry.
+
+Two telemetry notes, neither blocking: the deadline also covers the start
+telemetry mutation inside `clRouterExtract`; and when completion telemetry
+straddles the deadline, the model-call record says `complete` even though the
+fast pass fell back. After a timeout, the error telemetry mutation finishes
+after the helper has returned.
+
+Live: the original From/To fixture ran once through the wrapped helper on
+shared dev `tangible-warbler-253`. It returned 2026-01-15 / 2027-01-15, both
+cited, with router latency 477 ms and wall time 984 ms (request
+`1bdd3316-91d6-4425-9ac6-00925988e772`). The process exited after 1.08 s, so no
+15-second timer was left behind. Artifacts are in `.context/clairic/timeout/`.
+No preview, deployment, customer data, or Spot write was used.
+
+## Clairic fast-pass dates and lists — October 20, 2026
+
+Source `1c0af6a084ea97a25142e9e8e6986945f7b3f67b`. Only
+`declarationsFastPass.ts` and the section-extraction architecture doc changed.
+The request omits `linesOfBusiness` and `coverageSummaries`.
+`fastPassAsOutput` returns both empty, even for restored artifacts. Date
+instructions name the start and end of the policy period, From/To pairs and
+labeled dates, and forbid inferred dates. The evidence and calendar gates are
+unchanged.
+
+Checks: focused ESLint on `declarationsFastPass.ts`, Convex `tsc --noEmit` and
+root `tsc --noEmit` passed. Each ran once. No unit tests were added.
+
+Offline scratch execution (not a test file) confirmed:
+
+- Unchanged date gates: a calendar-invalid value, a value with a time, a value
+  holding two dates, a value missing from its evidence quote, evidence without
+  a span or with an out-of-range span, and evidence with a null value all map
+  to null.
+- Legacy list answers are ignored. A restored artifact that still stores lines
+  of business and coverages produces empty lists in the output, preview fields
+  and summary, and keeps its scalars and forms.
+- `overlayFastPass` keeps the LLM's lines of business and coverages.
+
+Live synthetic `/v1/extract` on shared dev `tangible-warbler-253` (router
+`12ca9ec2`). Each case ran once and passed, so none was repeated:
+
+| Case | Result | Request |
+| --- | --- | --- |
+| `Policy Period: From 01/15/2026 to 01/15/2027 12:01 A.M. standard time` (previously expiration null, pNull 0.85) | 2026-01-15 / 2027-01-15, both cited; expiration pNull 0.0004 | `613872b6-a485-4d01-a74a-e9bf99ca75cf` |
+| From March 1, 2026 to March 1, 2027 at 12:01 A.M. | 2026-03-01 / 2027-03-01, cited | `2e9359e0-bb92-490d-a7e5-0ae6a7fcc9d8` |
+| Labeled effective/expiration/retroactive with a Date Issued distractor | 2026-06-01 / 2027-06-01 / 2019-09-15, cited; issue date not used | `51478e9e-990c-432a-aba6-1c66366f0f8c` |
+| Effective date only, no end date | expiration null (pNull 0.997), no invented date; summary omits Policy period | `e10db628-1a7e-4da4-80cb-4eeeada9a413` |
+
+No response contained list answers for lines of business or coverages, and every
+summary omitted both. Router latency was 383–566 ms (wall 551–1245 ms). In the
+first case Clairic returned the form `IL 00 17 11` without its `98` edition
+suffix; form mapping is outside this change. These are single samples, so model
+nondeterminism is not ruled out. Artifacts are in `.context/clairic/quality/`. No
+preview, deployment, customer data, or Spot write was used.
+
+## Clairic declarations fast-pass — October 20, 2026
+
+Independent Opus review covered the fixed router endpoint, request/response
+contract, citation offsets, null/list mapping, date evidence, once-per-plan
+execution and unknown outcomes, early preview/context, and scalar authority
+across multiple declarations sections. No unit tests were added.
+
+Router acceptance on Node 24.14.1: `npm run openapi:generate` and `npm run check`
+passed (lint, workspace typechecks, 439 existing tests passed / one skipped,
+build, OpenAPI consistency). The committed router snapshot source is
+`dce080468fcac24b96ca62c0aca50d45e76512bb`. Router credentials use `CF_API_KEY`
+and `CLOUDFLARE_ACCOUNT_ID`; Spot has no new credential configuration.
+
+Spot acceptance: `npm run check:cl-router-contract` passed (20 fixtures,
+11 operations); `npm run lint` passed with three warnings in untouched intake
+files. Root and Convex `tsc --noEmit` passed after completing the artifact-kind
+union and organization ID type boundary. Final reviewed code: `f00e03a6`.
+The extraction parser copy and exact OpenAPI bytes match the pinned router
+revision. No additional broad checks were repeated after the type-only fixes.
+
+Artifacts: `.context/clairic/review/` and `.context/clairic/review/logs/`.
+No Vercel preview, deployment, production mutation, or live policy re-extraction
+was used. Live Clairic latency under one second, preview-before-LLM timing,
+same-advance non-declarations submission, and final scalar `sourceSpanIds`
+remain unverified. Repeat the workflow in
+`docs/architecture/convex-section-extraction.md` on an explicitly selected
+development target with both updated services before claiming those results.
+
+## Safari detail-panel dropdowns — October 19, 2026
+
+Reproduced through native Safari computer use on `/operator/clients`: opening
+Status scrolled the resizable detail panel horizontally by 325px, shifting its
+header, fields, and footer. No production fields were changed. A local synthetic
+fixture using `AppShellPanelLayout`, the app shell's positioned right-panel
+wrapper, `SettingsDrawer`, and the shared Select reproduced a 360px scroll.
+The positioned wrapper is necessary to reproduce; a drawer-only fixture misses it.
+
+The desktop right-panel wrapper now uses `overflow: clip`, preventing popup
+focus from expanding the ancestor panel's scrollable overflow without adding
+another scroll container. Native Safari checks passed for opening, keyboard
+selection, reopening, Escape dismissal, and reopening after keyboard panel
+resize; the local scroll measurement remained zero. Mobile clipping is unchanged.
+Artifacts from this run: `.context/safari-drawer/{before,after}.png` and
+`.context/safari-drawer/page.tsx` (temporary fixture source; no public QA route
+is retained). Full authenticated local-client and other-browser checks were not run.
+
 ## Live agent activity — October 19, 2026
 
 The local Chrome component workflow passed for the real `ChatAssistantTurn`,
@@ -1768,3 +1909,145 @@ Actor/fixture: ordinary signed-in synthetic applicant, local draft `zh71v0s8jb90
 | Uploads, catalog, final questions, premium | Source audit. Requirement classification changes eight rows to16, seven judgments per row (112<128), retaining known-payload splitting. Workforce question labels are structured evidence. Catalog selection remains local. Terminal gap/novelty/primitive selection remains exactly one generation; premium remains its separate bounded structured generation. No additional retries or agent loop introduced. |
 
 Evidence: `.context/qa/intake-system-one/industry-category-prefill.png`, `website-prefill-review.png`, `model-events-final.json`, `types-final.log`, `convex-types-final.log`, `lint-final.log`. The earlier website failure's retrieved evidence is retained even when verification fails. The synthetic fixture now uses Cloudflare public-source facts with the deliberately retained manual Transportation & Logistics / Courier & Delivery classification; it remains an unsubmitted QA record. No real submitted application was changed. Confidence thresholds were not recalibrated against labeled examples; uncertain facts remain for the applicant to answer. Browser viewport styling was not changed in this backend-focused pass.
+
+### Agent trace presentation — October 19, 2026
+
+Cloud Chrome (headed, existing desktop session) exercised the actual shared
+ChatAssistantTurn and ThinkingSummary components against controlled activity
+fixtures served locally. The fixture includes a running search with no completed
+audit entry, so its domain must come from execution-start metadata. Verified:
+
+- One visible active indicator, alongside the active row; a single accessible
+  status announcement. Empty activity, model wait and hidden-activity preferences
+  retain their standalone loading indicator; streaming-off stays responsive.
+- Site labels and circular favicons, overlapping icons and website counts for
+  multiple targets, with all listed domains available through keyboard focus.
+- Concise setup outcomes, repeated identical completed stages grouped with a
+  count, and failed/interrupted/awaiting-approval states still explicit.
+- Completion collapses activity, reopening preserves context, and settled rows
+  have no spinning indicator. Desktop and 390px dark mode have no horizontal
+  overflow; reduced motion is respected.
+
+Artifacts: `.context/trace-ux/qa.mjs`, `browser-qa.txt`, `planning.png`,
+`search.png`, `multi-desktop.png`, and `multi-mobile-dark.png` (workspace-local).
+Existing 127 tests pass; no new unit tests or Vercel preview testing. The release
+PR records the separate authenticated production acceptance after deployment.
+
+Production acceptance on release `1105c245` (PR #487): authenticated cloud Chrome
+at `/operator/brokers` completed a read-only Allianz/Chubb research turn with a
+required plan and two successful searches. Websocket samples recorded the first
+`2 websites` context while running before any audit calls existed, and the later
+`allianz.com` context while running. Both circular favicon treatments rendered;
+keyboard focus revealed both multi-site domains. Artifacts are
+`.context/trace-ux/live-evidence.json`, `live-planning.png`, `live-research.png`
+and `live-complete.png`. No business records were changed. Live review prompted
+a final presentation reduction: omit generic completed stage rows when that
+stage has a factual outcome, keep the plan row to its step count, and use
+singular count labels. The local browser scenarios were repeated for this
+reduction, including an extra generic completed model/tools pair alongside the
+factual outcomes; these rows disappear without inflating the duplicate count.
+
+Trace alignment follow-up: the icon column and content group now share a 24px
+minimum first-line height instead of a fixed icon top offset. Headed Chrome
+measured the website-row icon/text center difference falling from 2.20px to
+0.20px at both 1100px and 390px widths; plain stage rows differ by under 0.01px.
+No horizontal overflow. Screenshots: `.context/trace-ux/aligned-1100.png` and
+`aligned-390.png`; repeatable measurement: `alignment.mjs`. Focused ESLint and
+root typechecking passed; no new unit tests.
+
+## Website tech browser skill outcomes — October 20, 2026
+
+Independent native-local consumer QA is recorded in
+[the focused report](website-tech-skill-outcomes-sol-2026-10-20.md). It covers
+normal operator OTP entry, actual Profile Tech stack rendering, all known and
+unknown skill labels, four statuses, legacy/empty/failed states, bounded consumer
+responses, sanitized storage and actual registered operator tool projections,
+role/tenant exclusion, and live Rescan updates. The report distinguishes local
+executor evidence from untested HTTP/OAuth MCP transport and provisional router
+configuration/provider execution. No product edits, new unit tests or deployments
+were part of the QA packet. Candidate corrections and final cleanup are recorded
+in that report rather than silently treating initial failures as passing.
+
+Native router CAPTCHA acceptance remains incomplete. These independent Sol
+reports preserve failed candidates and their repeatable artifacts:
+
+- [Live ca0 baseline](browser-native-live-sol-2026-10-20.md): real Jev/Box and
+  native cursor movement, followed by refusal; neither demo solved. The three
+  authorized customer forms were inspected without fields or submissions.
+- [Live 96d retest](browser-native-live-sol-96d1db5-2026-10-20.md): improved
+  presence classification, but small hover crops were rejected by the provider;
+  Turnstile's action gate also refused. Zero press/release events.
+- [7ad provider diagnostic](browser-provider-diagnostic-sol-7ad8e5e-2026-10-20.md):
+  one padded-image request reached the provider with exact embedded pixels, but
+  hover-only confidence remained below the required threshold. No browser input
+  or native-click acceptance is claimed.
+- [a19 gate diagnostic](browser-gate-live-sol-a19f6fa-2026-10-20.md): a fresh
+  screenshot reached the gate, but relevance was 0.58. The full historical
+  observation was not retained; the report marks reconstructed fields.
+- [4bbe gate diagnostic](browser-gate-live-sol-4bbe20e-2026-10-20.md): the full
+  actual request was retained before inference, with the screenshot inside the
+  observation and an explicit CAPTCHA action. Relevance was 0.65 against 0.7;
+  neither the native primitive nor any input command ran.
+- [a055 preserved-image diagnostic](browser-provider-diagnostic-sol-a055d14-2026-10-20.md):
+  the original native Box plus four-pixel margin excludes 108 of 300 changed
+  pixels. The unchanged comparison returns false before inference; that packet
+  never reached the six-question provider comparison.
+- [d28 gate reachability](browser-gate-live-sol-d28fb67-2026-10-20.md): one real
+  gate decision passed with relevance 0.78 and reached the diagnostic stop spy.
+  Goal and questions were unchanged. Zero native inputs; this does not establish
+  a CAPTCHA solve or the cause of the changed score.
+- [857 inbox readiness](browser-inbox-readiness-sol-2026-10-20.md): actual
+  trusted-HTTPS refusal checks passed with zero messages exposed. Real delivery,
+  positive read and acceptance remain blocked on the exact sender address and
+  existing MCP conversation ID; no email was sent.
+- [857 native demo run](browser-native-live-sol-857074d-2026-10-20.md): Turnstile's
+  testing-key widget showed Success after native top-page motion and one
+  press/release. V2 refused before pressing because two hover checks fell below
+  threshold; its quota warning was already present and unchanged. Neither result
+  establishes production challenge strength or host-form acceptance.
+- [af229cc comparison corpus](browser-comparison-sol-af229cc-2026-10-20.md): the
+  preserved v2 pair and an independent border-only hover both produced false
+  negatives at the unchanged threshold. Six semantic changes were refused, an
+  instruction change failed deterministic containment, and unchanged pixels
+  passed without inference. Eight real requests, no retries or native input;
+  exact image transforms and per-question wire references were verified. This
+  remains a functional failure, not native CAPTCHA acceptance.
+- [Frozen Jev 1.14 screen](browser-comparison-model114-sol-2026-10-20.md): eight
+  original requests changed only the model. The independent border-only case
+  passed, but the saved real-widget hover still failed; all six negative cases
+  refused. The candidate was rejected, with no production model change.
+- [Independent 0.8 cutoff screen](https://github.com/claritylabs-inc/cl-router/blob/ef3c3d836740271debb14ff52a5490ddc82e8850/test-harness/browser-agent/reports/heldout-calibration-af229cc.md):
+  the second cosmetic case failed with selection probability 0.56. The declared
+  fail-fast run stopped after two requests; nine eligible cases were not run and
+  one case refused deterministically. The cutoff was rejected; runtime stays at
+  0.9. This does not establish negative-case or native performance.
+- [Single stronger-model probe](browser-hover-reasoner-probe-sol-2026-10-20.md):
+  one frozen saved-widget pair returned all six `yes` from the configured
+  broker's `openai/gpt-5.6-sol` route. Manager verified the request reconstruction,
+  13 artifact hashes and 14 source blobs. This accepts only that exposed
+  regression: no negative corpus, native integration or cascade adoption was
+  tested. Provider-default effort and broker transport differ from the proposed
+  direct helper; internal provider attempt count and `store:false` are unproven.
+
+Controlled regressions on exact router `af229cc` are separately accepted:
+[616 distinct skill requirements](https://github.com/claritylabs-inc/cl-router/blob/0c503dc0fa77c1069a23be08752f66d24016a54b/test-harness/browser-agent/reports/final-af229cc.md)
+passed, while the
+[772-workflow runtime union](https://github.com/claritylabs-inc/cl-router/blob/47ce2cee428f27e1dbee88ad8f4bf772e13c6270/reports/runtime/af229/final/README.md)
+records 768 passes, three unverified cases and one limitation. These use actual
+local Chrome with scripted decisions. Pinned-Chrome OOPIF availability, competing
+client behavior, hosted isolation and external availability retain the report's
+explicit limits. These results do not clear the real-provider hover failures.
+
+[Final Spot consumer QA](website-tech-final-consumer-sol-2026-10-20.md) on
+`cc8bb050` verifies the exact `af229cc` contract bytes (22 fixtures, 11 operations),
+15 actual local UI groups, eight boundary groups, five access groups and six
+request-construction groups. Keyboard entry, reload and Rescan subscriptions
+pass. The existing 416px inner-shell overflow at a 390px viewport remains open;
+skill text wraps within its card. The [empty-state addendum](website-tech-empty-consumer-sol-2026-10-20.md)
+verifies an actual null tool/query result and the unscanned UI before any scan,
+with zero profiles and router jobs before and after. Synthetic request seams and local executor checks do not
+establish provider execution or HTTP/OAuth MCP acceptance.
+
+These reports do not establish hosted sandbox isolation, production challenge
+solving, controlled inbox delivery, or customer submission acceptance. Release
+acceptance remains incomplete.

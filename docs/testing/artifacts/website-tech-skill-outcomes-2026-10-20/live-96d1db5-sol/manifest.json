@@ -1,0 +1,21 @@
+{
+  "candidate": "96d1db5a32882bab6c807ac8d1f3fb27a8d39b4d",
+  "scope": "exact-source native live CAPTCHA retest; no functional success",
+  "files": {
+    "v2-skill-model.png": "abf78ae52a5845f74f027350b6d5cc19b45b612f620a117a941e242c8d256990",
+    "v2-native-box-model.png": "b5b3ff95dd1cb6a5076618f7fb8cbf04eb50f519ed777a07b42e97536a92ffee",
+    "v2-hover-before.png": "11f676baf297afd5985984ad19924902304ddd77c27455c69b3c52aff0ecac94",
+    "v2-hover-after.png": "17ce9f58c431c43bc6d4383c3276a255cf529fa4f7f7f23b9204412b062d9f5d",
+    "turnstile-skill-model.png": "a644043d2662fa7b63cb67a5b0f49737a0c0dd19dbc15354cf907c3d5134d28e",
+    "v2-result.png": "59737898aaa9d7a50a5136e6666506ede0f704c3e1383809832a34c33dd9e89d",
+    "turnstile-result.png": "194fed7ea284c4bf77313d19793c75d20c8131be1809317f104890722ec8b17f",
+    "runtime-trace.json": "f0ccdb100c8acc6869302b338dce0d1ed4843b1544a23ffb04883fb62843960d",
+    "hover-diagnostic.json": "d0591b797fd5bc5791c9342e67e16ad8f89184eb42172dc61f570be1808d4f28",
+    "crop-diff.json": "6f38ade428d5a7475a889e6beeeb4722f2ea911e84318432e19226bff85b53db",
+    "recaptcha-v2-skill-result.json": "2934554586b487939c3343287f4f77a798e8ae311801d6be2cd0cb79592a7cf5",
+    "turnstile-skill-result.json": "bbbff552a7de1e4791f7bc6a08dc74af7d0dd4b93790406be604d96f4da656a9",
+    "runtime-probe.mjs": "60128eecdee4730c912c448fb0f1b6265717e90f18924e1a2782d69c0d5d6881",
+    "diagnose-hover.mjs": "ce11d3941f9d7ecaa43c5892a8a2d6f7a9de5f85d9d7a90507bc01df44d84d79",
+    "results.json": "dddebf193b38880fb8ddb1b4f2bffa071ca79a1c9c033ce1ce6902452f656ec7"
+  }
+}

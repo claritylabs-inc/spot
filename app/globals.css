@@ -286,7 +286,8 @@
   select,
   [data-slot="select-trigger"],
   [role="combobox"],
-  [data-slot="input-group"]
+  [data-slot="input-group"],
+  [data-slot="website-input"]
 ):is(:focus, :focus-visible, :focus-within) {
   --tw-ring-shadow: 0 0 #0000;
   --tw-ring-offset-shadow: 0 0 #0000;
@@ -296,17 +297,19 @@
 }
 
 /* Admin field controls keep the readable row presentation until focused. */
-[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"]) {
+[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"], [data-slot="website-input"]) {
   background-color: transparent;
   border-color: transparent;
   box-shadow: none;
 }
-[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"]):hover {
+[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"], [data-slot="website-input"]):hover {
   background-color: var(--muted);
 }
-[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"]):is(:focus, :focus-visible, :focus-within) {
-  background-color: var(--background);
-  border-color: var(--input);
+[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"], [data-slot="website-input"]):is(:focus, :focus-visible, :focus-within) {
+  background-color: var(--muted);
+  border-color: transparent;
+  box-shadow: none;
+  outline: none;
 }
 /* All editable values share a left edge, including numbers and select values. */
 [data-operator-inline-fields] [data-inline-field-row] :is(input, textarea, [data-slot="select-trigger"], [data-slot="select-value"]) {
@@ -365,6 +368,13 @@
   line-height: inherit;
 }
 
+/* Website prefixes and values follow the surrounding table or inline-row type. */
+[data-operator-inline-fields] [data-slot="website-input"],
+[data-operator-inline-fields] [data-slot="website-input"] :is([data-slot="input-group-addon"], span, input) {
+  font-size: inherit;
+  line-height: inherit;
+}
+
 /* Native numeric spinners follow the same focus-only affordance as intake counts. */
 input[type="number"]:not(:focus) {
   -moz-appearance: textfield;
@@ -373,4 +383,19 @@ input[type="number"]:not(:focus)::-webkit-inner-spin-button,
 input[type="number"]:not(:focus)::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+/* Skeletons appear only if loading outlasts a beat, so fast navigations never flash them. */
+@keyframes spot-skeleton-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-slot="skeleton"] {
+    animation: spot-skeleton-in 200ms ease-out 150ms both;
+  }
 }

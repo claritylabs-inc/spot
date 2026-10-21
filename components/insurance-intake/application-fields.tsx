@@ -1,4 +1,5 @@
 "use client";
+import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { RemoveButton } from "@/components/ui/remove-button";
 import {
   InlineFieldsContext,
@@ -22,6 +23,7 @@ import {
 } from "@claritylabs-inc/ui/components/tabs";
 
 import { Input } from "@claritylabs-inc/ui/components/input";
+import { MapboxPlaceSelect } from "@/components/ui/mapbox-place-select";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import {
   INTAKE_FIELDS,
@@ -44,6 +46,11 @@ import {
   IntakeRelatedEntities,
   IntakeRevenueFields,
 } from "./details-fields";
+
+const COUNTRY_CODES: Record<string, string> = {
+  "United States": "us",
+  Canada: "ca",
+};
 
 /** The operator edits the same typed fields used by the customer questionnaire. */
 export function IntakeApplicationFields({
@@ -135,34 +142,38 @@ export function IntakeApplicationFields({
   const formationCountry =
     details.registrationCountry ??
     (formationParts.length > 1 ? formationParts.at(-1)! : "");
+  const formationCountryCode =
+    COUNTRY_CODES[formationCountry || "United States"];
   const formationRows = (
     <div
       key="formation"
       className="contents [&>*]:border-b [&>*]:border-border"
     >
       <InlineFieldRow label="Country of formation">
-        <Input
-          aria-label="Country of formation"
-          placeholder="Not provided"
+        <MapboxPlaceSelect
+          kind="country"
+          ariaLabel="Country of formation"
           value={formationCountry}
-          onChange={(event) =>
+          onChange={(country) =>
             onDetailsChange({
               ...details,
-              registrationState: formationState,
-              registrationCountry: event.target.value,
+              registrationState:
+                country === formationCountry ? formationState : "",
+              registrationCountry: country,
             })
           }
         />
       </InlineFieldRow>
       <InlineFieldRow label="State / province of formation">
-        <Input
-          aria-label="State / province of formation"
-          placeholder="Not provided"
+        <MapboxPlaceSelect
+          kind="region"
+          ariaLabel="State / province of formation"
+          countryCode={formationCountryCode}
           value={formationState}
-          onChange={(event) =>
+          onChange={(state) =>
             onDetailsChange({
               ...details,
-              registrationState: event.target.value,
+              registrationState: state,
               registrationCountry: formationCountry,
             })
           }
@@ -172,7 +183,13 @@ export function IntakeApplicationFields({
   );
   const text = (key: IntakeField, multiline = false) => (
     <InlineFieldRow key={key} label={INTAKE_FIELDS[key]}>
-      {multiline ? (
+      {key === "website" ? (
+        <WebsiteInput
+          aria-label={INTAKE_FIELDS[key]}
+          value={answers[key] ?? ""}
+          onChange={(website) => onAnswersChange({ ...answers, website })}
+        />
+      ) : multiline ? (
         <Textarea
           rows={1}
           aria-label={INTAKE_FIELDS[key]}

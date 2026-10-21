@@ -1,0 +1,86 @@
+{
+  "candidate": "857074d99baa09792b66a45d65a3ca73aef53719",
+  "canonicalSourceEdited": false,
+  "typescriptExecutedThroughTsx": true,
+  "providerImportBindings": 1,
+  "observerWrapperSha256": "aaed6196d41f273c80a1c8b81ec069242a82f93249e4a499ada8bcca3c577209",
+  "method": "Node registerHooks redirects only primitives.ts executeDecision import to a private observation wrapper. Same actual input and options delegate to unchanged candidate provider; only fetch is observed. Controller skill decisions use the same provider function. No scripted decisions or source guard changes.",
+  "sourceFiles": {
+    "packages/server/src/browse/primitives.ts": "6aa48f761a19e11dea6a012c950489e8c2d4c43ed8698821e8f8f7b983e3dbd3",
+    "packages/server/src/browse/targets.ts": "c53023bfc94809746347de16c09485ff01cfa178903ccb1201a04a7490ba3efb",
+    "packages/server/src/skills/harness.ts": "aeaa051fbcf1e6385944a5e9b6168be96947e7294ee2d64c6676f490c38cd030",
+    "packages/server/src/skills/gate.ts": "412b525e5542ab3269623e730448747b337412f23692ebf76fa179878f2c6379",
+    "packages/server/src/skills/challenge/captcha.ts": "d59110cbd2cb5e8d6e6564c126b74759a68d64cc5c48d019f75fc21e323a37ec",
+    "packages/server/src/providers/decisions.ts": "290b09fe56f6ceada32dd359820eedaa31b18eacc6f1cfb64536110b71788ce2"
+  },
+  "closures": [
+    {
+      "name": "locate",
+      "nodeKind": "VariableDeclaration",
+      "sha256": "95ebd1dd6c0a3765ca93599651e8c892606869e98436668b6379806730da45f4",
+      "startLine": 459,
+      "endLine": 473
+    },
+    {
+      "name": "cosmeticHover",
+      "nodeKind": "VariableDeclaration",
+      "sha256": "da3ad3de6ecbc20410c49bdd41df998c89dce7e9551a14479aad1c1864516f0b",
+      "startLine": 480,
+      "endLine": 564
+    },
+    {
+      "name": "glideTo",
+      "nodeKind": "VariableDeclaration",
+      "sha256": "e064be1a31aa4d17f15f3460f56dd7403c8141fcdede4b4277f5f98b024697ec",
+      "startLine": 659,
+      "endLine": 674
+    },
+    {
+      "name": "challengeFrames",
+      "nodeKind": "VariableDeclaration",
+      "sha256": "406d555589159759e165b3bf0000362695da00c959619a0fcafbb007447818af",
+      "startLine": 690,
+      "endLine": 741
+    },
+    {
+      "name": "openFence",
+      "nodeKind": "VariableDeclaration",
+      "sha256": "e473c4e81a3e2e423b639428e4f5b4f455c4a628ee78804403c00b9c2b09b13e",
+      "startLine": 755,
+      "endLine": 910
+    },
+    {
+      "name": "captchaClick",
+      "nodeKind": "PropertyAssignment",
+      "sha256": "65eeaa1b00417b90b0a44744804c339435c37df190c3e4b6247d1c6ff76961e2",
+      "startLine": 1380,
+      "endLine": 1489
+    },
+    {
+      "name": "grayCanvas",
+      "nodeKind": "FunctionDeclaration",
+      "sha256": "f22163265867f7090d828ad249e72611edfc6e331f26f3abc6a56dfe68a3f9fa",
+      "startLine": 1542,
+      "endLine": 1547
+    },
+    {
+      "name": "enlargedFrame",
+      "nodeKind": "FunctionDeclaration",
+      "sha256": "a2315019679ef9d6044a6e88da13710e3205c217918415c6b27b46b08412586b",
+      "startLine": 1554,
+      "endLine": 1563
+    },
+    {
+      "name": "cursorPath",
+      "nodeKind": "FunctionDeclaration",
+      "sha256": "72aafaa5799030ecaea4adea5109c2ceea53234b53239cc3afde5d1da2e15e06",
+      "startLine": 1576,
+      "endLine": 1601
+    }
+  ],
+  "logicalRequests": 12,
+  "providerHttpAttempts": 12,
+  "allWireStatesQuestionsAssetsEqualLogical": true,
+  "actualNativeCalls": 2,
+  "stopSpy": false
+}

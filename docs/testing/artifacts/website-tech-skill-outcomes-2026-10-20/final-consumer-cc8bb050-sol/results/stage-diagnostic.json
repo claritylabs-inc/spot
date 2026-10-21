@@ -1,0 +1,62 @@
+[
+  {
+    "attempt": 1,
+    "queued": true,
+    "statusBefore": "pending",
+    "priorBrowse": true,
+    "claimed": false,
+    "statusAtFinish": "failed",
+    "statusAfter": "failed",
+    "savedBrowse": true,
+    "equals": false,
+    "browseKeys": [
+      "actions",
+      "adoptedDomains",
+      "error",
+      "finished",
+      "redirects",
+      "signupSubmitted",
+      "steps"
+    ]
+  },
+  {
+    "attempt": 2,
+    "queued": true,
+    "statusBefore": "pending",
+    "priorBrowse": true,
+    "claimed": false,
+    "statusAtFinish": "failed",
+    "statusAfter": "failed",
+    "savedBrowse": true,
+    "equals": false,
+    "browseKeys": [
+      "actions",
+      "adoptedDomains",
+      "error",
+      "finished",
+      "redirects",
+      "signupSubmitted",
+      "steps"
+    ]
+  },
+  {
+    "attempt": 3,
+    "queued": true,
+    "statusBefore": "pending",
+    "priorBrowse": true,
+    "claimed": true,
+    "statusAtFinish": "running",
+    "statusAfter": "completed",
+    "savedBrowse": true,
+    "equals": true,
+    "browseKeys": [
+      "actions",
+      "adoptedDomains",
+      "finished",
+      "redirects",
+      "signupSubmitted",
+      "skills",
+      "steps"
+    ]
+  }
+]

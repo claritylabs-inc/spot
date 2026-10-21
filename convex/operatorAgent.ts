@@ -26,6 +26,11 @@ import {
 import { serializeToolActivityInput } from "./lib/agentToolAudit";
 import { clientIdentity } from "./lib/clientProfile";
 import { scheduleCompanyResearch } from "./companyResearch";
+import {
+  readWebsiteTechProfile,
+  scheduleWebsiteTechScan,
+} from "./websiteTech";
+import { websiteTechDomain } from "./lib/websiteTech";
 import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
 import { operatorEmailContentValidator } from "./lib/threadMessageValidators";
@@ -1751,7 +1756,13 @@ async function executeToolDomain(
       website: organization.website,
       companyResearch: organization.companyResearch ?? null,
       ...(organization.type === "client"
-        ? { businessProfile: await readIntakeBusinessProfile(ctx, orgId) }
+        ? {
+            businessProfile: await readIntakeBusinessProfile(ctx, orgId),
+            websiteTech: await readWebsiteTechProfile(
+              ctx,
+              organization.website,
+            ),
+          }
         : {}),
       ...(organization.type === "broker"
         ? { companyWiki: await readOrgWiki(ctx, orgId) }
@@ -2909,6 +2920,28 @@ async function executeToolDomain(
       orgId,
       fields: Object.keys(patch),
       companyResearch: (await ctx.db.get(orgId))?.companyResearch ?? null,
+    };
+  }
+
+  if (toolName === "research_client_tech_stack") {
+    let website =
+      typeof input.website === "string" ? input.website : undefined;
+    if (input.orgId) {
+      const org = await ctx.db.get(normalizeOrganizationId(ctx, input.orgId));
+      if (!org || org.deletedAt !== undefined || org.type !== "client")
+        throw new Error("Client organization not found");
+      if (!org.website) throw new Error("This client has no website to scan");
+      website = org.website;
+    }
+    const domain = websiteTechDomain(website);
+    if (!domain) throw new Error("Website must be a public domain");
+    const queued = await scheduleWebsiteTechScan(ctx, website, {
+      force: input.force === true,
+    });
+    return {
+      queued,
+      domain,
+      current: await readWebsiteTechProfile(ctx, website),
     };
   }
 

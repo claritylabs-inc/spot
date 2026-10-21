@@ -432,6 +432,7 @@ function PromptTextSegment({
   token,
   placeholder,
   isCommandVariant,
+  isDockVariant,
   roomyOnMobile,
   registerRef,
   textIndent,
@@ -444,6 +445,7 @@ function PromptTextSegment({
   /** Leaves room on the first line for an inline chip rendered before the text. */
   textIndent?: number;
   isCommandVariant: boolean;
+  isDockVariant: boolean;
   roomyOnMobile: boolean;
   registerRef: (id: string, node: HTMLTextAreaElement | null) => void;
   onFocus: () => void;
@@ -464,7 +466,7 @@ function PromptTextSegment({
       onKeyDown={onKeyDown}
       style={textIndent ? { textIndent } : undefined}
       className={cn(
-        `max-w-full p-0 placeholder:text-muted-foreground/40 ${typeStyle("control.input")}`,
+        `max-w-full p-0 placeholder:text-muted-foreground/40 ${typeStyle(isDockVariant ? "body.large" : "control.input")}`,
         isPlaceholderSegment
           ? isCommandVariant
             ? "min-h-24 min-w-56 flex-[1_1_14rem]"
@@ -1415,6 +1417,7 @@ export const SpotPromptInput = forwardRef<
               : undefined
           }
           isCommandVariant={isCommandVariant}
+          isDockVariant={isDockVariant}
           roomyOnMobile={roomyOnMobile}
           registerRef={registerTextAreaRef}
           textIndent={

@@ -4,7 +4,7 @@ export type OperatorImpersonationTarget = {
 };
 
 export function getOperatorBrokerHref(targetOrgId: string) {
-  return `/operator/brokers?broker=${encodeURIComponent(targetOrgId)}`;
+  return `/operator/brokers/${encodeURIComponent(targetOrgId)}`;
 }
 
 export function getOperatorImpersonationReturnHref(

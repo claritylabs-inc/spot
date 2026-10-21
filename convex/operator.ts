@@ -55,7 +55,10 @@ import {
   type ExtractionSectionFactView,
 } from "./lib/extractionRunView";
 
-const clientStatusValidator = v.union(v.literal("limited"), v.literal("active"));
+const clientStatusValidator = v.union(
+  v.literal("limited"),
+  v.literal("active"),
+);
 const orgRoleValidator = v.union(v.literal("admin"), v.literal("member"));
 const operatorClientUserValidator = v.object({
   email: v.string(),
@@ -206,19 +209,37 @@ export const setApproveAll = mutation({
   },
 });
 
-async function listOperatorClientRows(ctx: QueryCtx) {
-  const clients = await ctx.db
-    .query("organizations")
-    .withIndex("deletion_type", (q) =>
-      q.eq("deletedAt", undefined).eq("type", "client"),
+async function inProgressIntakeDrafts(ctx: QueryCtx) {
+  const rows = await ctx.db
+    .query("procurementRequests")
+    .withIndex("intake_submitted_status", (q) =>
+      q.eq("intakeSubmittedAt", undefined).eq("status", "draft"),
     )
+    .order("desc")
     .take(500);
+  return rows.filter(
+    (row) => !row.deletedAt && row.intakeSchemaVersion !== undefined,
+  );
+}
+
+async function listOperatorClientRows(ctx: QueryCtx) {
+  const [clients, drafts] = await Promise.all([
+    ctx.db
+      .query("organizations")
+      .withIndex("deletion_type", (q) =>
+        q.eq("deletedAt", undefined).eq("type", "client"),
+      )
+      .take(500),
+    inProgressIntakeDrafts(ctx),
+  ]);
+  const inProgress = new Set(drafts.map((row) => row.clientOrgId));
   return await Promise.all(
     clients.map(async (client) => {
       const admin = await getOrgAdmin(ctx, client._id);
       return {
         _id: client._id,
         name: client.name,
+        dba: client.profileFacts?.dba?.value.trim() || undefined,
         ...(await orgBrandFields(ctx, client)),
         agentHandle: client.agentHandle,
         clientAccessStatus: clientAccessStatus(client),
@@ -231,6 +252,7 @@ async function listOperatorClientRows(ctx: QueryCtx) {
         adminName: admin?.name,
         adminEmail: admin?.email,
         adminPhone: admin?.phone,
+        applicationInProgress: inProgress.has(client._id),
         createdAt: client._creationTime,
       };
     }),
@@ -242,6 +264,96 @@ export const listClients = query({
   handler: async (ctx) => {
     await requireOperator(ctx);
     return await listOperatorClientRows(ctx);
+  },
+});
+
+/** Unsubmitted self-serve applications not yet tied to a client; listClients flags the rest. */
+export const listUnlinkedApplications = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireOperator(ctx);
+    const drafts = await inProgressIntakeDrafts(ctx);
+    const rows = await Promise.all(
+      drafts.map(async (row) => {
+        const client = row.clientOrgId ? await ctx.db.get(row.clientOrgId) : null;
+        if (client && client.deletedAt === undefined) return null;
+        const owner = await ctx.db.get(row.ownerUserId ?? row.createdByUserId);
+        const answers = row.intakeAnswers ?? {};
+        return {
+          requestId: row._id,
+          companyName: answers.dba || answers.legalName || undefined,
+          applicantName: answers.name || owner?.name,
+          applicantEmail: answers.email || owner?.email,
+          createdAt: row.createdAt,
+        };
+      }),
+    );
+    return rows.filter((row) => row !== null);
+  },
+});
+
+export const deleteUnlinkedApplications = mutation({
+  args: {
+    requestIds: v.array(v.id("procurementRequests")),
+    withUsers: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
+    if (args.requestIds.length > 100)
+      throw new Error("Delete at most 100 applicants at a time");
+    for (const requestId of args.requestIds) {
+      const request = await ctx.db.get(requestId);
+      if (
+        !request ||
+        request.deletedAt !== undefined ||
+        request.status !== "draft" ||
+        request.intakeSubmittedAt !== undefined
+      )
+        continue;
+      const client = request.clientOrgId
+        ? await ctx.db.get(request.clientOrgId)
+        : null;
+      if (client && client.deletedAt === undefined)
+        throw new Error("Applicant already has a client; delete the client");
+      await ctx.db.patch(request._id, {
+        deletedAt: dayjs().valueOf(),
+        deletedByUserId: operator.userId,
+      });
+      let deletedUser = false;
+      if (args.withUsers) {
+        const userId = request.ownerUserId ?? request.createdByUserId;
+        const user = await ctx.db.get(userId);
+        const memberships = await ctx.db
+          .query("orgMemberships")
+          .withIndex("user", (q) => q.eq("userId", userId))
+          .take(1);
+        if (
+          user &&
+          memberships.length === 0 &&
+          user._id !== operator.userId &&
+          user.accountKind !== "operator" &&
+          !user.serviceAccountKind
+        ) {
+          await deleteUserAuth(ctx, userId);
+          await ctx.scheduler.runAfter(0, internal.clientDeletion.purgeClient, {
+            userIds: [userId],
+            position: 0,
+          });
+          deletedUser = true;
+        }
+      }
+      await writeOperatorAudit(ctx, {
+        operatorUserId: operator.userId,
+        type: "setup_write",
+        summary: `Deleted unlinked applicant ${request.title}${deletedUser ? " and their user" : ""}`,
+        metadata: {
+          operation: "delete_unlinked_application",
+          requestId: request._id,
+          deletedUser,
+        },
+      });
+    }
   },
 });
 
@@ -1112,6 +1224,98 @@ export const markSoloClientLaunchedInternal = internalMutation({
         resendEmailId: args.resendEmailId,
       },
     });
+  },
+});
+
+async function deleteUserAuth(ctx: MutationCtx, userId: Id<"users">) {
+  for await (const session of ctx.db
+    .query("authSessions")
+    .withIndex("userId", (q) => q.eq("userId", userId))) {
+    for await (const token of ctx.db
+      .query("authRefreshTokens")
+      .withIndex("sessionId", (q) => q.eq("sessionId", session._id)))
+      await ctx.db.delete(token._id);
+    await ctx.db.delete(session._id);
+  }
+  for await (const account of ctx.db
+    .query("authAccounts")
+    .withIndex("userIdAndProvider", (q) => q.eq("userId", userId))) {
+    for await (const code of ctx.db
+      .query("authVerificationCodes")
+      .withIndex("accountId", (q) => q.eq("accountId", account._id)))
+      await ctx.db.delete(code._id);
+    await ctx.db.delete(account._id);
+  }
+}
+
+export const deleteClientWithUsers = mutation({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
+    const org = await ctx.db.get(args.orgId);
+    if (!org || org.type !== "client") throw new Error("Client not found");
+    const memberships = await ctx.db
+      .query("orgMemberships")
+      .withIndex("organization", (q) => q.eq("orgId", org._id))
+      .take(501);
+    if (memberships.length > 500)
+      throw new Error("Too many users to delete at once");
+    const userIds: Id<"users">[] = [];
+    for (const membership of memberships) {
+      const user = await ctx.db.get(membership.userId);
+      if (
+        !user ||
+        user._id === operator.userId ||
+        user.accountKind === "operator" ||
+        user.serviceAccountKind
+      )
+        continue;
+      const userMemberships = await ctx.db
+        .query("orgMemberships")
+        .withIndex("user", (q) => q.eq("userId", user._id))
+        .take(2);
+      if (userMemberships.some((other) => other.orgId !== org._id)) continue;
+      userIds.push(user._id);
+      await deleteUserAuth(ctx, user._id);
+    }
+    const connections = await ctx.db
+      .query("slackWorkspaceConnections")
+      .withIndex("client_status", (q) => q.eq("clientOrgId", org._id))
+      .take(50);
+    for (const connection of connections)
+      if (connection.serviceUserId) userIds.push(connection.serviceUserId);
+    if (org.deletedAt === undefined)
+      await ctx.db.patch(org._id, {
+        deletedAt: dayjs().valueOf(),
+        deletedByUserId: operator.userId,
+      });
+    for await (const session of ctx.db
+      .query("operatorImpersonationSessions")
+      .withIndex("target", (q) => q.eq("targetOrgId", org._id))) {
+      if (session.status === "active")
+        await ctx.db.patch(session._id, {
+          status: "ended",
+          endedAt: dayjs().valueOf(),
+        });
+    }
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "setup_write",
+      targetOrgId: org._id,
+      summary: `Deleted client ${org.name} and ${userIds.length} user${userIds.length === 1 ? "" : "s"}`,
+      metadata: {
+        operation: "delete_with_users",
+        organizationType: "client",
+        deletedUsers: userIds.length,
+      },
+    });
+    await ctx.scheduler.runAfter(0, internal.clientDeletion.purgeClient, {
+      orgId: org._id,
+      userIds,
+      position: 0,
+    });
+    return { deletedUsers: userIds.length };
   },
 });
 

@@ -3,6 +3,7 @@
 import dayjs from "dayjs";
 import { isOperatorEmailRecipient } from "../lib/operatorEmailAddress";
 import { DEFAULT_AGENT_DOMAIN } from "../lib/agentEmailDomains";
+import { isResearchEmailAddress } from "../lib/websiteTech";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
@@ -502,6 +503,20 @@ export const processInbound = internalAction({
       if (webhook.type !== "email.received" || !data.email_id) return;
       // Resend delivers account-wide events to both production and shared dev.
       if (process.env.SPOT_ENV !== "production") return;
+    }
+    // Research-domain mail only serves browser-agent signups; it never reaches agents or operators.
+    const researchRecipients = routingRecipients.filter(isResearchEmailAddress);
+    if (researchRecipients.length > 0) {
+      if (!webhookSecret || webhook.type !== "email.received" || !data.email_id)
+        return;
+      for (const address of researchRecipients)
+        await ctx.runMutation(internal.researchInbox.record, {
+          address,
+          resendEmailId: data.email_id,
+          from: extractEmailAddress(data.from) ?? "",
+          subject: data.subject ?? "",
+        });
+      return;
     }
     const operatorRecipients = routingRecipients.filter(
       isOperatorEmailRecipient,

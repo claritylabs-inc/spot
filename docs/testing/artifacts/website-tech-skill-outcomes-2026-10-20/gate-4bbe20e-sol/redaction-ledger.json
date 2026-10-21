@@ -1,0 +1,86 @@
+{
+  "candidate": "4bbe20e208c7d3e38b1b6fbfc523606997685364",
+  "fullRequestStoredBeforeExecuteDecision": true,
+  "privateFileMode": "0600",
+  "originalRequestSha256": "c2a2fe365a38ffae4b53dda17fca4b2204509636ee2ab9bf90fde284df06923f",
+  "originalStateSha256": "40610d7b50b8ecc9b35a8b40d47453262139631105c457a6a1623805d243e53a",
+  "sanitizedRequestSha256": "b19cf8eef36cde0399963f0e109ea6d66f40d37c17a3faf5d5c3918e8e1fe873",
+  "sanitizedStateSha256": "1a1736ff4ac4d67c427942bda508b6354f21f7f82cdaf47868d8dec65ef6f223",
+  "sanitizedStateSentToProvider": false,
+  "redactions": [
+    {
+      "path": "/state/observation/screenshot",
+      "operation": "normalize opaque image reference",
+      "replacement": "gate-image"
+    },
+    {
+      "path": "/assets",
+      "operation": "normalize opaque asset key",
+      "replacement": "gate-image"
+    },
+    {
+      "path": "/assets/gate-image/dataBase64",
+      "operation": "omit raw PNG/base64 from text artifact",
+      "decodedSha256": "830a2f05819db2b366852859661d573685888c67d9cc16460a2bc7554e22e3b4"
+    },
+    {
+      "path": "/state/observation/recent/0/result/text/text",
+      "operation": "replace string spans",
+      "reason": "public demo sitekey",
+      "occurrences": 5,
+      "replacement": "[REDACTED_DEMO_SITEKEY]",
+      "originalUtf16Spans": [
+        [
+          761,
+          785
+        ],
+        [
+          926,
+          950
+        ],
+        [
+          1082,
+          1106
+        ],
+        [
+          1337,
+          1361
+        ],
+        [
+          1845,
+          1869
+        ]
+      ]
+    },
+    {
+      "path": "/state/observation/recent/0/result/text/text",
+      "operation": "replace string spans",
+      "reason": "public API key placeholder",
+      "occurrences": 2,
+      "replacement": "[REDACTED_API_KEY_PLACEHOLDER]",
+      "originalUtf16Spans": [
+        [
+          1281,
+          1293
+        ],
+        [
+          1791,
+          1803
+        ]
+      ]
+    },
+    {
+      "path": "/state/observation/recent/0/result/text/text",
+      "operation": "replace string spans",
+      "reason": "sample response token or long opaque example",
+      "occurrences": 1,
+      "replacement": "[REDACTED_SAMPLE_TOKEN]",
+      "originalUtf16Spans": [
+        [
+          1466,
+          1683
+        ]
+      ]
+    }
+  ]
+}

@@ -257,6 +257,77 @@
         ]
       }
     },
+    "/v1/extract": {
+      "post": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/decide": {
       "post": {
         "security": [
@@ -479,7 +550,7 @@
         },
         "responses": {
           "200": {
-            "description": "SSE events; each data frame conforms to StreamEvent.",
+            "description": "SSE events; each data frame conforms to StreamEvent. Progress-only stage events are never written to this stream.",
             "content": {
               "text/event-stream": {
                 "schema": {
@@ -621,7 +692,7 @@
         },
         "responses": {
           "200": {
-            "description": "SSE events; each data frame conforms to StreamEvent.",
+            "description": "SSE events; each data frame conforms to StreamEvent. Progress-only stage events are never written to this stream.",
             "content": {
               "text/event-stream": {
                 "schema": {
@@ -1039,6 +1110,440 @@
         ],
         "additionalProperties": false
       },
+      "BrowseRequest": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "description": "Browser backend; defaults to sandbox. Browserbase is the backup.",
+            "type": "string",
+            "enum": [
+              "browserbase",
+              "sandbox"
+            ]
+          },
+          "tenantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "orgId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "goal": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "allowedDomains": {
+                "minItems": 1,
+                "maxItems": 5,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 253
+                }
+              },
+              "maxSteps": {
+                "default": 20,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 40
+              },
+              "outputSchema": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "signup": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128
+                  },
+                  "mode": {
+                    "description": "Defaults to password, which requires password. Passwordless must omit password.",
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "passwordless"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "inboxUrl": {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "format": "uri"
+                  }
+                },
+                "required": [
+                  "email",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "contact": {
+                "description": "Caller authorization for one contact submission. Mutually exclusive with signup; use a separate job.",
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "email",
+                  "name",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "url",
+              "goal",
+              "allowedDomains"
+            ],
+            "additionalProperties": false
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "fallbackToBrowserbase": {
+                "description": "Defaults to true. Fall back when the sandbox is unavailable or encounters an initial bot wall, only before agent actions.",
+                "type": "boolean"
+              },
+              "route": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "openai",
+                      "anthropic",
+                      "google",
+                      "xai",
+                      "mistral",
+                      "cohere",
+                      "fireworks",
+                      "deepseek"
+                    ]
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "provider",
+                  "model"
+                ],
+                "additionalProperties": false
+              },
+              "skills": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "inbox.wait_for_email",
+                    "account.signup",
+                    "account.sign_in",
+                    "account.verify_email",
+                    "account.enter_otp",
+                    "account.cleanup",
+                    "challenge.captcha",
+                    "site.find_pages",
+                    "page.dismiss_overlays",
+                    "checkout.observe_payment"
+                  ]
+                },
+                "description": "Skills to offer the agent. Omit for the operation's defaults; an empty array disables skills."
+              }
+            },
+            "additionalProperties": false
+          },
+          "executionBudgetMs": {
+            "type": "integer",
+            "minimum": 10000,
+            "maximum": 420000
+          },
+          "trace": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "tenantId",
+          "input"
+        ],
+        "additionalProperties": false
+      },
+      "BrowseResponse": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "browserbase",
+              "sandbox"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "output": {},
+          "text": {
+            "type": "string"
+          },
+          "finished": {
+            "type": "boolean"
+          },
+          "steps": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url",
+                "title",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "networkHosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "redirects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "adoptedDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "signupSubmitted": {
+            "type": "boolean"
+          },
+          "formSubmissions": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "signup",
+                    "sign_in",
+                    "verification",
+                    "contact"
+                  ]
+                },
+                "dispatch": {
+                  "type": "string",
+                  "enum": [
+                    "not_sent",
+                    "sent",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "purpose",
+                "dispatch"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string"
+                },
+                "input": {
+                  "type": "string"
+                },
+                "result": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tool",
+                "input",
+                "result"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "succeeded",
+                    "blocked",
+                    "failed",
+                    "skipped"
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "steps": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "name",
+                "version",
+                "status",
+                "summary",
+                "steps"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "text",
+          "finished",
+          "steps",
+          "pages",
+          "networkHosts",
+          "redirects",
+          "adoptedDomains",
+          "signupSubmitted",
+          "actions",
+          "skills"
+        ],
+        "additionalProperties": false
+      },
       "CapabilitiesResponse": {
         "type": "object",
         "properties": {
@@ -1235,6 +1740,443 @@
           "providers",
           "models",
           "webRetrieval"
+        ],
+        "additionalProperties": false
+      },
+      "ComputerUseRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "orgId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "goal": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "allowedDomains": {
+                "default": [],
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 253
+                }
+              },
+              "maxSteps": {
+                "default": 20,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 40
+              },
+              "outputSchema": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              "signup": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128
+                  },
+                  "mode": {
+                    "description": "Defaults to password, which requires password. Passwordless must omit password.",
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "passwordless"
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "inboxUrl": {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "format": "uri"
+                  }
+                },
+                "required": [
+                  "email",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "contact": {
+                "description": "Caller authorization for one contact submission. Mutually exclusive with signup; use a separate job.",
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4000
+                  },
+                  "company": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 50
+                  },
+                  "country": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "companyCountry": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "email",
+                  "name",
+                  "message"
+                ],
+                "additionalProperties": false
+              },
+              "files": {
+                "default": [],
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 240,
+                      "pattern": "^[a-zA-Z0-9_./-]+$"
+                    },
+                    "content": {
+                      "type": "string",
+                      "maxLength": 64000
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "content"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "goal"
+            ],
+            "additionalProperties": false
+          },
+          "executionBudgetMs": {
+            "type": "integer",
+            "minimum": 10000,
+            "maximum": 420000
+          },
+          "trace": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "skills": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "inbox.wait_for_email",
+                    "account.signup",
+                    "account.sign_in",
+                    "account.verify_email",
+                    "account.enter_otp",
+                    "account.cleanup",
+                    "challenge.captcha",
+                    "site.find_pages",
+                    "page.dismiss_overlays",
+                    "checkout.observe_payment"
+                  ]
+                },
+                "description": "Skills to offer the agent. Omit for the operation's defaults; an empty array disables skills."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "tenantId",
+          "input"
+        ],
+        "additionalProperties": false
+      },
+      "ComputerUseResponse": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "browserbase",
+              "sandbox"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "output": {},
+          "text": {
+            "type": "string"
+          },
+          "finished": {
+            "type": "boolean"
+          },
+          "steps": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "url",
+                "title",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "networkHosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "redirects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "adoptedDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "signupSubmitted": {
+            "type": "boolean"
+          },
+          "formSubmissions": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "purpose": {
+                  "type": "string",
+                  "enum": [
+                    "signup",
+                    "sign_in",
+                    "verification",
+                    "contact"
+                  ]
+                },
+                "dispatch": {
+                  "type": "string",
+                  "enum": [
+                    "not_sent",
+                    "sent",
+                    "unknown"
+                  ]
+                }
+              },
+              "required": [
+                "purpose",
+                "dispatch"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool": {
+                  "type": "string"
+                },
+                "input": {
+                  "type": "string"
+                },
+                "result": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tool",
+                "input",
+                "result"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "succeeded",
+                    "blocked",
+                    "failed",
+                    "skipped"
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "steps": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "name",
+                "version",
+                "status",
+                "summary",
+                "steps"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "error": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "content"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "text",
+          "finished",
+          "steps",
+          "pages",
+          "networkHosts",
+          "redirects",
+          "adoptedDomains",
+          "signupSubmitted",
+          "actions",
+          "skills",
+          "files"
         ],
         "additionalProperties": false
       },
@@ -2503,7 +3445,10 @@
               "manual",
               "embed",
               "retrieve",
-              "transcribe"
+              "transcribe",
+              "browser",
+              "computer_use",
+              "browse"
             ]
           },
           "requestUrl": {
@@ -3320,6 +4265,36 @@
       },
       "StreamEvent": {
         "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "stage"
+              },
+              "stage": {
+                "type": "string",
+                "enum": [
+                  "selecting_model",
+                  "selecting_tools"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "completed",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "type",
+              "stage",
+              "status"
+            ],
+            "additionalProperties": false
+          },
           {
             "type": "object",
             "properties": {
@@ -4636,6 +5611,310 @@
           "durationMs"
         ],
         "additionalProperties": false
+      },
+      "ExtractRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "task": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240000
+          },
+          "fields": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 128,
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,63}$"
+            },
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "text",
+                        "date",
+                        "number"
+                      ]
+                    },
+                    "instructions": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "const": "list",
+                      "type": "string"
+                    },
+                    "instructions": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000
+                    },
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "text",
+                        "date",
+                        "number"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "items"
+                  ]
+                }
+              ]
+            }
+          },
+          "referenceDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "trace": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "traceId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "parentRequestId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "channel": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": []
+          }
+        },
+        "required": [
+          "tenantId",
+          "task",
+          "state",
+          "fields"
+        ]
+      },
+      "ExtractResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "answers": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 128,
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pNull": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "confidence": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "span": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "start": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "end": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      },
+                      "required": [
+                        "start",
+                        "end"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "pNull",
+                    "confidence"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "value": {
+                      "type": "array",
+                      "maxItems": 8192,
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          }
+                        ]
+                      }
+                    },
+                    "pNull": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "confidence": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "items": {
+                      "type": "array",
+                      "maxItems": 8192,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "value": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "pNull": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "confidence": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "span": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "end": {
+                                "type": "integer",
+                                "minimum": 1
+                              }
+                            },
+                            "required": [
+                              "start",
+                              "end"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "value",
+                          "confidence"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "confidence"
+                  ]
+                }
+              ]
+            }
+          },
+          "usage": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "inputTokens": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "inputTokens"
+            ]
+          },
+          "latencyMs": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "requestId",
+          "answers",
+          "usage",
+          "latencyMs"
+        ]
       }
     }
   }

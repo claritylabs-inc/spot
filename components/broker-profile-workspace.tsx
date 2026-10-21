@@ -1,5 +1,7 @@
 "use client";
 
+import { normalizeWebsiteUrl } from "@claritylabs-inc/ui/lib/website";
+import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { Loader2 } from "lucide-react";
@@ -123,7 +125,7 @@ function BrokerProfileEditor({
         brokerOrgId,
         website:
           next.website !== previous.website
-            ? next.website.trim() || null
+            ? normalizeWebsiteUrl(next.website) || next.website.trim() || null
             : undefined,
         officeAddress: officeChanged
           ? {
@@ -199,11 +201,11 @@ function BrokerProfileEditor({
         <OperationalPanelHeader title={profile.broker.name} />
         <OperationalPanelBody className="grid gap-5 sm:grid-cols-2">
           <Field label="Website">
-            <Input
+            <WebsiteInput
+              aria-label="Website"
               disabled={disabled}
               value={website}
-              onChange={(event) => setWebsite(event.target.value)}
-              placeholder="https://example.com"
+              onChange={setWebsite}
             />
           </Field>
           <Field label="Logo">

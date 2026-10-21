@@ -1,17 +1,15 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { useAction } from "convex/react";
-import { useRouter } from "next/navigation";
+import { normalizeWebsiteUrl } from "@claritylabs-inc/ui/lib/website";
+import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
+import { useRef, useState } from "react";
+import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
-import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import { AppShell } from "@/components/app-shell";
-import { SettingsDrawer } from "@/components/settings/settings-drawer";
-import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@claritylabs-inc/ui/components/input";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import {
   Table,
@@ -26,138 +24,98 @@ import { Loader2, LogOut, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
-  ClientDetailsEditor,
-  type ClientEditorHandle,
-} from "./client-details-editor";
-import {
   useCachedOperatorClients,
   useCachedOperatorCurrent,
   useOperatorClientCacheActions,
 } from "@/lib/sync/operator-cached-queries";
 import { useStopOperatorImpersonation } from "@/hooks/use-stop-operator-impersonation";
-import { useStartOperatorImpersonation } from "@/hooks/use-start-operator-impersonation";
 import { formatDisplayDate } from "@/lib/date-format";
 import {
-  operatorClientStatusLabel,
-  operatorClientStatusPresentation,
   type OperatorClientRow,
 } from "./client-model";
 import { typeStyle } from "@/lib/typography";
+import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
+import {
+  BulkDeleteBar,
+  useRowSelection,
+} from "@/components/operator/bulk-delete";
+import {
+  ApplicationStatusField,
+  ApplicationWebsiteField,
+  ClientStatusField,
+  ClientWebsiteField,
+} from "./client-row-fields";
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
+function applicationName(application: {
+  companyName?: string;
+  applicantName?: string;
+  applicantEmail?: string;
 }) {
   return (
-    <label className="block space-y-1.5">
-      <span className={`text-muted-foreground ${typeStyle("caption.medium")}`}>
-        {label}
-      </span>
-      {children}
-    </label>
+    application.companyName ??
+    application.applicantName ??
+    application.applicantEmail ??
+    "Unnamed applicant"
   );
 }
 
+/** Highlights rows whose application has not been submitted yet. */
+const UNSUBMITTED_ROW_CLASS = "bg-warning/5 hover:bg-warning/10";
+
+type ClientFilter = "all" | "active" | "limited";
+
 export default function OperatorClientsScreen() {
-  const router = useRouter();
-  const [selectedId, setSelectedId] = useState<Id<"organizations"> | null>(
-    null,
-  );
-  const [panelMode, setPanelMode] = useState<"create" | "details" | null>(null);
+  const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState("");
-  const [name, setName] = useState("");
-  const [website, setWebsite] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState<ClientFilter>("all");
 
   const current = useCachedOperatorCurrent();
+  const readOnly = Boolean(current?.activeImpersonation);
   const clients = useCachedOperatorClients();
-  const searchText = search.trim().toLowerCase();
-  const filteredClients = clients?.filter((client) =>
-    [
-      client.name,
-      client.website,
-      client.primaryContactEmail,
-      client.adminEmail,
-    ].some((value) => value?.toLowerCase().includes(searchText)),
+  const unlinkedApplications = useQuery(
+    api.operator.listUnlinkedApplications,
   );
-  const { seedClient } = useOperatorClientCacheActions();
-  const createClient = useAction(api.operator.createSoloClient);
-  const { startImpersonation } = useStartOperatorImpersonation();
+  const searchText = search.trim().toLowerCase();
+  const matchesSearch = (values: (string | undefined)[]) =>
+    values.some((value) => value?.toLowerCase().includes(searchText));
+  const filteredClients = clients?.filter(
+    (client) =>
+      (filter === "all" || client.clientAccessStatus === filter) &&
+      matchesSearch([
+        client.name,
+        client.dba,
+        client.website,
+        client.primaryContactEmail,
+        client.adminEmail,
+      ]),
+  );
+  // Applicants who have not named their company yet have no client record.
+  const filteredApplications =
+    filter === "all" || filter === "limited"
+      ? (unlinkedApplications?.filter((application) =>
+          matchesSearch([
+            application.companyName,
+            application.applicantName,
+            application.applicantEmail,
+          ]),
+        ) ?? [])
+      : [];
+  const selection = useRowSelection<string>([
+    ...(filteredClients?.map((client) => client._id) ?? []),
+    ...filteredApplications.map((application) => application.requestId),
+  ]);
+  const selectedOrgIds = (filteredClients ?? [])
+    .map((client) => client._id)
+    .filter(selection.isSelected);
+  const selectedApplicationIds = filteredApplications
+    .map((application) => application.requestId)
+    .filter(selection.isSelected);
   const stopOperatorImpersonation = useStopOperatorImpersonation(
     current?.activeImpersonation,
   );
 
-  const selected = useMemo(
-    () => clients?.find((client) => client._id === selectedId) ?? null,
-    [clients, selectedId],
-  );
-  const editor = useRef<ClientEditorHandle>(null);
-
-  async function saveDetails() {
-    return (
-      panelMode !== "details" ||
-      !editor.current ||
-      (await editor.current.saveNow())
-    );
-  }
-
-  async function submitClient(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    try {
-      const result = await createClient({
-        name,
-        website: website || undefined,
-        users: [],
-      });
-      await seedClient({
-        clientOrgId: result.clientOrgId,
-        name,
-        website: website || undefined,
-      });
-      toast.success("Client created");
-      router.push(`/operator/clients/${result.clientOrgId}`);
-    } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Failed to create client"));
-      setBusy(false);
-    }
-  }
-
-  async function impersonate(client: OperatorClientRow) {
-    if (!(await saveDetails())) return;
-    setBusy(true);
-    try {
-      await startImpersonation({
-        targetOrgId: client._id,
-        targetRole: "admin",
-        destination: "/policies",
-        failureMessage: "Failed to impersonate client",
-      });
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(error, "Failed to impersonate client"),
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function contactEmail(client: OperatorClientRow) {
     return client.primaryContactEmail ?? client.adminEmail;
-  }
-
-  async function openDetails(client: OperatorClientRow) {
-    if (!(await saveDetails())) return;
-    setSelectedId(client._id);
-    setPanelMode("details");
-  }
-
-  async function openCreate() {
-    if (!(await saveDetails())) return;
-    setPanelMode("create");
   }
 
   const actions = (
@@ -176,176 +134,118 @@ export default function OperatorClientsScreen() {
           <LogOut className="size-3.5" />
         </PillButton>
       ) : null}
-      <PillButton size="compact" onClick={openCreate}>
+      <PillButton
+        size="compact"
+        disabled={readOnly}
+        // Keep focus in an open draft row so its blur does not submit it.
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          setCreating(true);
+          document.getElementById(NEW_CLIENT_NAME_ID)?.focus();
+        }}
+      >
         <Plus className="size-3.5" />
         Create client
       </PillButton>
     </>
   );
-  const rightPanel = (
-    <SettingsDrawer
-      open={panelMode !== null}
-      onOpenChange={async (open) => {
-        if (!open && (await saveDetails())) {
-          setPanelMode(null);
-          setSelectedId(null);
-        }
-      }}
-      title={
-        panelMode === "create" || !selected ? (
-          "Create client"
-        ) : (
-          <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
-            <span className="min-w-0 truncate">{selected.name}</span>
-            <span className="flex shrink-0 items-center gap-2">
-              <StatusTag
-                {...operatorClientStatusPresentation(selected)}
-              >
-                {operatorClientStatusLabel(selected)}
-              </StatusTag>
-            </span>
-          </span>
-        )
-      }
-      footer={
-        panelMode === "create" ? (
-          <PillButton
-            type="submit"
-            form="operator-create-client-form"
-            disabled={busy || !name.trim()}
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Create client
-          </PillButton>
-        ) : selected ? (
-          <>
-            <DeleteOrganizationButton
-              orgId={selected._id}
-              name={selected.name}
-              type="client"
-              disabled={busy || Boolean(current?.activeImpersonation)}
-              beforeDelete={saveDetails}
-              onDeleted={() => {
-                setPanelMode(null);
-                setSelectedId(null);
-              }}
-            />
-            <PillButton
-              variant="secondary"
-              disabled={busy}
-              onClick={() => void impersonate(selected)}
-            >
-              Impersonate
-            </PillButton>
-            <PillButton
-              onClick={async () => {
-                if (await saveDetails())
-                  router.push(`/operator/clients/${selected._id}`);
-              }}
-            >
-              Manage client
-            </PillButton>
-          </>
-        ) : null
-      }
-    >
-      {panelMode === "create" ? (
-        <form
-          id="operator-create-client-form"
-          onSubmit={submitClient}
-          className="space-y-3"
-        >
-          <Field label="Client name">
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Client organization"
-              required
-            />
-          </Field>
-          <Field label="Website">
-            <Input
-              value={website}
-              onChange={(event) => setWebsite(event.target.value)}
-              placeholder="https://example.com"
-            />
-          </Field>
-        </form>
-      ) : selected ? (
-        <ClientDetailsEditor
-          key={selected._id}
-          ref={editor}
-          client={selected}
-          disabled={Boolean(current?.activeImpersonation)}
-        />
-      ) : null}
-    </SettingsDrawer>
-  );
-
   return (
-    <AppShell
-      actions={actions}
-      rightPanel={rightPanel}
-    >
+    <AppShell actions={actions}>
       <main className="flex w-full flex-col gap-4">
-        <div className="relative max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search clients"
-            aria-label="Search clients"
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="relative w-full max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search clients"
+              aria-label="Search clients"
+            />
+          </div>
+          <Tabs
+            value={filter}
+            onValueChange={(value) => {
+              if (value) setFilter(value as ClientFilter);
+            }}
+          >
+            <TabsList variant="pill" aria-label="Client status">
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="active">Active</TabsTrigger>
+              <TabsTrigger value="limited">Limited</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <BulkDeleteBar
+            type="client"
+            orgIds={selectedOrgIds}
+            applicationIds={selectedApplicationIds}
+            disabled={readOnly}
+            className="sm:ml-auto"
+            onClear={selection.clear}
           />
         </div>
-        <OperationalPanel>
+        <OperationalPanel data-operator-inline-fields>
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
+                <TableHead className="w-11 pl-4 pr-0">
+                  <Checkbox
+                    aria-label="Select all clients"
+                    checked={selection.allSelected}
+                    indeterminate={selection.someSelected}
+                    disabled={readOnly || selection.visibleCount === 0}
+                    onCheckedChange={selection.toggleAll}
+                  />
+                </TableHead>
                 <TableHead
-                  className={`w-[25%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[28%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
                 >
                   Client
                 </TableHead>
                 <TableHead
-                  className={`w-[22%] text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[24%] text-muted-foreground ${typeStyle("label.table")}`}
                 >
                   Admin
                 </TableHead>
                 <TableHead
-                  className={`w-[18%] text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[20%] text-muted-foreground ${typeStyle("label.table")}`}
                 >
                   Website
                 </TableHead>
                 <TableHead
-                  className={`w-[10%] text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[14%] text-muted-foreground ${typeStyle("label.table")}`}
                 >
                   Status
                 </TableHead>
                 <TableHead
-                  className={`w-[8%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[14%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
                 >
                   Created
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
+              {creating ? (
+                <NewClientRow onDone={() => setCreating(false)} />
+              ) : null}
               {clients === undefined ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="h-32 text-center text-muted-foreground"
                   >
                     <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                   </TableCell>
                 </TableRow>
-              ) : filteredClients?.length === 0 ? (
+              ) : filteredClients?.length === 0 &&
+                filteredApplications.length === 0 &&
+                !creating ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                   >
-                    {searchText
+                    {searchText || filter !== "all"
                       ? "No clients match this search."
                       : "No client accounts found."}
                   </TableCell>
@@ -354,21 +254,29 @@ export default function OperatorClientsScreen() {
                 filteredClients?.map((client) => (
                   <TableRow
                     key={client._id}
-                    tabIndex={0}
-                    onClick={() => openDetails(client)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter" && event.key !== " ") return;
-                      event.preventDefault();
-                      openDetails(client);
-                    }}
-                    className={`cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 ${
-                      selectedId === client._id ? "bg-muted/50" : ""
-                    }`}
+                    data-state={
+                      selection.isSelected(client._id) ? "selected" : undefined
+                    }
+                    className={
+                      client.applicationInProgress
+                        ? UNSUBMITTED_ROW_CLASS
+                        : undefined
+                    }
                   >
+                    <TableCell className="pl-4 pr-0">
+                      <Checkbox
+                        aria-label={`Select ${client.dba ?? client.name}`}
+                        checked={selection.isSelected(client._id)}
+                        disabled={readOnly}
+                        onCheckedChange={(checked) =>
+                          selection.toggle(client._id, checked)
+                        }
+                      />
+                    </TableCell>
                     <TableCell className="px-4">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <OrgBrandIcon
-                          name={client.name}
+                          name={client.dba ?? client.name}
                           iconUrl={client.iconUrl}
                           website={client.website}
                           size="md"
@@ -377,26 +285,21 @@ export default function OperatorClientsScreen() {
                           href={`/operator/clients/${client._id}`}
                           className="truncate"
                         >
-                          {client.name}
+                          {client.dba ?? client.name}
                         </TableNameLink>
                       </div>
                     </TableCell>
                     <TableCell className="max-w-56 truncate text-muted-foreground">
                       {contactEmail(client) ?? "No admin"}
                     </TableCell>
-                    <TableCell className="max-w-44 truncate text-muted-foreground">
-                      {client.website ?? "Not set"}
+                    <TableCell className="max-w-44">
+                      <ClientWebsiteField
+                        client={client}
+                        disabled={readOnly}
+                      />
                     </TableCell>
                     <TableCell>
-                      <StatusTag
-                        tone={
-                          client.clientAccessStatus === "active"
-                            ? "success"
-                            : "warning"
-                        }
-                      >
-                        {operatorClientStatusLabel(client)}
-                      </StatusTag>
+                      <ClientStatusField client={client} disabled={readOnly} />
                     </TableCell>
                     <TableCell className="px-4 text-muted-foreground">
                       {formatDisplayDate(client.createdAt)}
@@ -404,10 +307,138 @@ export default function OperatorClientsScreen() {
                   </TableRow>
                 ))
               )}
+              {clients === undefined
+                ? null
+                : filteredApplications.map((application) => (
+                    <TableRow
+                      key={application.requestId}
+                      data-state={
+                        selection.isSelected(application.requestId)
+                          ? "selected"
+                          : undefined
+                      }
+                      className={UNSUBMITTED_ROW_CLASS}
+                    >
+                      <TableCell className="pl-4 pr-0">
+                        <Checkbox
+                          aria-label={`Select ${applicationName(application)}`}
+                          checked={selection.isSelected(application.requestId)}
+                          disabled={readOnly}
+                          onCheckedChange={(checked) =>
+                            selection.toggle(application.requestId, checked)
+                          }
+                        />
+                      </TableCell>
+                      <TableCell className="px-4">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <OrgBrandIcon
+                            name={applicationName(application)}
+                            size="md"
+                          />
+                          <span className="truncate">
+                            {applicationName(application)}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-56 truncate text-muted-foreground">
+                        {application.applicantEmail ?? "No email"}
+                      </TableCell>
+                      <TableCell className="max-w-44">
+                        <ApplicationWebsiteField
+                          name={applicationName(application)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <ApplicationStatusField />
+                      </TableCell>
+                      <TableCell className="px-4 text-muted-foreground">
+                        {formatDisplayDate(application.createdAt)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
             </TableBody>
           </Table>
         </OperationalPanel>
       </main>
     </AppShell>
+  );
+}
+
+const NEW_CLIENT_NAME_ID = "new-client-name";
+
+/** Draft table row that creates a client on Enter or when focus leaves it. */
+function NewClientRow({ onDone }: { onDone: () => void }) {
+  const createClient = useAction(api.operator.createSoloClient);
+  const { seedClient } = useOperatorClientCacheActions();
+  const [name, setName] = useState("");
+  const [website, setWebsite] = useState("");
+  const [busy, setBusy] = useState(false);
+  const row = useRef<HTMLTableRowElement>(null);
+
+  async function submit() {
+    if (busy) return;
+    const trimmed = name.trim();
+    if (!trimmed) return onDone();
+    setBusy(true);
+    try {
+      const result = await createClient({
+        name: trimmed,
+        website: normalizeWebsiteUrl(website) || website.trim() || undefined,
+        users: [],
+      });
+      await seedClient({
+        clientOrgId: result.clientOrgId,
+        name: trimmed,
+        website: normalizeWebsiteUrl(website) || website.trim() || undefined,
+      });
+      toast.success("Client created");
+      onDone();
+    } catch (error) {
+      toast.error(getUserFacingErrorMessage(error, "Failed to create client"));
+      setBusy(false);
+    }
+  }
+
+  function onKeyDown(event: React.KeyboardEvent) {
+    if (event.key === "Enter") void submit();
+    if (event.key === "Escape" && !busy) onDone();
+  }
+
+  return (
+    <TableRow
+      ref={row}
+      className="hover:bg-transparent"
+      onBlur={(event) => {
+        if (!row.current?.contains(event.relatedTarget as Node | null))
+          void submit();
+      }}
+    >
+      <TableCell className="px-4">
+        <Input
+          id={NEW_CLIENT_NAME_ID}
+          autoFocus
+          aria-label="New client name"
+          placeholder="Client name"
+          value={name}
+          disabled={busy}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={onKeyDown}
+        />
+      </TableCell>
+      <TableCell />
+      <TableCell className="max-w-44">
+        <WebsiteInput
+          aria-label="New client website"
+          value={website}
+          disabled={busy}
+          onChange={setWebsite}
+          onKeyDown={onKeyDown}
+        />
+      </TableCell>
+      <TableCell />
+      <TableCell className="px-4 text-muted-foreground">
+        {busy ? <Loader2 className="size-4 animate-spin" /> : null}
+      </TableCell>
+    </TableRow>
   );
 }

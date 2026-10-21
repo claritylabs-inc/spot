@@ -164,16 +164,18 @@ test("submitted answers cannot attach an unauthorized company or duplicate promo
     step: 4,
     expectedRevision: 0,
   });
-  await expect(
-    actor.mutation(api.requestIntake.submit, { requestId: f.requestId, orgId, expectedRevision: 1, confirmedAccurateAndAuthorized: true }),
-  ).rejects.toThrow();
-  await f.t.run((ctx) =>
-    ctx.db.patch(f.requestId, { intakeVerifiedAccess: true }),
-  );
+  const draft = await f.t.run((ctx) => ctx.db.get(f.requestId));
+  expect(draft?.clientOrgId).toBeDefined();
+  expect(draft?.clientOrgId).not.toBe(orgId);
+  const otherCompany = await f.t.run((ctx) => ctx.db.get(orgId));
   const submitted = await actor.mutation(api.requestIntake.submit, {
     requestId: f.requestId,
-    expectedRevision: 1, confirmedAccurateAndAuthorized: true,
+    orgId,
+    expectedRevision: 1,
+    confirmedAccurateAndAuthorized: true,
   });
+  expect(submitted.orgId).toBe(draft?.clientOrgId);
+  expect(await f.t.run((ctx) => ctx.db.get(orgId))).toEqual(otherCompany);
   expect(
     await actor.mutation(api.requestIntake.submit, { requestId: f.requestId, expectedRevision: 1, confirmedAccurateAndAuthorized: true }),
   ).toEqual(submitted);
@@ -184,6 +186,7 @@ test("submitted answers cannot attach an unauthorized company or duplicate promo
       .collect(),
   );
   expect(rows).toHaveLength(1);
+  expect(rows[0].orgId).toBe(submitted.orgId);
   const original = await f.t.run((ctx) => ctx.db.get(f.requestId));
   await actor.mutation(api.requestIntake.save, {
     requestId: f.requestId,

@@ -11,10 +11,9 @@ The root `.npmrc` routes `@claritylabs-inc` to GitHub Packages and reads
 `@claritylabs-inc/ui`.
 
 - GitHub Actions: set the repository secret `NPM_TOKEN` to the package-reading
-  credential. CI's `root` job and Release Spot's `validate-root` and `deploy`
-  jobs map it directly into their environment. Package access through
-  `GITHUB_TOKEN` is not required for these installs. The CLI validation and
-  publication jobs install their separate manifests, which do not depend on UI;
+  credential. CI's `root` job maps it directly into its environment. Package access through
+  `GITHUB_TOKEN` is not required for these installs. The CLI
+  publication job installs the separate CLI manifests, which do not depend on UI;
   their existing publication credentials remain separate.
 - Vercel: configure `NPM_TOKEN` on the Spot project for Production, Preview,
   and any Development environment that installs dependencies.
@@ -36,39 +35,33 @@ facts, and issued snapshots. Add `--prod` only for the production rollout.
 The optional legacy schema fields support this deletion; narrow them after
 completion has been verified on all deployed targets.
 
-## Coordinated release readiness
+## Production releases
 
-`.github/workflows/deploy-convex.yml` owns readiness for every commit pushed to
-`main`; it is not path-filtered. Root lint, tests, Next.js typechecking, Convex
-typechecking, and the production build run as five parallel `validate-root`
-matrix jobs alongside worker and package validation. Each root job checks shared
-package versions. Deployment requires every validation job to pass. After
-validation, the workflow:
+Vercel deploys Convex as part of the production build. `vercel.json` sets the
+build command to `npx convex deploy --cmd 'npm run build'` when
+`VERCEL_ENV=production` and to `npm run build` otherwise, so preview builds
+never touch production Convex. The Spot Vercel project's Production
+environment holds the production `CONVEX_DEPLOY_KEY`. `convex deploy` runs the
+Next.js build first, then typechecks and pushes the Convex functions; a failure
+in either step fails the Vercel build and nothing is promoted. There is no
+GitHub release workflow and no Vercel Deployment Check. PR CI runs lint,
+typechecks and tests.
 
-1. deploys the commit's Convex functions to production;
-2. verifies Convex configuration, both iMessage webhook transports, Slack,
-   and cl-router health; and
-3. verifies the commit is still the branch head before emitting
-   `release-ready-production`.
+`.github/workflows/publish-cli.yml` runs only when `cli/` or `operator-cli/`
+changes on `main` and publishes a package only when its version is not yet in
+the registry.
 
-Vercel may build the production candidate in parallel, but the Spot Vercel
-project must keep automatic production domain assignment enabled and configure
-the GitHub `release-ready-production` check as a required Deployment Check. The
-project check targets only `production`, uses the Git provider source with
-external check name `release-ready-production`, requires no deployment URL,
-blocks `deployment-alias`, and allows 1,800 seconds for the full release
-workflow. Vercel then assigns every production alias, including
-`app.spot.insure`, only after the release job succeeds. Changing the job name
-requires updating the Vercel project check in the same rollout. A failed or
-timed-out Convex deploy, compatibility audit, or stale-head
-check leaves the candidate unpromoted; use Vercel's explicit force-promotion
-control only for an incident-approved bypass.
+Production Convex configuration (`OPERATOR_SLACK_ENABLED`,
+`OPERATOR_IMESSAGE_ENABLED`, `OPERATOR_IMESSAGE_TERMINAL_ENABLED`,
+`OPERATOR_IMESSAGE_CONTACT_PHONE`, `QUO_BROKER_*`, `MCP_EVENTS_ENCRYPTION_KEY`)
+is set once with `npx convex env set --prod`, not on each release. For a
+production compatibility audit after breaking backend changes (schema, HTTP
+routes, crons, auth config, deployment config, or removed/renamed Convex
+modules), run `node scripts/check-agent-deployment-health.mjs --env production`.
 
 Production iMessage runs through Photon webhooks in Convex.
 The mailbox scan runs on the Convex cron and Slack uses the Convex Web API
-transport. The compatibility audit runs after the Convex deployment.
-`agent-safeguards.yml` exposes the same production audit only as a manual
-diagnostic; it has no recurring, push, or pull-request trigger.
+transport.
 
 Promotion-last removes the new-frontend/old-backend window, but distributed
 runtimes are not atomic. Keep expand/contract compatibility for destructive
@@ -102,7 +95,7 @@ Keep exactly one preview branch enabled for each stack. Remove obsolete exact
 branch rules after the stack lands. Avoid broad `true` patterns overlapping
 `stack/**`: Vercel enables a branch when any matching rule is `true`.
 
-CI runs on PRs regardless of their immediate base branch, and on merge groups.
+CI runs on PRs regardless of their immediate base branch.
 New updates cancel superseded CI for the same PR or ref. Every PR still needs
 the required CI checks and reviews. A Vercel preview must not be a required
 merge check for intermediate PRs whose deployments are disabled.
@@ -140,8 +133,7 @@ Select the entire intended stack in the merge picker. A direct stack merge
 lands the PRs together in one atomic operation. This batches the update to
 `main` and avoids a separate production release for each layer. With a merge
 queue, a sufficiently large stack may be split across consecutive merge groups.
-Monitor the resulting `release-ready-production` check and Vercel production
-deployment as for any release. Stacking does not bypass reviews, required
+Monitor the resulting Vercel production deployment as for any release. Stacking does not bypass reviews, required
 checks, or release readiness.
 
 ### Build concurrency
@@ -167,8 +159,8 @@ JSON
 Read the project back and verify those two fields after changing the setting.
 The active build finishes; superseded queued commits are skipped and the newest
 commit builds next. Different branches can still build concurrently. GitHub
-workflow cancellation does not cancel Vercel builds. Keep automatic production
-domain assignment and the `release-ready-production` Deployment Check enabled.
+Because Convex deploys inside the Vercel build, this queue also serializes
+production Convex deploys; keep it enabled.
 
 References: [GitHub stack merging](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/merging-stacked-pull-requests),
 [Vercel branch rules](https://vercel.com/docs/project-configuration/git-configuration),
@@ -306,16 +298,13 @@ also belong to the matching active production operator user. The inbound route
 normalizes that number and accepts it only when both Photon registration and the
 Spot operator identity match; unknown and customer numbers fail closed.
 
-Copy the assigned shared line into the GitHub Actions variable
-`SPOT_PRODUCTION_OPERATOR_IMESSAGE_CONTACT_PHONE` as an E.164 number. The
-`main` release workflow writes it to Convex as
-`OPERATOR_IMESSAGE_CONTACT_PHONE`; authenticated operators see the formatted
+Set the assigned shared line on production Convex as
+`OPERATOR_IMESSAGE_CONTACT_PHONE` in E.164 form; authenticated operators see the formatted
 number and their own linked sender number under `/operator/channels`. The
 number is never exposed through a public browser environment variable.
 
-Every `main` release sets Convex `OPERATOR_SLACK_ENABLED=true` and
-`OPERATOR_IMESSAGE_ENABLED=true`, clears the terminal-mode flag, and verifies
-the contact number and Convex transport configuration before promotion.
+Production Convex keeps `OPERATOR_SLACK_ENABLED=true`,
+`OPERATOR_IMESSAGE_ENABLED=true` and `OPERATOR_IMESSAGE_TERMINAL_ENABLED=false`.
 
 Both production iMessage lanes run on Photon Spectrum webhooks in Convex.
 Credentials and setup are documented in [iMessage over Spectrum webhooks](./imessage-webhooks.md).

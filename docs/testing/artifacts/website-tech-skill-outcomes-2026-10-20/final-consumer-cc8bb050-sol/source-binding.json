@@ -1,0 +1,26 @@
+{
+  "spot": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "router": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+  "files": {
+    "app/operator/clients/[clientOrgId]/wiki/website-tech-section.tsx": "f38c55fef3515bde335790427af02c614842edcf932542ef5648a510fe1b8830",
+    "convex/actions/websiteTech.ts": "e5a2aafa2708b3bfcf28c2f9f685009c9ea47ddadd5951f95993a9db15f25a47",
+    "convex/lib/clRouterClient.ts": "af39cf0d26a917b95e8a81d7b9e6fea6579654e41f1cffe87d7bbb5f42b5ffa7",
+    "convex/lib/websiteTech.ts": "f85f0a152d8e6300ec8dd4ebcf4bd888a260dd9e995d53c2dc5ef988dcc45734",
+    "convex/websiteTech.ts": "621f0aed2a15fe94c22fb3280ece6cd5065d03b2e5072189d03af902993dbe81",
+    "convex/lib/tenantMcpToolCatalog.ts": "10e04c97ea64c6affce2e59101f049832c5aab9183682cf0ed78cca9a34670ba",
+    "convex/lib/operatorAgentToolRegistry.ts": "5bb92ce74bb36bf50efb6523dbc0a5250598f3f0193497f25fd480efc8e62b29",
+    "convex/operatorAgent.ts": "2da806c290d7726301207b94c3404c0a8b7881e3c804fe3560dd657cd5e83d10",
+    "contracts/cl-router/openapi.v1.json": "39aed5a439bb5c9ed636ac30929fcb9e3367b4239295f608de375c7134c68393",
+    "contracts/cl-router/source.json": "3b34fd1cb3721e0dc02dddddb07514a68d611f25d7cfbcc8044ee56f2c0f9d8f",
+    "contracts/cl-router/fixtures.v1.json": "de1ed78866bcdd424aba1183f10091e775b1c68949394da21868ae293124820c",
+    "contracts/cl-router/policy.ts": "289a50d314f54a2bc2e2ab81578d78da74b602a840438ddd15a7d702c84a875d",
+    "scripts/check-cl-router-contract.mjs": "6cb82c1caf0711d8dad7ebb38494982214215c5e092bd94b785d29ba296976c0",
+    "package.json": "dd8908ad274be8a712bed5993ead6de0b294003e378cc207492941a6f1e47735",
+    "package-lock.json": "c6550be1d46828c4c5045b8a2e98c67880b0d5fa52acbb6cffdf972a2eee8918"
+  },
+  "allCandidateBlobsExact": true,
+  "dependencyPackageAndLockEqualOriginalWorkspace": true,
+  "uiEvidence": "Fresh actual local Next/Convex workflow; none carried from historical UI run",
+  "requestEvidence": "Actual extracted browseCompanySite source through actual clRouterBrowse, synthetic identity and in-memory durable executor only",
+  "routerCapabilityEvidence": "Exact-pin source only: browse/index.ts:236-245 and skills/registry.ts:22-30; no router/provider runtime acceptance"
+}

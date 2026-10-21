@@ -1,0 +1,29 @@
+{
+  "productChanges": 0,
+  "observations": [
+    {
+      "kind": "Generated type drift at first Convex dev startup",
+      "detail": "CLI added an unrelated declarationsFastPass module import to convex/_generated/api.d.ts. Restored exact candidate artifact and restarted with --codegen disable before acceptance/types. No product fix."
+    },
+    {
+      "kind": "Harness invocation",
+      "detail": "One login invocation omitted QA_CHECKOUT and failed import before browser/auth actions; corrected explicit absolute candidate path."
+    },
+    {
+      "kind": "Focused lint invocation",
+      "detail": "Initial guessed component path matched no files. Correct source path lint passed; root and Convex types each ran once."
+    },
+    {
+      "kind": "Access helper adapter",
+      "detail": "Guarded local run() already parses CLI JSON; duplicate JSON.parse failed after authorized read. Corrected QA wrapper, then immediate retry hit ordinary 24-second OTP rate limit. Waited through independent checks; final five access groups passed. Pre-scan null not claimed as final passing group."
+    },
+    {
+      "kind": "Local fixture scheduler contention",
+      "detail": "Initial full app replay passed13groups then existing five-attempt stage failed before Rescan/long text. Second passed5groups then failed staging legacy. Bounded three-attempt structural diagnostic observed claim:false/status failed twice, then claim:true and actual saved summary verified. Preserved both partial receipts; changed setup-only bound to20 with unchanged guards/claim/finish/verification. Final full15groups and follow-up completed."
+    },
+    {
+      "kind": "Protocol metadata normalization",
+      "detail": "Local /ingest/array public project identifier appears in captured HTTP path; public receipt normalizes that identifier. No auth frames, payloads, headers or query values retained."
+    }
+  ]
+}

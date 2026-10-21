@@ -1,0 +1,42 @@
+{
+  "scope": "Historical command results from the accepted consumer packet; no behavioral reruns during evidence preservation.",
+  "finalCandidate": "101b96ba4daa6ef77faf884e863c9ca566ac1035",
+  "node": "v24.14.1",
+  "checks": [
+    {
+      "command": "npm run check:cl-router-contract",
+      "exitCode": 0,
+      "result": "19 fixtures, 10 operations, sha256 26660a9c7319"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exitCode": 0
+    },
+    {
+      "command": "npx tsc --noEmit -p convex/tsconfig.json",
+      "exitCode": 0
+    },
+    {
+      "command": "npx eslint 'app/operator/clients/[clientOrgId]/wiki/website-tech-section.tsx' convex/actions/websiteTech.ts convex/lib/clRouterClient.ts convex/lib/websiteTech.ts convex/websiteTech.ts",
+      "exitCode": 0
+    },
+    {
+      "command": "npm test",
+      "candidate": "f96d921916515d75f14e4a181cd305221c9b46ea",
+      "exitCode": 0,
+      "filesPassed": 18,
+      "testsPassed": 127
+    }
+  ],
+  "initialContractFailure": {
+    "candidate": "f96d921916515d75f14e4a181cd305221c9b46ea",
+    "exitCode": 1,
+    "message": "Spot website research with inbox skill is invalid: / must have required property 'tenantId'"
+  },
+  "restoration": {
+    "nativeLocalRouterUrlPresent": true,
+    "nativeLocalRouterSecretPresent": true,
+    "privateValuesMatchedOriginals": true,
+    "privateRestorationAndBrowserAuthFilesRemoved": true
+  }
+}

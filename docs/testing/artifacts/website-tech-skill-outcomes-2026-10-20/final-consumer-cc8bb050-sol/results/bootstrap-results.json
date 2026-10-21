@@ -1,0 +1,15 @@
+{
+  "candidate": "cc8bb050c20f6cb45798da7c6eb986d4b0b884af",
+  "freshNativeLocal": true,
+  "ports": {
+    "cloud": 8083,
+    "site": 8084
+  },
+  "ambientCredentialsExcluded": true,
+  "spotEnv": "local",
+  "emailDelivery": "capture",
+  "normalSeed": true,
+  "routerUrlPresent": false,
+  "routerSecretPresent": false,
+  "bootstrapPrivateFileRemoved": true
+}

@@ -1,0 +1,179 @@
+{
+  "candidate": "ca0b36a7871454929bfc2b64d5b9589d3e866cd5",
+  "date": "2026-10-20",
+  "browser": "Chrome/155.0.8059.84",
+  "node": "24.14.1",
+  "viewport": {
+    "width": 1024,
+    "height": 768
+  },
+  "runtimeMode": "native cloud Chrome, BrowserTargets sandbox=true; no hosted sandbox provisioner",
+  "verdict": "FAIL: requested functional acceptance not established; customer writes blocked",
+  "provider": {
+    "transport": "direct candidate executeDecision to api.typesafe.ai/v1/systemone",
+    "bridge": false,
+    "credentialSource": "existing process environment; presence only",
+    "noulModel": "jev-1.13.0",
+    "boxModel": "jev-1.14.0",
+    "answersModified": false,
+    "actorGenerationTested": false
+  },
+  "v2": {
+    "url": "https://2captcha.com/demo/recaptcha-v2",
+    "skillStatus": "blocked",
+    "blocker": "ambiguous_challenge",
+    "present": 0.49,
+    "checkbox": 0.97,
+    "primitiveError": "The challenge changed while it was being located or hovered. Observe again.",
+    "box": {
+      "top": 0.46,
+      "bottom": 0.51,
+      "left": 0.29,
+      "right": 0.33,
+      "confidence": 0.91
+    },
+    "targetCss": {
+      "x": 317.44,
+      "y": 372.48
+    },
+    "anchorFrame": {
+      "x": 282.5,
+      "y": 332,
+      "width": 304,
+      "height": 78
+    },
+    "hiddenChallengeFrame": {
+      "x": 1,
+      "y": -9999,
+      "width": 300,
+      "height": 150
+    },
+    "mouseMoves": 16,
+    "mousePressed": 0,
+    "mouseReleased": 0,
+    "freshPostMotionScreenshot": true,
+    "finalHitTestReached": false,
+    "gridOpened": false,
+    "gridPlans": 0,
+    "replacementObserved": false,
+    "solved": false
+  },
+  "turnstile": {
+    "url": "https://2captcha.com/demo/cloudflare-turnstile",
+    "skillStatus": "blocked",
+    "blocker": "ambiguous_challenge",
+    "present": 0.64,
+    "checkbox": 0.97,
+    "turnstile": 0.96,
+    "separatePrimitiveGateRelevant": 0.59,
+    "primitiveDispatched": false,
+    "testingOnlyLabelVisible": true,
+    "visibleSuccess": false,
+    "hostCheckSubmitted": false
+  },
+  "forms": [
+    {
+      "site": "Bankers Almanac",
+      "url": "https://beta.validate.bankersalmanac.com/ba-mgmt/registration/new-user",
+      "title": "Bankers Almanac Validate",
+      "fields": [
+        "First Name",
+        "Last Name",
+        "Email Address",
+        "Country",
+        "unlabelled contact number field",
+        "Company Name",
+        "Country"
+      ],
+      "requiredFlags": true,
+      "formAction": null,
+      "submitLabels": [
+        "Cancel",
+        "Register"
+      ],
+      "hasPassword": false,
+      "visibleAdditionalControls": [
+        "Organization Type custom dropdown",
+        "reCAPTCHA",
+        "Terms & Conditions / Privacy Policy text"
+      ],
+      "result": "read-only rendered form; no controlled inbox; passwordless registration outside current signup submission contract"
+    },
+    {
+      "site": "Pearson Canada",
+      "url": "https://www.pearson.com/en-ca/work/forms/contact-us.html",
+      "formAction": "https://pearson.tfaforms.net/api_v2/rest/workflow/processor",
+      "fields": [
+        "goals / business needs textarea",
+        "First Name",
+        "Last Name",
+        "Business Email",
+        "Phone Number",
+        "Organization Name",
+        "Job Title",
+        "Profession select-one",
+        "unlabelled text input",
+        "Country",
+        "Opt me in. checkbox",
+        "I consent checkbox"
+      ],
+      "nativeSnapshotRequiredFlags": "all false; not a claim about site business validation",
+      "submitLabels": [
+        "Talk to a Talent Solutions Expert"
+      ],
+      "hasPassword": false,
+      "visibleOverlays": [
+        "country recommendation",
+        "Privacy and cookies"
+      ],
+      "result": "candidate snapshot observes underlying form; overlays not dismissed; external form action and no contact purpose"
+    },
+    {
+      "site": "Pearson Netherlands",
+      "url": "https://www.pearson.com/nl/en_NL/higher-education/Custom-solutions/custom-contact-form.html",
+      "formAction": "https://www.pearson.com/nl/en_NL/higher-education/Custom-solutions/custom-contact-form.mail.html",
+      "requiredFields": [
+        "Full Name *",
+        "School/University *",
+        "Email *",
+        "Phone number *",
+        "Message *",
+        "What is 1 + 1 = *"
+      ],
+      "submitLabels": [
+        "Submit"
+      ],
+      "hasPassword": false,
+      "otherForm": "site search",
+      "visibleOverlays": [
+        "Privacy and cookies"
+      ],
+      "result": "candidate snapshot observes underlying form; cookie overlay not dismissed; no contact purpose; reCAPTCHA interaction not reached"
+    }
+  ],
+  "inbox": {
+    "researchDomainVerified": true,
+    "receivingEnabled": true,
+    "productionWebhookConfigured": true,
+    "spotProductionDeploymentAccessVerified": false,
+    "ordinaryConvexLoginCached": false,
+    "localExistingResendKeyReceivingListHttpStatus": 403,
+    "connectedResendMcpReceivingList": "success; metadata response only, no unrelated metadata logged",
+    "receivingGetTested": false,
+    "externalTestAdapterImplemented": false,
+    "deployedResearchInboxIssueTested": false,
+    "controlledAliasCreated": false,
+    "emailSent": false,
+    "unrelatedBodiesRead": false
+  },
+  "writes": {
+    "registrationAttempts": 0,
+    "pearsonCanadaSubmissions": 0,
+    "pearsonNetherlandsSubmissions": 0,
+    "fieldsFilled": 0,
+    "inboxesIssued": 0,
+    "environmentChanges": 0,
+    "spotFixtureChanges": 0
+  },
+  "snapshotNote": "Field lists transcribed from actual candidate PageSnapshot output; screenshots document overlays. This is not customer form fill/submission acceptance."
+}

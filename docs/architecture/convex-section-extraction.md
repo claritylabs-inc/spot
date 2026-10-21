@@ -2,9 +2,9 @@
 
 Status: implemented on the `convex-section-extraction` branch. This is the current extraction design for policies and procurement proposals.
 
-`convex/lib/pdfText.ts` wraps pdf.js parsing in `convex/lib/pdfSourceSpans.ts`. Text pages produce line spans and bounding boxes. `convex/lib/policySectioning.ts` groups pages by printed form number, then uses `clRouterDecide` for remaining page choices, and cuts bounded section PDFs with `pdf-lib`. Every page belongs to one section. `convex/lib/sectionExtraction/` runs each section as a durable router job with a stable invocation key. Declarations finish first; the other sections can run concurrently using their compact summary. Proposals use the same section pipeline in `convex/actions/proposalExtraction.ts`.
+`convex/lib/pdfText.ts` wraps pdf.js parsing in `convex/lib/pdfSourceSpans.ts`. Text pages produce line spans and bounding boxes. `convex/lib/policySectioning.ts` groups pages by printed form number, then uses `clRouterDecide` for remaining page choices, and cuts bounded section PDFs with `pdf-lib`. Every page belongs to one section. `convex/lib/sectionExtraction/` runs each section as a durable router job with a stable invocation key. For policy PDFs with usable declaration text, a fixed Clairic fast-pass supplies the preview and compact summary before the declarations LLM finishes, so other sections can start in the same advance. Scanned or empty-text policies retain declarations-first ordering. Proposals use the same section pipeline in `convex/actions/proposalExtraction.ts`.
 
-The model cites original page numbers and quotes. `convex/lib/citationResolver.ts` resolves these against pdf.js source spans. On scanned pages without a text layer, cited model text is persisted as `model_transcription` evidence spans. Critical facts without resolved source evidence are dropped. Declarations yield an allowlisted preview without a separate queue or model call. Final policy promotion requires the `convex-sections-v1` completion manifest, matching successful section artifacts, complete page coverage, and grounded evidence; `promoteCompletedExtractionInternal` is the only final writer. Operator overrides are preserved. The policy detail Sections tab shows authored sections and citations; `lib/extraction-state.ts` owns shared status presentation.
+The model cites original page numbers and quotes. `convex/lib/citationResolver.ts` resolves these against pdf.js source spans. On scanned pages without a text layer, cited model text is persisted as `model_transcription` evidence spans. Critical facts without resolved source evidence are dropped. Declarations yield an allowlisted preview without a separate queue. Final policy promotion requires the `convex-sections-v1` completion manifest, matching successful section artifacts, complete page coverage, and grounded evidence; `promoteCompletedExtractionInternal` is the only final writer. Operator overrides are preserved. The policy detail Sections tab shows authored sections and citations; `lib/extraction-state.ts` owns shared status presentation.
 
 Spot no longer uses the cl-sdk extraction engine, although it retains cl-sdk schemas, taxonomy, source-tree helpers, PDF form filling, and prompts. Chunking and `documentChunks` retrieval are removed. `convex/lib/policySearch.ts` and `convex/lib/policyLookup.ts` use Convex full-text search plus Jev relevance ranking. The Railway extraction worker, LiteParse, Poppler, OCR, preview queue, `source-tree-v2`, and legacy policy support are removed. Existing schema entries marked `// Deprecated` remain until deployed data is cleaned. `convex/actions/reextractLegacyPolicies.ts` is a bounded post-deploy re-extraction action that defaults to dry-run.
 
@@ -56,3 +56,45 @@ coarse matches are cropped once with padding and receive one presence Noul and
 Box refinement on that crop. Crop-relative boxes map through the rendered crop
 region into PDF points. Cancellation and the phase deadline are
 checked before each batch and quote; in-flight requests are not interrupted.
+
+## Declarations fast-pass
+
+`convex/lib/sectionExtraction/declarationsFastPass.ts` joins the original text of
+declarations pages, preserving page offsets and dropping whole trailing pages
+at 240,000 characters. `clRouterExtract` sends typed fields to the fixed
+`POST /v1/extract` endpoint. Spot retains only its existing router credentials;
+Cloudflare credentials belong to cl-router. No route is added to the model
+catalog or operator settings.
+
+The caller waits at most 15 seconds for the request, including the response
+body. Source checks run before the deadline starts. At the deadline the request
+is aborted and fails as a `timeout`, a late result is ignored, and the existing
+declarations-first fallback runs without a replay. Aborting does not guarantee
+that cl-router cancels remote inference.
+
+The `declarations_fast_pass` artifact is bound to the section plan. Usable
+results write the provisional preview and supply context for concurrent section
+jobs. The declarations LLM still extracts parties, coverages, forms, insured
+details, premium breakdowns and taxes. Only non-null, source-grounded fast-pass
+scalars replace its corresponding fields before section results are stored.
+Each scalar stays on the declarations section containing its evidence; other
+declarations sections clear that scalar so merge cannot prefer an earlier
+conflicting LLM value.
+The request no longer asks for lines of business or coverage summaries, and
+`fastPassAsOutput` returns both empty even for restored artifacts whose stored
+fields contain them; the preview and context show them only after the LLM
+extraction. Valid form numbers and scalars are kept. Date instructions ask for
+the start and end of the policy period (including "From X to Y"), the date
+only, not issue or retroactive dates, and never an inferred date or year;
+the strict calendar and evidence-grounding gates are unchanged.
+Dates use companion text fields to locate their original evidence because
+Clairic's normalized date answers need not contain spans. Existing citation
+resolution attaches source IDs during merge; fast-pass output does not bypass
+final promotion requirements or operator overrides. Extractor version
+`convex-sections-v1.2` invalidates older section results.
+
+Release verification requires the updated router with Workers AI credentials
+and an explicitly selected development Spot deployment. Re-extract one or two
+authorized policies and inspect the Clairic model-call duration, early preview,
+non-declarations submissions in the same advance, and final scalar source-span
+IDs. Sub-second latency is an acceptance target, not a measured guarantee.

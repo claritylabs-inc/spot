@@ -116,8 +116,8 @@ export function SettingsDrawer({
                     </Dialog.Close>
                   </div>
 
-                  <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4">
-                    <div className={cn("flex flex-col my-4", contentClassName)}>
+                  <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-4">
+                    <div className={cn("flex min-w-0 flex-col my-4", contentClassName)}>
                       {children}
                     </div>
                   </div>

@@ -1,0 +1,71 @@
+{
+  "verifiedBeforeInference": true,
+  "files": [
+    {
+      "commit": "f299f7074ae13b1b9905ef37f6723810a453d936",
+      "path": "docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/comparison-af229cc-sol/preserved-857-transport-0.png",
+      "sha256": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215",
+      "bytesMatchCommit": true
+    },
+    {
+      "commit": "f299f7074ae13b1b9905ef37f6723810a453d936",
+      "path": "docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/comparison-af229cc-sol/preserved-857-transport-1.png",
+      "sha256": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d",
+      "bytesMatchCommit": true
+    },
+    {
+      "commit": "f299f7074ae13b1b9905ef37f6723810a453d936",
+      "path": "docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/comparison-af229cc-sol/preserved-857-transport-2.png",
+      "sha256": "234478538ac49c7b08ca3b41491e45ae22c88edbf77b47d0521d316635f9ed82",
+      "bytesMatchCommit": true
+    },
+    {
+      "commit": "f299f7074ae13b1b9905ef37f6723810a453d936",
+      "path": "docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/comparison-af229cc-sol/preserved-857-transport-3.png",
+      "sha256": "7738abc94688b1876e9dcdfa8fd619b62ad992dae3fde617c75984178db3e0bf",
+      "bytesMatchCommit": true
+    },
+    {
+      "commit": "f299f7074ae13b1b9905ef37f6723810a453d936",
+      "path": "docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/comparison-af229cc-sol/source-binding.json",
+      "sha256": "3dbda8ee844cfe5cc1be566297c7603b641a4f7efbb9cae4048cc2655edc0cc7",
+      "bytesMatchCommit": true
+    },
+    {
+      "commit": "f299f7074ae13b1b9905ef37f6723810a453d936",
+      "path": "docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/comparison-af229cc-sol/preserved-provenance.json",
+      "sha256": "0c24136776e595b44fb98eb888aad92795a90dcb1fece4dae8f4a09d0bd2bde9",
+      "bytesMatchCommit": true
+    },
+    {
+      "commit": "f299f7074ae13b1b9905ef37f6723810a453d936",
+      "path": "docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/comparison-af229cc-sol/results.json",
+      "sha256": "71e5176fbe1374ca5622224785672d6020e514616d8d25167bda523db3adec87",
+      "bytesMatchCommit": true
+    },
+    {
+      "commit": "3965f4ecae2783798ac9bf8d5d55a54a90716160",
+      "path": "docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/live-857074d-sol/recaptcha-v2-hover-frame-before.png",
+      "sha256": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215",
+      "bytesMatchCommit": true
+    },
+    {
+      "commit": "3965f4ecae2783798ac9bf8d5d55a54a90716160",
+      "path": "docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/live-857074d-sol/recaptcha-v2-hover-frame-after.png",
+      "sha256": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d",
+      "bytesMatchCommit": true
+    },
+    {
+      "commit": "3965f4ecae2783798ac9bf8d5d55a54a90716160",
+      "path": "docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/live-857074d-sol/recaptcha-v2-hover-target-before.png",
+      "sha256": "234478538ac49c7b08ca3b41491e45ae22c88edbf77b47d0521d316635f9ed82",
+      "bytesMatchCommit": true
+    },
+    {
+      "commit": "3965f4ecae2783798ac9bf8d5d55a54a90716160",
+      "path": "docs/testing/artifacts/website-tech-skill-outcomes-2026-10-20/live-857074d-sol/recaptcha-v2-hover-target-after.png",
+      "sha256": "7738abc94688b1876e9dcdfa8fd619b62ad992dae3fde617c75984178db3e0bf",
+      "bytesMatchCommit": true
+    }
+  ]
+}

@@ -20,7 +20,7 @@ import type { AgentDockAdapter } from "./types";
 /** Shared by the new-chat button and chat tabs so the row reads as one set. */
 const TAB_ITEM_CLASS = cn(
   "relative flex h-full min-w-0 items-center gap-1.5 rounded-full px-3.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
-  typeStyle("control.button"),
+  typeStyle("control.buttonCompact"),
 );
 
 function TabButton({

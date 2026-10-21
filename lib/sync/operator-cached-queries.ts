@@ -83,6 +83,7 @@ export function useOperatorClientCacheActions() {
       const row = {
         _id: input.clientOrgId,
         name: input.name,
+        dba: undefined,
         website: input.website,
         iconStorageId: undefined,
         iconUrl: null,
@@ -97,6 +98,7 @@ export function useOperatorClientCacheActions() {
         adminName: input.adminName,
         adminEmail: input.adminEmail,
         adminPhone: input.adminPhone,
+        applicationInProgress: false,
         createdAt: now,
       } satisfies OperatorClientRow;
       await upsertClients({}, (current) =>

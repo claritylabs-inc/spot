@@ -7,6 +7,10 @@ import { modelCallContext, modelCallResult } from "./modelCallTelemetry";
 import {
   DIFFICULTIES,
   QUALITY_TIERS,
+  parseExtractRequest,
+  parseExtractResponse,
+  type ExtractRequest,
+  type ExtractResponse,
   parseDecideRequest,
   parseDecideResponse,
   type DecideRequest,
@@ -422,6 +426,64 @@ export type ClRouterRetrieveRequest = {
   executionBudgetMs?: number;
 };
 
+export type ClRouterBrowseSkillName =
+  | "inbox.wait_for_email"
+  | "account.signup"
+  | "account.sign_in"
+  | "account.verify_email"
+  | "account.enter_otp"
+  | "account.cleanup"
+  | "challenge.captcha"
+  | "site.find_pages"
+  | "page.dismiss_overlays"
+  | "checkout.observe_payment";
+
+export type ClRouterBrowseRequest = {
+  tenantId?: string;
+  orgId?: string;
+  trace?: ClRouterTraceInput;
+  input: {
+    url: string;
+    goal: string;
+    allowedDomains: string[];
+    maxSteps?: number;
+    outputSchema?: Record<string, unknown>;
+    signup?: {
+      email: string;
+      password: string;
+      name: string;
+      inboxUrl?: string;
+    };
+  };
+  config?: { skills?: ClRouterBrowseSkillName[] };
+  executionBudgetMs?: number;
+};
+
+export type ClRouterBrowseSkillOutcome = {
+  name: string;
+  version: string;
+  status: "succeeded" | "blocked" | "failed" | "skipped";
+  summary: string;
+  steps: number;
+};
+
+export type ClRouterBrowseResponse = {
+  provider: "browserbase" | "sandbox";
+  model: string;
+  output?: unknown;
+  text: string;
+  finished: boolean;
+  steps: number;
+  pages: Array<{ url: string; title: string; text: string }>;
+  networkHosts: string[];
+  redirects?: string[];
+  adoptedDomains?: string[];
+  signupSubmitted?: boolean;
+  actions?: Array<{ tool: string; input: string; result: string }>;
+  skills?: ClRouterBrowseSkillOutcome[];
+  error?: string;
+};
+
 export type ClRouterRetrieveResponse = {
   provider:
     | "parallel"
@@ -562,7 +624,7 @@ export type ClRouterClientOptions = {
   fetch?: typeof fetch;
   abortSignal?: AbortSignal;
   executeJob?: (
-    operation: "generate" | "manual" | "embed" | "retrieve" | "transcribe",
+    operation: "generate" | "manual" | "embed" | "retrieve" | "transcribe" | "browse",
     payload: unknown,
     abortSignal?: AbortSignal,
   ) => Promise<unknown>;
@@ -898,12 +960,12 @@ async function postJson(
   const operation = path.replace(/^\/v1\//, "").split("/")[0];
   if (
     options.executeJob &&
-    ["generate", "manual", "embed", "retrieve", "transcribe"].includes(
+    ["generate", "manual", "embed", "retrieve", "transcribe", "browse"].includes(
       operation,
     )
   ) {
     return options.executeJob(
-      operation as "generate" | "manual" | "embed" | "retrieve" | "transcribe",
+      operation as "generate" | "manual" | "embed" | "retrieve" | "transcribe" | "browse",
       body,
       options.abortSignal,
     );
@@ -1491,6 +1553,59 @@ export async function clRouterDecide(
   }
 }
 
+export async function clRouterExtract(
+  request: Omit<ExtractRequest, "tenantId">,
+  options: ClRouterClientOptions & { orgId?: Id<"organizations"> } = {},
+): Promise<ExtractResponse> {
+  const body = parseExtractRequest({ ...request, tenantId: CL_ROUTER_TENANT_ID });
+  const callKey = crypto.randomUUID();
+  const telemetry = options.telemetry;
+  if (telemetry) {
+    await telemetry.runMutation(internal.modelRoutingEvents.startCall, {
+      callKey,
+      operation: "extract",
+      context: {
+        ...modelCallContext(body, "extract"),
+        orgId: options.orgId,
+        model: "clairic",
+        callProvider: "cloudflare",
+        routeSource: "fixed",
+      },
+    });
+  }
+  try {
+    const payload = await postJson("/v1/extract", body, options);
+    let result: ExtractResponse;
+    try {
+      result = parseExtractResponse(payload, body);
+    } catch (error) {
+      throw new ClRouterRequestError("invalid_response", "cl-router extraction response is invalid", { cause: error });
+    }
+    if (telemetry) {
+      await telemetry.runMutation(internal.modelRoutingEvents.finishCall, {
+        callKey,
+        status: "complete",
+        result: {
+          ...modelCallResult(result),
+          model: "clairic",
+          callProvider: "cloudflare",
+          routeSource: "fixed",
+        },
+      });
+    }
+    return result;
+  } catch (error) {
+    if (telemetry) {
+      await telemetry.runMutation(internal.modelRoutingEvents.finishCall, {
+        callKey,
+        status: "error",
+        error: error instanceof Error ? error.message : "Extraction failed",
+      });
+    }
+    throw error;
+  }
+}
+
 export async function clRouterGenerate(
   request: ClRouterGenerateRequest,
   options: ClRouterClientOptions = {},
@@ -1610,6 +1725,72 @@ export async function clRouterRetrieve(
     );
   }
   return payload as ClRouterRetrieveResponse;
+}
+
+const BROWSE_BODY_KEYS = [
+  "orgId",
+  "input",
+  "config",
+  "executionBudgetMs",
+] as const satisfies readonly (keyof ClRouterBrowseRequest)[];
+
+/** Hosted-browser agent run. Browse is durable-only, so options must come from a durable job client. */
+export async function clRouterBrowse(
+  request: ClRouterBrowseRequest,
+  options: ClRouterClientOptions,
+): Promise<ClRouterBrowseResponse> {
+  if (!options.executeJob)
+    throw new ClRouterRequestError(
+      "configuration",
+      "cl-router browse requires a durable job client",
+    );
+  const payload = await postJson(
+    "/v1/browse",
+    requestBody(request, BROWSE_BODY_KEYS),
+    options,
+  );
+  if (
+    !isRecord(payload) ||
+    (payload.provider !== "browserbase" && payload.provider !== "sandbox") ||
+    typeof payload.text !== "string" ||
+    typeof payload.finished !== "boolean" ||
+    !Array.isArray(payload.networkHosts) ||
+    !payload.networkHosts.every((host) => typeof host === "string") ||
+    !Array.isArray(payload.pages) ||
+    !payload.pages.every(
+      (page) =>
+        isRecord(page) &&
+        typeof page.url === "string" &&
+        typeof page.title === "string" &&
+        typeof page.text === "string",
+    ) ||
+    (payload.skills !== undefined &&
+      (!Array.isArray(payload.skills) ||
+        payload.skills.length > 40 ||
+        !payload.skills.every(
+          (skill) =>
+            isRecord(skill) &&
+            typeof skill.name === "string" &&
+            skill.name.length <= 100 &&
+            typeof skill.version === "string" &&
+            skill.version.length <= 40 &&
+            typeof skill.status === "string" &&
+            ["succeeded", "blocked", "failed", "skipped"].includes(
+              skill.status,
+            ) &&
+            typeof skill.summary === "string" &&
+            skill.summary.length <= 500 &&
+            typeof skill.steps === "number" &&
+            Number.isInteger(skill.steps) &&
+            skill.steps >= 0,
+        )))
+  ) {
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router browse response is invalid",
+    );
+  }
+  return payload as ClRouterBrowseResponse;
 }
 
 export async function clRouterEmbed(

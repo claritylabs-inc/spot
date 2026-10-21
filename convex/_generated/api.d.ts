@@ -77,6 +77,7 @@ import type * as actions_slackReconciliation from "../actions/slackReconciliatio
 import type * as actions_tenantMcpTools from "../actions/tenantMcpTools.js";
 import type * as actions_threadTitle from "../actions/threadTitle.js";
 import type * as actions_vendorComplianceMonitor from "../actions/vendorComplianceMonitor.js";
+import type * as actions_websiteTech from "../actions/websiteTech.js";
 import type * as agentChannels from "../agentChannels.js";
 import type * as agentHistory from "../agentHistory.js";
 import type * as agentTargets from "../agentTargets.js";
@@ -90,6 +91,7 @@ import type * as certificateNotes from "../certificateNotes.js";
 import type * as certificates from "../certificates.js";
 import type * as chatPresentations from "../chatPresentations.js";
 import type * as clRouterOperations from "../clRouterOperations.js";
+import type * as clientDeletion from "../clientDeletion.js";
 import type * as clientFiles from "../clientFiles.js";
 import type * as clientProcurementRequests from "../clientProcurementRequests.js";
 import type * as companyInformation from "../companyInformation.js";
@@ -260,6 +262,7 @@ import type * as lib_intakePrefills from "../lib/intakePrefills.js";
 import type * as lib_intakeQuestionGuidance from "../lib/intakeQuestionGuidance.js";
 import type * as lib_intakeSlackContext from "../lib/intakeSlackContext.js";
 import type * as lib_intakeWorkforcePrefill from "../lib/intakeWorkforcePrefill.js";
+import type * as lib_jevComposite from "../lib/jevComposite.js";
 import type * as lib_jevEvidenceChoices from "../lib/jevEvidenceChoices.js";
 import type * as lib_jevImages from "../lib/jevImages.js";
 import type * as lib_jevThreshold from "../lib/jevThreshold.js";
@@ -390,6 +393,8 @@ import type * as lib_vendorComplianceTools from "../lib/vendorComplianceTools.js
 import type * as lib_webChatDeterministicControls from "../lib/webChatDeterministicControls.js";
 import type * as lib_webRetrieval from "../lib/webRetrieval.js";
 import type * as lib_websiteBrand from "../lib/websiteBrand.js";
+import type * as lib_websiteTech from "../lib/websiteTech.js";
+import type * as lib_websiteTechSignatures from "../lib/websiteTechSignatures.js";
 import type * as lib_workflows_certificateRequest from "../lib/workflows/certificateRequest.js";
 import type * as lib_workflows_comms from "../lib/workflows/comms.js";
 import type * as lib_workflows_index from "../lib/workflows/index.js";
@@ -440,6 +445,7 @@ import type * as rateLimits from "../rateLimits.js";
 import type * as reextractLegacyPolicies from "../reextractLegacyPolicies.js";
 import type * as requestIntake from "../requestIntake.js";
 import type * as requirementExtractionRuns from "../requirementExtractionRuns.js";
+import type * as researchInbox from "../researchInbox.js";
 import type * as reviewerAccounts from "../reviewerAccounts.js";
 import type * as routerAssets from "../routerAssets.js";
 import type * as routerJobs from "../routerJobs.js";
@@ -457,6 +463,7 @@ import type * as sourceSpans from "../sourceSpans.js";
 import type * as threadActionConfirmations from "../threadActionConfirmations.js";
 import type * as threads from "../threads.js";
 import type * as users from "../users.js";
+import type * as websiteTech from "../websiteTech.js";
 
 import type {
   ApiFromModules,
@@ -534,6 +541,7 @@ declare const fullApi: ApiFromModules<{
   "actions/tenantMcpTools": typeof actions_tenantMcpTools;
   "actions/threadTitle": typeof actions_threadTitle;
   "actions/vendorComplianceMonitor": typeof actions_vendorComplianceMonitor;
+  "actions/websiteTech": typeof actions_websiteTech;
   agentChannels: typeof agentChannels;
   agentHistory: typeof agentHistory;
   agentTargets: typeof agentTargets;
@@ -547,6 +555,7 @@ declare const fullApi: ApiFromModules<{
   certificates: typeof certificates;
   chatPresentations: typeof chatPresentations;
   clRouterOperations: typeof clRouterOperations;
+  clientDeletion: typeof clientDeletion;
   clientFiles: typeof clientFiles;
   clientProcurementRequests: typeof clientProcurementRequests;
   companyInformation: typeof companyInformation;
@@ -717,6 +726,7 @@ declare const fullApi: ApiFromModules<{
   "lib/intakeQuestionGuidance": typeof lib_intakeQuestionGuidance;
   "lib/intakeSlackContext": typeof lib_intakeSlackContext;
   "lib/intakeWorkforcePrefill": typeof lib_intakeWorkforcePrefill;
+  "lib/jevComposite": typeof lib_jevComposite;
   "lib/jevEvidenceChoices": typeof lib_jevEvidenceChoices;
   "lib/jevImages": typeof lib_jevImages;
   "lib/jevThreshold": typeof lib_jevThreshold;
@@ -847,6 +857,8 @@ declare const fullApi: ApiFromModules<{
   "lib/webChatDeterministicControls": typeof lib_webChatDeterministicControls;
   "lib/webRetrieval": typeof lib_webRetrieval;
   "lib/websiteBrand": typeof lib_websiteBrand;
+  "lib/websiteTech": typeof lib_websiteTech;
+  "lib/websiteTechSignatures": typeof lib_websiteTechSignatures;
   "lib/workflows/certificateRequest": typeof lib_workflows_certificateRequest;
   "lib/workflows/comms": typeof lib_workflows_comms;
   "lib/workflows/index": typeof lib_workflows_index;
@@ -897,6 +909,7 @@ declare const fullApi: ApiFromModules<{
   reextractLegacyPolicies: typeof reextractLegacyPolicies;
   requestIntake: typeof requestIntake;
   requirementExtractionRuns: typeof requirementExtractionRuns;
+  researchInbox: typeof researchInbox;
   reviewerAccounts: typeof reviewerAccounts;
   routerAssets: typeof routerAssets;
   routerJobs: typeof routerJobs;
@@ -914,6 +927,7 @@ declare const fullApi: ApiFromModules<{
   threadActionConfirmations: typeof threadActionConfirmations;
   threads: typeof threads;
   users: typeof users;
+  websiteTech: typeof websiteTech;
 }>;
 
 /**

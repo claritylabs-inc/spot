@@ -22,6 +22,7 @@ import { ChatErrorDetails } from "./error-details";
 import type { RouterJobFailure } from "@/convex/lib/routerJobFailure";
 import {
   activityStatusLabel,
+  hasActiveActivity,
   ThinkingSummary,
   type ChatActivity,
 } from "./thinking-summary";
@@ -109,11 +110,22 @@ export function ChatAssistantTurn({
   children?: ReactNode;
 }) {
   const { streamResponses, showThinking } = useChatDisplayPreferences();
+  // A visible activity row already shows what the turn is doing, so the
+  // standalone indicator would repeat it. It stays for Show thinking off, no
+  // activity, and waiting on the model with no row in progress.
+  const rowShowsProgress = showThinking && hasActiveActivity(activity);
   const answer =
     working && (!streamResponses || !content) ? (
-      <AgentThinkingBubble
-        label={activityStatusLabel(showThinking ? activity : undefined)}
-      />
+      rowShowsProgress ? (
+        // The row shows the detail; announce only the current activity.
+        <span role="status" aria-live="polite" className="sr-only">
+          {activityStatusLabel(activity)}
+        </span>
+      ) : (
+        <AgentThinkingBubble
+          label={activityStatusLabel(showThinking ? activity : undefined)}
+        />
+      )
     ) : (
       <div className="min-w-0 max-w-[min(max(32rem,80vw),100%)]">
         {body ?? (
@@ -149,28 +161,30 @@ export function ChatAssistantTurn({
     <div className="w-full">
       {audience === "operator" && executionPlan ? (
         <ChatDisclosure
+          working={working}
           summary={<span>Plan · {executionPlan.steps.length} steps</span>}
-          className="mb-2 max-w-3xl text-muted-foreground"
+          className={`max-w-3xl text-muted-foreground/50 ${typeStyle("caption.default")}`}
+          summaryClassName="hover:text-muted-foreground"
         >
-          <p className="mb-2 text-foreground">{executionPlan.summary}</p>
-          {executionPlan.targets.length ? (
-            <p className={`mb-2 break-words ${typeStyle("body.default")}`}>
-              Targets: {executionPlan.targets.join(", ")}
-            </p>
-          ) : null}
-          <ol
-            className={`list-decimal space-y-2 pl-5 ${typeStyle("body.default")}`}
+          <div
+            className={`space-y-2.5 pt-2.5 pb-1 text-muted-foreground/70 ${typeStyle("body.default")}`}
           >
-            {executionPlan.steps.map((step, index) => (
-              <li key={index} className="break-words">
-                <p className={`text-foreground ${typeStyle("body.medium")}`}>
-                  {step.title}
-                </p>
-                <p>{step.detail}</p>
-                <p className="mt-1">Done when: {step.completionCriteria}</p>
-              </li>
-            ))}
-          </ol>
+            <p className="text-foreground">{executionPlan.summary}</p>
+            {executionPlan.targets.length ? (
+              <p className="break-words">
+                Targets: {executionPlan.targets.join(", ")}
+              </p>
+            ) : null}
+            <ol className="list-outside list-decimal space-y-2.5 pl-7">
+              {executionPlan.steps.map((step, index) => (
+                <li key={index} className="break-words pl-1">
+                  <p className="text-foreground">{step.title}</p>
+                  <p>{step.detail}</p>
+                  <p className="mt-1">Done when: {step.completionCriteria}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
         </ChatDisclosure>
       ) : null}
       {showThinking ? (

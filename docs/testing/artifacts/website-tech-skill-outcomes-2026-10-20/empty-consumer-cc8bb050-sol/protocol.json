@@ -1,0 +1,34 @@
+{
+  "sentTypes": {
+    "turbopack-subscribe": 33,
+    "Connect": 3,
+    "ModifyQuerySet": 43,
+    "Authenticate": 4,
+    "Mutation": 1
+  },
+  "receivedTypes": {
+    "isrManifest": 11,
+    "turbopack-connected": 3,
+    "building": 6,
+    "sync": 3,
+    "built": 6,
+    "Transition": 23,
+    "MutationResponse": 1
+  },
+  "udfNames": [
+    "operator:bootstrapViewer",
+    "operator:current",
+    "operator:getClientSupportDetails",
+    "operator:listClients",
+    "operator:listUnlinkedApplications",
+    "orgWiki:getForOperator",
+    "orgs:pendingInvitationForViewer",
+    "orgs:viewerOrg",
+    "users:viewer",
+    "websiteTech:getForOperator"
+  ],
+  "httpStatuses": {
+    "200": 226,
+    "304": 3
+  }
+}

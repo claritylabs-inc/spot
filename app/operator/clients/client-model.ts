@@ -28,14 +28,3 @@ export const operatorClientStatuses = Object.fromEntries(
     label,
   ]),
 ) as Record<keyof typeof OPERATOR_CLIENT_STATUSES, string>;
-
-export function operatorClientStatusLabel(client: OperatorClientRow) {
-  return OPERATOR_CLIENT_STATUSES[client.clientAccessStatus].label;
-}
-
-export function operatorClientStatusPresentation(
-  client: OperatorClientRow,
-): StatusPresentation {
-  const { tone, indicator } = OPERATOR_CLIENT_STATUSES[client.clientAccessStatus];
-  return { tone, indicator };
-}

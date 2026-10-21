@@ -30,6 +30,12 @@ import { agentStepsValidator } from "./lib/agentSteps";
 import { policyProductIdentityValidator } from "./lib/policyProductIdentity";
 import { certificateRequirementSnapshotValidator } from "./lib/certificateRequirementPlan";
 import {
+  websiteTechDisclosureValidator,
+  websiteTechBrowseValidator,
+  websiteTechInferenceValidator,
+  websiteTechSignalValidator,
+} from "./lib/websiteTech";
+import {
   companyInformationProfileValidator,
   companyInformationOrganizationFactValidator,
 } from "./lib/companyInformationExtraction";
@@ -481,6 +487,8 @@ export default defineSchema({
     clientAccessStatus: v.optional(
       v.union(v.literal("limited"), v.literal("active")),
     ),
+    // Unsubmitted intake draft that created this client; its identity follows the draft until submission.
+    intakeDraftRequestId: v.optional(v.id("procurementRequests")),
     name: v.string(),
     deletedAt: v.optional(v.number()),
     deletedByUserId: v.optional(v.id("users")),
@@ -596,8 +604,47 @@ export default defineSchema({
     .index("organization", ["orgId"])
     .index("organization_user", ["orgId", "userId"]),
 
+  // Best-effort public tech-stack scan keyed by website hostname; shared by
+  // intake drafts and organizations and never gates any workflow.
+  websiteTechProfiles: defineTable({
+    domain: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    runId: v.optional(v.string()),
+    signals: v.array(websiteTechSignalValidator),
+    disclosures: v.array(websiteTechDisclosureValidator),
+    inferences: v.optional(v.array(websiteTechInferenceValidator)),
+    browse: v.optional(websiteTechBrowseValidator),
+    error: v.optional(v.string()),
+    completedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("domain", ["domain"]),
+
   // Supply-side broker directory data. A profile may exist without portal
   // users; portal access remains represented exclusively by orgMemberships.
+  // Per-run research inbox addresses on the research email domain, with a hashed capability token
+  // the browser agent uses to read verification emails. Expired rows are inert.
+  researchInboxes: defineTable({
+    address: v.string(),
+    tokenHash: v.string(),
+    expiresAt: v.number(),
+  })
+    .index("address", ["address"])
+    .index("token", ["tokenHash"]),
+  researchInboxEmails: defineTable({
+    address: v.string(),
+    resendEmailId: v.string(),
+    from: v.string(),
+    subject: v.string(),
+    receivedAt: v.number(),
+  })
+    .index("address", ["address", "receivedAt"])
+    .index("resend_email", ["resendEmailId"]),
+
   companyResearchEvents: defineTable({
     orgId: v.id("organizations"),
     fingerprint: v.string(),
@@ -2381,6 +2428,7 @@ export default defineSchema({
       v.literal("section_result"),
       v.literal("parsed_source"),
       v.literal("section_plan"),
+      v.literal("declarations_fast_pass"),
     ),
     storageId: v.id("_storage"),
     runId: v.optional(v.id("policyExtractionRuns")),
@@ -2506,7 +2554,7 @@ export default defineSchema({
     label: v.optional(v.string()),
     task: v.optional(v.string()),
     taskKind: v.optional(v.string()),
-    provider: v.optional(modelProviderValidator),
+    provider: v.optional(v.union(modelProviderValidator, v.literal("cloudflare"))),
     model: v.optional(v.string()),
     routeSource: v.optional(v.string()),
     transport: v.optional(v.string()),
@@ -2649,7 +2697,12 @@ export default defineSchema({
     ])
     .index("status", ["clientOrgId", "status", "updatedAt"])
     .index("inbox", ["inboxToken"])
-    .index("owner_updated", ["ownerUserId", "updatedAt"]),
+    .index("owner_updated", ["ownerUserId", "updatedAt"])
+    .index("intake_submitted_status", [
+      "intakeSubmittedAt",
+      "status",
+      "updatedAt",
+    ]),
 
   requestHandoffs: defineTable({
     intakeGoal: v.optional(v.union(v.literal("quote"), v.literal("savings"))),
@@ -4543,6 +4596,7 @@ export default defineSchema({
       v.literal("embed"),
       v.literal("retrieve"),
       v.literal("transcribe"),
+      v.literal("browse"),
     ),
     fingerprint: v.string(),
     status: v.union(

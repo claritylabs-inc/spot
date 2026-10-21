@@ -72,7 +72,8 @@ type PolicyExtractionArtifactKind =
   | "source_bundle"
   | "section_result"
   | "parsed_source"
-  | "section_plan";
+  | "section_plan"
+  | "declarations_fast_pass";
 type PolicyPipelineLogEntry = {
   timestamp: number;
   message: string;
@@ -3075,6 +3076,7 @@ const pipelineArtifactKindValidator = v.union(
   v.literal("section_result"),
   v.literal("parsed_source"),
   v.literal("section_plan"),
+  v.literal("declarations_fast_pass"),
 );
 
 export const pipelineSaveArtifact = internalMutation({

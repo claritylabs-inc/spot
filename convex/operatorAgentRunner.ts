@@ -1,5 +1,6 @@
 "use node";
 
+import { toolActivityContext } from "../lib/tool-activity-context";
 import { capturePresentationTool } from "./chatPresentations";
 
 import { CLIENT_PROFILE_GUIDANCE } from "./lib/clientProfile";
@@ -481,6 +482,7 @@ export const run = internalAction({
             (await buildOperatorHistoryWithAttachments(ctx, selected.messages));
           return { continuation, messages };
         },
+        ({ messages }) => `${messages.length} message${messages.length === 1 ? "" : "s"} loaded`,
       );
       const recovery = parseRecoveryState(continuation?.recovery);
       const exhaustedTools = new Map(
@@ -549,6 +551,12 @@ export const run = internalAction({
           stage: "selecting_tools",
           status:
             familySelection.source === "fallback" ? "failed" : "completed",
+          detail:
+            familySelection.source === "fallback"
+              ? "Selection unavailable; all permitted tool groups loaded"
+              : familySelection.families
+                  .map((family) => family.replaceAll("_", " "))
+                  .join(", "),
         });
       }
       // The operator model is fixed configuration, not a Jev decision. A
@@ -562,6 +570,7 @@ export const run = internalAction({
           "selecting_model",
           (): Promise<ModelRoute> =>
             ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {}),
+          (selected) => `${selected.provider} · ${selected.model}`,
         ).catch(() => undefined));
       const offeredToolNames = operatorAgentToolNamesForFamilies(
         context.toolNames,
@@ -636,6 +645,12 @@ export const run = internalAction({
                 { traceId, parentRequestId, channel: traceChannel },
                 { telemetry: ctx },
               ),
+            (assessment) =>
+              assessment.source === "uncertain"
+                ? "Plan required; complexity check was inconclusive"
+                : assessment.required
+                  ? "Plan required"
+                  : "No plan needed",
           );
           const saved: boolean = await ctx.runMutation(
             internal.operatorAgent.recordPlanningAssessmentInternal,
@@ -700,6 +715,7 @@ export const run = internalAction({
             stageId: planStageId,
             stage: "planning",
             status: "completed",
+            detail: `${generated.steps.length} step${generated.steps.length === 1 ? "" : "s"}`,
           });
           const saved: boolean = await ctx.runMutation(
             internal.operatorAgent.recordExecutionPlanInternal,
@@ -765,7 +781,12 @@ export const run = internalAction({
                 );
               }
               // Tools run serially; mark running only once this call's turn starts.
-              await recordActivity({ ...activity, status: "running" });
+              const activityContext = toolActivityContext(name, input);
+              await recordActivity({
+                ...activity,
+                status: "running",
+                ...(activityContext ? { context: activityContext } : {}),
+              });
               const inputHash = await actionConfirmationFingerprint({
                 toolName: name,
                 toolVersion: spec.version,

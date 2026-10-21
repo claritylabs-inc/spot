@@ -1,0 +1,135 @@
+{
+  "candidate": "2c1b6d4fbb1570c065ea5e0470b74c74c41489bb",
+  "status": "PASS scoped offline integration",
+  "node": "v24.14.1",
+  "snapshot": {
+    "routerRevision": "add09df452266e94bc724d4c764aec45c07c1896",
+    "sha256": "1a5f4f44362222bb14fe40d0088738a28f40f00747d1aafd286ef1f155267d2a",
+    "sourceWorktreeDirty": false,
+    "matchesExactGitHubRevisionBytes": true,
+    "allSkillNames": 10,
+    "contractFixtures": 22,
+    "contractOperations": 11
+  },
+  "checks": {
+    "contract": 0,
+    "rootTypecheck": 0,
+    "convexTypecheck": 0,
+    "focusedLint": 0
+  },
+  "requestCapture": "request-results.json",
+  "uiCarry": {
+    "acceptedCandidate": "101b96ba4daa6ef77faf884e863c9ca566ac1035",
+    "actualUiGroupsPreviouslyPassed": 15,
+    "newUiRuns": 0,
+    "scope": "Unchanged Tech stack consumer source, storage/projections and related package inputs only. No new whole-app, extraction behavior, router runtime or post-release acceptance.",
+    "unchangedFiles": [
+      {
+        "path": "app/operator/clients/[clientOrgId]/wiki/website-tech-section.tsx",
+        "acceptedBlob": "ea6d2ac8c8ba902fd7caae3f4ad9ddb4b7a5507f",
+        "candidateBlob": "ea6d2ac8c8ba902fd7caae3f4ad9ddb4b7a5507f"
+      },
+      {
+        "path": "app/operator/clients/[clientOrgId]/wiki/page.tsx",
+        "acceptedBlob": "1fecce2e6d72036f8b4fabc645e49e6d73be945f",
+        "candidateBlob": "1fecce2e6d72036f8b4fabc645e49e6d73be945f"
+      },
+      {
+        "path": "components/ui/inline-fields.tsx",
+        "acceptedBlob": "29765ad691e5737fdfb503afdaf6f5efabea7e30",
+        "candidateBlob": "29765ad691e5737fdfb503afdaf6f5efabea7e30"
+      },
+      {
+        "path": "app/globals.css",
+        "acceptedBlob": "d059ccd1633a5548918d76cd2e1212eba50f60a4",
+        "candidateBlob": "d059ccd1633a5548918d76cd2e1212eba50f60a4"
+      },
+      {
+        "path": "convex/websiteTech.ts",
+        "acceptedBlob": "89b4b3bb0f95a7a9dd2c43585b6319c0ee9c7f63",
+        "candidateBlob": "89b4b3bb0f95a7a9dd2c43585b6319c0ee9c7f63"
+      },
+      {
+        "path": "convex/lib/websiteTech.ts",
+        "acceptedBlob": "55fd93fc70dd00f688b8d09e02034c4e14d78622",
+        "candidateBlob": "55fd93fc70dd00f688b8d09e02034c4e14d78622"
+      },
+      {
+        "path": "convex/operatorAgent.ts",
+        "acceptedBlob": "3a81af3814d80853bb03c0a78ce1753e9540473f",
+        "candidateBlob": "3a81af3814d80853bb03c0a78ce1753e9540473f"
+      },
+      {
+        "path": "convex/lib/operatorAgentToolRegistry.ts",
+        "acceptedBlob": "89e68866ef5c08aee8104cc3798ba8ec78c5b80a",
+        "candidateBlob": "89e68866ef5c08aee8104cc3798ba8ec78c5b80a"
+      },
+      {
+        "path": "convex/lib/tenantMcpToolCatalog.ts",
+        "acceptedBlob": "5383cc52869550545726d95de05feac867a20dcc",
+        "candidateBlob": "5383cc52869550545726d95de05feac867a20dcc"
+      },
+      {
+        "path": "package.json",
+        "acceptedBlob": "648922ae6b234ced6ade657cc0f8639d63d9423d",
+        "candidateBlob": "648922ae6b234ced6ade657cc0f8639d63d9423d"
+      },
+      {
+        "path": "package-lock.json",
+        "acceptedBlob": "81ea7912b74e17f961245edf9b444271525501cb",
+        "candidateBlob": "81ea7912b74e17f961245edf9b444271525501cb"
+      }
+    ]
+  },
+  "routerCapabilitySourceReview": {
+    "revision": "add09df452266e94bc724d4c764aec45c07c1896",
+    "runtimeExercised": false,
+    "registry": "packages/server/src/skills/registry.ts:22-29",
+    "capabilityConstruction": "packages/server/src/browse/index.ts:224-232",
+    "semantics": "Requested names intersect registry definitions; every required capability must be present. Identity derives from signup; inbox from an accepted inbox URL. Jev remains separately configured. Spot does not filter its requested names when identity is absent.",
+    "requires": {
+      "account.signup": [
+        "browser",
+        "identity",
+        "jev"
+      ],
+      "account.sign_in": [
+        "browser",
+        "identity",
+        "jev"
+      ],
+      "account.verify_email": [
+        "browser",
+        "identity",
+        "inbox",
+        "jev"
+      ],
+      "account.enter_otp": [
+        "browser",
+        "identity",
+        "inbox",
+        "jev"
+      ],
+      "inbox.wait_for_email": [
+        "inbox",
+        "jev"
+      ],
+      "account.cleanup": [
+        "browser",
+        "identity",
+        "jev"
+      ]
+    },
+    "defaults": "catalog.ts DEFAULT_SKILLS uses all ten names, including cleanup, for browser and computer_use. No-config compatibility is not a claim that defaults exclude cleanup. Explicit Spot research config selects nine and excludes cleanup.",
+    "sources": [
+      "https://github.com/claritylabs-inc/cl-router/blob/add09df452266e94bc724d4c764aec45c07c1896/packages/server/src/skills/registry.ts#L22",
+      "https://github.com/claritylabs-inc/cl-router/blob/add09df452266e94bc724d4c764aec45c07c1896/packages/server/src/browse/index.ts#L224",
+      "https://github.com/claritylabs-inc/cl-router/blob/add09df452266e94bc724d4c764aec45c07c1896/packages/server/src/skills/catalog.ts#L19"
+    ]
+  },
+  "limits": [
+    "Router code corrections remain pending; this pin is not production acceptance.",
+    "No provider/browser/router execution, Convex action execution, HTTP/OAuth MCP integration, app startup, shared/prod/env/fixture writes or new unit tests.",
+    "Separate existing 416px mobile shell overflow at 390px remains open."
+  ]
+}

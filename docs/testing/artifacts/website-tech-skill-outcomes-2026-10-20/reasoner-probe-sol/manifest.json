@@ -1,0 +1,82 @@
+{
+  "scope": "Single exposed saved857 reasoner model-only regression PASS, not adoption/native/accuracy",
+  "sourceCandidate": "af229cc363c6a602f2964bfda2c4961dd0cf6e5f",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "613678cfb89ff78a031925c919f2ff7d4bc920b2dfb21abd6958c046c2365d49",
+      "bytes": 2782
+    },
+    {
+      "path": "controller.mjs",
+      "sha256": "b4a05893779d74ce136238898054cdaaed052778aa4f30c78a71b3956acb460b",
+      "bytes": 14643
+    },
+    {
+      "path": "endpoint-health.json",
+      "sha256": "0c917f0b28697a5ab80e1cff8b9706ee787b10ec973a07668619d1557a068328",
+      "bytes": 240
+    },
+    {
+      "path": "frame_after.png",
+      "sha256": "ddbeafbeadc69977792e9d6747ac76702d5424aa71be6385337d6e2f743c319d",
+      "bytes": 13566
+    },
+    {
+      "path": "frame_before.png",
+      "sha256": "b3f4dbeaabfa91531c6a279be18bfdd43051b52cbbecf9ec53d0813f380c8215",
+      "bytes": 13541
+    },
+    {
+      "path": "immutable-provenance.json",
+      "sha256": "6c227605ff686d9a728a8dd7e36d376d24ce6f6d0e2307c6d9910c431d2a3f35",
+      "bytes": 3544
+    },
+    {
+      "path": "predeclaration.json",
+      "sha256": "42f997390e3b0b43dc160fd1108fbd797ede2b1661ec053af2fc7ebd3665f9ce",
+      "bytes": 8460
+    },
+    {
+      "path": "publication-ledger.json",
+      "sha256": "56854d85f48e993e615debf90bb45e337697793de901e4837dde4e9691297df5",
+      "bytes": 2252
+    },
+    {
+      "path": "request-sanitized.json",
+      "sha256": "066b3bdd5b3c225ae0e463b0f83739b5457d1660f4958b07131304ca84cb558b",
+      "bytes": 5414
+    },
+    {
+      "path": "result.json",
+      "sha256": "a99c0b9caf023167138002be8a4469e7c4804868d870f76e3c5951417acd7e7b",
+      "bytes": 1557
+    },
+    {
+      "path": "target_after.png",
+      "sha256": "7738abc94688b1876e9dcdfa8fd619b62ad992dae3fde617c75984178db3e0bf",
+      "bytes": 5049
+    },
+    {
+      "path": "target_before.png",
+      "sha256": "234478538ac49c7b08ca3b41491e45ae22c88edbf77b47d0521d316635f9ed82",
+      "bytes": 5040
+    },
+    {
+      "path": "verify-offline.mjs",
+      "sha256": "6bcd860260919454d3937514e8bf2f14562ee90055b5f66cf24f0bba801206f7",
+      "bytes": 2748
+    }
+  ],
+  "checks": {
+    "offlineRequestReconstruction": true,
+    "syntax": true,
+    "privateCredentialsAndConfiguredEndpointAbsent": true,
+    "relativeLinksResolve": true,
+    "immutableCommitProvenanceFiles": 11,
+    "sourceBlobs": 14,
+    "noBrowserOrNativeRuntime": true,
+    "clientPostAttempts": 1,
+    "providerHttpAttemptsNotEstablished": true
+  }
+}

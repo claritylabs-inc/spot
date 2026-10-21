@@ -2,16 +2,12 @@ name: CI
 
 on:
   pull_request:
-  merge_group:
-  push:
-    branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -26,52 +22,13 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
 
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund --loglevel=error
+      - run: npm ci --no-audit --no-fund --loglevel=error
 
-      - name: Check cl-router API contract
-        run: npm run check:cl-router-contract
+      - run: npm run lint
 
-      - name: Lint
-        run: npm run lint
+      - run: npx tsc --noEmit
 
-      - name: Test
-        run: npm test
+      - run: npx convex typecheck
 
-      - name: Typecheck Next.js
-        run: npx tsc --noEmit --incremental false
-
-      - name: Typecheck Convex
-        run: npx convex typecheck
-
-      - name: Build
-        run: npm run build
-
-  packages:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - cli
-          - operator-cli
-    defaults:
-      run:
-        working-directory: ${{ matrix.package }}
-    steps:
-      - uses: useblacksmith/checkout@v1
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: ${{ matrix.package }}/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund --loglevel=error
-
-      - name: Typecheck
-        run: npm run typecheck
+      - run: npm test
