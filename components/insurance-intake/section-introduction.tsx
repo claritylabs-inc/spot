@@ -93,7 +93,8 @@ export function IntakeSectionIntroduction({
         <div className="space-y-4">
           <h1
             id="intake-section-title"
-            className={`text-wrap-pretty ${typeStyle("heading.display")}`}
+            className={`text-pretty ${typeStyle("heading.display")}`}
+            style={{textWrap:"pretty"}}
           >
             {section === 0 && !suppliedContent
               ? `Welcome${firstName ? ` ${firstName}` : ""}, let’s start with your request`

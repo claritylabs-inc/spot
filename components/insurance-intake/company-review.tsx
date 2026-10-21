@@ -1,7 +1,7 @@
 "use client";
 import { isFixedVehicleFollowup, vehicleUnderwritingRows } from "@/lib/intake-vehicle-underwriting";
 import { intakeApplicantQuestion, intakeLocationHeading } from "@/lib/intake-applicant-wording";
-import { intakeCatalogCoverage } from "@/lib/intake-acord-questions";
+import { INTAKE_ACORD_QUESTIONS, intakeCatalogCoverage } from "@/lib/intake-acord-questions";
 import { bakedCoverageQuestions } from "@/lib/intake-coverage-questions";
 import { followupQuestionVisible, formatIntakeFollowupAnswer, personalizeIntakeQuestion, type IntakeFollowupAnswer } from "@/lib/intake-followups";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
@@ -98,6 +98,26 @@ function Group({
       <IntakeReviewRows rows={rows} emptyTitle={`No ${title.toLowerCase()} added yet`} />
     </section>
   );
+}
+/** Small shared row cards, grouped by the catalog's existing topic metadata. */
+function CoverageAnswerGroups({ answers, businessName }: {answers: IntakeFollowupAnswer[]; businessName?: string}) {
+  const groups = new Map<string, IntakeFollowupAnswer[]>();
+  for (const answer of answers) {
+    const candidate = INTAKE_ACORD_QUESTIONS.find(row => row.question.source === answer.source);
+    const id = candidate?.definition.id ?? "";
+    const title = id.startsWith("umbrella.exposure.aviation") ? "Aircraft"
+      : id.startsWith("umbrella.exposure.watercraft") ? "Watercraft"
+      : id.startsWith("umbrella.exposure.") ? "Potential losses"
+      : candidate?.group.title ?? "Coverage details";
+    groups.set(title, [...(groups.get(title) ?? []), answer]);
+  }
+  return [...groups].flatMap(([title, group]) => {
+    const cards = [];
+    for (let index = 0; index < group.length; index += 5)
+      cards.push(<Group key={`${title}-${index}`} title={index ? `${title} (continued)` : title}
+        rows={intakeReviewFollowupRows(group.slice(index, index + 5), businessName)} />);
+    return cards;
+  });
 }
 function Address({
   address,
@@ -414,7 +434,7 @@ export function IntakeRequestReview({
         />
       )}
       {(!section || section === "coverage") && (
-        <section className="space-y-3" aria-label="Requested coverages">
+        <section data-review-content className="space-y-6" aria-label="Requested coverages">
           {!hideHeading && (
             <h3 className={typeStyle("heading.item")}>Requested coverages</h3>
           )}
@@ -422,62 +442,40 @@ export function IntakeRequestReview({
             details.coverages.map((line, index) => {
               const option = coverageOption(line.coverage);
               return (
-                <div key={index} className="space-y-3">
-                <IntakeReviewRows
-                  rows={[
-                    {
-                      label: "Coverage Requested",
-                      value: coverageRequestLabel(line),
-                    },
-                    ...option.limits
-                      .filter((limit) => limit.key !== "coverage_description")
-                      .map((limit) => ({
-                        label: limit.label,
-                        value: line.limits[limit.key]
-                          ? money(line.limits[limit.key])
-                          : "Not provided",
-                      })),
-                    ...intakeReviewFollowupRows(otherCoverageAnswers.filter(row =>
-                      intakeCatalogCoverage(row, coverageIds) === line.coverage), answers.legalName || answers.dba),
-                    ...(line.coverage === "cyber" ? [
-                      ...(details.cyberDocuments?.privacyPolicyUrl ? [{ label: "Privacy policy", value: details.cyberDocuments.privacyPolicyUrl }] : []),
-                      ...(details.cyberDocuments?.termsUrl ? [{ label: "Terms of service", value: details.cyberDocuments.termsUrl }] : []),
-                    ] : []),
-                    ...(line.additionalCoverages
-                      ? [
-                          {
-                            label: "Additional coverages",
-                            value: line.additionalCoverages,
-                          },
-                        ]
-                      : []),
-                    ...(line.scopeDescription
-                      ? [
-                          {
-                            label: "What to insure",
-                            value: line.scopeDescription,
-                          },
-                        ]
-                      : []),
-                    ...(line.vehicles || []).map((vehicle, i) => ({
-                      label: `Vehicle ${i + 1}`,
-                      value: (
-                        <>
-                          <div>
-                            {[
-                              vehicle.year,
-                              vehicleMakeLabel(vehicle.make),
-                              vehicle.model,
-                            ]
-                              .filter(Boolean)
-                              .join(" ")}
-                          </div>
-                          {vehicle.vin && <div>VIN # {vehicle.vin}</div>}
-                        </>
-                      ),
-                    })),
-                  ]}
-                />
+                <section key={index} className="space-y-6" aria-label={coverageRequestLabel(line)}>
+                <h3 className={typeStyle("heading.item")}>{coverageRequestLabel(line)}</h3>
+                {!!option.limits.filter(limit => limit.key !== "coverage_description").length && <Group
+                  title="Limits and deductibles"
+                  rows={option.limits.filter(limit => limit.key !== "coverage_description").map(limit => ({
+                    label:limit.label, value:line.limits[limit.key] ? money(line.limits[limit.key]) : "Not provided",
+                  }))}
+                />}
+                <CoverageAnswerGroups answers={otherCoverageAnswers.filter(row => intakeCatalogCoverage(row, coverageIds) === line.coverage)} businessName={answers.legalName || answers.dba} />
+                {line.coverage === "cyber" && (details.cyberDocuments?.privacyPolicyUrl || details.cyberDocuments?.termsUrl) && <Group title="Policy documents" rows={[
+                  ...(details.cyberDocuments?.privacyPolicyUrl ? [{label:"Privacy policy",value:details.cyberDocuments.privacyPolicyUrl}] : []),
+                  ...(details.cyberDocuments?.termsUrl ? [{label:"Terms of service",value:details.cyberDocuments.termsUrl}] : []),
+                ]}/>}
+                {(line.additionalCoverages || line.scopeDescription) && <Group title="Additional coverage details" rows={[
+                  ...(line.additionalCoverages ? [{label:"Additional coverages",value:line.additionalCoverages}] : []),
+                  ...(line.scopeDescription ? [{label:"What to insure",value:line.scopeDescription}] : []),
+                ]}/>}
+                {(line.vehicles ?? []).map((vehicle, vehicleIndex) => {
+                  const name = [vehicle.year,vehicleMakeLabel(vehicle.make),vehicle.model].filter(Boolean).join(" ") || `Vehicle ${vehicleIndex+1}`;
+                  const underwriting = vehicleUnderwritingRows({...details,coverages:[line]})[vehicleIndex]?.rows ?? [];
+                  const groups = [
+                    {title:"Vehicle details",labels:["Body type","Ownership","Where is it kept overnight?"]},
+                    {title:"Vehicle use",labels:["What is this vehicle used for?","Estimated annual distance","Used for personal trips"]},
+                    {title:"Specifications",labels:["Gross vehicle weight rating (GVWR)","Number of passenger seats"]},
+                    {title:"Equipment",labels:["Nonstandard permanently installed equipment","Equipment description","Equipment replacement cost"]},
+                  ];
+                  return <section key={vehicleIndex} className="space-y-4" aria-label={name}>
+                    <h3 className={typeStyle("heading.item")}>{name}</h3>
+                    {groups.map(group => <Group key={group.title} title={group.title} rows={[
+                      ...(group.title === "Vehicle details" && vehicle.vin ? [{label:"VIN",value:vehicle.vin}] : []),
+                      ...underwriting.filter(row=>group.labels.includes(row.label)),
+                    ]}/>)}
+                  </section>;
+                })}
                 {(line.properties ?? []).map((location, locationIndex) => (
                   <section key={locationIndex} className="space-y-3" aria-label={location.name?.trim() || `Location ${locationIndex + 1}`}>
                     <h3 className={typeStyle("heading.micro")}>{location.name?.trim() || `Location ${locationIndex + 1}`}</h3>
@@ -486,20 +484,18 @@ export function IntakeRequestReview({
                       { label: "Activities", value: location.details },
                       { label: "Owned or leased", value: location.ownership === "owned" ? "Owned" : location.ownership === "leased" ? "Leased" : location.ownership === "unknown" ? "I'm not sure" : undefined },
                       { label: "Staff", value: location.staff },
-                      ...intakeReviewFollowupRows(locationAnswers(addressText(location.address)), answers.legalName || answers.dba),
+
                     ]} />
+                    <CoverageAnswerGroups answers={locationAnswers(addressText(location.address))} businessName={answers.legalName || answers.dba}/>
                   </section>
                 ))}
-                </div>
+                </section>
               );
             })
           ) : (
             <IntakeReviewRows rows={rows(["coverage", "limits"])} />
           )}
-          {otherCoverageAnswers.some(row => !intakeCatalogCoverage(row, coverageIds)) && <IntakeReviewRows rows={intakeReviewFollowupRows(otherCoverageAnswers.filter(row => !intakeCatalogCoverage(row, coverageIds)), answers.legalName || answers.dba)} />}
-          <div data-review-content className="space-y-5">
-            {vehicleUnderwritingRows(details).map(group=><section key={group.title} className="space-y-3"><h2 className={typeStyle("heading.item")}>{group.title}</h2><IntakeReviewRows rows={group.rows}/></section>)}
-          </div>
+          {otherCoverageAnswers.some(row => !intakeCatalogCoverage(row, coverageIds)) && <section className="space-y-5" aria-label="Other saved coverage details"><h3 className={typeStyle("heading.item")}>Other saved coverage details</h3><CoverageAnswerGroups answers={otherCoverageAnswers.filter(row => !intakeCatalogCoverage(row, coverageIds))} businessName={answers.legalName || answers.dba}/></section>}
           {(details.limitsNote ||
             details.additionalNote ||
             details.scopeNote ||

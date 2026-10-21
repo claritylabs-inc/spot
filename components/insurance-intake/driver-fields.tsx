@@ -2,17 +2,15 @@
 import { IntakeReviewRows } from "./company-review";
 import { typeStyle } from "@/lib/typography";
 import dayjs from "dayjs";
-import { parseDateText } from "@claritylabs-inc/ui/components/date-field";
+import { DateField, parseDateText } from "@claritylabs-inc/ui/components/date-field";
 import { DriverJurisdiction } from "./driver-jurisdiction";
-import { Label } from "@claritylabs-inc/ui/components/label";
-import { Field } from "@claritylabs-inc/ui/components/field";
+import { Field, FieldLabel } from "@claritylabs-inc/ui/components/field";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { PillButton } from "@/components/ui/pill-button";
 import { RemoveButton } from "@/components/ui/remove-button";
 import { IntakeRadioChoices } from "./details-fields";
 import {
-  driverFieldValid,
   DRIVER_FIELDS,
   driverQuestion,
   newIntakeDriver,
@@ -43,7 +41,7 @@ export function IntakeDriverFields({
     });
   if (step === 31)
     return (
-      <div className="ph-no-capture space-y-4">
+      <div className="ph-no-capture space-y-4 [&_input]:h-12">
         {drivers.map((row, i) => (
           <div key={row.id} className="flex items-center gap-3">
             <Input
@@ -71,27 +69,9 @@ export function IntakeDriverFields({
             />
           </div>
         ))}
-        <p className="text-muted-foreground">
-          List the drivers you know. License numbers and birth dates can be
-          provided later if a carrier needs them.
-        </p>
-        <PillButton
-          variant="ghost"
-          aria-pressed={!!details.collectSensitiveDriverDetails}
-          onClick={() =>
-            onChange({
-              ...details,
-              collectSensitiveDriverDetails:
-                !details.collectSensitiveDriverDetails,
-            })
-          }
-        >
-          {details.collectSensitiveDriverDetails
-            ? "Omit optional license numbers and birth dates"
-            : "Add optional license numbers and birth dates"}
-        </PillButton>
         <PillButton
           variant="secondary"
+          size="large"
           disabled={drivers.length >= 30}
           onClick={() =>
             onChange({ ...details, drivers: [...drivers, newIntakeDriver()] })
@@ -105,10 +85,7 @@ export function IntakeDriverFields({
   const field = DRIVER_FIELDS[step - 31];
   const label = driverQuestion(step, driver.name);
   return (
-    <Field className="ph-no-capture gap-2">
-      <Label className={`${typeStyle("body.root")} text-foreground`}>
-        {driver.name}
-      </Label>
+    <Field className="ph-no-capture gap-6 [&_input]:h-12 [&_button[role=combobox]]:h-12">
       {step === 32 ? (
         <Input
           aria-label={label}
@@ -128,10 +105,22 @@ export function IntakeDriverFields({
           }
         />
       ) : step === 34 ? (
+        <>
         <DriverJurisdiction
+          defaultCountry={details.registrationCountry}
           value={driver.licenseJurisdiction}
           onChange={(licenseJurisdiction) => update({ licenseJurisdiction })}
         />
+        <DateField id={`driver-${driver.id}-dob`} label="Date of birth"
+          value={/^\d{4}-\d{2}-\d{2}$/.test(driver.dateOfBirth) ? driver.dateOfBirth : ""}
+          inputValue={/^\d{4}-\d{2}-\d{2}$/.test(driver.dateOfBirth) ? dayjs(driver.dateOfBirth).format("MM/DD/YYYY") : driver.dateOfBirth}
+          onInputChange={text=>update({dateOfBirth:parseDateText(text)||text})}
+          onChange={dateOfBirth=>update({dateOfBirth})}/>
+        <Field><FieldLabel htmlFor={`driver-${driver.id}-license`} className={typeStyle("body.root")}>License number</FieldLabel>
+          <Input id={`driver-${driver.id}-license`} aria-label="License number" placeholder="License number" autoComplete="off" maxLength={200}
+            value={driver.licenseNumber} onChange={event=>update({licenseNumber:event.target.value})}/>
+        </Field>
+        </>
       ) : step === 37 || step === 39 ? (
         <IntakeRadioChoices
           label={label}
@@ -173,13 +162,6 @@ export function IntakeDriverFields({
           autoComplete="off"
           onChange={(event) => update({ [field]: event.target.value })}
         />
-      )}
-      {!driverFieldValid(driver, step) && (
-        <p role="alert" className="text-destructive">
-          {step === 32
-            ? "Enter a valid birth date in the past, or clear it to skip."
-            : "Check this value, or clear it to skip."}
-        </p>
       )}
     </Field>
   );

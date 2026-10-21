@@ -4,6 +4,7 @@ import { IntakeDriverReview } from "./driver-fields";
 import { hasCommercialAuto } from "@/lib/intake-drivers";
 import { followupQuestionVisible } from "@/lib/intake-followups";
 import { IntakeFollowupReview } from "./followup-review";
+import { IntakePremiumEstimate } from "./premium-estimate";
 import { ChevronDown } from "lucide-react";
 import {
   OperationalLabelValueList,
@@ -13,7 +14,7 @@ import { IntakeReviewChanges } from "./review-changes";
 import { useEffect, type ReactNode, type MouseEvent } from "react";
 import { IntakeCompanyReview, IntakeRequestReview } from "./company-review";
 import { api } from "@/convex/_generated/api";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { PillButton } from "@/components/ui/pill-button";
@@ -123,6 +124,12 @@ export function IntakeTracking({
     ]).size > 1;
   const a = data.answers;
   const isSavings = a.intakeGoal === "savings";
+  const preparePremiumEstimate = useMutation(api.requestIntake.preparePremiumEstimate);
+  useEffect(() => {
+    const preferDraft=!data.submitted || data.hasUnsubmittedChanges;
+    if (!isSavings && (!data.premiumEstimate || (preferDraft && data.premiumEstimate.contentHash!==data.premiumDraftContentHash)))
+      void preparePremiumEstimate({requestId:data.requestId,preferDraft}).catch(() => undefined);
+  }, [data.submitted, data.hasUnsubmittedChanges, data.requestId, data.premiumEstimate, data.premiumDraftContentHash, isSavings, preparePremiumEstimate]);
   const has = (...keys: (keyof typeof a)[]) =>
     keys.every((key) => !!a[key]?.trim());
   const complete = [
@@ -214,6 +221,7 @@ export function IntakeTracking({
             : "We’ll have quotes ready for you within 24 hours"}
         </p>
       )}
+      {data.submitted && !isSavings && !data.premiumEstimate?.provisional && <IntakePremiumEstimate estimate={data.premiumEstimate}/>}
       <div className="mt-8 space-y-2">
         {banner}
         <>

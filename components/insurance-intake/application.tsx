@@ -1,10 +1,14 @@
 "use client";
+import { isIntakePercentageQuestion } from "@/lib/intake-percentages";
+import { vehicleRelevanceKey, filterVehicleRelevantQuestions } from "@/lib/intake-vehicle-relevance";
+import { isWorkforceProviderSource, workforceProviderComplete } from "@/lib/intake-workforce-provider";
 import { workJurisdictionsComplete } from "@/lib/intake-jurisdictions";
-import { payrollAnswerComplete } from "@/lib/intake-payroll";
+import { payrollAnswerComplete, payrollPages, payrollPageTitle, payrollPageValue, parsePayrollAnswer } from "@/lib/intake-payroll";
 import { cyberDocumentQuestions, cyberDocumentUrlValid, intakeCyberResearchKey, withCyberDocumentQuestions } from "@/lib/intake-cyber-research";
-import { vehicleSubsectionQuestions, isVehicleSubsectionQuestion, withVehicleSubsections } from "@/lib/intake-vehicle-subsections";
+import { vehicleSubsectionQuestions as unfilteredVehicleSubsectionQuestions, isVehicleSubsectionQuestion, withVehicleSubsections as unfilteredWithVehicleSubsections } from "@/lib/intake-vehicle-subsections";
 import { propertySubsectionQuestions, isPropertySubsectionQuestion, withPropertySubsections } from "@/lib/intake-property-subsections";
 import { intakeCatalogCoverage } from "@/lib/intake-acord-questions";
+import { intakeCoverageDestination, intakeCoveragePages } from "@/lib/intake-coverage-navigation";
 import { intakeApplicantQuestion, intakeLocationHeading } from "@/lib/intake-applicant-wording";
 import { routeAnswerComplete } from "@/lib/route-input";
 import { parseCalendarDateInput } from "@/lib/date-format";
@@ -19,6 +23,7 @@ import { driverQuestion, DRIVER_FIELDS, isDriverStep, hasCommercialAuto, newInta
 import { vinError } from "@/lib/intake-vehicles";
 import { IntakeAutoQuoteFields } from "./auto-quote-fields";
 import { autoVehicles, estimatedVehicleValueError } from "@/lib/intake-auto-quote";
+import { VehicleSpecificationLookup } from "./vehicle-specification-lookup";
 import { IntakeDriverFields } from "./driver-fields";
 import { INTAKE_STEP_FIELDS } from "@/lib/intake-question-history";
 import { IntakeFollowups } from "./followups";
@@ -117,7 +122,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { Button } from "@claritylabs-inc/ui/components/button";
 import { completeOtpSignIn } from "@/lib/auth-sign-in";
 import { useBackgroundTasks } from "@claritylabs-inc/ui/components/background-tasks";
-import { ChevronLeft, Circle, X } from "lucide-react";
+import { ArrowRight, ChevronLeft, Circle, X } from "lucide-react";
 
 type Recovery = {
   answers: IntakeAnswers;
@@ -307,6 +312,7 @@ function Application({
   const suggestIndustry = useAction(api.actions.intakeIndustry.suggest);
   const suggestRequestCoverages = useAction(api.actions.intakeCoverage.suggest);
   const requestCoverageAttempts = useRef(new Set<string>());
+  const scopeCoverageSuggestions = useRef(new Map<string, string[] | null>());
   const suggestDateInputs = useAction(api.actions.intakeFollowupInputs.dates);
   const suggestVehicleBodyType = useAction(api.actions.intakeFollowupInputs.vehicleBodyType);
   const vehicleBodyAttempts = useRef(new Set<string>());
@@ -356,6 +362,11 @@ function Application({
     );
     return () => clearTimeout(timer);
   }, [step, followupWaitKey, followupStartedAt, followupBatch?.status]);
+  const relevanceFor = (current: IntakeDetails) => data?.vehicleRelevance?.status === "completed" &&
+    data.vehicleRelevance.sourceKey === vehicleRelevanceKey(answers,current) ? data.vehicleRelevance.excludedIds : [];
+  const excludedVehicleQuestions = relevanceFor(details);
+  const vehicleSubsectionQuestions = (current: IntakeDetails) => unfilteredVehicleSubsectionQuestions(current).filter(row=>!relevanceFor(current).includes(row.question.id));
+  const withVehicleSubsections = (current: IntakeDetails, questions: IntakeFollowupQuestion[]) => filterVehicleRelevantQuestions(unfilteredWithVehicleSubsections(current,questions),relevanceFor(current));
   const propertyQuestions = propertySubsectionQuestions(details);
   const vehicleQuestions = vehicleSubsectionQuestions(details);
   const cyberResearch = data?.cyberResearch?.status === "completed" && data.cyberResearch.sourceKey === intakeCyberResearchKey(answers, details) ? data.cyberResearch : undefined;
@@ -373,13 +384,15 @@ function Application({
   const reviewScroll = useRef(0);
   const editingSection = useRef(reviewSection);
   const followupSection = step === 29 ? "acord" : "additional";
+  const catalogQuestionsForSection = (section: "acord" | "additional") => {
   const savedFollowupQuestions = (details.followups ?? []).filter(
-    (row) => row.section === followupSection,
+    (row) => row.section === section,
   ).flatMap((row) => data?.submitted || row.answer.trim() ? [row] : expandIntakeFollowupQuestion(row));
   const currentFollowupQuestions = data?.submitted
     ? []
-    : (followupBatch?.status === "ready" ? followupBatch.questions : []).flatMap(expandIntakeFollowupQuestion);
-  const catalogFollowupQuestions = Array.from(new Map([
+    : (section === "acord" ? data?.followupBatches?.acord?.questions ?? []
+      : data?.followupBatches?.[section]?.status === "ready" ? data.followupBatches[section].questions : []).flatMap(expandIntakeFollowupQuestion);
+  return Array.from(new Map([
     ...currentFollowupQuestions,
     ...savedFollowupQuestions.filter(
       (saved) =>
@@ -388,8 +401,11 @@ function Application({
         (!!data?.submitted || editingReview) &&
         !currentFollowupQuestions.some((question) => question.id === saved.id),
     ),
-  ].map((question) => [question.id, question])).values()).filter(question=>!isFixedVehicleFollowup(question) && followupQuestionVisible(question,details.followups) && (editingReview || data?.submitted || !details.followups?.find(row=>row.id===question.id)?.prefilled));
-  const followupQuestions = followupSection === "acord" ? withCyberDocumentQuestions(details, withVehicleSubsections(details, withPropertySubsections(details, catalogFollowupQuestions)), cyberResearch) : catalogFollowupQuestions;
+  ].map((question) => [question.id, question])).values()).filter(question=>!isFixedVehicleFollowup(question) && followupQuestionVisible(question,details.followups) && (editingReview || data?.submitted || details.followups?.find(row=>row.id===question.id)?.prefilled?.contextHash.startsWith("cyber:") || !details.followups?.find(row=>row.id===question.id)?.prefilled));
+  };
+  const coverageFollowupQuestions = withCyberDocumentQuestions(details, withVehicleSubsections(details, withPropertySubsections(details, catalogQuestionsForSection("acord"))), cyberResearch);
+  const followupQuestions = followupSection === "acord" ? coverageFollowupQuestions : catalogQuestionsForSection("additional");
+  const coveragePages = intakeCoveragePages(details, coverageFollowupQuestions, new Map(typedScopeQuestions.map(row => [row.question.id, row.coverageIndex])), excludedVehicleQuestions);
   const followupCursorAnchor = useRef<{ requestId: string; step: number; index: number; questionId?: string; key: string } | undefined>(undefined);
   const savedFollowupIndex = details.followupProgress?.[followupSection] ?? 0;
   const questionListKey = followupQuestions.map(question => question.id).join(",");
@@ -400,6 +416,14 @@ function Application({
   if (followupQuestions.length && (data?.submitted || followupBatch?.status === "ready"))
     followupCursorAnchor.current = { requestId, step, index: followupIndex, questionId: followupQuestions[followupIndex]?.id, key: questionListKey };
   const followupQuestion = followupQuestions[followupIndex];
+  const isPayrollPage = [29,30].includes(step) && !!followupQuestion?.source?.endsWith(" · shared.operations.annual_payroll");
+  const payrollAnswer = details.followups?.find(row=>row.id===followupQuestion?.id)?.answer ?? "";
+  const payrollSteps = payrollPages(payrollAnswer);
+  const payrollPageIndex = isPayrollPage ? Math.min(details.payrollPage ?? 0, payrollSteps.length-1) : 0;
+  const payrollPage = payrollSteps[payrollPageIndex];
+  const payrollGroupName = isPayrollPage && payrollPage.field !== "names"
+    ? parsePayrollAnswer(payrollAnswer)?.groups[payrollPage.groupIndex]?.employees : undefined;
+
   const followupPages = intakeFollowupPages(followupQuestions);
   const followupPageIndex = Math.max(0, followupPages.findIndex(page => page.some(question => question.id === followupQuestion?.id)));
   const followupPage = followupPages[followupPageIndex] ?? [];
@@ -613,7 +637,7 @@ function Application({
     if (savedSavings && [20, 22, 23, 24, 25, 26, 29, 30, 43].includes(state.current.step))
       state.current.step = data.files.some((file) => file.category === "policy") ? 28 : 21;
     else if (
-      (savedSavings && [6, 7, 8, 9].includes(state.current.step)) ||
+      (savedSavings && [6, 7, 8, 9, 44].includes(state.current.step)) ||
       (!savedAuto && ([41, 42].includes(state.current.step) || isDriverStep(state.current.step)))
     )
       state.current.step = 10;
@@ -621,7 +645,7 @@ function Application({
       state.current.step = 31;
     else if (isDriverStep(state.current.step) && state.current.step !== 31) {
       if (!state.current.details.drivers?.length) state.current.step = 31;
-      else if ([32, 33].includes(state.current.step) && !state.current.details.collectSensitiveDriverDetails)
+      else if ([32, 33].includes(state.current.step))
         state.current.step = 34;
       else if (state.current.step === 38 && state.current.details.drivers[state.current.details.driverIndex ?? 0].accidents !== "yes")
         state.current.step = 37;
@@ -795,10 +819,9 @@ function Application({
     else void navigate(step === 29 ? 10 : 28);
   });
   useEffect(() => {
-    const unavailable = followupEntryFailed || followupWaitExpired || followupBatch?.status === "failed";
     const emptyReady = followupEntryChecked && followupBatch?.status === "ready" && !followupBatch.enriching;
     if (ready && !data?.submitted && [29, 30].includes(step) &&
-      (unavailable || emptyReady) && !followupQuestions.length && !busy && !uploading)
+      emptyReady && !followupQuestions.length && !busy && !uploading)
       advanceEmptyFollowups();
   }, [ready, data?.submitted, editingReview, step, followupEntryChecked, followupEntryFailed, followupWaitExpired, followupBatch?.status,
     followupBatch?.enriching, followupQuestions.length, busy, uploading]);
@@ -815,7 +838,7 @@ function Application({
       changeDetails({ ...current, coverages: current.coverages.map((line, coverageIndex) => coverageIndex !== vehicleField.coverageIndex ? line : {
         ...line, vehicles: line.vehicles?.map((vehicle, vehicleIndex) => vehicleIndex !== vehicleField.vehicleIndex ? vehicle : {
           ...vehicle, underwriting: { ...vehicle.underwriting, [vehicleField.field]: answer,
-            ...(vehicleField.field === "custom_equipment" && answer !== "Yes" ? { custom_equipment_detail: "" } : {}),
+            ...(vehicleField.field === "custom_equipment" && answer !== "Yes" ? { custom_equipment_detail: "", custom_equipment_value: "" } : {}),
           },
         }),
       }) });
@@ -845,6 +868,7 @@ function Application({
     changeDetails({...current,followups:updatedRows.map(row=>{if(followupQuestionVisible(row,updatedRows))return row;const {prefilled:_prefilled,...definition}=row;return {...definition,answer:"",skipped:true};})});
   }
   function change(field: IntakeField, value: string) {
+    if (field === "phone" && (state.current.answers.phone ?? "") === value) return;
     if (field === "industry") industrySelectionVersion.current++;
     const previousAnswers=state.current.answers;
     const previousDetails=state.current.details ?? details;
@@ -985,13 +1009,13 @@ function Application({
     for (const suggestion of suggestions) {
       const question = definitions.find(row => row.id === suggestion.questionId);
       // Even a blank saved row represents the applicant's choice to clear/skip.
-      if (!question || rows.some(row => row.id === question.id) || (step === 29 && followupPage.some(row => row.id === question.id)) || !followupQuestionVisible(question, rows)) continue;
+      if (!question || rows.some(row => row.id === question.id) || !followupQuestionVisible(question, rows)) continue;
       rows.push({ ...question, answer: suggestion.answer, prefilled: { confidence: suggestion.confidence, contextHash: `cyber:${research.fingerprint}` } });
     }
     if (rows.length === (current.followups ?? []).length) return;
     const updated = { ...current, followups: rows };
     if (step === 29 && followupQuestion) {
-      const visible = definitions.filter(question => !isFixedVehicleFollowup(question) && followupQuestionVisible(question, rows) && !rows.find(row => row.id === question.id)?.prefilled);
+      const visible = definitions.filter(question => !isFixedVehicleFollowup(question) && followupQuestionVisible(question, rows) && (rows.find(row => row.id === question.id)?.prefilled?.contextHash.startsWith("cyber:") || !rows.find(row => row.id === question.id)?.prefilled));
       const nextQuestions = withCyberDocumentQuestions(updated, withVehicleSubsections(updated, withPropertySubsections(updated, visible)), research);
       const index = nextQuestions.findIndex(question => question.id === followupQuestion.id);
       if (index >= 0) updated.followupProgress = { ...updated.followupProgress, acord: index, additional: updated.followupProgress?.additional ?? 0 };
@@ -1307,6 +1331,7 @@ function Application({
     fromReview = false,
   ) {
     if (busy || uploading) return;
+    const requestedStep = next;
     // Existing policies supply savings coverage; skip these questions on every
     // entry path, including review navigation and older saved step links.
     if (isSavings && !fromReview) {
@@ -1317,7 +1342,7 @@ function Application({
       else if ((step === 19 || step === 10) && next === 27) next = 28;
       else if (step === 0 && next === 1) next = 21;
     }
-    if (isSavings && ([6, 7, 8, 9, 41, 42].includes(next) || isDriverStep(next))) next = 10;
+    if (isSavings && ([6, 7, 8, 9, 41, 42, 44].includes(next) || isDriverStep(next))) next = 10;
     if (!isSavings && !fromReview && step === 10 && next === 27) next = 6;
     // Keep old saved step numbers compatible without showing the retired confirmation page.
     if (next === 27) next = step >= 20 ? 19 : 20;
@@ -1329,10 +1354,83 @@ function Application({
       else if (step === 6 && next === 5) next = 18;
     }
     const previousStep = step;
-    const previousDetails = state.current.details ?? details;
+    let previousDetails = state.current.details ?? details;
     setBusy(true);
     try {
+      if (isPayrollPage && !fromReview) {
+        const forward = next === 10 || next === 28 || next > step;
+        let pages = payrollSteps;
+        if (forward && payrollPage.field === "names") {
+          const parsed = parsePayrollAnswer(payrollAnswer);
+          if (parsed) {
+            changeFollowup(followupQuestion, parsed.groups.some(row=>row.employees.trim())
+              ? JSON.stringify({...parsed, groups:parsed.groups.filter(row=>row.employees.trim())}) : "");
+            previousDetails = state.current.details ?? details;
+            pages = payrollPages(previousDetails.followups?.find(row=>row.id===followupQuestion.id)?.answer ?? "");
+          }
+        }
+        const index = payrollPageIndex + (forward ? 1 : -1);
+        if (index >= 0 && index < pages.length) {
+          changeDetails({...previousDetails, payrollPage:index});
+          if (await flush()) window.scrollTo({top:0});
+          return;
+        }
+      }
       if (!(await flush())) return;
+      let showingSuggestions = false;
+      if (!fromReview && !data?.submitted && !isSavings && step === 9 && requestedStep === 10 &&
+        !skipped && previousDetails.coverages[0]?.coverage === "unknown") {
+        const description = previousDetails.coverages[0].scopeDescription?.trim() ?? "";
+        if (description && description.length <= 8000) {
+          const key = JSON.stringify([requestId, description]);
+          if (!scopeCoverageSuggestions.current.has(key)) {
+            // Record the attempt first: unknown outcomes must not replay automatically.
+            scopeCoverageSuggestions.current.set(key, null);
+            try {
+              scopeCoverageSuggestions.current.set(key, await suggestRequestCoverages({
+                requestId, notes: description, source: "unknown_scope",
+              }));
+            } catch { /* Keep the ordinary flow available when matching fails. */ }
+          }
+          const latest = state.current.details;
+          if (conflict.current || state.current.step !== step ||
+            latest?.coverages[0]?.coverage !== "unknown" ||
+            latest.coverages[0].scopeDescription?.trim() !== description) return;
+          const suggestions = scopeCoverageSuggestions.current.get(key);
+          const coverages = COVERAGE_OPTIONS.filter(option => option.id !== "unknown" &&
+            option.id !== "other" && suggestions?.includes(option.id)).map(option => newCoverage(option.id));
+          if (coverages.length) {
+            previousDetails = { ...latest, coverages, coverageIndex: 0,
+              scopeNote: [latest.scopeNote?.trim(), description].filter((text, index, all) => text && all.indexOf(text) === index).join("\n\n") };
+            changeDetails(previousDetails);
+            next = 44;
+            showingSuggestions = true;
+          }
+        }
+      }
+      if (step === 44 && !fromReview && (requestedStep === 9 ||
+        (requestedStep === 7 && previousDetails.coverages[0]?.coverage === "unknown"))) {
+        previousDetails = { ...previousDetails, coverageIndex: 0,
+          coverages: [{ ...newCoverage("unknown"), scopeDescription: previousDetails.scopeNote ?? "" }] };
+        changeDetails(previousDetails);
+      }
+      let coverageIndex = previousDetails.coverageIndex;
+      let autoVehicleIndex = previousDetails.autoVehicleIndex ?? 0;
+      let driverIndex = previousDetails.driverIndex ?? 0;
+      let mailingAddressStep = previousDetails.mailingAddressStep;
+      let revenueStep = previousDetails.revenueStep;
+      let followupProgress = previousDetails.followupProgress ?? { acord: 0, additional: 0 };
+      const coverageDestination = !showingSuggestions && !fromReview && !isSavings && !data?.submitted
+        ? intakeCoverageDestination(coveragePages, previousDetails, step === 44 && requestedStep === 7 ? 6 : step, requestedStep, followupIndex)
+        : undefined;
+      if (coverageDestination) {
+        next = coverageDestination.step;
+        coverageIndex = coverageDestination.coverageIndex;
+        autoVehicleIndex = coverageDestination.autoVehicleIndex ?? autoVehicleIndex;
+        driverIndex = coverageDestination.driverIndex ?? driverIndex;
+        if (coverageDestination.followupIndex !== undefined)
+          followupProgress = { ...followupProgress, acord: coverageDestination.followupIndex };
+      } else {
       const requiresDocument = hasIntakeRequirements(state.current.answers);
       if (!fromReview) {
         if (step === 1 && next === 2) next = requiresDocument ? 4 : 2;
@@ -1369,7 +1467,6 @@ function Application({
         previousDetails.coverages[0]?.coverage === "unknown"
       )
         next = step > 8 ? 6 : 9;
-      let coverageIndex = previousDetails.coverageIndex;
       const scopeIndexes = previousDetails.coverages.flatMap((line, index) => needsCoverageScope(line.coverage) ? [index] : []);
       if (!fromReview && step === 9 && next === 10) {
         const following = scopeIndexes.find(index => index > coverageIndex);
@@ -1413,21 +1510,19 @@ function Application({
         )
       )
         next = step > 13 ? 12 : 14;
-      let autoVehicleIndex = previousDetails.autoVehicleIndex ?? 0;
-      let driverIndex = previousDetails.driverIndex ?? 0;
       const auto = !isSavings && hasCommercialAuto(previousDetails);
       if (!fromReview) {
         if (isDriverStep(step)) {
           const driver = previousDetails.drivers?.[driverIndex];
-          if (step === 31) { next = next > step ? (previousDetails.collectSensitiveDriverDetails ? 32 : 34) : (autoVehicles(previousDetails).length ? 42 : 41); autoVehicleIndex=Math.max(0,autoVehicles(previousDetails).length-1); driverIndex=0; }
+          if (step === 31) { next = next > step ? 34 : (autoVehicles(previousDetails).length ? 42 : 41); autoVehicleIndex=Math.max(0,autoVehicles(previousDetails).length-1); driverIndex=0; }
           else if (next > step) {
-            if (next === 32 && !previousDetails.collectSensitiveDriverDetails) next=34;
+            if (next === 32) next=34;
             if (next === 38 && driver?.accidents !== "yes") next=39;
             if (next === 40 && driver?.violations !== "yes") next=41;
-            if (next === 41) { if(driverIndex < (previousDetails.drivers?.length??0)-1){next=previousDetails.collectSensitiveDriverDetails?32:34;driverIndex++;}else next=10; }
+            if (next === 41) { if(driverIndex < (previousDetails.drivers?.length??0)-1){next=34;driverIndex++;}else next=10; }
           } else {
             if(next===38 && driver?.accidents!=="yes")next=37;
-            if(next===33 && !previousDetails.collectSensitiveDriverDetails)next=31;
+            if(next===33)next=31;
             if(next===31 && driverIndex>0){driverIndex--;next=previousDetails.drivers?.[driverIndex]?.violations==="yes"?40:39;}
           }
         }
@@ -1445,7 +1540,6 @@ function Application({
         if (!isSavings && next === 43) next = 23;
       if ((isDriverStep(next) || next === 41 || next === 42) && !auto) next=10;
       if (next === 42 && !autoVehicles(previousDetails).length) next = 31;
-      let mailingAddressStep = previousDetails.mailingAddressStep;
       if (
         step === 14 &&
         next === 15 &&
@@ -1458,7 +1552,6 @@ function Application({
         next = 14;
         mailingAddressStep = false;
       }
-      let revenueStep = previousDetails.revenueStep;
       if (step === 18 && next === 19 && revenueStep !== "projected") {
         next = 18;
         revenueStep = "projected";
@@ -1479,10 +1572,6 @@ function Application({
 
         if (!data?.submitted && !editingReview && next === 28 && step !== 30) next = 30;
       }
-      let followupProgress = previousDetails.followupProgress ?? {
-        acord: 0,
-        additional: 0,
-      };
       if (!fromReview && (step === 29 || step === 30)) {
         const forward = step === 29 ? next === 10 : next === 28;
         const backward = step === 29 ? (next < 10 || isDriverStep(next)) : next === 25;
@@ -1553,8 +1642,10 @@ function Application({
         }
       }
       if (!fromReview && !isSavings && step === 6 && next === 18) revenueStep = "projected";
+      }
       const nextDetails = {
         ...previousDetails,
+        payrollPage: 0,
         ...(!fromReview && !editingReview && !data?.submitted &&
           intakeSection(next) !== intakeSection(step) &&
           atIntakeSectionStart(next, 0, isSavings)
@@ -1586,6 +1677,11 @@ function Application({
         coverageIndex,
         ...(mailingAddressStep !== undefined ? { mailingAddressStep } : {}),
       };
+      if (!fromReview && [29,30].includes(next) && (step === 29 ? requestedStep === 9 : requestedStep < step)) {
+        const target = (next === 29 ? coverageFollowupQuestions : catalogQuestionsForSection("additional"))[followupProgress[next === 29 ? "acord" : "additional"]];
+        if (target?.source?.endsWith(" · shared.operations.annual_payroll"))
+          nextDetails.payrollPage = payrollPages(nextDetails.followups?.find(row=>row.id===target.id)?.answer ?? "").length-1;
+      }
       const persistedNextDetails=invalidateIntakePrefills(state.current.answers,previousDetails,state.current.answers,nextDetails);
       if (editingReview && !fromReview) {
         const start = editingSection.current;
@@ -1595,7 +1691,7 @@ function Application({
             : start === 1
               ? (next >= 1 && next <= 5) || (isSavings && next === 21)
               : start === 6
-                ? next >= 6 && next <= 9 || isDriverStep(next) || next===41 || next===42 || next===29
+                ? next >= 6 && next <= 9 || isDriverStep(next) || next===41 || next===42 || next===29 || next===44
                 : start === 10
                   ? (next >= 10 && next <= 19) || next === 27
                   : start === 20
@@ -2154,13 +2250,14 @@ function Application({
   function files(
     category: "requirements" | "policy" | "loss_runs" | "supporting",
     label: string,
+    uploadOnly = false,
   ) {
     return (
       <Field>
         <div
           className={category === "requirements" ? "relative h-52" : undefined}
         >
-          {category === "requirements" &&
+          {category === "requirements" && !uploadOnly &&
           (showRequirementsPaste ?? !!answers.requirements?.trim()) ? (
             <>
               <FieldLabel htmlFor="intake-requirements" className="sr-only">
@@ -2210,7 +2307,7 @@ function Application({
                 }
                 onFile={(file) => void upload(file, category)}
               />
-              {category === "requirements" && (
+              {category === "requirements" && !uploadOnly && (
                 <Button
                   type="button"
                   variant="link"
@@ -2261,8 +2358,7 @@ function Application({
   if (!data || !ready) return <IntakeApplicationLoading />;
   // Navigation below skips unavailable optional questions; never flash their page.
   if (!data.submitted && [29, 30].includes(step) && !followupQuestions.length &&
-    (followupEntryFailed || followupWaitExpired || followupBatch?.status === "failed" ||
-      (followupEntryChecked && followupBatch?.status === "ready" && !followupBatch.enriching)))
+    (followupEntryChecked && followupBatch?.status === "ready" && !followupBatch.enriching))
     return null;
   const scopeIndex = needsCoverageScope(details.coverages[details.coverageIndex]?.coverage)
     ? details.coverageIndex : details.coverages.findIndex(line => needsCoverageScope(line.coverage));
@@ -2276,13 +2372,21 @@ function Application({
       </PillButton>
     }>
       <h1 className={typeStyle("heading.display")}>{step === 29 ? "Your Coverage" : "Additional details"}</h1>
-      <div className="mt-8"><IntakeLoadingState compact title="Checking your saved answers" description="We’re preparing the remaining questions. Your progress is saved." /></div>
+      {followupEntryFailed || followupWaitExpired || followupBatch?.status === "failed" ? <div className="mt-8 space-y-6">
+        <p className={typeStyle("body.root")}>{followupBatch?.status === "pending" ? "We’re still checking your application. Your answers are saved." : "We couldn’t check your application for additional questions. Your answers are saved."}</p>
+        {followupBatch?.status !== "pending" && <PillButton size="large" disabled={busy} onClick={async()=>{
+          setBusy(true);
+          try { if(await flush()) { await prepareFollowups({requestId,section:step===29?"acord":"additional",retry:true}); setCheckedFollowupEntry(`${requestId}:${followupSection}`); setExpiredFollowupKey(null); } }
+          catch {setError("Could not start the question check. Please try again.");}
+          finally {setBusy(false);}
+        }}>Retry question check</PillButton>}
+      </div> : <div className="mt-8"><IntakeLoadingState compact title="Checking your saved answers" description="We’re preparing the remaining questions. Your progress is saved." /></div>}
     </IntakeFrame>;
   if (showSubsectionIntro && subsectionKey && followupSubject)
     return <IntakeSectionIntroduction
       section={1} savings={false} status={status} disabled={busy || uploading}
       content={{
-        title: `More information about ${followupLocation?.name ?? followupVehicle ?? followupSubject}`,
+        title: followupVehicle ? `More information about your ${followupVehicle}` : `More information about ${followupLocation?.name ?? followupSubject}`,
         description: followupLocation?.address ?? "A few details about this vehicle and how you use it.",
         topics: subjectQuestions.map(question => intakeApplicantQuestion(question).title).slice(0, 6),
       }}
@@ -2536,12 +2640,12 @@ function Application({
     const answer = details.followups?.find(row => row.id === question.id)?.answer?.trim();
     return (question.kind === "date" || dateQuestionIds.includes(question.id)) && !!answer && answer !== "I'm not sure" && !parseCalendarDateInput(answer);
   });
-  const cyberUrlInvalid = followupPage.some(question => { const document = cyberDocuments.find(row => row.question.id === question.id); return document && !cyberDocumentUrlValid(document.answer); });
+  const cyberUrlInvalid = followupPage.some(question=>isWorkforceProviderSource(question.source) && !workforceProviderComplete(details.followups?.find(row=>row.id===question.id)?.answer ?? "")) || followupPage.some(question => { const document = cyberDocuments.find(row => row.question.id === question.id); return document && !cyberDocumentUrlValid(document.answer); });
   const jurisdictionsIncomplete = followupPage.some(question=>question.source?.endsWith(" · wc.terms.covered_jurisdictions") && !workJurisdictionsComplete(details.followups?.find(row=>row.id===question.id)?.answer ?? ""));
-  const payrollIncomplete = followupPage.some(question => question.source?.endsWith(" · shared.operations.annual_payroll") && !payrollAnswerComplete(details.followups?.find(row=>row.id===question.id)?.answer ?? ""));
+  const payrollIncomplete = isPayrollPage && payrollPage.field === "dates" && !payrollAnswerComplete(JSON.stringify({version:"payroll-v1",groups:[parsePayrollAnswer(payrollAnswer)?.groups[payrollPage.groupIndex]].filter(Boolean)}));
   const percentageInvalid = followupPage.some(question => {
     const answer = details.followups?.find(row => row.id === question.id)?.answer;
-    return question.source?.endsWith(" · eo.services.largest_client_share") && !!answer && answer !== "I'm not sure" &&
+    return isIntakePercentageQuestion(question) && !!answer && answer !== "I'm not sure" &&
       (!Number.isFinite(Number(answer)) || Number(answer) < 0 || Number(answer) > 100);
   });
   const canContinue =
@@ -2560,7 +2664,7 @@ function Application({
                 answers.effectiveDate >= dayjs().format("YYYY-MM-DD")
               : step === 3
                 ? !!answers.requirements
-                : step === 6
+                : step === 6 || step === 44
                   ? details.coverages.length > 0 &&
                     details.coverages.every(
                       (line) =>
@@ -2691,11 +2795,11 @@ function Application({
     25: details.hasCancellations || answers.cancellations?.trim() || "",
   };
   // Empty optional details and trading names are valid answers.
-  const canSkipStep = !jurisdictionsIncomplete && !cyberUrlInvalid && !payrollIncomplete && !percentageInvalid && !routesIncomplete && !datesIncomplete && !followupTailPending && !(step===42 && estimatedVehicleValueError(autoVehicles(details)[details.autoVehicleIndex??0]?.estimatedValue)) && !(isDriverStep(step) && (step === 31 || !driverFieldValid(details.drivers?.[details.driverIndex??0] ?? newIntakeDriver(), step))) && !(step === 9 && details.coverages.some(line=>(line.vehicles??[]).some(vehicle=>!!vinError(vehicle.vin, details.registrationCountry)))) && step !== 28 && !followupsPending && !(isSavings && step === 21);
+  const canSkipStep = step !== 44 && !jurisdictionsIncomplete && !cyberUrlInvalid && !payrollIncomplete && !percentageInvalid && !routesIncomplete && !datesIncomplete && !followupTailPending && !(step===42 && estimatedVehicleValueError(autoVehicles(details)[details.autoVehicleIndex??0]?.estimatedValue)) && !(isDriverStep(step) && (step === 31 || !driverFieldValid(details.drivers?.[details.driverIndex??0] ?? newIntakeDriver(), step))) && !(step === 9 && details.coverages.some(line=>(line.vehicles??[]).some(vehicle=>!!vinError(vehicle.vin, details.registrationCountry)))) && step !== 28 && !followupsPending && !(isSavings && step === 21);
   const driverValue = details.drivers?.[details.driverIndex??0]?.[DRIVER_FIELDS[step-31]];
   const skipStep =
     canSkipStep && !([29,30].includes(step) && (!followupQuestion || (!data.submitted && followupBatch?.status !== "ready" && !isTypedScopeQuestion(followupQuestion)))) &&
-    (!canContinue || (isDriverStep(step) && !driverValue?.trim()) || (step in optionalValues && !optionalValues[step]));
+    (isPayrollPage ? !payrollPageValue(payrollAnswer, payrollPage) : !canContinue || (isDriverStep(step) && !driverValue?.trim()) || (step in optionalValues && !optionalValues[step]));
   return (
     <IntakeFrame
       showSteps={!isSavings}
@@ -2731,6 +2835,7 @@ function Application({
             variant="ghost"
             disabled={busy || uploading}
             onClick={async () => {
+              if (isPayrollPage && payrollPageIndex > 0) return void navigate(step === 29 ? 9 : 25);
               if (!data.submitted && !editingReview && step === 29 && subsectionKey &&
                 followupQuestion?.id === subsectionKey) {
                 changeDetails({ ...(state.current.details ?? details), subsectionIntroductions:
@@ -2758,7 +2863,7 @@ function Application({
                       if (await flush()) router.push(withQuoteProvider("/signup", params.get("provider")));
                     })()
                   : void navigate(
-                      step === 29 ? 9 : step === 30 ? 25 : step === 8 && details.coverages[0]?.coverage === "unknown"
+                      step === 44 ? 9 : step === 29 ? 9 : step === 30 ? 25 : step === 8 && details.coverages[0]?.coverage === "unknown"
                         ? 6
                         : step === 5
                           ? 2
@@ -2814,6 +2919,7 @@ function Application({
                 onClick={() => void returnToApplication(!skipStep)}
               >
                 {skipStep ? "Skip" : "Continue"}
+                {!skipStep && <ArrowRight aria-hidden="true" className="size-4" />}
               </PillButton>
             ) : step !== 28 ? (
               <PillButton
@@ -2822,7 +2928,7 @@ function Application({
                 variant={skipStep ? "secondary" : "primary"}
                 onClick={() =>
                   void navigate(
-                    step === 29 ? 10 : step === 30 ? 28 : step === 6 && details.coverages[0]?.coverage === "unknown"
+                    step === 44 ? 7 : step === 29 ? 10 : step === 30 ? 28 : step === 6 && details.coverages[0]?.coverage === "unknown"
                       ? 9
                       : step === 3 &&
                           ["No", "None"].includes(answers.requirements ?? "")
@@ -2855,6 +2961,7 @@ function Application({
               >
                 {busy || followupsPending || followupTailPending ? <Spinner aria-hidden="true" className="size-4 motion-reduce:animate-none" /> : null}
                 {followupsPending ? "Preparing questions…" : followupTailPending ? "Checking final details…" : skipStep ? "Skip" : "Continue"}
+                {!skipStep && !followupsPending && !followupTailPending && <ArrowRight aria-hidden="true" className="size-4" />}
               </PillButton>
             ) : (
               <PillButton
@@ -2876,23 +2983,25 @@ function Application({
     >
       {step === 29 && (followupCoverage || followupLocation || followupVehicle) && (
         <div className="mb-6 space-y-1">
-          {followupCoverage && <p className={typeStyle("heading.item")}>{coverageRequestLabel(followupCoverage)}</p>}
-          {(followupLocation || followupVehicle) && <p className={`text-muted-foreground ${typeStyle("body.root")}`}>{followupLocation?.name ?? followupVehicle}</p>}
+          <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            {followupCoverage && <span className={typeStyle("heading.item")}>{coverageRequestLabel(followupCoverage)}</span>}
+            {(followupLocation || followupVehicle || payrollGroupName) && <span className={`text-muted-foreground ${typeStyle("heading.item")}`}>{followupLocation?.name ?? followupVehicle ?? payrollGroupName}</span>}
+          </p>
           {followupLocation && <p className={`text-muted-foreground ${typeStyle("body.default")}`}>{followupLocation.address}</p>}
         </div>
       )}
-      {step === 9 && scopeLine && <p className={`mb-6 ${typeStyle("heading.item")}`}>{coverageRequestLabel(scopeLine)}</p>}
+      {step === 9 && scopeLine && scopeLine.coverage !== "unknown" && <p className={`mb-6 ${typeStyle("heading.item")}`}>{coverageRequestLabel(scopeLine)}</p>}
       {step === 7 && details.coverages[details.coverageIndex] && <p className={`mb-6 ${typeStyle("heading.item")}`}>{coverageRequestLabel(details.coverages[details.coverageIndex])}</p>}
       <h1 className={`text-wrap-pretty ${typeStyle("heading.display")}`}>
         {personalizeIntakeQuestion(followupsPending && [29, 30].includes(step) ? (step === 29 ? "Your Coverage" : "Additional details") : (step === 29 || step === 30) && (data.submitted || followupBatch?.status === "ready" || isTypedScopeQuestion(followupQuestion)) && followupQuestion
-          ? intakeFollowupPageTitle(followupQuestion)
+          ? isPayrollPage ? payrollPageTitle(payrollAnswer, payrollPage) : intakeFollowupPageTitle(followupQuestion, details.followups)
           : isDriverStep(step) ? driverQuestion(step,details.drivers?.[details.driverIndex??0]?.name)
           : isSavings && step === 21
           ? "Can you upload your current policies?"
           : step === 10 && showSavedCompany
             ? "Are you applying for your saved business?"
             : step === 9 && scopeLine
-              ? scopeLine.coverage === "property" ? "What properties are you looking to get insured?"
+              ? scopeLine.coverage === "unknown" ? "What are you looking to get insured?" : scopeLine.coverage === "property" ? "What properties are you looking to get insured?"
                 : scopeLine.coverage === "commercial_auto" ? "What vehicles are you looking to get insured?"
                   : `What are you looking to insure with ${coverageRequestLabel(scopeLine).toLowerCase()}?`
             : step === 7
@@ -2905,18 +3014,36 @@ function Application({
       </h1>
       <div className="h-10" />
       <div className="space-y-6">
+        {step === 29 && typedFollowupSubject && "vehicleIndex" in typedFollowupSubject && ["gross_vehicle_weight","seats"].includes(typedFollowupSubject.field) && <VehicleSpecificationLookup
+          key={followupQuestion?.id}
+          requestId={requestId}
+          coverageIndex={typedFollowupSubject.coverageIndex}
+          vehicleIndex={typedFollowupSubject.vehicleIndex}
+          identityKey={JSON.stringify((({year,make,model,vin})=>[year,make,model,vin])(details.coverages[typedFollowupSubject.coverageIndex]?.vehicles?.[typedFollowupSubject.vehicleIndex]??{year:"",make:"",model:"",vin:""}))}
+          field={typedFollowupSubject.field as "gross_vehicle_weight"|"seats"}
+          value={typedFollowupSubject.answer}
+          onChange={value=>changeFollowup(typedFollowupSubject.question,value)}
+          onPrefill={value=>{const current=vehicleSubsectionQuestions(state.current.details??details).find(row=>row.question.id===typedFollowupSubject.question.id);if(current&&!current.answer.trim())changeFollowup(current.question,value);}}
+        />}
         {(step === 29 || step === 30) && <IntakeFollowups
+          payrollPage={payrollPage}
           dateQuestionIds={dateQuestionIds}
           question={followupQuestion}
           questions={followupPage}
           checking={!followupWaitExpired && step === 30 && !!followupBatch?.enriching}
           answers={[...(details.followups ?? []), ...typedScopeQuestions.map(row => ({...row.question, answer: row.answer}))]}
+          defaultCountry={details.registrationCountry}
           businessName={answers.legalName || answers.dba}
           industry={answers.industry}
           status={data.submitted || (editingReview && followupQuestions.length > 0) || (followupQuestion && isTypedScopeQuestion(followupQuestion)) ? "ready" : followupEntryFailed || (followupWaitExpired && followupBatch?.status !== "ready") ? "failed" : followupBatch?.status}
           answer={(details.followups ?? []).find((row) => row.id === followupQuestion?.id)?.answer ?? ""}
           onChange={changeFollowup}
         />}
+        {step === 29 && followupQuestion?.source?.endsWith(" · gl.coverage.additional_insured_agreement") &&
+          details.followups?.find(row => row.id === followupQuestion.id)?.answer === "Yes" && <>
+            <p className={`text-muted-foreground ${typeStyle("body.root")}`}>Upload the agreement and we’ll use its insurance requirements to help fill in unanswered coverage questions. You can continue without it.</p>
+            {files("requirements", "Upload the agreement", true)}
+          </>}
         {step === 0 && (
           <>
             {field("name", { required: true })}
@@ -2941,13 +3068,18 @@ function Application({
             {files("supporting", "Upload a supporting document")}
           </>
         )}
-        {step === 6 && (
+        {step === 44 && <p className={`text-muted-foreground ${typeStyle("body.root")}`}>Based on what you described, these coverages may fit your needs. You can change the selection before continuing.</p>}
+        {(step === 6 || step === 44) && (
           <IntakeCoverageSelection
             details={details}
             onChange={changeDetails}
-            disabled={false}
+            disabled={busy}
           />
         )}
+        {step === 7 && details.coverages[details.coverageIndex]?.coverage === "workers_compensation" && <>
+          <p className={`text-muted-foreground ${typeStyle("body.root")}`}>Have written safety or return-to-work policies? Upload them to help fill in unanswered workers’ compensation questions. This is optional.</p>
+          {files("supporting", "Upload workplace policies", true)}
+        </>}
         {step === 7 && (
           <IntakeCoverageLimits
             details={details}
@@ -2958,7 +3090,7 @@ function Application({
         {[41,42].includes(step) && <IntakeAutoQuoteFields details={details} step={step} onChange={changeDetails} />}
         {isDriverStep(step) && <IntakeDriverFields details={details} step={step} onChange={changeDetails} />}
         {step === 9 && (
-          <IntakeCoverageScope details={details} onChange={changeDetails} activeCoverageIndex={scopeIndex} />
+          <IntakeCoverageScope details={details} onChange={changeDetails} activeCoverageIndex={scopeIndex} disabled={busy} />
         )}
         {step === 10 &&
           (showSavedCompany ? (

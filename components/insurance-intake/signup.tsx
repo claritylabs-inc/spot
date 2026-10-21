@@ -1,4 +1,5 @@
 "use client";
+import { ArrowRight } from "lucide-react";
 import { IntakeLoadingState } from "./loading-state";
 import { toast } from "sonner";
 import { initializeIntakeGoogleAds, trackIntakeContactSaved } from "@/lib/google-ads";
@@ -322,6 +323,7 @@ function SignupForm() {
               }}
             >
               {busy ? "Continuing…" : "Continue"}
+              {!busy && <ArrowRight aria-hidden="true" className="size-4" />}
             </PillButton>
           </>
         ) : (
@@ -350,6 +352,7 @@ function SignupForm() {
                 : codeSent
                   ? "Confirm and continue"
                   : "Continue"}
+              {!busy && <ArrowRight aria-hidden="true" className="size-4" />}
             </PillButton>
           </>
         )

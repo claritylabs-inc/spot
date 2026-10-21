@@ -1,11 +1,17 @@
 "use client";
+import { isIntakePercentageQuestion } from "@/lib/intake-percentages";
+import { WorkforceProviderInput } from "./workforce-provider-input";
+import { CredentialsInput } from "./credentials-input";
+import { CountriesInput } from "./countries-input";
+import { isWorkforceProviderSource } from "@/lib/intake-workforce-provider";
 import { WorkJurisdictionsInput } from "./work-jurisdictions-input";
+import type { PayrollPage } from "@/lib/intake-payroll";
 import { PayrollInput } from "./payroll-input";
 import { intakeApplicantQuestion } from "@/lib/intake-applicant-wording";
 import { IntakeLoadingState } from "./loading-state";
 import { RouteInput } from "@/components/ui/route-input";
 import { VehicleUnitInput, type VehicleNumberField } from "./vehicle-unit-input";
-import { IntakeUnknownChoice, INTAKE_UNSURE } from "./unknown-choice";
+import { IntakeUnknownRow, INTAKE_UNSURE } from "./unknown-choice";
 import { SearchableMultiSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { INDUSTRIES } from "@/lib/insurance-intake-industries";
 import { emptyRouteValue, parseRouteValue } from "@/lib/route-input";
@@ -50,6 +56,8 @@ export function IntakeFollowups({
   questions,
   answers = [],
   checking = false,
+  payrollPage,
+  defaultCountry,
   businessName,
   industry,
   answer,
@@ -61,6 +69,8 @@ export function IntakeFollowups({
   questions?: IntakeFollowupQuestion[];
   answers?: IntakeFollowupAnswer[];
   checking?: boolean;
+  payrollPage?: PayrollPage;
+  defaultCountry?: string;
   businessName?: string;
   industry?: string;
   answer: string;
@@ -89,7 +99,10 @@ export function IntakeFollowups({
         <IntakeFollowupField
           key={item.id}
           question={item}
+          answers={answers}
           dateInput={item.kind === "date" || dateQuestionIds.includes(item.id)}
+          payrollPage={payrollPage}
+          defaultCountry={defaultCountry}
           businessName={businessName}
           industry={industry}
           grouped={grouped}
@@ -120,16 +133,22 @@ export function IntakeFollowups({
 }
 
 function IntakeFollowupField({
+  answers,
   question,
   dateInput,
+  payrollPage,
+  defaultCountry,
   businessName,
   industry,
   grouped,
   answer,
   onChange,
 }: {
+  answers: IntakeFollowupAnswer[];
   question: IntakeFollowupQuestion;
   dateInput: boolean;
+  payrollPage?: PayrollPage;
+  defaultCountry?: string;
   businessName?: string;
   industry?: string;
   grouped: boolean;
@@ -137,14 +156,20 @@ function IntakeFollowupField({
   onChange: (question: IntakeFollowupQuestion, answer: string) => void;
 }) {
   const id = `followup-${question.id}`;
-  const numericVehicleField = (question.source?.endsWith(" · eo.services.largest_client_share") ? "percentage" : question.section === "acord" && /^(vehicle_base_|catalog2_auto_vehicle_)/.test(question.id)
+  const monetaryInput = question.kind === "currency" || question.source?.endsWith(" · auto.terms.hired_vehicle_cost");
+  const credentialsInput = question.source?.endsWith(" · eo.services.credentials_list");
+  const countryInput = question.source?.endsWith(" · auto.terms.foreign_travel_countries");
+  const numericVehicleField = question.source?.endsWith(" · property.terms.restoration_period") ? "months" : (isIntakePercentageQuestion(question) ? "percentage" : question.section === "acord" && /^(vehicle_base_|catalog2_auto_vehicle_)/.test(question.id)
     ? question.id.match(/_(annual_distance|gross_vehicle_weight|seats)(?:_s[a-z0-9]+)?$/)?.[1] as VehicleNumberField | undefined : undefined) ?? (question.kind === "number" ? "number" : undefined);
-  const presentation = intakeApplicantQuestion(question, industry);
+  const presentation = intakeApplicantQuestion(question, industry, answers);
   const clientIndustries = question.source?.endsWith(" · eo.services.client_industries");
   const industryValues = answer === INTAKE_UNSURE ? [INTAKE_UNSURE] : answer.split(";").map(value => value.trim()).filter(Boolean);
   const unknown = answer === INTAKE_UNSURE;
-  const unknownInput = ((!question.source?.endsWith(" · shared.operations.annual_payroll") && !question.source?.endsWith(" · wc.terms.covered_jurisdictions")) || unknown) && !clientIndustries && !numericVehicleField && !["yes_no", "dropdown"].includes(question.kind);
-  const choiceOptions = question.kind === "yes_no" ? ["Yes", "No", INTAKE_UNSURE] : [...new Set([...question.options.map(intakeFollowupOptionLabel), INTAKE_UNSURE])];
+  const unknownInput = !credentialsInput && !countryInput && !isWorkforceProviderSource(question.source) && !question.source?.endsWith(" · shared.operations.annual_payroll") && !question.source?.endsWith(" · wc.terms.covered_jurisdictions") && !clientIndustries && !numericVehicleField && ["short_text", "long_text", "number", "currency", "date"].includes(question.kind);
+  const options = question.source?.endsWith(" · property.terms.valuation")
+    ? question.options.filter(option => intakeFollowupOptionLabel(option) !== "Other")
+    : question.options;
+  const choiceOptions = question.kind === "yes_no" ? ["Yes", "No", INTAKE_UNSURE] : [...new Set([...options.map(intakeFollowupOptionLabel), INTAKE_UNSURE])];
   const fullLabel = question.section === "acord" ? presentation.title : personalizeIntakeQuestion(question.label, businessName);
   const vehicleField = question.id.replace(/^catalog2_auto_vehicle_/, "");
   const labels: Record<string, string> = {
@@ -173,7 +198,7 @@ function IntakeFollowupField({
     );
   const placeholder = question.id.startsWith("cyber_document_") ? "https://yourwebsite.com/…" : presentation.placeholder ?? (
     fieldKey === "gross_vehicle_weight"
-      ? "e.g. 26,000 lb"
+      ? "e.g. 26,000 lbs"
       : fieldKey === "annual_distance"
         ? "e.g. 40,000 miles"
         : fieldKey === "radius"
@@ -188,12 +213,14 @@ function IntakeFollowupField({
         >
           {label}
         </FieldLabel>
-        <div className={`relative ${unknownInput && !answer.trim() ? "[&_input]:pr-40 [&_textarea]:pr-40" : ""}`}>
-        {unknownInput && unknown ? <InputGroup className="h-12" /> : question.source?.endsWith(" · wc.terms.covered_jurisdictions") ? <WorkJurisdictionsInput value={answer} onChange={value=>onChange(question,value)}/> : question.source?.endsWith(" · shared.operations.annual_payroll") ? <PayrollInput value={answer} onChange={value=>onChange(question,value)}/> : clientIndustries ? (
+        <IntakeUnknownRow enabled={unknownInput} placement={question.kind === "long_text" && !compactText && !monetaryInput && !dateInput && !question.id.startsWith("cyber_document_") ? "below" : "beside"} label={label} value={answer} onChange={value=>onChange(question,value)}>
+        {credentialsInput ? <CredentialsInput value={answer} onChange={value=>onChange(question,value)}/> : isWorkforceProviderSource(question.source) ? <WorkforceProviderInput provider={question.source?.endsWith(" · wc.safety.leasing_details") ? "PEO" : "Staffing agency"} value={answer} onChange={value=>onChange(question,value)}/> : unknownInput && unknown ? <InputGroup className="h-12" /> : question.source?.endsWith(" · wc.terms.covered_jurisdictions") ? <WorkJurisdictionsInput defaultCountry={defaultCountry} value={answer} onChange={value=>onChange(question,value)}/> : question.source?.endsWith(" · shared.operations.annual_payroll") ? <PayrollInput page={payrollPage} value={answer} onChange={value=>onChange(question,value)}/> : clientIndustries ? (
           <div className="[&_button]:min-h-12"><SearchableMultiSelect ariaLabel={fullLabel}
             options={[...new Set([...INDUSTRIES.map(industry => industry.label), ...industryValues, INTAKE_UNSURE])].map(value => ({ value, label: value }))}
             value={industryValues} placeholder="Choose your clients’ industries" maxSelected={20}
             onChange={values => onChange(question, values.includes(INTAKE_UNSURE) && !industryValues.includes(INTAKE_UNSURE) ? INTAKE_UNSURE : values.filter(value => value !== INTAKE_UNSURE).join("; "))} /></div>
+        ) : countryInput ? (
+          <CountriesInput label={fullLabel} value={answer} onChange={value => onChange(question, value)} />
         ) : numericVehicleField ? (
           <VehicleUnitInput id={id} label={label} field={numericVehicleField} value={answer} onChange={value => onChange(question, value)} />
         ) : dateInput ? (
@@ -249,7 +276,7 @@ function IntakeFollowupField({
               ))}
             </SelectContent>
           </Select>
-        ) : question.kind === "currency" ? (
+        ) : monetaryInput ? (
           <InputGroup className="h-12">
             <InputGroupAddon>
               <InputGroupText>$</InputGroupText>
@@ -258,6 +285,7 @@ function IntakeFollowupField({
               id={id}
               label={label}
               value={answer}
+              monetary
               placeholder="Enter amount"
               onValueChange={(value) => onChange(question, value)}
             />
@@ -289,10 +317,7 @@ function IntakeFollowupField({
             onChange={(event) => onChange(question, event.target.value)}
           />
         )}
-        {unknownInput && (!answer.trim() || unknown) && <div className={`absolute right-4 top-2 ${unknown ? "left-3" : ""}`}>
-          <IntakeUnknownChoice label={label} checked={unknown} alignTop={question.kind === "long_text" && !unknown} onChange={checked => onChange(question, checked ? INTAKE_UNSURE : "")} />
-        </div>}
-        </div>
+        </IntakeUnknownRow>
       </Field>
     </div>
   );
