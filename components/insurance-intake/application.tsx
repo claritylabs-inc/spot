@@ -3016,7 +3016,7 @@ function Application({
           requestId={requestId}
           coverageIndex={typedFollowupSubject.coverageIndex}
           vehicleIndex={typedFollowupSubject.vehicleIndex}
-          identityKey={JSON.stringify((({year,make,model,vin})=>[year,make,model,vin])(details.coverages[typedFollowupSubject.coverageIndex]?.vehicles?.[typedFollowupSubject.vehicleIndex]??{year:"",make:"",model:"",vin:""}))}
+          identity={details.coverages[typedFollowupSubject.coverageIndex]?.vehicles?.[typedFollowupSubject.vehicleIndex] ?? {year:"",make:"",model:""}}
           field={typedFollowupSubject.field as "gross_vehicle_weight"|"seats"}
           value={typedFollowupSubject.answer}
           onChange={value=>changeFollowup(typedFollowupSubject.question,value)}

@@ -10,32 +10,35 @@ import { typeStyle } from "@/lib/typography";
 
 type Result=FunctionReturnType<typeof api.actions.intakeVehicleSpecifications.lookup>;
 const cache=new Map<string,Promise<Result>>();
-export function VehicleSpecificationLookup({requestId,coverageIndex,vehicleIndex,identityKey,field,value,onChange,onPrefill}:{requestId:Id<"procurementRequests">;coverageIndex:number;vehicleIndex:number;identityKey:string;field:"gross_vehicle_weight"|"seats";value:string;onChange:(value:string)=>void;onPrefill:(value:string)=>void}) {
+export function VehicleSpecificationLookup({requestId,coverageIndex,vehicleIndex,identity,field,value,onChange,onPrefill}:{requestId:Id<"procurementRequests">;coverageIndex:number;vehicleIndex:number;identity:{year:string;make:string;model:string};field:"gross_vehicle_weight"|"seats";value:string;onChange:(value:string)=>void;onPrefill:(value:string)=>void}) {
   const lookup=useAction(api.actions.intakeVehicleSpecifications.lookup);
-  const [result,setResult]=useState<Result>();
+  const [result,setResult]=useState<{key:string;data:Result}>();
   const current=useRef({value,onPrefill});
   useEffect(()=>{current.current={value,onPrefill};},[value,onPrefill]);
-  const key=`${requestId}:${coverageIndex}:${vehicleIndex}:${identityKey}`;
+  const identityReady=/^\d{4}$/.test(identity.year.trim()) && !!identity.make.trim() && !!identity.model.trim();
+  const key=JSON.stringify([requestId,coverageIndex,vehicleIndex,identity.year.trim(),identity.make.trim(),identity.model.trim()]);
   useEffect(()=>{
-    if(current.current.value.trim())return;
+    if(!identityReady || current.current.value.trim())return;
     let active=true;
     let task=cache.get(key);
     if(!task){task=lookup({requestId,coverageIndex,vehicleIndex});cache.set(key,task);}
     void task.then(data=>{
       if(!active)return;
-      setResult(data);
+      setResult({key,data});
       const records=data.specifications.filter(row=>row.field===field&&row.appliesToAllVariants);
       const values=[...new Set(records.map(row=>row.field==="seats"?String(row.value):`${row.value} ${row.unit}`))];
       if(values.length===1&&!current.current.value.trim())current.current.onPrefill(values[0]);
     }).catch(()=>{/* Unavailable lookups leave ordinary manual entry unchanged. */});
     return ()=>{active=false;};
-  },[key,requestId,coverageIndex,vehicleIndex,lookup,field]);
-  const records=result?.specifications.filter(row=>row.field===field)??[];
-  const [selected,setSelected]=useState<string>();
+  },[key,identityReady,requestId,coverageIndex,vehicleIndex,lookup,field]);
+  const records=(result?.key===key ? result.data.specifications : []).filter(row=>row.field===field);
+  const selectionKey=`${key}:${field}`;
+  const [selection,setSelection]=useState<{key:string;index:string}>();
+  const selected=selection?.key===selectionKey ? selection.index : undefined;
   if(!records.length)return null;
   return <div className="space-y-3">
     {records.length>0&&<Field><FieldLabel className={typeStyle("body.root")}>Manufacturer specifications</FieldLabel>
-      <Select value={selected} onValueChange={index=>{if(index===null)return;const row=records[Number(index)];if(!row)return;setSelected(index);onChange(row.field==="seats"?String(row.value):`${row.value} ${row.unit}`);}}>
+      <Select value={selected} onValueChange={index=>{if(index===null)return;const row=records[Number(index)];if(!row)return;setSelection({key:selectionKey,index});onChange(row.field==="seats"?String(row.value):`${row.value} ${row.unit}`);}}>
         <SelectTrigger className="h-12" aria-label="Choose vehicle configuration"><SelectValue placeholder="Confirm your vehicle configuration">{selected !== undefined && records[Number(selected)] ? `${records[Number(selected)].variant} — ${records[Number(selected)].value.toLocaleString("en-US")} ${records[Number(selected)].unit}` : undefined}</SelectValue></SelectTrigger>
         <SelectContent>{records.map((row,index)=><SelectItem key={`${row.variant}:${row.value}:${index}`} value={String(index)}>{row.variant} — {row.value.toLocaleString("en-US")} {row.unit}</SelectItem>)}</SelectContent>
       </Select>

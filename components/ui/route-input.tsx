@@ -61,15 +61,25 @@ async function searchCities(
 
 export function RouteInput({
   value,
-  onChange,
+  onChange: onValueChange,
 }: {
   value: RouteValue;
   onChange: (value: RouteValue) => void;
 }) {
-  const paths = value.routes.length ? value.routes : emptyRouteValue().routes;
+  // The answer owner correctly collapses an all-blank route to "". Retain
+  // temporary rows locally so Add stop / Add route still work before typing.
+  const [emptyDraft, setEmptyDraft] = useState<RouteValue>();
+  const isBlank = (route: RouteValue) => !route.legacyMaximumDistance?.trim() &&
+    route.routes.every(path => path.stops.every(stop => !stop.name.trim()));
+  const displayed = isBlank(value) && emptyDraft ? emptyDraft : value;
+  const paths = displayed.routes.length ? displayed.routes : emptyRouteValue().routes;
+  function onChange(next: RouteValue) {
+    setEmptyDraft(isBlank(next) ? next : undefined);
+    onValueChange(next);
+  }
   function update(routeIndex: number, stops: RouteStop[]) {
     onChange({
-      ...value,
+      ...displayed,
       routes: paths.map((path, index) =>
         index === routeIndex ? { stops } : path,
       ),
@@ -117,7 +127,7 @@ export function RouteInput({
                   label={`Remove Route ${routeIndex + 1}`}
                   onClick={() =>
                     onChange({
-                      ...value,
+                      ...displayed,
                       routes: paths.filter((_, i) => i !== routeIndex),
                     })
                   }
@@ -193,7 +203,7 @@ export function RouteInput({
         disabled={paths.length >= MAX_ROUTES}
         onClick={() =>
           onChange({
-            ...value,
+            ...displayed,
             routes: [...paths, { stops: [{ name: "" }, { name: "" }] }],
           })
         }

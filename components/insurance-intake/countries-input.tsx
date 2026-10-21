@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Combobox } from "@base-ui/react/combobox";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
@@ -14,15 +14,19 @@ type CountryOption = (typeof options)[number];
 
 export function CountriesInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   const [search, setSearch] = useState("");
+  const trigger = useRef<HTMLButtonElement | null>(null);
   const values = value.split(";").map(item => item.trim()).filter(Boolean);
   const selected = values.map(item => options.find(option => option.value === item) ?? { value: item, label: item, icon: undefined });
   const unsure = values.includes(INTAKE_UNSURE);
   return <div className="space-y-3">
-    <div className="min-h-10">
-    {selected.length > 0 && <ul aria-label="Selected countries" className="flex flex-wrap gap-2">{selected.map(option => <li key={option.value}>
-      <Badge variant="outline" className={`h-auto min-h-10 gap-2 bg-popover py-0 pl-3 pr-1 ${typeStyle("control.input")}`}>
-        <span aria-hidden="true">{option.icon}</span><span>{option.label}</span>
-        <RemoveButton label={`Remove ${option.label}`} onClick={() => onChange(values.filter(item => item !== option.value).join("; "))} />
+    <div className="min-h-14">
+    {selected.length > 0 && <ul aria-label="Selected countries" className="flex flex-wrap gap-2">{selected.map(option => <li key={option.value} className="min-w-0 max-w-full">
+      <Badge variant="outline" className={`h-auto min-h-12 max-w-full gap-2 whitespace-normal bg-popover py-0 pl-3 pr-1 ${typeStyle("control.input")}`}>
+        <span aria-hidden="true" className="shrink-0">{option.icon}</span><span className="min-w-0 whitespace-normal break-words">{option.label}</span>
+        <RemoveButton label={`Remove ${option.label}`} onClick={() => {
+          onChange(values.filter(item => item !== option.value).join("; "));
+          trigger.current?.focus({preventScroll:true});
+        }} />
       </Badge>
     </li>)}</ul>}
     </div>
@@ -37,7 +41,7 @@ export function CountriesInput({ label, value, onChange }: { label: string; valu
           if (countries.length <= 15) onChange(countries.join("; "));
         }
       }}>
-      <Combobox.Trigger aria-label={label}
+      <Combobox.Trigger ref={trigger} aria-label={label}
         className={`flex h-12 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-input bg-popover px-3 text-left transition-colors hover:border-border-hover focus:border-border-focus focus:ring-1 focus:ring-input focus:outline-none ${typeStyle("control.input")}`}>
         <span className={selected.length ? "text-foreground" : "text-muted-foreground/40"}>
           {unsure ? INTAKE_UNSURE : selected.length ? `${selected.length} selected` : "Select countries"}

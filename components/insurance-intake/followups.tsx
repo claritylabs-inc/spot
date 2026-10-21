@@ -209,7 +209,7 @@ function IntakeFollowupField({
       <Field>
         <FieldLabel
           htmlFor={question.kind === "yes_no" && !grouped ? undefined : id}
-          className={grouped ? typeStyle("body.root") : "sr-only"}
+          className={grouped ? typeStyle("body.root") : "sr-only w-px! max-w-px!"}
         >
           {label}
         </FieldLabel>
