@@ -85,6 +85,7 @@ export const requestIntakeFields = {
   intakeStep: v.optional(v.number()),
   intakeRevision: v.optional(v.number()),
   intakeAmendedAt: v.optional(v.number()),
+  intakeSlackProgressSnapshot: v.optional(v.record(v.string(), v.object({ label: v.string(), value: v.string() }))),
   intakeSlackThreadTs: v.optional(v.string()),
   intakeSlackLeaseUntil: v.optional(v.number()),
   intakeSubmittedAt: v.optional(v.number()),

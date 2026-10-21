@@ -6,13 +6,16 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { getClientPortalUrl } from "./lib/domains";
 import {
   buildIntakeSlackContext,
+  buildIntakeSlackChanges,
+  type IntakeSlackSnapshot,
   escapeIntakeSlack as escape,
 } from "./lib/intakeSlackContext";
-async function savedContext(ctx: MutationCtx, request: Doc<"procurementRequests">) {
+async function savedContext(ctx: MutationCtx, request: Doc<"procurementRequests">, snapshot?: IntakeSlackSnapshot) {
   const owner = request.ownerUserId ? await ctx.db.get(request.ownerUserId) : null;
   const files = await ctx.db.query("requestIntakeFiles")
     .withIndex("request", q => q.eq("requestId", request._id)).take(100);
   return buildIntakeSlackContext(request, {
+    snapshot,
     emailVerified: Boolean(owner?.emailVerificationTime),
     files: files.map(file => ({ name: file.name, category: file.category })),
   });
@@ -41,7 +44,8 @@ export async function queueIntakeSlack(
       ? `${getClientPortalUrl()}/operator/clients/${request.clientOrgId}/policies`
       : `${getClientPortalUrl()}/operator/clients/${request.clientOrgId}/procurement/${requestId}`
     : `${getClientPortalUrl()}/operator/clients`;
-  const context = await savedContext(ctx, request);
+  const snapshot: IntakeSlackSnapshot = {};
+  const context = await savedContext(ctx, request, snapshot);
   const add = async (key: string, content: string) => {
     const exists = await ctx.db
       .query("intakeSlackEvents")
@@ -49,26 +53,36 @@ export async function queueIntakeSlack(
         q.eq("requestId", requestId).eq("eventKey", key),
       )
       .unique();
-    if (!exists)
-      await ctx.db.insert("intakeSlackEvents", {
-        requestId,
-        eventKey: key,
-        teamId,
-        channelId,
-        content,
-        status: "pending",
-        attempts: 0,
-      });
+    if (exists) return false;
+    await ctx.db.insert("intakeSlackEvents", {
+      requestId,
+      eventKey: key,
+      teamId,
+      channelId,
+      content,
+      status: "pending",
+      attempts: 0,
+    });
+    return true;
   };
-  await add(
+  const started = await add(
     "started",
     `**Insurance application started**\n${name}\nApplication ID: ${requestId}\n${context}`,
   );
-  if (eventKey !== "started" && !eventKey.startsWith("summary:"))
-    await add(
-      eventKey,
-      `**${escape(progress)}**\n${name}\nApplication ID: ${requestId}\n${context}${submitted && answers.intakeGoal === "savings" ? `\n[Review policies](${link})` : submitted ? `\nCoverage: ${escape(answers.coverage || "Not specified")}\nEffective date: ${escape(answers.effectiveDate || "Not specified")}\n[Review application](${link})` : ""}`,
+  // Summary-only autosaves must not advance this baseline: the next reply
+  // includes every answer changed since the previous queued progress message.
+  let baseline = started ? snapshot : request.intakeSlackProgressSnapshot;
+  if (eventKey !== "started" && !eventKey.startsWith("summary:")) {
+    const changes = buildIntakeSlackChanges(baseline ?? {}, snapshot);
+    const added = await add(
+      // Revisiting the same question can carry new answers at a new revision.
+      submitted ? eventKey : `${eventKey}:revision:${request.intakeRevision ?? 0}`,
+      `**${escape(progress)}**\n${name}\nApplication ID: ${requestId}\n${submitted ? context : changes || "No applicant answers changed."}${submitted && answers.intakeGoal === "savings" ? `\n[Review policies](${link})` : submitted ? `\nCoverage: ${escape(answers.coverage || "Not specified")}\nEffective date: ${escape(answers.effectiveDate || "Not specified")}\n[Review application](${link})` : ""}`,
     );
+    if (added) baseline = snapshot;
+  }
+  if (baseline && baseline !== request.intakeSlackProgressSnapshot)
+    await ctx.db.patch(requestId, { intakeSlackProgressSnapshot: baseline });
   await add(eventKey.startsWith("summary:") ? eventKey : `summary:${request.intakeRevision ?? 0}`, await threadSummary(ctx, request));
   await ctx.scheduler.runAfter(0, internal.actions.intakeSlack.deliver, {
     requestId,
