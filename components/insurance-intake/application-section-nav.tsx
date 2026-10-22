@@ -246,7 +246,7 @@ export function SectionMenu({
     <div
       className={cn(
         "flex h-full min-h-0 flex-col transition-[width] duration-150 ease-out",
-        collapsed ? "w-14" : "w-56",
+        collapsed ? "w-14" : "w-64",
       )}
     >
       <SidebarTooltipProvider>
