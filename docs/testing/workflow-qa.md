@@ -2077,3 +2077,28 @@ The existing authorization-test fixture was updated with user approval to accept
 the terms through the normal owner-scoped save path; all 133 existing tests passed.
 No new tests were added. Root and Convex typechecks and repository lint were rerun
 against current main’s locked dependencies before publishing the PR.
+
+## Provider appetite and ACORD catalog — October 22, 2026
+
+Local Chrome at `localhost:3207` passed provider Appetite review: geography and
+ACORD lines render in separate row cards, saved lines show readable names and
+exact codes, and searches for `CYBER` and `Management` return the corresponding
+catalog options. No appetite selections were changed during browser checks.
+All 82 local provider records were audited against the extracted PCS 2.11.0
+`LOBCd` list: 65 have valid, sorted, unique recorded lines; 17 remain unknown.
+The source has 107 codes; the provider selector excludes `UN` and `BLANK`.
+
+Country, state/province and ACORD selectors use the shared `control.menu` role.
+Browser computed styles confirmed identical **13.6px font / 20.4px line height**
+for selected values, popup search inputs and options in all three dropdowns.
+The shared package patch adds explicit typography selection and carries the role
+through portals; app CSS prevents the older operator form overrides from
+changing that role. Other callers retain the default input typography.
+The patch was verified against clean package source using patch-package’s own
+parser and application engine.
+Root TypeScript, touched-file lint and whitespace checks passed. No tests added.
+
+Evidence: `.context/qa/provider-acord/coverage-lines.png`,
+`dropdown-typography.png`, `provider-audit.json` and `providers-after.json`.
+The model extraction and source boundaries are documented in
+`docs/architecture/acord-provider-appetite.md`.
