@@ -12,6 +12,7 @@ export const intakeAddressValidator = v.object({
   formatted: v.optional(v.string()),
 });
 export const intakeDetailsValidator = v.object({
+  termsAcceptedVersion: v.optional(v.string()),
   cyberDocuments: v.optional(v.object({ privacyPolicyUrl: v.optional(v.string()), termsUrl: v.optional(v.string()) })),
   sectionIntroductions: v.optional(v.array(v.number())),
   subsectionIntroductions: v.optional(v.array(v.string())),

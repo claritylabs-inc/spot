@@ -25,6 +25,10 @@ export const intakeBusinessProfileValidator = v.object({
   sourceRequestId: v.optional(v.id("procurementRequests")),
 });
 export const requestIntakeFields = {
+  intakeTermsAcceptance: v.optional(v.object({
+    userId: v.id("users"), acceptedAt: v.number(), version: v.string(),
+    url: v.string(), statement: v.string(),
+  })),
   intakePremiumEstimate: v.optional(v.object({
     contentHash: v.string(), token: v.string(), startedAt: v.number(), provisional: v.optional(v.boolean()),
     status: v.union(v.literal("pending"), v.literal("running"), v.literal("completed"), v.literal("failed")),

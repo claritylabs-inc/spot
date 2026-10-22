@@ -136,6 +136,7 @@ type RelatedEntity = {
   insured: "" | "include" | "exclude" | "unsure";
 };
 export type IntakeDetails = {
+  termsAcceptedVersion?: string;
   cyberDocuments?: { privacyPolicyUrl?: string; termsUrl?: string };
   sectionIntroductions?: number[];
   subsectionIntroductions?: string[];

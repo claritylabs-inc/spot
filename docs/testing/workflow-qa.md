@@ -2051,3 +2051,29 @@ establish provider execution or HTTP/OAuth MCP acceptance.
 These reports do not establish hosted sandbox isolation, production challenge
 solving, controlled inbox delivery, or customer submission acceptance. Release
 acceptance remains incomplete.
+
+## Coverage terms consent — October 21, 2026
+
+Node 24 root and Convex typechecks and touched-file ESLint passed (the existing
+`application.tsx` effect dependency warning remains). `/intake/terms` returned
+HTTP 200 on the existing local server at port 3207; browser accessibility output
+confirmed the public terms heading, incorporated organization-terms link and
+limited representation/purchase-approval text. Source review covered checkbox
+defaults, disabled begin/section shortcuts, saved draft version, owner/revision
+checks, server-derived acceptance actor/time and final submission gate.
+Full authenticated consent/reload/submit and responsive card workflows were not
+run; no agreement was accepted, application submitted or backend deployed.
+Repeat by opening an unaccepted quote’s Coverage introduction, confirming Begin
+and section shortcuts are disabled, opening the terms without toggling consent,
+then checking in a synthetic local fixture, continuing and reloading. Uncheck on
+return and verify the gate returns; submission without the current acceptance
+must fail. Savings reviews must retain their existing flow.
+
+October 21 PR follow-up: local non-saving component preview on current main’s
+locked UI 0.12.0 dependency passed text click, empty right-padding click and direct
+checkbox click (one toggle each). Terms-link click left consent unchanged and
+Begin/section shortcuts disabled. The temporary preview route was removed.
+The existing authorization-test fixture was updated with user approval to accept
+the terms through the normal owner-scoped save path; all 133 existing tests passed.
+No new tests were added. Root and Convex typechecks and repository lint were rerun
+against current main’s locked dependencies before publishing the PR.

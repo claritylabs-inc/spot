@@ -1,3 +1,4 @@
+import { INTAKE_TERMS_VERSION, INTAKE_TERMS_URL, INTAKE_TERMS_STATEMENT } from "../lib/intake-terms";
 import { INTAKE_QUESTION_REFERENCE_VERSION } from "../lib/intake-question-reference";
 import { workforcePolicyQuestion } from "../lib/intake-workforce-policy";
 import { vehicleRelevanceKey, vehicleRelevanceEvidence, vehicleRelevanceCandidates } from "../lib/intake-vehicle-relevance";
@@ -845,6 +846,8 @@ export const save = mutation({
     )
       throw new Error("This question cannot be skipped");
     if (args.details) {
+      if (args.details.termsAcceptedVersion && args.details.termsAcceptedVersion !== INTAKE_TERMS_VERSION)
+        throw new Error("Review and accept the current Spot Terms of Service");
       validateIntakeDetails(args.details);
       const approved = [
         ...bakedCoverageQuestions({ answers: { ...request.intakeAnswers, ...args.answers }, details: args.details }),
@@ -1013,6 +1016,14 @@ export const save = mutation({
           }
         : {}),
       ...(details ? { intakeDetails: details } : {}),
+      ...(args.details ? { intakeTermsAcceptance:
+        args.details.termsAcceptedVersion === INTAKE_TERMS_VERSION
+          ? request.intakeTermsAcceptance?.version === INTAKE_TERMS_VERSION
+            ? request.intakeTermsAcceptance
+            : { userId: user._id, acceptedAt: dayjs().valueOf(), version: INTAKE_TERMS_VERSION,
+                url: INTAKE_TERMS_URL, statement: INTAKE_TERMS_STATEMENT }
+          : undefined,
+      } : {}),
       intakeSkippedSteps: [
         ...new Set([
           ...(request.intakeSkippedSteps ?? []).filter(
@@ -1467,6 +1478,8 @@ export const submit = mutation({
       false,
     );
     const savings = answers.intakeGoal === "savings";
+    if (!savings && request.intakeTermsAcceptance?.version !== INTAKE_TERMS_VERSION)
+      throw new Error("Accept Spot’s Terms of Service in the Coverage section before submitting");
     const details = activeIntakeDetails(request.intakeDetails ?? detailsFromAnswers(answers),answers.intakeGoal);
     const problems=intakeSubmissionProblems(answers,details);
     if(problems.length)throw new Error(`Please complete: ${problems.map(problem=>problem.label).join(", ")}`);
