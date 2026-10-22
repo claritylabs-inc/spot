@@ -2567,7 +2567,9 @@ export default defineSchema({
     label: v.optional(v.string()),
     task: v.optional(v.string()),
     taskKind: v.optional(v.string()),
-    provider: v.optional(v.union(modelProviderValidator, v.literal("cloudflare"))),
+    provider: v.optional(
+      v.union(modelProviderValidator, v.literal("cloudflare")),
+    ),
     model: v.optional(v.string()),
     routeSource: v.optional(v.string()),
     transport: v.optional(v.string()),
@@ -2753,7 +2755,14 @@ export default defineSchema({
   }).index("request", ["requestId"]),
 
   requestIntakeFiles: defineTable({
-    prefillStatus: v.optional(v.union(v.literal("pending"),v.literal("running"),v.literal("complete"),v.literal("failed"))),
+    prefillStatus: v.optional(
+      v.union(
+        v.literal("pending"),
+        v.literal("running"),
+        v.literal("complete"),
+        v.literal("failed"),
+      ),
+    ),
     policyId: v.optional(v.id("policies")),
     prefillStartedAt: v.optional(v.number()),
     prefillCoveragesJson: v.optional(v.string()),
@@ -2774,6 +2783,175 @@ export default defineSchema({
   })
     .index("request", ["requestId"])
     .index("storage", ["fileId"]),
+
+  operatorOutreachInboxes: defineTable({
+    userId: v.id("users"),
+    inboxId: v.string(),
+    emailAddress: v.string(),
+    fromName: v.string(),
+    labelIds: v.object({ automated: v.string(), needsReply: v.string() }),
+    createdAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_inboxId", ["inboxId"]),
+
+  procurementOutreachSequences: defineTable({
+    requestId: v.id("procurementRequests"),
+    clientOrgId: v.id("organizations"),
+    outreachId: v.id("procurementBrokerOutreaches"),
+    brokerOrgId: v.id("organizations"),
+    recipient: v.object({
+      contactId: v.optional(v.id("brokerContacts")),
+      email: v.string(),
+      name: v.optional(v.string()),
+    }),
+    senderUserId: v.id("users"),
+    inboxId: v.optional(v.string()),
+    packetLinkId: v.id("procurementPacketLinks"),
+    resendThreadId: v.optional(v.string()),
+    lastOutboundEmailId: v.optional(v.string()),
+    procurementEmailThreadId: v.optional(v.id("procurementEmailThreads")),
+    cadence: v.object({
+      followUpCount: v.number(),
+      intervalBusinessDays: v.number(),
+      style: v.union(
+        v.literal("brief_nudge"),
+        v.literal("concise_recap"),
+        v.literal("detailed_recap"),
+      ),
+    }),
+    cadenceSource: v.object({
+      followUpCount: v.union(
+        v.literal("jev"),
+        v.literal("default"),
+        v.literal("operator"),
+      ),
+      intervalBusinessDays: v.union(
+        v.literal("jev"),
+        v.literal("default"),
+        v.literal("operator"),
+      ),
+      style: v.union(
+        v.literal("jev"),
+        v.literal("default"),
+        v.literal("operator"),
+      ),
+    }),
+    status: v.union(
+      v.literal("active"),
+      v.literal("reply_check"),
+      v.literal("responded"),
+      v.literal("completed"),
+      v.literal("stopped"),
+      v.literal("failed"),
+    ),
+    stopReason: v.optional(v.string()),
+    pendingReplyEmailId: v.optional(v.string()),
+    respondedAt: v.optional(v.number()),
+    replyCheckStartedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_outreachId", ["outreachId"])
+    .index("by_requestId_and_status", ["requestId", "status"])
+    .index("by_resendThreadId", ["resendThreadId"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"]),
+
+  procurementOutreachSteps: defineTable({
+    sequenceId: v.id("procurementOutreachSequences"),
+    index: v.number(),
+    kind: v.union(v.literal("initial"), v.literal("follow_up")),
+    isFinal: v.boolean(),
+    dueAt: v.number(),
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("sending"),
+      v.literal("sent"),
+      v.literal("captured"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+    ),
+    attempts: v.number(),
+    leaseToken: v.optional(v.string()),
+    leaseUntil: v.optional(v.number()),
+    firstAttemptAt: v.optional(v.number()),
+    generationStartedAt: v.optional(v.number()),
+    draft: v.optional(
+      v.object({
+        subject: v.string(),
+        text: v.string(),
+        html: v.string(),
+        source: v.union(v.literal("llm"), v.literal("template")),
+      }),
+    ),
+    resendDraftId: v.optional(v.string()),
+    resendEmailId: v.optional(v.string()),
+    sentAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_sequenceId_and_index", ["sequenceId", "index"])
+    .index("by_status_and_dueAt", ["status", "dueAt"])
+    .index("by_status_and_leaseUntil", ["status", "leaseUntil"])
+    .index("by_resendEmailId", ["resendEmailId"]),
+
+  procurementOutreachCadences: defineTable({
+    requestId: v.id("procurementRequests"),
+    fingerprint: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("ready"),
+      v.literal("failed"),
+    ),
+    picks: v.optional(
+      v.object({
+        followUpCount: v.object({
+          value: v.number(),
+          confidence: v.number(),
+          source: v.union(v.literal("jev"), v.literal("default")),
+        }),
+        intervalBusinessDays: v.object({
+          value: v.number(),
+          confidence: v.number(),
+          source: v.union(v.literal("jev"), v.literal("default")),
+        }),
+        style: v.object({
+          value: v.union(
+            v.literal("brief_nudge"),
+            v.literal("concise_recap"),
+            v.literal("detailed_recap"),
+          ),
+          confidence: v.number(),
+          source: v.union(v.literal("jev"), v.literal("default")),
+        }),
+      }),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_requestId", ["requestId"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"]),
+
+  providerOutreachWebhookEvents: defineTable({
+    emailId: v.string(),
+    eventType: v.string(),
+    inboxId: v.string(),
+    threadId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    leaseUntil: v.optional(v.number()),
+    leaseToken: v.optional(v.string()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_emailId_and_eventType", ["emailId", "eventType"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"]),
 
   procurementBrokerOutreaches: defineTable({
     requestId: v.id("procurementRequests"),
@@ -3105,6 +3283,8 @@ export default defineSchema({
     .index("document_parent", ["proposalDocumentId", "parentNodeId"]),
 
   procurementEmailThreads: defineTable({
+    outreachId: v.optional(v.id("procurementBrokerOutreaches")),
+    resendThreadId: v.optional(v.string()),
     clientOrgId: v.id("organizations"),
     addressedRequestId: v.id("procurementRequests"),
     requestId: v.id("procurementRequests"),
@@ -3132,9 +3312,11 @@ export default defineSchema({
     .index("organization", ["clientOrgId", "latestMessageAt"])
     .index("request", ["requestId", "latestMessageAt"])
     .index("addressed", ["addressedRequestId", "latestMessageAt"])
-    .index("subject", ["clientOrgId", "normalizedSubject", "latestMessageAt"]),
+    .index("subject", ["clientOrgId", "normalizedSubject", "latestMessageAt"])
+    .index("by_resendThreadId", ["resendThreadId"]),
 
   procurementEmailMessages: defineTable({
+    resendInboxEmailId: v.optional(v.string()),
     threadId: v.id("procurementEmailThreads"),
     clientOrgId: v.id("organizations"),
     addressedRequestId: v.id("procurementRequests"),
@@ -3156,6 +3338,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("thread", ["threadId", "receivedAt"])
+    .index("by_resendInboxEmailId", ["resendInboxEmailId"])
     .index("resend", ["resendEmailId"])
     .index("message", ["messageId"])
     .index("request", ["addressedRequestId", "receivedAt"]),
@@ -3919,6 +4102,7 @@ export default defineSchema({
     .index("organization_mutation", ["orgId", "clientMutationId"])
     .index("message", ["messageId"])
     .index("response", ["responseMessageId"])
+    .index("by_resendInboxEmailId", ["resendInboxEmailId"])
     .index("resend", ["resendEmailId"])
     .index("reply", ["replyToMessageId"])
     .index("thread_message", ["threadId", "slackMessageTs"])
@@ -4894,6 +5078,7 @@ export default defineSchema({
       v.literal("policy_delivery"),
       v.literal("inbound_email"),
       v.literal("procurement_packet"),
+      v.literal("procurement_outreach"),
     ),
     provider: v.literal("resend"),
     deliveryMode: v.optional(v.string()),
