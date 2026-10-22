@@ -50,7 +50,7 @@ Examples:
 - `Show the status of the endorsement request in this thread.`
 
 A Spot message is not carrier confirmation that coverage has changed. Rely on
-the issued endorsement or other formal evidence from the broker or carrier.
+the issued endorsement or other formal evidence from the provider or carrier.
 
 ## Compliance checks
 
@@ -66,7 +66,7 @@ Examples:
 - `Show the exact limits that fail this vendor requirement.`
 
 Treat a compliance result as a source-backed workflow aid, not legal advice.
-Resolve ambiguous wording with the broker or requirement owner.
+Resolve ambiguous wording with the provider or requirement owner.
 
 ## Mailbox search and document intake
 
@@ -92,7 +92,7 @@ official position, or goes outside the organization.
 
 Examples:
 
-- `Draft a follow-up to the broker asking for the missing endorsement.`
+- `Draft a follow-up to the provider asking for the missing endorsement.`
 - `Prepare an email to the certificate holder with the COI attached. Do not send.`
 - `Revise draft 1 to include the project number, then show it again.`
 

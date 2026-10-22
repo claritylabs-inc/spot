@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useState, useRef } from "react";
+import { useContext, useEffect, useId, useState, useRef } from "react";
+import { InlineFieldsContext } from "./inline-fields";
 import Image from "next/image";
 import { ArrowRight, MapPin, Plus } from "lucide-react";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -69,6 +70,8 @@ export function RouteInput({
   // The answer owner correctly collapses an all-blank route to "". Retain
   // temporary rows locally so Add stop / Add route still work before typing.
   const [emptyDraft, setEmptyDraft] = useState<RouteValue>();
+  // Operator rows show stops as compact fields and the map once a city is chosen.
+  const compact = useContext(InlineFieldsContext);
   const isBlank = (route: RouteValue) => !route.legacyMaximumDistance?.trim() &&
     route.routes.every(path => path.stops.every(stop => !stop.name.trim()));
   const displayed = isBlank(value) && emptyDraft ? emptyDraft : value;
@@ -85,8 +88,25 @@ export function RouteInput({
       ),
     });
   }
+  const addRoute = (
+    <PillButton
+      type="button"
+      variant="secondary"
+      size={compact ? "default" : "large"}
+      disabled={paths.length >= MAX_ROUTES}
+      onClick={() =>
+        onChange({
+          ...displayed,
+          routes: [...paths, { stops: [{ name: "" }, { name: "" }] }],
+        })
+      }
+    >
+      <Plus className="size-4" />
+      Add route
+    </PillButton>
+  );
   return (
-    <div className="space-y-5">
+    <div className={compact ? "space-y-3 py-1" : "space-y-5"}>
       {paths.map((path, routeIndex) => {
         const stops = path.stops.length
           ? path.stops
@@ -103,11 +123,11 @@ export function RouteInput({
             ? `${startName} to ${endName}`
             : `Route ${routeIndex + 1}`;
         return (
-          <Card key={routeIndex} className="gap-5 p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3">
+          <RouteGroup key={routeIndex} compact={compact}>
+            <div className={`flex items-center justify-between gap-3 ${compact && paths.length === 1 ? "sr-only" : ""}`}>
               <h2
                 aria-label={routeName}
-                className={`flex min-w-0 flex-wrap items-center gap-2 text-pretty ${typeStyle("heading.section")}`}
+                className={`flex min-w-0 flex-wrap items-center gap-2 text-pretty ${typeStyle(compact ? "body.medium" : "heading.section")}`}
               >
                 {startName && endName ? (
                   <>
@@ -134,15 +154,16 @@ export function RouteInput({
                 />
               )}
             </div>
-            <div className="space-y-4">
+            <div className={compact ? "space-y-1" : "space-y-4"}>
               {stops.map((stop, index) => (
                 <div
                   key={index}
                   data-route-group={routeIndex}
                   data-route-stop={index}
-                  className="flex items-start gap-2 sm:gap-3"
+                  className={compact ? "flex items-center gap-2" : "flex items-start gap-2 sm:gap-3"}
                 >
                   <CityInput
+                    compact={compact}
                     label={
                       index === 0
                         ? "Start"
@@ -160,7 +181,7 @@ export function RouteInput({
                       )
                     }
                   />
-                  <div className="mt-8 flex h-12 shrink-0 items-center">
+                  <div className={compact ? "flex shrink-0 items-center" : "mt-8 flex h-12 shrink-0 items-center"}>
                     <RemoveButton
                       label={`Remove Route ${routeIndex + 1} city ${index + 1}`}
                       disabled={stops.length <= 2 && !stop.name}
@@ -180,38 +201,39 @@ export function RouteInput({
               ))}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <PillButton
                 type="button"
                 variant="secondary"
-                size="large"
+                size={compact ? "default" : "large"}
                 disabled={stops.length >= MAX_ROUTE_STOPS}
                 onClick={() => update(routeIndex, [...stops, { name: "" }])}
               >
                 <Plus className="size-4" />
                 Add a stop
               </PillButton>
+              {compact && routeIndex === paths.length - 1 && addRoute}
             </div>
-            <RouteMap stops={stops} />
-          </Card>
+            <RouteMap stops={stops} compact={compact} />
+          </RouteGroup>
         );
       })}
-      <PillButton
-        type="button"
-        variant="secondary"
-        size="large"
-        disabled={paths.length >= MAX_ROUTES}
-        onClick={() =>
-          onChange({
-            ...displayed,
-            routes: [...paths, { stops: [{ name: "" }, { name: "" }] }],
-          })
-        }
-      >
-        <Plus className="size-4" />
-        Add route
-      </PillButton>
+      {!compact && addRoute}
     </div>
+  );
+}
+
+function RouteGroup({
+  compact,
+  children,
+}: {
+  compact: boolean;
+  children: React.ReactNode;
+}) {
+  return compact ? (
+    <section className="space-y-2">{children}</section>
+  ) : (
+    <Card className="gap-5 p-4 sm:p-5">{children}</Card>
   );
 }
 
@@ -220,8 +242,10 @@ function CityInput({
   value,
   onChange,
   autoFocus,
+  compact = false,
 }: {
   autoFocus?: boolean;
+  compact?: boolean;
   label: string;
   value: RouteStop;
   onChange: (stop: RouteStop) => void;
@@ -272,12 +296,12 @@ function CityInput({
     (status !== "ready" || resultQuery === query);
   return (
     <Field className="relative min-w-0 flex-1 gap-2">
-      <FieldLabel htmlFor={id} className={typeStyle("body.root")}>
+      <FieldLabel htmlFor={id} className={compact ? "sr-only" : typeStyle("body.root")}>
         {label}
       </FieldLabel>
       <Input
         id={id}
-        className={`h-12 ${typeStyle("body.root")}`}
+        className={compact ? undefined : `h-12 ${typeStyle("body.root")}`}
         autoFocus={autoFocus}
         role="combobox"
         aria-autocomplete="list"
@@ -288,7 +312,7 @@ function CityInput({
         }
         autoComplete="off"
         value={value.name}
-        placeholder="Search for a city"
+        placeholder={compact ? `${label} city` : "Search for a city"}
         maxLength={140}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -377,7 +401,7 @@ function CityInput({
   );
 }
 
-function RouteMap({ stops }: { stops: RouteStop[] }) {
+function RouteMap({ stops, compact = false }: { stops: RouteStop[]; compact?: boolean }) {
   const container = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 640, height: 288 });
   useEffect(() => {
@@ -466,11 +490,12 @@ function RouteMap({ stops }: { stops: RouteStop[] }) {
       ? `https://api.mapbox.com/styles/v1/mapbox/${resolved === "dark" ? "dark-v11" : "light-v11"}/static/${overlays.join(",")}/${points.length === 1 ? `${points[0].longitude},${points[0].latitude},6` : "auto"}/${size.width}x${size.height}@2x?${points.length > 1 ? "padding=60&" : ""}access_token=${encodeURIComponent(token)}`
       : "";
   const loading = complete && route?.key !== key && !!token;
+  if (compact && !source) return null;
   return (
-    <Card className="gap-0 overflow-hidden rounded-xl py-0">
+    <Card className={`gap-0 overflow-hidden py-0 ${compact ? "rounded-lg" : "rounded-xl"}`}>
       <div
         ref={container}
-        className="relative flex h-64 items-center justify-center bg-muted/30 sm:h-72"
+        className={`relative flex items-center justify-center bg-muted/30 ${compact ? "h-36" : "h-64 sm:h-72"}`}
       >
         {source && failedImage !== source ? (
           <Image

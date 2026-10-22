@@ -46,7 +46,7 @@ function legacyPermissionMessage(message: string) {
     return "This connected organization is read-only. Switch to an authorized organization account to make changes.";
   }
   if (/broker admin access required/i.test(message)) {
-    return "Only a broker admin can perform this action.";
+    return "Only a provider admin can perform this action.";
   }
   if (/client admin access required/i.test(message)) {
     return "Only a client admin can perform this action.";

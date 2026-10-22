@@ -39,9 +39,9 @@ async function classify(
         trace: { traceId: `intake-industry:${requestId}`, channel: "web" },
         state: { description: text },
         questions: intakeIndustryQuestions("description"),
-        executionBudgetMs: 60000,
+        executionBudgetMs: 5000,
       },
-      { telemetry: ctx },
+      { telemetry: ctx, abortSignal: AbortSignal.timeout(6000) },
     );
     const suggestions = intakeIndustrySuggestions(result.answers);
     return suggestions.industry ? suggestions : null;

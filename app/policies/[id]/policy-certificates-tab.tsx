@@ -89,7 +89,7 @@ function mailtoHref(draft: BrokerEmailDraft) {
 
 function copyDraft(draft: BrokerEmailDraft) {
   void navigator.clipboard?.writeText(`Subject: ${draft.subject}\n\n${draft.body}`);
-  toast.success("Broker email copied");
+  toast.success("Provider email copied");
 }
 
 function CertificateHoldActivityRow({ row }: { row: CertificateHoldRow }) {
@@ -128,7 +128,7 @@ function CertificateHoldActivityRow({ row }: { row: CertificateHoldRow }) {
                 onClick={() => copyDraft(draft)}
               >
                 <Copy className="size-3.5" />
-                Copy broker email
+                Copy provider email
               </PillButton>
               <PillButton href={mailtoHref(draft)} size="compact" variant="ghost">
                 <Mail className="size-3.5" />

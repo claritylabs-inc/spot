@@ -4,13 +4,34 @@ import { AppShellPortal } from "@/components/app-shell-slots";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { IntakeApplicationFields } from "@/components/insurance-intake/application-fields";
 import {
+  coverageRequestLabel,
+  COVERAGE_OPTIONS,
   detailsFromAnswers,
+  newCoverage,
+  type CoverageId,
+  type CoverageRequest,
   type IntakeDetails,
 } from "@/lib/insurance-intake-details";
 import type { IntakeAnswers } from "@/lib/insurance-intake";
 import { IntakeReviewCompact } from "@/components/insurance-intake/company-review";
 import { IntakeApplicationReview } from "@/components/insurance-intake/application-review";
-import type { IntakeApplication } from "@/lib/intake-application";
+import {
+  intakeQuoteSections,
+  type IntakeApplication,
+} from "@/lib/intake-application";
+import {
+  ADD_COVERAGE_SECTION,
+  applicationSectionGroups,
+  COVERAGE_ICONS,
+  coverageSectionKey,
+  OTHER_COVERAGE_SECTION,
+  PROVIDER_ICONS,
+  SectionMenu,
+} from "@/components/insurance-intake/application-section-nav";
+import {
+  formatPremiumEstimate,
+  type IntakePremiumEstimateValue,
+} from "@/components/insurance-intake/premium-estimate";
 
 import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
@@ -38,6 +59,7 @@ import {
   Plus,
   Link,
   Upload,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -154,6 +176,12 @@ type RequestSummary = {
   intakeDetails?: IntakeDetails;
   application?: IntakeApplication | null;
   intakeSubmittedAt?: number;
+  intakeSubmittedContentHash?: string;
+  intakePremiumEstimate?: IntakePremiumEstimateValue & {
+    contentHash: string;
+    startedAt: number;
+    provisional?: boolean;
+  };
   completionOutcome?: React.ComponentProps<
     typeof RequestCompletionOutcome
   >["outcome"];
@@ -651,6 +679,147 @@ function ProposalReviewDetails({
   );
 }
 
+/** New-coverage page, like the former New chat entry: pick a line to add. */
+function CoveragePicker({
+  existing,
+  onPick,
+}: {
+  existing: CoverageRequest[];
+  onPick: (coverage: CoverageId) => void;
+}) {
+  const options = COVERAGE_OPTIONS.filter(
+    (option) => !existing.some((line) => line.coverage === option.id),
+  );
+  return (
+    <section aria-label="Add coverage" className="space-y-5">
+      <h2 className={typeStyle("heading.item")}>Add coverage</h2>
+      <InlineFieldCard>
+        {options.map((option) => {
+          const Icon = COVERAGE_ICONS[option.id];
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => onPick(option.id)}
+              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-foreground/4 focus-visible:bg-foreground/4 focus-visible:outline-none ${typeStyle("body.default")}`}
+            >
+              <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+              <span className="flex-1">{option.label}</span>
+              <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground/60" />
+            </button>
+          );
+        })}
+      </InlineFieldCard>
+    </section>
+  );
+}
+
+/** Accepted-application sections for read-only operators, one coverage at a time. */
+function ReadOnlyApplicationSection({
+  application,
+  section,
+  extraRows,
+}: {
+  application: IntakeApplication;
+  section: string;
+  extraRows: { label: string; value?: ReactNode }[];
+}) {
+  const line = application.details.coverages.find(
+    (row) => coverageSectionKey(row.coverage) === section,
+  );
+  if (!line)
+    return (
+      <IntakeApplicationReview
+        activeSection={
+          section === OTHER_COVERAGE_SECTION ? "Coverage Requested" : section
+        }
+        extraRows={extraRows}
+        application={application}
+      />
+    );
+  const scoped = {
+    ...application,
+    details: { ...application.details, coverages: [line] },
+  };
+  const quote = intakeQuoteSections(scoped.details).filter(
+    (title) => title !== "Follow-up answers",
+  );
+  return (
+    <div className="space-y-8">
+      <IntakeApplicationReview
+        activeSection="Coverage Requested"
+        application={scoped}
+      />
+      {quote.map((title) => (
+        <section key={title} aria-label={title} className="space-y-3">
+          <h2 className={typeStyle("heading.item")}>{title}</h2>
+          <IntakeApplicationReview activeSection={title} application={scoped} />
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function OperatorPremiumEstimate({
+  request,
+  readOnly,
+}: {
+  request: RequestSummary;
+  readOnly: boolean;
+}) {
+  const refresh = useMutation(api.procurementRequests.refreshPremiumEstimate);
+  const [busy, setBusy] = useState(false);
+  const estimate = request.intakePremiumEstimate;
+  const current =
+    !!estimate &&
+    !estimate.provisional &&
+    estimate.contentHash === request.intakeSubmittedContentHash;
+  const amount =
+    estimate?.status === "completed" ? formatPremiumEstimate(estimate) : undefined;
+  const running =
+    current && (estimate.status === "pending" || estimate.status === "running");
+  const action = readOnly || running ? null : current ? (
+    estimate.status === "failed" ? "Retry estimate" : null
+  ) : estimate ? "Refresh estimate" : "Estimate premium";
+  return (
+    <div className="flex min-h-9 flex-wrap items-center justify-between gap-3 px-3 py-1">
+      <span className={current && amount ? "" : "text-muted-foreground"}>
+        {running
+          ? "Estimating…"
+          : current && estimate.status === "failed"
+            ? "Estimate unavailable"
+            : amount
+              ? `${amount} ${estimate!.currency} / month${current ? "" : " · earlier application version"}`
+              : "Not estimated"}
+      </span>
+      {action && (
+        <PillButton
+          variant="secondary"
+          size="default"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await refresh({
+                requestId: request._id,
+                expectedStartedAt: estimate?.startedAt,
+              });
+            } catch (error) {
+              toast.error(
+                getUserFacingErrorMessage(error, "Could not estimate premium"),
+              );
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {action}
+        </PillButton>
+      )}
+    </div>
+  );
+}
+
 function RequestEditorFrame({
   inline,
   embedded,
@@ -694,12 +863,21 @@ function RequestEditorFrame({
   );
 }
 
+type RequestEditorHandle = PacketEditorHandle & {
+  openDelete: () => void;
+  acceptUpdatedAt: (updatedAt: number) => void;
+  addCoverage: (coverage: CoverageId) => void;
+  removeCoverage: (section: string) => void;
+};
+
 function RequestEditor({
   inline = false,
   embedded = false,
   activeSection,
   extraRows,
-  onCoverageActions,
+  onDraftChange,
+  onSectionChange,
+  onRightPanel,
   saveRef,
   readOnly = false,
   request,
@@ -710,13 +888,10 @@ function RequestEditor({
   embedded?: boolean;
   activeSection?: string;
   extraRows?: { label: string; value?: ReactNode }[];
-  onCoverageActions?: (node: ReactNode) => void;
-  saveRef?: React.Ref<
-    PacketEditorHandle & {
-      openDelete: () => void;
-      acceptUpdatedAt: (updatedAt: number) => void;
-    }
-  >;
+  onDraftChange?: (draft: { answers: IntakeAnswers; details: IntakeDetails }) => void;
+  onSectionChange?: (section: string) => void;
+  onRightPanel?: (node: ReactNode) => void;
+  saveRef?: React.Ref<RequestEditorHandle>;
   readOnly?: boolean;
   request: RequestSummary;
   policies: PolicyOption[];
@@ -843,6 +1018,24 @@ function RequestEditor({
       getUserFacingErrorMessage(error, "Could not update the request"),
   });
 
+  useEffect(() => {
+    onDraftChange?.({ answers, details: intakeDetails });
+  }, [answers, intakeDetails, onDraftChange]);
+  const removeCoverage = (section: string) => {
+        const line = intakeDetails.coverages.find(
+          (row) => coverageSectionKey(row.coverage) === section,
+        );
+        if (!line) return;
+        const previous = intakeDetails;
+        setIntakeDetails({
+          ...intakeDetails,
+          coverages: intakeDetails.coverages.filter((row) => row !== line),
+        });
+        if (section === activeSection) onSectionChange?.("Request details");
+        toast.success(`${coverageRequestLabel(line)} removed`, {
+          action: { label: "Undo", onClick: () => setIntakeDetails(previous) },
+        });
+      };
   useImperativeHandle(
     saveRef,
     () => ({
@@ -851,8 +1044,90 @@ function RequestEditor({
       acceptUpdatedAt: (updatedAt: number) => {
         version.current.updatedAt = updatedAt;
       },
+      addCoverage: (coverage: CoverageId) => {
+        setIntakeDetails((current) => ({
+          ...current,
+          coverages:
+            coverage === "unknown"
+              ? [newCoverage("unknown")]
+              : [
+                  ...current.coverages.filter(
+                    (line) => line.coverage !== "unknown",
+                  ),
+                  newCoverage(coverage),
+                ],
+        }));
+        onSectionChange?.(coverageSectionKey(coverage));
+      },
+      removeCoverage,
     }),
-    [autoSave.saveNow],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- removeCoverage reads the same state
+    [autoSave.saveNow, intakeDetails, activeSection, onSectionChange],
+  );
+  const requestCard = (
+        <InlineFieldCard>
+          <InlineFieldRow label="Title">
+            <Input
+              aria-label="Title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </InlineFieldRow>
+          <InlineFieldRow label="Target effective date">
+            <Input
+              aria-label="Target effective date"
+              type="date"
+              value={targetEffectiveDate}
+              onChange={(event) => setTargetEffectiveDate(event.target.value)}
+            />
+          </InlineFieldRow>
+          <InlineFieldRow label="Status">
+            <Select
+              value={status}
+              onValueChange={(value) =>
+                setStatus(value as ProcurementRequestStatus)
+              }
+            >
+              <SelectTrigger aria-label="Status" className="w-full">
+                <SelectValue>
+                  <RequestStatusLabel status={status} />
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {REQUEST_STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <RequestStatusLabel status={option.value} />
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineFieldRow>
+          <InlineFieldRow label="Policy being replaced">
+            <SearchableSelect
+              ariaLabel="Policy being replaced"
+              value={replacingPolicyId}
+              options={policyOptions}
+              onChange={setReplacingPolicyId}
+            />
+          </InlineFieldRow>
+          <InlineFieldRow label="Resulting policy">
+            <SearchableSelect
+              ariaLabel="Resulting policy"
+              value={resultingPolicyId}
+              options={policyOptions}
+              onChange={setResultingPolicyId}
+            />
+          </InlineFieldRow>
+          <InlineFieldRow label="Client visibility">
+            <div className="flex h-9 items-center px-3">
+              <SettingsSwitch
+                label="Client visibility"
+                checked={clientVisible}
+                onCheckedChange={() => setClientVisible(!clientVisible)}
+              />
+            </div>
+          </InlineFieldRow>
+        </InlineFieldCard>
   );
   return (
     <RequestEditorFrame
@@ -957,71 +1232,7 @@ function RequestEditor({
         </AlertDialogContent>
       </AlertDialog>
       <AutoSaveStatus status={autoSave.status} />
-      {(!embedded || activeSection === "Request details") && (
-        <InlineFieldCard>
-          <InlineFieldRow label="Title">
-            <Input
-              aria-label="Title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Target effective date">
-            <Input
-              aria-label="Target effective date"
-              type="date"
-              value={targetEffectiveDate}
-              onChange={(event) => setTargetEffectiveDate(event.target.value)}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Status">
-            <Select
-              value={status}
-              onValueChange={(value) =>
-                setStatus(value as ProcurementRequestStatus)
-              }
-            >
-              <SelectTrigger aria-label="Status" className="w-full">
-                <SelectValue>
-                  <RequestStatusLabel status={status} />
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {REQUEST_STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    <RequestStatusLabel status={option.value} />
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineFieldRow>
-          <InlineFieldRow label="Policy being replaced">
-            <SearchableSelect
-              ariaLabel="Policy being replaced"
-              value={replacingPolicyId}
-              options={policyOptions}
-              onChange={setReplacingPolicyId}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Resulting policy">
-            <SearchableSelect
-              ariaLabel="Resulting policy"
-              value={resultingPolicyId}
-              options={policyOptions}
-              onChange={setResultingPolicyId}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Client visibility">
-            <div className="flex h-9 items-center px-3">
-              <SettingsSwitch
-                label="Client visibility"
-                checked={clientVisible}
-                onCheckedChange={() => setClientVisible(!clientVisible)}
-              />
-            </div>
-          </InlineFieldRow>
-        </InlineFieldCard>
-      )}
+      {!embedded && requestCard}
       {inline ? (
         <fieldset
           disabled={readOnly}
@@ -1031,7 +1242,9 @@ function RequestEditor({
         >
           <IntakeApplicationFields
             activeSection={activeSection}
-            onToolbarActions={onCoverageActions}
+            onRemoveCoverage={removeCoverage}
+            onRightPanel={onRightPanel}
+            requestCard={embedded ? requestCard : undefined}
             companyGroup={embedded}
             extraRows={extraRows}
             answers={answers}
@@ -1206,7 +1419,7 @@ function OutreachEditor({
         current === next.statusDraft ? undefined : current,
       ),
     errorMessage: (error) =>
-      getUserFacingErrorMessage(error, "Could not update broker details"),
+      getUserFacingErrorMessage(error, "Could not update provider details"),
   });
 
   const changed = !!outreachId && autoSave.status !== "saved";
@@ -1231,9 +1444,9 @@ function OutreachEditor({
       };
       setOutreachId(created.outreachId);
       setStatus(undefined);
-      toast.success("Broker added");
+      toast.success("Provider added");
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Could not add broker"));
+      toast.error(getUserFacingErrorMessage(error, "Could not add provider"));
     } finally {
       setSaving(false);
     }
@@ -1253,8 +1466,8 @@ function OutreachEditor({
       }}
       title={
         outreachId
-          ? (currentOutreach?.brokerName ?? "Broker outreach")
-          : "Add broker"
+          ? (currentOutreach?.brokerName ?? "Provider outreach")
+          : "Add provider"
       }
       footer={
         <>
@@ -1365,7 +1578,7 @@ function OutreachEditor({
                   {saving ? (
                     <Loader2 className="size-3.5 animate-spin" />
                   ) : null}
-                  Add broker
+                  Add provider
                 </PillButton>
               ) : null}
             </>
@@ -1460,7 +1673,7 @@ function OutreachEditor({
                 <span
                   className={`text-muted-foreground ${typeStyle("caption.default")}`}
                 >
-                  Broker
+                  Provider
                 </span>
                 <SearchableSelect
                   value={brokerOrgId}
@@ -1684,10 +1897,10 @@ function ProcurementFileEditor({
             </OperationalItem>
             <OperationalItem className="flex items-center justify-between gap-4">
               <span className={typeStyle("body.default")}>
-                Broker visibility
+                Provider visibility
               </span>
               <SettingsSwitch
-                label="Broker visibility"
+                label="Provider visibility"
                 checked={brokerRelease !== "hidden"}
                 disabled={readOnly}
                 onCheckedChange={() =>
@@ -1765,7 +1978,6 @@ export function ProcurementRequestWorkspace({
     },
     [setRightPanel],
   );
-  const [coverageActions, setCoverageActions] = useState<ReactNode>(null);
   const [applicationSection, setApplicationSection] =
     useState("Contact details");
   const result = useQuery(api.procurementRequests.get, { requestId });
@@ -1787,12 +1999,11 @@ export function ProcurementRequestWorkspace({
   const latestTabChange = useRef(0);
   const removeFileItem = useMutation(api.procurementRequests.removeFileItem);
   const [removingFileId, setRemovingFileId] = useState<string | null>(null);
-  const requestEditorRef = useRef<
-    PacketEditorHandle & {
-      openDelete: () => void;
-      acceptUpdatedAt: (updatedAt: number) => void;
-    }
-  >(null);
+  const requestEditorRef = useRef<RequestEditorHandle>(null);
+  const [draft, setDraft] = useState<{
+    answers: IntakeAnswers;
+    details: IntakeDetails;
+  } | null>(null);
   const handleRemoveFile = useCallback(
     async (fileItemId: Id<"procurementFileItems">) => {
       if (requestEditorRef.current && !(await requestEditorRef.current.save()))
@@ -2077,7 +2288,7 @@ export function ProcurementRequestWorkspace({
       ) : view === "proposals" ? (
         <PillButton type="button" onClick={() => openOutreachEditor()}>
           <Plus className="size-3.5" />
-          Add broker
+          Add provider
         </PillButton>
       ) : view === "files" ? (
         <PillButton type="button" onClick={() => openUpload()}>
@@ -2088,7 +2299,6 @@ export function ProcurementRequestWorkspace({
 
     onActions?.(
       <>
-        {coverageActions}
         <PillButton
           type="button"
           variant="secondary"
@@ -2114,7 +2324,6 @@ export function ProcurementRequestWorkspace({
     return () => onActions?.(null);
   }, [
     onActions,
-    coverageActions,
     openOutreachEditor,
     openPacketLink,
     openNotes,
@@ -2205,8 +2414,76 @@ export function ProcurementRequestWorkspace({
       </div>
     ),
   });
+  const application = details.request.application;
+  // Editors validate against live drafts; read-only views use the accepted application.
+  // The menu follows the live draft while editing, else the accepted application.
+  const menuSource = readOnly
+    ? application && {
+        answers: application.answers,
+        details: application.details,
+      }
+    : (draft ?? {
+        answers: details.request.intakeAnswers ?? application?.answers ?? {},
+        details:
+          details.request.intakeDetails ??
+          application?.details ??
+          detailsFromAnswers(details.request.intakeAnswers ?? {}),
+      });
+  const applicationGroups = menuSource
+    ? applicationSectionGroups(menuSource.answers, menuSource.details, {
+        editable: !readOnly,
+      })
+    : [];
+  const menuGroups = [
+    ...applicationGroups,
+    {
+      label: "Providers",
+      items: [
+        {
+          key: "providers",
+          label: "Outreach",
+          icon: PROVIDER_ICONS.providers,
+          count: details.outreaches.length,
+        },
+        ...(details.emailThreads.length > 0 || view === "email"
+          ? [
+              {
+                key: "email",
+                label: "Imported email",
+                icon: PROVIDER_ICONS.email,
+                count: details.emailThreads.length,
+              },
+            ]
+          : []),
+      ],
+    },
+  ];
+  const activeApplicationSection = applicationGroups.some((group) =>
+    group.items.some((item) => item.key === applicationSection),
+  )
+    ? applicationSection
+    : "Contact details";
+  const activeMenuKey =
+    view === "proposals"
+      ? "providers"
+      : view === "email"
+        ? "email"
+        : activeApplicationSection;
+  const selectMenu = async (key: string) => {
+    if (requestEditorRef.current && !(await requestEditorRef.current.save()))
+      return;
+    if (packetEditorRef.current && !(await packetEditorRef.current.save()))
+      return;
+    if (key === "providers" || key === "email") {
+      closeRightPanel();
+      void changeView(key === "providers" ? "proposals" : "email");
+      return;
+    }
+    setApplicationSection(key);
+    if (view !== "application") void changeView("application");
+  };
   const documentRows =
-    applicationSection === "Request details"
+    activeApplicationSection === "Request details"
       ? [
           fileRow("requirements", "Insurance requirements"),
           ...(details.files.some(
@@ -2214,8 +2491,23 @@ export function ProcurementRequestWorkspace({
           )
             ? [fileRow("supporting", "Other documents")]
             : []),
+          ...(details.request.application &&
+          details.request.application.answers.intakeGoal !== "savings" &&
+          details.request.application.details.coverages.length
+            ? [
+                {
+                  label: "Estimated monthly premium",
+                  value: (
+                    <OperatorPremiumEstimate
+                      request={details.request}
+                      readOnly={readOnly}
+                    />
+                  ),
+                },
+              ]
+            : []),
         ]
-      : applicationSection === "Insurance history"
+      : activeApplicationSection === "Insurance history"
         ? [
             ...(details.request.application?.answers.currentInsurance !==
               "No" ||
@@ -2233,53 +2525,28 @@ export function ProcurementRequestWorkspace({
   return (
     <IntakeReviewCompact.Provider value={true}>
       <div className="space-y-5">
-        <div className="overflow-x-auto">
-          <Tabs
-            value={
-              view === "proposals" || view === "email"
-                ? view
-                : applicationSection
-            }
-            onValueChange={async (next) => {
-              if (
-                requestEditorRef.current &&
-                !(await requestEditorRef.current.save())
-              )
-                return;
-              if (
-                packetEditorRef.current &&
-                !(await packetEditorRef.current.save())
-              )
-                return;
-              if (next === "proposals" || next === "email")
-                void changeView(next);
-              else {
-                setApplicationSection(String(next));
-                if (view !== "application") void changeView("application");
-              }
-            }}
-          >
-            <TabsList variant="pill" aria-label="Procurement request details">
-              {[
-                "Contact details",
-                "Request details",
-                "Coverage Requested",
-                "Insurance history",
-              ].map((title) => (
-                <TabsTrigger key={title} value={title}>
-                  {title}
-                </TabsTrigger>
-              ))}
-              <TabsTrigger value="proposals">Brokers</TabsTrigger>
-              {details.emailThreads.length > 0 || view === "email" ? (
-                <TabsTrigger value="email">Imported email</TabsTrigger>
-              ) : null}
-            </TabsList>
-          </Tabs>
-        </div>
+        <SectionMenu
+          label="Request sections"
+          groups={menuGroups}
+          active={activeMenuKey}
+          onChange={(key) => void selectMenu(key)}
+          onRemove={
+            readOnly
+              ? undefined
+              : (key) => requestEditorRef.current?.removeCoverage(key)
+          }
+        />
 
         {view === "application" || view === "files" || view === "edit" ? (
           <>
+            {!readOnly && activeApplicationSection === ADD_COVERAGE_SECTION ? (
+              <CoveragePicker
+                existing={menuSource?.details.coverages ?? []}
+                onPick={(coverage) =>
+                  requestEditorRef.current?.addCoverage(coverage)
+                }
+              />
+            ) : null}
             {!readOnly ? (
               <RequestEditor
                 key={requestId}
@@ -2288,16 +2555,18 @@ export function ProcurementRequestWorkspace({
                 request={details.request}
                 policies={policyOptions}
                 onClose={() => {}}
-                activeSection={applicationSection}
+                activeSection={activeApplicationSection}
                 extraRows={documentRows}
-                onCoverageActions={setCoverageActions}
+                onDraftChange={setDraft}
+                onSectionChange={setApplicationSection}
+                onRightPanel={onRightPanel}
                 saveRef={requestEditorRef}
               />
-            ) : details.request.application ? (
-              <IntakeApplicationReview
-                activeSection={applicationSection}
+            ) : application ? (
+              <ReadOnlyApplicationSection
+                application={application}
+                section={activeApplicationSection}
                 extraRows={documentRows}
-                application={details.request.application}
               />
             ) : null}
           </>
@@ -2306,15 +2575,15 @@ export function ProcurementRequestWorkspace({
         {view === "proposals" ? (
           details.outreaches.length === 0 ? (
             <EmptyStateCard
-              title="No brokers contacted yet"
-              description="Add a broker to track outreach and proposals."
+              title="No providers contacted yet"
+              description="Add a provider to track outreach and proposals."
             />
           ) : (
             <OperationalPanel as="section">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Broker</TableHead>
+                    <TableHead>Provider</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Premium</TableHead>
                     <TableHead>Review</TableHead>

@@ -483,7 +483,7 @@ export const attachPolicyDocument = tool({
 });
 
 export const GENERATE_COI_DESCRIPTION =
-  "Generate certificate PDFs in exactly one of two modes. Policy mode uses policyId plus a holder and includes all available policy coverages; when the user provides an address, call lookup_address first. Requirements mode uses requirementSourceDocumentId or one requirementId; the saved source supplies the holder and Spot creates the necessary certificates from matching policies with only the relevant coverages. Do not combine these modes. Additional-insured, waiver, primary/non-contributory, loss payee, and mortgagee requests issue only when existing policy evidence supports them; otherwise Spot gates the certificate and returns a drafted broker email.";
+  "Generate certificate PDFs in exactly one of two modes. Policy mode uses policyId plus a holder and includes all available policy coverages; when the user provides an address, call lookup_address first. Requirements mode uses requirementSourceDocumentId or one requirementId; the saved source supplies the holder and Spot creates the necessary certificates from matching policies with only the relevant coverages. Do not combine these modes. Additional-insured, waiver, primary/non-contributory, loss payee, and mortgagee requests issue only when existing policy evidence supports them; otherwise Spot gates the certificate and returns a drafted provider email.";
 
 export const generateCoiInputSchema = z.object({
   policyId: z
@@ -593,13 +593,13 @@ export const generateCoi = tool({
 
 export const createImessageGroupChat = tool({
   description:
-    "Create a new iMessage group chat after the user explicitly asks for it or clearly approves the assistant's suggestion. Include the current user automatically; recipients can be teammate names, broker/client/vendor names, or explicit phone numbers. If any recipient is ambiguous or lacks a phone number, ask for clarification instead of guessing.",
+    "Create a new iMessage group chat after the user explicitly asks for it or clearly approves the assistant's suggestion. Include the current user automatically; recipients can be teammate names, provider/client/vendor names, or explicit phone numbers. If any recipient is ambiguous or lacks a phone number, ask for clarification instead of guessing.",
   inputSchema: z.object({
     recipients: z
       .array(z.string())
       .min(1)
       .describe(
-        "People or phone numbers to include besides the current user, such as Adyan, my broker, or +12025550123.",
+        "People or phone numbers to include besides the current user, such as Adyan, my provider, or +12025550123.",
       ),
     openingMessage: z
       .string()

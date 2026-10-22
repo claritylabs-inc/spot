@@ -170,8 +170,8 @@ export function certificateHeldOutcome(args: {
       { type: "certificate_hold", data: args.artifactData },
     ],
     comms: workflowCommsPlan({
-      headline: String(args.generated.message ?? "This certificate needs broker review before it can be issued."),
-      nextActionLabel: "Broker follow-up required",
+      headline: String(args.generated.message ?? "This certificate needs provider review before it can be issued."),
+      nextActionLabel: "Provider follow-up required",
     }),
     audit: [
       ...baseAudit(args.params, args.generated),

@@ -15,7 +15,6 @@ import { routeAnswerComplete } from "@/lib/route-input";
 import { parseCalendarDateInput } from "@/lib/date-format";
 import { intakeSection, atIntakeSectionStart } from "@/lib/intake-sections";
 import { isFixedVehicleFollowup } from "@/lib/intake-vehicle-underwriting";
-import type { IntakeFollowupAnswer } from "@/lib/intake-followups";
 import { mergeRequirementCoverageSuggestions } from "@/lib/intake-requirement-prefill";
 import { invalidateIntakePrefills } from "@/lib/intake-prefill-state";
 import { IntakeSectionIntroduction } from "./section-introduction";
@@ -28,7 +27,7 @@ import { VehicleSpecificationLookup } from "./vehicle-specification-lookup";
 import { IntakeDriverFields } from "./driver-fields";
 import { INTAKE_STEP_FIELDS } from "@/lib/intake-question-history";
 import { IntakeFollowups } from "./followups";
-import { intakeFollowupLastPageIndex, intakeFollowupPages, intakeFollowupPageTitle, personalizeIntakeQuestion, followupQuestionVisible, expandIntakeFollowupQuestion, type IntakeFollowupQuestion } from "@/lib/intake-followups";
+import { intakeFollowupLastPageIndex, intakeFollowupPages, intakeFollowupPageTitle, personalizeIntakeQuestion, followupQuestionVisible, expandIntakeFollowupQuestion, withIntakeFollowupAnswer, type IntakeFollowupQuestion } from "@/lib/intake-followups";
 import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { captureAnalytics } from "@/lib/analytics";
 import dayjs from "dayjs";
@@ -314,7 +313,7 @@ function Application({
   const suggestIndustry = useAction(api.actions.intakeIndustry.suggestProfile);
   const suggestRequestCoverages = useAction(api.actions.intakeCoverage.suggest);
   const requestCoverageAttempts = useRef(new Set<string>());
-  const scopeCoverageSuggestions = useRef(new Map<string, string[] | null>());
+  const scopeCoverageSuggestions = useRef(new Map<string, { ready: boolean; ids: string[] | null }>());
   const suggestDateInputs = useAction(api.actions.intakeFollowupInputs.dates);
   const suggestVehicleBodyType = useAction(api.actions.intakeFollowupInputs.vehicleBodyType);
   const vehicleBodyAttempts = useRef(new Set<string>());
@@ -448,7 +447,9 @@ function Application({
       .filter(question => !isFixedVehicleFollowup(question) &&
         followupQuestionVisible(question, details.followups) &&
         !details.followups?.find(row => row.id === question.id)?.prefilled);
-  const followupEntryChecked = (followupBatch?.status === "ready" && followupBatch.current) || checkedFollowupEntry === `${requestId}:${followupSection}`;
+  const followupEntryChecked = (followupBatch?.status === "ready" && followupBatch.current) ||
+    (checkedFollowupEntry === `${requestId}:${followupSection}` &&
+      (followupBatch?.status !== "ready" || followupBatch.current));
   const followupEntryFailed = checkedFollowupEntry === `${requestId}:${followupSection}:failed`;
   const currentSection = intakeSection(step);
   const sectionStart = atIntakeSectionStart(step, followupPageIndex, isSavings) ||
@@ -858,16 +859,8 @@ function Application({
       }) });
       return;
     }
-    const {prefilled:_prefilled, ...definition}=question as IntakeFollowupAnswer;
-    question=definition;
     const current = state.current.details ?? details;
-    const rows = current.followups ?? [];
-    const updatedRows = rows.some((row) => row.id === question.id)
-        ? rows.map((row) =>
-            row.id === question.id ? { ...question, answer, skipped: false } : row,
-          )
-        : [...rows, { ...question, answer, skipped: false }];
-    changeDetails({...current,followups:updatedRows.map(row=>{if(followupQuestionVisible(row,updatedRows))return row;const {prefilled:_prefilled,...definition}=row;return {...definition,answer:"",skipped:true};})});
+    changeDetails({...current,followups:withIntakeFollowupAnswer(current.followups ?? [],question,answer)});
   }
   function change(field: IntakeField, value: string) {
     if (field === "phone" && (state.current.answers.phone ?? "") === value) return;
@@ -1087,6 +1080,28 @@ function Application({
       setStatus("Saving…");
     })().catch(() => { /* Keep manual selection available without replaying a decision. */ });
   }, [ready, data, isSavings, step, answers.requestDetails, requestId, suggestRequestCoverages, cache]);
+
+  useEffect(() => {
+    if (!ready || !data || data.submitted || isSavings || step !== 9) return;
+    // Wait for the server to hold the exact scope text, then match once in the background.
+    const timer = setTimeout(() => {
+      const latest = state.current;
+      const line = latest.details?.coverages[0];
+      const description = line?.coverage === "unknown" ? line.scopeDescription?.trim() ?? "" : "";
+      const saved = data.details.coverages.find(row => row.coverage === "unknown")?.scopeDescription?.trim();
+      if (!description || description.length > 8000 || latest.dirty || latest.step !== 9 ||
+        conflict.current || saved !== description) return;
+      const key = JSON.stringify([requestId, description]);
+      if (scopeCoverageSuggestions.current.has(key)) return;
+      // Record the attempt first: unknown outcomes must not replay automatically.
+      scopeCoverageSuggestions.current.set(key, { ready: false, ids: null });
+      // The result is only cached; Next consumes it if the same saved text is still current.
+      suggestRequestCoverages({ requestId, notes: description, source: "unknown_scope" })
+        .then(ids => { scopeCoverageSuggestions.current.set(key, { ready: true, ids }); })
+        .catch(() => { /* Keep the ordinary flow available when matching fails. */ });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [ready, data, isSavings, step, requestId, suggestRequestCoverages]);
 
   const prefillIndustry = useCallback(async () => {
     const current = state.current;
@@ -1390,24 +1405,14 @@ function Application({
       if (!fromReview && !data?.submitted && !isSavings && step === 9 && requestedStep === 10 &&
         !skipped && previousDetails.coverages[0]?.coverage === "unknown") {
         const description = previousDetails.coverages[0].scopeDescription?.trim() ?? "";
-        if (description && description.length <= 8000) {
-          const key = JSON.stringify([requestId, description]);
-          if (!scopeCoverageSuggestions.current.has(key)) {
-            // Record the attempt first: unknown outcomes must not replay automatically.
-            scopeCoverageSuggestions.current.set(key, null);
-            try {
-              scopeCoverageSuggestions.current.set(key, await suggestRequestCoverages({
-                requestId, notes: description, source: "unknown_scope",
-              }));
-            } catch { /* Keep the ordinary flow available when matching fails. */ }
-          }
-          const latest = state.current.details;
-          if (conflict.current || state.current.step !== step ||
-            latest?.coverages[0]?.coverage !== "unknown" ||
-            latest.coverages[0].scopeDescription?.trim() !== description) return;
-          const suggestions = scopeCoverageSuggestions.current.get(key);
+        // Matching runs in the background; only a settled result for this exact saved text routes here.
+        const match = scopeCoverageSuggestions.current.get(JSON.stringify([requestId, description]));
+        const latest = state.current.details;
+        if (match?.ready && !conflict.current && state.current.step === step &&
+          latest?.coverages[0]?.coverage === "unknown" &&
+          latest.coverages[0].scopeDescription?.trim() === description) {
           const coverages = COVERAGE_OPTIONS.filter(option => option.id !== "unknown" &&
-            option.id !== "other" && suggestions?.includes(option.id)).map(option => newCoverage(option.id));
+            option.id !== "other" && match.ids?.includes(option.id)).map(option => newCoverage(option.id));
           if (coverages.length) {
             previousDetails = { ...latest, coverages, coverageIndex: 0,
               scopeNote: [latest.scopeNote?.trim(), description].filter((text, index, all) => text && all.indexOf(text) === index).join("\n\n") };

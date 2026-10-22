@@ -27,7 +27,7 @@ export default function BrokerOnboardingPage() {
       router.replace("/broker");
     } catch (cause) {
       setError(
-        getUserFacingErrorMessage(cause, "Could not open the broker workspace"),
+        getUserFacingErrorMessage(cause, "Could not open the provider workspace"),
       );
       setBusy(false);
     }
@@ -37,7 +37,7 @@ export default function BrokerOnboardingPage() {
     <AuthMinimalShell>
       <AuthCard
         title="Welcome to Spot"
-        subtitle="Review your broker profile and team after you continue."
+        subtitle="Review your provider profile and team after you continue."
         logo={<BrandWordmark />}
       >
         <div className="space-y-4">
@@ -54,7 +54,7 @@ export default function BrokerOnboardingPage() {
             {busy ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
             ) : null}
-            Continue to broker profile
+            Continue to provider profile
           </PillButton>
         </div>
       </AuthCard>

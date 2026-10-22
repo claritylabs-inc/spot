@@ -147,7 +147,7 @@ export const runInternal = internalAction({
       });
       if (!organization || organization.type !== "client") {
         throw new Error(
-          "Client organization not found. Use an exact client organization ID from search_organizations; a broker ID is not valid here.",
+          "Client organization not found. Use an exact client organization ID from search_organizations; a provider ID is not valid here.",
         );
       }
       if (args.toolName === "confirm_policy_fact") {

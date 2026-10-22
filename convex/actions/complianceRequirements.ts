@@ -125,6 +125,11 @@ export const RequirementImportSchema = z.object({
 });
 
 type ImportedRequirement = z.infer<typeof RequirementSchema>;
+type ClassifiedRequirement = ImportedRequirement & {
+  classificationReview?: true;
+  /** Raw classifier probabilities; transient metadata, never generated confidence. */
+  provisionProbabilities?: Partial<Record<(typeof REQUIREMENT_PROVISIONS)[number], number>>;
+};
 /** Sixteen independent rows × seven judgments = 112, below the 128-question cap. */
 export async function judgeRequirementFields(
   ctx: ActionCtx,
@@ -135,8 +140,8 @@ export async function judgeRequirementFields(
     defaultScope: RequirementScope;
     retainUncertainLineOfBusiness?: boolean;
   },
-): Promise<Array<ImportedRequirement & { classificationReview?: true }>> {
-  const rows: Array<ImportedRequirement & { classificationReview?: true }> = [];
+): Promise<ClassifiedRequirement[]> {
+  const rows: ClassifiedRequirement[] = [];
   for (let offset = 0; offset < requirements.length; offset += 16) {
     const batch = requirements.slice(offset, offset + 16);
     const parts = await runWithPayloadSplitting(batch, async (part) => {
@@ -173,7 +178,7 @@ async function judgeRequirementBatch(
     defaultScope: RequirementScope;
     retainUncertainLineOfBusiness?: boolean;
   },
-): Promise<Array<ImportedRequirement & { classificationReview?: true }>> {
+): Promise<ClassifiedRequirement[]> {
   if (!requirements.length) return [];
   const questions: Record<string, DecisionQuestion> = {};
   const lobCriteria = Object.fromEntries(
@@ -314,6 +319,12 @@ async function judgeRequirementBatch(
         form === "occurrence" || form === "claims_made" ? form : null,
       provisions: REQUIREMENT_PROVISIONS.filter((provision) =>
         jevProceeds(probability(provision)),
+      ),
+      provisionProbabilities: Object.fromEntries(
+        REQUIREMENT_PROVISIONS.flatMap((provision) => {
+          const p = probability(provision);
+          return p === undefined ? [] : [[provision, p]];
+        }),
       ),
       ...(uncertain ? { classificationReview: true as const } : {}),
     };

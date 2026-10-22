@@ -3,7 +3,7 @@ import {
   type IntakeFollowupAnswer,
   type IntakeFollowupQuestion,
 } from "../../lib/intake-followups";
-import { jevChoiceConfidence, jevProceedThreshold } from "./jevThreshold";
+import { jevChoiceConfidence, jevDecisionBand } from "./jevThreshold";
 export type IntakeBooleanPrefill = {
   questionId: string;
   answer: "Yes" | "No";
@@ -22,7 +22,7 @@ export function intakeBooleanPrefill(
     question.kind !== "yes_no" ||
     !["Yes", "No"].includes(decision.choice) ||
     !Number.isFinite(confidence) ||
-    confidence < Math.max(0.7, jevProceedThreshold()) ||
+    jevDecisionBand(confidence, "prefill") !== "high" ||
     confidence > 1
   )
     return;
@@ -48,7 +48,7 @@ export function mergeIntakePrefills(
       question.kind !== "yes_no" ||
       !["Yes", "No"].includes(candidate.answer) ||
       !Number.isFinite(candidate.confidence) ||
-      candidate.confidence < Math.max(0.7, jevProceedThreshold()) ||
+      jevDecisionBand(candidate.confidence, "prefill") !== "high" ||
       candidate.confidence > 1 ||
       saved?.answer.trim() ||
       saved?.skipped ||

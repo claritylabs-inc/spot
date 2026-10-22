@@ -1,4 +1,6 @@
 "use client";
+import { useContext } from "react";
+import { InlineFieldsContext } from "@/components/ui/inline-fields";
 import { isIntakePercentageQuestion } from "@/lib/intake-percentages";
 import { WorkforceProviderInput } from "./workforce-provider-input";
 import { CredentialsInput } from "./credentials-input";
@@ -156,6 +158,9 @@ function IntakeFollowupField({
   onChange: (question: IntakeFollowupQuestion, answer: string) => void;
 }) {
   const id = `followup-${question.id}`;
+  const inline = useContext(InlineFieldsContext);
+  const control = inline ? "" : "h-12";
+  const controlType = inline ? "" : typeStyle("body.root");
   const monetaryInput = question.kind === "currency" || question.source?.endsWith(" · auto.terms.hired_vehicle_cost");
   const credentialsInput = question.source?.endsWith(" · eo.services.credentials_list");
   const countryInput = question.source?.endsWith(" · auto.terms.foreign_travel_countries");
@@ -196,7 +201,7 @@ function IntakeFollowupField({
     ["gross_vehicle_weight", "annual_distance", "radius"].includes(
       fieldKey ?? "",
     );
-  const placeholder = question.id.startsWith("cyber_document_") ? "https://yourwebsite.com/…" : presentation.placeholder ?? (
+  const placeholder = inline ? "Not provided" : question.id.startsWith("cyber_document_") ? "https://yourwebsite.com/…" : presentation.placeholder ?? (
     fieldKey === "gross_vehicle_weight"
       ? "e.g. 26,000 lbs"
       : fieldKey === "annual_distance"
@@ -205,7 +210,7 @@ function IntakeFollowupField({
           ? "e.g. 250 miles"
           : question.kind === "number" ? "Enter a number" : question.kind === "long_text" ? "Describe the details" : "Enter your answer");
   return (
-    <div className="space-y-6">
+    <div className={inline ? "min-w-0" : "space-y-6"}>
       <Field>
         <FieldLabel
           htmlFor={question.kind === "yes_no" && !grouped ? undefined : id}
@@ -214,8 +219,8 @@ function IntakeFollowupField({
           {label}
         </FieldLabel>
         <IntakeUnknownRow enabled={unknownInput} placement={question.kind === "long_text" && !compactText && !monetaryInput && !dateInput && !question.id.startsWith("cyber_document_") ? "below" : "beside"} label={label} value={answer} onChange={value=>onChange(question,value)}>
-        {credentialsInput ? <CredentialsInput value={answer} onChange={value=>onChange(question,value)}/> : isWorkforceProviderSource(question.source) ? <WorkforceProviderInput provider={question.source?.endsWith(" · wc.safety.leasing_details") ? "PEO" : "Staffing agency"} value={answer} onChange={value=>onChange(question,value)}/> : unknownInput && unknown ? <InputGroup className="h-12" /> : question.source?.endsWith(" · wc.terms.covered_jurisdictions") ? <WorkJurisdictionsInput defaultCountry={defaultCountry} value={answer} onChange={value=>onChange(question,value)}/> : question.source?.endsWith(" · shared.operations.annual_payroll") ? <PayrollInput page={payrollPage} value={answer} onChange={value=>onChange(question,value)}/> : clientIndustries ? (
-          <div className="[&_button]:min-h-12"><SearchableMultiSelect ariaLabel={fullLabel}
+        {credentialsInput ? <CredentialsInput value={answer} onChange={value=>onChange(question,value)}/> : isWorkforceProviderSource(question.source) ? <WorkforceProviderInput provider={question.source?.endsWith(" · wc.safety.leasing_details") ? "PEO" : "Staffing agency"} value={answer} onChange={value=>onChange(question,value)}/> : unknownInput && unknown ? <InputGroup className={control} /> : question.source?.endsWith(" · wc.terms.covered_jurisdictions") ? <WorkJurisdictionsInput defaultCountry={defaultCountry} value={answer} onChange={value=>onChange(question,value)}/> : question.source?.endsWith(" · shared.operations.annual_payroll") ? <PayrollInput page={payrollPage} value={answer} onChange={value=>onChange(question,value)}/> : clientIndustries ? (
+          <div className={inline ? undefined : "[&_button]:min-h-12"}><SearchableMultiSelect ariaLabel={fullLabel}
             options={[...new Set([...INDUSTRIES.map(industry => industry.label), ...industryValues, INTAKE_UNSURE])].map(value => ({ value, label: value }))}
             value={industryValues} placeholder="Choose your clients’ industries" maxSelected={20}
             onChange={values => onChange(question, values.includes(INTAKE_UNSURE) && !industryValues.includes(INTAKE_UNSURE) ? INTAKE_UNSURE : values.filter(value => value !== INTAKE_UNSURE).join("; "))} /></div>
@@ -277,7 +282,7 @@ function IntakeFollowupField({
             </SelectContent>
           </Select>
         ) : monetaryInput ? (
-          <InputGroup className="h-12">
+          <InputGroup className={control}>
             <InputGroupAddon>
               <InputGroupText>$</InputGroupText>
             </InputGroupAddon>
@@ -286,15 +291,15 @@ function IntakeFollowupField({
               label={label}
               value={answer}
               monetary
-              placeholder="Enter amount"
+              placeholder={inline ? placeholder : "Enter amount"}
               onValueChange={(value) => onChange(question, value)}
             />
           </InputGroup>
         ) : question.id.startsWith("cyber_document_") ? (
-          <InputGroup className="h-12">
+          <InputGroup className={control}>
             <InputGroupAddon><LinkIcon aria-hidden="true" className="size-4" /></InputGroupAddon>
             <InputGroupInput id={id} type="url" inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false}
-              className={typeStyle("body.root")} placeholder={placeholder} value={answer} maxLength={2000}
+              className={controlType} placeholder={placeholder} value={answer} maxLength={2000}
               onChange={event => onChange(question, event.target.value)} />
           </InputGroup>
         ) : question.kind === "long_text" && !compactText ? (
@@ -309,7 +314,7 @@ function IntakeFollowupField({
         ) : (
           <Input
             id={id}
-            className={`h-12 ${typeStyle("body.root")}`}
+            className={`${control} ${controlType}`}
             type={question.kind === "number" ? "number" : "text"}
             placeholder={placeholder}
             value={answer}

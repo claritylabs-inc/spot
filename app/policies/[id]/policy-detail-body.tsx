@@ -567,7 +567,7 @@ export function PolicyDetailBody({
         ) {
           toast.message(
             (result as { message?: string }).message ??
-              "Broker review is needed before reissue.",
+              "Provider review is needed before reissue.",
           );
           return;
         }
@@ -599,7 +599,7 @@ export function PolicyDetailBody({
         ) {
           toast.message(
             (result as { message?: string }).message ??
-              "Broker review is needed before generating this version.",
+              "Provider review is needed before generating this version.",
           );
           return false;
         }

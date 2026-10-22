@@ -73,7 +73,7 @@ export const OPERATOR_AGENT_INTENTS: readonly OperatorAgentIntent[] = [
     label: "Advance this placement",
     pageTypes: ["operator_client_procurement", "procurement_request"],
     objective:
-      "Review the procurement work in this thread's origin context, including the request, packet, broker activity, proposals, files, and imported correspondence that are available. Identify blockers and the single best next action. Do not send, share, select, or mutate anything without the normal exact confirmation.",
+      "Review the procurement work in this thread's origin context, including the request, packet, provider activity, proposals, files, and imported correspondence that are available. Identify blockers and the single best next action. Do not send, share, select, or mutate anything without the normal exact confirmation.",
   },
   {
     id: "investigate_policy",

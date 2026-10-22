@@ -80,7 +80,7 @@ async function requireBroker(
 ) {
   const broker = await ctx.db.get(brokerOrgId);
   if (!broker || broker.deletedAt !== undefined || broker.type !== "broker")
-    throw new Error("Broker organization not found");
+    throw new Error("Provider organization not found");
   assertExternalBrokerIdentity(broker);
   return broker;
 }
@@ -240,7 +240,7 @@ export async function updateBrokerProfileByOperator(
     args.iconStorageId &&
     !(await ctx.storage.getMetadata(args.iconStorageId))
   )
-    throw new Error("Broker logo not found");
+    throw new Error("Provider logo not found");
   const existing = await ctx.db
     .query("brokerProfiles")
     .withIndex("broker", (q) => q.eq("brokerOrgId", broker._id))
@@ -277,7 +277,7 @@ export async function updateBrokerProfileByOperator(
     operatorUserId: operator.userId,
     type: "setup_write",
     targetOrgId: broker._id,
-    summary: `Updated broker network profile for ${broker.name}`,
+    summary: `Updated provider network profile for ${broker.name}`,
     metadata: { profileId },
   });
   return { profileId };
@@ -347,14 +347,14 @@ export const upsert = mutation({
       access.accessType !== "operator" &&
       !(access.accessType === "member" && access.role === "admin")
     )
-      throw new Error("Broker admin required");
+      throw new Error("Provider admin required");
     assertExternalBrokerIdentity({ ...broker, ...args });
     const now = dayjs().valueOf();
     if (
       args.iconStorageId &&
       !(await ctx.storage.getMetadata(args.iconStorageId))
     )
-      throw new Error("Broker logo not found");
+      throw new Error("Provider logo not found");
     const normalizedLineOfBusinessCodes =
       args.lineOfBusinessCodes === undefined
         ? undefined
@@ -377,7 +377,7 @@ export const upsert = mutation({
       args.networkStatus !== undefined &&
       args.networkStatus !== (existing?.networkStatus ?? "prospect")
     )
-      throw new Error("Only operators can change broker network status");
+      throw new Error("Only operators can change provider network status");
     const patch = {
       networkStatus:
         args.networkStatus ?? existing?.networkStatus ?? "prospect",
@@ -409,7 +409,7 @@ export const upsert = mutation({
         operatorUserId: access.userId,
         type: "setup_write",
         targetOrgId: broker._id,
-        summary: `Updated broker network profile for ${broker.name}`,
+        summary: `Updated provider network profile for ${broker.name}`,
         metadata: { profileId },
       });
     await releaseResearchOwnership(ctx, broker, args);
@@ -430,7 +430,7 @@ export const generateLogoUploadUrl = mutation({
       access.accessType !== "operator" &&
       !(access.accessType === "member" && access.role === "admin")
     )
-      throw new Error("Broker admin required");
+      throw new Error("Provider admin required");
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -451,7 +451,7 @@ export async function createStandaloneBrokerByOperator(
 ) {
   const operator = await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const name = args.name.trim();
-  if (!name) throw new Error("Broker name is required");
+  if (!name) throw new Error("Provider name is required");
   assertExternalBrokerIdentity(args);
   const appetite = resolveBrokerAppetite(args);
   const lineOfBusinessCodes = normalizeBrokerLineOfBusinessCodes(
@@ -482,7 +482,7 @@ export async function createStandaloneBrokerByOperator(
     operatorUserId: operator.userId,
     type: "broker_created",
     targetOrgId: brokerOrgId,
-    summary: `Created standalone broker profile ${name}`,
+    summary: `Created standalone provider profile ${name}`,
     metadata: { profileId, hasPortalUsers: false, source: args.source },
   });
   await scheduleCompanyResearch(ctx, brokerOrgId);

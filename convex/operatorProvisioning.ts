@@ -204,7 +204,7 @@ export const provisionBroker = action({
     assertExternalBrokerIdentity({ ...args.broker, email });
     if (isBootstrapOperatorEmail(email)) {
       throw new Error(
-        "Operator emails cannot be used as broker admin accounts",
+        "Operator emails cannot be used as provider admin accounts",
       );
     }
     const now = dayjs().valueOf();
@@ -299,7 +299,7 @@ export const upsertProvisionedBroker = internalMutation({
   },
   handler: async (ctx, args) => {
     const brokerName = args.broker.name.trim();
-    if (!brokerName) throw new Error("Broker name is required");
+    if (!brokerName) throw new Error("Provider name is required");
     assertExternalBrokerIdentity({ ...args.broker, email: args.adminEmail });
 
     const slug = args.broker.slug
@@ -313,7 +313,7 @@ export const upsertProvisionedBroker = internalMutation({
       .withIndex("slug", (q) => q.eq("slug", slug))
       .first();
     if (existingBySlug && existingBySlug.type !== "broker") {
-      throw new Error(`Slug ${slug} is already used by a non-broker org`);
+      throw new Error(`Slug ${slug} is already used by a non-provider org`);
     }
 
     const brokerPatch = {

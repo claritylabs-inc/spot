@@ -93,7 +93,7 @@ export default function OperatorClientProcurementPage() {
                   className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
                 >
                   Stop the current impersonation session to create or change
-                  requests, broker outreach, files, or email classification.
+                  requests, provider outreach, files, or email classification.
                 </p>
               </div>
             </OperationalPanel>

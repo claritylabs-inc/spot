@@ -59,7 +59,7 @@ export const PROCUREMENT_CAPABILITIES = [
   },
   {
     id: "broker.directory",
-    browserSurface: "market broker selector and profile drawers",
+    browserSurface: "market provider selector and profile drawers",
     agentTools: [
       "list_broker_network_profiles",
       "get_broker_network_profile",
@@ -98,7 +98,7 @@ export const PROCUREMENT_CAPABILITIES = [
   },
   {
     id: "proposal.file",
-    browserSurface: "broker outreach proposal dropzone",
+    browserSurface: "provider outreach proposal dropzone",
     agentTools: ["file_procurement_proposal", "file_procurement_email_quote"],
   },
   {

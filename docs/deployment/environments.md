@@ -323,7 +323,13 @@ allowlisted, signed asset URLs and allowlisted permanent storage URLs.
 
 Jev decisions (`clRouterDecide`) proceed at 70% confidence by default. Set
 `JEV_PROCEED_THRESHOLD` (0.5–0.99) on a Convex deployment to change it; the value
-is read on every decision, so no redeploy is needed.
+is read on every decision, so no redeploy is needed. Intake uses independent
+`JEV_PREFILL_THRESHOLD` (default 0.8) for application answers and
+`JEV_OMISSION_THRESHOLD` (default 0.9) for hiding questions. Both accept 0.5–0.99;
+invalid/unset values use their own defaults. They do not inherit the general
+suggestion threshold. `convex/lib/jevThreshold.ts` owns these risk gates and
+low/uncertain/high bands. Uncertain results leave the ordinary applicant input
+available; they never become negative answers or question exclusions.
 
 Every deployed lane needs matching values:
 

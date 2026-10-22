@@ -3,7 +3,7 @@ import type { IntakeDetails } from "./insurance-intake-details";
 import type { IntakeFollowupQuestion } from "./intake-followups";
 
 export function intakeCyberResearchKey(answers: IntakeAnswers, details: IntakeDetails) {
-  return JSON.stringify(["cyber-research-v1", answers.website?.trim() ?? "", answers.legalName?.trim() || answers.dba?.trim() || "",
+  return JSON.stringify(["cyber-research-v2", answers.website?.trim() ?? "", answers.legalName?.trim() || answers.dba?.trim() || "",
     answers.description?.trim() ?? "", answers.industry ?? "", details.cyberDocuments?.privacyPolicyUrl ?? "", details.cyberDocuments?.termsUrl ?? ""]);
 }
 

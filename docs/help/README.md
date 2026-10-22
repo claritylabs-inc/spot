@@ -16,6 +16,6 @@ setup steps or troubleshooting:
 - [Common service requests](client-engagement/service-requests.md)
 
 The labels in these guides match the current Spot app. Some settings are
-available only to client administrators, broker administrators, or Spot
+available only to client administrators, provider administrators, or Spot
 operators. If a setting is read-only, contact the administrator named in your
 workspace.

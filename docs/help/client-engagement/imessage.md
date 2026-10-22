@@ -124,4 +124,4 @@ instructions as text if transcription fails.
 ### I need a human
 
 iMessage is AI-only. Use the dedicated Slack support channel or contact the
-broker or service contact listed in Spot.
+provider or service contact listed in Spot.

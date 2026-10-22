@@ -335,7 +335,7 @@ export function assertCanUseTenantAgent(access: OrgAccess): void {
   if (access.orgType === "broker") {
     throwUserFacingError(
       userFacingErrorCodes.orgAccessRequired,
-      "Broker organizations have profile and team access only.",
+      "Provider organizations have profile and team access only.",
     );
   }
 }
@@ -344,7 +344,7 @@ export function assertCanReadPolicies(access: OrgAccess): void {
   if (access.accessType === "member" && access.orgType === "broker") {
     throwUserFacingError(
       userFacingErrorCodes.orgAccessRequired,
-      "Broker organizations have profile and team access only.",
+      "Provider organizations have profile and team access only.",
     );
   }
 }

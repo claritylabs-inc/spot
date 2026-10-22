@@ -18,10 +18,46 @@ export function jevProceeds(probability: number | undefined): boolean {
   );
 }
 
+export type JevDecisionRisk = "suggestion" | "prefill" | "omission";
+
+/** Intake writes and question omission have independently configurable risk gates. */
+export function jevRiskThreshold(risk: JevDecisionRisk): number {
+  if (risk === "suggestion") return jevProceedThreshold();
+  const configured = Number(
+    process.env[risk === "prefill" ? "JEV_PREFILL_THRESHOLD" : "JEV_OMISSION_THRESHOLD"],
+  );
+  return Number.isFinite(configured) && configured >= 0.5 && configured <= 0.99
+    ? configured
+    : risk === "prefill" ? 0.8 : 0.9;
+}
+
+/** Missing/invalid decisions take the same human-input path as ambiguous evidence. */
+export function jevDecisionBand(
+  probability: number | undefined,
+  risk: JevDecisionRisk,
+): "low" | "uncertain" | "high" {
+  if (typeof probability !== "number" || !Number.isFinite(probability) ||
+    probability < 0 || probability > 1) return "uncertain";
+  const high = jevRiskThreshold(risk);
+  if (probability >= high) return "high";
+  return probability <= 1 - high ? "low" : "uncertain";
+}
+
 export function jevChoiceConfidence(answer: {
   choice: string;
   confidence: number;
   probabilities: Record<string, number>;
 }): number {
   return Math.min(answer.confidence, answer.probabilities[answer.choice] ?? 0);
+}
+
+/** Conjunction over atomic checks; confidence is the weakest component, not a joint probability. */
+export function jevAtomicConjunction(
+  probabilities: (number | undefined)[],
+  risk: JevDecisionRisk,
+): { decision: "low" | "uncertain" } | { decision: "high"; confidence: number } {
+  const bands = probabilities.map(probability => jevDecisionBand(probability, risk));
+  if (bands.includes("low")) return { decision: "low" };
+  if (bands.includes("uncertain") || !probabilities.length) return { decision: "uncertain" };
+  return { decision: "high", confidence: Math.min(...probabilities as number[]) };
 }
