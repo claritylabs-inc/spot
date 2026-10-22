@@ -16,7 +16,6 @@ import {
   isSpotOwnedBrokerIdentity,
 } from "./lib/brokerProfileValidation";
 import { requireCompanyRequest } from "./lib/companyRequest";
-import { notify } from "./lib/notify";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { requireOperator, writeOperatorAudit } from "./lib/operatorIdentity";
 import {
@@ -655,7 +654,10 @@ async function notifyManualHandoff(
       : reason === "reply_check_timeout"
         ? `${provider} replied; review needed`
         : `${provider} replied`;
-  await notify(ctx, {
+  // Scheduled, so a notification failure can never roll back the state change.
+  // The explicit userId keeps this operator-private: it is neither org-wide nor
+  // eligible for the client's Slack/email fan-out, and `info` severity sends no email.
+  await ctx.scheduler.runAfter(0, internal.lib.notify.notifyInternal, {
     orgId: sequence.clientOrgId,
     userId: sequence.senderUserId,
     relatedOrgId: sequence.brokerOrgId,
@@ -663,6 +665,7 @@ async function notifyManualHandoff(
     severity: "info",
     title,
     body: `Automated follow-ups stopped${request ? ` on ${request.title}` : ""}. Continue the conversation by hand.`,
+    coalesceKeyParts: ["provider_outreach_handoff", String(sequence._id)],
     nowMs: now,
   });
 }
@@ -2068,7 +2071,7 @@ export const recordInboxEventInternal = internalMutation({
         .query("procurementOutreachSequences")
         .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", args.threadId))
         .first();
-      if (sequence)
+      if (sequence && sequence.inboxId === args.inboxId)
         await holdForInboundReply(ctx, sequence, {
           emailId: args.emailId,
           occurredAt: args.occurredAt ?? null,
@@ -2132,7 +2135,8 @@ async function routeInboxEvent(
       .query("procurementOutreachSequences")
       .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", event.threadId))
       .first();
-  if (!sequence) return { kind: "unmatched" };
+  // Only the inbox that owns the sequence may drive it.
+  if (!sequence || sequence.inboxId !== event.inboxId) return { kind: "unmatched" };
   return {
     kind: "sequence",
     sequenceId: sequence._id,
@@ -2232,6 +2236,26 @@ export const claimInboxEventInternal = internalMutation({
     };
   },
 });
+
+/**
+ * The event, sequence, inbox and thread must agree; the caller-supplied
+ * sequence id is never trusted on its own.
+ */
+async function eventCorrelatesWithSequence(
+  ctx: MutationCtx,
+  event: Doc<"providerOutreachWebhookEvents">,
+  sequence: Sequence,
+) {
+  if (!sequence.inboxId || sequence.inboxId !== event.inboxId) return false;
+  if (sequence.resendThreadId) return sequence.resendThreadId === event.threadId;
+  if (event.eventType !== "inbox.email.sent") return false;
+  // The thread id is learned from the first sent event, matched by its step's email id.
+  const step = await ctx.db
+    .query("procurementOutreachSteps")
+    .withIndex("by_resendEmailId", (q) => q.eq("resendEmailId", event.emailId))
+    .first();
+  return step?.sequenceId === sequence._id;
+}
 
 async function fencedEvent(
   ctx: MutationCtx,
@@ -2433,6 +2457,14 @@ export const applySentInboxEmailInternal = internalMutation({
       await finishEvent(ctx, event, now, "sequence_missing");
       return { applied: false as const, reason: "sequence_missing" };
     }
+    if (
+      event.eventType !== "inbox.email.sent" ||
+      event.emailId !== args.email.resendInboxEmailId ||
+      !(await eventCorrelatesWithSequence(ctx, event, sequence))
+    ) {
+      await finishEvent(ctx, event, now, "event_sequence_mismatch");
+      return { applied: false as const, reason: "event_sequence_mismatch" };
+    }
     if (!sequence.resendThreadId)
       await ctx.db.patch(sequence._id, { resendThreadId: event.threadId, updatedAt: now });
     const request = await mirrorableRequest(ctx, sequence);
@@ -2484,6 +2516,15 @@ export const applyInboundInboxEmailInternal = internalMutation({
       await Promise.all(attachments.map((file) => ctx.storage.delete(file.fileId)));
       await finishEvent(ctx, event, now, "sequence_missing");
       return { applied: false as const, reason: "sequence_missing" };
+    }
+    if (
+      event.eventType !== "inbox.email.received" ||
+      event.emailId !== args.email.resendInboxEmailId ||
+      !(await eventCorrelatesWithSequence(ctx, event, sequence))
+    ) {
+      await Promise.all(attachments.map((file) => ctx.storage.delete(file.fileId)));
+      await finishEvent(ctx, event, now, "event_sequence_mismatch");
+      return { applied: false as const, reason: "event_sequence_mismatch" };
     }
     const request = await mirrorableRequest(ctx, sequence);
     const mirrored = request
