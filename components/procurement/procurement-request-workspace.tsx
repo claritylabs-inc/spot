@@ -36,7 +36,7 @@ import {
 import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
-import { RequestInbox } from "./request-inbox";
+import { RequestInbox, type InboxThread } from "./request-inbox";
 import {
   FitChips,
   OutreachSequenceActions,
@@ -68,6 +68,8 @@ import {
   Upload,
   ChevronRight,
   Clock3,
+  Copy,
+  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -2275,15 +2277,16 @@ export function ProcurementRequestWorkspace({
     router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
   }, [closeRightPanel, router, basePath, requestId]);
   const openEmail = useCallback(
-    async (emailThreadId: Id<"procurementEmailThreads">) => {
+    async (thread: InboxThread) => {
       if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
         return;
       closePdf();
       onRightPanel(
         <ProcurementEmailDrawer
-          key={emailThreadId}
           ref={emailDrawerRef}
-          emailThreadId={emailThreadId}
+          emailThreadId={thread._id}
+          subject={thread.subject}
+          replyable={thread.source === "resend"}
           requestId={requestId}
           requests={requestOptions}
           readOnly={readOnly}
@@ -2294,23 +2297,18 @@ export function ProcurementRequestWorkspace({
     [closePdf, closeEmail, onRightPanel, readOnly, requestOptions, requestId],
   );
 
-  const selectedInboxThreadId = searchParams.get("thread");
   // The Inbox keeps its selection in the URL so a thread can be deep-linked.
+  // The reader opens before navigation, so the panel never closes in between.
   const selectInboxThread = useCallback(
-    async (
-      threadId: Id<"procurementEmailThreads"> | null,
-      options?: { replace?: boolean },
-    ) => {
-      if (threadId && threadId === selectedInboxThreadId) return;
-      if (emailDrawerRef.current && !(await emailDrawerRef.current.save())) return;
-      closePdf();
-      onRightPanel(null);
-      const href = `${basePath}/${requestId}?view=email${threadId ? `&thread=${threadId}` : ""}`;
+    (thread: InboxThread | null, options?: { replace?: boolean }) => {
+      if (!thread) closeRightPanel();
+      const href = `${basePath}/${requestId}?view=email${thread ? `&thread=${thread._id}` : ""}`;
       if (options?.replace) router.replace(href, { scroll: false });
       else router.push(href, { scroll: false });
     },
-    [basePath, requestId, router, closePdf, onRightPanel, selectedInboxThreadId],
+    [basePath, requestId, router, closeRightPanel],
   );
+  const forwardingAddress = details?.request.forwardingAddress;
   const sendAllCount = providerOutreach.sendAllCount;
   const providerOutreachBusy = providerOutreach.sending.size > 0;
   const canSendAll = providerOutreach.panel?.request.canLaunch ?? false;
@@ -2344,6 +2342,21 @@ export function ProcurementRequestWorkspace({
           </PillButton>
           </span>
         </>
+      ) : view === "email" && forwardingAddress ? (
+        <PillButton
+          type="button"
+          variant="secondary"
+          title="Forward mail here to add it to this Inbox. Click to copy."
+          onClick={() => {
+            void navigator.clipboard
+              .writeText(forwardingAddress)
+              .then(() => toast.success("Mailbox address copied"));
+          }}
+        >
+          <Mail className="size-3.5" />
+          <span className="max-w-64 truncate">{forwardingAddress}</span>
+          <Copy className="size-3.5 text-muted-foreground" />
+        </PillButton>
       ) : view === "files" ? (
         <PillButton type="button" onClick={() => openUpload()}>
           <Upload className="size-3.5" />
@@ -2386,13 +2399,8 @@ export function ProcurementRequestWorkspace({
     openUpload,
     readOnly,
     view,
+    forwardingAddress,
   ]);
-
-  async function copyAddress() {
-    if (!details) return;
-    await navigator.clipboard.writeText(details.request.forwardingAddress);
-    toast.success("Forwarding address copied");
-  }
 
   if (
     result === undefined ||
@@ -2779,11 +2787,9 @@ export function ProcurementRequestWorkspace({
           <RequestInbox
             key={requestId}
             requestId={requestId}
-            forwardingAddress={details.request.forwardingAddress}
             selectedThreadId={searchParams.get("thread")}
             onSelect={selectInboxThread}
-            onOpenThread={openEmail}
-            onCopyAddress={() => void copyAddress()}
+            onOpenThread={(thread) => void openEmail(thread)}
           />
         ) : null}
       </div>

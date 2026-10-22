@@ -98,6 +98,7 @@ export type ResendInboxOperation =
   | "getDraft"
   | "sendDraft"
   | "replyToThreadEmail"
+  | "listReceivedEmailAttachments"
   | "getThreadEmail"
   | "listThreadEmails"
   | "addThreadLabels"
@@ -1073,6 +1074,59 @@ export function getThreadEmail(
     },
     threadEmailWireSchema,
     `${inboxId}:${threadId}:${emailId}`,
+  );
+}
+
+export type ResendReceivedAttachment = {
+  id: string;
+  filename: string | null;
+  size: number | null;
+  contentType: string | null;
+  downloadUrl: string;
+};
+
+const receivedAttachmentsWireSchema = z
+  .object({
+    data: z.array(
+      z.object({
+        id: z.string(),
+        filename: z.string().nullish(),
+        size: z.number().nullish(),
+        content_type: z.string().nullish(),
+        download_url: z.string().url(),
+      }),
+    ),
+  })
+  .transform((w) =>
+    w.data.map(
+      (a): ResendReceivedAttachment => ({
+        id: a.id,
+        filename: a.filename ?? null,
+        size: a.size ?? null,
+        contentType: a.content_type ?? null,
+        downloadUrl: a.download_url,
+      }),
+    ),
+  );
+
+/**
+ * `GET /emails/receiving/{emailId}/attachments`: time-limited download URLs.
+ * The Inboxes API documents attachment metadata only; this Receiving API
+ * endpoint is used best effort for inbound inbox mail, and callers must keep
+ * the metadata notice when it fails.
+ */
+export function listReceivedEmailAttachments(
+  emailId: string,
+): Promise<ResendInboxResult<ResendReceivedAttachment[]>> {
+  assertRealResourceIds("listReceivedEmailAttachments", emailId);
+  return call(
+    {
+      operation: "listReceivedEmailAttachments",
+      method: "GET",
+      path: `/emails/receiving/${seg(emailId)}/attachments`,
+    },
+    receivedAttachmentsWireSchema,
+    emailId,
   );
 }
 

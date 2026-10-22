@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { usePaginatedQuery } from "convex/react";
+import { useConvex, usePaginatedQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import dayjs from "dayjs";
-import { Copy, Inbox, Loader2, Mail, Search } from "lucide-react";
+import { Inbox, Search } from "lucide-react";
 
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
@@ -12,32 +12,13 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
-import { Input } from "@claritylabs-inc/ui/components/input";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from "@claritylabs-inc/ui/components/popover";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@claritylabs-inc/ui/components/select";
+import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 
-type InboxThread = FunctionReturnType<
+export type InboxThread = FunctionReturnType<
   typeof api.procurementRequests.getInbox
 >["page"][number];
 const PAGE_SIZE = 40;
-
-type Filter = "all" | "needs_reply" | "sent";
-const FILTER_LABELS: Record<Filter, string> = {
-  all: "All mail",
-  needs_reply: "Needs reply",
-  sent: "Sent",
-};
 
 function listTime(value: number) {
   const date = dayjs(value);
@@ -73,34 +54,42 @@ function matches(thread: InboxThread, term: string) {
     .every((word) => haystack.includes(word));
 }
 
+/**
+ * One line per conversation, as in a mail client: sender, subject with a
+ * muted preview, then time. Narrow containers (the reader is open) stack the
+ * subject under the sender.
+ */
 function ThreadRow({
   thread,
   selected,
   onSelect,
+  onIntent,
 }: {
   thread: InboxThread;
   selected: boolean;
   onSelect: () => void;
+  onIntent: () => void;
 }) {
+  const emphasis = thread.needsReply ? "body.medium" : "body.default";
   return (
     <button
       type="button"
       data-thread-id={thread._id}
       onClick={onSelect}
+      onPointerEnter={onIntent}
+      onFocus={onIntent}
       aria-current={selected ? "true" : undefined}
-      className={`block w-full border-b border-l-2 border-border px-4 py-2.5 text-left outline-none hover:bg-muted/50 focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40 ${selected ? "border-l-foreground bg-muted" : "border-l-transparent"}`}
+      className={`flex w-full items-start gap-2.5 px-4 py-2.5 text-left outline-none focus-visible:bg-muted @2xl:items-center ${selected ? "bg-muted" : "hover:bg-muted/50"}`}
     >
-      <span className="flex items-baseline justify-between gap-3">
-        <span className="flex min-w-0 items-baseline gap-1.5">
-          {thread.needsReply ? (
-            <span
-              className="size-1.5 shrink-0 self-center rounded-full bg-primary"
-              role="img"
-              aria-label="Needs reply"
-            />
-          ) : null}
+      <span
+        className={`mt-2 size-1.5 shrink-0 rounded-full @2xl:mt-0 ${thread.needsReply ? "bg-primary" : ""}`}
+        role={thread.needsReply ? "img" : undefined}
+        aria-label={thread.needsReply ? "Needs reply" : undefined}
+      />
+      <span className="flex min-w-0 flex-1 flex-col @2xl:flex-row @2xl:items-baseline @2xl:gap-4">
+        <span className="flex min-w-0 items-baseline gap-1.5 @2xl:w-44 @2xl:shrink-0">
           <span
-            className={`min-w-0 truncate text-foreground ${typeStyle("body.medium")}`}
+            className={`min-w-0 truncate text-foreground ${typeStyle(emphasis)}`}
           >
             {participant(thread)}
           </span>
@@ -113,24 +102,22 @@ function ThreadRow({
           ) : null}
         </span>
         <span
-          className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
-          title={formatDisplayDateTime(thread.latestMessageAt, "—")}
+          className={`min-w-0 flex-1 truncate ${typeStyle("body.default")}`}
         >
-          {listTime(thread.latestMessageAt)}
+          <span className={`text-foreground ${typeStyle(emphasis)}`}>
+            {thread.subject}
+          </span>
+          {thread.preview ? (
+            <span className="text-muted-foreground"> — {thread.preview}</span>
+          ) : null}
         </span>
       </span>
       <span
-        className={`mt-0.5 block truncate text-foreground ${typeStyle("body.default")}`}
+        className={`shrink-0 pt-px text-muted-foreground @2xl:pt-0 ${typeStyle("caption.default")}`}
+        title={formatDisplayDateTime(thread.latestMessageAt, "—")}
       >
-        {thread.subject}
+        {listTime(thread.latestMessageAt)}
       </span>
-      {thread.preview ? (
-        <span
-          className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}
-        >
-          {thread.preview}
-        </span>
-      ) : null}
     </button>
   );
 }
@@ -142,22 +129,19 @@ function ThreadRow({
  */
 export function RequestInbox({
   requestId,
-  forwardingAddress,
   selectedThreadId,
   onSelect,
   onOpenThread,
-  onCopyAddress,
 }: {
   requestId: Id<"procurementRequests">;
-  forwardingAddress: string;
   selectedThreadId: string | null;
   onSelect: (
-    threadId: Id<"procurementEmailThreads"> | null,
+    thread: InboxThread | null,
     options?: { replace?: boolean },
   ) => void;
-  onOpenThread: (threadId: Id<"procurementEmailThreads">) => void;
-  onCopyAddress: () => void;
+  onOpenThread: (thread: InboxThread) => void;
 }) {
+  const convex = useConvex();
   const {
     results: threads,
     status,
@@ -171,17 +155,23 @@ export function RequestInbox({
   const exhausted = status === "Exhausted";
   const canLoadMore = status === "CanLoadMore";
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
   const lastLoadedSelection = useRef<string | null>(null);
   const selected =
     inboxThreads.find((thread) => thread._id === selectedThreadId) ?? null;
   const selectionLoaded = selected !== null;
-  const selectedId = selected?._id;
+  // Deep links open once the thread loads; clicks open the reader directly.
+  const openedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedId) void onOpenThread(selectedId);
-  }, [selectedId, onOpenThread]);
+    if (!selected) {
+      if (!selectedThreadId) openedRef.current = null;
+      return;
+    }
+    if (openedRef.current === selected._id) return;
+    openedRef.current = selected._id;
+    onOpenThread(selected);
+  }, [selected, selectedThreadId, onOpenThread]);
   // Keep unloaded deep links, but clear a conversation removed after it was
-  // selected (for example, reassigned through Details).
+  // selected (for example, moved to another request).
   useEffect(() => {
     if (selectionLoaded) {
       lastLoadedSelection.current = selectedThreadId;
@@ -194,31 +184,34 @@ export function RequestInbox({
     }
   }, [selectionLoaded, selectedThreadId, status, exhausted, onSelect]);
 
-  if (status === "LoadingFirstPage")
-    return (
-      <OperationalPanel as="section">
-        <div className="flex h-40 items-center justify-center text-muted-foreground">
-          <Loader2 className="size-5 animate-spin" />
-        </div>
-      </OperationalPanel>
-    );
+  // Subscribe ahead of a click so the reader opens with its data in place.
+  function prewarm(threadId: Id<"procurementEmailThreads">) {
+    convex.prewarmQuery({
+      query: api.procurementRequests.getEmailThread,
+      args: { emailThreadId: threadId, requestId },
+    });
+    convex.prewarmQuery({
+      query: api.procurementRequests.previewEmailReconciliation,
+      args: { emailThreadId: threadId },
+    });
+  }
+
+  function select(thread: InboxThread | null, options?: { replace?: boolean }) {
+    if (thread) {
+      openedRef.current = thread._id;
+      onOpenThread(thread);
+    }
+    onSelect(thread, options);
+  }
 
   const term = search.trim();
-  const visible = inboxThreads.filter(
-    (thread) =>
-      (filter === "all" ||
-        (filter === "needs_reply"
-          ? thread.needsReply
-          : thread.latestDirection === "outbound")) &&
-      matches(thread, term),
-  );
+  const visible = inboxThreads.filter((thread) => matches(thread, term));
 
-  // Arrow keys move through the list, Escape leaves the conversation. The
-  // handler lives on the list, so search and the filter keep their own keys.
+  // Arrow keys move through the list, Escape leaves the conversation.
   function onListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "Escape") {
-      if (selected) onSelect(null);
+      if (selected) select(null);
       return;
     }
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -236,125 +229,77 @@ export function RequestInbox({
           Math.max(0, current + (event.key === "ArrowDown" ? 1 : -1)),
         )
       ];
-    if (!next) return;
-    onSelect(next._id, { replace: true });
+    if (!next || next._id === selected?._id) return;
+    select(next, { replace: true });
     event.currentTarget
       .querySelector<HTMLElement>(`[data-thread-id="${next._id}"]`)
       ?.focus();
   }
 
   return (
-    <OperationalPanel as="section">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border p-2">
-        <div className="relative min-w-36 flex-1 sm:max-w-sm">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            aria-label="Search conversations"
-            placeholder="Search mail"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="pl-8"
-          />
+    <OperationalPanel as="section" className="@container overflow-hidden">
+      <label className="flex items-center gap-2.5 border-b border-border px-4">
+        <Search className="size-3.5 shrink-0 text-muted-foreground" />
+        <input
+          aria-label="Search conversations"
+          placeholder="Search mail"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className={`h-10 min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground/60 ${typeStyle("control.input")}`}
+        />
+      </label>
+      {status === "LoadingFirstPage" ? (
+        <div className="divide-y divide-border">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="px-4 py-3">
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          ))}
         </div>
-        <Select
-          value={filter}
-          onValueChange={(value) => setFilter(value as Filter)}
+      ) : visible.length ? (
+        <div
+          role="group"
+          aria-label="Conversations"
+          onKeyDown={onListKeyDown}
+          className="divide-y divide-border"
         >
-          <SelectTrigger
-            aria-label="Filter conversations"
-            className="w-32 shrink-0"
-          >
-            <SelectValue>{FILTER_LABELS[filter]}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.keys(FILTER_LABELS) as Filter[]).map((value) => (
-              <SelectItem key={value} value={value}>
-                {FILTER_LABELS[value]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Popover>
-          <PopoverTrigger
-            render={
-              <PillButton type="button" variant="ghost" className="ml-auto" />
-            }
-          >
-            <Mail className="size-3.5" /> Mailbox address
-          </PopoverTrigger>
-          <PopoverContent
-            align="end"
-            className="w-80 max-w-[calc(100vw-2rem)] p-4"
-          >
-            <p className={typeStyle("body.medium")}>
-              Forward or copy mail here
-            </p>
-            <p className={"break-all " + typeStyle("technical.codeCompact")}>
-              {forwardingAddress}
-            </p>
-            <PillButton
-              type="button"
-              variant="secondary"
-              onClick={onCopyAddress}
-            >
-              <Copy className="size-3.5" /> Copy address
-            </PillButton>
-          </PopoverContent>
-        </Popover>
-      </div>
-      <div role="group" aria-label="Conversations" onKeyDown={onListKeyDown}>
-        {visible.length ? (
-          visible.map((thread) => (
+          {visible.map((thread) => (
             <ThreadRow
               key={thread._id}
               thread={thread}
               selected={thread._id === selected?._id}
-              onSelect={() => onSelect(thread._id)}
+              onSelect={() => {
+                if (thread._id !== selected?._id) select(thread);
+              }}
+              onIntent={() => prewarm(thread._id)}
             />
-          ))
-        ) : exhausted && !inboxThreads.length ? (
-          <EmptyStateCard
-            title="No conversations yet"
-            description="Provider outreach, replies and forwarded mail for this request appear here."
-            icon={<Inbox className="size-6" />}
-          />
-        ) : (
-          <div className="space-y-2 p-4">
-            <p className={typeStyle("body.medium")}>No conversations match</p>
-            <p className={"text-muted-foreground " + typeStyle("body.default")}>
-              No loaded conversations match your search or filter.
-            </p>
-            {term || filter !== "all" ? (
-              <PillButton
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setSearch("");
-                  setFilter("all");
-                }}
-              >
-                Clear search and filters
-              </PillButton>
-            ) : null}
-          </div>
-        )}
-      </div>
-      {canLoadMore || status === "LoadingMore" ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
-          <p
-            className={"text-muted-foreground " + typeStyle("caption.default")}
-          >
-            {selectedThreadId && !selected
-              ? "Load older mail to find this conversation."
-              : "Search and filters cover loaded mail."}
+          ))}
+        </div>
+      ) : exhausted && !inboxThreads.length ? (
+        <EmptyStateCard
+          title="No conversations yet"
+          description="Provider outreach, replies and forwarded mail for this request appear here."
+          icon={<Inbox className="size-6" />}
+        />
+      ) : (
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+            No loaded conversations match “{term}”.
           </p>
+          <PillButton type="button" variant="ghost" onClick={() => setSearch("")}>
+            Clear
+          </PillButton>
+        </div>
+      )}
+      {canLoadMore || status === "LoadingMore" ? (
+        <div className="flex justify-center border-t border-border px-4 py-2">
           <PillButton
             type="button"
-            variant="secondary"
+            variant="ghost"
             disabled={status === "LoadingMore"}
             onClick={() => loadMore(PAGE_SIZE)}
           >
-            {status === "LoadingMore" ? "Loading…" : "Load more conversations"}
+            {status === "LoadingMore" ? "Loading…" : "Load older mail"}
           </PillButton>
         </div>
       ) : null}

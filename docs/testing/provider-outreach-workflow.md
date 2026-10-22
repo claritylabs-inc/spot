@@ -39,3 +39,7 @@ Local Chrome at localhost:8080 with normal operator authentication and the anony
 Passed: search/clear, Needs reply and Sent filters, keyboard selection, same-row selection, closing/reopening, reload/deep links, mobile without horizontal overflow, dark mode, 40-to-41 conversation pagination, and moving a forwarded thread between requests then restoring it. The old request clears its selection after reassignment. Backend probes verified unauthorized reads fail, mismatched request/thread reads return null, foreign threads stay excluded, Resend reassignment fails, stored outreach links determine filing context, and reader DTOs omit raw HTML.
 
 Artifacts: `.context/qa/request-inbox/{desktop-inbox,mobile-reader,dark-reader}.png`, `browser-results.json`, and `.context/outreach/inbox-boundary-results.json`. These synthetic mirror records validate presentation and isolation, not live Resend delivery. No external emails, Vercel previews, production changes, or new unit tests were used.
+
+## Inbox reader and replies — October 22, 2026
+
+Local Chrome at localhost:8080 (anonymous Convex, capture mode). Opening a hovered conversation showed content without a spinner and the right panel never unmounted across clicks and arrow-key switches. The mailbox address copies from the navbar. Sending from the reply composer returned "captured locally"; no Resend call or mirrored message. Live reply delivery and Receiving-API attachment import remain unverified (no Resend inbox on the account). Artifacts: `.context/qa/inbox-v2/`.

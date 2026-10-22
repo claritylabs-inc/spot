@@ -7,7 +7,8 @@ import { v } from "convex/values";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { internalAction, type ActionCtx } from "../_generated/server";
+import { action, internalAction, type ActionCtx } from "../_generated/server";
+import { getSessionUserId } from "../lib/sessionIdentity";
 import { extractEmailAddress } from "../lib/emailAddress";
 import { clRouterDecide } from "../lib/clRouterClient";
 import {
@@ -44,6 +45,7 @@ import {
   isBounceSender,
   isCapturedResourceId,
   isResendInboxError,
+  listReceivedEmailAttachments,
   operatorInboxAddress,
   operatorInboxFromName,
   parseInboxWebhookEvent,
@@ -798,13 +800,75 @@ function formatBytes(size: number | null) {
       : `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const MAX_ATTACHMENT_DOWNLOADS = 10;
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
+type StoredAttachment = {
+  fileId: Id<"_storage">;
+  filename: string;
+  contentType: string;
+  size: number;
+};
+
 /**
- * Bounded mirror DTO. Resend's Inboxes API exposes attachment metadata only
- * (id, filename, size), so a notice naming each file is appended to the body
- * and no file bytes are uploaded or invented.
+ * Best-effort attachment import for inbound inbox mail through Resend's
+ * Receiving API. Any failure keeps the metadata notice instead; files are
+ * never invented. Returns the stored files and the Resend ids they cover.
  */
-function toInboxEmail(email: ResendThreadEmail): InboxEmail {
-  const notices = email.attachments
+async function downloadInboundAttachments(
+  ctx: ActionCtx,
+  email: ResendThreadEmail,
+): Promise<{ stored: StoredAttachment[]; ids: Set<string> }> {
+  const stored: StoredAttachment[] = [];
+  const ids = new Set<string>();
+  if (!email.attachments.length) return { stored, ids };
+  try {
+    const listed = await listReceivedEmailAttachments(email.id);
+    if (listed.status !== "ok") return { stored, ids };
+    const wanted = new Set(email.attachments.map((attachment) => attachment.id));
+    for (const attachment of listed.data
+      .filter((item) => wanted.has(item.id))
+      .slice(0, MAX_ATTACHMENT_DOWNLOADS)) {
+      if ((attachment.size ?? 0) > MAX_ATTACHMENT_BYTES) continue;
+      const response = await fetch(attachment.downloadUrl, {
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) continue;
+      const bytes = await response.arrayBuffer();
+      if (bytes.byteLength > MAX_ATTACHMENT_BYTES) continue;
+      const contentType =
+        attachment.contentType ||
+        response.headers.get("content-type") ||
+        "application/octet-stream";
+      const fileId = await ctx.storage.store(
+        new Blob([bytes], { type: contentType }),
+      );
+      stored.push({
+        fileId,
+        filename: (attachment.filename ?? "attachment").slice(0, 200),
+        contentType,
+        size: bytes.byteLength,
+      });
+      ids.add(attachment.id);
+    }
+  } catch (error) {
+    warn("inbox attachment download failed", error);
+  }
+  return { stored, ids };
+}
+
+/**
+ * Bounded mirror DTO. Attachments that were not imported are named in a
+ * notice appended to the body; no file bytes are invented.
+ */
+function toInboxEmail(
+  email: ResendThreadEmail,
+  downloadedIds: Set<string> = new Set(),
+): InboxEmail {
+  const pending = email.attachments.filter(
+    (attachment) => !downloadedIds.has(attachment.id),
+  );
+  const notices = pending
     .slice(0, ATTACHMENT_NOTICE_LIMIT)
     .map((attachment) => {
       const name = (attachment.filename ?? "unnamed file")
@@ -812,9 +876,9 @@ function toInboxEmail(email: ResendThreadEmail): InboxEmail {
         .slice(0, 200);
       return `${name} (${formatBytes(attachment.size)})`;
     });
-  const omitted = Math.max(0, email.attachments.length - notices.length);
+  const omitted = Math.max(0, pending.length - notices.length);
   const noticeText = notices.length
-    ? `\n\n[Attachments not downloaded: Resend does not provide inbox attachment downloads. ${notices.join("; ")}${omitted ? `; and ${omitted} more` : ""}.]`
+    ? `\n\n[Attachments not downloaded; open them in Resend: ${notices.join("; ")}${omitted ? `; and ${omitted} more` : ""}.]`
     : "";
   const baseText =
     email.text?.trim() || (email.html ? htmlToPlainText(email.html, MAX_EMAIL_HTML_CHARS) : "");
@@ -852,6 +916,8 @@ export const handleInboxEvent = internalAction({
     if (claim.status !== "claimed") return { status: claim.status };
     const { leaseToken, event, route, inbox } = claim;
     const target = inbox ?? { inboxId: event.inboxId };
+    // Files stored before the mirror mutation; removed if it never runs.
+    let uploaded: StoredAttachment[] = [];
 
     const complete = (error?: string) =>
       ctx.runMutation(internal.providerOutreach.completeInboxEventInternal, {
@@ -900,7 +966,12 @@ export const handleInboxEvent = internalAction({
         await complete("capture_mode_no_fetch");
         return { status: "captured" as const };
       }
-      const email = toInboxEmail(fetched.data);
+      const downloads =
+        event.eventType === "inbox.email.received"
+          ? await downloadInboundAttachments(ctx, fetched.data)
+          : { stored: [], ids: new Set<string>() };
+      uploaded = downloads.stored;
+      const email = toInboxEmail(fetched.data, downloads.ids);
 
       if (event.eventType === "inbox.email.sent") {
         const applied = await ctx.runMutation(
@@ -924,16 +995,21 @@ export const handleInboxEvent = internalAction({
           leaseToken,
           sequenceId: route.sequenceId,
           email,
+          attachments: downloads.stored,
           classification: isBounceSender(fetched.data.from)
             ? "bounce"
             : "reply",
         },
       );
+      uploaded = [];
       if (applied.applied && applied.needsReplyLabel)
         await labelThread(target, event.threadId, "needsReply");
       return { status: "received_applied" as const };
     } catch (error) {
       warn("inbox event handling failed", error);
+      await Promise.all(
+        uploaded.map((file) => ctx.storage.delete(file.fileId).catch(() => {})),
+      );
       try {
         await ctx.runMutation(
           internal.providerOutreach.releaseInboxEventInternal,
@@ -1034,5 +1110,71 @@ export const handleInboxWebhook = internalAction({
       // Retryable: Resend redelivers a non-2xx response.
       return { ok: false, status: 500, outcome: "record_failed" };
     }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Operator replies from the request Inbox
+// ---------------------------------------------------------------------------
+
+const MAX_REPLY_CHARS = 20_000;
+
+/**
+ * Sends an operator's reply on a provider outreach thread through the sending
+ * operator's Resend inbox. Follow-ups stop first; the reply is mirrored into
+ * the request Inbox as soon as Resend accepts it.
+ */
+export const replyToThread = action({
+  args: {
+    emailThreadId: v.id("procurementEmailThreads"),
+    text: v.string(),
+    idempotencyKey: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ status: "sent" | "captured" }> => {
+    const operatorUserId = await getSessionUserId(ctx);
+    if (!operatorUserId) throw new Error("Authentication required");
+    const text = args.text.trim();
+    if (!text) throw new Error("Write a reply first");
+    if (text.length > MAX_REPLY_CHARS) throw new Error("Reply is too long");
+    if (!/^[A-Za-z0-9-]{8,80}$/.test(args.idempotencyKey))
+      throw new Error("Invalid reply key");
+    const target = await ctx.runMutation(
+      internal.providerOutreach.prepareOperatorReplyInternal,
+      { operatorUserId: operatorUserId as Id<"users">, emailThreadId: args.emailThreadId },
+    );
+    const html = text
+      .split(/\n{2,}/)
+      .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+      .join("");
+    const sent = await replyToThreadEmail({
+      inboxId: target.inboxId,
+      threadId: target.resendThreadId,
+      emailId: target.replyToEmailId,
+      text,
+      html,
+      idempotencyKey: `inbox-reply:${args.idempotencyKey}`,
+    });
+    if (sent.status === "captured") return { status: "captured" };
+    const subject = /^re:/i.test(target.subject) ? target.subject : `Re: ${target.subject}`;
+    await ctx.runMutation(internal.providerOutreach.recordOperatorReplyInternal, {
+      operatorUserId: operatorUserId as Id<"users">,
+      sequenceId: target.sequenceId,
+      resendThreadId: target.resendThreadId,
+      email: {
+        resendInboxEmailId: sent.data.emailId,
+        fromEmail: target.fromEmail,
+        fromName: target.fromName,
+        toAddresses: target.to,
+        ccAddresses: [],
+        bccAddresses: [],
+        subject,
+        inReplyTo: target.messageId,
+        references: target.references,
+        text,
+        html,
+        occurredAt: dayjs().valueOf(),
+      },
+    });
+    return { status: "sent" };
   },
 });

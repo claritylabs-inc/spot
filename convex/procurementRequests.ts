@@ -1842,6 +1842,19 @@ export async function getProcurementEmailThreadDetails(
       .withIndex("thread", (index) => index.eq("threadId", thread._id))
       .collect(),
   ]);
+  // The outreach inbox address marks which messages Spot sent.
+  const sequence = thread.resendThreadId
+    ? await ctx.db
+        .query("procurementOutreachSequences")
+        .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", thread.resendThreadId))
+        .first()
+    : null;
+  const outreachInbox = sequence?.inboxId
+    ? await ctx.db
+        .query("operatorOutreachInboxes")
+        .withIndex("by_inboxId", (q) => q.eq("inboxId", sequence.inboxId!))
+        .first()
+    : null;
   const hydratedMessages = await Promise.all(
     messages.map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
       ...message,
@@ -1870,6 +1883,10 @@ export async function getProcurementEmailThreadDetails(
       forwardingAddress: requestForwardingAddress(addressedRequest),
     },
     messages: hydratedMessages,
+    outboundAddress: outreachInbox
+      ? normalizeProcurementEmail(outreachInbox.emailAddress)
+      : null,
+    canReply: Boolean(outreachInbox && sequence?.requestId === thread.requestId),
   };
 }
 

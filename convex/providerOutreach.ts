@@ -3088,3 +3088,104 @@ export const recoverInternal = internalMutation({
     };
   },
 });
+
+// ---------------------------------------------------------------------------
+// Operator replies from the request Inbox
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves the Resend thread behind an Inbox conversation and stops automated
+ * follow-ups before an operator reply goes out, so a nudge cannot land after
+ * a person has taken over. Only provider outreach conversations can be
+ * answered; forwarded mail has no Spot-owned thread to reply on.
+ */
+export const prepareOperatorReplyInternal = internalMutation({
+  args: {
+    operatorUserId: v.id("users"),
+    emailThreadId: v.id("procurementEmailThreads"),
+  },
+  handler: async (ctx, args) => {
+    await requireDirectOperatorWrite(ctx, args.operatorUserId);
+    const thread = await ctx.db.get(args.emailThreadId);
+    if (!thread || thread.deletedAt) throw new Error("Conversation not found");
+    if (!thread.resendThreadId)
+      throw new Error("Forwarded mail can only be answered from your own mailbox");
+    const resendThreadId = thread.resendThreadId;
+    const sequence = await ctx.db
+      .query("procurementOutreachSequences")
+      .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", resendThreadId))
+      .first();
+    if (!sequence?.inboxId || sequence.requestId !== thread.requestId)
+      throw new Error("This conversation has no outreach inbox to reply from");
+    await loadCompanyRequest(ctx, sequence.requestId);
+    const inbox = await ctx.db
+      .query("operatorOutreachInboxes")
+      .withIndex("by_inboxId", (q) => q.eq("inboxId", sequence.inboxId!))
+      .first();
+    const latest = await ctx.db
+      .query("procurementEmailMessages")
+      .withIndex("thread", (q) => q.eq("threadId", thread._id))
+      .order("desc")
+      .take(20);
+    const target = latest.find((message) => message.resendInboxEmailId);
+    if (!inbox) throw new Error("This conversation has no outreach inbox to reply from");
+    if (!target?.resendInboxEmailId) throw new Error("No message to reply to yet");
+    const now = dayjs().valueOf();
+    if (isLive(sequence.status))
+      await terminalizeSequence(ctx, sequence, { status: "stopped", reason: "operator_replied", now });
+    const inbound = target.fromEmail !== normalizeProcurementEmail(inbox.emailAddress);
+    return {
+      sequenceId: sequence._id,
+      inboxId: sequence.inboxId,
+      resendThreadId,
+      replyToEmailId: target.resendInboxEmailId,
+      subject: target.subject,
+      fromEmail: inbox.emailAddress,
+      fromName: inbox.fromName,
+      to: inbound ? [target.fromEmail] : target.toAddresses,
+      messageId: target.messageId,
+      references: [...target.references, ...(target.messageId ? [target.messageId] : [])],
+    };
+  },
+});
+
+/** Mirrors a sent operator reply right away; the later `inbox.email.sent` event deduplicates on the email id. */
+export const recordOperatorReplyInternal = internalMutation({
+  args: {
+    operatorUserId: v.id("users"),
+    sequenceId: v.id("procurementOutreachSequences"),
+    resendThreadId: v.string(),
+    email: inboxEmailValidator,
+  },
+  handler: async (ctx, args) => {
+    const sequence = await ctx.db.get(args.sequenceId);
+    if (!sequence) throw new Error("Outreach sequence not found");
+    const now = dayjs().valueOf();
+    const request = await mirrorableRequest(ctx, sequence);
+    const mirrored = request
+      ? await mirrorInboxEmail(ctx, {
+          sequence,
+          request,
+          email: args.email,
+          attachments: [],
+          resendThreadId: args.resendThreadId,
+          inbound: false,
+          now,
+        })
+      : null;
+    await writeOperatorAudit(ctx, {
+      operatorUserId: args.operatorUserId,
+      type: "setup_write",
+      targetOrgId: sequence.clientOrgId,
+      summary: "Replied to a provider from the request Inbox",
+      metadata: {
+        domain: "procurement",
+        operation: "reply_provider_outreach",
+        requestId: sequence.requestId,
+        outreachId: sequence.outreachId,
+        sequenceId: sequence._id,
+      },
+    });
+    return { threadId: mirrored?.threadId ?? null };
+  },
+});
