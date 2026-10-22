@@ -22,13 +22,13 @@ export const ACORD_LOB_TO_COVERAGE: Readonly<Record<string, CoverageId>> = {
 export const COVERAGE_PROVIDER_LOB_CODES: Readonly<
   Partial<Record<CoverageId, readonly string[]>>
 > = {
-  general_liability: ["CGL", "BOP", "CPKGE"],
-  property: ["PROP", "BOP", "CPKGE"],
-  workers_compensation: ["WORK"],
+  general_liability: ["CGL", "BOPGL", "BOP", "CPKGE"],
+  property: ["PROP", "BOPPR", "BOP", "CPKGE"],
+  workers_compensation: ["WORK", "WORKP"],
   commercial_auto: ["AUTOB", "TRUCK"],
-  professional_liability: ["EO", "PL"],
+  professional_liability: ["EO", "PL", "PLMSC"],
   cyber: ["CYBER"],
-  umbrella: ["UMBRC", "EXLIA"],
+  umbrella: ["UMBRC", "UMBRL", "EXLIA"],
 };
 
 /** Provider codes accepted for a coverage, or `null` when it cannot be evaluated. */
