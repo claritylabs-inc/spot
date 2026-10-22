@@ -2288,3 +2288,7 @@ A refreshed browser repeat showed 14 already present, zero added, 41 verificatio
 candidates, 22 coverage mismatches and 51 recorded-area mismatches. Shared package
 mappings changed two exclusion categories without changing confirmed additions.
 The latest screenshot retains the simple wrapping rows and provider Review links.
+
+## Automated provider outreach — October 22, 2026
+
+Local capture QA passed geography correction and retry, reactive partial/unknown matching, cadence provenance and overrides, individual and matched-only bulk launch, Stop/reload, and mobile/dark presentation. Readback confirmed captured steps without sent timestamps, no external inbox provisioning, and captured-step replay skipped. Signature/body boundary probes and unauthenticated operator mutations behaved as expected. See [the provider outreach evidence ledger](provider-outreach-workflow.md) for artifacts and explicit partial/not-run cases. Live inbox delivery, replies and unknown-outcome recovery still require a configured restricted test target. No Vercel previews, unit tests or production changes were used.

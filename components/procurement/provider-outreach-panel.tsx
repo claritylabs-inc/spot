@@ -78,7 +78,7 @@ const REASON_COPY: Record<string, string> = {
   geography_none_serviced: "Does not write any requested location",
   geography_partial: "Writes only some requested locations",
   geography_appetite_empty: "No service area on file",
-  geography_region_unknown: "State or province needed",
+  geography_region_unknown: "Regional service needs verification",
   lines_none_covered: "Covers none of the requested lines",
   lines_partial: "Covers only some requested lines",
   lines_appetite_empty: "No coverage lines on file",

@@ -345,7 +345,14 @@ export function classifyProvider(
     const primaryServiced = geography.primary
       ? placeServiced(geography.primary, profile)
       : !!result.geography.serviced.length;
-    if (hasUnknownRegion) {
+    if (
+      geography.primary &&
+      brokerAreaFit(profile, geography.primary.country, geography.primary.region) ===
+        "excluded"
+    ) {
+      result.geography.fit = "excluded";
+      result.reasons.push("geography_primary_not_serviced");
+    } else if (hasUnknownRegion) {
       result.geography.fit = "unknown";
       result.reasons.push("geography_region_unknown");
     } else if (!primaryServiced) {
