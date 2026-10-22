@@ -35,7 +35,7 @@ Cadence suggestions use one Jev call with independent choices for count, busines
 
 ## Inboxes and ingress
 
-One inbox belongs to each operator, named from the operator's email localpart on `PROVIDER_OUTREACH_EMAIL_DOMAIN`, with a first-name-at-Spot display name. Threads carry Spot automated and Needs reply labels. The dedicated `/resend-inbox-webhook` verifies Svix signatures with `RESEND_INBOX_WEBHOOK_SECRET`; inbox events never enter ordinary agent inbound routing. Email IDs deduplicate mirroring into procurement threads/messages. Reply attachments reuse procurement ingestion rules and remain operator-private unless separately released.
+One inbox belongs to each operator, named from the operator's email localpart on `PROVIDER_OUTREACH_EMAIL_DOMAIN`, with a first-name-at-Spot display name. Threads carry Spot automated and Needs reply labels. The dedicated `/resend-inbox-webhook` verifies Svix signatures with `RESEND_INBOX_WEBHOOK_SECRET`; inbox events never enter ordinary agent inbound routing. Email IDs deduplicate mirroring into procurement threads/messages. The documented Inboxes API lists attachment IDs, filenames and sizes but provides no byte-download endpoint or MIME headers. Mirroring therefore retains attachment metadata and marks byte import unavailable; operators retrieve attachments in Resend. The existing procurement attachment helpers remain the integration boundary when a supported download API becomes available. Bounce detection uses documented sender metadata; multipart/report detection is unavailable without MIME headers.
 
 ## Setup and validation
 
