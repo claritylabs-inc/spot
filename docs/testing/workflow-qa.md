@@ -2282,8 +2282,9 @@ The new nationwide/exception predicate is shared by both manual matching and
 outreach fit classification. Corrected unsupported row-layout props without
 changing the primitive; the inspected wrapping layout is preserved.
 
-Final integrated root/Convex typechecking is blocked by references to the absent
-`convex/actions/providerOutreach.ts` module in concurrent outreach commits. The
-matching and geography changes have no reported type errors after removing the
-unsupported layout props. Touched-file lint and local deployment passed. This
-unrelated missing implementation was not replaced with a stub or phantom API.
+Final integrated root/Convex TypeScript, touched-file lint, whitespace checks
+and local deployment passed after the parallel outreach implementation landed.
+A refreshed browser repeat showed 14 already present, zero added, 41 verification
+candidates, 22 coverage mismatches and 51 recorded-area mismatches. Shared package
+mappings changed two exclusion categories without changing confirmed additions.
+The latest screenshot retains the simple wrapping rows and provider Review links.

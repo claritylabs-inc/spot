@@ -24,11 +24,16 @@ Provider Appetite adds an explicit nationwide selection and, only when selected,
 
 ## Verification
 
-The dev Texas CGL request gained 11 confirmed markets, increasing from three to 14 unique providers. A repeat run added zero and showed 14 already on the request, 41 requiring verification, 24 coverage mismatches, 49 regional mismatches and one restricted provider. Readback confirmed all 14 rows remain Observed, without sent timestamps or issued packets. Hiscox's profile rendered United States nationwide with Alaska explicitly excluded and a distinct accessible exclusion label. The drawer's initial narrow table was replaced with wrapping inline rows and quiet Review actions after visual inspection.
+The dev Texas CGL request gained 11 confirmed markets, increasing from three to 14 unique providers. A repeat run added zero and showed 14 already on the request, 41 requiring verification, 22 coverage mismatches, 51 regional mismatches and one restricted provider. Readback confirmed all 14 rows remain Observed, without sent timestamps or issued packets. Hiscox's profile rendered United States nationwide with Alaska explicitly excluded and a distinct accessible exclusion label. The drawer's initial narrow table was replaced with wrapping inline rows and quiet Review actions after visual inspection.
 
-Initial root/Convex TypeScript checks, touched-file ESLint, whitespace checks and local Convex deployment passed. Final integrated typechecking is blocked by the concurrent outreach changes referencing the missing `convex/actions/providerOutreach.ts` module; the reported errors are outside this matching/data change. No test files or database migrations were written. Production was not deployed or changed. Evidence: `.context/provider-geography/{matching-results,nationwide-exception}.png`, `request-availability.json`, and `final-readback.json`.
+Final integrated root/Convex TypeScript, touched-file ESLint, whitespace checks and local Convex deployment passed. No test files or database migrations were written. Production was not deployed or changed. Evidence: `.context/provider-geography/{matching-results,nationwide-exception}.png`, `request-availability.json`, and `final-readback.json`.
 
 Integration retained the concurrently added missing-request-geography prompt,
 shared coverage-class mappings and outreach features. Manual and outreach fit
 classification now share `brokerAreaFit` for nationwide scope and exclusions;
 a country alone does not silently become nationwide service.
+
+After integration, refreshed the browser and repeated the action: 14 already
+present, zero added, 41 verification candidates, 22 coverage mismatches and 51
+recorded-area mismatches. Shared package-class mappings explain the updated
+exclusion categories; the confirmed set and duplicate protection are unchanged.
