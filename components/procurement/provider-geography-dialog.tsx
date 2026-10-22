@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation } from "convex/react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -11,10 +11,15 @@ import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import {
+  brokerRegionCountry,
   CANADIAN_PROVINCES,
   USPS_STATE_NAMES,
 } from "@/convex/lib/brokerProfileValidation";
 import { procurementBrokerCriteria } from "@/convex/lib/procurementBrokerMatching";
+import {
+  normalizeCountry,
+  normalizeRegion,
+} from "@/convex/lib/providerOutreachMatch";
 import {
   addressText,
   coverageRequestLabel,
@@ -51,156 +56,89 @@ export type ProviderGeographyRequest = {
 type AddressPath =
   | { kind: "location"; index: number }
   | { kind: "mailing" }
-  | { kind: "property"; coverageIndex: number; propertyIndex: number };
+  | { kind: "property"; coverage: number; property: number };
 
-type FieldProblem = "missing" | "unrecognized";
-
-export type GeographyIssue = {
+type Row = {
   key: string;
   path: AddressPath;
   label: string;
   address: IntakeAddress;
-  country: FieldProblem | null;
-  state: FieldProblem | null;
 };
-
-export type GeographyPreflight =
-  | { ready: true }
-  | { ready: false; issues: GeographyIssue[] };
-
 type Edit = { country: string; state: string };
 
-function probeApplication(address: IntakeAddress): IntakeApplication {
-  return {
-    answers: {},
-    files: [],
-    submittedAt: 0,
-    revision: 0,
-    details: {
-      coverages: [{ coverage: "general_liability", limits: {} }],
-      locations: [],
-      mailingAddress: address,
-    } as unknown as IntakeDetails,
-  };
-}
+const SELECTABLE_COUNTRIES = countryOptions.filter((option) =>
+  normalizeCountry(option.value),
+);
 
-/**
- * The matcher is the single authority on what counts as a usable address.
- * Probing it with one address and a supported coverage reports acceptance
- * without duplicating its country and region normalization.
- */
-function matcherAccepts(address: IntakeAddress) {
-  try {
-    procurementBrokerCriteria(probeApplication(address));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-type RegionKind = "US" | "CA" | "other" | "unknown";
-
-function regionKind(country: string | undefined): RegionKind {
-  if (!country?.trim()) return "unknown";
-  if (matcherAccepts({ country, state: "CA" })) return "US";
-  if (matcherAccepts({ country, state: "ON" })) return "CA";
-  return matcherAccepts({ country }) ? "other" : "unknown";
-}
-
-function assessAddress(address: IntakeAddress) {
-  if (matcherAccepts(address)) return null;
-  const kind = regionKind(address.country);
-  if (kind === "unknown")
-    return {
-      country: (address.country?.trim()
-        ? "unrecognized"
-        : "missing") as FieldProblem,
-      state: null,
-    };
-  return {
-    country: null,
-    state: (address.state?.trim() ? "unrecognized" : "missing") as FieldProblem,
-  };
-}
-
-/**
- * Mirrors `procurementBrokerCriteria`: operating locations, else the mailing
- * address, plus every coverage property address.
- */
-function requestAddresses(details: IntakeDetails) {
-  const entries: {
-    key: string;
-    path: AddressPath;
-    label: string;
-    address: IntakeAddress;
-  }[] = [];
-  const named = (base: string, name?: string) =>
-    name?.trim() ? `${base} · ${name.trim()}` : base;
-  if (details.locations.length)
-    details.locations.forEach((location, index) =>
-      entries.push({
+/** The addresses the matcher reads: locations (else mailing), then property addresses. */
+function requestAddresses(details: IntakeDetails): Row[] {
+  const named = (label: string, name?: string) =>
+    name?.trim() ? `${label} · ${name.trim()}` : label;
+  const rows: Row[] = details.locations.length
+    ? details.locations.map((location, index) => ({
         key: `location:${index}`,
         path: { kind: "location", index },
         label: named(`Operating location ${index + 1}`, location.name),
         address: location.address,
-      }),
-    );
-  else
-    entries.push({
-      key: "mailing",
-      path: { kind: "mailing" },
-      label: "Mailing address (no operating locations listed)",
-      address: details.mailingAddress,
-    });
-  details.coverages.forEach((line, coverageIndex) =>
-    (line.properties ?? []).forEach((property, propertyIndex) =>
-      entries.push({
-        key: `property:${coverageIndex}:${propertyIndex}`,
-        path: { kind: "property", coverageIndex, propertyIndex },
+      }))
+    : [
+        {
+          key: "mailing",
+          path: { kind: "mailing" },
+          label: "Mailing address (no operating locations listed)",
+          address: details.mailingAddress,
+        },
+      ];
+  details.coverages.forEach((line, coverage) =>
+    (line.properties ?? []).forEach((property, index) =>
+      rows.push({
+        key: `property:${coverage}:${index}`,
+        path: { kind: "property", coverage, property: index },
         label: named(
-          `${coverageRequestLabel(line)} property ${propertyIndex + 1}`,
+          `${coverageRequestLabel(line)} property ${index + 1}`,
           property.name,
         ),
         address: property.address,
       }),
     ),
   );
-  return entries;
+  return rows;
 }
 
-export function providerGeographyIssues(
-  details: IntakeDetails,
-): GeographyIssue[] {
-  return requestAddresses(details).flatMap((entry) => {
-    const problem = assessAddress(entry.address);
-    return problem ? [{ ...entry, ...problem }] : [];
-  });
+/** Same rule as the matcher: a country, plus a region of that country for US and Canada. */
+function addressProblems(address: { country?: string; state?: string }) {
+  const country = normalizeCountry(address.country);
+  const problem = (value?: string) =>
+    value?.trim() ? "unrecognized" : "missing";
+  if (!country) return { country: problem(address.country) };
+  if (country !== "US" && country !== "CA") return {};
+  const region = normalizeRegion(address.state);
+  return region && brokerRegionCountry(region) === country
+    ? {}
+    : { state: problem(address.state) };
 }
+
+const geographyRows = (details: IntakeDetails) =>
+  requestAddresses(details).filter(
+    (row) => Object.keys(addressProblems(row.address)).length,
+  );
 
 /**
- * Decides whether auto-add can run. Anything other than missing or invalid
- * geography (no saved application, no supported coverage) is left to the
- * server, which reports it; probing a copy with valid placeholder addresses
- * detects that without reading error text.
+ * Whether auto add can run. Geography is only the blocker when the shared
+ * criteria reject the application and an address is at fault; any other
+ * failure (no saved application, no supported coverage) is left to the server,
+ * whose message the operator already sees.
  */
 export function providerGeographyPreflight(
   application: IntakeApplication | null | undefined,
-): GeographyPreflight {
+) {
   if (!application) return { ready: true };
-  const issues = providerGeographyIssues(application.details);
-  if (!issues.length) return { ready: true };
   try {
-    procurementBrokerCriteria({
-      ...application,
-      details: withAddresses(application.details, issues, () => ({
-        country: "United States",
-        state: "CA",
-      })),
-    });
-  } catch {
+    procurementBrokerCriteria(application);
     return { ready: true };
+  } catch {
+    return { ready: !geographyRows(application.details).length };
   }
-  return { ready: false, issues };
 }
 
 function patchAddress(
@@ -208,32 +146,27 @@ function patchAddress(
   path: AddressPath,
   patch: Partial<IntakeAddress>,
 ): IntakeDetails {
+  const apply = (address: IntakeAddress) => ({ ...address, ...patch });
   if (path.kind === "mailing")
-    return {
-      ...details,
-      mailingAddress: { ...details.mailingAddress, ...patch },
-    };
+    return { ...details, mailingAddress: apply(details.mailingAddress) };
   if (path.kind === "location")
     return {
       ...details,
       locations: details.locations.map((location, index) =>
         index === path.index
-          ? { ...location, address: { ...location.address, ...patch } }
+          ? { ...location, address: apply(location.address) }
           : location,
       ),
     };
   return {
     ...details,
-    coverages: details.coverages.map((line, coverageIndex) =>
-      coverageIndex === path.coverageIndex
+    coverages: details.coverages.map((line, coverage) =>
+      coverage === path.coverage
         ? {
             ...line,
             properties: (line.properties ?? []).map((property, index) =>
-              index === path.propertyIndex
-                ? {
-                    ...property,
-                    address: { ...property.address, ...patch },
-                  }
+              index === path.property
+                ? { ...property, address: apply(property.address) }
                 : property,
             ),
           }
@@ -242,118 +175,56 @@ function patchAddress(
   };
 }
 
-function withAddresses(
-  details: IntakeDetails,
-  issues: GeographyIssue[],
-  edit: (issue: GeographyIssue) => Edit,
-) {
-  return issues.reduce((next, issue) => {
-    const { country, state } = edit(issue);
-    const patch: Partial<IntakeAddress> = {};
-    if (country !== (issue.address.country ?? "")) patch.country = country;
-    if (state !== (issue.address.state ?? "")) patch.state = state;
-    return Object.keys(patch).length
-      ? patchAddress(next, issue.path, patch)
-      : next;
-  }, details);
-}
+const regionNames = (country: string | undefined) =>
+  country === "US"
+    ? USPS_STATE_NAMES
+    : country === "CA"
+      ? CANADIAN_PROVINCES
+      : null;
 
-const COUNTRY_SELECT_OPTIONS = (() => {
-  let options: typeof countryOptions | undefined;
-  return () =>
-    (options ??= countryOptions.filter((option) => {
-      const kind = regionKind(option.value);
-      return kind !== "unknown";
-    }));
-})();
-
-function regionOptions(kind: RegionKind) {
-  const names: Readonly<Record<string, string>> | null =
-    kind === "US"
-      ? USPS_STATE_NAMES
-      : kind === "CA"
-        ? CANADIAN_PROVINCES
-        : null;
-  return Object.entries(names ?? {})
-    .map(([value, name]) => ({ value, label: `${name} (${value})` }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-}
-
-function selectedRegion(
-  options: { value: string; label: string }[],
-  state: string,
-) {
-  const wanted = state
-    .trim()
-    .toLowerCase()
-    .replace(/^(us|ca)-/, "");
-  return (
-    options.find(
-      (option) =>
-        option.value.toLowerCase() === wanted ||
-        option.label.toLowerCase().startsWith(`${wanted} (`),
-    )?.value ?? ""
-  );
-}
-
-/** Edits survive a rebase only for the same address at the same position. */
-function signature(address: IntakeAddress) {
-  return JSON.stringify({ ...address, country: undefined, state: undefined });
-}
-
-function problemText(
-  problem: FieldProblem | null,
-  noun: string,
-  value?: string,
-) {
-  if (!problem) return null;
-  return problem === "missing"
-    ? `${noun} is required`
-    : `“${value}” isn't a recognized ${noun.toLowerCase()}`;
-}
-
-type Base = {
+type Snapshot = {
   request: ProviderGeographyRequest;
   application: IntakeApplication;
-  issues: GeographyIssue[];
+  rows: Row[];
+  edits: Record<string, Edit>;
 };
 
-function snapshot(live: ProviderGeographyRequest): Base | null {
-  if (!live.application) return null;
+/** Edits carry over a reload only for the same address at the same position. */
+function snapshot(
+  request: ProviderGeographyRequest,
+  previous?: Snapshot | null,
+): Snapshot | null {
+  const { application } = request;
+  if (!application) return null;
+  const rows = geographyRows(application.details);
+  const unchanged = (row: Row) => {
+    const before = previous?.rows.find((item) => item.key === row.key);
+    const strip = (address: IntakeAddress) =>
+      JSON.stringify({ ...address, country: undefined, state: undefined });
+    return before && strip(before.address) === strip(row.address);
+  };
   return {
-    request: live,
-    application: live.application,
-    issues: providerGeographyIssues(live.application.details),
+    request,
+    application,
+    rows,
+    edits: Object.fromEntries(
+      rows.map((row) => [
+        row.key,
+        unchanged(row)
+          ? previous!.edits[row.key]
+          : {
+              country: row.address.country ?? "",
+              state: row.address.state ?? "",
+            },
+      ]),
+    ),
   };
 }
 
-function initialEdits(
-  issues: GeographyIssue[],
-  previous?: Record<string, Edit>,
-  previousSignatures?: Record<string, string>,
-) {
-  return Object.fromEntries(
-    issues.map((issue) => {
-      const kept =
-        previous?.[issue.key] &&
-        previousSignatures?.[issue.key] === signature(issue.address);
-      return [
-        issue.key,
-        kept
-          ? previous![issue.key]
-          : {
-              country: issue.address.country ?? "",
-              state: issue.address.state ?? "",
-            },
-      ];
-    }),
-  ) as Record<string, Edit>;
-}
-
 /**
- * Focused fix for request addresses that block provider matching. Cancel never
- * writes; Save writes the accepted application with only country and state
- * changed on the listed addresses, then hands control back to retry the match.
+ * Fixes request addresses that block provider matching. Cancel never writes;
+ * Save rewrites the accepted application with only country and state changed
+ * on the listed addresses, then runs `onSaved` to retry the match.
  */
 export function ProviderGeographyDialog({
   open,
@@ -363,9 +234,8 @@ export function ProviderGeographyDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Live request; used only to detect that the application moved on. */
+  /** Live request; used to detect that the application moved on while open. */
   request: ProviderGeographyRequest;
-  /** Runs after a successful save, or immediately if nothing needed fixing. */
   onSaved: () => void | Promise<void>;
 }) {
   const saveApplication = useMutation(
@@ -373,87 +243,61 @@ export function ProviderGeographyDialog({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [base, setBase] = useState<Base | null>(() => snapshot(request));
-  const [edits, setEdits] = useState<Record<string, Edit>>(() =>
-    base ? initialEdits(base.issues) : {},
-  );
+  const [base, setBase] = useState(() => snapshot(request));
   const stale =
     !!base &&
     ((request.intakeRevision ?? 0) !== (base.request.intakeRevision ?? 0) ||
       request.updatedAt !== base.request.updatedAt);
-
-  const rows = useMemo(
-    () =>
-      (base?.issues ?? []).map((issue) => {
-        const edit = edits[issue.key];
-        const address = { ...issue.address, ...edit };
-        return {
-          issue,
-          edit,
-          kind: regionKind(address.country),
-          ok: matcherAccepts(address),
-          assessment: assessAddress(address),
-        };
-      }),
-    [base, edits],
+  const complete = !!base?.rows.every(
+    (row) => !Object.keys(addressProblems(base.edits[row.key])).length,
   );
-  const allOk = rows.every((row) => row.ok);
 
-  function loadLatest() {
-    const next = snapshot(request);
-    setBase(next);
-    setEdits(
-      next
-        ? initialEdits(
-            next.issues,
-            edits,
-            Object.fromEntries(
-              (base?.issues ?? []).map((issue) => [
-                issue.key,
-                signature(issue.address),
-              ]),
-            ),
-          )
-        : {},
+  function setEdit(key: string, edit: Edit) {
+    setBase((current) =>
+      current
+        ? { ...current, edits: { ...current.edits, [key]: edit } }
+        : current,
     );
-    setError(null);
   }
 
-  function setCountry(key: string, country: string) {
-    setEdits((current) => {
-      const previous = current[key];
-      const address = { country, state: previous.state };
-      const keep =
-        regionKind(country) === "other" || matcherAccepts(address)
-          ? previous.state
-          : "";
-      return { ...current, [key]: { country, state: keep } };
+  function changeCountry(key: string, country: string, state: string) {
+    const kind = normalizeCountry(country);
+    const region = normalizeRegion(state);
+    const keep = region && brokerRegionCountry(region) === kind ? region : "";
+    setEdit(key, {
+      country,
+      state: kind === "US" || kind === "CA" ? keep : "",
     });
   }
 
   async function save() {
-    if (!base || busy || stale || !allOk) return;
+    if (!base || busy || stale || !complete) return;
     setBusy(true);
     setError(null);
     try {
-      if (base.issues.length) {
-        const details = withAddresses(
-          base.application.details,
-          base.issues,
-          (issue) => edits[issue.key],
-        );
-        // Never persist geography the matcher would still reject.
-        procurementBrokerCriteria({ ...base.application, details });
+      if (base.rows.length) {
+        const details = base.rows.reduce((next, row) => {
+          const edit = base.edits[row.key];
+          const patch: Partial<IntakeAddress> = {};
+          if (edit.country !== (row.address.country ?? ""))
+            patch.country = edit.country;
+          if (edit.state !== (row.address.state ?? ""))
+            patch.state = edit.state;
+          return Object.keys(patch).length
+            ? patchAddress(next, row.path, patch)
+            : next;
+        }, base.application.details);
+        const { request: saved } = base;
         await saveApplication({
-          requestId: base.request._id,
-          expectedRevision: base.request.intakeRevision ?? 0,
-          expectedUpdatedAt: base.request.updatedAt,
-          title: base.request.title,
-          targetEffectiveDate: base.request.targetEffectiveDate || null,
-          status: base.request.status,
-          replacingPolicyId: base.request.replacingPolicyId ?? null,
-          resultingPolicyId: base.request.resultingPolicyId ?? null,
-          clientVisible: base.request.clientVisible ?? true,
+          requestId: saved._id,
+          expectedRevision: saved.intakeRevision ?? 0,
+          expectedUpdatedAt: saved.updatedAt,
+          title: saved.title,
+          targetEffectiveDate: saved.targetEffectiveDate || null,
+          status: saved.status,
+          replacingPolicyId: saved.replacingPolicyId ?? null,
+          resultingPolicyId: saved.resultingPolicyId ?? null,
+          clientVisible: saved.clientVisible ?? true,
           answers: base.application.answers,
           details,
         });
@@ -472,7 +316,6 @@ export function ProviderGeographyDialog({
     }
   }
 
-  const nothingToFix = !!base && !base.issues.length;
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent showCloseButton={!busy} className="sm:max-w-2xl">
@@ -480,140 +323,147 @@ export function ProviderGeographyDialog({
           <DialogTitle>Set locations to match providers</DialogTitle>
           <DialogDescription>
             Provider matching needs a country for every address, and a state or
-            province for US and Canadian ones. Set them here and providers are
-            added right after saving. Nothing else in the application changes.
+            province for US and Canadian ones. Providers are added right after
+            saving; nothing else in the application changes.
           </DialogDescription>
         </DialogHeader>
-        {!base ? (
-          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-            Save the request application before adding providers.
-          </p>
-        ) : (
-          <div className="max-h-[60vh] space-y-3 overflow-y-auto">
-            {stale ? (
-              <div
-                role="status"
-                className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-4 py-3 ${typeStyle("body.default")}`}
+        <div className="max-h-[60vh] space-y-3 overflow-y-auto">
+          {!base ? (
+            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              Save the request application before adding providers.
+            </p>
+          ) : null}
+          {stale ? (
+            <div
+              role="status"
+              className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-4 py-3 ${typeStyle("body.default")}`}
+            >
+              <span>This application changed while this was open.</span>
+              <PillButton
+                type="button"
+                variant="secondary"
+                size="default"
+                disabled={busy}
+                onClick={() => {
+                  setBase(snapshot(request, base));
+                  setError(null);
+                }}
               >
-                <span>This application changed while this was open.</span>
-                <PillButton
-                  type="button"
-                  variant="secondary"
-                  size="default"
-                  disabled={busy}
-                  onClick={loadLatest}
-                >
-                  Load latest
-                </PillButton>
-              </div>
-            ) : null}
-            {nothingToFix ? (
-              <p
-                className={`text-muted-foreground ${typeStyle("body.default")}`}
-              >
-                Every address now has the geography providers need.
-              </p>
-            ) : (
-              <InlineFieldCard wideLabels>
-                {rows.map(({ issue, edit, kind, ok, assessment }) => {
-                  const regions = regionOptions(kind);
-                  const address = addressText(issue.address);
-                  const hints = [
-                    problemText(
-                      assessment?.country ?? null,
-                      "Country",
-                      edit.country,
-                    ),
-                    problemText(
-                      assessment?.state ?? null,
-                      kind === "CA" ? "Province" : "State",
-                      edit.state,
-                    ),
-                  ].filter(Boolean);
-                  return (
-                    <InlineFieldRow
-                      key={issue.key}
-                      label={
-                        <div className="min-w-0 space-y-0.5">
+                Load latest
+              </PillButton>
+            </div>
+          ) : null}
+          {base && !base.rows.length ? (
+            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              Every address now has the geography providers need.
+            </p>
+          ) : null}
+          {base?.rows.length ? (
+            <InlineFieldCard wideLabels>
+              {base.rows.map((row) => {
+                const edit = base.edits[row.key];
+                const country = normalizeCountry(edit.country);
+                const names = regionNames(country);
+                const problems = addressProblems(edit);
+                const region = normalizeRegion(edit.state);
+                const hint = problems.country
+                  ? problems.country === "missing"
+                    ? "Country is required"
+                    : `“${edit.country}” isn't a recognized country`
+                  : problems.state
+                    ? problems.state === "missing"
+                      ? `${country === "CA" ? "Province" : "State"} is required`
+                      : `“${edit.state}” isn't a ${country === "CA" ? "province" : "state"} of this country`
+                    : null;
+                return (
+                  <InlineFieldRow
+                    key={row.key}
+                    label={
+                      <div className="min-w-0 space-y-0.5">
+                        <p
+                          className={`text-foreground ${typeStyle("body.medium")}`}
+                        >
+                          {row.label}
+                        </p>
+                        <p
+                          className={`break-words ${typeStyle("caption.default")}`}
+                        >
+                          {addressText(row.address) || "No address entered"}
+                        </p>
+                        {hint ? (
                           <p
-                            className={`text-foreground ${typeStyle("body.medium")}`}
+                            className={`text-destructive ${typeStyle("caption.default")}`}
                           >
-                            {issue.label}
+                            {hint}
                           </p>
-                          <p
-                            className={`break-words ${typeStyle("caption.default")}`}
-                          >
-                            {address || "No address entered"}
-                          </p>
-                          {!ok && hints.length ? (
-                            <p
-                              className={`text-destructive ${typeStyle("caption.default")}`}
-                            >
-                              {hints.join(" · ")}
-                            </p>
-                          ) : null}
-                        </div>
-                      }
-                    >
-                      <div className="grid min-w-0 gap-1 sm:grid-cols-2">
+                        ) : null}
+                      </div>
+                    }
+                  >
+                    <div className="grid min-w-0 gap-1 sm:grid-cols-2">
+                      <SearchableSelect
+                        ariaLabel={`${row.label} country`}
+                        placeholder="Select country"
+                        value={
+                          SELECTABLE_COUNTRIES.find(
+                            (option) =>
+                              normalizeCountry(option.value) === country,
+                          )?.value ?? ""
+                        }
+                        options={SELECTABLE_COUNTRIES}
+                        disabled={busy || stale}
+                        onChange={(next) =>
+                          changeCountry(row.key, next, edit.state)
+                        }
+                      />
+                      {names ? (
                         <SearchableSelect
-                          ariaLabel={`${issue.label} country`}
-                          placeholder="Select country"
+                          ariaLabel={`${row.label} ${country === "CA" ? "province" : "state"}`}
+                          placeholder={
+                            country === "CA"
+                              ? "Select province"
+                              : "Select state"
+                          }
                           value={
-                            COUNTRY_SELECT_OPTIONS().some(
-                              (option) => option.value === edit.country,
-                            )
-                              ? edit.country
+                            region && brokerRegionCountry(region) === country
+                              ? region
                               : ""
                           }
-                          options={COUNTRY_SELECT_OPTIONS()}
+                          options={Object.entries(names)
+                            .map(([value, name]) => ({
+                              value,
+                              label: `${name} (${value})`,
+                            }))
+                            .sort((a, b) => a.label.localeCompare(b.label))}
                           disabled={busy || stale}
-                          onChange={(next) => setCountry(issue.key, next)}
+                          onChange={(state) =>
+                            setEdit(row.key, { ...edit, state })
+                          }
                         />
-                        {regions.length ? (
-                          <SearchableSelect
-                            ariaLabel={`${issue.label} ${kind === "CA" ? "province" : "state"}`}
-                            placeholder={
-                              kind === "CA" ? "Select province" : "Select state"
-                            }
-                            value={selectedRegion(regions, edit.state)}
-                            options={regions}
-                            disabled={busy || stale}
-                            onChange={(next) =>
-                              setEdits((current) => ({
-                                ...current,
-                                [issue.key]: {
-                                  ...current[issue.key],
-                                  state: next,
-                                },
-                              }))
-                            }
-                          />
-                        ) : (
-                          <p
-                            className={`self-center px-3 text-muted-foreground ${typeStyle("caption.default")}`}
-                          >
-                            {kind === "other"
-                              ? "No state needed"
-                              : "Select a country first"}
-                          </p>
-                        )}
-                      </div>
-                    </InlineFieldRow>
-                  );
-                })}
-              </InlineFieldCard>
-            )}
-            {error ? (
-              <p
-                role="alert"
-                className={`text-destructive ${typeStyle("body.default")}`}
-              >
-                {error}
-              </p>
-            ) : null}
-          </div>
-        )}
+                      ) : (
+                        <p
+                          className={`self-center px-3 text-muted-foreground ${typeStyle("caption.default")}`}
+                        >
+                          {country
+                            ? "No state needed"
+                            : "Select a country first"}
+                        </p>
+                      )}
+                    </div>
+                  </InlineFieldRow>
+                );
+              })}
+            </InlineFieldCard>
+          ) : null}
+          {error ? (
+            <p
+              role="alert"
+              className={`text-destructive ${typeStyle("body.default")}`}
+            >
+              {error}
+            </p>
+          ) : null}
+        </div>
         <DialogFooter>
           <PillButton
             type="button"
@@ -625,15 +475,15 @@ export function ProviderGeographyDialog({
           </PillButton>
           <PillButton
             type="button"
-            disabled={busy || !base || stale || !allOk}
+            disabled={busy || !base || stale || !complete}
             onClick={() => void save()}
           >
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
             {busy
               ? "Saving…"
-              : nothingToFix
-                ? "Add providers"
-                : "Save and add providers"}
+              : base?.rows.length
+                ? "Save and add providers"
+                : "Add providers"}
           </PillButton>
         </DialogFooter>
       </DialogContent>
