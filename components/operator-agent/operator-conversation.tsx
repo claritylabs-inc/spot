@@ -254,7 +254,7 @@ function OperatorMessageRow({
   presentationDisabled: boolean;
   emailDrafts: OperatorEmailDraftView[];
   openEmailDraftId: string | null;
-  onOpenEmailDraft: (draft: OperatorEmailDraftView) => void;
+  onOpenEmailDraft: (draftId: string) => void;
 }) {
   const bubbleChannel = message.channel === "mcp" ? "chat" : message.channel;
   const content =
@@ -299,13 +299,18 @@ function OperatorMessageRow({
         isError={message.status === "error"}
         presentation={message.status ? undefined : message.presentation}
         onFollowUp={onFollowUp}
+        onOpenReference={(reference) => {
+          if (reference.kind !== "email_draft") return false;
+          onOpenEmailDraft(reference.recordId);
+          return true;
+        }}
         presentationDisabled={presentationDisabled}
         after={
           <OperatorEmailDraftCards
             drafts={emailDrafts}
             threadId={threadId}
             openDraftId={openEmailDraftId}
-            onOpen={onOpenEmailDraft}
+            onOpen={(draft) => onOpenEmailDraft(draft.id)}
           />
         }
       >
@@ -513,7 +518,7 @@ export function OperatorConversation({
                   onFollowUp={onFollowUp}
                   emailDrafts={emailDraftsByMessage?.[message.id] ?? []}
                   openEmailDraftId={openEmailDraftId}
-                  onOpenEmailDraft={(draft) => setOpenEmailDraftId(draft.id)}
+                  onOpenEmailDraft={setOpenEmailDraftId}
                   presentationDisabled={
                     presentationDisabled || hasPendingConfirmation
                   }
