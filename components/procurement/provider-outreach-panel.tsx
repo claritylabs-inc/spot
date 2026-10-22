@@ -31,7 +31,6 @@ import type {
   ProviderCandidateView,
   SequenceView,
 } from "@/convex/providerOutreach";
-import { formatDisplayDate } from "@/lib/date-format";
 import {
   coverageOption,
   type CoverageId,
@@ -155,7 +154,6 @@ export function useProviderOutreach(
     readOnly ? "skip" : { requestId },
   );
   const launch = useMutation(api.providerOutreach.launch);
-  const stop = useMutation(api.providerOutreach.stop);
   const requestSuggestion = useMutation(
     api.providerOutreach.requestCadenceSuggestion,
   );
@@ -183,7 +181,6 @@ export function useProviderOutreach(
     });
   const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
   const [sendingAll, setSendingAll] = useState(false);
-  const [stopping, setStopping] = useState<string | null>(null);
   const busyRef = useRef(false);
   const suggestedFor = useRef<string | null>(null);
 
@@ -325,20 +322,6 @@ export function useProviderOutreach(
     }
   }
 
-  async function stopSequence(sequenceId: Id<"procurementOutreachSequences">) {
-    setStopping(sequenceId);
-    try {
-      const result = await stop({ sequenceId });
-      toast.success(
-        result.stopped ? "Outreach stopped" : "Outreach was already finished",
-      );
-    } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Could not stop outreach"));
-    } finally {
-      setStopping(null);
-    }
-  }
-
   return {
     panel,
     cadence,
@@ -355,8 +338,6 @@ export function useProviderOutreach(
         eligible.slice(0, MAX_LAUNCH_PROVIDERS).map((row) => row.brokerOrgId),
         true,
       ),
-    stopping,
-    stopSequence,
   };
 }
 export type ProviderOutreachController = ReturnType<typeof useProviderOutreach>;
@@ -546,7 +527,6 @@ function CandidateRow({
   candidate,
   selectedContactId,
   onSelectContact,
-  sequence,
   sendingId,
   canLaunch,
   onSend,
@@ -554,7 +534,6 @@ function CandidateRow({
   candidate: ProviderCandidateView;
   selectedContactId?: Id<"brokerContacts">;
   onSelectContact: (contactId: Id<"brokerContacts"> | null) => void;
-  sequence: SequenceView | null;
   sendingId: boolean;
   canLaunch: boolean;
   onSend: () => void;
@@ -571,7 +550,6 @@ function CandidateRow({
     selectedContactId ?? candidate.recipient?.contactId ?? "request";
   const explicitRecipient =
     candidate.recipient && !candidate.recipient.contactId;
-  const status = sequence ? sequenceStatusText(sequence) : null;
   return (
     <TableRow>
       <TableCell className="whitespace-normal">
@@ -683,13 +661,6 @@ function CandidateRow({
         ) : (
           <span className="text-muted-foreground">Not contacted</span>
         )}
-        {status ? (
-          <span
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            {status}
-          </span>
-        ) : null}
       </TableCell>
       <TableCell className="text-right">
         <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
@@ -711,79 +682,17 @@ function CandidateRow({
   );
 }
 
-export function sequenceStatusText(sequence: SequenceView) {
-  switch (sequence.status) {
-    case "active":
-      return sequence.nextDueAt
-        ? `Active · next ${formatDisplayDate(sequence.nextDueAt, "soon")}`
-        : "Active";
-    case "reply_check":
-      return "Checking reply";
-    case "responded":
-      return "Replied · manual";
-    case "completed":
-      return "Finished";
-    case "failed":
-      return `Failed${sequence.stopReason ? `: ${humanize(sequence.stopReason)}` : ""}`;
-    case "stopped":
-      return `Stopped${sequence.stopReason ? ` · ${humanize(sequence.stopReason)}` : ""}`;
-  }
-}
-
-/** Sequence column cell for the contacted table. */
-export function OutreachSequenceCell({
+/** Controls for an existing outreach sequence. */
+export function OutreachSequenceActions({
   sequence,
-  stopping,
-  readOnly,
-  onStop,
   onOpenThread,
 }: {
   sequence: SequenceView | null;
-  stopping: boolean;
-  readOnly: boolean;
-  onStop: (sequenceId: Id<"procurementOutreachSequences">) => void;
   onOpenThread: (threadId: Id<"procurementEmailThreads">) => void;
 }) {
-  if (!sequence) return <span className="text-muted-foreground">—</span>;
-  // Captured steps were never delivered; a recorded sentAt survives a later cancel.
-  const captured = sequence.steps.filter(
-    (step) => step.status === "captured",
-  ).length;
-  const sent = sequence.steps.filter(
-    (step) =>
-      step.status === "sent" ||
-      (step.status !== "captured" && step.sentAt !== null),
-  ).length;
+  if (!sequence) return null;
   return (
-    <div className="flex min-w-40 flex-wrap items-center gap-x-3 gap-y-1">
-      <div>
-        <p className={typeStyle("body.default")}>
-          {sequenceStatusText(sequence)}
-        </p>
-        <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-          {[
-            `${sent} sent`,
-            captured ? `${captured} captured` : "",
-            `${sequence.steps.length} total`,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
-      </div>
-      {isLiveSequence(sequence) && !readOnly ? (
-        <PillButton
-          type="button"
-          size="xs"
-          variant="secondary"
-          disabled={stopping}
-          onClick={(event) => {
-            event.stopPropagation();
-            onStop(sequence.sequenceId);
-          }}
-        >
-          {stopping ? "Stopping…" : "Stop"}
-        </PillButton>
-      ) : null}
+    <div className="flex flex-wrap items-center justify-end gap-2">
       {sequence.procurementEmailThreadId ? (
         <PillButton
           type="button"
@@ -858,9 +767,6 @@ export function ProviderOutreachPanel({
         </div>
       ) : null}
       <section aria-label="Providers" className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className={typeStyle("body.medium")}>Providers</h2>
-        </div>
         <OperationalPanel as="div" data-operator-inline-fields>
           <Table>
             <TableHeader>
@@ -884,13 +790,6 @@ export function ProviderOutreachPanel({
                     selectedContactId={selectedContacts[candidate.brokerOrgId]}
                     onSelectContact={(contactId) =>
                       selectContact(candidate.brokerOrgId, contactId)
-                    }
-                    sequence={
-                      candidate.sequenceId
-                        ? (panel!.sequences.find(
-                            (row) => row.sequenceId === candidate.sequenceId,
-                          ) ?? null)
-                        : null
                     }
                     sendingId={sending.has(candidate.brokerOrgId)}
                     canLaunch={!!panel?.request.canLaunch && sending.size === 0}

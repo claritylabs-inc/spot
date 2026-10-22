@@ -39,7 +39,8 @@ import { RequestCompletionOutcome } from "./request-completion-outcome";
 import { RequestInbox } from "./request-inbox";
 import {
   FitChips,
-  OutreachSequenceCell,
+  OutreachSequenceActions,
+  isLiveSequence,
   ProviderOutreachPanel,
   ProviderOutreachCadence,
   sequenceForOutreach,
@@ -1268,6 +1269,11 @@ function OutreachEditor({
   const cancelExtraction = useMutation(
     api.procurementProposals.cancelExtraction,
   );
+  const stopFollowUps = useMutation(api.providerOutreach.stop);
+  const outreachPanel = useQuery(
+    api.providerOutreach.getPanel,
+    parentReadOnly ? "skip" : { requestId },
+  );
   const [outreachId, setOutreachId] = useState(outreach?._id);
   const currentRequest = useQuery(
     api.procurementRequests.get,
@@ -1277,6 +1283,9 @@ function OutreachEditor({
     api.procurementProposals.list,
     outreachId ? { requestId } : "skip",
   );
+  const outreachSequence = outreachId
+    ? sequenceForOutreach(outreachPanel?.sequences, outreachId)
+    : null;
   const currentOutreach =
     currentRequest?.outreaches.find((row) => row._id === outreachId) ??
     outreach;
@@ -1458,6 +1467,22 @@ function OutreachEditor({
         <>
           {!readOnly ? (
             <>
+              {outreachSequence && isLiveSequence(outreachSequence) ? (
+                <PillButton
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(
+                      () => stopFollowUps({ sequenceId: outreachSequence.sequenceId }),
+                      "Stopping follow-ups…",
+                      "Follow-ups stopped",
+                    )
+                  }
+                >
+                  {working ? "Stopping…" : "Stop follow-ups"}
+                </PillButton>
+              ) : null}
               {proposal && proposal.status !== "selected" ? (
                 <PillButton
                   variant="destructive"
@@ -2699,25 +2724,19 @@ export function ProcurementRequestWorkspace({
                           </StatusTag>
                         ) : null}
 
+
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-wrap justify-end gap-2">
                         {!readOnly && sequence ? (
-                          <OutreachSequenceCell
+                          <OutreachSequenceActions
                             sequence={sequence}
-                            readOnly={readOnly}
-                            stopping={
-                              providerOutreach.stopping === sequence.sequenceId
-                            }
-                            onStop={(sequenceId) =>
-                              void providerOutreach.stopSequence(sequenceId)
-                            }
                             onOpenThread={(threadId) =>
                               void changeView("email", threadId)
                             }
                           />
                         ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
                         {!readOnly &&
                         candidate &&
                         !candidate.launchBlock &&

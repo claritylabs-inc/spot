@@ -2312,3 +2312,11 @@ Helium at localhost:3207 verified a single bordered shared Table contains HUB's 
 ### Centralized request Inbox — October 22, 2026
 
 Local Chrome verified forwarded and synthetic Resend conversations in one request Inbox using the standard app-shell right panel. Search, filters, keyboard selection, close/reopen, deep links, pagination, mobile/dark presentation, forwarding-address popover and forwarded reassignment passed. Request isolation and Resend reassignment guards passed authenticated backend probes. See [provider outreach workflow QA](provider-outreach-workflow.md) for repeatable cases and artifacts. Live inbox delivery remains unverified; no external sends or Vercel previews were used.
+
+### Provider status presentation — October 22, 2026
+
+Helium verified the table begins directly below the navbar without a Providers heading. HUB's Status cell shows only Request sent; the Active/next-date and sent/captured/total summaries are absent. Stop and View details remain in the actions cell. Eight other matches retain Not contacted and their contact selectors. No send/stop or data mutation was invoked. TypeScript and touched-file lint passed.
+
+### Stop follow-ups in provider details — October 22, 2026
+
+Helium at localhost:3207 verified the submitted HUB row has View details without Stop, and its open details sidebar shows Stop follow-ups in the footer. The sidebar uses a live panel subscription and the existing stop mutation; inactive sequences and read-only views omit the action. No stop/send action was invoked during QA. Touched-file ESLint passed. Evidence: `.context/provider-email-completion/stop-follow-ups-sidebar.png`.
