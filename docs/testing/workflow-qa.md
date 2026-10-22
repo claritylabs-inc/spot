@@ -2127,3 +2127,20 @@ Evidence: `.context/provider-contacts/reviewed.json`, `import-results.json`,
 `contacts.png`. [Research coverage](../research/provider-contacts-2026-10-22.md)
 records the reviewed source for each provider. The local contact data is not a
 committed fixture or production backfill.
+
+
+October 22 contact follow-up: Contacts uses shared `FormSection` for an unboxed
+title/action row. Contact cards expose only Name, Email, Phone, Best for and Notes;
+role, title, contact page and provenance remain persisted but hidden. Browser
+review of Vouch confirmed the five fields and unboxed header. Root/Convex
+TypeScript, touched-file ESLint and whitespace checks passed. No tests or
+database migrations added. Creation now deduplicates email plus name, allowing a
+named person and general team to share a mailbox without collapsing entries.
+
+Local data audit: 228 active contacts across 82 providers, all with emails and
+a general email route, 120 named entries across 52 providers, 20 claims contacts.
+Solutions Specialty's address is explicitly marked HIGH_PROBABILITY/unconfirmed;
+shared office addresses are distinguished from direct work email in Notes.
+Evidence: `.context/provider-contacts/final-verification.json`, public crawl and
+directory lookup artifacts, `followup-typecheck.log`, `followup-convex-typecheck.log`,
+`followup-lint.log`, and `simplified-contacts.png`. Production was not changed.

@@ -109,3 +109,116 @@ and publishes its direct team phone. The Farmers page identifies Philip Charles
 Porter as Charlie Porter; the local agent number was used instead of the generic
 Farmers sales number. American Insurance Specialists was resolved through its
 official amriskusa.com site and the Allen Financial eqgroup.com contact page.
+
+## Email and claims follow-up
+
+The follow-up pass checked all provider sites and searched public team/claims
+pages, decoded publicly protected email markup, and consulted the connected
+FullEnrich professional directory. The local directory now has **228 contacts**
+across **82 providers**, with no blank contact emails and a general email route
+for every provider. There are **120 named entries across 52 providers**, and
+**20 claims contacts**. A named employee could not be reliably established for
+the remaining 30 providers; content contributors, customer testimonials and
+unrelated carrier employees were not treated as agency staff.
+
+Five direct work emails returned by FullEnrich as DELIVERABLE were used. Other
+people use publicly listed office or claims inboxes, clearly marked as shared in
+Notes rather than represented as direct personal addresses. Directory roles do
+not establish that someone is assigned to a particular policy or claim.
+
+Solutions Specialty's Henry Funes is the agency contact in CalRecycle's surety
+directory. FullEnrich supplied `henryf@solutionsspecialty.com` with
+**HIGH_PROBABILITY** status. Both the general route and Henry's entry explicitly
+label it as an unconfirmed candidate and retain the published telephone number
+for confirmation. It is not counted as a verified deliverable email.
+
+FullEnrich batch results: [claims/client service](https://app.fullenrich.com/app/enrich/6c96af9e-854c-451f-8fc7-a9bdcc48a8b7/result?workspaceId=431648ce-9e63-457b-9635-93d41611f60e),
+[Solutions Specialty candidate](https://app.fullenrich.com/app/enrich/22d8efb3-de31-4cec-865d-4f7d5d0fade0/result?workspaceId=431648ce-9e63-457b-9635-93d41611f60e).
+The connector exposed only ten of the 25 batch results; unreturned direct email
+results were not inferred. Public shared routes remain in place for those people.
+Production remains unchanged. No outreach was sent.
+
+| Provider | Current contacts | Named entries |
+| --- | ---: | ---: |
+| AEC Insurance Services | 1 | 0 |
+| All Line Insurance | 1 | 0 |
+| Alton Risk Insurance Services | 3 | 2 |
+| American Insurance Specialists (Allen Financial) | 2 | 0 |
+| Athos Insurance Services | 2 | 1 |
+| BlackFire Cyber Insurance | 2 | 1 |
+| Blue Lagoon Insurance Services, LLC dba BLIS | 1 | 0 |
+| Bollinsure Insurance Services | 2 | 0 |
+| BrokerForce Insurance | 20 | 19 |
+| Castro Risk | 1 | 0 |
+| CF&P Insurance Brokers | 2 | 1 |
+| CGI Agency | 4 | 3 |
+| Charlie Porter Insurance Agency (Farmers) | 2 | 0 |
+| Corgi | 1 | 0 |
+| Coverwatch | 1 | 0 |
+| Cowan Insurance Group | 3 | 1 |
+| David E. Quan Insurance Agency | 2 | 1 |
+| DiNicola Insurance Services | 2 | 1 |
+| Embarcadero Risk | 1 | 0 |
+| Embroker | 6 | 2 |
+| Employer Insurance Services | 1 | 0 |
+| Engelman Insurance | 19 | 18 |
+| eSpecialty Insurance | 2 | 1 |
+| Express Center Insurance Services | 1 | 0 |
+| Fillmore Risk | 1 | 0 |
+| Focus West Insurance | 2 | 1 |
+| Folsom Risk | 1 | 0 |
+| Fort Mason Partners | 1 | 0 |
+| Founder Shield | 2 | 1 |
+| Francis L. Dean & Associates | 2 | 1 |
+| Franklin Insurance Solutions | 2 | 1 |
+| Fusco Orsini & Associates Insurance Services | 2 | 1 |
+| Germani Insurance Services | 3 | 2 |
+| Gillespie Insurance Services | 8 | 6 |
+| Golden Benchmark | 2 | 1 |
+| Halpenny Insurance Brokers | 2 | 1 |
+| Harper | 2 | 1 |
+| Hayes Risk | 1 | 0 |
+| Heffernan Insurance Brokers | 3 | 1 |
+| Heritage Insurance Agency | 2 | 1 |
+| Howden Israel | 2 | 1 |
+| Instant Risk Coverage (IRC) | 1 | 0 |
+| Insureon | 2 | 1 |
+| Insurevents | 1 | 0 |
+| ISU Massie & Beck Insurance Services | 1 | 0 |
+| J.R. Hillman Insurance | 2 | 1 |
+| JJ Pro Insurance Services | 7 | 6 |
+| KBD Insurance | 2 | 1 |
+| Kearny Risk | 1 | 0 |
+| Lamda Broking | 1 | 0 |
+| M&W Insurance Services | 2 | 1 |
+| Menlo Insurance Services | 1 | 0 |
+| Mighty Oak Insurance Services | 3 | 2 |
+| Miller United Insurance Brokerage | 2 | 1 |
+| Mission Bay Coverage | 1 | 0 |
+| Mitch Insurance | 4 | 2 |
+| Montgomery Risk | 1 | 0 |
+| Morison Insurance | 2 | 1 |
+| N&N Insurance | 1 | 0 |
+| Nadler Insurance | 6 | 2 |
+| NeitClem Wholesale Insurance Brokerage | 12 | 1 |
+| Newfront | 5 | 3 |
+| Nob Hill Coverage | 1 | 0 |
+| Polaris Risk Management & Insurance Services | 4 | 3 |
+| Potrero Risk | 1 | 0 |
+| Prime Sentinel Insurance Solutions | 3 | 2 |
+| R.V. Nuccio & Associates (RVNA) | 2 | 1 |
+| Roberti's Insurance Agency | 1 | 0 |
+| Saberlines Insurance Services | 2 | 1 |
+| Scrivens Insurance | 11 | 10 |
+| Solutions Specialty Insurance Brokers | 2 | 1 |
+| Stonepoint Insurance Services | 3 | 2 |
+| Techrug | 2 | 1 |
+| Terry Lau Insurance Broker | 2 | 1 |
+| The Insurance Lab | 2 | 1 |
+| The Insurance Lab (California) | 2 | 1 |
+| Unibrokers | 2 | 1 |
+| Van Ness Partners | 1 | 0 |
+| Vouch | 3 | 1 |
+| Yeadim Insurance | 3 | 1 |
+| Yerba Buena Partners | 1 | 0 |
+| Zyber Insurance | 2 | 1 |
