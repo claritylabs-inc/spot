@@ -305,6 +305,7 @@ const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
+  "attach_client_file_to_draft",
   "list_email_drafts",
   "send_email_draft",
   "cancel_email_draft",
@@ -703,6 +704,7 @@ export function normalizeOperatorCoiBatch(
       "policyId",
       "fileId",
       "fileName",
+      "clientFileId",
       "size",
       "certificateId",
       "policyCertificateId",
@@ -3230,6 +3232,30 @@ async function executeToolActionDomain(
         createdByUserId: args.operatorUserId,
       },
     );
+    // File each generated certificate so outbound email drafts can attach it
+    // with attach_client_file_to_draft.
+    const batchRecord = recordValue(batch);
+    if (batchRecord && Array.isArray(batchRecord.results)) {
+      for (const row of batchRecord.results) {
+        const certificate = recordValue(row);
+        if (
+          !certificate ||
+          typeof certificate.fileId !== "string" ||
+          typeof certificate.fileName !== "string"
+        ) {
+          continue;
+        }
+        certificate.clientFileId = await ctx.runMutation(
+          internal.clientFiles.fileGeneratedCertificateInternal,
+          {
+            operatorUserId: args.operatorUserId,
+            orgId: target.orgId,
+            fileId: certificate.fileId as Id<"_storage">,
+            filename: certificate.fileName,
+          },
+        );
+      }
+    }
     return normalizeOperatorCoiBatch(batch);
   }
 

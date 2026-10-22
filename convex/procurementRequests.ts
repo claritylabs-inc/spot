@@ -265,7 +265,7 @@ function policyLabel(policy: Doc<"policies"> | null) {
   };
 }
 
-function requestForwardingAddress(request: Doc<"procurementRequests">) {
+export function requestForwardingAddress(request: Doc<"procurementRequests">) {
   if (!request.inboxToken) throw new Error("Procurement inbox is not ready");
   return procurementForwardingAddress(request.inboxToken, getAgentDomain());
 }

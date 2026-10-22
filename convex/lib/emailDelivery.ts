@@ -4,7 +4,7 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { markdownToHtml, stripMarkdown } from "./aiUtils";
-import { extractEmailAddress } from "./emailAddress";
+import { extractEmailAddress, parseReplyToAddresses } from "./emailAddress";
 import {
   getAgentDomain,
   getEmailDeliveryMode,
@@ -14,7 +14,7 @@ import {
   type ResendResult,
 } from "./resend";
 
-const MAX_EMAIL_SIZE = 38 * 1024 * 1024;
+export const MAX_EMAIL_SIZE = 38 * 1024 * 1024;
 
 export type EmailAttachmentMeta = {
   filename: string;
@@ -92,9 +92,9 @@ export function buildPendingEmailResendPayload(
   }
   headers["Message-ID"] = options.outboundMessageId;
 
-  const replyTo = pending.replyTo;
+  const replyTo = parseReplyToAddresses(pending.replyTo);
   const retiredDomains = getLegacyAgentDomains();
-  const senderAddresses = [from, replyTo];
+  const senderAddresses = [from, ...replyTo];
   if (
     senderAddresses.some((value) => {
       const domain = extractEmailAddress(value)?.split("@")[1];
@@ -116,8 +116,12 @@ export function buildPendingEmailResendPayload(
 
   if (pending.ccAddresses?.length) payload.cc = pending.ccAddresses;
   if (pending.bccAddresses?.length) payload.bcc = pending.bccAddresses;
-  if (replyTo && replyTo !== options.threadEmail) {
-    payload.reply_to = replyTo;
+  const outboundReplyTo = replyTo.filter(
+    (address) => address !== options.threadEmail,
+  );
+  if (outboundReplyTo.length > 0) {
+    payload.reply_to =
+      outboundReplyTo.length === 1 ? outboundReplyTo[0] : outboundReplyTo;
   }
 
   return payload;

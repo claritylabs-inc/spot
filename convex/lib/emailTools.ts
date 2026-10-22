@@ -14,7 +14,11 @@ import {
   sourceExplicitlyNamesEmailAddress,
 } from "./emailSendAuthorization";
 import { cleanAgentMarkdownForTransport } from "./transportRenderers";
-import { buildEmailPayload, type EmailAttachmentMeta } from "./emailDelivery";
+import {
+  MAX_EMAIL_SIZE,
+  buildEmailPayload,
+  type EmailAttachmentMeta,
+} from "./emailDelivery";
 import { buildEmailSignature, getEmailAgentFromName } from "./emailIdentity";
 import { EMAIL_FAMILY_GUIDANCE } from "./channelStyle";
 import {
@@ -284,6 +288,11 @@ const policySchema = z.object({
 const fileSchema = z.object({
   draftId: z.string(),
   fileId: z.string(),
+  filename: z.string().optional(),
+});
+const clientFileSchema = z.object({
+  draftId: z.string(),
+  clientFileId: z.string(),
   filename: z.string().optional(),
 });
 const coiSchema = z.object({
@@ -735,6 +744,49 @@ export function buildEmailToolExecutors(
     return resultForDraft(updated, updated.sendBlockedReason, message);
   }
 
+  function isAttached(draft: Draft, fileId: string) {
+    return Boolean(
+      draft.attachments?.some(
+        (attachment) => String(attachment.fileId) === fileId,
+      ),
+    );
+  }
+
+  // Shared by every "attach an existing file" tool: COI-only, size, and
+  // duplicate rules live here once.
+  async function attachFile(
+    draft: Draft,
+    key: string,
+    found: EmailAttachmentMeta,
+    filename?: string,
+  ): Promise<EmailToolResult> {
+    const isCoi = countCoiAttachments([found]) > 0;
+    if (countCoiAttachments(draft.attachments) > 0 && !isCoi)
+      return failedAttachment(
+        draft,
+        key,
+        "Skipped uploaded file because COI delivery requests should attach only the generated COI.",
+      );
+    const encodedSize = [...(draft.attachments ?? []), found].reduce(
+      (total, attachment) => total + Math.ceil(attachment.size / 3) * 4,
+      0,
+    );
+    if (encodedSize > MAX_EMAIL_SIZE)
+      return failedAttachment(
+        draft,
+        key,
+        "Attachments would be too large to send in one email.",
+      );
+    const content = draftContent(draft);
+    const name = filename ?? found.filename;
+    content.attachments.push({
+      ...found,
+      filename: name,
+      kind: found.kind ?? (isCoi ? "coi" : "uploaded_file"),
+    });
+    return attached(draft, key, content, `Attached uploaded file: ${name}`);
+  }
+
   function attachmentExecutors(
     attachments: EmailAttachmentMeta[],
     policyIds: Set<Id<"policies">>,
@@ -929,11 +981,7 @@ export function buildEmailToolExecutors(
         async (input: z.infer<typeof fileSchema>): Promise<EmailToolResult> => {
           const draft = await getDraft(input.draftId);
           assertEditable(draft);
-          if (
-            draft.attachments?.some(
-              (attachment) => String(attachment.fileId) === input.fileId,
-            )
-          )
+          if (isAttached(draft, input.fileId))
             return resultForDraft(
               draft,
               undefined,
@@ -960,25 +1008,38 @@ export function buildEmailToolExecutors(
               key,
               "That uploaded file is not available in this conversation.",
             );
-          const isCoi = countCoiAttachments([found]) > 0;
-          if (countCoiAttachments(draft.attachments) > 0 && !isCoi)
+          return attachFile(draft, key, found, input.filename);
+        },
+      ),
+    },
+    attach_client_file_to_draft: {
+      description:
+        "Attach an existing file from this client organization's stored files to a saved draft, including a certificate saved there by generate_coi.",
+      inputSchema: clientFileSchema,
+      execute: serialized(
+        async (
+          input: z.infer<typeof clientFileSchema>,
+        ): Promise<EmailToolResult> => {
+          const draft = await getDraft(input.draftId);
+          assertEditable(draft);
+          const key = `client_file:${input.clientFileId}`;
+          const file = await ctx.runQuery(
+            internal.clientFiles.getForEmailAttachmentInternal,
+            { orgId: context.orgId, clientFileId: input.clientFileId },
+          );
+          if (!file)
             return failedAttachment(
               draft,
               key,
-              "Skipped uploaded file because COI delivery requests should attach only the generated COI.",
+              "That client file was not found for this organization.",
             );
-          const content = draftContent(draft);
-          content.attachments.push({
-            ...found,
-            filename: input.filename ?? found.filename,
-            kind: found.kind ?? (isCoi ? "coi" : "uploaded_file"),
-          });
-          return attached(
-            draft,
-            key,
-            content,
-            `Attached uploaded file: ${input.filename ?? found.filename}`,
-          );
+          if (isAttached(draft, String(file.fileId)))
+            return resultForDraft(
+              draft,
+              undefined,
+              "Client file is already attached.",
+            );
+          return attachFile(draft, key, file, input.filename);
         },
       ),
     },

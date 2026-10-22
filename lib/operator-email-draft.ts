@@ -13,6 +13,7 @@ export type OperatorEmailDraftView = {
   to: string[];
   cc: string[];
   bcc: string[];
+  replyTo: string[];
   from?: string;
   html?: string;
   text: string;

@@ -20,6 +20,7 @@ export const OPERATOR_EMAIL_TOOL_NAMES = new Set([
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
+  "attach_client_file_to_draft",
   "list_email_drafts",
   "send_email_draft",
   "cancel_email_draft",
@@ -82,6 +83,10 @@ export async function runOperatorEmailTool(
       threadId: args.threadId,
       orgId: typeof input.orgId === "string" ? input.orgId : undefined,
       draftId: typeof input.draftId === "string" ? input.draftId : undefined,
+      procurementRequestId:
+        typeof input.procurementRequestId === "string"
+          ? input.procurementRequestId
+          : undefined,
       write: true,
     },
   );
@@ -99,6 +104,7 @@ export async function runOperatorEmailTool(
     channel: "web",
     fromHeader: identity.fromHeader,
     agentAddress: identity.agentAddress,
+    replyTo: sender.replyTo.length ? sender.replyTo.join(", ") : undefined,
     operator: {
       threadId: args.threadId,
       messageId: args.messageId,
@@ -112,7 +118,7 @@ export async function runOperatorEmailTool(
       : undefined,
   };
   const executors = buildEmailToolExecutors(ctx, context);
-  const { orgId: _orgId, ...fields } = input;
+  const { orgId: _orgId, procurementRequestId: _requestId, ...fields } = input;
   const result = await (async (): Promise<EmailToolResult> => {
     switch (args.toolName) {
       case "draft_email":
@@ -124,6 +130,8 @@ export async function runOperatorEmailTool(
         return executors.update_email_draft.execute(fields as never);
       case "attach_policy_pdf_to_draft":
         return executors.attach_policy_pdf_to_draft.execute(fields as never);
+      case "attach_client_file_to_draft":
+        return executors.attach_client_file_to_draft.execute(fields as never);
       case "send_email_draft":
         return executors.send_email_draft.execute({
           draftId: String(input.draftId),

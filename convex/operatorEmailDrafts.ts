@@ -11,11 +11,12 @@ import {
 } from "./_generated/server";
 import { pendingEmailDraftFingerprint } from "./lib/actionConfirmationFingerprint";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
-import { extractEmailAddress } from "./lib/emailAddress";
+import { extractEmailAddress, parseReplyToAddresses } from "./lib/emailAddress";
 import {
   requireOperator,
   requireOperatorForUser,
 } from "./lib/operatorIdentity";
+import { requestForwardingAddress } from "./procurementRequests";
 
 const MAX_MESSAGES_PER_QUERY = 50;
 const MAX_DRAFTS_PER_MESSAGE = 10;
@@ -54,6 +55,7 @@ function toDraftView(
     to: draft.recipientEmail ? [draft.recipientEmail] : [],
     cc: draft.ccAddresses ?? [],
     bcc: draft.bccAddresses ?? [],
+    replyTo: parseReplyToAddresses(draft.replyTo),
     from: draft.fromHeader,
     html: draft.renderedHtml,
     text: draft.renderedText || draft.emailBody,
@@ -167,6 +169,7 @@ export const resolveSenderInternal = internalQuery({
     threadId: v.id("operatorAgentThreads"),
     orgId: v.optional(v.string()),
     draftId: v.optional(v.string()),
+    procurementRequestId: v.optional(v.string()),
     write: v.boolean(),
   },
   handler: async (ctx, args) => {
@@ -182,6 +185,7 @@ export const resolveSenderInternal = internalQuery({
         "orgId must be an exact client organization ID from search_organizations or get_procurement_request",
       );
     }
+    let existingReplyTo: string[] = [];
     if (args.draftId) {
       const draftId = ctx.db.normalizeId("pendingEmails", args.draftId);
       const draft = draftId ? await ctx.db.get(draftId) : null;
@@ -191,6 +195,7 @@ export const resolveSenderInternal = internalQuery({
         );
       }
       orgId = draft.orgId;
+      existingReplyTo = parseReplyToAddresses(draft.replyTo);
     }
     const organization = orgId ? await ctx.db.get(orgId) : null;
     if (
@@ -203,11 +208,41 @@ export const resolveSenderInternal = internalQuery({
       );
     }
     const user = await ctx.db.get(operator.userId);
+    const operatorEmail = extractEmailAddress(user?.email) ?? undefined;
+    // Replies go to the operator and, for a procurement request, its
+    // forwarding address, which imports the reply without invoking the client
+    // agent. A revision that names no request keeps the draft's Reply-To.
+    let replyTo = existingReplyTo.length
+      ? existingReplyTo
+      : operatorEmail
+        ? [operatorEmail]
+        : [];
+    if (args.procurementRequestId) {
+      const requestId = ctx.db.normalizeId(
+        "procurementRequests",
+        args.procurementRequestId,
+      );
+      const request = requestId ? await ctx.db.get(requestId) : null;
+      if (
+        !request ||
+        request.deletedAt !== undefined ||
+        request.clientOrgId !== organization._id
+      ) {
+        throw new Error(
+          "Procurement request not found for this client organization. Use an exact procurementRequestId from get_procurement_request.",
+        );
+      }
+      replyTo = [
+        ...(operatorEmail ? [operatorEmail] : []),
+        requestForwardingAddress(request),
+      ];
+    }
     return {
       orgId: organization._id,
       orgName: organization.name,
       agentHandle: organization.agentHandle,
       operatorName: user?.name?.trim() || undefined,
+      replyTo,
     };
   },
 });
@@ -325,6 +360,9 @@ function operatorEmailSendSummary(
     `To: ${draft.recipientEmail}`,
     draft.ccAddresses?.length ? `Cc: ${draft.ccAddresses.join(", ")}` : null,
     draft.bccAddresses?.length ? `Bcc: ${draft.bccAddresses.join(", ")}` : null,
+    draft.replyTo
+      ? `Reply-To: ${parseReplyToAddresses(draft.replyTo).join(", ")}`
+      : null,
     `Subject: ${draft.subject}`,
     draft.attachments?.length
       ? `Attachments: ${draft.attachments.map(({ filename }) => filename).join(", ")}`

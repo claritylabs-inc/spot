@@ -79,7 +79,9 @@ export type OperatorToolFamily = keyof typeof OPERATOR_TOOL_FAMILIES;
 const OUTBOUND_EMAIL_GUIDANCE = `${EMAIL_FAMILY_GUIDANCE}
 
 OPERATOR OUTBOUND EMAIL:
-These tools draft and send email as Spot for one exact client organization. The email goes from that client's Spot agent address and is signed with your name; replies come back to that Spot address. There is no requester recipient here: always pass the recipient's exact address in "to", and only attach_policy_pdf_to_draft is available for attachments.
+These tools draft and send email as Spot for one exact client organization. The email goes from that client's Spot agent address and is signed with your name; replies go to the operator's own email and, when you pass procurementRequestId, to that request's forwarding address (which imports the reply into the request without invoking the client's Spot agent). There is no requester recipient here: always pass the recipient's exact address in "to".
+When the email concerns a procurement request, always pass its procurementRequestId (with the same orgId) to draft_email so replies are filed on that request; update_email_draft keeps the draft's reply routing unless you pass a new procurementRequestId.
+Attachments: attach_policy_pdf_to_draft for an explicitly requested original policy PDF, and attach_client_file_to_draft for an exact stored client file (list_client_files). To send a certificate of insurance, first call generate_coi (it needs the operator's exact approval); its result gives each certificate's clientFileId, then attach that file with attach_client_file_to_draft. Do not describe a certificate or file as attached until the tool returns.
 Resolve recipients and the target organization from records, never from memory. For the applicant on a procurement request use applicantContact (name, email, phone) from get_procurement_request; for a provider use its recorded contact. Pass the request's client organization ID as orgId. If no address is on record, ask the operator for it. Never invent an address, and never leave placeholders such as [Contact Name], [Your Name] or bracketed fields in a draft; use the real name from the record or leave the greeting generic.
 When asked to request missing information, read the request and application first, then ask only for what is actually missing, short and prioritized (the few items that unblock the work most, grouped and in plain words). Do not restate what we already have.
 Draft first. "Let me see it", "before you send" or any review wording means call draft_email only; send_email_draft requires an explicit current instruction to send. The operator sees the draft below your reply, so summarize it in a sentence (recipient, subject, what it asks) instead of repeating the body, and revise with update_email_draft when asked. send_email_draft asks the operator to approve the complete email; report it as sent only when the tool returns status "sent".`;
@@ -1200,6 +1202,11 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       orgId: organizationId.describe(
         "Exact client organization ID the email is sent on behalf of, from search_organizations or get_procurement_request",
       ),
+      procurementRequestId: omittable(
+        procurementRequestId.describe(
+          "Exact procurement request ID of this client when the email concerns that request; replies are then also routed to the request's forwarding address",
+        ),
+      ),
       to: operatorEmailAddress.describe("Exact recipient email address"),
       cc: omittable(z.array(operatorEmailAddress).max(10)),
       bcc: omittable(z.array(operatorEmailAddress).max(10)),
@@ -1221,6 +1228,11 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       "Replace the content of one unsent draft from this conversation. Omitted cc, bcc and attachments are cleared; pass attachmentFileIds to keep existing attachments. Any edit invalidates a previous approval to send.",
     inputSchema: z.object({
       draftId: z.string().min(1).describe("Exact draft ID"),
+      procurementRequestId: omittable(
+        procurementRequestId.describe(
+          "Exact procurement request ID to route replies to; omit to keep the draft's current reply routing",
+        ),
+      ),
       to: omittable(operatorEmailAddress),
       cc: omittable(z.array(operatorEmailAddress).max(10)),
       bcc: omittable(z.array(operatorEmailAddress).max(10)),
@@ -1261,6 +1273,24 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: (input) => ({ kind: "email_draft", id: input.draftId }),
     summarize: (input) =>
       `Attach original policy ${input.policyId} to email draft ${input.draftId}`,
+  }),
+  attach_client_file_to_draft: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description:
+      "Attach one exact stored client file (from list_client_files, or the clientFileId returned by generate_coi) to an unsent draft. The file must belong to the draft's client organization. Attachment size and duplicate checks apply.",
+    inputSchema: z.object({
+      draftId: z.string().min(1).describe("Exact draft ID"),
+      clientFileId,
+    }),
+    capability: "operator.email.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: (input) => ({ kind: "email_draft", id: input.draftId }),
+    summarize: (input) =>
+      `Attach client file ${input.clientFileId} to email draft ${input.draftId}`,
   }),
   list_email_drafts: defineOperatorTool({
     family: "outbound_email",

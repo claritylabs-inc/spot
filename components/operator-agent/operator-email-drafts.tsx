@@ -199,6 +199,10 @@ export function OperatorEmailDraftPanel({
           <EmailHeaderRow label="Cc" value={formatEmailAddressList(draft.cc)} />
           <EmailHeaderRow label="Bcc" value={formatEmailAddressList(draft.bcc)} />
           <EmailHeaderRow
+            label="Reply-To"
+            value={formatEmailAddressList(draft.replyTo)}
+          />
+          <EmailHeaderRow
             label="Client"
             value={draft.organizationName ?? null}
           />
