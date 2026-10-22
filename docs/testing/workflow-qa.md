@@ -2281,3 +2281,9 @@ Integrated concurrent request-geography prompting and shared coverage mappings.
 The new nationwide/exception predicate is shared by both manual matching and
 outreach fit classification. Corrected unsupported row-layout props without
 changing the primitive; the inspected wrapping layout is preserved.
+
+Final integrated root/Convex typechecking is blocked by references to the absent
+`convex/actions/providerOutreach.ts` module in concurrent outreach commits. The
+matching and geography changes have no reported type errors after removing the
+unsupported layout props. Touched-file lint and local deployment passed. This
+unrelated missing implementation was not replaced with a stub or phantom API.
