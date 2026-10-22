@@ -12,6 +12,7 @@ import {
 } from "./lib/messageActivity";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
+import { stripLeakedToolCallText } from "./lib/leakedToolCallText";
 import { internal } from "./_generated/api";
 import {
   httpAction,
@@ -253,9 +254,31 @@ export const finish = internalMutation({
       internal.routerJobs.cleanup,
       { id: row._id },
     );
+    await wakeOperatorRun(ctx, row.invocationKey);
     return true;
   },
 });
+
+// Operator steps poll their router job; waking the queued run as soon as the
+// job ends avoids waiting out the fallback poll. A duplicate or stale wake is
+// harmless: markRunStartedInternal only starts a queued run.
+async function wakeOperatorRun(ctx: MutationCtx, invocationKey: string) {
+  const owner = /^operator:([^:]+):(plan|\d+)/.exec(invocationKey);
+  const runId = owner && ctx.db.normalizeId("operatorAgentRuns", owner[1]);
+  const run = runId ? await ctx.db.get(runId) : null;
+  if (
+    !owner ||
+    !run ||
+    run.status !== "queued" ||
+    run.cancellationRequestedAt ||
+    (owner[2] !== "plan" &&
+      (run.checkpoint?.iteration ?? 0) !== Number(owner[2]))
+  )
+    return;
+  await ctx.scheduler.runAfter(0, internal.operatorAgentRunner.run, {
+    runId: run._id,
+  });
+}
 
 export async function cancelRouterJobForInvocation(
   ctx: MutationCtx,
@@ -546,7 +569,8 @@ export const progress = internalMutation({
       );
     }
     await ctx.db.patch(row.streamTarget, {
-      content: args.text,
+      // A tool call written as text must never stream to the operator.
+      content: stripLeakedToolCallText(args.text),
       ...(activity ? { activity } : {}),
     });
     return true;

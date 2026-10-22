@@ -5577,7 +5577,14 @@ export const getRunContextInternal = internalQuery({
         ),
       },
     });
-    return { run, thread, messages: messages.reverse(), toolNames };
+    return {
+      run,
+      thread,
+      messages: messages.reverse(),
+      toolNames,
+      operatorName: operator.user.name,
+      operatorEmail: operator.user.email,
+    };
   },
 });
 
@@ -6117,9 +6124,9 @@ export const recordPlanningAssessmentInternal = internalMutation({
       throw new Error("Invalid planning probability");
     if (
       !args.assessment.required &&
-      probabilities.some((p) => p === null || p > 1 - jevProceedThreshold())
+      probabilities.some((p) => p !== null && p >= jevProceedThreshold())
     )
-      throw new Error("Uncertain workflows require a plan");
+      throw new Error("Confident multi-step workflows require a plan");
     await ctx.db.patch(run._id, {
       planningAssessment: args.assessment,
       updatedAt: dayjs().valueOf(),
@@ -6160,11 +6167,14 @@ export const recordExecutionPlanInternal = internalMutation({
   },
 });
 
+const OPERATOR_ROUTER_FALLBACK_POLL_MS = 10_000;
+
 export const waitForRouterInternal = internalMutation({
   args: {
     runId: v.id("operatorAgentRuns"),
     expectedRunnerAttempt: v.optional(v.number()),
     expectedCheckpointIteration: v.number(),
+    families: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
@@ -6179,11 +6189,26 @@ export const waitForRouterInternal = internalMutation({
       return;
     await ctx.db.patch(run._id, {
       status: "queued",
+      // Re-runs while the router job is pending reuse the families chosen for it.
+      ...(args.families
+        ? {
+            checkpoint: {
+              executionCount: 0,
+              ...run.checkpoint,
+              iteration: args.expectedCheckpointIteration,
+              families: args.families,
+            },
+          }
+        : {}),
       updatedAt: dayjs().valueOf(),
     });
-    await ctx.scheduler.runAfter(2_000, internal.operatorAgentRunner.run, {
-      runId: run._id,
-    });
+    // routerJobs.finish wakes the run when its job ends; this slower poll only
+    // recovers a lost wake-up.
+    await ctx.scheduler.runAfter(
+      OPERATOR_ROUTER_FALLBACK_POLL_MS,
+      internal.operatorAgentRunner.run,
+      { runId: run._id },
+    );
   },
 });
 
@@ -6228,6 +6253,7 @@ export const continueRunInternal = internalMutation({
     expectedRunnerAttempt: v.optional(v.number()),
     expectedCheckpointIteration: v.optional(v.number()),
     modelContinuationStorageId: v.optional(v.id("_storage")),
+    families: v.optional(v.array(v.string())),
     summary: v.string(),
     usedTools: v.array(v.string()),
     toolCalls: v.array(
@@ -6293,6 +6319,7 @@ export const continueRunInternal = internalMutation({
           (run.checkpoint?.executionCount ?? 0) + args.toolCalls.length,
         summary: args.summary.slice(-6_000),
         lastToolName: args.usedTools.at(-1),
+        families: args.families ?? run.checkpoint?.families,
       },
       updatedAt: now,
     });

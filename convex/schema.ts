@@ -4677,6 +4677,8 @@ export default defineSchema({
         lastToolName: v.optional(v.string()),
         pendingConfirmationId: v.optional(v.id("operatorAgentConfirmations")),
         routerRetryCount: v.optional(v.number()),
+        // Tool families chosen once per run and reused on later iterations.
+        families: v.optional(v.array(v.string())),
       }),
     ),
     cancellationRequestedAt: v.optional(v.number()),

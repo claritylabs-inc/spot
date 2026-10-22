@@ -1,6 +1,7 @@
 import type { JSONValue, ModelMessage } from "ai";
 import { parseWorkflowOutcome } from "./workflows/types";
 import { slackThreadContextText } from "./slackThreadContext";
+import { stripLeakedToolCallText } from "./leakedToolCallText";
 
 export type AgentToolSurface = "web" | "email" | "imessage" | "slack" | "mcp";
 
@@ -200,7 +201,9 @@ export function buildTextModelHistory(
         { role: "user", content },
       ];
     }
-    if (message.role !== "agent" || !message.content.trim()) return [];
+    // Earlier answers that leaked a tool call as text must not teach the model to repeat it.
+    const agentContent = stripLeakedToolCallText(message.content);
+    if (message.role !== "agent" || !agentContent.trim()) return [];
     const privateHistory = buildPrivateAgentHistoryMetadata({
       toolArtifacts: message.toolArtifacts,
       usedTools: message.usedTools,
@@ -209,7 +212,7 @@ export function buildTextModelHistory(
     return [
       {
         role: "assistant",
-        content: message.content,
+        content: agentContent,
         ...(privateHistory
           ? { providerOptions: { spot: { privateHistory } } }
           : {}),
