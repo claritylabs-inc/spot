@@ -8,6 +8,7 @@ import {
   type Ref,
 } from "react";
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 
@@ -298,6 +299,114 @@ function mailboxList(mailboxes: ForwardedMailbox[] | undefined) {
     .map(mailboxLabel)
     .filter((value): value is string => Boolean(value))
     .join(", ");
+}
+
+export type ProcurementEmailMessageData = NonNullable<
+  FunctionReturnType<typeof api.procurementRequests.getEmailThread>
+>["messages"][number];
+
+/** One stored message with its forwarded history and files; plain text only. */
+export function ProcurementEmailMessage({
+  message,
+}: {
+  message: ProcurementEmailMessageData;
+}) {
+  const forwarded = message.forwarded as ForwardedEmail | undefined;
+  const forwardedEmail = forwarded?.email;
+  return (
+    <OperationalPanel as="div">
+      <OperationalPanelHeader
+        title={message.fromName ?? message.fromEmail}
+        description={formatDisplayDateTime(message.receivedAt, "—")}
+        action={<Mail className="size-4 text-muted-foreground" />}
+      />
+      <OperationalPanelBody className="space-y-4">
+        <div
+          className={`space-y-1 text-muted-foreground ${typeStyle("caption.default")}`}
+        >
+          <p>
+            <span className="text-foreground">From:</span>{" "}
+            {message.fromEmail}
+          </p>
+          <p>
+            <span className="text-foreground">To:</span>{" "}
+            {message.toAddresses.join(", ") || "—"}
+          </p>
+          {message.ccAddresses.length > 0 ? (
+            <p>
+              <span className="text-foreground">Cc:</span>{" "}
+              {message.ccAddresses.join(", ")}
+            </p>
+          ) : null}
+        </div>
+
+        {forwardedEmail ? (
+          <div className="space-y-1 border-y border-border py-3">
+            <p
+              className={`text-foreground ${typeStyle("body.medium")}`}
+            >
+              Forwarded conversation
+            </p>
+            <div
+              className={`space-y-1 text-muted-foreground ${typeStyle("caption.default")}`}
+            >
+              {mailboxLabel(forwardedEmail.from) ? (
+                <p>From: {mailboxLabel(forwardedEmail.from)}</p>
+              ) : null}
+              {mailboxList(forwardedEmail.to) ? (
+                <p>To: {mailboxList(forwardedEmail.to)}</p>
+              ) : null}
+              {mailboxList(forwardedEmail.cc) ? (
+                <p>Cc: {mailboxList(forwardedEmail.cc)}</p>
+              ) : null}
+              {forwardedEmail.subject ? (
+                <p>Subject: {forwardedEmail.subject}</p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        <p
+          className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
+        >
+          {message.currentText || "(No forwarder note)"}
+        </p>
+
+        {forwardedEmail?.body ? (
+          <div className="border-t border-border pt-3">
+            <p
+              className={`mb-2 text-muted-foreground ${typeStyle("caption.default")}`}
+            >
+              Forwarded message
+            </p>
+            <p
+              className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
+            >
+              {forwardedEmail.body}
+            </p>
+          </div>
+        ) : null}
+
+        {message.files.filter(Boolean).length > 0 ? (
+          <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+            {message.files.flatMap((file) =>
+              file?.url ? (
+                <FileDownloadButton
+                  key={file.clientFileId}
+                  href={file.url}
+                  fileName={file.name}
+                >
+                  {file.name}
+                </FileDownloadButton>
+              ) : (
+                []
+              ),
+            )}
+          </div>
+        ) : null}
+      </OperationalPanelBody>
+    </OperationalPanel>
+  );
 }
 
 export type ProcurementEmailDrawerHandle = { save: () => Promise<boolean> };
@@ -595,9 +704,16 @@ export function ProcurementEmailDrawer({
                       },
                     })
                   }
-                  disabled={readOnly}
+                  disabled={readOnly || !!result.thread.resendThreadId}
                   placeholder="Choose request"
                 />
+                {result.thread.resendThreadId ? (
+                  <span
+                    className={`block text-muted-foreground ${typeStyle("caption.default")}`}
+                  >
+                    Provider outreach stays with the request it was sent from.
+                  </span>
+                ) : null}
               </label>
               <div className="border-t border-border pt-3">
                 <p
@@ -732,104 +848,9 @@ export function ProcurementEmailDrawer({
           </OperationalPanel>
 
           <div className="space-y-3">
-            {result.messages.map((message) => {
-              const forwarded = message.forwarded as ForwardedEmail | undefined;
-              const forwardedEmail = forwarded?.email;
-              return (
-                <OperationalPanel key={message._id} as="div">
-                  <OperationalPanelHeader
-                    title={message.fromName ?? message.fromEmail}
-                    description={formatDisplayDateTime(message.receivedAt, "—")}
-                    action={<Mail className="size-4 text-muted-foreground" />}
-                  />
-                  <OperationalPanelBody className="space-y-4">
-                    <div
-                      className={`space-y-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                    >
-                      <p>
-                        <span className="text-foreground">From:</span>{" "}
-                        {message.fromEmail}
-                      </p>
-                      <p>
-                        <span className="text-foreground">To:</span>{" "}
-                        {message.toAddresses.join(", ") || "—"}
-                      </p>
-                      {message.ccAddresses.length > 0 ? (
-                        <p>
-                          <span className="text-foreground">Cc:</span>{" "}
-                          {message.ccAddresses.join(", ")}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    {forwardedEmail ? (
-                      <div className="space-y-1 border-y border-border py-3">
-                        <p
-                          className={`text-foreground ${typeStyle("body.medium")}`}
-                        >
-                          Forwarded conversation
-                        </p>
-                        <div
-                          className={`space-y-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                        >
-                          {mailboxLabel(forwardedEmail.from) ? (
-                            <p>From: {mailboxLabel(forwardedEmail.from)}</p>
-                          ) : null}
-                          {mailboxList(forwardedEmail.to) ? (
-                            <p>To: {mailboxList(forwardedEmail.to)}</p>
-                          ) : null}
-                          {mailboxList(forwardedEmail.cc) ? (
-                            <p>Cc: {mailboxList(forwardedEmail.cc)}</p>
-                          ) : null}
-                          {forwardedEmail.subject ? (
-                            <p>Subject: {forwardedEmail.subject}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <p
-                      className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
-                    >
-                      {message.currentText || "(No forwarder note)"}
-                    </p>
-
-                    {forwardedEmail?.body ? (
-                      <div className="border-t border-border pt-3">
-                        <p
-                          className={`mb-2 text-muted-foreground ${typeStyle("caption.default")}`}
-                        >
-                          Forwarded message
-                        </p>
-                        <p
-                          className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
-                        >
-                          {forwardedEmail.body}
-                        </p>
-                      </div>
-                    ) : null}
-
-                    {message.files.filter(Boolean).length > 0 ? (
-                      <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                        {message.files.flatMap((file) =>
-                          file?.url ? (
-                            <FileDownloadButton
-                              key={file.clientFileId}
-                              href={file.url}
-                              fileName={file.name}
-                            >
-                              {file.name}
-                            </FileDownloadButton>
-                          ) : (
-                            []
-                          ),
-                        )}
-                      </div>
-                    ) : null}
-                  </OperationalPanelBody>
-                </OperationalPanel>
-              );
-            })}
+            {result.messages.map((message) => (
+              <ProcurementEmailMessage key={message._id} message={message} />
+            ))}
           </div>
         </div>
       )}
