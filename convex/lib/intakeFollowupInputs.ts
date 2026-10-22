@@ -49,7 +49,10 @@ export function followupInputCriteria(question: IntakeFollowupQuestion, index: n
           },
         }
       : {}),
-    none: "No available control represents the requested fact exactly",
+    none: {
+      what: "No available control represents the requested fact exactly.",
+      not_for: "A fact that one of the other controls represents exactly",
+    },
   };
 }
 
