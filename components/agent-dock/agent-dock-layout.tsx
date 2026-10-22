@@ -121,59 +121,87 @@ function ResizeHandle({
   );
 }
 
+/** Artifact card width beside the conversation on wide screens. */
+const ARTIFACT_CARD_WIDTH = "min(30rem,42%)";
+
 export function DockBody({
   adapter,
   mode,
   onActions,
   artifactPanelRef,
+  artifactPlacement = "overlay",
+  artifactOpen = false,
 }: {
   adapter: AgentDockAdapter;
   mode: AgentDockMode;
   onActions: (actions: ReactNode) => void;
   artifactPanelRef?: (element: HTMLElement | null) => void;
+  /** `side` opens artifacts as a card beside the chat; `overlay` covers it. */
+  artifactPlacement?: "side" | "overlay";
+  artifactOpen?: boolean;
 }) {
   const dock = useAgentDock();
   const { Chat } = adapter;
   const chatKey = dock.activeThreadId ?? "new";
   return (
-    <div
-      className="relative flex min-h-0 flex-1 flex-col"
-      onClickCapture={(event) => {
-        // Following a link from full screen reveals the page behind the dock.
-        if (mode !== "full" || event.metaKey || event.ctrlKey) return;
-        const link =
-          event.target instanceof Element
-            ? event.target.closest("a[href^='/']")
-            : null;
-        if (link && link.getAttribute("target") !== "_blank") {
-          dock.setMode("expanded");
-        }
-      }}
-    >
-      {dock.view === "history" ? (
-        <AgentDockHistory adapter={adapter} />
-      ) : (
-        <DockErrorBoundary
-          key={chatKey}
-          fallback={
-            <p
-              className={cn(
-                "px-6 py-10 text-center text-muted-foreground",
-                typeStyle("body.default"),
-              )}
-            >
-              This chat is unavailable.
-            </p>
+    <div className="relative flex min-h-0 flex-1">
+      <div
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+        onClickCapture={(event) => {
+          // Following a link from full screen reveals the page behind the dock.
+          if (mode !== "full" || event.metaKey || event.ctrlKey) return;
+          const link =
+            event.target instanceof Element
+              ? event.target.closest("a[href^='/']")
+              : null;
+          if (link && link.getAttribute("target") !== "_blank") {
+            dock.setMode("expanded");
           }
+        }}
+      >
+        {dock.view === "history" ? (
+          <AgentDockHistory adapter={adapter} />
+        ) : (
+          <DockErrorBoundary
+            key={chatKey}
+            fallback={
+              <p
+                className={cn(
+                  "px-6 py-10 text-center text-muted-foreground",
+                  typeStyle("body.default"),
+                )}
+              >
+                This chat is unavailable.
+              </p>
+            }
+          >
+            <Chat
+              threadId={dock.activeThreadId}
+              onThreadCreated={(threadId) => dock.openThread(threadId)}
+              onActions={onActions}
+            />
+          </DockErrorBoundary>
+        )}
+      </div>
+      {artifactPanelRef && artifactPlacement === "side" ? (
+        // The target stays mounted so an artifact can portal in before the
+        // card opens; the card then widens and shifts the chat left.
+        <div
+          className={cn(
+            "shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-out motion-reduce:transition-none",
+            artifactOpen ? "opacity-100" : "pointer-events-none opacity-0",
+          )}
+          style={{ width: artifactOpen ? ARTIFACT_CARD_WIDTH : 0 }}
+          inert={!artifactOpen}
         >
-          <Chat
-            threadId={dock.activeThreadId}
-            onThreadCreated={(threadId) => dock.openThread(threadId)}
-            onActions={onActions}
-          />
-        </DockErrorBoundary>
-      )}
-      {artifactPanelRef ? (
+          <div className="h-full py-2 pr-2">
+            <div
+              ref={artifactPanelRef}
+              className="flex h-full w-full min-w-[20rem] overflow-hidden rounded-xl border border-border bg-background shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_-14px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_24px_-14px_rgba(0,0,0,0.6)]"
+            />
+          </div>
+        </div>
+      ) : artifactPanelRef ? (
         <div
           ref={artifactPanelRef}
           className="absolute inset-0 z-20 flex bg-background empty:hidden"
@@ -194,11 +222,15 @@ export function AgentDockLayout({
   app,
   adapter,
   artifactPanelRef,
+  artifactPlacement,
+  artifactOpen = false,
   detailPanelOpen,
 }: {
   app: ReactNode;
   adapter: AgentDockAdapter | null;
   artifactPanelRef?: (element: HTMLElement | null) => void;
+  artifactPlacement?: "side" | "overlay";
+  artifactOpen?: boolean;
   detailPanelOpen: boolean;
 }) {
   const dock = useAgentDock();
@@ -243,6 +275,15 @@ export function AgentDockLayout({
   const setMode = dock.setMode;
   const wasDetailOpenRef = useRef(detailPanelOpen);
 
+  const wasArtifactOpenRef = useRef(artifactOpen);
+
+  // Artifacts open inside the dock, so a collapsed dock opens to show them.
+  useEffect(() => {
+    const opened = artifactOpen && !wasArtifactOpenRef.current;
+    wasArtifactOpenRef.current = artifactOpen;
+    if (opened && dock.mode === "collapsed") setMode("expanded");
+  }, [artifactOpen, dock.mode, setMode]);
+
   // Detail panels open beside the page, so full screen steps down to show them.
   useEffect(() => {
     const opened = detailPanelOpen && !wasDetailOpenRef.current;
@@ -285,6 +326,8 @@ export function AgentDockLayout({
                 mode={mode}
                 onActions={setActions}
                 artifactPanelRef={artifactPanelRef}
+                artifactPlacement={artifactPlacement}
+                artifactOpen={artifactOpen}
               />
             </motion.div>
           ) : null}

@@ -209,8 +209,7 @@ function ShellFrame({
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const hasPdfPanel = isPdfOpen && !!fileUrl;
   const hasEntityPanel = !!entityPreview;
-  const showArtifactInRightPanel = hasArtifactPanel && isDesktop;
-  const hasRightPanel = hasPageRightPanel || showArtifactInRightPanel;
+  const hasRightPanel = hasPageRightPanel;
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMobileOpen(false));
@@ -272,12 +271,6 @@ function ShellFrame({
               ref={setRightPanelTarget}
               className="flex h-full min-h-0 w-full min-w-0"
             />
-            {showArtifactInRightPanel ? (
-              <div
-                ref={setArtifactPanelTarget}
-                className="absolute inset-0 z-10 flex bg-background"
-              />
-            ) : null}
           </div>
         ) : undefined
       }
@@ -388,7 +381,9 @@ function ShellFrame({
             : clientDockAdapter
           : null
       }
-      artifactPanelRef={isDesktop ? undefined : setArtifactPanelTarget}
+      artifactPanelRef={agentEnabled ? setArtifactPanelTarget : undefined}
+      artifactPlacement={isDesktop ? "side" : "overlay"}
+      artifactOpen={hasArtifactPanel}
       detailPanelOpen={hasRightPanel || hasEntityPanel || hasPdfPanel}
     />
   );
