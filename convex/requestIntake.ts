@@ -863,6 +863,7 @@ export const save = mutation({
           const research = request.intakeCyberResearch;
           const researched = research?.status === "completed" && prefilled.contextHash === `cyber:${research.fingerprint}` &&
             research.sourceKey === intakeCyberResearchKey({ ...request.intakeAnswers, ...args.answers }, args.details) &&
+            jevDecisionBand(prefilled.confidence, "prefill") === "high" &&
             research.suggestions?.some(proposal => proposal.questionId === row.id && proposal.answer === row.answer && proposal.confidence === prefilled.confidence);
           if (!existing && !researched) throw new Error("Invalid inferred answer provenance");
         }
