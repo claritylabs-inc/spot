@@ -49,9 +49,8 @@ export const vehicleBodyType = action({
           criteria: {
             ...Object.fromEntries(Object.entries(BODY_TYPES).map(([key, { what, not_for }]) => [key, { what, not_for }])),
             unknown: {
-              what: "The model is unfamiliar, or it is sold in materially different body styles that the make, model and year do not settle.",
+              what: "The model is unfamiliar, or it is sold in materially different body styles that the make, model and year do not settle, such as a full-size van sold as cargo or passenger versions, or a chassis cab that accepts different bodies.",
               not_for: "A model with one well-known body style",
-              examples: ["A full-size van sold as both cargo and passenger versions", "A chassis cab that accepts different bodies"],
             },
           },
         } },
