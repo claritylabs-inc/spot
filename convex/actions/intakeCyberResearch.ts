@@ -12,7 +12,7 @@ import {
 import { generateObjectForPublicTask } from "../lib/models";
 import { clRouterDecide } from "../lib/clRouterClient";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
-import { jevAtomicConjunction } from "../lib/intakeWorkforcePrefill";
+import { jevAtomicConjunction } from "../lib/jevThreshold";
 import { validateFollowupAnswers } from "../../lib/intake-followups";
 import { parseCalendarDateInput } from "../../lib/date-format";
 

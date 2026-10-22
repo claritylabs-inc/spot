@@ -3,7 +3,7 @@ import type { ActionCtx } from "../_generated/server";
 import { z } from "zod";
 import { generateObjectForPublicTask } from "./models";
 import { clRouterDecide } from "./clRouterClient";
-import { jevDecisionBand } from "./jevThreshold";
+import { jevAtomicConjunction } from "./jevThreshold";
 import { extractRequirementsInParts, requirementExtractionInput, verifyExcerptsOnPageImages } from "../actions/complianceRequirements";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 import type { IntakeFollowupQuestion } from "../../lib/intake-followups";
@@ -52,13 +52,3 @@ function claimVerificationQuestions(index:number):[string,DecisionQuestion][]{
   ];
 }
 
-/**
- * Combines independent atomic Noul probabilities by conjunction: any low component rejects, any uncertain or
- * missing component is uncertain, and a high result reports the actual minimum component probability.
- */
-export function jevAtomicConjunction(probabilities:(number|undefined)[],risk:Parameters<typeof jevDecisionBand>[1]):{decision:"low"|"uncertain"}|{decision:"high";confidence:number}{
-  const bands=probabilities.map(probability=>jevDecisionBand(probability,risk));
-  if(bands.includes("low"))return {decision:"low"};
-  if(bands.includes("uncertain")||!probabilities.length)return {decision:"uncertain"};
-  return {decision:"high",confidence:Math.min(...probabilities as number[])};
-}

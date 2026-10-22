@@ -50,3 +50,14 @@ export function jevChoiceConfidence(answer: {
 }): number {
   return Math.min(answer.confidence, answer.probabilities[answer.choice] ?? 0);
 }
+
+/** Conjunction over atomic checks; confidence is the weakest component, not a joint probability. */
+export function jevAtomicConjunction(
+  probabilities: (number | undefined)[],
+  risk: JevDecisionRisk,
+): { decision: "low" | "uncertain" } | { decision: "high"; confidence: number } {
+  const bands = probabilities.map(probability => jevDecisionBand(probability, risk));
+  if (bands.includes("low")) return { decision: "low" };
+  if (bands.includes("uncertain") || !probabilities.length) return { decision: "uncertain" };
+  return { decision: "high", confidence: Math.min(...probabilities as number[]) };
+}
