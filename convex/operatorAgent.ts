@@ -2724,6 +2724,8 @@ async function executeToolDomain(
           ? input.officeAddress
           : undefined,
       writingCountries: stringList(input.writingCountries),
+      nationwideCountries: stringList(input.nationwideCountries),
+      excludedStates: stringList(input.excludedStates),
       writingStates: stringList(input.writingStates),
       lineOfBusinessCodes: stringList(input.lineOfBusinessCodes),
       source: "agent",
@@ -2740,6 +2742,8 @@ async function executeToolDomain(
           ? input.officeAddress
           : undefined,
       writingCountries: stringList(input.writingCountries),
+      nationwideCountries: stringList(input.nationwideCountries),
+      excludedStates: stringList(input.excludedStates),
       writingStates: stringList(input.writingStates),
       lineOfBusinessCodes: stringList(input.lineOfBusinessCodes),
       name: normalizedOptionalText(input.name),

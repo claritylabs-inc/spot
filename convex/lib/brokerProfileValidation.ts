@@ -242,8 +242,18 @@ export function normalizeBrokerWritingCountries(values: readonly string[]) {
 // Country changes remove regions outside the selected countries. Region-only
 // edits add their countries, preserving compatibility with existing callers.
 export function resolveBrokerAppetite(
-  args: { writingCountries?: string[]; writingStates?: string[] },
-  existing?: { writingCountries?: string[]; writingStates: string[] } | null,
+  args: {
+    writingCountries?: string[];
+    writingStates?: string[];
+    nationwideCountries?: string[];
+    excludedStates?: string[];
+  },
+  existing?: {
+    writingCountries?: string[];
+    writingStates: string[];
+    nationwideCountries?: string[];
+    excludedStates?: string[];
+  } | null,
 ) {
   let writingStates = normalizeBrokerWritingStates(
     args.writingStates ?? existing?.writingStates ?? [],
@@ -254,6 +264,9 @@ export function resolveBrokerAppetite(
           ...new Set([
             ...brokerWritingCountries(existing),
             ...writingStates.map(brokerRegionCountry),
+            ...normalizeBrokerWritingCountries(
+              args.nationwideCountries ?? existing?.nationwideCountries ?? [],
+            ),
           ]),
         ].sort()
       : normalizeBrokerWritingCountries(args.writingCountries);
@@ -272,7 +285,42 @@ export function resolveBrokerAppetite(
       writingCountries.includes(brokerRegionCountry(code)),
     );
   }
-  return { writingCountries, writingStates };
+  const nationwideCountries = normalizeBrokerWritingCountries(
+    args.nationwideCountries ?? existing?.nationwideCountries ?? [],
+  ).filter((code) => writingCountries.includes(code));
+  if (
+    args.nationwideCountries?.some(
+      (code) => !writingCountries.includes(code.trim().toUpperCase()),
+    )
+  )
+    throw new NoWriteInputError(
+      "invalid_nationwide_country",
+      "Select each country before marking it nationwide.",
+    );
+  const excludedStates = normalizeBrokerWritingStates(
+    args.excludedStates ?? existing?.excludedStates ?? [],
+  ).filter((code) => nationwideCountries.includes(brokerRegionCountry(code)));
+  if (
+    args.excludedStates?.some(
+      (code) =>
+        !nationwideCountries.includes(
+          brokerRegionCountry(code.trim().toUpperCase()),
+        ),
+    )
+  )
+    throw new NoWriteInputError(
+      "invalid_excluded_region",
+      "State/province exclusions require nationwide service in that country.",
+    );
+  writingStates = writingStates.filter(
+    (code) => !excludedStates.includes(code),
+  );
+  return {
+    writingCountries,
+    writingStates,
+    nationwideCountries,
+    excludedStates,
+  };
 }
 
 export function normalizeBrokerWritingStates(values: readonly string[]) {
@@ -315,4 +363,30 @@ export function normalizeBrokerLineOfBusinessCodes(
     );
   }
   return lines.sort() as AcordLobCode[];
+}
+
+/** Positive regional evidence and explicit nationwide scope share one meaning on every surface. */
+export function brokerAreaFit(
+  profile: {
+    writingCountries?: string[];
+    writingStates: string[];
+    nationwideCountries?: string[];
+    excludedStates?: string[];
+  },
+  country: string,
+  region?: string,
+): "match" | "unknown" | "excluded" {
+  if (region && profile.excludedStates?.includes(region)) return "excluded";
+  const countries = brokerWritingCountries(profile);
+  if (!countries.length) return "unknown";
+  if (!countries.includes(country)) return "excluded";
+  // A missing region cannot bypass country-wide exceptions.
+  if ((country === "US" || country === "CA") && !region) return "unknown";
+  if (profile.nationwideCountries?.includes(country)) return "match";
+  if (!region || profile.writingStates.includes(region)) return "match";
+  return profile.writingStates.some(
+    (code) => brokerRegionCountry(code) === country,
+  )
+    ? "excluded"
+    : "unknown";
 }

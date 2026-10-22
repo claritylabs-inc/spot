@@ -1655,7 +1655,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   create_broker_network_profile: defineOperatorTool({
     family: "broker_network",
-    version: 5,
+    version: 6,
     description:
       "Register a new external supplier-network insurance provider organization and its network profile with no portal users and no invites. The legacy type=broker organization value covers carriers, MGAs, wholesalers, agencies and producers; record only evidenced roles. Spot-owned brands and domains cannot be registered; treat them as Spot. Search the provider network first and update the existing profile instead when the provider is already registered. Countries use ISO two-letter codes; writing states/provinces use US/Canadian abbreviations and lines use exact ACORD LOBCd values. Creation queues Jev-orchestrated public research to fill missing profile fields; inspect the research outcome before claiming completion.",
     inputSchema: z.object({
@@ -1671,6 +1671,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         z.array(z.enum(BROKER_COUNTRY_CODES)).max(250),
       ).describe(
         "Replacement list of ISO two-letter country codes. Omit to preserve; removing a country removes its regions.",
+      ),
+      nationwideCountries: omittable(
+        z.array(z.enum(BROKER_COUNTRY_CODES)).max(250),
+      ).describe(
+        "Countries with explicitly evidenced nationwide service. Omit to preserve; never infer nationwide service from licensing or an empty region list.",
+      ),
+      excludedStates: omittable(z.array(brokerWritingState).max(64)).describe(
+        "Explicit state/province exceptions to nationwide service. Omit to preserve.",
       ),
       writingStates: omittable(z.array(brokerWritingState).max(64)).describe(
         "Complete supported state/province list using exact US/Canadian codes",
@@ -1689,7 +1697,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   update_broker_network_profile: defineOperatorTool({
     family: "broker_network",
-    version: 5,
+    version: 6,
     description:
       "Update supplied fields on one exact external supplier-network insurance provider profile. Spot-owned identities are rejected. Countries use ISO two-letter codes; writing states/provinces use US/Canadian abbreviations and lines use exact ACORD LOBCd values; omitted fields remain unchanged. Explicit profile edits, including empty lists, take precedence over automated enrichment. Identity edits queue fresh public research.",
     inputSchema: z
@@ -1704,6 +1712,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
           z.array(z.enum(BROKER_COUNTRY_CODES)).max(250),
         ).describe(
           "Replacement list of ISO two-letter country codes. Omit to preserve; removing a country removes its regions.",
+        ),
+        nationwideCountries: omittable(
+          z.array(z.enum(BROKER_COUNTRY_CODES)).max(250),
+        ).describe(
+          "Countries with explicitly evidenced nationwide service. Omit to preserve; never infer nationwide service from licensing or an empty region list.",
+        ),
+        excludedStates: omittable(z.array(brokerWritingState).max(64)).describe(
+          "Explicit state/province exceptions to nationwide service. Omit to preserve.",
         ),
         writingStates: omittable(z.array(brokerWritingState).max(64)).describe(
           "Replacement list of exact US state or Canadian province/territory codes. Omit to preserve the saved list.",

@@ -229,3 +229,12 @@ teams may share an inbox; create deduplication matches both email and name. The 
 read tool exposes these as bounded `networkContacts`; directory lists omit them.
 
 Automated provider outreach is owned by `convex/providerOutreach.ts`, `convex/actions/providerOutreach.ts`, and `convex/lib/providerOutreach*.ts`. Matching shares ACORD coverage mappings and uses typed request facts and provider appetite; unknown fit is excluded from send-all. Direct-operator launches use one Resend Inbox per operator on a dedicated subdomain and one scoped packet link per outreach. Jev independently suggests cadence fields and classifies replies; uncertainty hands replies to the operator. Durable steps fence leases, persist drafts, reuse exact delivery idempotency keys within 23 hours, and never replay unknown inference outcomes. Lifecycle changes stop pending sends. The dedicated signed inbox webhook mirrors procurement email without entering agent ingress. Capture performs no external inbox calls and never claims real delivery. See `docs/architecture/provider-outreach.md` and `docs/testing/provider-outreach-workflow.md`.
+
+Provider service-area appetite supports explicit `nationwideCountries` and
+`excludedStates` alongside countries and individually serviced regions. Never
+infer nationwide scope from empty arrays or licenses alone. The shared resolver
+clears dependent scope/exceptions on country removal; explicit exceptions win.
+`convex/lib/procurementBrokerMatching.ts` owns confirmed/unknown/mismatch
+classification for the operator's manual Auto add providers action. Its compact
+results drawer lists request-relevant verification gaps; unknown providers are
+not auto-added. See `docs/research/provider-geography-2026-10-22.md`.

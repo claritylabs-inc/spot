@@ -1,6 +1,7 @@
 import {
   procurementBrokerCriteria,
-  matchesProcurementBroker,
+  procurementBrokerMatch,
+  procurementMatchAreaLabels,
 } from "./lib/procurementBrokerMatching";
 import { procurementApplicationInputSchema } from "./lib/procurementApplicationInput";
 import { detailsFromAnswers } from "../lib/insurance-intake-details";
@@ -1304,13 +1305,23 @@ export const autoAddBrokers = mutation({
     );
     let added = 0;
     let alreadyAdded = 0;
-    let missingAppetite = 0;
+    let coverageMismatch = 0;
+    let outsideArea = 0;
+    let unavailable = 0;
+    const needsVerification: {
+      brokerOrgId: Id<"organizations">;
+      name: string;
+      reason: string;
+      matchingCodes: string[];
+    }[] = [];
     for (const profile of profiles) {
       if (
         profile.networkStatus === "blacklisted" ||
         profile.networkStatus === "inactive"
-      )
+      ) {
+        unavailable++;
         continue;
+      }
       const broker = await ctx.db.get(profile.brokerOrgId);
       if (
         !broker ||
@@ -1319,25 +1330,35 @@ export const autoAddBrokers = mutation({
         isSpotOwnedBrokerIdentity(broker)
       )
         continue;
-      if (
-        !profile.lineOfBusinessCodes.length ||
-        (!profile.writingStates.length &&
-          criteria.areas.some((area) => !!area.state)) ||
-        (!profile.writingCountries?.length && !profile.writingStates.length)
-      ) {
-        missingAppetite++;
-      }
-      if (!matchesProcurementBroker(profile, criteria)) continue;
-      if (
+      // Existing rows are counted first even if appetite has since changed.
+      const existing =
         addedIds.has(broker._id) ||
         outreaches.some(
           (row) =>
             !row.brokerOrgId &&
             row.brokerName.trim().toLowerCase() ===
               broker.name.trim().toLowerCase(),
-        )
-      ) {
+        );
+      if (existing) {
         alreadyAdded++;
+        continue;
+      }
+      const match = procurementBrokerMatch(profile, criteria);
+      if (match.status === "coverage_mismatch") {
+        coverageMismatch++;
+        continue;
+      }
+      if (match.status === "outside_area") {
+        outsideArea++;
+        continue;
+      }
+      if (match.status === "needs_verification") {
+        needsVerification.push({
+          brokerOrgId: broker._id,
+          name: broker.name,
+          reason: match.reason,
+          matchingCodes: match.matchingCodes,
+        });
         continue;
       }
       await createProcurementOutreachByOperator(ctx, {
@@ -1363,13 +1384,22 @@ export const autoAddBrokers = mutation({
         areas: criteria.areas,
         added,
         alreadyAdded,
-        missingAppetite,
+        needsVerification: needsVerification.length,
+        coverageMismatch,
+        outsideArea,
       },
     });
     return {
       added,
       alreadyAdded,
-      missingAppetite,
+      needsVerification: needsVerification.sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+      coverageMismatch,
+      outsideArea,
+      unavailable,
+      coverageLabels: criteria.coverageLabels,
+      areaLabels: procurementMatchAreaLabels(criteria),
       unmappedCoverages: criteria.unmappedCoverages,
     };
   },
@@ -1425,7 +1455,8 @@ export async function updateProcurementOutreachByOperator(
   });
   if (args.contactUserId !== undefined) {
     if (args.contactUserId) {
-      if (!nextBrokerOrgId) throw new Error("Select a provider before a contact");
+      if (!nextBrokerOrgId)
+        throw new Error("Select a provider before a contact");
       const membership = await ctx.db
         .query("orgMemberships")
         .withIndex("organization_user", (q) =>
@@ -1433,7 +1464,9 @@ export async function updateProcurementOutreachByOperator(
         )
         .unique();
       if (!membership)
-        throw new Error("Provider contact must belong to the selected provider");
+        throw new Error(
+          "Provider contact must belong to the selected provider",
+        );
       const contact = await ctx.db.get(args.contactUserId);
       assertExternalBrokerIdentity({ email: contact?.email });
     }

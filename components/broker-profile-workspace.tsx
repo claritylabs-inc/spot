@@ -14,6 +14,7 @@ import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   AppetiteCountriesField,
+  AppetiteNationwideField,
   AppetiteRegionsField,
 } from "@/components/broker-network/appetite-geography-fields";
 import {
@@ -100,6 +101,12 @@ function BrokerProfileEditor({
   const [writingCountries, setWritingCountries] = useState(() =>
     brokerWritingCountries(profile.profile),
   );
+  const [nationwideCountries, setNationwideCountries] = useState(
+    profile.profile?.nationwideCountries ?? [],
+  );
+  const [excludedStates, setExcludedStates] = useState(
+    profile.profile?.excludedStates ?? [],
+  );
   const [writingStates, setWritingStates] = useState(
     profile.profile?.writingStates ?? [],
   );
@@ -116,6 +123,8 @@ function BrokerProfileEditor({
     state,
     postalCode,
     writingCountries,
+    nationwideCountries,
+    excludedStates,
     writingStates,
     lines,
   };
@@ -163,6 +172,14 @@ function BrokerProfileEditor({
         writingCountries:
           next.writingCountries !== previous.writingCountries
             ? next.writingCountries
+            : undefined,
+        nationwideCountries:
+          next.nationwideCountries !== previous.nationwideCountries
+            ? next.nationwideCountries
+            : undefined,
+        excludedStates:
+          next.excludedStates !== previous.excludedStates
+            ? next.excludedStates
             : undefined,
         writingStates:
           next.writingStates !== previous.writingStates
@@ -324,7 +341,30 @@ function BrokerProfileEditor({
               disabled={disabled}
               onChange={(countries) => {
                 setWritingCountries(countries);
+                setNationwideCountries((current) =>
+                  current.filter((code) => countries.includes(code)),
+                );
+                setExcludedStates((current) =>
+                  current.filter((code) =>
+                    countries.includes(brokerRegionCountry(code)),
+                  ),
+                );
                 setWritingStates((current) =>
+                  current.filter((code) =>
+                    countries.includes(brokerRegionCountry(code)),
+                  ),
+                );
+              }}
+            />
+          </Field>
+          <Field label="Nationwide service">
+            <AppetiteNationwideField
+              countries={writingCountries}
+              value={nationwideCountries}
+              disabled={disabled}
+              onChange={(countries) => {
+                setNationwideCountries(countries);
+                setExcludedStates((current) =>
                   current.filter((code) =>
                     countries.includes(brokerRegionCountry(code)),
                   ),
@@ -342,6 +382,26 @@ function BrokerProfileEditor({
           </Field>
         </OperationalPanelBody>
       </OperationalPanel>
+      {!!nationwideCountries.length && (
+        <OperationalPanel>
+          <OperationalPanelBody>
+            <Field label="Excluded states / provinces">
+              <AppetiteRegionsField
+                countries={nationwideCountries}
+                ariaLabel="Excluded states / provinces"
+                value={excludedStates}
+                disabled={disabled}
+                onChange={(states) => {
+                  setExcludedStates(states);
+                  setWritingStates((current) =>
+                    current.filter((code) => !states.includes(code)),
+                  );
+                }}
+              />
+            </Field>
+          </OperationalPanelBody>
+        </OperationalPanel>
+      )}
       <OperationalPanel>
         <OperationalPanelBody>
           <Field

@@ -16,6 +16,7 @@ import { ProviderContacts } from "@/components/broker-network/provider-contacts"
 import { BrokerActivity } from "@/components/broker-network/broker-activity";
 import {
   AppetiteCountriesField,
+  AppetiteNationwideField,
   AppetiteRegionsField,
 } from "@/components/broker-network/appetite-geography-fields";
 import {
@@ -105,6 +106,8 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
     postalCode: office?.postalCode ?? "",
     countries: brokerWritingCountries(row.profile),
     states: row.profile?.writingStates ?? [],
+    nationwide: row.profile?.nationwideCountries ?? [],
+    excluded: row.profile?.excludedStates ?? [],
     lines: row.profile?.lineOfBusinessCodes ?? [],
   });
   const set = <K extends keyof typeof values>(
@@ -120,7 +123,10 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
       const previous = savedValues.current;
       const changed = (key: keyof typeof values) => next[key] !== previous[key];
       const trimmed = (
-        key: Exclude<keyof typeof values, "countries" | "states" | "lines">,
+        key: Exclude<
+          keyof typeof values,
+          "countries" | "states" | "lines" | "nationwide" | "excluded"
+        >,
       ) => (changed(key) ? next[key].trim() : undefined);
       const officeChanged = (
         [
@@ -151,6 +157,10 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
           : undefined,
         writingCountries: changed("countries") ? next.countries : undefined,
         writingStates: changed("states") ? next.states : undefined,
+        nationwideCountries: changed("nationwide")
+          ? next.nationwide
+          : undefined,
+        excludedStates: changed("excluded") ? next.excluded : undefined,
         lineOfBusinessCodes: changed("lines") ? next.lines : undefined,
       });
       savedValues.current = next;
@@ -313,8 +323,29 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
                   setValues((current) => ({
                     ...current,
                     countries,
+                    nationwide: current.nationwide.filter((code) =>
+                      countries.includes(code),
+                    ),
+                    excluded: current.excluded.filter((code) =>
+                      countries.includes(brokerRegionCountry(code)),
+                    ),
                     states: current.states.filter((code) =>
                       countries.includes(brokerRegionCountry(code)),
+                    ),
+                  }))
+                }
+              />
+            </InlineFieldRow>
+            <InlineFieldRow label="Nationwide service">
+              <AppetiteNationwideField
+                countries={values.countries}
+                value={values.nationwide}
+                onChange={(nationwide) =>
+                  setValues((current) => ({
+                    ...current,
+                    nationwide,
+                    excluded: current.excluded.filter((code) =>
+                      nationwide.includes(brokerRegionCountry(code)),
                     ),
                   }))
                 }
@@ -327,6 +358,24 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
                 onChange={(states) => set("states", states)}
               />
             </InlineFieldRow>
+            {!!values.nationwide.length && (
+              <InlineFieldRow label="Excluded states / provinces">
+                <AppetiteRegionsField
+                  countries={values.nationwide}
+                  ariaLabel="Excluded states / provinces"
+                  value={values.excluded}
+                  onChange={(excluded) =>
+                    setValues((current) => ({
+                      ...current,
+                      excluded,
+                      states: current.states.filter(
+                        (code) => !excluded.includes(code),
+                      ),
+                    }))
+                  }
+                />
+              </InlineFieldRow>
+            )}
           </InlineFieldCard>
           <InlineFieldCard>
             <InlineFieldRow label="ACORD lines">

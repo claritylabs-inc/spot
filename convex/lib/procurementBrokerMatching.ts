@@ -1,13 +1,17 @@
 import { ConvexError } from "convex/values";
+import { COVERAGE_OPTIONS } from "../../lib/insurance-intake-details";
 import type { IntakeApplication } from "../../lib/intake-application";
 import type { IntakeAddress } from "../../lib/insurance-intake-details";
 import {
   brokerRegionCountry,
-  brokerWritingCountries,
+  brokerAreaFit,
+  CANADIAN_PROVINCES,
+  USPS_STATE_NAMES,
 } from "./brokerProfileValidation";
 import { normalizeCountry, normalizeRegion } from "./providerOutreachMatch";
 
 import { COVERAGE_PROVIDER_LOB_CODES as coverageCodes } from "./coverageLobMapping";
+const countryNames = new Intl.DisplayNames(["en"], { type: "region" });
 
 export function procurementBrokerCriteria(
   application: IntakeApplication | null,
@@ -35,6 +39,15 @@ export function procurementBrokerCriteria(
   const areas = addresses.map(requestArea);
   return {
     codes,
+    coverageLabels: [
+      ...new Set(
+        lines.map(
+          (line) =>
+            COVERAGE_OPTIONS.find((option) => option.id === line.coverage)
+              ?.label ?? line.coverage,
+        ),
+      ),
+    ],
     areas: [
       ...new Map(
         areas.map((area) => [`${area.country}:${area.state ?? ""}`, area]),
@@ -65,25 +78,70 @@ function requestArea(address: IntakeAddress) {
   return { country, state };
 }
 
-export function matchesProcurementBroker(
-  profile: {
-    writingCountries?: string[];
-    writingStates: string[];
-    lineOfBusinessCodes: string[];
-  },
+type ProviderAppetite = {
+  writingCountries?: string[];
+  writingStates: string[];
+  nationwideCountries?: string[];
+  excludedStates?: string[];
+  lineOfBusinessCodes: string[];
+};
+
+export function procurementBrokerMatch(
+  profile: ProviderAppetite,
   criteria: ReturnType<typeof procurementBrokerCriteria>,
 ) {
-  return (
-    profile.lineOfBusinessCodes.some((code) => criteria.codes.includes(code)) &&
-    criteria.areas.every(
-      (area) =>
-        brokerWritingCountries(profile).includes(area.country) &&
-        (!area.state ||
-          profile.writingStates.some(
-            (state) =>
-              state === area.state &&
-              brokerRegionCountry(state) === area.country,
-          )),
-    )
+  const matchingCodes = profile.lineOfBusinessCodes.filter((code) =>
+    criteria.codes.includes(code),
+  );
+  if (profile.lineOfBusinessCodes.length && !matchingCodes.length)
+    return {
+      status: "coverage_mismatch" as const,
+      matchingCodes,
+      reason: "Requested coverage not in recorded appetite",
+    };
+  let unverifiedArea = false;
+  for (const area of criteria.areas) {
+    const fit = brokerAreaFit(profile, area.country, area.state);
+    if (fit === "excluded")
+      return {
+        status: "outside_area" as const,
+        matchingCodes,
+        reason: "Outside recorded service area or explicitly excluded",
+      };
+    if (fit === "unknown") unverifiedArea = true;
+  }
+  const missing = [
+    !profile.lineOfBusinessCodes.length ? "Coverage not recorded" : "",
+    unverifiedArea ? "Service area not verified for this request" : "",
+  ].filter(Boolean);
+  return {
+    status: missing.length
+      ? ("needs_verification" as const)
+      : ("confirmed" as const),
+    matchingCodes,
+    reason: missing.join("; "),
+  };
+}
+
+export function matchesProcurementBroker(
+  profile: ProviderAppetite,
+  criteria: ReturnType<typeof procurementBrokerCriteria>,
+) {
+  return procurementBrokerMatch(profile, criteria).status === "confirmed";
+}
+
+export function procurementMatchAreaLabels(
+  criteria: ReturnType<typeof procurementBrokerCriteria>,
+) {
+  return criteria.areas.map((area) =>
+    [
+      area.state
+        ? (USPS_STATE_NAMES[area.state] ??
+          CANADIAN_PROVINCES[area.state as keyof typeof CANADIAN_PROVINCES])
+        : "",
+      countryNames.of(area.country) ?? area.country,
+    ]
+      .filter(Boolean)
+      .join(", "),
   );
 }
