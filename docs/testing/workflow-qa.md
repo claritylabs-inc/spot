@@ -2217,3 +2217,36 @@ shared office addresses are distinguished from direct work email in Notes.
 Evidence: `.context/provider-contacts/final-verification.json`, public crawl and
 directory lookup artifacts, `followup-typecheck.log`, `followup-convex-typecheck.log`,
 `followup-lint.log`, and `simplified-contacts.png`. Production was not changed.
+
+## Manual procurement provider matching — October 22, 2026
+
+Local Chrome, ordinary operator, existing synthetic Intake Followups QA LLC
+request (`zh7fhb3xvawj0qqk0gzc2h1s258gmprm`), saved CGL request in Austin, TX:
+
+1. Open Client → Procurement → Request → Providers → Outreach. **Auto add providers** appears
+   beside **Add provider**, using the existing PillButton and app-shell action slot.
+2. Click Auto add providers. The directory match added Germani Insurance Services,
+   Nadler Insurance and Embroker. All three appeared as **Observed**. The toast
+   reported three additions and 77 profiles with missing appetite data.
+3. Click again. The toast reported no new matches and three already on the
+   request; the table retained exactly three rows.
+4. Open the existing synthetic request without a saved application
+   (`zh70xm4a3vk0cyrg9q4x2jj43x8gmdp8`). Click the button. The visible error says
+   to save the request application; the table stays empty.
+5. Read back both requests' outreach rows. The valid request has exactly those
+   three brokers, `status: observed`, no `sentAt`, and no `packetRevisionAtIssue`;
+   the incomplete request has no rows.
+
+Evidence: `.context/qa/provider-matching/auto-added-brokers.png` and
+`verification.json`. Root/Convex TypeScript and touched-file ESLint passed.
+No tests or migrations were written. Source review covered the all-location
+predicate, incomplete geography, partial coverage matching, status exclusions,
+operator authorization and transactional deduplication; these branches were not
+all separately exercised through the browser. Production was not deployed.
+
+After integrating the concurrent branch updates, repeated the browser check in
+the new Providers → Outreach layout: both actions rendered beside each other,
+three Observed rows remained, and clicking Auto add providers reported three
+already present with no additions. The integrated schema contained a misplaced
+inbox index on `threadMessages` referencing a nonexistent field; removed that
+invalid index while retaining the intended procurement-email inbox index.
