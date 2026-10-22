@@ -2376,6 +2376,7 @@ export function ProcurementRequestWorkspace({
           >
             {matchingBrokers ? "Adding providers…" : "Auto add providers"}
           </PillButton>
+          <span className="hidden sm:contents">
           <PillButton
             type="button"
             disabled={sendAllCount === 0 || providerOutreachBusy || !canSendAll}
@@ -2385,6 +2386,7 @@ export function ProcurementRequestWorkspace({
               ? "Sending…"
               : `Send to all matched (${sendAllCount})`}
           </PillButton>
+          </span>
         </>
       ) : view === "files" ? (
         <PillButton type="button" onClick={() => openUpload()}>

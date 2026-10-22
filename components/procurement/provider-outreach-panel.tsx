@@ -749,8 +749,18 @@ export function ProviderOutreachPanel({
         </p>
       ))}
       <CadenceCard controller={controller} />
+      <div className="sm:hidden">
+        <PillButton
+          type="button"
+          disabled={!panel.request.canLaunch || !controller.sendAllCount || sending.size > 0}
+          onClick={() => void controller.sendAll()}
+        >
+          {sending.size > 0 ? "Starting…" : `Send to all matched (${controller.sendAllCount})`}
+        </PillButton>
+      </div>
       <OperationalPanel as="section">
         <OperationalPanelHeader
+          className="flex-col sm:flex-row"
           title="Providers"
           description={`Fit for ${panel.needs.lines.map((line) => line.label).join(", ") || "this request"}${panel.geography.places.length ? ` in ${panel.geography.places.map(placeLabel).join(", ")}` : ""}.`}
           action={

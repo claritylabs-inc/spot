@@ -498,6 +498,7 @@ export const sendStep = internalAction({
     if (claim.status !== "claimed") return { status: claim.status };
     const { leaseToken } = claim;
     const capture = getEmailDeliveryMode() === "capture";
+    let deliveryAttempted = false;
 
     const fail = async (failure: StepFailure) => {
       try {
@@ -622,6 +623,7 @@ export const sendStep = internalAction({
           // The draft call took network time: re-validate the world before sending.
           if (!(await checkpoint())) return { status: "held" as const };
         }
+        deliveryAttempted = true;
         const sent = await sendDraft({
           inboxId,
           draftId: resendDraftId,
@@ -631,6 +633,7 @@ export const sendStep = internalAction({
         resendEmailId = sent.data.emailId;
       } else {
         if (!(await checkpoint())) return { status: "held" as const };
+        deliveryAttempted = true;
         const reply = await replyToThreadEmail({
           inboxId,
           threadId: threadId ?? capturedResourceId("thread", String(stepId)),
@@ -663,7 +666,10 @@ export const sendStep = internalAction({
         await labelThread(inbox, threadId, "automated");
       return { status: "sent" as const };
     } catch (error) {
-      return await fail(sanitizedFailure(error));
+      const failure = sanitizedFailure(error);
+      return await fail(!deliveryAttempted && failure.kind === "unknown"
+        ? { ...failure, kind: "transient", message: "Outreach preparation failed before delivery" }
+        : failure);
     }
   },
 });
@@ -812,6 +818,7 @@ function toInboxEmail(email: ResendThreadEmail): InboxEmail {
     : "";
   const baseText =
     email.text?.trim() || (email.html ? htmlToPlainText(email.html, MAX_EMAIL_HTML_CHARS) : "");
+  const parsed = parseInboundEmail({ subject: email.subject ?? undefined, text: baseText, html: email.html ?? undefined });
   const received = dayjs(email.receivedAt);
   const noticeHtml = notices.length
     ? `<p><em>${escapeHtml(noticeText.trim())}</em></p>`
@@ -826,10 +833,8 @@ function toInboxEmail(email: ResendThreadEmail): InboxEmail {
     subject: (email.subject ?? "").slice(0, 500),
     ...(email.messageId ? { messageId: email.messageId.slice(0, 500) } : {}),
     references: [],
-    text: `${baseText.slice(0, MAX_EMAIL_TEXT_CHARS)}${noticeText}`,
-    ...(email.html
-      ? { html: `${email.html.slice(0, MAX_EMAIL_HTML_CHARS)}${noticeHtml}` }
-      : {}),
+    text: `${parsed.currentText.slice(0, MAX_EMAIL_TEXT_CHARS)}${noticeText}`,
+    html: `${email.html?.slice(0, MAX_EMAIL_HTML_CHARS) ?? `<pre>${escapeHtml(baseText.slice(0, MAX_EMAIL_TEXT_CHARS))}</pre>`}${noticeHtml}`,
     occurredAt: received.isValid() ? received.valueOf() : dayjs().valueOf(),
   };
 }

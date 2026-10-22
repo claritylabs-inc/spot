@@ -690,7 +690,9 @@ async function notifyManualHandoff(
     actionPayload: { clientOrgId: sequence.clientOrgId, requestId: sequence.requestId },
     title,
     body,
-    coalesceKeyParts: ["provider_outreach_handoff", String(sequence._id)],
+    coalesceKeyParts: needsAttention
+      ? ["provider_outreach_failed", String(sequence.requestId), code]
+      : ["provider_outreach_handoff", String(sequence._id)],
     nowMs: now,
   });
 }
@@ -1531,6 +1533,7 @@ export const claimStepInternal = internalMutation({
       leaseUntil,
       firstAttemptAt,
       error: undefined,
+      impersonationDeferredAt: undefined,
       updatedAt: now,
     });
     const earlier = await ctx.db
@@ -1655,7 +1658,7 @@ export const beginSendInternal = internalMutation({
     const check = await checkStepWorld(ctx, step, sequence, now);
     if (check.kind === "ok") {
       const leaseUntil = now + STEP_LEASE_MS;
-      await ctx.db.patch(step._id, { leaseUntil, updatedAt: now });
+      await ctx.db.patch(step._id, { leaseUntil, impersonationDeferredAt: undefined, updatedAt: now });
       return { ok: true as const, leaseUntil };
     }
     if (check.kind === "stop") {
@@ -1758,16 +1761,17 @@ export const recordInboxInternal = internalMutation({
     if (!step) return { stored: false, inbox: null };
     const sequence = await ctx.db.get(step.sequenceId);
     if (!sequence) return { stored: false, inbox: null };
-    const sender = await ctx.db.get(sequence.senderUserId);
-    if (!sender?.email || isCapturedResourceId(args.inbox.inboxId) ||
-        args.inbox.emailAddress.toLowerCase() !== operatorInboxAddress(sender.email).toLowerCase())
-      return { stored: false, inbox: null };
-
     const existing = await ctx.db
       .query("operatorOutreachInboxes")
       .withIndex("by_userId", (q) => q.eq("userId", sequence.senderUserId))
       .first();
     if (!existing) {
+    const sender = await ctx.db.get(sequence.senderUserId);
+    if (!sender?.email || isCapturedResourceId(args.inbox.inboxId) ||
+        args.inbox.emailAddress.toLowerCase() !== operatorInboxAddress(sender.email).toLowerCase())
+      return { stored: false, inbox: null };
+
+
       const taken = await ctx.db
         .query("operatorOutreachInboxes")
         .withIndex("by_inboxId", (q) => q.eq("inboxId", args.inbox.inboxId))
