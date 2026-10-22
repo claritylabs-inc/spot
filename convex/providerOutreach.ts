@@ -172,6 +172,7 @@ type ProviderEvaluation = {
   fit: ProviderFit;
   recipient: RecipientView | null;
   skipReason: "no_contact_email" | "spot_owned_contact" | null;
+  contacts: Doc<"brokerContacts">[];
 };
 
 async function loadProfile(ctx: Ctx, brokerOrgId: Id<"organizations">) {
@@ -193,11 +194,12 @@ async function evaluateProvider(
   match: RequestMatchContext,
   outreach: Doc<"procurementBrokerOutreaches"> | null,
   withContacts: boolean,
+  selectedContact?: Doc<"brokerContacts">,
 ): Promise<ProviderEvaluation> {
   const profile = await loadProfile(ctx, org._id);
   const fit = classifyProvider(profile, match.geography, match.needs);
   if (!withContacts || fit.verdict === "excluded")
-    return { org, profile, fit, recipient: null, skipReason: null };
+    return { org, profile, fit, recipient: null, skipReason: null, contacts: [] };
   const contacts = await ctx.db
     .query("brokerContacts")
     .withIndex("by_brokerOrgId_and_deletedAt", (q) =>
@@ -207,17 +209,18 @@ async function evaluateProvider(
   const selection = selectRecipient(
     contacts,
     needAcceptedCodes(match.needs.needs),
-    outreach,
+    selectedContact ? { contactEmail: selectedContact.email, contactName: selectedContact.name } : outreach,
     org,
   );
   if (!selection.ok)
-    return { org, profile, fit, recipient: null, skipReason: selection.reason };
+    return { org, profile, fit, recipient: null, skipReason: selection.reason, contacts };
   // Matching returns a plain string; resolve it back to the typed document id.
   const contact = contacts.find((row) => row._id === selection.recipient.contactId);
   return {
     org,
     profile,
     fit,
+    contacts,
     recipient: {
       contactId: contact?._id ?? null,
       email: selection.recipient.email,
@@ -291,6 +294,7 @@ export type ProviderCandidateView = {
   brokerOrgId: Id<"organizations">;
   name: string;
   website: string | null;
+  iconUrl: string | null;
   networkStatus: Doc<"brokerProfiles">["networkStatus"] | null;
   verdict: ProviderFit["verdict"];
   partial: boolean;
@@ -298,6 +302,13 @@ export type ProviderCandidateView = {
   lines: { covered: CoverageId[]; missing: CoverageId[] };
   geography: { serviced: PlaceView[]; unserviced: PlaceView[] };
   recipient: RecipientView | null;
+  contactOptions: {
+    contactId: Id<"brokerContacts">;
+    name: string;
+    email: string;
+    context: string | null;
+    lineOfBusinessCodes: string[];
+  }[];
   skipReason: ProviderEvaluation["skipReason"];
   launchBlock: LaunchBlock | null;
   outreach: {
@@ -512,6 +523,7 @@ export async function getProviderOutreachPanel(
       brokerOrgId: org._id,
       name: org.name,
       website: org.website ?? null,
+      iconUrl: org.iconStorageId ? await ctx.storage.getUrl(org.iconStorageId) : null,
       networkStatus: evaluation.profile?.networkStatus ?? null,
       verdict: evaluation.fit.verdict,
       partial: evaluation.fit.partial,
@@ -525,6 +537,16 @@ export async function getProviderOutreachPanel(
         unserviced: evaluation.fit.geography.unserviced.map(placeView),
       },
       recipient: evaluation.recipient,
+      contactOptions: evaluation.contacts.flatMap((contact) => {
+        const choice = selectRecipient([contact], needAcceptedCodes(match.needs.needs), null, org);
+        return choice.ok ? [{
+          contactId: contact._id,
+          name: contact.name,
+          email: choice.recipient.email,
+          context: contact.notes ? shorten(contact.notes, 240) : null,
+          lineOfBusinessCodes: contact.lineOfBusinessCodes,
+        }] : [];
+      }),
       skipReason: evaluation.skipReason,
       launchBlock: launchBlock({
         evaluation,
@@ -853,6 +875,8 @@ export async function launchProviderOutreachByOperator(
     brokerOrgIds: Id<"organizations">[];
     cadence: OutreachCadenceInput;
     cadenceSource: OutreachCadenceSource;
+    /** Direct UI choices are validated against the provider's current contacts. */
+    selectedContacts?: { brokerOrgId: Id<"organizations">; contactId: Id<"brokerContacts"> }[];
     /** Send-all: unknown-fit providers are skipped even when named. */
     matchedOnly?: boolean;
   },
@@ -869,6 +893,22 @@ export async function launchProviderOutreachByOperator(
   const now = dayjs().valueOf();
   const result: ProviderOutreachLaunchResult = { launched: [], skipped: [] };
   const seen = new Set<Id<"organizations">>();
+  const selectedContacts = new Map<Id<"organizations">, Doc<"brokerContacts">>();
+  if ((args.selectedContacts?.length ?? 0) > args.brokerOrgIds.length)
+    throw new Error("Select at most one contact per provider");
+  // Validate every choice before any launch writes. A stale or foreign contact
+  // never silently falls back to the provider's default recipient.
+  for (const choice of args.selectedContacts ?? []) {
+    if (!args.brokerOrgIds.includes(choice.brokerOrgId) || selectedContacts.has(choice.brokerOrgId))
+      throw new Error("Invalid provider contact selection");
+    const contact = await ctx.db.get(choice.contactId);
+    if (!contact || contact.brokerOrgId !== choice.brokerOrgId || contact.deletedAt !== undefined || !contact.email)
+      throw new Error("The selected contact is unavailable. Choose another contact.");
+    const org = eligibleProviderOrg(await ctx.db.get(choice.brokerOrgId));
+    if (!org || !selectRecipient([contact], needAcceptedCodes(match.needs.needs), null, org).ok)
+      throw new Error("The selected contact cannot receive provider outreach.");
+    selectedContacts.set(choice.brokerOrgId, contact);
+  }
 
   for (const requestedId of args.brokerOrgIds) {
     if (seen.has(requestedId)) {
@@ -901,7 +941,7 @@ export async function launchProviderOutreachByOperator(
           .take(1)
       )[0] ?? null;
     const sequences = outreach ? await sequencesForOutreach(ctx, outreach._id) : [];
-    const evaluation = await evaluateProvider(ctx, org, match, outreach, true);
+    const evaluation = await evaluateProvider(ctx, org, match, outreach, true, selectedContacts.get(org._id));
     const blocked = launchBlock({
       evaluation,
       outreach,
@@ -927,7 +967,7 @@ export async function launchProviderOutreachByOperator(
       await ctx.db.patch(outreach._id, {
         status: "request_sent",
         contactEmail: recipient.email,
-        ...(recipient.name && !outreach.contactName ? { contactName: recipient.name } : {}),
+        contactName: recipient.name ?? undefined,
         updatedByUserId: args.operatorUserId,
         updatedAt: now,
       });
@@ -1037,6 +1077,10 @@ export const launch = mutation({
     cadence: outreachCadenceValidator,
     cadenceSource: outreachCadenceSourceValidator,
     matchedOnly: v.optional(v.boolean()),
+    selectedContacts: v.optional(v.array(v.object({
+      brokerOrgId: v.id("organizations"),
+      contactId: v.id("brokerContacts"),
+    }))),
   },
   handler: async (ctx, args): Promise<ProviderOutreachLaunchResult> => {
     const operator = await requireOperator(ctx);

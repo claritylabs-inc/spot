@@ -6,13 +6,19 @@ import dayjs from "dayjs";
 import { toast } from "sonner";
 
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
+import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableNameLink,
+} from "@/components/ui/table";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import {
-  CANADIAN_PROVINCES,
-  USPS_STATE_NAMES,
-} from "@/convex/lib/brokerProfileValidation";
 import {
   buildOutreachSchedule,
   MAX_LAUNCH_PROVIDERS,
@@ -32,11 +38,7 @@ import {
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
-import {
-  OperationalItem,
-  OperationalPanel,
-  OperationalPanelHeader,
-} from "@claritylabs-inc/ui/components/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Select,
   SelectContent,
@@ -76,11 +78,10 @@ const REASON_COPY: Record<string, string> = {
   request_not_evaluable: "Request details are too thin to match",
   geography_primary_not_serviced: "Does not write the primary location",
   geography_none_serviced: "Does not write any requested location",
-  geography_partial: "Writes only some requested locations",
+  geography_partial: "Does not write every requested location",
   geography_appetite_empty: "No service area on file",
   geography_region_unknown: "Regional service needs verification",
   lines_none_covered: "Covers none of the requested lines",
-  lines_partial: "Covers only some requested lines",
   lines_appetite_empty: "No coverage lines on file",
 };
 
@@ -96,18 +97,6 @@ const SKIP_COPY: Record<string, string> = {
 };
 
 const humanize = (code: string) => code.replaceAll("_", " ");
-const countryNames = new Intl.DisplayNames(["en"], { type: "region" });
-
-function placeLabel(place: { country: string; region?: string }) {
-  if (place.region)
-    return (
-      (USPS_STATE_NAMES as Record<string, string>)[place.region] ??
-      (CANADIAN_PROVINCES as Record<string, string>)[place.region] ??
-      place.region
-    );
-  return countryNames.of(place.country) ?? place.country;
-}
-
 const lineLabel = (coverage: CoverageId) => coverageOption(coverage).label;
 
 /** A live or handed-off sequence outranks a newer finished one. */
@@ -148,6 +137,29 @@ function launchSummary(
     : shown.join("; ");
 }
 
+function candidateRecipient(
+  candidate: ProviderCandidateView,
+  contactId?: Id<"brokerContacts">,
+) {
+  return contactId
+    ? (candidate.contactOptions.find(
+        (contact) => contact.contactId === contactId,
+      ) ?? null)
+    : candidate.recipient;
+}
+
+function candidateLaunchBlock(
+  candidate: ProviderCandidateView,
+  contactId?: Id<"brokerContacts">,
+) {
+  if (!contactId) return candidate.launchBlock;
+  if (!candidateRecipient(candidate, contactId)) return "no_contact_email";
+  return candidate.launchBlock === "no_contact_email" ||
+    candidate.launchBlock === "spot_owned_contact"
+    ? null
+    : candidate.launchBlock;
+}
+
 /**
  * Panel data, the cadence the operator is composing, and the launch/stop
  * actions. The workspace owns one instance so the panel, the header action and
@@ -170,6 +182,24 @@ export function useProviderOutreach(
     requestId: Id<"procurementRequests">;
     values: Partial<OutreachCadence>;
   }>({ requestId, values: {} });
+  const [contactSelection, setContactSelection] = useState<{
+    requestId: Id<"procurementRequests">;
+    choices: Record<string, Id<"brokerContacts">>;
+  }>({ requestId, choices: {} });
+  const selectedContacts =
+    contactSelection.requestId === requestId ? contactSelection.choices : {};
+  const selectContact = (
+    brokerOrgId: Id<"organizations">,
+    contactId: Id<"brokerContacts"> | null,
+  ) =>
+    setContactSelection((current) => {
+      const choices = {
+        ...(current.requestId === requestId ? current.choices : {}),
+      };
+      if (contactId) choices[brokerOrgId] = contactId;
+      else delete choices[brokerOrgId];
+      return { requestId, choices };
+    });
   const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
   const [sendingAll, setSendingAll] = useState(false);
   const [stopping, setStopping] = useState<string | null>(null);
@@ -259,7 +289,12 @@ export function useProviderOutreach(
     }));
 
   const eligible = (panel?.candidates.matched ?? []).filter(
-    (candidate) => !candidate.launchBlock && candidate.recipient,
+    (candidate) =>
+      !candidateLaunchBlock(
+        candidate,
+        selectedContacts[candidate.brokerOrgId],
+      ) &&
+      candidateRecipient(candidate, selectedContacts[candidate.brokerOrgId]),
   );
   const sendAllCount = Math.min(eligible.length, MAX_LAUNCH_PROVIDERS);
 
@@ -278,6 +313,11 @@ export function useProviderOutreach(
         cadence,
         cadenceSource,
         matchedOnly,
+        selectedContacts: brokerOrgIds.flatMap((brokerOrgId) =>
+          selectedContacts[brokerOrgId]
+            ? [{ brokerOrgId, contactId: selectedContacts[brokerOrgId] }]
+            : [],
+        ),
       });
       const launched = result.launched.length;
       const skipped = result.skipped.length;
@@ -325,6 +365,8 @@ export function useProviderOutreach(
     setCadenceField,
     sending,
     sendingAll,
+    selectedContacts,
+    selectContact,
     sendAllCount,
     send: (brokerOrgId: Id<"organizations">) => run([brokerOrgId], false),
     sendAll: () =>
@@ -506,20 +548,10 @@ function FitChips({ candidate }: { candidate: ProviderCandidateView }) {
       text: `No ${lineLabel(line)}`,
       ok: false,
     })),
-    ...candidate.geography.serviced.map((place) => ({
-      key: `s-${place.country}-${place.region ?? ""}`,
-      text: placeLabel(place),
-      ok: true,
-    })),
-    ...candidate.geography.unserviced.map((place) => ({
-      key: `u-${place.country}-${place.region ?? ""}`,
-      text: `Not ${placeLabel(place)}`,
-      ok: false,
-    })),
   ];
   if (!chips.length) return null;
   return (
-    <div className="mt-1.5 flex flex-wrap gap-1">
+    <div className="flex flex-wrap gap-1">
       {chips.map((chip) => (
         <Badge key={chip.key} variant={chip.ok ? "secondary" : "destructive"}>
           {chip.text}
@@ -531,6 +563,8 @@ function FitChips({ candidate }: { candidate: ProviderCandidateView }) {
 
 function CandidateRow({
   candidate,
+  selectedContactId,
+  onSelectContact,
   tab,
   sequence,
   sendingId,
@@ -538,6 +572,8 @@ function CandidateRow({
   onSend,
 }: {
   candidate: ProviderCandidateView;
+  selectedContactId?: Id<"brokerContacts">;
+  onSelectContact: (contactId: Id<"brokerContacts"> | null) => void;
   tab: CandidateTab;
   sequence: SequenceView | null;
   sendingId: boolean;
@@ -545,77 +581,166 @@ function CandidateRow({
   onSend: () => void;
 }) {
   const reasons = candidate.reasons
+    .filter((reason) => reason !== "lines_partial")
     .map((reason) => REASON_COPY[reason] ?? humanize(reason))
     .join(" · ");
-  const recipient = candidate.recipient
-    ? [candidate.recipient.name, candidate.recipient.email]
-        .filter(Boolean)
-        .join(" · ")
-    : null;
-  const blocked = candidate.launchBlock;
+  const recipient = candidateRecipient(candidate, selectedContactId);
+  const blocked = candidateLaunchBlock(candidate, selectedContactId);
+  const contactLocked =
+    !canLaunch ||
+    sendingId ||
+    blocked === "sequence_exists" ||
+    blocked === "outreach_status_progressed";
+  const options = candidate.contactOptions;
+  const contactValue =
+    selectedContactId ?? candidate.recipient?.contactId ?? "request";
+  const explicitRecipient =
+    candidate.recipient && !candidate.recipient.contactId;
   const status = sequence
     ? sequenceStatusText(sequence)
     : candidate.outreach
       ? "Already on this request"
       : null;
   return (
-    <OperationalItem className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-      <div className="min-w-0 flex-1">
-        <p
-          className={`flex flex-wrap items-center gap-2 text-foreground ${typeStyle("body.medium")}`}
-        >
-          {candidate.name}
-          {candidate.partial ? (
-            <Badge variant="outline">Partial fit</Badge>
-          ) : null}
-        </p>
-        {tab !== "excluded" && recipient ? (
-          <p
-            className={`mt-0.5 break-words text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            {recipient}
-          </p>
-        ) : null}
-        {tab !== "excluded" && !recipient && candidate.skipReason ? (
-          <p
-            className={`mt-0.5 text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            {SKIP_COPY[candidate.skipReason] ?? humanize(candidate.skipReason)}
-          </p>
-        ) : null}
-        {reasons && (tab !== "matched" || candidate.partial) ? (
-          <p
-            className={`mt-0.5 text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            {reasons}
-          </p>
-        ) : null}
-        {tab !== "excluded" ? <FitChips candidate={candidate} /> : null}
-      </div>
-      {tab === "excluded" ? null : (
-        <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
-          {status ? (
-            <span
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              {status}
-            </span>
-          ) : null}
-          {blocked === "sequence_exists" ||
-          blocked === "outreach_status_progressed" ? null : (
-            <PillButton
-              type="button"
-              size="default"
-              variant={tab === "matched" ? "primary" : "secondary"}
-              disabled={!!blocked || !canLaunch || sendingId}
-              onClick={onSend}
-            >
-              {sendingId ? "Sending…" : "Send"}
-            </PillButton>
-          )}
+    <TableRow>
+      <TableCell className="whitespace-normal">
+        <div className="flex items-center gap-3">
+          <OrgBrandIcon
+            name={candidate.name}
+            iconUrl={candidate.iconUrl}
+            website={candidate.website}
+            size="md"
+          />
+          <div className="min-w-0">
+            <TableNameLink href={`/operator/brokers/${candidate.brokerOrgId}`}>
+              {candidate.name}
+            </TableNameLink>
+            {reasons && (tab !== "matched" || candidate.partial) ? (
+              <p
+                className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
+              >
+                {reasons}
+              </p>
+            ) : null}
+          </div>
         </div>
-      )}
-    </OperationalItem>
+      </TableCell>
+      <TableCell className="min-w-64 whitespace-normal">
+        {tab !== "excluded" && (options.length > 0 || explicitRecipient) ? (
+          <div>
+            <Select
+              value={contactValue}
+              disabled={contactLocked}
+              onValueChange={(value) => {
+                if (value)
+                  onSelectContact(
+                    value === "request"
+                      ? null
+                      : (value as Id<"brokerContacts">),
+                  );
+              }}
+            >
+              <SelectTrigger aria-label={`Contact for ${candidate.name}`}>
+                <SelectValue>
+                  {recipient?.email ?? "Select contact"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent className="max-w-[min(32rem,calc(100vw-2rem))]">
+                {explicitRecipient ? (
+                  <SelectItem
+                    value="request"
+                    label={candidate.recipient!.email}
+                  >
+                    <span className="flex min-w-0 flex-col whitespace-normal">
+                      <span>
+                        {candidate.recipient!.name ?? "Request contact"}
+                      </span>
+                      <span
+                        className={`break-all text-muted-foreground ${typeStyle("caption.default")}`}
+                      >
+                        {candidate.recipient!.email} · Current request contact
+                      </span>
+                    </span>
+                  </SelectItem>
+                ) : null}
+                {options.map((contact) => (
+                  <SelectItem
+                    key={contact.contactId}
+                    value={contact.contactId}
+                    label={`${contact.name} ${contact.email}`}
+                  >
+                    <span className="flex min-w-0 flex-col gap-0.5 whitespace-normal py-1">
+                      <span>{contact.name}</span>
+                      <span
+                        className={`break-all text-muted-foreground ${typeStyle("caption.default")}`}
+                      >
+                        {contact.email}
+                      </span>
+                      {contact.lineOfBusinessCodes.length ? (
+                        <span
+                          className={`text-muted-foreground ${typeStyle("caption.default")}`}
+                        >
+                          Best for {contact.lineOfBusinessCodes.join(", ")}
+                        </span>
+                      ) : null}
+                      {contact.context ? (
+                        <span
+                          className={`line-clamp-2 text-muted-foreground ${typeStyle("caption.default")}`}
+                        >
+                          {contact.context}
+                        </span>
+                      ) : null}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {recipient?.name ? (
+              <p
+                className={`px-3 text-muted-foreground ${typeStyle("caption.default")}`}
+              >
+                {recipient.name}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <span className="text-muted-foreground">
+            {tab === "excluded"
+              ? "—"
+              : (SKIP_COPY[candidate.skipReason ?? "no_contact_email"] ??
+                humanize(candidate.skipReason ?? "no_contact_email"))}
+          </span>
+        )}
+      </TableCell>
+      <TableCell className="whitespace-normal">
+        <FitChips candidate={candidate} />
+      </TableCell>
+      <TableCell className="text-right">
+        {tab === "excluded" ? null : (
+          <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
+            {status ? (
+              <span
+                className={`text-muted-foreground ${typeStyle("caption.default")}`}
+              >
+                {status}
+              </span>
+            ) : null}
+            {blocked === "sequence_exists" ||
+            blocked === "outreach_status_progressed" ? null : (
+              <PillButton
+                type="button"
+                size="default"
+                variant={tab === "matched" ? "primary" : "secondary"}
+                disabled={!!blocked || !canLaunch || sendingId}
+                onClick={onSend}
+              >
+                {sendingId ? "Sending…" : "Send"}
+              </PillButton>
+            )}
+          </div>
+        )}
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -714,7 +839,7 @@ export function ProviderOutreachPanel({
 }: {
   controller: ProviderOutreachController;
 }) {
-  const { panel, sending, send } = controller;
+  const { panel, sending, send, selectedContacts, selectContact } = controller;
   const [selected, setSelected] = useState<CandidateTab>("matched");
   if (!panel) return null;
   const tabs: { value: CandidateTab; label: string }[] = [
@@ -752,61 +877,90 @@ export function ProviderOutreachPanel({
       <div className="sm:hidden">
         <PillButton
           type="button"
-          disabled={!panel.request.canLaunch || !controller.sendAllCount || sending.size > 0}
+          disabled={
+            !panel.request.canLaunch ||
+            !controller.sendAllCount ||
+            sending.size > 0
+          }
           onClick={() => void controller.sendAll()}
         >
-          {sending.size > 0 ? "Starting…" : `Send to all matched (${controller.sendAllCount})`}
+          {sending.size > 0
+            ? "Starting…"
+            : `Send to all matched (${controller.sendAllCount})`}
         </PillButton>
       </div>
-      <OperationalPanel as="section">
-        <OperationalPanelHeader
-          className="flex-col sm:flex-row"
-          title="Providers"
-          description={`Fit for ${panel.needs.lines.map((line) => line.label).join(", ") || "this request"}${panel.geography.places.length ? ` in ${panel.geography.places.map(placeLabel).join(", ")}` : ""}.`}
-          action={
-            visible.length > 1 ? (
-              <Tabs
-                value={tab}
-                onValueChange={(value) => setSelected(value as CandidateTab)}
-              >
-                <TabsList variant="pill" aria-label="Provider fit">
-                  {visible.map((item) => (
-                    <TabsTrigger key={item.value} value={item.value}>
-                      {item.label} · {panel.candidates[item.value].length}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
-            ) : undefined
-          }
-        />
-        {rows.length ? (
-          rows.map((candidate) => (
-            <CandidateRow
-              key={candidate.brokerOrgId}
-              candidate={candidate}
-              tab={tab}
-              sequence={
-                candidate.sequenceId
-                  ? (panel.sequences.find(
-                      (row) => row.sequenceId === candidate.sequenceId,
-                    ) ?? null)
-                  : null
-              }
-              sendingId={sending.has(candidate.brokerOrgId)}
-              canLaunch={panel.request.canLaunch && sending.size === 0}
-              onSend={() => void send(candidate.brokerOrgId)}
-            />
-          ))
-        ) : (
-          <OperationalItem
-            className={`text-muted-foreground ${typeStyle("body.default")}`}
-          >
-            No matched providers yet.
-          </OperationalItem>
-        )}
+      <section aria-label="Providers" className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className={typeStyle("body.medium")}>Providers</h2>
+          {visible.length > 1 ? (
+            <Tabs
+              value={tab}
+              onValueChange={(value) => setSelected(value as CandidateTab)}
+            >
+              <TabsList variant="pill" aria-label="Provider fit">
+                {visible.map((item) => (
+                  <TabsTrigger key={item.value} value={item.value}>
+                    {item.label} · {panel.candidates[item.value].length}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          ) : null}
+        </div>
+        <OperationalPanel as="div" data-operator-inline-fields>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Provider</TableHead>
+                <TableHead>Contact</TableHead>
+                <TableHead>Coverage</TableHead>
+                <TableHead className="text-right">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length ? (
+                rows.map((candidate) => (
+                  <CandidateRow
+                    key={candidate.brokerOrgId}
+                    candidate={candidate}
+                    selectedContactId={selectedContacts[candidate.brokerOrgId]}
+                    onSelectContact={(contactId) =>
+                      selectContact(candidate.brokerOrgId, contactId)
+                    }
+                    tab={tab}
+                    sequence={
+                      candidate.sequenceId
+                        ? (panel.sequences.find(
+                            (row) => row.sequenceId === candidate.sequenceId,
+                          ) ?? null)
+                        : null
+                    }
+                    sendingId={sending.has(candidate.brokerOrgId)}
+                    canLaunch={panel.request.canLaunch && sending.size === 0}
+                    onSend={() => void send(candidate.brokerOrgId)}
+                  />
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={4}
+                    className="h-24 text-center text-muted-foreground"
+                  >
+                    {tab === "matched"
+                      ? "No matched providers yet."
+                      : tab === "unknown"
+                        ? "No providers with unknown fit."
+                        : "No excluded providers."}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </OperationalPanel>
         {panel.providersBounded ? (
-          <OperationalItem
+          <p
             className={`text-muted-foreground ${typeStyle("caption.default")}`}
           >
             Showing the first{" "}
@@ -814,9 +968,9 @@ export function ProviderOutreachPanel({
               panel.candidates.unknown.length +
               panel.candidates.excluded.length}{" "}
             providers.
-          </OperationalItem>
+          </p>
         ) : null}
-      </OperationalPanel>
+      </section>
     </div>
   );
 }

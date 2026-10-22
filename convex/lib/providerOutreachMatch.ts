@@ -284,7 +284,7 @@ export type DimensionFit =
   | "skipped";
 export type ProviderFit = {
   verdict: "matched" | "unknown" | "excluded";
-  /** Matched, but only some places or lines are covered. */
+  /** Matched in every recorded location, but only some lines are covered. */
   partial: boolean;
   reasons: ProviderFitReason[];
   geography: {
@@ -342,29 +342,27 @@ export function classifyProvider(
       (place) =>
         brokerAreaFit(profile, place.country, place.region) === "unknown",
     );
-    const primaryServiced = geography.primary
-      ? placeServiced(geography.primary, profile)
-      : !!result.geography.serviced.length;
-    if (
-      geography.primary &&
-      brokerAreaFit(profile, geography.primary.country, geography.primary.region) ===
-        "excluded"
-    ) {
+    const primaryExcluded = geography.primary
+      ? brokerAreaFit(
+          profile,
+          geography.primary.country,
+          geography.primary.region,
+        ) === "excluded"
+      : false;
+    const hasExcludedPlace = geography.places.some(
+      (place) =>
+        brokerAreaFit(profile, place.country, place.region) === "excluded",
+    );
+    if (hasExcludedPlace) {
       result.geography.fit = "excluded";
-      result.reasons.push("geography_primary_not_serviced");
+      result.reasons.push(
+        primaryExcluded
+          ? "geography_primary_not_serviced"
+          : "geography_partial",
+      );
     } else if (hasUnknownRegion) {
       result.geography.fit = "unknown";
       result.reasons.push("geography_region_unknown");
-    } else if (!primaryServiced) {
-      result.geography.fit = "excluded";
-      result.reasons.push(
-        geography.primary
-          ? "geography_primary_not_serviced"
-          : "geography_none_serviced",
-      );
-    } else if (result.geography.unserviced.length) {
-      result.geography.fit = "partial";
-      result.reasons.push("geography_partial");
     } else result.geography.fit = "match";
   }
 
