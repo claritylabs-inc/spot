@@ -2652,6 +2652,7 @@ async function mirrorInboxEmail(
     ccAddresses: uniqueProcurementEmails(email.ccAddresses),
     bccAddresses: uniqueProcurementEmails(email.bccAddresses),
     currentText: email.text.slice(0, 120_000),
+    forwarded: email.forwarded,
     bodyHtml: email.html?.slice(0, 180_000),
     clientFileIds,
     receivedAt: email.occurredAt,

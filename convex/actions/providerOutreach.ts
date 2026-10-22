@@ -834,6 +834,7 @@ function toInboxEmail(email: ResendThreadEmail): InboxEmail {
     ...(email.messageId ? { messageId: email.messageId.slice(0, 500) } : {}),
     references: [],
     text: `${parsed.currentText.slice(0, MAX_EMAIL_TEXT_CHARS)}${noticeText}`,
+    ...(parsed.forwarded ? { forwarded: parsed.forwarded } : {}),
     html: `${email.html?.slice(0, MAX_EMAIL_HTML_CHARS) ?? `<pre>${escapeHtml(baseText.slice(0, MAX_EMAIL_TEXT_CHARS))}</pre>`}${noticeHtml}`,
     occurredAt: received.isValid() ? received.valueOf() : dayjs().valueOf(),
   };
