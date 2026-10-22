@@ -19,6 +19,19 @@ export function extractEmailAddress(value: string | undefined): string | null {
   return parsed.success ? parsed.data : null;
 }
 
+/**
+ * Reply-To is stored as one string; operator drafts keep a comma-separated
+ * list of bare addresses. A value with a display name stays a single address.
+ */
+export function parseReplyToAddresses(value: string | undefined): string[] {
+  if (!value) return [];
+  if (value.includes("<")) return [value];
+  return value
+    .split(",")
+    .map((address) => address.trim())
+    .filter(Boolean);
+}
+
 export function parseStandaloneEmailAddress(value: string): string | null {
   let candidate = value.trim();
   while ([".", "!", "?"].includes(candidate.at(-1) ?? "")) {

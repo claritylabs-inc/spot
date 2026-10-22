@@ -142,7 +142,12 @@ const OPERATOR_AGENT_INTENT_FAMILIES: Record<
   review_client: ["policies", "compliance", "client_files", "wiki", "procurement"],
   update_client: ["organizations", "wiki", "web"],
   start_procurement: ["procurement", "policies", "client_files", "wiki"],
-  review_procurement: ["procurement", "broker_network", "client_files"],
+  review_procurement: [
+    "procurement",
+    "broker_network",
+    "client_files",
+    "outbound_email",
+  ],
   investigate_policy: ["policies", "extraction"],
   prepare_certificate: ["compliance", "policies"],
   review_client_knowledge: ["client_files", "wiki"],

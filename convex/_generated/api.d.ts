@@ -268,6 +268,7 @@ import type * as lib_jevComposite from "../lib/jevComposite.js";
 import type * as lib_jevEvidenceChoices from "../lib/jevEvidenceChoices.js";
 import type * as lib_jevImages from "../lib/jevImages.js";
 import type * as lib_jevThreshold from "../lib/jevThreshold.js";
+import type * as lib_leakedToolCallText from "../lib/leakedToolCallText.js";
 import type * as lib_linesOfBusiness from "../lib/linesOfBusiness.js";
 import type * as lib_localSeedData from "../lib/localSeedData.js";
 import type * as lib_magicLinkTokens from "../lib/magicLinkTokens.js";
@@ -302,6 +303,7 @@ import type * as lib_operatorAgentToolFailure from "../lib/operatorAgentToolFail
 import type * as lib_operatorAgentToolRegistry from "../lib/operatorAgentToolRegistry.js";
 import type * as lib_operatorEmailAddress from "../lib/operatorEmailAddress.js";
 import type * as lib_operatorEmailAuthentication from "../lib/operatorEmailAuthentication.js";
+import type * as lib_operatorEmailTools from "../lib/operatorEmailTools.js";
 import type * as lib_operatorIdentity from "../lib/operatorIdentity.js";
 import type * as lib_operatorMcpAttachments from "../lib/operatorMcpAttachments.js";
 import type * as lib_operatorMcpClient from "../lib/operatorMcpClient.js";
@@ -419,6 +421,7 @@ import type * as operator from "../operator.js";
 import type * as operatorAgent from "../operatorAgent.js";
 import type * as operatorAgentRunner from "../operatorAgentRunner.js";
 import type * as operatorEmail from "../operatorEmail.js";
+import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
 import type * as operatorGoogleWorkspace from "../operatorGoogleWorkspace.js";
 import type * as operatorImessage from "../operatorImessage.js";
 import type * as operatorInvitations from "../operatorInvitations.js";
@@ -737,6 +740,7 @@ declare const fullApi: ApiFromModules<{
   "lib/jevEvidenceChoices": typeof lib_jevEvidenceChoices;
   "lib/jevImages": typeof lib_jevImages;
   "lib/jevThreshold": typeof lib_jevThreshold;
+  "lib/leakedToolCallText": typeof lib_leakedToolCallText;
   "lib/linesOfBusiness": typeof lib_linesOfBusiness;
   "lib/localSeedData": typeof lib_localSeedData;
   "lib/magicLinkTokens": typeof lib_magicLinkTokens;
@@ -771,6 +775,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorAgentToolRegistry": typeof lib_operatorAgentToolRegistry;
   "lib/operatorEmailAddress": typeof lib_operatorEmailAddress;
   "lib/operatorEmailAuthentication": typeof lib_operatorEmailAuthentication;
+  "lib/operatorEmailTools": typeof lib_operatorEmailTools;
   "lib/operatorIdentity": typeof lib_operatorIdentity;
   "lib/operatorMcpAttachments": typeof lib_operatorMcpAttachments;
   "lib/operatorMcpClient": typeof lib_operatorMcpClient;
@@ -888,6 +893,7 @@ declare const fullApi: ApiFromModules<{
   operatorAgent: typeof operatorAgent;
   operatorAgentRunner: typeof operatorAgentRunner;
   operatorEmail: typeof operatorEmail;
+  operatorEmailDrafts: typeof operatorEmailDrafts;
   operatorGoogleWorkspace: typeof operatorGoogleWorkspace;
   operatorImessage: typeof operatorImessage;
   operatorInvitations: typeof operatorInvitations;

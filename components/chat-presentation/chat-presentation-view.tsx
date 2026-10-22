@@ -127,6 +127,7 @@ export function ChatPresentationView({
   organizationId,
   answer = null,
   structuredReferences = false,
+  onOpenReference,
 }: {
   presentation: unknown;
   onFollowUp?: PresentationFollowUp;
@@ -135,6 +136,8 @@ export function ChatPresentationView({
   organizationId?: string;
   answer?: ReactNode;
   structuredReferences?: boolean;
+  /** Opens a reference in a surface-owned view; return false to use the default panel. */
+  onOpenReference?: (reference: PresentationReference) => boolean;
 }) {
   const parsed = useMemo(
     () => parseChatPresentation(presentation),
@@ -146,9 +149,11 @@ export function ChatPresentationView({
     | null
   >(null);
   const openRecord = useCallback(
-    (reference: PresentationReference, detail?: string) =>
-      setSelected({ kind: "record", reference, detail }),
-    [],
+    (reference: PresentationReference, detail?: string) => {
+      if (onOpenReference?.(reference)) return;
+      setSelected({ kind: "record", reference, detail });
+    },
+    [onOpenReference],
   );
   const openEvidence = useCallback(
     (evidence: EvidenceInspection) =>

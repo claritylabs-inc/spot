@@ -19,6 +19,7 @@ import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { MessageContextTag } from "@/components/chat/message-context-tag";
 import { ChatDisclosure } from "@/components/chat/disclosure";
 import { useChatAction } from "@/components/chat/use-chat-action";
+import { AppShellPortal, useOptionalAppShellSlots } from "@/components/app-shell-slots";
 import { AgentDockSuggestions } from "@/components/agent-dock/agent-dock-suggestions";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { PillButton } from "@/components/ui/pill-button";
@@ -31,6 +32,12 @@ import {
 } from "@/lib/operator-agent-api";
 import { cn } from "@/lib/utils";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import type { OperatorEmailDraftView } from "@/lib/operator-email-draft";
+import {
+  OperatorEmailDraftCards,
+  OperatorEmailDraftPanel,
+  useOperatorEmailDrafts,
+} from "./operator-email-drafts";
 import { OperatorEmailMessage } from "./operator-email-message";
 import { OperatorThreadChannelIcon } from "./operator-thread-channel";
 import {
@@ -235,6 +242,9 @@ function OperatorMessageRow({
   showSender,
   onFollowUp,
   presentationDisabled,
+  emailDrafts,
+  openEmailDraftId,
+  onOpenEmailDraft,
 }: {
   threadId: string;
   message: OperatorAgentMessage;
@@ -242,6 +252,9 @@ function OperatorMessageRow({
   showSender: boolean;
   onFollowUp: (message: string) => Promise<void>;
   presentationDisabled: boolean;
+  emailDrafts: OperatorEmailDraftView[];
+  openEmailDraftId: string | null;
+  onOpenEmailDraft: (draftId: string) => void;
 }) {
   const bubbleChannel = message.channel === "mcp" ? "chat" : message.channel;
   const content =
@@ -261,7 +274,13 @@ function OperatorMessageRow({
   ) : null;
 
   if (message.role === "assistant") {
-    if (!working && !content && !attachments && !message.presentation)
+    if (
+      !working &&
+      !content &&
+      !attachments &&
+      !message.presentation &&
+      emailDrafts.length === 0
+    )
       return null;
     return (
       <ChatAssistantTurn
@@ -280,7 +299,20 @@ function OperatorMessageRow({
         isError={message.status === "error"}
         presentation={message.status ? undefined : message.presentation}
         onFollowUp={onFollowUp}
+        onOpenReference={(reference) => {
+          if (reference.kind !== "email_draft") return false;
+          onOpenEmailDraft(reference.recordId);
+          return true;
+        }}
         presentationDisabled={presentationDisabled}
+        after={
+          <OperatorEmailDraftCards
+            drafts={emailDrafts}
+            threadId={threadId}
+            openDraftId={openEmailDraftId}
+            onOpen={(draft) => onOpenEmailDraft(draft.id)}
+          />
+        }
       >
         {attachments}
       </ChatAssistantTurn>
@@ -356,6 +388,18 @@ export function OperatorConversation({
 }) {
   const entries = useMemo(() => operatorConversationEntries(detail), [detail]);
   const threadId = activeThreadId ?? "";
+  const emailDraftsByMessage = useOperatorEmailDrafts(detail.messages);
+  const [openEmailDraftId, setOpenEmailDraftId] = useState<string | null>(null);
+  const hasAppShell = useOptionalAppShellSlots();
+  const openEmailDraft = useMemo(
+    () =>
+      openEmailDraftId
+        ? (Object.values(emailDraftsByMessage ?? {})
+            .flat()
+            .find((draft) => draft.id === openEmailDraftId) ?? null)
+        : null,
+    [emailDraftsByMessage, openEmailDraftId],
+  );
   const hasMessages = detail.messages.length > 0;
   const multipleSenders =
     new Set(
@@ -388,6 +432,17 @@ export function OperatorConversation({
       }
       composer={composer}
     >
+      {hasAppShell ? (
+        <AppShellPortal slot="artifactPanel" active={openEmailDraft !== null}>
+          {openEmailDraft ? (
+            <OperatorEmailDraftPanel
+              draft={openEmailDraft}
+              threadId={threadId}
+              onClose={() => setOpenEmailDraftId(null)}
+            />
+          ) : null}
+        </AppShellPortal>
+      ) : null}
       {loading ? (
         <div className="flex min-h-40 items-center justify-center">
           <Spinner className="text-muted-foreground" />
@@ -461,6 +516,9 @@ export function OperatorConversation({
                   message={message}
                   showSender={multipleSenders}
                   onFollowUp={onFollowUp}
+                  emailDrafts={emailDraftsByMessage?.[message.id] ?? []}
+                  openEmailDraftId={openEmailDraftId}
+                  onOpenEmailDraft={setOpenEmailDraftId}
                   presentationDisabled={
                     presentationDisabled || hasPendingConfirmation
                   }

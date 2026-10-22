@@ -228,6 +228,18 @@
           "tools": true
         },
         "prompt": "Read the attached certificate.",
+        "tools": [
+          {
+            "name": "get_procurement_request",
+            "description": "Read one procurement request.",
+            "inputSchema": {
+              "type": "object",
+              "properties": { "requestId": { "type": "string" } },
+              "required": ["requestId"]
+            }
+          }
+        ],
+        "toolSelection": "caller",
         "route": {
           "provider": "openai",
           "model": "gpt-5.6-terra"

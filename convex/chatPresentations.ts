@@ -14,6 +14,10 @@ import { publicResearchUrl } from "./lib/companyResearch";
 import { canAccessThread } from "./lib/threadAccess";
 import { chatPresentationValidator } from "./lib/chatPresentationValidators";
 import {
+  EMAIL_DRAFT_EVIDENCE_TOOLS,
+  projectEmailDraftEvidence,
+} from "./lib/chatPresentationCandidates";
+import {
   parseChatPresentation,
   type ChatPresentation,
   type PresentationEvidence,
@@ -61,6 +65,7 @@ const supportedTools = new Set([
   "lookup_vendor_policies",
   "get_organization",
   "search_organizations",
+  ...EMAIL_DRAFT_EVIDENCE_TOOLS,
 ]);
 // Retain typed domain evidence, excluding provider envelopes and credentials.
 const evidenceFields = new Set(
@@ -180,15 +185,18 @@ export function capturePresentationTool(
     ("isError" in result && result.isError === true)
   )
     return null;
+  const emailDraft = EMAIL_DRAFT_EVIDENCE_TOOLS.has(name);
   const boundedEnvelope =
     "bounded" in result && result.bounded === true && "result" in result;
   const budget = { remaining: 4096, bounded: boundedEnvelope };
-  const projected = projectEvidence(
-    boundedEnvelope ? result.result : result,
-    budget,
-  );
+  // Draft evidence keeps metadata only; the email body is never captured.
+  const projected = emailDraft
+    ? projectEmailDraftEvidence(result)
+    : projectEvidence(boundedEnvelope ? result.result : result, budget);
   const outputJson = JSON.stringify(
-    budget.bounded ? { result: projected, bounded: true } : projected,
+    budget.bounded && !emailDraft
+      ? { result: projected, bounded: true }
+      : projected,
   );
   if (!outputJson || outputJson === "{}" || outputJson === "[]") return null;
   if (new TextEncoder().encode(outputJson).length > MAX_TOOL_BYTES - 64)
@@ -476,6 +484,7 @@ async function authorizeReference(
   ctx: QueryCtx | MutationCtx,
   reference: PresentationReference,
   scope: Scope,
+  threadId: Message["threadId"],
 ): Promise<PresentationReference | null> {
   const operator = scope.audience === "operator";
   const orgAllowed = async (id: Id<"organizations"> | undefined) => {
@@ -674,6 +683,19 @@ async function authorizeReference(
     href = operator
       ? `/operator/clients/${vendor._id}`
       : `/connect/vendors/${vendor._id}/policies`;
+  } else if (reference.kind === "email_draft") {
+    // A current unsent draft is reachable only from the thread that owns it.
+    const id = ctx.db.normalizeId("pendingEmails", reference.recordId);
+    const draft = id ? await ctx.db.get(id) : null;
+    if (
+      !draft ||
+      draft.status !== "draft" ||
+      !(await orgAllowed(draft.orgId)) ||
+      (operator
+        ? draft.operatorThreadId !== threadId
+        : draft.operatorThreadId !== undefined || draft.threadId !== threadId)
+    )
+      return null;
   } else if (reference.kind === "provider") {
     if (!operator) return null;
     const id = ctx.db.normalizeId("organizations", reference.recordId);
@@ -750,7 +772,12 @@ export async function visiblePresentation(
   budget.messagesRemaining--;
   const references: PresentationReference[] = [];
   for (const reference of presentation.references) {
-    const key = JSON.stringify([scope.audience, scope.orgId, reference]);
+    const key = JSON.stringify([
+      scope.audience,
+      scope.orgId,
+      reference.kind === "email_draft" ? message.threadId : undefined,
+      reference,
+    ]);
     let authorization = budget.references.get(key);
     if (!authorization) {
       const cost =
@@ -764,7 +791,12 @@ export async function visiblePresentation(
           : 0);
       if (cost > budget.remaining) return undefined;
       budget.remaining -= cost;
-      authorization = authorizeReference(ctx, reference, scope);
+      authorization = authorizeReference(
+        ctx,
+        reference,
+        scope,
+        message.threadId,
+      );
       budget.references.set(key, authorization);
     }
     const authorized = await authorization;

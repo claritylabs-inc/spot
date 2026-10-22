@@ -4438,6 +4438,8 @@ export default defineSchema({
     presentation: v.optional(chatPresentationValidator),
     presentationRevision: v.optional(v.number()),
     emailContent: v.optional(operatorEmailContentValidator),
+    /** Outbound email drafts the operator agent shows under this turn. */
+    pendingEmailIds: v.optional(v.array(v.id("pendingEmails"))),
     attachments: v.optional(
       v.array(
         v.object({
@@ -4677,6 +4679,8 @@ export default defineSchema({
         lastToolName: v.optional(v.string()),
         pendingConfirmationId: v.optional(v.id("operatorAgentConfirmations")),
         routerRetryCount: v.optional(v.number()),
+        // Tool families chosen once per run and reused on later iterations.
+        families: v.optional(v.array(v.string())),
       }),
     ),
     cancellationRequestedAt: v.optional(v.number()),
@@ -4849,6 +4853,11 @@ export default defineSchema({
   pendingEmails: defineTable({
     orgId: v.id("organizations"),
     threadId: v.optional(v.id("threads")),
+    // Drafts written by the operator agent belong to an operator thread, not a
+    // client thread, and are only reachable from that operator thread.
+    operatorThreadId: v.optional(v.id("operatorAgentThreads")),
+    // The operator agent message currently displaying this draft.
+    operatorMessageId: v.optional(v.id("operatorAgentMessages")),
     status: v.union(
       v.literal("draft"),
       v.literal("pending"),
@@ -4894,6 +4903,7 @@ export default defineSchema({
     referencedPolicyIds: v.optional(v.array(v.id("policies"))),
   })
     .index("thread", ["threadId"])
+    .index("operator_thread", ["operatorThreadId"])
     .index("status", ["status"]),
 
   emailDeliveryAttempts: defineTable({

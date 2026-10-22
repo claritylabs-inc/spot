@@ -323,6 +323,50 @@ export async function createClientFileFromOperatorAttachment(
   return { clientFileId, status: "filed" as const, name };
 }
 
+export async function createClientFileFromGeneratedCertificate(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    orgId: Id<"organizations">;
+    fileId: Id<"_storage">;
+    filename: string;
+  },
+) {
+  await requireOperatorForUser(ctx, args.operatorUserId);
+  await assertNoOperatorImpersonation(ctx, args.operatorUserId);
+  await requireClientOrganization(ctx, args.orgId);
+  const existing = await ctx.db
+    .query("clientFiles")
+    .withIndex("storage", (index) => index.eq("fileId", args.fileId))
+    .first();
+  if (existing) {
+    if (existing.orgId !== args.orgId || existing.deletedAt) {
+      throw new Error("Certificate file cannot be filed for this client");
+    }
+    return existing._id;
+  }
+  const metadata = await ctx.db.system.get("_storage", args.fileId);
+  if (!metadata) throw new Error("Certificate file is unavailable");
+  const originalName = normalizeAgentAttachmentFilename(args.filename);
+  const now = dayjs().valueOf();
+  return await ctx.db.insert("clientFiles", {
+    orgId: args.orgId,
+    fileId: args.fileId,
+    name: buildClientFileName(originalName, originalName),
+    originalName,
+    contentType: "application/pdf",
+    size: metadata.size,
+    sha256: normalizeClientFileSha256(metadata.sha256),
+    clientVisible: false,
+    uploadedByUserId: args.operatorUserId,
+    uploadedBySide: "operator",
+    nameSource: "original",
+    nameStatus: "ready",
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 export async function createClientFileFromProcurementEmail(
   ctx: MutationCtx,
   args: {
