@@ -349,6 +349,7 @@ import type * as lib_profileResearchOrchestrator from "../lib/profileResearchOrc
 import type * as lib_proposalAggregation from "../lib/proposalAggregation.js";
 import type * as lib_proposalMarkdown from "../lib/proposalMarkdown.js";
 import type * as lib_proposalReview from "../lib/proposalReview.js";
+import type * as lib_providerOutreachEmail from "../lib/providerOutreachEmail.js";
 import type * as lib_providerOutreachLifecycle from "../lib/providerOutreachLifecycle.js";
 import type * as lib_providerOutreachMatch from "../lib/providerOutreachMatch.js";
 import type * as lib_providerOutreachSchedule from "../lib/providerOutreachSchedule.js";
@@ -400,6 +401,7 @@ import type * as lib_userFacingErrors from "../lib/userFacingErrors.js";
 import type * as lib_userPhone from "../lib/userPhone.js";
 import type * as lib_valueNormalization from "../lib/valueNormalization.js";
 import type * as lib_vendorComplianceTools from "../lib/vendorComplianceTools.js";
+import type * as lib_verifySvixWebhook from "../lib/verifySvixWebhook.js";
 import type * as lib_webChatDeterministicControls from "../lib/webChatDeterministicControls.js";
 import type * as lib_webRetrieval from "../lib/webRetrieval.js";
 import type * as lib_websiteBrand from "../lib/websiteBrand.js";
@@ -823,6 +825,7 @@ declare const fullApi: ApiFromModules<{
   "lib/proposalAggregation": typeof lib_proposalAggregation;
   "lib/proposalMarkdown": typeof lib_proposalMarkdown;
   "lib/proposalReview": typeof lib_proposalReview;
+  "lib/providerOutreachEmail": typeof lib_providerOutreachEmail;
   "lib/providerOutreachLifecycle": typeof lib_providerOutreachLifecycle;
   "lib/providerOutreachMatch": typeof lib_providerOutreachMatch;
   "lib/providerOutreachSchedule": typeof lib_providerOutreachSchedule;
@@ -874,6 +877,7 @@ declare const fullApi: ApiFromModules<{
   "lib/userPhone": typeof lib_userPhone;
   "lib/valueNormalization": typeof lib_valueNormalization;
   "lib/vendorComplianceTools": typeof lib_vendorComplianceTools;
+  "lib/verifySvixWebhook": typeof lib_verifySvixWebhook;
   "lib/webChatDeterministicControls": typeof lib_webChatDeterministicControls;
   "lib/webRetrieval": typeof lib_webRetrieval;
   "lib/websiteBrand": typeof lib_websiteBrand;
