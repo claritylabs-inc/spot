@@ -435,6 +435,7 @@ export function ProviderGeographyDialog({
                   >
                     <div className="grid min-w-0 gap-1 sm:grid-cols-2">
                       <SearchableSelect
+                        typographyRole="control.menu"
                         ariaLabel={`${row.label} country`}
                         placeholder="Select country"
                         value={
@@ -451,6 +452,7 @@ export function ProviderGeographyDialog({
                       />
                       {names ? (
                         <SearchableSelect
+                          typographyRole="control.menu"
                           ariaLabel={`${row.label} ${country === "CA" ? "province" : "state"}`}
                           placeholder={
                             country === "CA"
