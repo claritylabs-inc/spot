@@ -12,6 +12,10 @@ import { readStoredAgentFile } from "../lib/storedAgentFile";
 import { runOperatorWebRetrieval } from "../lib/webRetrieval";
 import { parseOperatorAgentToolInput } from "../lib/operatorAgentToolRegistry";
 import { mergePdfsFromUrls, mergedFileName } from "../lib/mergePdfs";
+import {
+  OPERATOR_EMAIL_TOOL_NAMES,
+  runOperatorEmailTool,
+} from "../lib/operatorEmailTools";
 
 const operatorChannelValidator = v.union(
   v.literal("chat"),
@@ -45,6 +49,7 @@ export const runInternal = internalAction({
     input: v.any(),
     channel: operatorChannelValidator,
     confirmationId: v.optional(v.id("operatorAgentConfirmations")),
+    messageId: v.optional(v.id("operatorAgentMessages")),
   },
   handler: async (
     ctx,
@@ -56,6 +61,19 @@ export const runInternal = internalAction({
     await ctx.runQuery(internal.operator.requireOperatorForUserInternal, {
       userId: args.operatorUserId,
     });
+
+    if (OPERATOR_EMAIL_TOOL_NAMES.has(args.toolName)) {
+      return {
+        result: await runOperatorEmailTool(ctx, {
+          operatorUserId: args.operatorUserId,
+          threadId: args.threadId,
+          toolName: args.toolName,
+          input: args.input as Record<string, unknown>,
+          messageId: args.messageId,
+          confirmationId: args.confirmationId,
+        }),
+      };
+    }
 
     if (args.toolName === "web_search") {
       const input = parseOperatorAgentToolInput("web_search", args.input);

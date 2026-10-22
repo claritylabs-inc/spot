@@ -24,7 +24,8 @@ export const get = query({
     assertCanUseTenantAgent(access);
     const { orgId } = access;
     const pending = await ctx.db.get(args.id);
-    if (!pending || pending.orgId !== orgId) return null;
+    if (!pending || pending.orgId !== orgId || pending.operatorThreadId)
+      return null;
     return pending;
   },
 });
@@ -36,7 +37,8 @@ export const cancel = mutation({
     assertCanUseTenantAgent(access);
     const { orgId } = access;
     const pending = await ctx.db.get(args.id);
-    if (!pending || pending.orgId !== orgId) throw new Error("Not found");
+    if (!pending || pending.orgId !== orgId || pending.operatorThreadId)
+      throw new Error("Not found");
     if (!(await cancelDraftOrPendingEmail(ctx, args.id))) {
       throw new Error("Email already processed");
     }
@@ -50,7 +52,8 @@ export const restoreAsDraft = mutation({
     assertCanUseTenantAgent(access);
     const { orgId } = access;
     const pending = await ctx.db.get(args.id);
-    if (!pending || pending.orgId !== orgId) throw new Error("Not found");
+    if (!pending || pending.orgId !== orgId || pending.operatorThreadId)
+      throw new Error("Not found");
     if (pending.status !== "cancelled") {
       throw new Error("Only cancelled emails can be restored");
     }
@@ -63,6 +66,7 @@ export const create = internalMutation({
   args: {
     orgId: v.id("organizations"),
     threadId: v.optional(v.id("threads")),
+    operatorThreadId: v.optional(v.id("operatorAgentThreads")),
     scheduledSendTime: v.number(),
     chatMessageId: v.optional(v.id("threadMessages")),
     threadMessageId: v.optional(v.id("threadMessages")),
@@ -278,6 +282,32 @@ export const findDraftByThreadAndRecipient = internalQuery({
   },
 });
 
+export const findDraftByOperatorThreadAndRecipient = internalQuery({
+  args: {
+    orgId: v.id("organizations"),
+    operatorThreadId: v.id("operatorAgentThreads"),
+    recipientEmail: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const recipientEmail = args.recipientEmail.trim().toLowerCase();
+    const drafts = await ctx.db
+      .query("pendingEmails")
+      .withIndex("operator_thread", (q) =>
+        q.eq("operatorThreadId", args.operatorThreadId),
+      )
+      .order("desc")
+      .take(100);
+    return (
+      drafts.find(
+        (draft) =>
+          draft.orgId === args.orgId &&
+          draft.status === "draft" &&
+          draft.recipientEmail.trim().toLowerCase() === recipientEmail,
+      ) ?? null
+    );
+  },
+});
+
 export const findLatestCancelledByThread = internalQuery({
   args: {
     threadId: v.id("threads"),
@@ -313,7 +343,12 @@ export const listDraftsInternal = internalQuery({
           .withIndex("status", (q) => q.eq("status", "draft"))
           .collect();
     const drafts = rows
-      .filter((row) => row.orgId === args.orgId && row.status === "draft")
+      .filter(
+        (row) =>
+          row.orgId === args.orgId &&
+          row.status === "draft" &&
+          !row.operatorThreadId,
+      )
       .sort((a, b) => b._creationTime - a._creationTime);
     return drafts;
   },

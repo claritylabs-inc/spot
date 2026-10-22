@@ -16,11 +16,7 @@ import {
 import { cleanAgentMarkdownForTransport } from "./transportRenderers";
 import { buildEmailPayload, type EmailAttachmentMeta } from "./emailDelivery";
 import { buildEmailSignature, getEmailAgentFromName } from "./emailIdentity";
-import {
-  COI_DISCLAIMER,
-  NO_OPEN_ENDED_OFFERS,
-  NO_SIGN_OFF,
-} from "./channelStyle";
+import { EMAIL_FAMILY_GUIDANCE } from "./channelStyle";
 import {
   MULTIPLE_COI_SINGLE_RECIPIENT_WARNING,
   countCoiAttachments,
@@ -40,19 +36,11 @@ export {
   getEmailAgentFromName,
   resolveEmailAgentIdentity,
 } from "./emailIdentity";
+export { EMAIL_FAMILY_GUIDANCE };
 export {
   queueEmailDraftArtifact,
   upsertEmailDraftArtifact,
 } from "./emailDraftArtifacts";
-
-export const EMAIL_FAMILY_GUIDANCE = `EMAIL DRAFTS AND DELIVERY:
-Use draft_email to prepare an email, attachment tools to add requested files, and send_email_draft only for a current affirmative send request. Updates replace the draft; omitted CC, BCC, and attachments are cleared. Preserve attachments on an update by supplying their attachmentFileIds.
-Never invent recipient addresses. If the request says "email me" or "send me", set recipientDirection to requester. Use explicit direction for a supplied recipient. Ask for missing or ambiguous recipients, subject, body, or requested attachments before sending. Draft-only, negated, advisory, and uncertain requests remain drafts; the sender independently checks the stored user-message authorization.
-Attach only requested documents. Use attach_file_to_draft for exact saved files already generated or uploaded, including follow-ups like "send that" and saved .eml exports. Use attach_coi_to_draft only when a new certificate is needed. Original/full policy PDFs require a separate explicit request and intent evidence. For COI requests, include only the generated COI unless the original PDF was separately requested. Each recipient receives only their own COI; a requested bundle of multiple COIs needs exact recipient and attachment confirmation. Never claim a file is attached until an attachment tool succeeds, and do not reattach files already listed on the draft.
-${COI_DISCLAIMER}
-Use concise professional formatting: 1–3 short paragraphs or a short bullet list. Include only policy facts directly useful to the recipient; avoid exhaustive coverage memos unless requested.
-${NO_OPEN_ENDED_OFFERS}
-${NO_SIGN_OFF}`;
 
 export type EmailToolResult = {
   status:
@@ -205,7 +193,19 @@ export type EmailToolContext = {
   // Supplied only by authenticated server adapters, never model arguments.
   sendAuthorization?:
     | { kind: "confirmation"; confirmationId: Id<"threadActionConfirmations"> }
+    | {
+        kind: "operator_confirmed_action";
+        confirmationId: Id<"operatorAgentConfirmations">;
+      }
     | { kind: "mcp_explicit_action" };
+  // Operator-agent drafts are not client threads: they link to the operator
+  // thread and agent message, are signed by the operator, and may only be
+  // read or changed from that operator thread.
+  operator?: {
+    threadId: Id<"operatorAgentThreads">;
+    messageId?: Id<"operatorAgentMessages">;
+    senderName?: string;
+  };
   onResult?: (result: EmailToolResult) => void;
 };
 
@@ -435,7 +435,8 @@ export function buildEmailToolExecutors(
     if (
       !draft ||
       draft.orgId !== context.orgId ||
-      (activeThreadId && draft.threadId !== activeThreadId)
+      (activeThreadId && draft.threadId !== activeThreadId) ||
+      draft.operatorThreadId !== context.operator?.threadId
     )
       throw new Error("Draft not found");
     if (draft.threadId) await assertThread(draft.threadId);
@@ -600,7 +601,7 @@ export function buildEmailToolExecutors(
     assertScope(true);
     if (existing) assertEditable(existing);
     if (activeThreadId) await assertThread(activeThreadId);
-    if (!activeThreadId && !existing?.threadId) {
+    if (!context.operator && !activeThreadId && !existing?.threadId) {
       if (!context.userId)
         throw new Error(
           "An authenticated user is required to create an email thread.",
@@ -623,7 +624,10 @@ export function buildEmailToolExecutors(
       bcc: content.bcc,
       subject: content.subject,
       body: content.body,
-      signature: buildEmailSignature(context.agentAddress),
+      signature: buildEmailSignature(
+        context.agentAddress,
+        context.operator?.senderName,
+      ),
       replyTo: context.replyTo,
       inReplyTo: context.inReplyTo,
       references: context.references,
@@ -655,6 +659,7 @@ export function buildEmailToolExecutors(
         ...fields,
         orgId: context.orgId,
         threadId,
+        operatorThreadId: context.operator?.threadId,
         status: "draft",
         scheduledSendTime: 0,
       }));
@@ -695,7 +700,12 @@ export function buildEmailToolExecutors(
         threadMessageId,
       });
     }
-    if (context.chatMessageId)
+    if (context.operator?.messageId)
+      await ctx.runMutation(
+        internal.operatorEmailDrafts.attachDraftToOperatorMessageInternal,
+        { messageId: context.operator.messageId, pendingEmailId: id },
+      );
+    else if (context.chatMessageId)
       await ctx.runMutation(internal.threads.attachPendingEmailToAgentMessage, {
         id: context.chatMessageId,
         pendingEmailId: id,
@@ -803,13 +813,24 @@ export function buildEmailToolExecutors(
             content,
           );
           if (error) return emit({ status: "error", responseBody: error });
-          const existing =
-            activeThreadId && content.to
+          const operatorThreadId = context.operator?.threadId;
+          const existing = !content.to
+            ? null
+            : operatorThreadId
               ? await ctx.runQuery(
-                  internal.pendingEmails.findDraftByThreadAndRecipient,
-                  { threadId: activeThreadId, recipientEmail: content.to },
+                  internal.pendingEmails.findDraftByOperatorThreadAndRecipient,
+                  {
+                    orgId: context.orgId,
+                    operatorThreadId,
+                    recipientEmail: content.to,
+                  },
                 )
-              : null;
+              : activeThreadId
+                ? await ctx.runQuery(
+                    internal.pendingEmails.findDraftByThreadAndRecipient,
+                    { threadId: activeThreadId, recipientEmail: content.to },
+                  )
+                : null;
           if (existing && existing.orgId !== context.orgId)
             throw new Error("Draft not found");
           const draft = await persist(content, existing ?? undefined, true);

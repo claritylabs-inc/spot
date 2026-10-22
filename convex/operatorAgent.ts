@@ -138,6 +138,10 @@ import {
 import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
 import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmationPreflight";
 import {
+  OPERATOR_EMAIL_SEND_SUMMARY_LIMIT,
+  operatorEmailSendConfirmation,
+} from "./operatorEmailDrafts";
+import {
   confirmedPreflightOperatorToolFailure,
   executionOperatorToolFailure,
   operatorNoWriteCode,
@@ -298,6 +302,12 @@ const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "attach_client_file",
   "search_thread_history",
   "read_thread_attachment",
+  "draft_email",
+  "update_email_draft",
+  "attach_policy_pdf_to_draft",
+  "list_email_drafts",
+  "send_email_draft",
+  "cancel_email_draft",
 ]);
 
 function boundedJson(value: unknown, maximum = 8_000) {
@@ -535,6 +545,13 @@ async function operatorConfirmationSummary(
     });
     const client = await ctx.db.get(orgId);
     return `Import into ${client!.name}'s policy library\nFiles: ${files.map((file) => file.fileName).join(", ")}\nGrouping: ${input.mode === "combined" ? "one policy containing all selected PDFs" : `${files.length} separate policies (one per PDF)`}\nQueue extraction; duplicate PDFs reuse existing policies.`;
+  }
+  if (toolName === "send_email_draft") {
+    const { summary } = await operatorEmailSendConfirmation(ctx, {
+      threadId: context.threadId,
+      draftId: input.draftId,
+    });
+    return boundedDisplayText(summary, OPERATOR_EMAIL_SEND_SUMMARY_LIMIT, true);
   }
   if (toolName !== "update_broker_network_profile") {
     return operatorDisplaySummary(
@@ -877,6 +894,20 @@ function normalizedOptionalText(value: unknown) {
   if (value === null) return undefined;
   if (typeof value !== "string") return undefined;
   return value.trim() || undefined;
+}
+
+/** The applicant's own contact details, for addressing email from records. */
+function applicantContactFromAnswers(...sources: unknown[]) {
+  for (const source of sources) {
+    const answers = recordValue(source);
+    const contact = {
+      name: normalizedOptionalText(answers?.name),
+      email: normalizedOptionalText(answers?.email),
+      phone: normalizedOptionalText(answers?.phone),
+    };
+    if (contact.name || contact.email || contact.phone) return contact;
+  }
+  return null;
 }
 
 function normalizeOperatorPageContext(
@@ -2021,8 +2052,23 @@ async function executeToolDomain(
       operatorUserId: args.operatorUserId,
       requestId,
     });
-    if (intake) return intake;
-    return await getProcurementRequestDetails(ctx, requestId);
+    if (intake) {
+      return {
+        ...intake,
+        applicantContact: applicantContactFromAnswers(
+          intake.application?.answers,
+          intake.intakeAnswers,
+        ),
+      };
+    }
+    const details = await getProcurementRequestDetails(ctx, requestId);
+    return {
+      ...details,
+      applicantContact: applicantContactFromAnswers(
+        details.request.application?.answers,
+        details.request.intakeAnswers,
+      ),
+    };
   }
 
   if (toolName === "list_procurement_proposals") {
@@ -3068,6 +3114,7 @@ async function executeToolActionDomain(
     channel: OperatorChannel;
     idempotencyKey?: string;
     confirmationId?: Id<"operatorAgentConfirmations">;
+    threadMessageId?: Id<"operatorAgentMessages">;
   },
 ): Promise<OperatorActionToolResult> {
   if (args.toolName === "list_mcp_tools" || args.toolName === "call_mcp_tool") {
@@ -3101,6 +3148,7 @@ async function executeToolActionDomain(
         input: args.input,
         channel: args.channel,
         confirmationId: args.confirmationId,
+        messageId: args.threadMessageId,
       },
     )) as OperatorActionToolResult;
   }
@@ -5224,7 +5272,7 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
     if (
       spec.execution !== "action" ||
       spec.confirmation !== "none" ||
-      spec.effect !== "read"
+      (spec.effect !== "read" && spec.effect !== "reversible_write")
     ) {
       throw new Error("This operator tool cannot run as an unconfirmed action");
     }
@@ -5361,6 +5409,7 @@ export const executeUnconfirmedActionToolInternal = internalAction({
         input: prepared.input,
         channel: args.channel,
         idempotencyKey: args.idempotencyKey,
+        threadMessageId: args.threadMessageId,
       });
       const readResult = recordValue(output.result);
       if (
@@ -5875,7 +5924,14 @@ export const requestToolConfirmationInternal = internalMutation({
         input: inputJson,
         inputHash: args.inputHash,
         sourceFingerprint:
-          args.toolName === "import_policy_files"
+          args.toolName === "send_email_draft"
+            ? (
+                await operatorEmailSendConfirmation(ctx, {
+                  threadId: args.threadId,
+                  draftId: input.draftId,
+                })
+              ).fingerprint
+            : args.toolName === "import_policy_files"
             ? await operatorPolicySourceFingerprint(
                 await resolveOperatorPolicySources(ctx, {
                   operatorUserId: args.operatorUserId,
