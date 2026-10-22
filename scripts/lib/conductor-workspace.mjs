@@ -2,7 +2,9 @@ import { spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 import {
   existsSync,
+  readdirSync,
   readFileSync,
+  readlinkSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -399,45 +401,78 @@ export function conductorPorts(workspaceRoot = repoRoot) {
   };
 }
 
+function listeningPids(port) {
+  const lookup = spawnSync(
+    "lsof",
+    ["-t", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN"],
+    { encoding: "utf8" },
+  );
+  if (!lookup.error) {
+    return lookup.stdout
+      .split("\n")
+      .map((line) => Number.parseInt(line, 10))
+      .filter(Number.isInteger);
+  }
+  // No lsof (minimal Linux): match listening sockets in /proc to their owners.
+  const inodes = new Set();
+  for (const table of ["/proc/net/tcp", "/proc/net/tcp6"]) {
+    if (!existsSync(table)) continue;
+    for (const line of readFileSync(table, "utf8").split("\n").slice(1)) {
+      const [, local, , state, , , , , , inode] = line.trim().split(/\s+/);
+      if (
+        state === "0A" &&
+        Number.parseInt(local?.split(":")[1] ?? "", 16) === port
+      ) {
+        inodes.add(inode);
+      }
+    }
+  }
+  if (inodes.size === 0) return [];
+  const pids = [];
+  for (const entry of readdirSync("/proc")) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      for (const fd of readdirSync(`/proc/${entry}/fd`)) {
+        const target = readlinkSync(`/proc/${entry}/fd/${fd}`);
+        const match = /^socket:\[(\d+)\]$/.exec(target);
+        if (match && inodes.has(match[1])) {
+          pids.push(Number(entry));
+          break;
+        }
+      }
+    } catch {}
+  }
+  return pids;
+}
+
+function isAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Stops anything still listening on this workspace's ports (for example a
 // Convex local backend orphaned by a previous run) so a fresh run can bind them.
 export function freePorts(ports) {
   for (const port of ports) {
-    const lookup = spawnSync(
-      "lsof",
-      ["-t", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN"],
-      { encoding: "utf8" },
-    );
-    const pids = (lookup.stdout ?? "")
-      .split("\n")
-      .map((line) => Number.parseInt(line, 10))
-      .filter((pid) => Number.isInteger(pid) && pid !== process.pid);
+    const pids = listeningPids(port).filter((pid) => pid !== process.pid);
     for (const pid of pids) {
       console.log(`Stopping stale process ${pid} on port ${port}.`);
       try {
         process.kill(pid, "SIGTERM");
       } catch {}
     }
-    if (pids.length === 0) continue;
     const deadline = Date.now() + 5_000;
-    while (Date.now() < deadline) {
-      const alive = pids.filter((pid) => {
-        try {
-          process.kill(pid, 0);
-          return true;
-        } catch {
-          return false;
-        }
-      });
-      if (alive.length === 0) break;
+    while (pids.some(isAlive) && Date.now() < deadline) {
       spawnSync("sleep", ["0.1"]);
-      if (Date.now() >= deadline) {
-        for (const pid of alive) {
-          try {
-            process.kill(pid, "SIGKILL");
-          } catch {}
-        }
-      }
+    }
+    for (const pid of pids.filter(isAlive)) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {}
     }
   }
 }
