@@ -2102,3 +2102,28 @@ Evidence: `.context/qa/provider-acord/coverage-lines.png`,
 `dropdown-typography.png`, `provider-audit.json` and `providers-after.json`.
 The model extraction and source boundaries are documented in
 `docs/architecture/acord-provider-appetite.md`.
+
+## Provider relationship contacts — October 22, 2026
+
+Local Chrome at `localhost:3207` passed Contacts tab create, name/notes autosave,
+ACORD `EO` selection, reload persistence, removal and Undo. The synthetic contact
+was removed again after verification. Reviewed the populated Polaris cards with
+its distinct property and lawyers' professional liability contacts.
+Root TypeScript, touched-file ESLint and whitespace checks passed. No tests or
+database migrations were written. The additive contact table/functions were
+pushed only to the existing local Convex instance at port 3220.
+
+Researched all 82 existing external provider records using public provider
+websites and official team/contact pages, with web-search follow-up for crawler
+gaps and redirected agent identity. Added 159 contacts, including 66 entries
+with named people/titles. All 159 retain sources and evidence. Four contacts have
+explicitly evidenced ACORD specialties; other coverage preferences remain blank.
+Memberships and portal access were not changed; production was not written.
+The bounded operator detail output now includes `networkContacts`; directory
+reads omit contact bodies.
+
+Evidence: `.context/provider-contacts/reviewed.json`, `import-results.json`,
+`verification.json`, cached public pages, `typecheck.log`, `lint.log`, and
+`contacts.png`. [Research coverage](../research/provider-contacts-2026-10-22.md)
+records the reviewed source for each provider. The local contact data is not a
+committed fixture or production backfill.
