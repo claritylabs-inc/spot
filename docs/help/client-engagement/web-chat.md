@@ -101,7 +101,7 @@ matter in your prompt.
 
 Check the proposed policy, recipient, holder, and requested change, then use the
 confirmation control in the thread. A team member without the required role may
-need an administrator or broker to complete it.
+need an administrator or provider to complete it.
 
 ### I cannot find an external conversation
 

@@ -104,7 +104,7 @@ export const agentTools = {
   send_email_draft: imperative({
     title: "Send email draft",
     description:
-      "Send an agent-drafted email now, exactly as drafted, to its recipients (for example a broker, insurer, vendor, or certificate holder). Sending cannot be undone.",
+      "Send an agent-drafted email now, exactly as drafted, to its recipients (for example a provider, insurer, vendor, or certificate holder). Sending cannot be undone.",
     readOnly: false,
     consequential: true,
     pages: AGENT_PAGES,

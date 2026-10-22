@@ -152,10 +152,10 @@ async function requireBrokerOrganization(ctx: MutationCtx, value: unknown) {
     ctx,
     "organizations",
     value,
-    "Broker organization",
+    "Provider organization",
   );
   if (broker.type !== "broker")
-    throw new Error("Broker organization not found");
+    throw new Error("Provider organization not found");
   assertExternalBrokerIdentity(broker);
   return broker;
 }
@@ -260,7 +260,7 @@ function validateBrokerProfileFields(input: Record<string, unknown>) {
   }
   if (input.website !== null) validateOptionalUrl(input.website);
   if (input.name !== undefined && !normalizedText(input.name)) {
-    throw new Error("Broker name cannot be blank");
+    throw new Error("Provider name cannot be blank");
   }
 }
 
@@ -396,7 +396,7 @@ async function preflightOutreachUpdate(
     ctx,
     "procurementBrokerOutreaches",
     input.procurementOutreachId,
-    "Broker outreach",
+    "Provider outreach",
   );
   await requireProcurementRequest(ctx, outreach.requestId);
   await requireBrokerOrganization(
@@ -425,7 +425,7 @@ async function preflightProposalFile(
     ctx,
     "procurementBrokerOutreaches",
     input.procurementOutreachId,
-    "Broker outreach",
+    "Provider outreach",
   );
   if (outreach.requestId !== request._id)
     throw new Error("Outreach does not belong to this request");
@@ -525,7 +525,7 @@ async function preflightProcurementEmailQuote(
     ctx,
     "procurementBrokerOutreaches",
     input.procurementOutreachId,
-    "Broker outreach",
+    "Provider outreach",
   );
   if (outreach.requestId !== request._id)
     throw new Error("Outreach does not belong to this email thread's request");
@@ -684,7 +684,7 @@ async function preflightBrokerProfileCreate(
   input: Record<string, unknown>,
 ) {
   const name = normalizedText(input.name);
-  if (!name) throw new Error("Broker name is required");
+  if (!name) throw new Error("Provider name is required");
   validateBrokerProfileFields(input);
   // The agent reaches this tool from unstructured submission records, where the
   // same broker often appears under a name it has already been registered with.
@@ -698,7 +698,7 @@ async function preflightBrokerProfileCreate(
   );
   if (duplicate) {
     throw new Error(
-      `Broker ${duplicate.name} is already registered as ${duplicate._id}; update that profile instead`,
+      `Provider ${duplicate.name} is already registered as ${duplicate._id}; update that profile instead`,
     );
   }
 }

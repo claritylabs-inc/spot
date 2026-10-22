@@ -37,7 +37,7 @@ const PLANNING_QUESTIONS: Record<
   },
   multipleEntities: {
     type: "noul",
-    instructions: `Does \`objective\` name or clearly imply two or more distinct target entities, such as organizations, domains, policies, brokers, files, or requests, that each need their own lookup, check, or change? A list of targets in one message counts even when written briefly. ${CURRENT_OBJECTIVE_ONLY}`,
+    instructions: `Does \`objective\` name or clearly imply two or more distinct target entities, such as organizations, domains, policies, providers, files, or requests, that each need their own lookup, check, or change? A list of targets in one message counts even when written briefly. ${CURRENT_OBJECTIVE_ONLY}`,
   },
   multipleEntityEdits: {
     type: "noul",

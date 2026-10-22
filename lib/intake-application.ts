@@ -9,7 +9,12 @@ import {
   type IntakeDetails,
 } from "./insurance-intake-details";
 import { hasCommercialAuto } from "./intake-drivers";
-import { followupQuestionVisible, type IntakeFollowupAnswer } from "./intake-followups";
+import {
+  expandIntakeFollowupQuestion,
+  followupQuestionVisible,
+  type IntakeFollowupAnswer,
+} from "./intake-followups";
+import { bakedCoverageQuestions } from "./intake-coverage-questions";
 import { isFixedVehicleFollowup } from "./intake-vehicle-underwriting";
 
 export type IntakeApplication = {
@@ -151,19 +156,54 @@ export function visibleIntakeFollowups(
   );
 }
 
-/** Quote sections after the base application; editors show auto sections before data exists. */
+/** Location identity facts are edited with the property row, not as catalog answers. */
+const TYPED_LOCATION_SOURCES = [
+  "shared.location.activities",
+  "shared.location.ownership",
+  "shared.location.staff_count",
+];
+
+/** Every applicable reviewed coverage question, answered or not, for editors. */
+export function intakeCoverageAnswerRows(
+  answers: IntakeAnswers,
+  details: IntakeDetails,
+): IntakeFollowupAnswer[] {
+  const saved = new Map(
+    (details.followups ?? [])
+      .filter((row) => row.section === "acord")
+      .map((row) => [row.id, row]),
+  );
+  const rows = new Map<string, IntakeFollowupAnswer>(
+    bakedCoverageQuestions({ answers, details })
+      .flatMap(expandIntakeFollowupQuestion)
+      .map((question) => [
+        question.id,
+        saved.get(question.id) ?? { ...question, answer: "" },
+      ]),
+  );
+  for (const row of saved.values()) if (!rows.has(row.id)) rows.set(row.id, row);
+  return [...rows.values()].filter(
+    (row) =>
+      !isFixedVehicleFollowup(row) &&
+      !TYPED_LOCATION_SOURCES.some((id) => row.source?.endsWith(` · ${id}`)) &&
+      followupQuestionVisible(row, details.followups),
+  );
+}
+
+/** Review sections after the base application. Editors keep auto quote facts
+ * and drivers under the commercial auto coverage instead of separate tabs.
+ */
 export function intakeQuoteSections(details: IntakeDetails, editable = false) {
-  const auto = hasCommercialAuto(details);
+  const auto = hasCommercialAuto(details) && !editable;
   return [
     ...(auto &&
-    (editable ||
-      details.freightHauled ||
+    (details.freightHauled ||
       details.coverages.some((line) =>
         line.vehicles?.some((vehicle) => vehicle.estimatedValue),
       ))
       ? (["Quote details"] as const)
       : []),
-    ...(auto && (editable || details.drivers?.length)
+    ...(auto && details.drivers?.length
       ? (["Driver schedule"] as const)
       : []),
     ...(visibleIntakeFollowups(details, "additional").length

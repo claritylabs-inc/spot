@@ -1,5 +1,7 @@
 "use client";
-import { useRef, type ReactNode } from "react";
+import { useContext, useRef, type ReactNode } from "react";
+import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
+import { InlineFieldsContext } from "@/components/ui/inline-fields";
 import { Check } from "lucide-react";
 import { Button } from "@claritylabs-inc/ui/components/button";
 import { typeStyle } from "@/lib/typography";
@@ -21,7 +23,20 @@ export function IntakeUnknownRow({label,value,onChange,children,enabled = true,d
   const previous = useRef("");
   const checked = value === INTAKE_UNSURE;
   const below = placement === "below";
+  const inline = useContext(InlineFieldsContext);
   if (!enabled) return children;
+  // Operator rows: the coverage-limit checkbox pattern, offered only while empty.
+  if (inline)
+    return <div className="flex min-h-9 min-w-0 items-center gap-3">
+      {!checked && <div className="min-w-0 flex-1">{children}</div>}
+      {(checked || !value.trim()) && <label className={`flex h-9 shrink-0 items-center gap-2 px-3 ${typeStyle("body.default")}`}>
+        <Checkbox aria-label={`${label}: ${INTAKE_UNSURE}`} checked={checked} disabled={disabled}
+          onCheckedChange={next=>{
+            if(next){previous.current=value;onChange(INTAKE_UNSURE);}else onChange(previous.current);
+          }}/>
+        {INTAKE_UNSURE}
+      </label>}
+    </div>;
   return <div className="relative flex min-h-12 min-w-0 flex-col items-stretch gap-3">
     <div aria-hidden={checked || undefined} inert={checked} className={`min-w-0 overflow-hidden transition-opacity duration-200 motion-reduce:transition-none ${below ? checked ? "hidden" : "" : `sm:mr-[calc(9rem+0.75rem)] ${checked ? "max-sm:hidden" : ""}`}`} style={{opacity:checked?0:1}}>
       {!checked && children}

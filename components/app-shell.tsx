@@ -204,6 +204,8 @@ function ShellFrame({
     useAppShellSlot("rightPanel");
   const { filled: hasArtifactPanel, setTarget: setArtifactPanelTarget } =
     useAppShellSlot("artifactPanel");
+  const { filled: hasSecondaryNav, setTarget: setSecondaryNavTarget } =
+    useAppShellSlot("secondaryNav");
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const hasPdfPanel = isPdfOpen && !!fileUrl;
   const hasEntityPanel = !!entityPreview;
@@ -242,12 +244,21 @@ function ShellFrame({
             mobileMenuRef={mobileMenuRef}
             mobileMenuOpen={mobileOpen}
           />
-          <div className="relative min-w-0 flex-1 overflow-hidden">
-            <main className="absolute inset-0 min-w-0 overflow-y-auto scrollbar-hide">
-              <SidebarRenderContext.Provider value={sidebarRenderProps}>
-                <RouteContent>{children}</RouteContent>
-              </SidebarRenderContext.Provider>
-            </main>
+          {/* A page menu sits under the top bar, edged like the app sidebar. */}
+          <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            {hasSecondaryNav ? (
+              <aside
+                ref={setSecondaryNavTarget}
+                className="hidden h-full shrink-0 border-r border-border bg-background lg:flex"
+              />
+            ) : null}
+            <div className="relative min-w-0 flex-1">
+              <main className="absolute inset-0 min-w-0 overflow-y-auto scrollbar-hide">
+                <SidebarRenderContext.Provider value={sidebarRenderProps}>
+                  <RouteContent>{children}</RouteContent>
+                </SidebarRenderContext.Provider>
+              </main>
+            </div>
           </div>
         </>
       }

@@ -381,7 +381,7 @@ export async function listPacketLinksForOperator(
             }
           : {}),
         outreachId: link.outreachId ?? null,
-        brokerName: outreach?.brokerName ?? "All brokers",
+        brokerName: outreach?.brokerName ?? "All providers",
         recipientLabel: link.recipientLabel,
         recipientEmail: link.recipientEmail ?? null,
         expiresAt: link.expiresAt,
@@ -532,7 +532,7 @@ async function createPacketLink(
     tokenHash: await hashMagicLinkToken(token),
     token,
     recipientLabel:
-      args.recipientLabel?.trim() || outreach?.brokerName || "All brokers",
+      args.recipientLabel?.trim() || outreach?.brokerName || "All providers",
     recipientEmail: args.recipientEmail?.trim().toLowerCase(),
     expiresAt,
     packetRevisionAtIssue: request.packetRevision ?? 0,
@@ -561,10 +561,10 @@ async function createPacketLink(
         type: "setup_write",
         targetOrgId: request.clientOrgId,
         summary: outreach
-          ? `Created broker packet link for ${outreach.brokerName}`
+          ? `Created provider packet link for ${outreach.brokerName}`
           : replacedLinkIds.length
-            ? "Replaced shared broker packet link"
-            : "Created shared broker packet link",
+            ? "Replaced shared provider packet link"
+            : "Created shared provider packet link",
         metadata: {
           domain: "procurement",
           operation: "create_packet_link",
@@ -682,7 +682,7 @@ export async function revokePacketLinkByOperator(
         operatorUserId: args.operatorUserId,
         type: "setup_write",
         targetOrgId: link.clientOrgId,
-        summary: `Revoked broker packet link for ${link.recipientLabel}`,
+        summary: `Revoked provider packet link for ${link.recipientLabel}`,
         metadata: {
           domain: "procurement",
           operation: "revoke_packet_link",
@@ -788,7 +788,7 @@ export const recordDeliveryInternal = internalMutation({
             operatorUserId: args.operatorUserId,
             type: "setup_write",
             targetOrgId: link.clientOrgId,
-            summary: `${args.status === "sent" ? "Sent" : "Failed to send"} broker packet to ${link.recipientLabel}`,
+            summary: `${args.status === "sent" ? "Sent" : "Failed to send"} provider packet to ${link.recipientLabel}`,
             metadata: {
               domain: "procurement",
               operation: "send_packet",

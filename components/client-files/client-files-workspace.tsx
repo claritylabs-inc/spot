@@ -583,12 +583,12 @@ export function ClientFileUploadPanel({
           {showBrokerVisibility ? (
             <OperationalItem className="flex items-center justify-between gap-4">
               <span className={typeStyle("body.default")}>
-                Broker visibility
+                Provider visibility
               </span>
               <SettingsSwitch
                 checked={brokerVisible}
                 onCheckedChange={() => setBrokerVisible((value) => !value)}
-                label="Broker visibility"
+                label="Provider visibility"
                 disabled={uploading}
               />
             </OperationalItem>

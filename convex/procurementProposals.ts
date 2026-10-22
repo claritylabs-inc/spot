@@ -146,15 +146,15 @@ async function assertBrokerOutreach(
   const resolvedBrokerOrgId = brokerOrgId ?? outreach.brokerOrgId;
   if (!resolvedBrokerOrgId)
     throw new Error(
-      "Outreach has no broker organization; link one before filing a proposal",
+      "Outreach has no provider organization; link one before filing a proposal",
     );
   const broker = await ctx.db.get(resolvedBrokerOrgId);
   if (!broker || broker.type !== "broker")
-    throw new Error("Broker organization not found");
+    throw new Error("Provider organization not found");
   assertExternalBrokerIdentity(broker);
   assertExternalBrokerIdentity({ email: outreach.contactEmail });
   if (outreach.brokerOrgId !== broker._id)
-    throw new Error("Proposal broker must match its outreach");
+    throw new Error("Proposal provider must match its outreach");
   return { request, outreach, broker };
 }
 
@@ -1519,7 +1519,7 @@ export async function selectProcurementProposalByOperator(
     .sections;
   if (brokerSections.length === 0) {
     throw new Error(
-      "Share at least one broker-visible packet section before selecting a proposal",
+      "Share at least one provider-visible packet section before selecting a proposal",
     );
   }
   const selected = await ctx.db

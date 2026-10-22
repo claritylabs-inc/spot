@@ -2921,7 +2921,7 @@ http.route({
             responses: {
               "201": {
                 description:
-                  "Certificate generated, retrieved, or held for broker follow-up",
+                  "Certificate generated, retrieved, or held for provider follow-up",
               },
             },
           },

@@ -4,11 +4,11 @@ Client-facing instructions for web chat, email, iMessage, Slack, connected
 mailboxes, notifications, and document delivery are in the
 [Spot client help](docs/help/README.md) section.
 
-Spot is the insurance intelligence platform from Tools for Enlightenment. It combines Convex section extraction, conversational AI, company Markdown, broker/client workspaces, connected vendor/client access, and API/MCP surfaces.
+Spot is the insurance intelligence platform from Tools for Enlightenment. It combines Convex section extraction, conversational AI, company Markdown, provider/client workspaces, connected vendor/client access, and API/MCP surfaces.
 
 For contributor-facing implementation detail, see [AGENTS.md](AGENTS.md).
 
-Procurement requests use two ordinary Markdown files: `private.md` for internal work and `public.md` for shared material. Intake, broker history, follow-ups, and file-handling prose live in those files. Public content is available through authorized request access or an issued packet link; the filename does not publish it to the internet. Workflow fields and immutable issued snapshots remain separate. See the [procurement data inventory](docs/procurement/data-inventory.md) and [implementation/release record](docs/architecture/backend-simplification.md).
+Procurement requests use two ordinary Markdown files: `private.md` for internal work and `public.md` for shared material. Intake, provider history, follow-ups, and file-handling prose live in those files. Public content is available through authorized request access or an issued packet link; the filename does not publish it to the internet. Workflow fields and immutable issued snapshots remain separate. See the [procurement data inventory](docs/procurement/data-inventory.md) and [implementation/release record](docs/architecture/backend-simplification.md).
 
 ## What Spot Does
 
@@ -91,9 +91,9 @@ deployment and database that belong only to that worktree. Workspace setup:
    client ownership, and no policy-upload provenance. Setup generates a synthetic
    Example Risk icon and imports Cove's favicon into local Convex file storage.
    Existing Montgomery Risk fixtures are renamed in place during setup. The configured
-   broker terminal phone is assigned to the Example Risk admin so
-   Spectrum starts in an org-scoped broker context. Set
-`CONDUCTOR_IMESSAGE_TERMINAL_FROM_PHONE` to override the default broker phone.
+   provider terminal phone is assigned to the Example Risk admin so
+   Spectrum starts in an org-scoped provider context. Set
+`CONDUCTOR_IMESSAGE_TERMINAL_FROM_PHONE` to override the default provider phone.
 
 When credentials are available, the imported environment includes integration
 and router configuration but filters every AI and retrieval provider credential;
@@ -147,7 +147,7 @@ add a deployment-scoped key for the selected dev deployment as
 before creating a fresh workspace. A matching standard `CONVEX_DEPLOY_KEY` is
 also accepted. Optionally set
 `CONDUCTOR_IMESSAGE_TERMINAL_FROM_PHONE` to a local test user's E.164 number;
-setup assigns it to the seeded broker admin. Generated runtime
+setup assigns it to the seeded provider admin. Generated runtime
 files and unique local worker secrets stay under gitignored `.context/` and
 `.convex/`.
 
@@ -228,7 +228,7 @@ Agent responses are grounded in:
 
 ### 3) Connected vendor/client accounts
 
-Client/customer orgs can request a one-way vendor relationship from Connected orgs in the main app menu by entering a vendor contact email. If the email belongs to an existing Spot user, Spot resolves that user's org and emails an approval link; otherwise Spot sends an invite link so the vendor can sign in, create/select their org, and approve access. Active relationships grant the client org read-only access to the vendor's public org profile and bound policy records; they do not grant uploads, deletes, email/thread access, broker-portal capabilities, or onward access to third-party orgs.
+Client/customer orgs can request a one-way vendor relationship from Connected orgs in the main app menu by entering a vendor contact email. If the email belongs to an existing Spot user, Spot resolves that user's org and emails an approval link; otherwise Spot sends an invite link so the vendor can sign in, create/select their org, and approve access. Active relationships grant the client org read-only access to the vendor's public org profile and bound policy records; they do not grant uploads, deletes, email/thread access, provider-portal capabilities, or onward access to third-party orgs.
 
 Connected vendor data is exposed in the same channels as first-party insurance data:
 

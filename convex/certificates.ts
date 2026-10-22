@@ -120,7 +120,7 @@ function formatGateMessage(args: {
   holderName: string;
   reasonMessage: string;
 }) {
-  return `${args.reasonMessage} I did not issue this certificate for ${args.holderName}. Ask your broker to add the endorsement. I drafted an email you can send.`;
+  return `${args.reasonMessage} I did not issue this certificate for ${args.holderName}. Ask your provider to add the endorsement. I drafted an email you can send.`;
 }
 
 /**
@@ -222,10 +222,10 @@ export async function evaluateCertificateRequestGateWithJev(params: {
     reasonCode,
     reasonMessage:
       reasonCode === "policy_change_required"
-        ? "The policy requires an endorsement before the requested certificate wording can apply. Broker review is needed before issuing this certificate."
+        ? "The policy requires an endorsement before the requested certificate wording can apply. Provider review is needed before issuing this certificate."
         : reasonCode === "missing_policy_evidence"
-          ? "Spot could not find source-backed policy evidence supporting the requested certificate wording. Broker review is needed before issuing this certificate."
-          : "Spot could not confirm that the existing policy supports all requested certificate wording. Broker review is needed before issuing this certificate.",
+          ? "Spot could not find source-backed policy evidence supporting the requested certificate wording. Provider review is needed before issuing this certificate."
+          : "Spot could not confirm that the existing policy supports all requested certificate wording. Provider review is needed before issuing this certificate.",
     requiredChanges,
     evidence: certificateGateEvidence(evidence),
   });
@@ -705,7 +705,7 @@ function unsupportedEndorsementGate(
   return {
     status: "held",
     reasonCode: "policy_change_required",
-    reasonMessage: `This request asks for ${requiredChanges.map((kind) => kind.replace(/_/g, " ")).join(", ")}, which requires broker action before a certificate is issued.`,
+    reasonMessage: `This request asks for ${requiredChanges.map((kind) => kind.replace(/_/g, " ")).join(", ")}, which requires provider action before a certificate is issued.`,
     requiredChanges,
     evidence: [],
   };

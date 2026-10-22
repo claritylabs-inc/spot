@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
+import { InlineFieldsContext } from "@/components/ui/inline-fields";
 import { Combobox } from "@base-ui/react/combobox";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
@@ -18,10 +19,11 @@ export function CountriesInput({ label, value, onChange }: { label: string; valu
   const values = value.split(";").map(item => item.trim()).filter(Boolean);
   const selected = values.map(item => options.find(option => option.value === item) ?? { value: item, label: item, icon: undefined });
   const unsure = values.includes(INTAKE_UNSURE);
-  return <div className="space-y-3">
-    <div className="min-h-14">
-    {selected.length > 0 && <ul aria-label="Selected countries" className="flex flex-wrap gap-2">{selected.map(option => <li key={option.value} className="min-w-0 max-w-full">
-      <Badge variant="outline" className={`h-auto min-h-12 max-w-full gap-2 whitespace-normal bg-popover py-0 pl-3 pr-1 ${typeStyle("control.input")}`}>
+  const inline = useContext(InlineFieldsContext);
+  return <div className={inline ? "space-y-1 py-1" : "space-y-3"}>
+    <div className={inline ? undefined : "min-h-14"}>
+    {selected.length > 0 && <ul aria-label="Selected countries" className={`flex flex-wrap ${inline ? "gap-1.5" : "gap-2"}`}>{selected.map(option => <li key={option.value} className="min-w-0 max-w-full">
+      <Badge variant="outline" className={`h-auto max-w-full gap-2 whitespace-normal bg-popover py-0 pl-3 pr-1 ${inline ? `min-h-8 ${typeStyle("body.default")}` : `min-h-12 ${typeStyle("control.input")}`}`}>
         <span aria-hidden="true" className="shrink-0">{option.icon}</span><span className="min-w-0 whitespace-normal break-words">{option.label}</span>
         <RemoveButton label={`Remove ${option.label}`} onClick={() => {
           onChange(values.filter(item => item !== option.value).join("; "));
@@ -42,9 +44,11 @@ export function CountriesInput({ label, value, onChange }: { label: string; valu
         }
       }}>
       <Combobox.Trigger ref={trigger} aria-label={label}
-        className={`flex h-12 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-input bg-popover px-3 text-left transition-colors hover:border-border-hover focus:border-border-focus focus:ring-1 focus:ring-input focus:outline-none ${typeStyle("control.input")}`}>
-        <span className={selected.length ? "text-foreground" : "text-muted-foreground/40"}>
-          {unsure ? INTAKE_UNSURE : selected.length ? `${selected.length} selected` : "Select countries"}
+        className={inline
+          ? `flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-md px-3 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus:outline-none ${typeStyle("body.default")}`
+          : `flex h-12 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-input bg-popover px-3 text-left transition-colors hover:border-border-hover focus:border-border-focus focus:ring-1 focus:ring-input focus:outline-none ${typeStyle("control.input")}`}>
+        <span className={selected.length && !inline ? "text-foreground" : "text-muted-foreground/40"}>
+          {unsure ? INTAKE_UNSURE : inline ? selected.length ? "Add country" : "Not provided" : selected.length ? `${selected.length} selected` : "Select countries"}
         </span>
         <ChevronDown aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
       </Combobox.Trigger>

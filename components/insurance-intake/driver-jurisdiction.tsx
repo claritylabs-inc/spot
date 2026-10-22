@@ -1,7 +1,8 @@
 "use client";
 
 import { getCountries } from "react-phone-number-input";
-import { useState } from "react";
+import { useContext, useState } from "react";
+import { InlineFieldsContext } from "@/components/ui/inline-fields";
 import { useCountryHint } from "@/hooks/use-country-hint";
 import flags from "react-phone-number-input/flags";
 import { Field, FieldLabel } from "@claritylabs-inc/ui/components/field";
@@ -74,10 +75,13 @@ export function JurisdictionFields({
         ? provinces
         : [];
   const options = [...regions, ...(allowUnknown ? ["I'm not sure"] : [])].map((label) => ({ value: label, label }));
+  // Operator rows: country and region side by side, labelled by the row.
+  const inline = useContext(InlineFieldsContext);
+  const labelClass = inline ? "sr-only" : typeStyle("body.root");
   return (
-    <div className="space-y-4">
+    <div className={inline ? "grid min-w-0 gap-1 sm:grid-cols-2" : "space-y-4"}>
       <Field>
-        <FieldLabel className={typeStyle("body.root")}>{countryLabel}</FieldLabel>
+        <FieldLabel className={labelClass}>{countryLabel}</FieldLabel>
         <SearchableSelect
           ariaLabel={countryLabel}
           placeholder="Select country"
@@ -87,7 +91,7 @@ export function JurisdictionFields({
         />
       </Field>
       <Field>
-        <FieldLabel className={typeStyle("body.root")}>{regionLabel}</FieldLabel>
+        <FieldLabel className={labelClass}>{regionLabel}</FieldLabel>
         {regions.length ? (
           <SearchableSelect
             ariaLabel={regionLabel}

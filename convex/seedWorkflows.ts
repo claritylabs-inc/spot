@@ -82,7 +82,7 @@ const DOCUMENTS = [
     clientVisible: false,
     paragraphs: [
       "SYNTHETIC LOCAL FIXTURE - NOT A BINDABLE QUOTE",
-      `Insured: ${policy.insuredName}. Broker: ${policy.broker}. Insurer: ${policy.carrier}.`,
+      `Insured: ${policy.insuredName}. Provider: ${policy.broker}. Insurer: ${policy.carrier}.`,
       "Proposed term: March 15, 2027 to March 15, 2028. Annual premium: CAD 51,000.",
       "Technology E&O: CAD 5,000,000 limit; CAD 25,000 deductible. Cyber liability: CAD 2,000,000 limit; CAD 25,000 deductible. Media liability: CAD 1,000,000 limit.",
       "Subject to a signed application and current loss runs. The cyber limit is CAD 1,000,000 below the requested CAD 3,000,000. No coverage is bound.",
@@ -688,7 +688,7 @@ export const insert = internalMutation({
       ownerUserId: args.operatorUserId,
       channel: "chat",
       role: "system",
-      content: `Local QA scenario: [Cove renewal](/operator/clients/${args.clientOrgId}/procurement/${requestId}) has a broker-private quote and an unconfirmed review. Check the cyber shortfall, collect loss runs, and draft a follow-up. No messages have been sent and no binding or selection has occurred.`,
+      content: `Local QA scenario: [Cove renewal](/operator/clients/${args.clientOrgId}/procurement/${requestId}) has a provider-private quote and an unconfirmed review. Check the cyber shortfall, collect loss runs, and draft a follow-up. No messages have been sent and no binding or selection has occurred.`,
       createdAt: now,
       updatedAt: now,
     });

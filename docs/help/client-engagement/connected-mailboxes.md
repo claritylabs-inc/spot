@@ -69,7 +69,7 @@ reviews and saves their automation settings.
 From web chat or another supported agent channel, ask Spot to search a mailbox
 you can access. Good requests include:
 
-- `Find the most recent renewal email from our broker.`
+- `Find the most recent renewal email from our provider.`
 - `Show messages from the landlord about insurance requirements.`
 - `Read the April 12 email and summarize its attachments.`
 - `Import the policy PDF from that message.`

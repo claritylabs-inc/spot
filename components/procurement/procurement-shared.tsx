@@ -160,7 +160,7 @@ export type ProcurementOutreachStatus =
   (typeof OUTREACH_STATUS_OPTIONS)[number]["value"];
 
 const EMAIL_CATEGORY_OPTIONS = [
-  { value: "broker", label: "Broker" },
+  { value: "broker", label: "Provider" },
   { value: "client", label: "Client" },
   { value: "internal", label: "Internal" },
   { value: "mixed", label: "Mixed" },
@@ -709,7 +709,7 @@ export function ProcurementEmailDrawer({
                         <span
                           className={`text-muted-foreground ${typeStyle("caption.default")}`}
                         >
-                          Broker outreach
+                          Provider outreach
                         </span>
                         <SearchableSelect
                           value={selectedOutreachId}

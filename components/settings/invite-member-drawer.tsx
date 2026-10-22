@@ -119,8 +119,8 @@ export function InviteMemberDrawer({
           <p className={`text-muted-foreground/60 mt-1.5 ${typeStyle("caption.default")}`}>
             {isBroker
               ? role === "admin"
-                ? "Admins can manage the broker profile and team members."
-                : "Members can view the broker profile and team."
+                ? "Admins can manage the provider profile and team members."
+                : "Members can view the provider profile and team."
               : role === "admin"
                 ? "Admins can manage connections, settings, and team members."
                 : "Members can view policies and use the agent, but can't manage connections or settings."}

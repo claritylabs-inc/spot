@@ -74,7 +74,7 @@ export function assertExternalBrokerIdentity(identity: BrokerIdentity) {
   if (isSpotOwnedBrokerIdentity(identity)) {
     throw new NoWriteInputError(
       "spot_owned_broker_identity",
-      "This is a Spot-owned brand or domain. Treat it as Spot; it cannot be registered or used as an external broker.",
+      "This is a Spot-owned brand or domain. Treat it as Spot; it cannot be registered or used as an external provider.",
     );
   }
 }

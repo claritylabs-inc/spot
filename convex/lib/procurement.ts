@@ -87,7 +87,7 @@ export function inferProcurementEmailCategory(args: {
     };
   }
   if (matches.broker) {
-    return { category: "broker", reason: "Recipient matches a broker contact" };
+    return { category: "broker", reason: "Recipient matches a provider contact" };
   }
   if (matches.client) {
     return { category: "client", reason: "Recipient matches a client member" };

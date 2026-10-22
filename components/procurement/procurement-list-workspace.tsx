@@ -168,10 +168,10 @@ function ProcurementRequestPreview({
                 onClick={() => setView("links")}
               >
                 {links === undefined
-                  ? "Loading broker link…"
+                  ? "Loading provider link…"
                   : hasBrokerLink
-                    ? "View broker link"
-                    : "Create broker link"}
+                    ? "View provider link"
+                    : "Create provider link"}
               </PillButton>
             </>
           ) : null}
@@ -282,7 +282,7 @@ function ProcurementRequestPreview({
           ) : null}
           <OperationalLabelValueRow
             label="Activity"
-            value={`${currentRequest.brokerCount} ${currentRequest.brokerCount === 1 ? "broker" : "brokers"} · ${currentRequest.quoteCount} ${currentRequest.quoteCount === 1 ? "quote" : "quotes"} · ${currentRequest.emailThreadCount} email ${currentRequest.emailThreadCount === 1 ? "thread" : "threads"}`}
+            value={`${currentRequest.brokerCount} ${currentRequest.brokerCount === 1 ? "provider" : "providers"} · ${currentRequest.quoteCount} ${currentRequest.quoteCount === 1 ? "quote" : "quotes"} · ${currentRequest.emailThreadCount} email ${currentRequest.emailThreadCount === 1 ? "thread" : "threads"}`}
           />
           <OperationalLabelValueRow
             label="Updated"
@@ -571,7 +571,7 @@ export function ProcurementListWorkspace({
   return requests.length === 0 ? (
     <EmptyStateCard
       title="No procurement requests yet"
-      description="Create a request to centralize client requirements, broker outreach, documents, quotes, and forwarded email."
+      description="Create a request to centralize client requirements, provider outreach, documents, quotes, and forwarded email."
       icon={<FileSearch className="size-6" />}
     />
   ) : (

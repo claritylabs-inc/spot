@@ -56,7 +56,7 @@ async function generateReviewForOperator(
   if (!input) throw new Error("Proposal extraction is not ready for review");
   if (input.sectionKeys.length === 0)
     throw new Error(
-      "This request has no broker-visible packet sections to review against",
+      "This request has no provider-visible packet sections to review against",
     );
   if (!input.proposalMarkdown.trim())
     throw new Error("The proposal extraction produced no readable content");

@@ -244,7 +244,7 @@ async function requireBrokerOrganization(
   if (!brokerOrgId) return null;
   const broker = await ctx.db.get(brokerOrgId);
   if (!broker || broker.deletedAt !== undefined || broker.type !== "broker") {
-    throw new Error("Broker organization not found");
+    throw new Error("Provider organization not found");
   }
   assertExternalBrokerIdentity(broker);
   return broker;
@@ -380,7 +380,7 @@ function buildRequestTimeline(args: {
     ...args.proposals.map((proposal) => ({
       key: `proposal:${proposal._id}`,
       kind: "proposal" as const,
-      summary: `${brokerNameByOutreach.get(String(proposal.outreachId)) ?? "Broker"} proposal ${readable(proposal.status)}`,
+      summary: `${brokerNameByOutreach.get(String(proposal.outreachId)) ?? "Provider"} proposal ${readable(proposal.status)}`,
       createdAt: proposal.updatedAt,
     })),
   ];
@@ -725,12 +725,12 @@ export async function createProcurementRequestByOperator(
     nextActions: [
       {
         action: "forward_correspondence",
-        why: "Forward the relevant client or broker thread so Spot can preserve the correspondence and associate its attachments with this request",
+        why: "Forward the relevant client or provider thread so Spot can preserve the correspondence and associate its attachments with this request",
         forwardingAddress,
       },
       {
         tool: "update_procurement_packet",
-        why: "Complete and verify the broker-visible packet before sharing it",
+        why: "Complete and verify the provider-visible packet before sharing it",
         input: { procurementRequestId: requestId },
       },
     ],
@@ -1182,7 +1182,7 @@ export async function createProcurementOutreachByOperator(
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const request = await requireRequest(ctx, args.requestId);
   const broker = await requireBrokerOrganization(ctx, args.brokerOrgId);
-  if (!broker) throw new Error("Broker organization is required");
+  if (!broker) throw new Error("Provider organization is required");
   assertExternalBrokerIdentity({ email: args.contactEmail });
   if (args.contactUserId) {
     const membership = await ctx.db
@@ -1192,7 +1192,7 @@ export async function createProcurementOutreachByOperator(
       )
       .unique();
     if (!membership)
-      throw new Error("Broker contact must belong to the selected broker");
+      throw new Error("Provider contact must belong to the selected provider");
     const contact = await ctx.db.get(args.contactUserId);
     assertExternalBrokerIdentity({ email: contact?.email });
   }
@@ -1269,14 +1269,14 @@ export async function updateProcurementOutreachByOperator(
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const outreach = await ctx.db.get(args.outreachId);
-  if (!outreach) throw new Error("Broker outreach not found");
+  if (!outreach) throw new Error("Provider outreach not found");
   const request = await requireRequest(ctx, outreach.requestId);
   const patch: Partial<Doc<"procurementBrokerOutreaches">> = {
     updatedByUserId: args.operatorUserId,
     updatedAt: dayjs().valueOf(),
   };
   if (args.brokerOrgId !== undefined) {
-    if (!args.brokerOrgId) throw new Error("Broker organization is required");
+    if (!args.brokerOrgId) throw new Error("Provider organization is required");
     if (args.brokerOrgId !== outreach.brokerOrgId) {
       const existingProposal = await ctx.db
         .query("procurementProposals")
@@ -1284,12 +1284,12 @@ export async function updateProcurementOutreachByOperator(
         .first();
       if (existingProposal) {
         throw new Error(
-          "The broker cannot change after a proposal has been filed",
+          "The provider cannot change after a proposal has been filed",
         );
       }
     }
     const broker = await requireBrokerOrganization(ctx, args.brokerOrgId);
-    if (!broker) throw new Error("Broker organization is required");
+    if (!broker) throw new Error("Provider organization is required");
     patch.brokerOrgId = broker._id;
     patch.brokerName = broker.name;
   }
@@ -1303,7 +1303,7 @@ export async function updateProcurementOutreachByOperator(
   });
   if (args.contactUserId !== undefined) {
     if (args.contactUserId) {
-      if (!nextBrokerOrgId) throw new Error("Select a broker before a contact");
+      if (!nextBrokerOrgId) throw new Error("Select a provider before a contact");
       const membership = await ctx.db
         .query("orgMemberships")
         .withIndex("organization_user", (q) =>
@@ -1311,7 +1311,7 @@ export async function updateProcurementOutreachByOperator(
         )
         .unique();
       if (!membership)
-        throw new Error("Broker contact must belong to the selected broker");
+        throw new Error("Provider contact must belong to the selected provider");
       const contact = await ctx.db.get(args.contactUserId);
       assertExternalBrokerIdentity({ email: contact?.email });
     }
@@ -1789,7 +1789,7 @@ export async function previewProcurementEmailReconciliation(
     : suggestedOutreach;
   if (selectedOutreachId && !selectedOutreach) {
     throw new Error(
-      "Selected outreach must belong to this request and an external broker",
+      "Selected outreach must belong to this request and an external provider",
     );
   }
   const selectedProposalIds = new Set(

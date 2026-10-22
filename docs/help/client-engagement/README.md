@@ -93,9 +93,9 @@ include in common requests.
 The dedicated Slack Connect support channel is the channel where a Spot human
 operator can join the same conversation. Email and iMessage are AI-only
 surfaces. In Slack, mention Spot and send `human`, `person`, `operator`, or
-`handoff`. You can also contact the broker or service contact listed in your
+`handoff`. You can also contact the provider or service contact listed in your
 workspace.
 
 For a claim, cancellation, binding instruction, or other time-sensitive legal
-notice, follow the official notice method in the policy and contact the broker
+notice, follow the official notice method in the policy and contact the provider
 or carrier directly. Do not rely on an AI conversation as formal notice.

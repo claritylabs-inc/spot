@@ -26,7 +26,7 @@ Use distinct values per deployment. Rotate by coordinating both services; remove
 the Convex value to disable the API. Do not store it in person records, employee
 environments, saved plans, journals, source files, browser bundles, logs, or
 handoff output. Employees receive no provisioning credentials and use email OTP.
-This principal cannot create owners, manage broker/customer organizations, or
+This principal cannot create owners, manage provider/customer organizations, or
 access the operator MCP catalog. Never reuse `OPERATOR_PROVISIONING_SECRET`, a
 Convex deploy key, an employee session, or the router/worker credentials.
 

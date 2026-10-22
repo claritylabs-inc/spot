@@ -200,7 +200,7 @@ export const insuranceTools = {
   generate_certificate: imperative({
     title: "Generate certificate of insurance",
     description:
-      "Generate (or reuse) a certificate of insurance PDF for one policy and one holder, covering every available coverage. Returns PDF links. Requests needing endorsements are held for broker review instead.",
+      "Generate (or reuse) a certificate of insurance PDF for one policy and one holder, covering every available coverage. Returns PDF links. Requests needing endorsements are held for provider review instead.",
     readOnly: false,
     pages: ["/certificates", "/compliance", "/policies"],
     inputSchema: schema(

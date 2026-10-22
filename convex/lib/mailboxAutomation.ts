@@ -171,7 +171,7 @@ export function mailboxEmailQuestions(
     [mailboxQuestionId(ref, "relevant")]: {
       type: "noul",
       instructions: {
-        question: `Is ${message} about commercial insurance for the mailbox owner's company (policies, coverage, certificates, renewals, claims, brokers, or insurance requirements)?`,
+        question: `Is ${message} about commercial insurance for the mailbox owner's company (policies, coverage, certificates, renewals, claims, providers, or insurance requirements)?`,
         inspect: `${subject}, ${snippet}, ${attachments}, and first-page images when \`firstPage\` is present`,
         not_for: "marketing, receipts, scheduling, or unrelated correspondence",
         note: UNTRUSTED_EVIDENCE,

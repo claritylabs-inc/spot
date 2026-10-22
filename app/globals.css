@@ -305,7 +305,8 @@
 [data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"], [data-slot="website-input"]):hover {
   background-color: var(--muted);
 }
-[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"], [data-slot="website-input"]):is(:focus, :focus-visible, :focus-within) {
+/* Open selects keep the active fill while focus is inside their popup. */
+[data-operator-inline-fields] :is(input:not([type="checkbox"]), textarea, [data-slot="select-trigger"], [data-slot="input-group"], [data-slot="website-input"], button[role="combobox"]):is(:focus, :focus-visible, :focus-within, [data-popup-open], [aria-expanded="true"]) {
   background-color: var(--muted);
   border-color: transparent;
   box-shadow: none;
@@ -339,6 +340,14 @@
   [data-operator-inline-fields] [data-inline-field-row] {
     grid-template-columns: min(35%, 20rem) minmax(0, 1fr);
   }
+  /* Question rows read as sentences; split the row evenly with the answer. */
+  [data-operator-inline-fields] [data-inline-field-row][data-row-layout="wide"] {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  [data-operator-inline-fields] [data-inline-field-row][data-row-layout="stacked"] {
+    grid-template-columns: minmax(0, 1fr);
+    gap: .125rem;
+  }
 }
 [data-operator-inline-fields] [data-inline-field-card] > label {
   display: grid;
@@ -354,6 +363,7 @@
 }
 
 [data-operator-inline-fields] [data-inline-field-row] input:not([type="checkbox"]) { height: 2.25rem; min-height: 2.25rem; }
+[data-operator-inline-fields] [data-inline-field-row] [data-slot="input-group"] { height: 2.25rem; min-height: 2.25rem; }
 [data-operator-inline-fields] [data-inline-field-card] > .contents > label {
   display: grid;
   grid-template-columns: min(35%,20rem) minmax(0,1fr);
