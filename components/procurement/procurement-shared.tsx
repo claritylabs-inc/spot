@@ -23,6 +23,7 @@ import {
 } from "@claritylabs-inc/ui/components/popover";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { PillButton } from "@/components/ui/pill-button";
+import { LogoIcon } from "@/components/ui/logo-icon";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
@@ -333,7 +334,13 @@ export function ProcurementEmailMessage({
     (forwardedEmail ? "" : "(No message text)");
   const header = (
     <div className="flex min-w-0 items-start gap-3">
-      <OrgBrandIcon name={sender} size="lg" className="mt-0.5 shrink-0" />
+      {fromSpot ? (
+        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
+          <LogoIcon size={18} />
+        </span>
+      ) : (
+        <OrgBrandIcon name={sender} size="lg" className="mt-0.5 shrink-0" />
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3">
           <p className="min-w-0 truncate">
@@ -441,16 +448,71 @@ export function ProcurementEmailMessage({
   );
 }
 
+/** Live automated follow-ups on this conversation, with the shared stop action. */
+function FollowUpStatus({
+  followUps,
+  readOnly,
+}: {
+  followUps: NonNullable<ProcurementEmailThreadData["followUps"]>;
+  readOnly: boolean;
+}) {
+  const stop = useMutation(api.providerOutreach.stop);
+  const [stopping, setStopping] = useState(false);
+  const live = followUps.status === "active" || followUps.status === "reply_check";
+  if (!live) return null;
+  const text =
+    followUps.status === "reply_check"
+      ? "Reply received; checking it before any follow-up"
+      : followUps.remaining && followUps.nextDueAt
+        ? `Follow-ups to ${followUps.recipient}: ${followUps.remaining} left · next ${dayjs(followUps.nextDueAt).format("MMM D, h:mm A")}`
+        : `Follow-ups to ${followUps.recipient} running`;
+  return (
+    <div className="flex items-center justify-between gap-3 bg-muted/40 px-4 py-2">
+      <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+        {text}
+      </p>
+      {!readOnly ? (
+        <PillButton
+          type="button"
+          size="compact"
+          variant="ghost"
+          disabled={stopping}
+          onClick={async () => {
+            setStopping(true);
+            try {
+              await stop({ sequenceId: followUps.sequenceId });
+              toast.success("Follow-ups stopped");
+            } catch (error) {
+              toast.error(
+                getUserFacingErrorMessage(error, "Could not stop follow-ups"),
+              );
+            } finally {
+              setStopping(false);
+            }
+          }}
+        >
+          {stopping ? "Stopping…" : "Stop follow-ups"}
+        </PillButton>
+      ) : null}
+    </div>
+  );
+}
+
 /** Earlier messages start collapsed, as in a mail client; the newest stays open. */
 function EmailConversation({
   thread,
+  readOnly,
 }: {
   thread: ProcurementEmailThreadData;
+  readOnly: boolean;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const lastId = thread.messages.at(-1)?._id;
   return (
     <div className="-mx-4 -my-4 divide-y divide-border">
+      {thread.followUps ? (
+        <FollowUpStatus followUps={thread.followUps} readOnly={readOnly} />
+      ) : null}
       {thread.messages.map((message) => (
         <ProcurementEmailMessage
           key={message._id}
@@ -536,6 +598,7 @@ function ReplyComposer({
       />
       <div className="flex justify-end">
         <PillButton
+            size="compact"
           type="button"
           title="Send (Ctrl or ⌘ + Enter)"
           disabled={!text.trim() || sending}
@@ -655,7 +718,8 @@ function FileQuoteAction({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<PillButton type="button" variant="secondary" />}>
+      <PopoverTrigger render={<PillButton
+            size="compact" type="button" variant="secondary" />}>
         <FileInput className="size-3.5" />
         File quote
       </PopoverTrigger>
@@ -706,6 +770,7 @@ function FileQuoteAction({
           </p>
         ) : null}
         <PillButton
+            size="compact"
           type="button"
           className="w-full"
           onClick={() => void fileQuote()}
@@ -751,6 +816,7 @@ function MoveThreadAction({
       <PopoverTrigger
         render={
           <PillButton
+            size="compact"
             type="button"
             variant="ghost"
             label="Move to request"
@@ -861,7 +927,12 @@ export function ProcurementEmailDrawer({
           <ReplyComposer
             key={emailThreadId}
             emailThreadId={emailThreadId}
-            recipient={latestInbound?.fromName ?? latestInbound?.fromEmail ?? null}
+            recipient={
+              latestInbound?.fromName ??
+              latestInbound?.fromEmail ??
+              thread?.followUps?.recipient ??
+              null
+            }
             onSendingChange={setBusy}
           />
         ) : null
@@ -872,7 +943,11 @@ export function ProcurementEmailDrawer({
           This email is no longer available.
         </p>
       ) : thread ? (
-        <EmailConversation key={emailThreadId} thread={thread} />
+        <EmailConversation
+          key={emailThreadId}
+          thread={thread}
+          readOnly={readOnly}
+        />
       ) : null}
     </SettingsDrawer>
   );

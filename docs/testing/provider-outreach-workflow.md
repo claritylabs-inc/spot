@@ -43,3 +43,8 @@ Artifacts: `.context/qa/request-inbox/{desktop-inbox,mobile-reader,dark-reader}.
 ## Inbox reader and replies — October 22, 2026
 
 Local Chrome at localhost:8080 (anonymous Convex, capture mode). Opening a hovered conversation showed content without a spinner and the right panel never unmounted across clicks and arrow-key switches. The mailbox address copies from the navbar. Sending from the reply composer returned "captured locally"; no Resend call or mirrored message. Live reply delivery and Receiving-API attachment import remain unverified (no Resend inbox on the account). Artifacts: `.context/qa/inbox-v2/`.
+
+## Client information requests and Inbox selection — October 22, 2026
+
+Local Chrome at localhost:8080 (anonymous Convex, capture mode, normal operator OTP + TOTP sign-in). Inbox **Email client** opened the mail-style composer (From/To/Subject rows, body with greeting and Spot signature preview, follow-up control in the send bar). Sending to the fixture applicant created one `audience: "client"` sequence whose first step was captured with no Resend call; the Inbox showed it as "To Adyan Tanver · Captured locally, not sent". A second send to the same contact was rejected while follow-ups were live. A synthetic mirrored conversation showed "Follow-ups to Adyan Tanver: 2 left · next …" with Stop follow-ups, the Spot mark avatar on our message and a reply box naming the recipient. Row checkboxes selected a forwarded conversation; bulk Archive removed it and Undo restored it. Mobile 390px kept Email client in the navbar. Artifacts: `.context/qa/client-outreach/`. Live client delivery, client replies via webhook and agent/MCP tool calls were not exercised; tools were verified by typecheck and source review only. No unit tests were added.
+

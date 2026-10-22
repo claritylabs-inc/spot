@@ -1803,11 +1803,93 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `Send outreach to ${input.brokerOrgIds.length} providers for ${input.procurementRequestId}, with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days (${input.cadence.style})`,
   }),
-  stop_procurement_provider_outreach: defineOperatorTool({
+  list_procurement_client_outreach: defineOperatorTool({
     family: "procurement",
     version: 1,
     description:
-      "Stop an automated provider outreach sequence and cancel its pending follow-ups for the exact request.",
+      "List the client contacts that can receive an information-request email for one company-linked procurement request (current portal members and the applicant), plus bounded client email sequences with status, steps and Inbox conversation IDs.",
+    inputSchema: z.object({ procurementRequestId }),
+    capability: "operator.procurement.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) => ({
+      kind: "procurement_request",
+      id: input.procurementRequestId,
+    }),
+    summarize: (input) =>
+      `List client email contacts and sequences for ${input.procurementRequestId}`,
+  }),
+  send_procurement_client_email: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Email a client contact to request information for a procurement request, then send automated nudges on the same thread until the client replies. First list client outreach and use an exact listed recipient email. The first email is exactly the subject and message given (greeting and operator signature are added); replies and attachments land in the request Inbox. Stops when the request closes, the recipient stops being a client contact, or follow-ups are stopped.",
+    inputSchema: z.object({
+      procurementRequestId,
+      recipientEmail: emailAddress.describe(
+        "Exact recipient email from list_procurement_client_outreach",
+      ),
+      subject: z.string().trim().min(1).max(200),
+      message: z
+        .string()
+        .trim()
+        .min(1)
+        .max(8_000)
+        .describe("Plain-text body without greeting or signature"),
+      cadence: z.object({
+        followUpCount: z.number().int().min(0).max(4),
+        intervalBusinessDays: z.union([
+          z.literal(2),
+          z.literal(3),
+          z.literal(5),
+          z.literal(7),
+        ]),
+      }),
+    }),
+    capability: "operator.procurement.write",
+    effect: "external_send",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) => ({
+      kind: "procurement_request",
+      id: input.procurementRequestId,
+    }),
+    summarize: (input) =>
+      `Email ${input.recipientEmail} "${input.subject}" for ${input.procurementRequestId}, with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days`,
+  }),
+  reply_procurement_email_thread: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Reply on a provider-outreach or client-email conversation in the request Inbox from the sending operator's outreach inbox. Automated follow-ups on that conversation stop first. Forwarded conversations cannot be answered from Spot.",
+    inputSchema: z.object({
+      procurementRequestId,
+      procurementEmailThreadId,
+      message: z
+        .string()
+        .trim()
+        .min(1)
+        .max(20_000)
+        .describe("Complete plain-text reply"),
+    }),
+    capability: "operator.procurement.write",
+    effect: "external_send",
+    requiredRole: "operator",
+    confirmation: "exact",
+    execution: "action",
+    target: (input) => ({
+      kind: "procurement_email_thread",
+      id: input.procurementEmailThreadId,
+    }),
+    summarize: (input) =>
+      `Reply on procurement email thread ${input.procurementEmailThreadId}`,
+  }),
+  stop_procurement_provider_outreach: defineOperatorTool({
+    family: "procurement",
+    version: 2,
+    description:
+      "Stop an automated outreach sequence, either provider outreach or a client information-request email, and cancel its pending follow-ups for the exact request.",
     inputSchema: z.object({
       procurementRequestId,
       sequenceId: z.string().min(1),
@@ -1820,7 +1902,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       kind: "procurement_request",
       id: input.procurementRequestId,
     }),
-    summarize: (input) => `Stop provider outreach sequence ${input.sequenceId}`,
+    summarize: (input) => `Stop outreach sequence ${input.sequenceId}`,
   }),
   create_procurement_broker_outreach: defineOperatorTool({
     family: "procurement",

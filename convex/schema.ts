@@ -2823,19 +2823,25 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_inboxId", ["inboxId"]),
 
+  // Durable outreach sequences. `audience` absent means provider outreach
+  // (outreach, provider and packet link set); `client` sequences ask the
+  // client for information and carry the operator's own first message.
   procurementOutreachSequences: defineTable({
     requestId: v.id("procurementRequests"),
     clientOrgId: v.id("organizations"),
-    outreachId: v.id("procurementBrokerOutreaches"),
-    brokerOrgId: v.id("organizations"),
+    audience: v.optional(v.union(v.literal("provider"), v.literal("client"))),
+    outreachId: v.optional(v.id("procurementBrokerOutreaches")),
+    brokerOrgId: v.optional(v.id("organizations")),
     recipient: v.object({
       contactId: v.optional(v.id("brokerContacts")),
+      userId: v.optional(v.id("users")),
       email: v.string(),
       name: v.optional(v.string()),
     }),
+    message: v.optional(v.object({ subject: v.string(), text: v.string() })),
     senderUserId: v.id("users"),
     inboxId: v.optional(v.string()),
-    packetLinkId: v.id("procurementPacketLinks"),
+    packetLinkId: v.optional(v.id("procurementPacketLinks")),
     resendThreadId: v.optional(v.string()),
     lastOutboundEmailId: v.optional(v.string()),
     procurementEmailThreadId: v.optional(v.id("procurementEmailThreads")),
@@ -2911,7 +2917,7 @@ export default defineSchema({
         subject: v.string(),
         text: v.string(),
         html: v.string(),
-        source: v.union(v.literal("llm"), v.literal("template")),
+        source: v.union(v.literal("llm"), v.literal("template"), v.literal("operator")),
       }),
     ),
     resendDraftId: v.optional(v.string()),
@@ -2929,6 +2935,20 @@ export default defineSchema({
   procurementOutreachCadences: defineTable({
     requestId: v.id("procurementRequests"),
     fingerprint: v.string(),
+    // Operator choices saved on change; they win over picks and survive re-suggestion.
+    overrides: v.optional(
+      v.object({
+        followUpCount: v.optional(v.number()),
+        intervalBusinessDays: v.optional(v.number()),
+        style: v.optional(
+          v.union(
+            v.literal("brief_nudge"),
+            v.literal("concise_recap"),
+            v.literal("detailed_recap"),
+          ),
+        ),
+      }),
+    ),
     generationStartedAt: v.optional(v.number()),
     status: v.union(
       v.literal("pending"),

@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { useMutation, useQuery } from "convex/react";
 import dayjs from "dayjs";
 import { toast } from "sonner";
+import { ChevronRight, Mail } from "lucide-react";
 
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
@@ -18,6 +25,12 @@ import {
 } from "@/components/ui/table";
 import { PillButton } from "@/components/ui/pill-button";
 import { OutreachStatusTag } from "./procurement-shared";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@claritylabs-inc/ui/components/tooltip";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -31,6 +44,7 @@ import type {
   ProviderCandidateView,
   SequenceView,
 } from "@/convex/providerOutreach";
+import type { ProviderFitReason } from "@/convex/lib/providerOutreachMatch";
 import {
   coverageOption,
   type CoverageId,
@@ -76,7 +90,144 @@ const SKIP_COPY: Record<string, string> = {
   duplicate_selection: "Selected twice",
 };
 
+const REASON_COPY: Record<ProviderFitReason, string> = {
+  blacklisted: "Blacklisted",
+  inactive: "Inactive in the network",
+  no_profile: "No appetite profile",
+  request_not_evaluable: "Request coverage or location unknown",
+  geography_primary_not_serviced: "Doesn't serve the main location",
+  geography_none_serviced: "Doesn't serve these locations",
+  geography_partial: "Serves only some locations",
+  geography_region_unknown: "Service area unclear",
+  geography_appetite_empty: "No service area recorded",
+  lines_none_covered: "Doesn't write these lines",
+  lines_partial: "Writes only some lines",
+  lines_appetite_empty: "No lines recorded",
+};
+
 const humanize = (code: string) => code.replaceAll("_", " ");
+
+const STOP_COPY: Record<string, string> = {
+  operator_stopped: "stopped by operator",
+  operator_replied: "you replied",
+  bounced: "email bounced",
+  recipient_unmonitored: "inbox unmonitored",
+  proposal_filed: "proposal filed",
+  outreach_status_changed: "status changed",
+  follow_up_window_closed: "past the target date",
+  sequence_finished: "all sent",
+};
+
+/** One line of follow-up state for a provider or client sequence. */
+type TagPresentation = Pick<
+  ComponentProps<typeof StatusTag>,
+  "tone" | "indicator"
+>;
+
+/** A status tag whose detail shows as a hover hint instead of a second line. */
+function DetailStatusTag({
+  label,
+  details,
+  ...presentation
+}: TagPresentation & { label: string; details: string[] }) {
+  const tag = <StatusTag {...presentation}>{label}</StatusTag>;
+  if (!details.length) return tag;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            tabIndex={0}
+            aria-label={`${label}: ${details.join(", ")}`}
+            className="inline-flex rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        }
+      >
+        {tag}
+      </TooltipTrigger>
+      <TooltipContent>
+        <ul className="space-y-0.5">
+          {details.map((detail) => (
+            <li key={detail}>{detail}</li>
+          ))}
+        </ul>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Follow-up state of a provider or client sequence as one status tag. */
+export function SequenceState({ sequence }: { sequence: SequenceView }) {
+  const sent = sequence.steps.filter(
+    (step) => step.status === "sent" || step.status === "captured",
+  ).length;
+  const total = sequence.steps.filter(
+    (step) => step.status !== "cancelled",
+  ).length;
+  const reason = sequence.stopReason
+    ? (STOP_COPY[sequence.stopReason] ?? humanize(sequence.stopReason))
+    : null;
+  const progress = `${sent} of ${total} emails sent`;
+  const tag: TagPresentation & { label: string; details: string[] } =
+    sequence.status === "active"
+      ? {
+          tone: "info",
+          indicator: "progress",
+          label: sequence.nextDueAt
+            ? `Follow-up ${dayjs(sequence.nextDueAt).format("MMM D")}`
+            : "Sending",
+          details: [progress],
+        }
+      : sequence.status === "reply_check"
+        ? {
+            tone: "warning",
+            indicator: "waiting",
+            label: "Checking reply",
+            details: [progress],
+          }
+        : sequence.status === "responded"
+          ? {
+              tone: "success",
+              indicator: "complete",
+              label: "Replied",
+              details: [progress, "Follow-ups stopped"],
+            }
+          : sequence.status === "completed"
+            ? {
+                tone: "neutral",
+                indicator: "complete",
+                label: "Follow-ups done",
+                details: [progress],
+              }
+            : sequence.status === "failed"
+              ? {
+                  tone: "danger",
+                  indicator: "error",
+                  label: "Delivery failed",
+                  details: [progress, ...(reason ? [reason] : [])],
+                }
+              : {
+                  tone: "neutral",
+                  indicator: "inactive",
+                  label: "Follow-ups stopped",
+                  details: [progress, ...(reason ? [reason] : [])],
+                };
+  return <DetailStatusTag {...tag} />;
+}
+
+/** Fit of a provider that is not a confirmed match. */
+function FitTag({ candidate }: { candidate: ProviderCandidateView }) {
+  return (
+    <DetailStatusTag
+      tone={candidate.verdict === "excluded" ? "danger" : "warning"}
+      indicator={candidate.verdict === "excluded" ? "cancelled" : "waiting"}
+      label={candidate.verdict === "excluded" ? "Excluded" : "Fit unknown"}
+      details={candidate.reasons.map(
+        (reason) => REASON_COPY[reason] ?? humanize(reason),
+      )}
+    />
+  );
+}
 const lineLabel = (coverage: CoverageId) => coverageOption(coverage).label;
 
 /** A live or handed-off sequence outranks a newer finished one. */
@@ -157,6 +308,7 @@ export function useProviderOutreach(
   const requestSuggestion = useMutation(
     api.providerOutreach.requestCadenceSuggestion,
   );
+  const saveCadence = useMutation(api.providerOutreach.saveCadenceOverride);
   const [overrides, setOverrides] = useState<{
     requestId: Id<"procurementRequests">;
     values: Partial<OutreachCadence>;
@@ -184,7 +336,11 @@ export function useProviderOutreach(
   const busyRef = useRef(false);
   const suggestedFor = useRef<string | null>(null);
 
-  const edited = overrides.requestId === requestId ? overrides.values : {};
+  // Saved operator choices, with unsaved local edits on top while a save runs.
+  const edited: Partial<OutreachCadence> = {
+    ...(panel?.cadence?.overrides ?? {}),
+    ...(overrides.requestId === requestId ? overrides.values : {}),
+  };
 
   // The suggestion is keyed server-side by a fingerprint of the request's
   // coverages, effective date and geography, which the panel does not expose.
@@ -257,7 +413,7 @@ export function useProviderOutreach(
   const setCadenceField = <K extends CadenceField>(
     field: K,
     value: OutreachCadence[K],
-  ) =>
+  ) => {
     setOverrides((current) => ({
       requestId,
       values: {
@@ -265,6 +421,15 @@ export function useProviderOutreach(
         [field]: value,
       },
     }));
+    void saveCadence({ requestId, field, value }).catch((error) => {
+      setOverrides((current) => {
+        const values = { ...current.values };
+        delete values[field];
+        return { requestId: current.requestId, values };
+      });
+      toast.error(getUserFacingErrorMessage(error, "Could not save cadence"));
+    });
+  };
 
   const eligible = (panel?.candidates.matched ?? []).filter(
     (candidate) =>
@@ -352,7 +517,7 @@ function SourceTag({ source }: { source: CadenceSource }) {
   );
 }
 
-function schedulePreview(
+export function schedulePreview(
   cadence: OutreachCadence,
   effectiveDate: string | null,
 ) {
@@ -370,6 +535,74 @@ function schedulePreview(
   return { text: steps.join(" · "), dropped: schedule.droppedFollowUps };
 }
 
+/** Shared follow-up count select for provider and client outreach. */
+export function FollowUpCountSelect({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: number;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}) {
+  const label = (count: number) =>
+    count === 0 ? "None" : `${count} follow-up${count === 1 ? "" : "s"}`;
+  return (
+    <Select
+      value={String(value)}
+      disabled={disabled}
+      onValueChange={(next) => onChange(Number(next))}
+    >
+      <SelectTrigger aria-label="Follow-ups" className="w-full">
+        <SelectValue>{label(value)}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {Array.from({ length: MAX_OUTREACH_FOLLOW_UPS + 1 }, (_, count) => (
+          <SelectItem key={count} value={String(count)}>
+            {label(count)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** Shared business-day interval select for provider and client outreach. */
+export function IntervalSelect({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: number;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}) {
+  const intervals = Array.from(
+    new Set<number>([...OUTREACH_INTERVAL_OPTIONS, value]),
+  ).sort((a, b) => a - b);
+  return (
+    <Select
+      value={String(value)}
+      disabled={disabled}
+      onValueChange={(next) => onChange(Number(next))}
+    >
+      <SelectTrigger
+        aria-label="Business days between follow-ups"
+        className="w-full"
+      >
+        <SelectValue>{value} business days</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {intervals.map((days) => (
+          <SelectItem key={days} value={String(days)}>
+            {days} business days
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function ProviderOutreachCadence({
   controller,
 }: {
@@ -379,12 +612,6 @@ export function ProviderOutreachCadence({
   if (!panel || !cadence) return null;
   const disabled = !panel.request.canLaunch;
   const preview = schedulePreview(cadence, panel.request.targetEffectiveDate);
-  const intervals = Array.from(
-    new Set<number>([
-      ...OUTREACH_INTERVAL_OPTIONS,
-      cadence.intervalBusinessDays,
-    ]),
-  ).sort((a, b) => a - b);
   const label = (text: string, source: CadenceSource) => (
     <span className="flex flex-wrap items-center gap-2">
       {text}
@@ -408,60 +635,20 @@ export function ProviderOutreachCadence({
         <InlineFieldRow
           label={label("Follow-ups", fields.followUpCount.source)}
         >
-          <Select
-            value={String(cadence.followUpCount)}
+          <FollowUpCountSelect
+            value={cadence.followUpCount}
             disabled={disabled}
-            onValueChange={(value) =>
-              setCadenceField("followUpCount", Number(value))
-            }
-          >
-            <SelectTrigger aria-label="Follow-ups" className="w-full">
-              <SelectValue>
-                {cadence.followUpCount === 0
-                  ? "None"
-                  : `${cadence.followUpCount} follow-up${cadence.followUpCount === 1 ? "" : "s"}`}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {Array.from(
-                { length: MAX_OUTREACH_FOLLOW_UPS + 1 },
-                (_, count) => (
-                  <SelectItem key={count} value={String(count)}>
-                    {count === 0
-                      ? "None"
-                      : `${count} follow-up${count === 1 ? "" : "s"}`}
-                  </SelectItem>
-                ),
-              )}
-            </SelectContent>
-          </Select>
+            onChange={(value) => setCadenceField("followUpCount", value)}
+          />
         </InlineFieldRow>
         <InlineFieldRow
           label={label("Every", fields.intervalBusinessDays.source)}
         >
-          <Select
-            value={String(cadence.intervalBusinessDays)}
+          <IntervalSelect
+            value={cadence.intervalBusinessDays}
             disabled={disabled}
-            onValueChange={(value) =>
-              setCadenceField("intervalBusinessDays", Number(value))
-            }
-          >
-            <SelectTrigger
-              aria-label="Business days between follow-ups"
-              className="w-full"
-            >
-              <SelectValue>
-                {cadence.intervalBusinessDays} business days
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {intervals.map((days) => (
-                <SelectItem key={days} value={String(days)}>
-                  {days} business days
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChange={(value) => setCadenceField("intervalBusinessDays", value)}
+          />
         </InlineFieldRow>
         <InlineFieldRow label={label("Style", fields.style.source)}>
           <Select
@@ -582,7 +769,10 @@ function CandidateRow({
                   );
               }}
             >
-              <SelectTrigger aria-label={`Contact for ${candidate.name}`}>
+              <SelectTrigger
+                aria-label={`Contact for ${candidate.name}`}
+                className="-ml-2 w-[calc(100%+0.5rem)] py-0.5 pr-2 pl-2 data-[size=default]:h-auto"
+              >
                 <SelectValue>
                   {recipient?.email ?? "Select contact"}
                 </SelectValue>
@@ -639,7 +829,7 @@ function CandidateRow({
             </Select>
             {recipient?.name ? (
               <p
-                className={`px-3 text-muted-foreground ${typeStyle("caption.default")}`}
+                className={`text-muted-foreground ${typeStyle("caption.default")}`}
               >
                 {recipient.name}
               </p>
@@ -658,17 +848,20 @@ function CandidateRow({
       <TableCell>
         {candidate.outreach ? (
           <OutreachStatusTag status={candidate.outreach.status} />
-        ) : (
+        ) : candidate.verdict === "matched" ? (
           <span className="text-muted-foreground">Not contacted</span>
+        ) : (
+          <FitTag candidate={candidate} />
         )}
       </TableCell>
       <TableCell className="text-right">
         <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
           {blocked === "sequence_exists" ||
-          blocked === "outreach_status_progressed" ? null : (
+          blocked === "outreach_status_progressed" ||
+          blocked === "excluded" ? null : (
             <PillButton
               type="button"
-              size="default"
+              size="compact"
               variant="primary"
               disabled={!!blocked || !canLaunch || sendingId}
               onClick={onSend}
@@ -696,14 +889,16 @@ export function OutreachSequenceActions({
       {sequence.procurementEmailThreadId ? (
         <PillButton
           type="button"
-          size="xs"
+          size="compact"
           variant="ghost"
+          title="Open conversation in Inbox"
+          aria-label="Open conversation in Inbox"
           onClick={(event) => {
             event.stopPropagation();
             onOpenThread(sequence.procurementEmailThreadId!);
           }}
         >
-          View thread
+          <Mail className="size-3.5" />
         </PillButton>
       ) : null}
     </div>
@@ -724,12 +919,32 @@ export function ProviderOutreachPanel({
   readOnly?: boolean;
 }) {
   const { panel, sending, send, selectedContacts, selectContact } = controller;
+  const [othersOpen, setOthersOpen] = useState<boolean | null>(null);
   if (!panel && !readOnly) return null;
   const submittedIds = new Set(
     submittedProviders.map((row) => row.brokerOrgId),
   );
   const rows = (panel?.candidates.matched ?? []).filter(
     (candidate) => !submittedIds.has(candidate.brokerOrgId),
+  );
+  // Unknown fit can be sent one at a time; excluded is listed with its reasons.
+  const others = [
+    ...(panel?.candidates.unknown ?? []),
+    ...(panel?.candidates.excluded ?? []),
+  ].filter((candidate) => !submittedIds.has(candidate.brokerOrgId));
+  const showOthers = othersOpen ?? (!rows.length && !submittedProviders.length);
+  const candidateRow = (candidate: ProviderCandidateView) => (
+    <CandidateRow
+      key={candidate.brokerOrgId}
+      candidate={candidate}
+      selectedContactId={selectedContacts[candidate.brokerOrgId]}
+      onSelectContact={(contactId) =>
+        selectContact(candidate.brokerOrgId, contactId)
+      }
+      sendingId={sending.has(candidate.brokerOrgId)}
+      canLaunch={!!panel?.request.canLaunch && sending.size === 0}
+      onSend={() => void send(candidate.brokerOrgId)}
+    />
   );
   return (
     <div className="space-y-4">
@@ -752,6 +967,7 @@ export function ProviderOutreachPanel({
       {!readOnly && panel ? (
         <div className="sm:hidden">
           <PillButton
+            size="compact"
             type="button"
             disabled={
               !panel.request.canLaunch ||
@@ -782,30 +998,38 @@ export function ProviderOutreachPanel({
             </TableHeader>
             <TableBody>
               {submittedProviders.map((provider) => provider.row)}
-              {rows.length ? (
-                rows.map((candidate) => (
-                  <CandidateRow
-                    key={candidate.brokerOrgId}
-                    candidate={candidate}
-                    selectedContactId={selectedContacts[candidate.brokerOrgId]}
-                    onSelectContact={(contactId) =>
-                      selectContact(candidate.brokerOrgId, contactId)
-                    }
-                    sendingId={sending.has(candidate.brokerOrgId)}
-                    canLaunch={!!panel?.request.canLaunch && sending.size === 0}
-                    onSend={() => void send(candidate.brokerOrgId)}
-                  />
-                ))
-              ) : !submittedProviders.length ? (
+              {rows.map(candidateRow)}
+              {!rows.length && !submittedProviders.length ? (
                 <TableRow>
                   <TableCell
                     colSpan={5}
-                    className="h-24 text-center text-muted-foreground"
+                    className="h-16 text-center text-muted-foreground"
                   >
-                    No providers match the recorded coverage and service area.
+                    {others.length
+                      ? "No confirmed matches yet. Providers with unknown fit are listed below and can be sent individually."
+                      : "No providers in the directory yet."}
                   </TableCell>
                 </TableRow>
               ) : null}
+              {others.length ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={5} className="p-0">
+                    <button
+                      type="button"
+                      aria-expanded={showOthers}
+                      onClick={() => setOthersOpen(!showOthers)}
+                      className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-muted-foreground hover:text-foreground ${typeStyle("body.default")}`}
+                    >
+                      <ChevronRight
+                        className={`size-3.5 transition-transform ${showOthers ? "rotate-90" : ""}`}
+                      />
+                      Other providers ({others.length}) · fit unknown or
+                      excluded
+                    </button>
+                  </TableCell>
+                </TableRow>
+              ) : null}
+              {showOthers ? others.map(candidateRow) : null}
             </TableBody>
           </Table>
         </OperationalPanel>

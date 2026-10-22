@@ -4,6 +4,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { ClRouterTraceInput } from "./clRouterClient";
 import { generateObjectForOrg } from "./models";
+import { buildOutreachSignature } from "./outreachSignature";
 import type { OutreachStyle } from "./providerOutreachSchedule";
 
 /**
@@ -18,7 +19,7 @@ import type { OutreachStyle } from "./providerOutreachSchedule";
  */
 
 export type OutreachEmailKind = "initial" | "follow_up";
-export type OutreachDraftSource = "llm" | "template";
+export type OutreachDraftSource = "llm" | "template" | "operator";
 
 const LIMITS = {
   subjectChars: 120,
@@ -351,14 +352,6 @@ function assertHttpsUrl(value: string): string {
   return url.toString();
 }
 
-function signatureLines(operator: OutreachEmailInput["operator"]): string[] {
-  return [
-    clean(operator.name, 80) ?? "Spot",
-    "Spot",
-    ...(operator.email ? [clean(operator.email, 120)!] : []),
-  ];
-}
-
 /**
  * Pure assembly: greeting, body, packet-link paragraph and operator signature.
  * `generated` is validated output from `generateOutreachDraftText`; without it
@@ -380,13 +373,14 @@ export function composeOutreachEmail(
   const greeting = `Hi ${firstName(input.recipientName) ?? "there"},`;
   const link = assertHttpsUrl(packetUrl);
   const linkIntro = "Secure submission packet:";
-  const signature = signatureLines(input.operator);
+  const signature = buildOutreachSignature(input.operator);
 
   const text = [
     greeting,
     body,
     `${linkIntro} ${link}`,
-    ["Thanks,", ...signature].join("\n"),
+    "Thanks,",
+    signature.text,
   ].join("\n\n");
 
   const paragraph = (value: string) =>
@@ -395,7 +389,8 @@ export function composeOutreachEmail(
     paragraph(greeting),
     ...body.split(/\n{2,}/).map(paragraph),
     `<p style="margin:0 0 16px">${escapeHtml(linkIntro)} <a href="${escapeHtml(link)}">${escapeHtml(link)}</a></p>`,
-    paragraph(["Thanks,", ...signature].join("\n")),
+    paragraph("Thanks,"),
+    signature.html,
   ].join("");
 
   return { subject, text, html, source };

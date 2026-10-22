@@ -285,6 +285,9 @@ export const seed = action({
       );
     }
     const workflow = await seedWorkflowFixtures(ctx, fixture);
+    await ctx.runMutation(internal.seedDirectory.insert, {
+      operatorUserId: fixture.operatorUserId,
+    });
     await ctx.runMutation(
       internal.seed.seedOperatorEmailIdentityReadinessInternal,
       {},

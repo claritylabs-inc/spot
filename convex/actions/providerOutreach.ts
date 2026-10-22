@@ -21,6 +21,7 @@ import {
   generateOutreachDraftText,
   type OutreachEmailInput,
 } from "../lib/providerOutreachEmail";
+import { composeClientOutreachEmail } from "../lib/clientOutreachEmail";
 import type {
   InboxEmail,
   InboxRecord,
@@ -413,6 +414,8 @@ function claimStep(ctx: ActionCtx, stepId: StepId) {
 
 function emailInputFor(
   claim: Claimed,
+  broker: NonNullable<Claimed["broker"]>,
+  packet: NonNullable<Claimed["packet"]>,
   operator: { name: string; email?: string },
 ): OutreachEmailInput {
   const { step, request, sequence } = claim;
@@ -423,7 +426,7 @@ function emailInputFor(
     style: sequence.cadence.style,
     followUpNumber: step.kind === "initial" ? 0 : step.index,
     isFinal: step.isFinal,
-    providerName: claim.broker.name,
+    providerName: broker.name,
     recipientName: sequence.recipient.name,
     operator,
     client: { name: request.clientName, summary: request.title },
@@ -432,7 +435,7 @@ function emailInputFor(
       regions: request.regions,
       effectiveDate: request.targetEffectiveDate ?? undefined,
       isRenewal: request.isRenewal,
-      packetFileCount: claim.packet.fileCount,
+      packetFileCount: packet.fileCount,
     },
     ...(initialSubject ? { initialSubject } : {}),
   };
@@ -460,7 +463,25 @@ async function resolveDraft(
   if (prepared.mode === "stale") return null;
   if (prepared.mode === "saved") return prepared.draft;
 
-  const input = emailInputFor(claim, operator);
+  // Client information requests: the operator's own words, then deterministic nudges.
+  if (claim.sequence.audience === "client") {
+    if (!claim.sequence.message) return null;
+    const composed = composeClientOutreachEmail({
+      kind: claim.step.kind,
+      isFinal: claim.step.isFinal,
+      recipientName: claim.sequence.recipient.name,
+      operator,
+      message: claim.sequence.message,
+    });
+    const saved = await ctx.runMutation(internal.providerOutreach.saveDraftInternal, {
+      stepId,
+      leaseToken,
+      draft: composed,
+    });
+    return saved.stored ? saved.draft : null;
+  }
+  if (!claim.broker || !claim.packet) return null;
+  const input = emailInputFor(claim, claim.broker, claim.packet, operator);
   let generated: Parameters<typeof composeOutreachEmail>[2];
   if (prepared.mode === "generate") {
     const attempt = await generateOutreachDraftText(ctx, claim.request.clientOrgId, input, {
@@ -1119,11 +1140,72 @@ export const handleInboxWebhook = internalAction({
 
 const MAX_REPLY_CHARS = 20_000;
 
+type ThreadReplyArgs = {
+  operatorUserId: Id<"users">;
+  requestId?: Id<"procurementRequests">;
+  emailThreadId: Id<"procurementEmailThreads">;
+  text: string;
+  idempotencyKey: string;
+};
+
 /**
- * Sends an operator's reply on a provider outreach thread through the sending
- * operator's Resend inbox. Follow-ups stop first; the reply is mirrored into
- * the request Inbox as soon as Resend accepts it.
+ * Sends an operator's reply on an outreach thread (provider or client) through
+ * the sending operator's Resend inbox. Follow-ups stop first; the reply is
+ * mirrored into the request Inbox as soon as Resend accepts it.
  */
+async function sendThreadReply(
+  ctx: ActionCtx,
+  args: ThreadReplyArgs,
+): Promise<{ status: "sent" | "captured" }> {
+  const text = args.text.trim();
+  if (!text) throw new Error("Write a reply first");
+  if (text.length > MAX_REPLY_CHARS) throw new Error("Reply is too long");
+  if (!/^[A-Za-z0-9-]{8,80}$/.test(args.idempotencyKey))
+    throw new Error("Invalid reply key");
+  const target = await ctx.runMutation(
+    internal.providerOutreach.prepareOperatorReplyInternal,
+    {
+      operatorUserId: args.operatorUserId,
+      emailThreadId: args.emailThreadId,
+      ...(args.requestId ? { requestId: args.requestId } : {}),
+    },
+  );
+  const html = text
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  const sent = await replyToThreadEmail({
+    inboxId: target.inboxId,
+    threadId: target.resendThreadId,
+    emailId: target.replyToEmailId,
+    text,
+    html,
+    idempotencyKey: `inbox-reply:${args.idempotencyKey}`,
+  });
+  if (sent.status === "captured") return { status: "captured" };
+  const subject = /^re:/i.test(target.subject) ? target.subject : `Re: ${target.subject}`;
+  await ctx.runMutation(internal.providerOutreach.recordOperatorReplyInternal, {
+    operatorUserId: args.operatorUserId,
+    sequenceId: target.sequenceId,
+    resendThreadId: target.resendThreadId,
+    email: {
+      resendInboxEmailId: sent.data.emailId,
+      fromEmail: target.fromEmail,
+      fromName: target.fromName,
+      toAddresses: target.to,
+      ccAddresses: [],
+      bccAddresses: [],
+      subject,
+      inReplyTo: target.messageId,
+      references: target.references,
+      text,
+      html,
+      occurredAt: dayjs().valueOf(),
+    },
+  });
+  return { status: "sent" };
+}
+
 export const replyToThread = action({
   args: {
     emailThreadId: v.id("procurementEmailThreads"),
@@ -1133,48 +1215,22 @@ export const replyToThread = action({
   handler: async (ctx, args): Promise<{ status: "sent" | "captured" }> => {
     const operatorUserId = await getSessionUserId(ctx);
     if (!operatorUserId) throw new Error("Authentication required");
-    const text = args.text.trim();
-    if (!text) throw new Error("Write a reply first");
-    if (text.length > MAX_REPLY_CHARS) throw new Error("Reply is too long");
-    if (!/^[A-Za-z0-9-]{8,80}$/.test(args.idempotencyKey))
-      throw new Error("Invalid reply key");
-    const target = await ctx.runMutation(
-      internal.providerOutreach.prepareOperatorReplyInternal,
-      { operatorUserId: operatorUserId as Id<"users">, emailThreadId: args.emailThreadId },
-    );
-    const html = text
-      .split(/\n{2,}/)
-      .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
-      .join("");
-    const sent = await replyToThreadEmail({
-      inboxId: target.inboxId,
-      threadId: target.resendThreadId,
-      emailId: target.replyToEmailId,
-      text,
-      html,
-      idempotencyKey: `inbox-reply:${args.idempotencyKey}`,
-    });
-    if (sent.status === "captured") return { status: "captured" };
-    const subject = /^re:/i.test(target.subject) ? target.subject : `Re: ${target.subject}`;
-    await ctx.runMutation(internal.providerOutreach.recordOperatorReplyInternal, {
+    return await sendThreadReply(ctx, {
       operatorUserId: operatorUserId as Id<"users">,
-      sequenceId: target.sequenceId,
-      resendThreadId: target.resendThreadId,
-      email: {
-        resendInboxEmailId: sent.data.emailId,
-        fromEmail: target.fromEmail,
-        fromName: target.fromName,
-        toAddresses: target.to,
-        ccAddresses: [],
-        bccAddresses: [],
-        subject,
-        inReplyTo: target.messageId,
-        references: target.references,
-        text,
-        html,
-        occurredAt: dayjs().valueOf(),
-      },
+      ...args,
     });
-    return { status: "sent" };
   },
+});
+
+/** Operator agent and MCP replies; the caller has exact confirmation. */
+export const replyToThreadInternal = internalAction({
+  args: {
+    operatorUserId: v.id("users"),
+    requestId: v.id("procurementRequests"),
+    emailThreadId: v.id("procurementEmailThreads"),
+    text: v.string(),
+    idempotencyKey: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ status: "sent" | "captured" }> =>
+    await sendThreadReply(ctx, args),
 });

@@ -1855,6 +1855,15 @@ export async function getProcurementEmailThreadDetails(
         .withIndex("by_inboxId", (q) => q.eq("inboxId", sequence.inboxId!))
         .first()
     : null;
+  const ownSequence = sequence?.requestId === thread.requestId ? sequence : null;
+  const pendingSteps = ownSequence
+    ? (
+        await ctx.db
+          .query("procurementOutreachSteps")
+          .withIndex("by_sequenceId_and_index", (q) => q.eq("sequenceId", ownSequence._id))
+          .take(10)
+      ).filter((step) => step.status === "scheduled" || step.status === "sending")
+    : [];
   const hydratedMessages = await Promise.all(
     messages.map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
       ...message,
@@ -1886,7 +1895,18 @@ export async function getProcurementEmailThreadDetails(
     outboundAddress: outreachInbox
       ? normalizeProcurementEmail(outreachInbox.emailAddress)
       : null,
-    canReply: Boolean(outreachInbox && sequence?.requestId === thread.requestId),
+    canReply: Boolean(outreachInbox && ownSequence),
+    followUps: ownSequence
+      ? {
+          sequenceId: ownSequence._id,
+          audience: ownSequence.audience ?? ("provider" as const),
+          status: ownSequence.status,
+          stopReason: ownSequence.stopReason ?? null,
+          recipient: ownSequence.recipient.name ?? ownSequence.recipient.email,
+          remaining: pendingSteps.length,
+          nextDueAt: pendingSteps[0]?.dueAt ?? null,
+        }
+      : null,
   };
 }
 
@@ -2110,6 +2130,10 @@ export const getInbox = query({
           preview: latest?.currentText.replace(/\s+/g, " ").trim().slice(0, 240) ?? "",
           fromName: latest?.fromName ?? null,
           fromEmail: latest?.fromEmail ?? null,
+          // Mail we sent last is listed by who it went to, as in a sent folder.
+          counterpart: latestDirection === "outbound" && sequence
+            ? `To ${sequence.recipient.name ?? sequence.recipient.email}`
+            : null,
         };
       }),
     );
@@ -2227,6 +2251,50 @@ export async function updateProcurementEmailThreadByOperator(
   });
   return { emailThreadId: thread._id, fields };
 }
+
+/** Inbox bulk archive/unarchive. A later inbound message unarchives a conversation. */
+export const setEmailThreadsArchived = mutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    emailThreadIds: v.array(v.id("procurementEmailThreads")),
+    archived: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await requireDirectOperatorWrite(ctx, operator.userId);
+    const request = await requireRequest(ctx, args.requestId);
+    if (!args.emailThreadIds.length || args.emailThreadIds.length > 100)
+      throw new Error("Select 1 to 100 conversations");
+    const now = dayjs().valueOf();
+    let changed = 0;
+    for (const emailThreadId of new Set(args.emailThreadIds)) {
+      const thread = await ctx.db.get(emailThreadId);
+      if (!thread || thread.deletedAt || thread.requestId !== request._id)
+        throw new Error("Conversation not found on this request");
+      if (Boolean(thread.archivedAt) === args.archived) continue;
+      await ctx.db.patch(thread._id, {
+        archivedAt: args.archived ? now : undefined,
+        archivedByUserId: args.archived ? operator.userId : undefined,
+        updatedAt: now,
+      });
+      changed += 1;
+    }
+    if (changed)
+      await writeOperatorAudit(ctx, {
+        operatorUserId: operator.userId,
+        type: "setup_write",
+        targetOrgId: request.clientOrgId,
+        summary: `${args.archived ? "Archived" : "Restored"} ${changed} conversation${changed === 1 ? "" : "s"} on ${request.title}`,
+        metadata: {
+          domain: "procurement",
+          operation: args.archived ? "archive_email_threads" : "unarchive_email_threads",
+          requestId: request._id,
+          emailThreadIds: args.emailThreadIds,
+        },
+      });
+    return { changed };
+  },
+});
 
 export const updateEmailThread = mutation({
   args: {

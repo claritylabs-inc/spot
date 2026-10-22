@@ -1,5 +1,6 @@
 "use client";
 import { RemoveButton } from "@/components/ui/remove-button";
+import { LogoIcon } from "@/components/ui/logo-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { IntakeApplicationFields } from "@/components/insurance-intake/application-fields";
@@ -37,12 +38,14 @@ import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 import { RequestInbox, type InboxThread } from "./request-inbox";
+import { ClientOutreachComposer } from "./client-outreach-composer";
 import {
   FitChips,
   OutreachSequenceActions,
   isLiveSequence,
   ProviderOutreachPanel,
   ProviderOutreachCadence,
+  SequenceState,
   sequenceForOutreach,
   useProviderOutreach,
 } from "./provider-outreach-panel";
@@ -68,8 +71,7 @@ import {
   Upload,
   ChevronRight,
   Clock3,
-  Copy,
-  Mail,
+  SquarePen,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -692,9 +694,15 @@ function CoveragePicker({
               onClick={() => onPick(option.id)}
               className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-foreground/4 focus-visible:bg-foreground/4 focus-visible:outline-none ${typeStyle("body.default")}`}
             >
-              <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+              <Icon
+                aria-hidden="true"
+                className="size-4 shrink-0 text-muted-foreground"
+              />
               <span className="flex-1">{option.label}</span>
-              <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground/60" />
+              <ChevronRight
+                aria-hidden="true"
+                className="size-4 text-muted-foreground/60"
+              />
             </button>
           );
         })}
@@ -764,12 +772,21 @@ function OperatorPremiumEstimate({
     !estimate.provisional &&
     estimate.contentHash === request.intakeSubmittedContentHash;
   const amount =
-    estimate?.status === "completed" ? formatPremiumEstimate(estimate) : undefined;
+    estimate?.status === "completed"
+      ? formatPremiumEstimate(estimate)
+      : undefined;
   const running =
     current && (estimate.status === "pending" || estimate.status === "running");
-  const action = readOnly || running ? null : current ? (
-    estimate.status === "failed" ? "Retry estimate" : null
-  ) : estimate ? "Refresh estimate" : "Estimate premium";
+  const action =
+    readOnly || running
+      ? null
+      : current
+        ? estimate.status === "failed"
+          ? "Retry estimate"
+          : null
+        : estimate
+          ? "Refresh estimate"
+          : "Estimate premium";
   return (
     <div className="flex min-h-9 flex-wrap items-center justify-between gap-3 px-3 py-1">
       <span className={current && amount ? "" : "text-muted-foreground"}>
@@ -877,7 +894,10 @@ function RequestEditor({
   embedded?: boolean;
   activeSection?: string;
   extraRows?: { label: string; value?: ReactNode }[];
-  onDraftChange?: (draft: { answers: IntakeAnswers; details: IntakeDetails }) => void;
+  onDraftChange?: (draft: {
+    answers: IntakeAnswers;
+    details: IntakeDetails;
+  }) => void;
   onSectionChange?: (section: string) => void;
   onRightPanel?: (node: ReactNode) => void;
   saveRef?: React.Ref<RequestEditorHandle>;
@@ -1011,20 +1031,20 @@ function RequestEditor({
     onDraftChange?.({ answers, details: intakeDetails });
   }, [answers, intakeDetails, onDraftChange]);
   const removeCoverage = (section: string) => {
-        const line = intakeDetails.coverages.find(
-          (row) => coverageSectionKey(row.coverage) === section,
-        );
-        if (!line) return;
-        const previous = intakeDetails;
-        setIntakeDetails({
-          ...intakeDetails,
-          coverages: intakeDetails.coverages.filter((row) => row !== line),
-        });
-        if (section === activeSection) onSectionChange?.("Request details");
-        toast.success(`${coverageRequestLabel(line)} removed`, {
-          action: { label: "Undo", onClick: () => setIntakeDetails(previous) },
-        });
-      };
+    const line = intakeDetails.coverages.find(
+      (row) => coverageSectionKey(row.coverage) === section,
+    );
+    if (!line) return;
+    const previous = intakeDetails;
+    setIntakeDetails({
+      ...intakeDetails,
+      coverages: intakeDetails.coverages.filter((row) => row !== line),
+    });
+    if (section === activeSection) onSectionChange?.("Request details");
+    toast.success(`${coverageRequestLabel(line)} removed`, {
+      action: { label: "Undo", onClick: () => setIntakeDetails(previous) },
+    });
+  };
   useImperativeHandle(
     saveRef,
     () => ({
@@ -1054,69 +1074,69 @@ function RequestEditor({
     [autoSave.saveNow, intakeDetails, activeSection, onSectionChange],
   );
   const requestCard = (
-        <InlineFieldCard>
-          <InlineFieldRow label="Title">
-            <Input
-              aria-label="Title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Target effective date">
-            <Input
-              aria-label="Target effective date"
-              type="date"
-              value={targetEffectiveDate}
-              onChange={(event) => setTargetEffectiveDate(event.target.value)}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Status">
-            <Select
-              value={status}
-              onValueChange={(value) =>
-                setStatus(value as ProcurementRequestStatus)
-              }
-            >
-              <SelectTrigger aria-label="Status" className="w-full">
-                <SelectValue>
-                  <RequestStatusLabel status={status} />
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {REQUEST_STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    <RequestStatusLabel status={option.value} />
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineFieldRow>
-          <InlineFieldRow label="Policy being replaced">
-            <SearchableSelect
-              ariaLabel="Policy being replaced"
-              value={replacingPolicyId}
-              options={policyOptions}
-              onChange={setReplacingPolicyId}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Resulting policy">
-            <SearchableSelect
-              ariaLabel="Resulting policy"
-              value={resultingPolicyId}
-              options={policyOptions}
-              onChange={setResultingPolicyId}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Client visibility">
-            <div className="flex h-9 items-center px-3">
-              <SettingsSwitch
-                label="Client visibility"
-                checked={clientVisible}
-                onCheckedChange={() => setClientVisible(!clientVisible)}
-              />
-            </div>
-          </InlineFieldRow>
-        </InlineFieldCard>
+    <InlineFieldCard>
+      <InlineFieldRow label="Title">
+        <Input
+          aria-label="Title"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Target effective date">
+        <Input
+          aria-label="Target effective date"
+          type="date"
+          value={targetEffectiveDate}
+          onChange={(event) => setTargetEffectiveDate(event.target.value)}
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Status">
+        <Select
+          value={status}
+          onValueChange={(value) =>
+            setStatus(value as ProcurementRequestStatus)
+          }
+        >
+          <SelectTrigger aria-label="Status" className="w-full">
+            <SelectValue>
+              <RequestStatusLabel status={status} />
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {REQUEST_STATUS_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                <RequestStatusLabel status={option.value} />
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </InlineFieldRow>
+      <InlineFieldRow label="Policy being replaced">
+        <SearchableSelect
+          ariaLabel="Policy being replaced"
+          value={replacingPolicyId}
+          options={policyOptions}
+          onChange={setReplacingPolicyId}
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Resulting policy">
+        <SearchableSelect
+          ariaLabel="Resulting policy"
+          value={resultingPolicyId}
+          options={policyOptions}
+          onChange={setResultingPolicyId}
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Client visibility">
+        <div className="flex h-9 items-center px-3">
+          <SettingsSwitch
+            label="Client visibility"
+            checked={clientVisible}
+            onCheckedChange={() => setClientVisible(!clientVisible)}
+          />
+        </div>
+      </InlineFieldRow>
+    </InlineFieldCard>
   );
   return (
     <RequestEditorFrame
@@ -1477,7 +1497,10 @@ function OutreachEditor({
                   disabled={busy}
                   onClick={() =>
                     void run(
-                      () => stopFollowUps({ sequenceId: outreachSequence.sequenceId }),
+                      () =>
+                        stopFollowUps({
+                          sequenceId: outreachSequence.sequenceId,
+                        }),
                       "Stopping follow-ups…",
                       "Follow-ups stopped",
                     )
@@ -1970,6 +1993,7 @@ export function ProcurementRequestWorkspace({
   readOnly,
   onActions,
   onRightPanel: setRightPanel,
+  sidebarFooter,
 }: {
   clientOrgId: Id<"organizations">;
   requestId: Id<"procurementRequests">;
@@ -1978,6 +2002,7 @@ export function ProcurementRequestWorkspace({
   readOnly: boolean;
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
+  sidebarFooter?: (collapsed: boolean) => ReactNode;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -2051,7 +2076,8 @@ export function ProcurementRequestWorkspace({
       return;
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
-    if (emailDrawerRef.current && !(await emailDrawerRef.current.save())) return;
+    if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
+      return;
     if (
       submissionNotesRef.current &&
       !(await submissionNotesRef.current.save())
@@ -2309,6 +2335,21 @@ export function ProcurementRequestWorkspace({
     [closePdf, closeEmail, onRightPanel, readOnly, requestOptions, requestId],
   );
 
+  const requestTitle = details?.request.title ?? "";
+  const openClientComposer = useCallback(async () => {
+    if (emailDrawerRef.current && !(await emailDrawerRef.current.save())) return;
+    closePdf();
+    router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
+    onRightPanel(
+      <ClientOutreachComposer
+        requestId={requestId}
+        requestTitle={requestTitle}
+        onClose={closeRightPanel}
+        onSent={closeRightPanel}
+      />,
+    );
+  }, [basePath, closePdf, closeRightPanel, onRightPanel, requestId, requestTitle, router]);
+
   // The Inbox keeps its selection in the URL so a thread can be deep-linked.
   // The reader opens before navigation, so the panel never closes in between.
   const selectInboxThread = useCallback(
@@ -2342,33 +2383,35 @@ export function ProcurementRequestWorkspace({
         </PillButton>
       ) : view === "proposals" ? (
         <>
-          <span className="hidden sm:contents">
           <PillButton
             type="button"
-            disabled={sendAllCount === 0 || providerOutreachBusy || !canSendAll}
-            onClick={() => void providerOutreachRef.current.sendAll()}
+            variant="secondary"
+            onClick={() => openOutreachEditor()}
           >
-            {providerOutreachBusy
-              ? "Sending…"
-              : `Send to all matched (${sendAllCount})`}
+            <Plus className="size-3.5" />
+            Add provider
           </PillButton>
+          <span className="hidden sm:contents">
+            <PillButton
+              type="button"
+              disabled={
+                sendAllCount === 0 || providerOutreachBusy || !canSendAll
+              }
+              onClick={() => void providerOutreachRef.current.sendAll()}
+            >
+              {providerOutreachBusy
+                ? "Sending…"
+                : `Send to all matched (${sendAllCount})`}
+            </PillButton>
           </span>
         </>
-      ) : view === "email" && forwardingAddress ? (
-        <PillButton
-          type="button"
-          variant="secondary"
-          title="Forward mail here to add it to this Inbox. Click to copy."
-          onClick={() => {
-            void navigator.clipboard
-              .writeText(forwardingAddress)
-              .then(() => toast.success("Mailbox address copied"));
-          }}
-        >
-          <Mail className="size-3.5" />
-          <span className="max-w-64 truncate">{forwardingAddress}</span>
-          <Copy className="size-3.5 text-muted-foreground" />
-        </PillButton>
+      ) : view === "email" ? (
+        <>
+          <PillButton type="button" onClick={() => void openClientComposer()}>
+            <SquarePen className="size-3.5" />
+            Email client
+          </PillButton>
+        </>
       ) : view === "files" ? (
         <PillButton type="button" onClick={() => openUpload()}>
           <Upload className="size-3.5" />
@@ -2411,7 +2454,8 @@ export function ProcurementRequestWorkspace({
     openUpload,
     readOnly,
     view,
-    forwardingAddress,
+    openOutreachEditor,
+    openClientComposer,
   ]);
 
   if (
@@ -2524,9 +2568,14 @@ export function ProcurementRequestWorkspace({
           key: "providers",
           label: "Providers",
           icon: PROVIDER_ICONS.providers,
-          count: details.outreaches.length + (providerOutreach.panel?.candidates.matched.filter(
-            (candidate) => !details.outreaches.some((outreach) => outreach.brokerOrgId === candidate.brokerOrgId),
-          ).length ?? 0),
+          count:
+            details.outreaches.length +
+            (providerOutreach.panel?.candidates.matched.filter(
+              (candidate) =>
+                !details.outreaches.some(
+                  (outreach) => outreach.brokerOrgId === candidate.brokerOrgId,
+                ),
+            ).length ?? 0),
         },
         ...(!readOnly
           ? [{ key: "cadence", label: "Follow-up cadence", icon: Clock3 }]
@@ -2544,8 +2593,8 @@ export function ProcurementRequestWorkspace({
     applicationGroups.some((group) =>
       group.items.some((item) => item.key === applicationSection),
     )
-    ? applicationSection
-    : "Contact details";
+      ? applicationSection
+      : "Contact details";
   const activeMenuKey =
     view === "proposals"
       ? "providers"
@@ -2617,6 +2666,9 @@ export function ProcurementRequestWorkspace({
       <div className="space-y-5">
         <SectionMenu
           label="Request sections"
+          brand={{ name: "Operator", icon: <LogoIcon size={15} /> }}
+          back={{ label: "Procurement", href: basePath }}
+          footer={sidebarFooter}
           groups={menuGroups}
           active={activeMenuKey}
           onChange={(key) => void selectMenu(key)}
@@ -2697,7 +2749,11 @@ export function ProcurementRequestWorkspace({
                 key: outreach._id,
                 brokerOrgId: outreach.brokerOrgId,
                 row: (
-                  <TableRow key={outreach._id}>
+                  <TableRow
+                    key={outreach._id}
+                    className="cursor-pointer"
+                    onClick={() => openOutreachEditor(outreach, proposal?._id)}
+                  >
                     <TableCell className="whitespace-normal">
                       <div className="flex items-center gap-3">
                         <OrgBrandIcon
@@ -2731,6 +2787,7 @@ export function ProcurementRequestWorkspace({
                     <TableCell>
                       <div className="flex flex-col items-start gap-2">
                         <OutreachStatusTag status={outreach.status} />
+                        {sequence ? <SequenceState sequence={sequence} /> : null}
                         {proposal && proposalExtractionState(proposal) ? (
                           <ProposalExtractionStatus
                             proposal={proposal}
@@ -2764,12 +2821,13 @@ export function ProcurementRequestWorkspace({
                               proposal.status.slice(1).replaceAll("_", " ")}
                           </StatusTag>
                         ) : null}
-
-
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
+                      <div
+                        className="flex flex-wrap items-center justify-end gap-2"
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         {!readOnly && sequence ? (
                           <OutreachSequenceActions
                             sequence={sequence}
@@ -2784,7 +2842,11 @@ export function ProcurementRequestWorkspace({
                         providerOutreach.panel?.request.canLaunch ? (
                           <PillButton
                             type="button"
-                            disabled={providerOutreach.sending.size > 0 || providerOutreach.sendingAll}
+                            size="compact"
+                            disabled={
+                              providerOutreach.sending.size > 0 ||
+                              providerOutreach.sendingAll
+                            }
                             onClick={() =>
                               void providerOutreach.send(candidate.brokerOrgId)
                             }
@@ -2794,15 +2856,6 @@ export function ProcurementRequestWorkspace({
                               : "Send"}
                           </PillButton>
                         ) : null}
-                        <PillButton
-                          type="button"
-                          variant="secondary"
-                          onClick={() =>
-                            openOutreachEditor(outreach, proposal?._id)
-                          }
-                        >
-                          View details
-                        </PillButton>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -2821,6 +2874,7 @@ export function ProcurementRequestWorkspace({
             key={requestId}
             requestId={requestId}
             selectedThreadId={searchParams.get("thread")}
+            forwardingAddress={forwardingAddress ?? null}
             onSelect={selectInboxThread}
             onOpenThread={(thread) => void openEmail(thread)}
           />

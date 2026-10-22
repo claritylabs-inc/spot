@@ -16,7 +16,7 @@ import {
   assertExternalBrokerIdentity,
   isSpotOwnedBrokerIdentity,
 } from "./lib/brokerProfileValidation";
-import { requireCompanyRequest } from "./lib/companyRequest";
+import { requireCompanyRequest, type CompanyRequest } from "./lib/companyRequest";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { requireOperator, writeOperatorAudit } from "./lib/operatorIdentity";
 import {
@@ -74,12 +74,14 @@ import {
 import {
   MAX_OUTREACH_FOLLOW_UPS,
   OUTREACH_DEFAULT_CADENCE,
+  OUTREACH_STYLES,
   addBusinessDays,
   buildOutreachSchedule,
   followUpCutoff,
   recomputeScheduleAfterSend,
 } from "./lib/providerOutreachSchedule";
 import { getClientPortalUrl } from "./lib/domains";
+import { clientRecipientOptions } from "./lib/clientOutreach";
 import {
   createProcurementOutreachByOperator,
   insertProcurementEmailFileItems,
@@ -116,12 +118,15 @@ function shorten(value: string, max = SHORT_TEXT) {
 function stepDone(step: Pick<Step, "status">) {
   return step.status === "sent" || step.status === "captured";
 }
+export function isClientSequence(sequence: Pick<Sequence, "audience">) {
+  return sequence.audience === "client";
+}
 
 // ---------------------------------------------------------------------------
 // Request, matching and candidates
 // ---------------------------------------------------------------------------
 
-async function loadCompanyRequest(ctx: Ctx, requestId: Id<"procurementRequests">) {
+export async function loadCompanyRequest(ctx: Ctx, requestId: Id<"procurementRequests">) {
   const request = await ctx.db.get(requestId);
   requireCompanyRequest(request);
   const client = await ctx.db.get(request.clientOrgId);
@@ -130,7 +135,7 @@ async function loadCompanyRequest(ctx: Ctx, requestId: Id<"procurementRequests">
   return { request, client };
 }
 
-function closedReason(request: Doc<"procurementRequests">) {
+export function closedReason(request: Doc<"procurementRequests">) {
   if (request.deletedAt) return "request_deleted" as const;
   if (request.status === "cancelled") return "request_cancelled" as const;
   if (request.status === "completed") return "request_completed" as const;
@@ -333,8 +338,10 @@ export type SequenceStepView = {
 };
 export type SequenceView = {
   sequenceId: Id<"procurementOutreachSequences">;
-  outreachId: Id<"procurementBrokerOutreaches">;
-  brokerOrgId: Id<"organizations">;
+  audience: "provider" | "client";
+  outreachId: Id<"procurementBrokerOutreaches"> | null;
+  brokerOrgId: Id<"organizations"> | null;
+  subject: string | null;
   status: SequenceStatus;
   stopReason: string | null;
   recipient: Sequence["recipient"];
@@ -352,14 +359,16 @@ export type SequenceView = {
   steps: SequenceStepView[];
 };
 
-function sequenceView(sequence: Sequence, steps: Step[]): SequenceView {
+export function sequenceView(sequence: Sequence, steps: Step[]): SequenceView {
   const next = isLive(sequence.status)
     ? steps.find((step) => step.status === "scheduled" || step.status === "sending")
     : undefined;
   return {
     sequenceId: sequence._id,
-    outreachId: sequence.outreachId,
-    brokerOrgId: sequence.brokerOrgId,
+    audience: isClientSequence(sequence) ? "client" : "provider",
+    outreachId: sequence.outreachId ?? null,
+    brokerOrgId: sequence.brokerOrgId ?? null,
+    subject: sequence.message?.subject ?? steps[0]?.draft?.subject ?? null,
     status: sequence.status,
     stopReason: sequence.stopReason ?? null,
     recipient: sequence.recipient,
@@ -388,7 +397,11 @@ function sequenceView(sequence: Sequence, steps: Step[]): SequenceView {
   };
 }
 
-async function requestSequences(ctx: Ctx, requestId: Id<"procurementRequests">) {
+export async function requestSequences(
+  ctx: Ctx,
+  requestId: Id<"procurementRequests">,
+  audience: "provider" | "client",
+) {
   const perStatus = Math.ceil(MAX_PANEL_SEQUENCES / 2);
   const groups = await Promise.all(
     SEQUENCE_STATUSES.map((status) =>
@@ -404,6 +417,7 @@ async function requestSequences(ctx: Ctx, requestId: Id<"procurementRequests">) 
   const bounded = groups.some((rows) => rows.length > perStatus);
   const rows = groups
     .flatMap((group) => group.slice(0, perStatus))
+    .filter((sequence) => isClientSequence(sequence) === (audience === "client"))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, MAX_PANEL_SEQUENCES);
   return { rows, bounded: bounded || groups.flat().length > MAX_PANEL_SEQUENCES };
@@ -419,6 +433,7 @@ function cadenceView(
         status: row.status,
         current: row.fingerprint === fingerprint,
         picks: row.picks ?? null,
+        overrides: row.overrides ?? null,
         updatedAt: row.updatedAt,
       }
     : null;
@@ -481,7 +496,7 @@ export async function getProviderOutreachPanel(
       .query("procurementOutreachCadences")
       .withIndex("by_requestId", (q) => q.eq("requestId", requestId))
       .first(),
-    requestSequences(ctx, requestId),
+    requestSequences(ctx, requestId, "provider"),
   ]);
   const outreachByBroker = new Map<Id<"organizations">, Doc<"procurementBrokerOutreaches">>();
   for (const outreach of outreaches)
@@ -502,6 +517,7 @@ export async function getProviderOutreachPanel(
   );
   const latestByOutreach = new Map<Id<"procurementBrokerOutreaches">, Sequence>();
   for (const sequence of sequences.rows) {
+    if (!sequence.outreachId) continue;
     const known = latestByOutreach.get(sequence.outreachId);
     // A live or handed-off sequence outranks a newer finished one.
     if (
@@ -679,25 +695,31 @@ async function notifyManualHandoff(
   now: number,
   status: "stopped" | "failed" | "responded" | "completed",
 ) {
-  const [request, broker] = await Promise.all([
+  const client = isClientSequence(sequence);
+  const relatedOrgId = sequence.brokerOrgId ?? sequence.clientOrgId;
+  const [request, recipientOrg] = await Promise.all([
     ctx.db.get(sequence.requestId),
-    ctx.db.get(sequence.brokerOrgId),
+    ctx.db.get(relatedOrgId),
   ]);
-  const provider = broker?.name ?? "A provider";
+  const party = recipientOrg?.name ?? (client ? "The client" : "A provider");
   // Delivery problems are not replies: say so, with the bounded reason code only.
   const needsAttention = status === "failed" || reason === "bounced";
   const title = needsAttention
-    ? "Provider outreach needs attention"
+    ? client
+      ? "Client email needs attention"
+      : "Provider outreach needs attention"
     : reason === "recipient_unmonitored"
-      ? `${provider} contact is unmonitored`
+      ? `${party} contact is unmonitored`
       : reason === "reply_check_timeout"
-        ? `${provider} replied; review needed`
-        : `${provider} replied`;
+        ? `${party} replied; review needed`
+        : `${party} replied`;
   const code = reason.replace(/[^a-z0-9_ -]/gi, "").slice(0, 80);
   const subject = request ? ` on ${request.title}` : "";
   const body = needsAttention
-    ? `Outreach to ${provider}${subject} ${status === "failed" ? "failed" : "stopped"} (${code}). Automated follow-ups stopped; review the Providers tab.`
+    ? `${client ? "Email" : "Outreach"} to ${party}${subject} ${status === "failed" ? "failed" : "stopped"} (${code}). Automated follow-ups stopped; review the ${client ? "Inbox" : "Providers tab"}.`
     : `Automated follow-ups stopped${subject}. Review the conversation in the request Inbox.`;
+  // Client mail always lives in the Inbox; provider delivery problems open Providers.
+  const view = needsAttention && !client ? "proposals" : "email";
   // Scheduled, so a notification failure can never roll back the state change.
   // The explicit userId keeps this operator-private: it is neither org-wide nor
   // eligible for the client's Slack/email fan-out. Warning uses the operator's
@@ -705,15 +727,15 @@ async function notifyManualHandoff(
   await ctx.scheduler.runAfter(0, internal.lib.notify.notifyInternal, {
     orgId: sequence.clientOrgId,
     userId: sequence.senderUserId,
-    relatedOrgId: sequence.brokerOrgId,
+    relatedOrgId,
     type: "mailbox_attention",
     severity: "warning",
     actionType: "view_operator_procurement",
     actionPayload: {
       clientOrgId: sequence.clientOrgId,
       requestId: sequence.requestId,
-      view: needsAttention ? "proposals" : "email",
-      ...(!needsAttention && sequence.procurementEmailThreadId
+      view,
+      ...(view === "email" && sequence.procurementEmailThreadId
         ? { emailThreadId: sequence.procurementEmailThreadId } : {}),
     },
     title,
@@ -750,10 +772,10 @@ export async function stopProviderOutreachByOperator(
     operatorUserId: args.operatorUserId,
     type: "setup_write",
     targetOrgId: request.clientOrgId,
-    summary: `Stopped provider outreach sequence on ${request.title}`,
+    summary: `Stopped ${isClientSequence(sequence) ? "client email" : "provider outreach"} sequence on ${request.title}`,
     metadata: {
       domain: "procurement",
-      operation: "stop_provider_outreach",
+      operation: isClientSequence(sequence) ? "stop_client_outreach" : "stop_provider_outreach",
       requestId: request._id,
       outreachId: sequence.outreachId,
       sequenceId: sequence._id,
@@ -871,6 +893,59 @@ async function scopedPacketLink(
     recipientEmail: args.recipientEmail,
   });
   return { id: minted.id, reused: false as const, revokedIds };
+}
+
+/**
+ * Inserts an active sequence with its scheduled steps and schedules the first
+ * send. The first email is due at its staggered slot, matching its scheduled
+ * run, so the recovery cron cannot send it early. Shared by provider and client
+ * launches; callers authorize and validate first.
+ */
+export async function insertOutreachSequence(
+  ctx: MutationCtx,
+  args: {
+    request: CompanyRequest;
+    sequence: Omit<
+      Sequence,
+      "_id" | "_creationTime" | "requestId" | "clientOrgId" | "status" | "createdAt" | "updatedAt"
+    >;
+    staggerMs: number;
+    now: number;
+  },
+) {
+  const { request, now, staggerMs } = args;
+  const schedule = buildOutreachSchedule({
+    launchAt: now,
+    cadence: args.sequence.cadence,
+    limits: { effectiveDate: request.targetEffectiveDate },
+  });
+  const sequenceId = await ctx.db.insert("procurementOutreachSequences", {
+    ...args.sequence,
+    requestId: request._id,
+    clientOrgId: request.clientOrgId,
+    status: "active",
+    createdAt: now,
+    updatedAt: now,
+  });
+  const stepIds: Id<"procurementOutreachSteps">[] = [];
+  for (const step of schedule.steps)
+    stepIds.push(
+      await ctx.db.insert("procurementOutreachSteps", {
+        sequenceId,
+        index: step.index,
+        kind: step.kind,
+        isFinal: step.isFinal,
+        dueAt: step.index === 0 ? step.dueAt + staggerMs : step.dueAt,
+        status: "scheduled",
+        attempts: 0,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+  await ctx.scheduler.runAfter(staggerMs, internal.actions.providerOutreach.sendStep, {
+    stepId: stepIds[0],
+  });
+  return { sequenceId, schedule };
 }
 
 export async function launchProviderOutreachByOperator(
@@ -997,48 +1072,20 @@ export async function launchProviderOutreachByOperator(
       recipientEmail: recipient.email,
       now,
     });
-    // The first email is due at its staggered slot, matching its scheduled run,
-    // so the recovery cron cannot send it early.
-    const staggerMs = result.launched.length * LAUNCH_STAGGER_MS;
-    const schedule = buildOutreachSchedule({
-      launchAt: now,
-      cadence,
-      limits: { effectiveDate: request.targetEffectiveDate },
+    const { sequenceId, schedule } = await insertOutreachSequence(ctx, {
+      request,
+      sequence: {
+        outreachId,
+        brokerOrgId: org._id,
+        recipient: storedRecipient(recipient),
+        senderUserId: args.operatorUserId,
+        packetLinkId: link.id,
+        cadence,
+        cadenceSource: args.cadenceSource,
+      },
+      staggerMs: result.launched.length * LAUNCH_STAGGER_MS,
+      now,
     });
-    const sequenceId = await ctx.db.insert("procurementOutreachSequences", {
-      requestId: request._id,
-      clientOrgId: request.clientOrgId,
-      outreachId,
-      brokerOrgId: org._id,
-      recipient: storedRecipient(recipient),
-      senderUserId: args.operatorUserId,
-      packetLinkId: link.id,
-      cadence,
-      cadenceSource: args.cadenceSource,
-      status: "active",
-      createdAt: now,
-      updatedAt: now,
-    });
-    const stepIds: Id<"procurementOutreachSteps">[] = [];
-    for (const step of schedule.steps)
-      stepIds.push(
-        await ctx.db.insert("procurementOutreachSteps", {
-          sequenceId,
-          index: step.index,
-          kind: step.kind,
-          isFinal: step.isFinal,
-          dueAt: step.index === 0 ? step.dueAt + staggerMs : step.dueAt,
-          status: "scheduled",
-          attempts: 0,
-          createdAt: now,
-          updatedAt: now,
-        }),
-      );
-    await ctx.scheduler.runAfter(
-      staggerMs,
-      internal.actions.providerOutreach.sendStep,
-      { stepId: stepIds[0] },
-    );
     await writeOperatorAudit(ctx, {
       operatorUserId: args.operatorUserId,
       type: "setup_write",
@@ -1144,6 +1191,54 @@ export const requestCadenceSuggestion = mutation({
   },
 });
 
+/**
+ * Saves the operator's cadence choice for a request on change. A row without a
+ * suggestion yet starts `failed` with an empty fingerprint, so the next
+ * suggestion request still runs and keeps these overrides.
+ */
+export const saveCadenceOverride = mutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    field: v.union(
+      v.literal("followUpCount"),
+      v.literal("intervalBusinessDays"),
+      v.literal("style"),
+    ),
+    value: v.union(v.number(), v.string()),
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await requireDirectOperatorWrite(ctx, operator.userId);
+    const { request } = await loadCompanyRequest(ctx, args.requestId);
+    if (closedReason(request)) throw new Error("Procurement request is closed");
+    const existing = await ctx.db
+      .query("procurementOutreachCadences")
+      .withIndex("by_requestId", (q) => q.eq("requestId", args.requestId))
+      .first();
+    const base = existing?.overrides ?? {};
+    const merged = validatedCadence({
+      ...OUTREACH_DEFAULT_CADENCE,
+      ...base,
+      [args.field]: args.value,
+    } as OutreachCadenceInput);
+    if (args.field === "style" && !OUTREACH_STYLES.includes(merged.style))
+      throw new Error("Unknown follow-up style");
+    const overrides = { ...base, [args.field]: merged[args.field] };
+    const now = dayjs().valueOf();
+    if (existing) await ctx.db.patch(existing._id, { overrides, updatedAt: now });
+    else
+      await ctx.db.insert("procurementOutreachCadences", {
+        requestId: args.requestId,
+        fingerprint: "",
+        status: "failed",
+        overrides,
+        createdAt: now,
+        updatedAt: now,
+      });
+    return { overrides };
+  },
+});
+
 /** Facts for the Jev cadence call; null when the row is stale or no longer pending. */
 export const getCadenceInputInternal = internalMutation({
   args: { cadenceId: v.id("procurementOutreachCadences") },
@@ -1230,12 +1325,16 @@ export const failCadenceInternal = internalMutation({
 // Step world checks, claim and fenced transitions
 // ---------------------------------------------------------------------------
 
-type StepWorld = {
-  request: Doc<"procurementRequests">;
-  client: Doc<"organizations">;
+type ProviderWorld = {
   outreach: Doc<"procurementBrokerOutreaches">;
   broker: Doc<"organizations">;
   link: Doc<"procurementPacketLinks"> & { token: string };
+};
+type StepWorld = {
+  request: Doc<"procurementRequests">;
+  client: Doc<"organizations">;
+  /** Null for client information requests. */
+  provider: ProviderWorld | null;
   sender: Doc<"users"> | null;
   previous: Step | null;
 };
@@ -1245,27 +1344,17 @@ type WorldCheck =
   | { kind: "skip"; reason: string }
   | { kind: "defer"; reason: string; runAt: number; since: number };
 
-/**
- * The single revalidation used at claim and again immediately before the
- * network send. It never writes.
- */
-async function checkStepWorld(
+/** Provider-only revalidation: outreach, proposal, provider, recipient, fit and packet link. */
+async function checkProviderWorld(
   ctx: Ctx,
   step: Step,
   sequence: Sequence,
+  request: Doc<"procurementRequests">,
+  client: Doc<"organizations">,
   now: number,
-): Promise<WorldCheck> {
-  if (sequence.status !== "active")
-    return { kind: "skip", reason: `sequence_${sequence.status}` };
-  const request = await ctx.db.get(sequence.requestId);
-  if (!request) return { kind: "stop", reason: "request_deleted" };
-  const requestClosed = closedReason(request);
-  if (requestClosed) return { kind: "stop", reason: requestClosed };
-  if (request.intakeAnswers?.intakeGoal === "savings" || request.clientOrgId !== sequence.clientOrgId)
-    return { kind: "stop", reason: "request_unavailable" };
-  const client = await ctx.db.get(sequence.clientOrgId);
-  if (!client || client.deletedAt !== undefined || client.type !== "client")
-    return { kind: "stop", reason: "client_unavailable" };
+): Promise<{ kind: "stop"; reason: string } | { kind: "ok"; world: ProviderWorld }> {
+  if (!sequence.outreachId || !sequence.brokerOrgId || !sequence.packetLinkId)
+    return { kind: "stop", reason: "outreach_removed" };
   const outreach = await ctx.db.get(sequence.outreachId);
   if (!outreach || outreach.requestId !== request._id)
     return { kind: "stop", reason: "outreach_removed" };
@@ -1321,6 +1410,43 @@ async function checkStepWorld(
     !link.token
   )
     return { kind: "stop", reason: "packet_link_unavailable" };
+  return { kind: "ok", world: { outreach, broker, link: { ...link, token: link.token } } };
+}
+
+/**
+ * The single revalidation used at claim and again immediately before the
+ * network send. It never writes.
+ */
+async function checkStepWorld(
+  ctx: Ctx,
+  step: Step,
+  sequence: Sequence,
+  now: number,
+): Promise<WorldCheck> {
+  if (sequence.status !== "active")
+    return { kind: "skip", reason: `sequence_${sequence.status}` };
+  const request = await ctx.db.get(sequence.requestId);
+  if (!request) return { kind: "stop", reason: "request_deleted" };
+  const requestClosed = closedReason(request);
+  if (requestClosed) return { kind: "stop", reason: requestClosed };
+  if (request.intakeAnswers?.intakeGoal === "savings" || request.clientOrgId !== sequence.clientOrgId)
+    return { kind: "stop", reason: "request_unavailable" };
+  const client = await ctx.db.get(sequence.clientOrgId);
+  if (!client || client.deletedAt !== undefined || client.type !== "client")
+    return { kind: "stop", reason: "client_unavailable" };
+  let provider: ProviderWorld | null = null;
+  if (isClientSequence(sequence)) {
+    // The recipient is a snapshot: it must still be a current client contact.
+    const recipients = await clientRecipientOptions(ctx, request, client._id);
+    const snapshotEmail = normalizeProcurementEmail(sequence.recipient.email);
+    if (!recipients.some((option) => option.email === snapshotEmail))
+      return { kind: "stop", reason: "recipient_changed" };
+  } else {
+    const checked = await checkProviderWorld(ctx, step, sequence, request, client, now);
+    if (checked.kind === "stop") return checked;
+    provider = checked.world;
+  }
+
 
   // Schedule-time cutoffs are re-checked at send time: a delayed follow-up must
   // never land past the effective date/deadline cutoff or the 30-day span.
@@ -1379,9 +1505,7 @@ async function checkStepWorld(
     world: {
       request,
       client,
-      outreach,
-      broker,
-      link: { ...link, token: link.token },
+      provider,
       sender: await ctx.db.get(sequence.senderUserId),
       previous,
     },
@@ -1434,8 +1558,9 @@ export type ClaimStepResult =
       sequence: {
         sequenceId: Id<"procurementOutreachSequences">;
         requestId: Id<"procurementRequests">;
-        outreachId: Id<"procurementBrokerOutreaches">;
-        brokerOrgId: Id<"organizations">;
+        audience: "provider" | "client";
+        /** The operator's own first message (client information requests). */
+        message: Sequence["message"] | null;
         recipient: Sequence["recipient"];
         cadence: Sequence["cadence"];
         resendThreadId: string | null;
@@ -1452,8 +1577,9 @@ export type ClaimStepResult =
         targetEffectiveDate: string | null;
         isRenewal: boolean;
       };
-      broker: { name: string };
-      packet: { linkId: Id<"procurementPacketLinks">; url: string; fileCount: number };
+      /** Provider outreach only. */
+      broker: { name: string } | null;
+      packet: { linkId: Id<"procurementPacketLinks">; url: string; fileCount: number } | null;
       priorSteps: { index: number; kind: Step["kind"]; sentAt: number | null; subject: string | null }[];
     }
   | { status: "skipped"; reason: string }
@@ -1612,8 +1738,8 @@ export const claimStepInternal = internalMutation({
       sequence: {
         sequenceId: sequence._id,
         requestId: sequence.requestId,
-        outreachId: sequence.outreachId,
-        brokerOrgId: sequence.brokerOrgId,
+        audience: isClientSequence(sequence) ? "client" : "provider",
+        message: sequence.message ?? null,
         recipient: sequence.recipient,
         cadence: sequence.cadence,
         resendThreadId: sequence.resendThreadId ?? null,
@@ -1635,12 +1761,14 @@ export const claimStepInternal = internalMutation({
         targetEffectiveDate: world.request.targetEffectiveDate ?? null,
         isRenewal: !!world.request.replacingPolicyId,
       },
-      broker: { name: world.broker.name },
-      packet: {
-        linkId: world.link._id,
-        url: `${getClientPortalUrl()}/share/packet/${world.link.token}`,
-        fileCount: world.link.artifactSnapshot?.length ?? 0,
-      },
+      broker: world.provider ? { name: world.provider.broker.name } : null,
+      packet: world.provider
+        ? {
+            linkId: world.provider.link._id,
+            url: `${getClientPortalUrl()}/share/packet/${world.provider.link.token}`,
+            fileCount: world.provider.link.artifactSnapshot?.length ?? 0,
+          }
+        : null,
       priorSteps: earlier
         .filter((row) => row.index < step.index)
         .map((row) => ({
@@ -1935,8 +2063,24 @@ async function recordSentFacts(
     resendEmailId: outcome.resendEmailId,
   });
   if (step.index !== 0) return;
+  if (isClientSequence(sequence)) {
+    await writeOperatorAudit(ctx, {
+      operatorUserId: sequence.senderUserId,
+      type: "setup_write",
+      targetOrgId: sequence.clientOrgId,
+      summary: "Sent client information request",
+      metadata: {
+        domain: "procurement",
+        operation: "send_client_outreach",
+        requestId: sequence.requestId,
+        sequenceId: sequence._id,
+        status: "sent",
+      },
+    });
+    return;
+  }
   // Same effect as procurementPacket.recordDeliveryInternal, applied to the real send.
-  const link = await ctx.db.get(sequence.packetLinkId);
+  const link = sequence.packetLinkId ? await ctx.db.get(sequence.packetLinkId) : null;
   if (link)
     await ctx.db.patch(link._id, {
       deliveryStatus: "sent",
@@ -1944,7 +2088,7 @@ async function recordSentFacts(
       sentAt: now,
       updatedAt: now,
     });
-  const outreach = await ctx.db.get(sequence.outreachId);
+  const outreach = sequence.outreachId ? await ctx.db.get(sequence.outreachId) : null;
   if (outreach)
     await ctx.db.patch(outreach._id, {
       sentAt: now,
@@ -2300,7 +2444,7 @@ type InboxEventRoute =
       sequenceId: Id<"procurementOutreachSequences">;
       stepId: Id<"procurementOutreachSteps"> | null;
       requestId: Id<"procurementRequests">;
-      outreachId: Id<"procurementBrokerOutreaches">;
+      outreachId: Id<"procurementBrokerOutreaches"> | null;
       sequenceStatus: SequenceStatus;
       recipientEmail: string;
       resendThreadId: string | null;
@@ -2350,7 +2494,7 @@ async function routeInboxEvent(
     sequenceId: sequence._id,
     stepId: step?._id ?? null,
     requestId: sequence.requestId,
-    outreachId: sequence.outreachId,
+    outreachId: sequence.outreachId ?? null,
     sequenceStatus: sequence.status,
     recipientEmail: sequence.recipient.email,
     resendThreadId: sequence.resendThreadId ?? null,
@@ -2605,7 +2749,7 @@ async function mirrorInboxEmail(
   let threadId: Id<"procurementEmailThreads">;
   if (thread) {
     if (thread.requestId !== request._id || thread.clientOrgId !== sequence.clientOrgId) {
-      throw new Error("Provider outreach conversation belongs to another request");
+      throw new Error("Outreach conversation belongs to another request");
     }
     threadId = thread._id;
     await ctx.db.patch(thread._id, {
@@ -2624,9 +2768,9 @@ async function mirrorInboxEmail(
       requestId: request._id,
       normalizedSubject: normalizeProcurementSubject(subject),
       subject,
-      category: "broker",
+      category: isClientSequence(sequence) ? "client" : "broker",
       categorySource: "auto",
-      categoryReason: "provider outreach",
+      categoryReason: isClientSequence(sequence) ? "client email" : "provider outreach",
       participantEmails: participants,
       latestMessageAt: email.occurredAt,
       messageCount: 1,
@@ -2725,6 +2869,10 @@ export const applySentInboxEmailInternal = internalMutation({
   },
 });
 
+function repliedReason(sequence: Sequence) {
+  return isClientSequence(sequence) ? "client_replied" : "provider_replied";
+}
+
 function isLiveOrHandoffTarget(status: SequenceStatus) {
   return status === "active" || status === "reply_check";
 }
@@ -2804,7 +2952,7 @@ export const applyInboundInboxEmailInternal = internalMutation({
       // Final step already sent: nothing to resume, hand straight to the operator.
       await terminalizeSequence(ctx, sequence, {
         status: "responded",
-        reason: "provider_replied",
+        reason: repliedReason(sequence),
         now,
       });
       status = "responded";
@@ -2922,7 +3070,7 @@ export const applyReplyClassificationInternal = internalMutation({
     if (args.outcome.kind === "needs_reply") {
       await terminalizeSequence(ctx, sequence, {
         status: "responded",
-        reason: "provider_replied",
+        reason: repliedReason(sequence),
         now,
       });
       return { applied: true as const, sequenceStatus: "responded" as const, needsReplyLabel: true };
@@ -3096,18 +3244,21 @@ export const recoverInternal = internalMutation({
 /**
  * Resolves the Resend thread behind an Inbox conversation and stops automated
  * follow-ups before an operator reply goes out, so a nudge cannot land after
- * a person has taken over. Only provider outreach conversations can be
- * answered; forwarded mail has no Spot-owned thread to reply on.
+ * a person has taken over. Only outreach conversations (provider or client)
+ * can be answered; forwarded mail has no Spot-owned thread to reply on.
  */
 export const prepareOperatorReplyInternal = internalMutation({
   args: {
     operatorUserId: v.id("users"),
     emailThreadId: v.id("procurementEmailThreads"),
+    requestId: v.optional(v.id("procurementRequests")),
   },
   handler: async (ctx, args) => {
     await requireDirectOperatorWrite(ctx, args.operatorUserId);
     const thread = await ctx.db.get(args.emailThreadId);
     if (!thread || thread.deletedAt) throw new Error("Conversation not found");
+    if (args.requestId && thread.requestId !== args.requestId)
+      throw new Error("Conversation belongs to another request");
     if (!thread.resendThreadId)
       throw new Error("Forwarded mail can only be answered from your own mailbox");
     const resendThreadId = thread.resendThreadId;
@@ -3177,10 +3328,10 @@ export const recordOperatorReplyInternal = internalMutation({
       operatorUserId: args.operatorUserId,
       type: "setup_write",
       targetOrgId: sequence.clientOrgId,
-      summary: "Replied to a provider from the request Inbox",
+      summary: `Replied to ${isClientSequence(sequence) ? "the client" : "a provider"} from the request Inbox`,
       metadata: {
         domain: "procurement",
-        operation: "reply_provider_outreach",
+        operation: isClientSequence(sequence) ? "reply_client_outreach" : "reply_provider_outreach",
         requestId: sequence.requestId,
         outreachId: sequence.outreachId,
         sequenceId: sequence._id,

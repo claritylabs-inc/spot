@@ -2,6 +2,7 @@ import { prepareApplicationToolUpdate } from "../procurementRequests";
 import { prepareBusinessProfileToolUpdate } from "../orgWiki";
 import { getMarkdownDocument } from "../markdownDocuments";
 import { requireCompanyRequest } from "./companyRequest";
+import { clientRecipientOptions } from "./clientOutreach";
 import { parseMarkdownDocument } from "./markdownDocument";
 import { clientIdentity, clientIdentityMatches } from "./clientProfile";
 import dayjs from "dayjs";
@@ -40,6 +41,8 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "create_procurement_broker_outreach",
   "launch_procurement_provider_outreach",
   "stop_procurement_provider_outreach",
+  "send_procurement_client_email",
+  "reply_procurement_email_thread",
   "update_procurement_broker_outreach",
   "file_procurement_proposal",
   "file_procurement_email_quote",
@@ -986,6 +989,46 @@ export async function preflightOperatorToolConfirmation(
         const broker = await requireBrokerOrganization(ctx, brokerOrgId);
         if (!broker || broker.deletedAt) throw new Error("Provider not found");
       }
+      return;
+    }
+    case "send_procurement_client_email": {
+      const request = await requireProcurementRequest(
+        ctx,
+        args.input.procurementRequestId,
+      );
+      requireCompanyRequest(request);
+      if (
+        request.deletedAt ||
+        request.status === "completed" ||
+        request.status === "cancelled"
+      )
+        throw new Error("Procurement request is closed");
+      const client = await requireClientOrganization(ctx, request.clientOrgId);
+      const email =
+        typeof args.input.recipientEmail === "string"
+          ? args.input.recipientEmail.trim().toLowerCase()
+          : "";
+      const recipients = await clientRecipientOptions(ctx, request, client._id);
+      if (!recipients.some((option) => option.email === email))
+        throw new Error("Recipient is not a current client contact");
+      return;
+    }
+    case "reply_procurement_email_thread": {
+      const request = await requireProcurementRequest(
+        ctx,
+        args.input.procurementRequestId,
+      );
+      requireCompanyRequest(request);
+      const thread = await requireDocument(
+        ctx,
+        "procurementEmailThreads",
+        args.input.procurementEmailThreadId,
+        "Email thread",
+      );
+      if (thread.requestId !== request._id || thread.deletedAt)
+        throw new Error("Email thread does not belong to the request");
+      if (!thread.resendThreadId)
+        throw new Error("Forwarded mail can only be answered from your own mailbox");
       return;
     }
     case "stop_procurement_provider_outreach": {

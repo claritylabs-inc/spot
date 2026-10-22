@@ -8,6 +8,7 @@ import { AlertCircle, Loader2 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
+import { OperatorClientImpersonationAction } from "../../operator-client-impersonation-action";
 import { ProcurementRequestWorkspace } from "@/components/procurement/procurement-request-workspace";
 import {
   OperationalPanel,
@@ -57,6 +58,18 @@ export default function OperatorProcurementRequestPage() {
       actions={workspaceActions}
       breadcrumbDetail={
         <span className="flex min-w-0 items-center gap-1.5">
+          <Link
+            href={`/operator/clients/${clientOrgId}`}
+            className="max-w-40 truncate text-muted-foreground/80 transition-colors hover:text-foreground"
+          >
+            {client?.name ?? "Client"}
+          </Link>
+          <span
+            className={`text-muted-foreground/30 ${typeStyle("body.default")}`}
+            aria-hidden="true"
+          >
+            /
+          </span>
           <Link
             href={basePath}
             className="truncate text-muted-foreground/80 transition-colors hover:text-foreground"
@@ -126,6 +139,16 @@ export default function OperatorProcurementRequestPage() {
             readOnly={Boolean(activeImpersonation)}
             onActions={setWorkspaceActions}
             onRightPanel={setRightPanel}
+            sidebarFooter={(collapsed) => (
+              <OperatorClientImpersonationAction
+                clientOrgId={clientOrgId}
+                activeImpersonation={activeImpersonation}
+                disabled={
+                  !clients?.some((client) => client._id === clientOrgId)
+                }
+                collapsed={collapsed}
+              />
+            )}
           />
         </main>
       )}

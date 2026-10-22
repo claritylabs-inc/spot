@@ -76,7 +76,7 @@ export const stepDraftValidator = v.object({
   subject: v.string(),
   text: v.string(),
   html: v.string(),
-  source: v.union(v.literal("llm"), v.literal("template")),
+  source: v.union(v.literal("llm"), v.literal("template"), v.literal("operator")),
 });
 export type StepDraft = Infer<typeof stepDraftValidator>;
 
