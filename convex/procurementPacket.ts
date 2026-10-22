@@ -461,6 +461,39 @@ export const mintLink = mutation({
   },
 });
 
+/** Returns the active all-providers link, creating one only when none is active. */
+export const ensureShareUrl = mutation({
+  args: { requestId: v.id("procurementRequests") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await directOperator(ctx, operator.userId);
+    const request = await requestForOperator(ctx, args.requestId);
+    const now = dayjs().valueOf();
+    const active = (
+      await ctx.db
+        .query("procurementPacketLinks")
+        .withIndex("request", (q) => q.eq("requestId", request._id))
+        .collect()
+    ).find(
+      (link) =>
+        !link.outreachId &&
+        !link.revokedAt &&
+        link.token &&
+        (link.expiresAt === undefined || link.expiresAt > now),
+    );
+    if (active)
+      return {
+        url: `${getClientPortalUrl()}/share/packet/${active.token}`,
+        created: false,
+      };
+    const created = await mintPacketLinkForOperator(ctx, {
+      operatorUserId: operator.userId,
+      requestId: request._id,
+    });
+    return { url: created.url, created: true };
+  },
+});
+
 /** An expiry is optional; explicit durations use the server clock. */
 function requestedPacketLinkExpiry(
   now: number,

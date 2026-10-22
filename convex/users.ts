@@ -11,7 +11,10 @@ import {
 } from "./_generated/server";
 import { internal as _internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
+import {
+  getSessionUserId as getAuthUserId,
+  getSessionUserIdBeforeSecondFactor,
+} from "./lib/sessionIdentity";
 import {
   EMAIL_CHANGE_PROVIDER,
   EMAIL_CHANGE_TTL_MS,
@@ -155,7 +158,9 @@ async function deleteVerificationCodesForAccount(
 export const viewer = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx, true);
+    // Operators awaiting their second factor still need their account kind
+    // to be routed to the challenge.
+    const userId = await getSessionUserIdBeforeSecondFactor(ctx, true);
     if (!userId) return null;
     return await ctx.db.get(userId);
   },

@@ -11,6 +11,7 @@ import {
   Lock,
   Mail,
   MessageSquareMore,
+  NotebookText,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -52,7 +53,7 @@ import {
 } from "@/lib/insurance-intake-details";
 import {
   intakeCoverageAnswerRows,
-  visibleIntakeFollowups,
+  intakeFollowupAnswerRows,
 } from "@/lib/intake-application";
 import { intakeCatalogCoverage } from "@/lib/intake-acord-questions";
 import { cn } from "@/lib/utils";
@@ -95,10 +96,7 @@ export function applicationSectionGroups(
   const coverageAnswers = intakeCoverageAnswerRows(answers, details);
   const unanswered = (row: (typeof coverageAnswers)[number]) =>
     !row.answer.trim() && !row.skipped;
-  const unowned = coverageAnswers.some(
-    (row) => !intakeCatalogCoverage(row, coverageIds),
-  );
-  const followups = visibleIntakeFollowups(details, "additional");
+  const followups = intakeFollowupAnswerRows(answers, details);
   return [
     {
       label: "Application",
@@ -133,19 +131,19 @@ export function applicationSectionGroups(
               unanswered(row),
           ),
         })),
-        ...(unowned ||
-        (["limitsNote", "scopeNote", "additionalNote"] as const).some((key) =>
-          details[key]?.trim(),
+        ...((["limitsNote", "scopeNote", "additionalNote"] as const).some(
+          (key) => details[key]?.trim(),
         )
           ? [
               {
                 key: OTHER_COVERAGE_SECTION,
-                label: "Other coverage details",
+                label: "Coverage notes",
                 icon: ListPlus,
               },
             ]
           : []),
-        ...(editable && details.coverages.length < Object.keys(COVERAGE_ICONS).length
+        ...(editable &&
+        details.coverages.length < Object.keys(COVERAGE_ICONS).length
           ? [
               {
                 key: ADD_COVERAGE_SECTION,
@@ -160,7 +158,11 @@ export function applicationSectionGroups(
   ];
 }
 
-export const PROVIDER_ICONS = { providers: Users, email: Mail } as const;
+export const PROVIDER_ICONS = {
+  notes: NotebookText,
+  providers: Users,
+  email: Mail,
+} as const;
 
 const COLLAPSED_KEY = "spot:section-menu-collapsed";
 
@@ -194,13 +196,12 @@ export function SectionMenu({
       localStorage.setItem(COLLAPSED_KEY, value ? "0" : "1");
       return !value;
     });
-  const remove =
-    (key: string) => (event: MouseEvent | KeyboardEvent) => {
-      if ("key" in event && event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      event.stopPropagation();
-      onRemove?.(key);
-    };
+  const remove = (key: string) => (event: MouseEvent | KeyboardEvent) => {
+    if ("key" in event && event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onRemove?.(key);
+  };
   const sections: AppSidebarSection[] = groups.map((group) => ({
     key: group.label,
     label: group.label,
@@ -278,7 +279,10 @@ export function SectionMenu({
           value={active}
           onValueChange={(value) => value && onChange(String(value))}
         >
-          <SelectTrigger aria-label={label} className="w-full border border-input">
+          <SelectTrigger
+            aria-label={label}
+            className="w-full border border-input"
+          >
             <SelectValue>{current?.label}</SelectValue>
           </SelectTrigger>
           <SelectContent>

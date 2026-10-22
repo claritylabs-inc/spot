@@ -839,6 +839,29 @@ export default defineSchema({
     completedAt: v.number(),
   }).index("key", ["key"]),
 
+  // One TOTP authenticator per operator. A pending row is replaced until the
+  // first valid code activates it; the secret is encrypted at rest.
+  operatorTotpCredentials: defineTable({
+    userId: v.id("users"),
+    encryptedSecret: v.string(),
+    status: v.union(v.literal("pending"), v.literal("active")),
+    // Highest accepted 30-second step; codes at or below it are replays.
+    lastUsedCounter: v.optional(v.number()),
+    recoveryCodeHashes: v.array(v.string()),
+    createdAt: v.number(),
+    activatedAt: v.optional(v.number()),
+  }).index("user", ["userId"]),
+
+  // Auth sessions that passed the operator second factor.
+  operatorSecondFactorSessions: defineTable({
+    sessionId: v.id("authSessions"),
+    userId: v.id("users"),
+    method: v.union(v.literal("totp"), v.literal("recovery_code")),
+    verifiedAt: v.number(),
+  })
+    .index("session", ["sessionId"])
+    .index("user", ["userId"]),
+
   operatorProfiles: defineTable({
     userId: v.id("users"),
     email: v.string(),
@@ -949,6 +972,9 @@ export default defineSchema({
       v.literal("memory_cleared"),
       v.literal("setup_write"),
       v.literal("impersonated_write"),
+      v.literal("second_factor_enrolled"),
+      v.literal("second_factor_recovery_used"),
+      v.literal("second_factor_reset"),
     ),
     targetOrgId: v.optional(v.id("organizations")),
     targetUserId: v.optional(v.id("users")),

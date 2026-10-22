@@ -378,6 +378,8 @@ mounted tenant/operator settings browser workflow remain **not run**. Execute
 composition and environment configuration; local tests do not establish
 ChatGPT compatibility or deployed delivery.
 
+Operator second factor: `env -u CONVEX_DEPLOY_KEY node scripts/operator-second-factor-e2e.mjs` runs against native-local Convex and the app on localhost:8080 with a synthetic `@spot.insure` operator. It verifies that an email code alone cannot read operator data or open operator routes, wrong and replayed TOTP codes fail, enrollment returns ten recovery codes, a recovery code works once, a later TOTP step signs in, the profile shows remaining codes, and repeated failures are rate limited. Artifacts: `.context/qa/operator-second-factor/results.json` and PNGs. Other operator browser scripts must complete this challenge after the email code.
+
 Operator invitations: `node scripts/operator-invitations-e2e.mjs` runs against native-local Convex and the app on localhost:8080. It creates synthetic operator identities, captures email locally, verifies Settings Team invitation and OTP entry, rejects anonymous/customer/alias-conflicting invitations, and exercises the MCP shared approval/execution/replay path. Artifacts: `.context/qa/operator-invitations/results.json`, `settings.png`, and `accepted.png`. No live email or production data is used.
 
 Current packet-link contract: active links now serve live saved shared content
