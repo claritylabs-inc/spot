@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 import { clRouterDecide, type ClRouterClientOptions } from "./clRouterClient";
 import { jevProceedThreshold } from "./jevThreshold";
+import { stripLeakedToolCallText } from "./leakedToolCallText";
 import type {
   OperatorExecutionPlan,
   OperatorPlanningAssessment,
@@ -163,9 +164,9 @@ function answerProbability(
 }
 
 /**
- * Code owns the decision: plan when any answer is a confident yes or any
- * answer is missing or short of a confident no. Only all-confident-no skips.
- * Confident no uses the same inverse bound as the persistence guard.
+ * Code owns the decision: plan only when some answer is a confident yes. An
+ * uncertain or missing answer no longer forces a plan, but is still recorded
+ * as `uncertain` so the assessment stays auditable.
  */
 export function planningAssessmentFromAnswers(
   answers: Record<string, { type: string; noul?: unknown }>,
@@ -182,7 +183,7 @@ export function planningAssessmentFromAnswers(
   const confidentYes = values.some((p) => p !== null && p >= threshold);
   const allConfidentNo = values.every((p) => p !== null && p <= 1 - threshold);
   return {
-    required: !allConfidentNo,
+    required: confidentYes,
     source: confidentYes || allConfidentNo ? "jev" : "uncertain",
     probabilities,
     ...(requestId ? { requestId } : {}),
@@ -218,6 +219,7 @@ Plan rules:
 - Each step's completionCriteria must say what the tool results must show before the step counts as done, and each target needs its own outcome. A search that returns nothing is a finding to report for that target, not a reason to skip remaining targets.
 - Failures: when a tool reports a recoverable failure with no write started, plan up to 3 corrective attempts (fix the input, refresh the target, or use a read-only alternative) before reporting the target as blocked. A search that failed on an invalid or batched input says nothing about whether a match exists. Never plan to retry authorization failures, denied approvals, or outcomes whose side effects are unknown.
 - If a needed tool family is not currently offered, plan to load it with expand_tools first.
+- Keep plans minimal. A read-only question needs 1-3 steps. Never plan a re-read of a record already fetched or a repeat of a call with the same input.
 - Keep steps concrete and short. Use at most 12 steps and 50 targets; group similar targets when there are more than 50 and say so in the summary.`;
 
 export function operatorPlannerPrompt(context: PlanningContext): string {
@@ -268,15 +270,16 @@ export function recentConversationContext(
 ): string {
   const lines: string[] = [];
   for (const message of messages) {
+    const content = stripLeakedToolCallText(message.content).trim();
     if (
       String(message._id) === currentMessageId ||
       message.status === "processing" ||
       (message.role !== "user" && message.role !== "agent") ||
-      !message.content.trim()
+      !content
     )
       continue;
     lines.push(
-      `${message.role === "user" ? "Operator" : "Spot"}: ${clip(message.content.trim(), 800)}`,
+      `${message.role === "user" ? "Operator" : "Spot"}: ${clip(content, 800)}`,
     );
   }
   return lines.slice(-limit).join("\n");

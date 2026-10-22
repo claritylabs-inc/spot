@@ -108,6 +108,7 @@ export type ResendPayload = {
   text?: string;
   cc?: string | string[];
   bcc?: string | string[];
+  reply_to?: string | string[];
   headers?: Record<string, string>;
   attachments?: unknown;
   [key: string]: unknown;

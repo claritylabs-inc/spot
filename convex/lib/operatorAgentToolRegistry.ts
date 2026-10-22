@@ -10,6 +10,7 @@ import {
 } from "./agentToolSelection";
 export { EXPAND_TOOLS_NAME } from "./agentToolSelection";
 
+import { EMAIL_FAMILY_GUIDANCE } from "./channelStyle";
 import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
 import {
   normalizeBrokerLineOfBusinessCodes,
@@ -59,7 +60,9 @@ export const OPERATOR_TOOL_FAMILIES = {
   compliance:
     "compliance requirements, certificates of insurance (COI) and certificate holder address lookup",
   company_email:
-    "searching and reading the connected company Google Workspace mailboxes and email attachments",
+    "searching and reading the connected company Google Workspace mailboxes and email attachments (read-only; it cannot send or draft)",
+  outbound_email:
+    "drafting, previewing, revising and sending an outbound email from Spot to a client contact (for example the applicant on a procurement request) or a provider or other external recipient, including requests like draft, write, compose, or send an email, asking someone for missing information, or following up by email",
   threads:
     "older messages and attachments in this thread and other operator conversations",
   client_files:
@@ -74,6 +77,16 @@ export const OPERATOR_TOOL_FAMILIES = {
 } as const;
 
 export type OperatorToolFamily = keyof typeof OPERATOR_TOOL_FAMILIES;
+
+const OUTBOUND_EMAIL_GUIDANCE = `${EMAIL_FAMILY_GUIDANCE}
+
+OPERATOR OUTBOUND EMAIL:
+These tools draft and send email as Spot for one exact client organization. The email goes from that client's Spot agent address and is signed with your name; replies go to the operator's own email and, when you pass procurementRequestId, to that request's forwarding address (which imports the reply into the request without invoking the client's Spot agent). There is no requester recipient here: always pass the recipient's exact address in "to".
+When the email concerns a procurement request, always pass its procurementRequestId (with the same orgId) to draft_email so replies are filed on that request; update_email_draft keeps the draft's reply routing unless you pass a new procurementRequestId.
+Attachments: attach_policy_pdf_to_draft for an explicitly requested original policy PDF, and attach_client_file_to_draft for an exact stored client file (list_client_files). To send a certificate of insurance, first call generate_coi (it needs the operator's exact approval); its result gives each certificate's clientFileId, then attach that file with attach_client_file_to_draft. Do not describe a certificate or file as attached until the tool returns.
+Resolve recipients and the target organization from records, never from memory. For the applicant on a procurement request use applicantContact (name, email, phone) from get_procurement_request; for a provider use its recorded contact. Pass the request's client organization ID as orgId. If no address is on record, ask the operator for it. Never invent an address, and never leave placeholders such as [Contact Name], [Your Name] or bracketed fields in a draft; use the real name from the record or leave the greeting generic.
+When asked to request missing information, read the request and application first, then ask only for what is actually missing, short and prioritized (the few items that unblock the work most, grouped and in plain words). Do not restate what we already have.
+Draft first. "Let me see it", "before you send" or any review wording means call draft_email only; send_email_draft requires an explicit current instruction to send. The operator sees the draft below your reply, so summarize it in a sentence (recipient, subject, what it asks) instead of repeating the body, and revise with update_email_draft when asked. send_email_draft asks the operator to approve the complete email; report it as sent only when the tool returns status "sent".`;
 
 export type OperatorToolTarget = {
   kind?: string;
@@ -912,7 +925,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 2,
     description:
-      "Get one exact insurance intake or procurement request. Before company attachment, returns an operator-only diagnostic view of saved draft answers/details, current step, revision, timestamps and bounded Slack delivery events; it grants no fulfillment or sharing access. Draft answers are not an accepted application. For company-linked requests, includes its typed application, intakeRevision and updatedAt for update_procurement_application, client requirements, replacement/result policy links, request forwarding address, provider outreach/application/quote state, requested files, linked client files with upload or procurement-email provenance, and imported email threads.",
+      "Get one exact insurance intake or procurement request. Includes the applicant contact (name, email, phone), also at application.answers, for emailing the applicant with the outbound_email tools. Before company attachment, returns an operator-only diagnostic view of saved draft answers/details, current step, revision, timestamps and bounded Slack delivery events; it grants no fulfillment or sharing access. Draft answers are not an accepted application. For company-linked requests, includes its typed application, intakeRevision and updatedAt for update_procurement_application, client requirements, replacement/result policy links, request forwarding address, provider outreach/application/quote state, requested files, linked client files with upload or procurement-email provenance, and imported email threads.",
     inputSchema: z.object({ procurementRequestId }),
     capability: "operator.procurement.read",
     effect: "read",
@@ -1181,6 +1194,150 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     }),
     summarize: (input) =>
       `Send a Slack direct message to ${input.recipientEmail}`,
+  }),
+  draft_email: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description:
+      "Create a saved outbound email draft for one exact client organization. This never sends. Use real recipient addresses from records and a complete, placeholder-free body in plain text or light markdown; the platform adds the signature. Drafting a second email to the same recipient in this conversation replaces the earlier draft. The draft is shown to the operator under your reply.",
+    inputSchema: z.object({
+      orgId: organizationId.describe(
+        "Exact client organization ID the email is sent on behalf of, from search_organizations or get_procurement_request",
+      ),
+      procurementRequestId: omittable(
+        procurementRequestId.describe(
+          "Exact procurement request ID of this client when the email concerns that request; replies are then also routed to the request's forwarding address",
+        ),
+      ),
+      to: operatorEmailAddress.describe("Exact recipient email address"),
+      cc: omittable(z.array(operatorEmailAddress).max(10)),
+      bcc: omittable(z.array(operatorEmailAddress).max(10)),
+      subject: z.string().trim().min(1).max(300),
+      body: z.string().trim().min(1).max(10_000),
+    }),
+    capability: "operator.email.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: (input) => ({ kind: "organization", id: input.orgId }),
+    summarize: (input) => `Draft an email to ${input.to}`,
+  }),
+  update_email_draft: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description:
+      "Replace the content of one unsent draft from this conversation. Omitted cc, bcc and attachments are cleared; pass attachmentFileIds to keep existing attachments. Any edit invalidates a previous approval to send.",
+    inputSchema: z.object({
+      draftId: z.string().min(1).describe("Exact draft ID"),
+      procurementRequestId: omittable(
+        procurementRequestId.describe(
+          "Exact procurement request ID to route replies to; omit to keep the draft's current reply routing",
+        ),
+      ),
+      to: omittable(operatorEmailAddress),
+      cc: omittable(z.array(operatorEmailAddress).max(10)),
+      bcc: omittable(z.array(operatorEmailAddress).max(10)),
+      subject: omittable(z.string().trim().min(1).max(300)),
+      body: omittable(z.string().trim().min(1).max(10_000)),
+      attachmentFileIds: omittable(z.array(z.string().min(1)).max(10)),
+    }),
+    capability: "operator.email.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: (input) => ({ kind: "email_draft", id: input.draftId }),
+    summarize: (input) => `Update email draft ${input.draftId}`,
+  }),
+  attach_policy_pdf_to_draft: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description:
+      "Attach the original full policy PDF to an unsent draft, only when the operator explicitly asked to send the original policy document. Policy access and original-file availability are checked.",
+    inputSchema: z.object({
+      draftId: z.string().min(1).describe("Exact draft ID"),
+      policyId,
+      explicitArtifactRequest: z.literal("original_policy_document"),
+      intentEvidence: z
+        .string()
+        .min(1)
+        .max(1_000)
+        .describe(
+          "The operator's explicit request for the original/full policy PDF",
+        ),
+    }),
+    capability: "operator.email.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: (input) => ({ kind: "email_draft", id: input.draftId }),
+    summarize: (input) =>
+      `Attach original policy ${input.policyId} to email draft ${input.draftId}`,
+  }),
+  attach_client_file_to_draft: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description:
+      "Attach one exact stored client file (from list_client_files, or the clientFileId returned by generate_coi) to an unsent draft. The file must belong to the draft's client organization. Attachment size and duplicate checks apply.",
+    inputSchema: z.object({
+      draftId: z.string().min(1).describe("Exact draft ID"),
+      clientFileId,
+    }),
+    capability: "operator.email.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: (input) => ({ kind: "email_draft", id: input.draftId }),
+    summarize: (input) =>
+      `Attach client file ${input.clientFileId} to email draft ${input.draftId}`,
+  }),
+  list_email_drafts: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description:
+      "List the saved email drafts created from this conversation, newest first, with their IDs, recipients, subjects and status.",
+    inputSchema: z.object({}),
+    capability: "operator.email.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: () => ({ kind: "email_draft" }),
+    summarize: () => "List email drafts",
+  }),
+  send_email_draft: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description:
+      "Send one saved draft from this conversation as an email to its external recipients. Delivery is externally visible and requires the operator's exact approval of the complete email; any later edit voids the approval. Call only after the operator clearly asked to send.",
+    inputSchema: z.object({
+      draftId: z.string().min(1).describe("Exact draft ID"),
+    }),
+    capability: "operator.email.send",
+    effect: "external_send",
+    requiredRole: "operator",
+    confirmation: "exact",
+    execution: "action",
+    target: (input) => ({ kind: "email_draft", id: input.draftId }),
+    summarize: (input) => `Send email draft ${input.draftId}`,
+  }),
+  cancel_email_draft: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description: "Cancel one unsent draft from this conversation.",
+    inputSchema: z.object({
+      draftId: z.string().min(1).describe("Exact draft ID"),
+    }),
+    capability: "operator.email.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: (input) => ({ kind: "email_draft", id: input.draftId }),
+    summarize: (input) => `Cancel email draft ${input.draftId}`,
   }),
   retry_failed_policy_extraction: defineOperatorTool({
     family: "extraction",
@@ -2295,6 +2452,8 @@ export const OPERATOR_TOOL_FAMILY_CATALOG = Object.fromEntries<
     family,
     {
       description,
+      guidance:
+        family === "outbound_email" ? OUTBOUND_EMAIL_GUIDANCE : undefined,
       tools: Object.entries(OPERATOR_AGENT_TOOL_REGISTRY)
         .filter(([, spec]) => spec.family === family)
         .map(([name]) => name),

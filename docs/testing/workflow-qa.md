@@ -2322,3 +2322,9 @@ Helium verified the table begins directly below the navbar without a Providers h
 ### Stop follow-ups in provider details — October 22, 2026
 
 Helium at localhost:3207 verified the submitted HUB row has View details without Stop, and its open details sidebar shows Stop follow-ups in the footer. The sidebar uses a live panel subscription and the existing stop mutation; inactive sequences and read-only views omit the action. No stop/send action was invoked during QA. Touched-file ESLint passed. Evidence: `.context/provider-email-completion/stop-follow-ups-sidebar.png`.
+
+### Provider directory filters and alignment — October 22, 2026
+
+Helium at localhost:3207 verified shared searchable state/province, ACORD coverage-line and status filters. Restricted returned only BLIS; adding Ontario showed the empty state and disabled Select all. Ontario + Prospect + CYBER returned 27 providers, including recorded nationwide providers. Selecting KBD and clearing filters cleared the bulk selection and restored all three defaults. An empty Create provider row placed its name and status under the correct headers; Escape dismissed it without creating a provider. The status trigger's extra left padding is removed. Service-area text includes countries and explicit nationwide exceptions; the filter reuses `brokerAreaFit`, so exclusions override nationwide service. Shared Table, Select/SearchableSelect, OperationalPanel and PillButton primitives are retained.
+
+Root TypeScript, touched-file ESLint and whitespace checks passed. No tests or database migrations were written. Evidence: `.context/provider-expansion/provider-filters.png`, `provider-draft-alignment.png`, `provider-filters-ontario-cyber-prospect.txt`, and `types-provider-filters.log`. No outreach was sent or stopped during this review.

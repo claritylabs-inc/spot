@@ -46,6 +46,10 @@ const draftSendAuthorizationValidator = v.union(
     sourceMessageId: v.id("threadMessages"),
   }),
   v.object({ kind: v.literal("mcp_explicit_action") }),
+  v.object({
+    kind: v.literal("operator_confirmed_action"),
+    confirmationId: v.id("operatorAgentConfirmations"),
+  }),
 );
 
 type DraftSendAuthorization =
@@ -171,6 +175,24 @@ async function assertDraftSendAuthorization(
       authorization,
       "draft",
     );
+    return;
+  }
+  if (authorization.kind === "operator_confirmed_action") {
+    if (pending.status !== "draft") {
+      throw new Error("Explicit send requires a current draft.");
+    }
+    const confirmed = await ctx.runQuery(
+      internal.operatorEmailDrafts.isSendConfirmedInternal,
+      {
+        confirmationId: authorization.confirmationId,
+        pendingEmailId: pending._id,
+      },
+    );
+    if (!confirmed) {
+      throw new Error(
+        "A completed operator approval for this exact draft is required.",
+      );
+    }
     return;
   }
   if (

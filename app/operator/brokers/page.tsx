@@ -1,5 +1,15 @@
 "use client";
-import { brokerRegionCountry } from "@/convex/lib/brokerProfileValidation";
+import {
+  brokerAreaFit,
+  brokerRegionCountry,
+  BROKER_REGION_CODES,
+  CANADIAN_PROVINCES,
+  USPS_STATE_NAMES,
+} from "@/convex/lib/brokerProfileValidation";
+import {
+  ACORD_LOB_LABELS,
+  PROVIDER_ACORD_LOB_CODES,
+} from "@/convex/lib/linesOfBusiness";
 
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
@@ -26,6 +36,7 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
+import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import {
   Table,
   TableBody,
@@ -42,10 +53,51 @@ import {
   type NetworkStatus,
 } from "./broker-model";
 
+const ALL = "all";
+const countryNames = new Intl.DisplayNames(["en"], { type: "region" });
+const regionOptions = [
+  { value: ALL, label: "All states / provinces" },
+  ...BROKER_REGION_CODES.map((value) => ({
+    value,
+    label: `${USPS_STATE_NAMES[value] ?? CANADIAN_PROVINCES[value as keyof typeof CANADIAN_PROVINCES]} (${value}) · ${brokerRegionCountry(value) === "CA" ? "Canada" : "United States"}`,
+  })).sort((a, b) => a.label.localeCompare(b.label)),
+];
+const lineOptions = [
+  { value: ALL, label: "All coverage lines" },
+  ...PROVIDER_ACORD_LOB_CODES.map((value) => ({
+    value,
+    label: `${ACORD_LOB_LABELS[value]} (${value})`,
+  })).sort((a, b) => a.label.localeCompare(b.label)),
+];
+const statusOptions = [
+  { value: ALL, label: "All statuses" },
+  ...Object.entries(NETWORK_STATUS_LABELS).map(([value, label]) => ({
+    value,
+    label,
+  })),
+];
+
 export default function OperatorBrokersPage() {
   const [creating, setCreating] = useState(false);
+  const [region, setRegion] = useState(ALL);
+  const [line, setLine] = useState(ALL);
+  const [status, setStatus] = useState(ALL);
   const rows = useQuery(api.brokerProfiles.list, {});
-  const selection = useRowSelection(rows?.map((row) => row.broker._id) ?? []);
+  const filteredRows = rows?.filter((row) => {
+    const profile = row.profile;
+    return (
+      (status === ALL || (profile?.networkStatus ?? "prospect") === status) &&
+      (line === ALL || profile?.lineOfBusinessCodes.includes(line)) &&
+      (region === ALL ||
+        (profile &&
+          brokerAreaFit(profile, brokerRegionCountry(region), region) ===
+            "match"))
+    );
+  });
+  const selection = useRowSelection(
+    filteredRows?.map((row) => row.broker._id) ?? [],
+  );
+  const hasFilters = region !== ALL || line !== ALL || status !== ALL;
 
   return (
     <AppShell
@@ -65,6 +117,62 @@ export default function OperatorBrokersPage() {
       }
     >
       <div className="@container/brokers space-y-4">
+        <div
+          className="flex flex-wrap items-center gap-2"
+          role="group"
+          aria-label="Provider filters"
+        >
+          <div className="w-full sm:w-64">
+            <SearchableSelect
+              options={regionOptions}
+              value={region}
+              onChange={(next) => {
+                setRegion(next);
+                selection.clear();
+              }}
+              ariaLabel="Filter providers by state or province"
+              typographyRole="control.menu"
+            />
+          </div>
+          <div className="w-full sm:w-80">
+            <SearchableSelect
+              options={lineOptions}
+              value={line}
+              onChange={(next) => {
+                setLine(next);
+                selection.clear();
+              }}
+              ariaLabel="Filter providers by coverage line"
+              typographyRole="control.menu"
+            />
+          </div>
+          <div className="w-full sm:w-44">
+            <SearchableSelect
+              options={statusOptions}
+              value={status}
+              onChange={(next) => {
+                setStatus(next);
+                selection.clear();
+              }}
+              ariaLabel="Filter providers by status"
+              typographyRole="control.menu"
+            />
+          </div>
+          {hasFilters ? (
+            <PillButton
+              variant="secondary"
+              size="compact"
+              onClick={() => {
+                setRegion(ALL);
+                setLine(ALL);
+                setStatus(ALL);
+                selection.clear();
+              }}
+            >
+              Clear filters
+            </PillButton>
+          ) : null}
+        </div>
         <BulkDeleteBar
           type="broker"
           orgIds={selection.selectedIds}
@@ -72,7 +180,7 @@ export default function OperatorBrokersPage() {
           onClear={selection.clear}
         />
         <OperationalPanel data-operator-inline-fields>
-          <Table className="table-fixed">
+          <Table className="min-w-[800px] table-fixed">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-11 pl-4 pr-0">
@@ -86,7 +194,7 @@ export default function OperatorBrokersPage() {
                 </TableHead>
                 <TableHead className="w-[40%] px-4">Provider</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>States</TableHead>
+                <TableHead>Service area</TableHead>
                 <TableHead>Lines</TableHead>
               </TableRow>
             </TableHeader>
@@ -100,17 +208,19 @@ export default function OperatorBrokersPage() {
                     <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
                   </TableCell>
                 </TableRow>
-              ) : rows.length === 0 && !creating ? (
+              ) : filteredRows?.length === 0 && !creating ? (
                 <TableRow>
                   <TableCell
                     colSpan={5}
                     className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                   >
-                    No insurance providers yet.
+                    {hasFilters
+                      ? "No providers match these filters."
+                      : "No insurance providers yet."}
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((row) => (
+                filteredRows?.map((row) => (
                   <TableRow
                     key={row.broker._id}
                     data-state={
@@ -152,7 +262,33 @@ export default function OperatorBrokersPage() {
                       />
                     </TableCell>
                     <TableCell className="whitespace-normal text-muted-foreground">
-                      {[...(row.profile?.nationwideCountries ?? []).map(code => `${code} nationwide`), ...(row.profile?.writingStates ?? []).filter(code => !(row.profile?.nationwideCountries ?? []).includes(brokerRegionCountry(code)))].join(", ") || "—"}
+                      {[
+                        ...(row.profile?.nationwideCountries ?? []).map(
+                          (code) => {
+                            const excluded = (
+                              row.profile?.excludedStates ?? []
+                            ).filter(
+                              (region) => brokerRegionCountry(region) === code,
+                            );
+                            return `${code} nationwide${excluded.length ? ` except ${excluded.join(", ")}` : ""}`;
+                          },
+                        ),
+                        ...(row.profile?.writingStates ?? []).filter(
+                          (code) =>
+                            !row.profile?.excludedStates?.includes(code) &&
+                            !(row.profile?.nationwideCountries ?? []).includes(
+                              brokerRegionCountry(code),
+                            ),
+                        ),
+                        ...(row.profile?.writingCountries ?? [])
+                          .filter(
+                            (code) =>
+                              code !== "CA" &&
+                              code !== "US" &&
+                              !row.profile?.nationwideCountries?.includes(code),
+                          )
+                          .map((code) => countryNames.of(code) ?? code),
+                      ].join(", ") || "—"}
                     </TableCell>
                     <TableCell className="whitespace-normal text-muted-foreground">
                       {row.profile?.lineOfBusinessCodes.join(", ") || "—"}
@@ -192,7 +328,7 @@ function NetworkStatusSelect({
           onChange(next as NetworkStatus);
       }}
     >
-      <SelectTrigger className="w-full" aria-label={label}>
+      <SelectTrigger className="w-full pl-0" aria-label={label}>
         <SelectValue>
           <StatusLabel {...NETWORK_STATUS_PRESENTATION[value]}>
             {NETWORK_STATUS_LABELS[value]}
@@ -284,6 +420,7 @@ function NewBrokerRow({ onDone }: { onDone: () => void }) {
           void submit();
       }}
     >
+      <TableCell />
       <TableCell className="px-4">
         <Input
           id={NEW_BROKER_NAME_ID}

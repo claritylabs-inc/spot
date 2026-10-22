@@ -25,6 +25,7 @@ import { assertNoOperatorImpersonation } from "./clientFiles";
 import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
 import { resolveOperatorPolicySources } from "../operatorPolicyImports";
 import { validateOperatorInvitation } from "../operatorInvitations";
+import { requireSendableOperatorEmailDraft } from "../operatorEmailDrafts";
 
 export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "call_mcp_tool",
@@ -69,6 +70,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "set_client_access_status",
   "set_client_feature_flag",
   "send_operator_slack_message",
+  "send_email_draft",
   "clear_all_agent_memory",
 ] as const satisfies readonly OperatorAgentToolName[];
 
@@ -1180,6 +1182,12 @@ export async function preflightOperatorToolConfirmation(
     }
     case "send_operator_slack_message":
       await preflightOperatorSlackMessage(ctx, args.input);
+      return;
+    case "send_email_draft":
+      await requireSendableOperatorEmailDraft(ctx, {
+        threadId: args.threadId,
+        draftId: args.input.draftId,
+      });
       return;
     default:
       throw new Error(

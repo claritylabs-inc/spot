@@ -81,6 +81,7 @@ export function ChatAssistantTurn({
   organizationId,
   structuredReferences,
   onFollowUp,
+  onOpenReference,
   presentationDisabled,
   children,
 }: Omit<ComponentProps<typeof ChatPresentationView>, "answer" | "disabled"> & {
@@ -135,6 +136,7 @@ export function ChatAssistantTurn({
               organizationId={organizationId}
               presentation={isError ? undefined : presentation}
               onFollowUp={onFollowUp}
+              onOpenReference={onOpenReference}
               structuredReferences={structuredReferences}
               disabled={presentationDisabled}
               answer={

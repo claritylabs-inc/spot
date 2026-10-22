@@ -58,6 +58,7 @@ export type ClRouterLanguageModelOptions = {
   sessionKey: string;
   trace?: ClRouterGenerateRequest["trace"];
   initialRoutePin?: ModelRoute;
+  toolSelection?: ClRouterGenerateRequest["toolSelection"];
   assetStager?: (asset: {
     bytes: Uint8Array;
     mediaType: string;
@@ -370,6 +371,9 @@ async function requestForCall(
       : {}),
     ...(options.maxOutputTokens ? { maxTokens: options.maxOutputTokens } : {}),
     ...(tools.length > 0 ? { tools } : {}),
+    ...(tools.length > 0 && adapter.toolSelection
+      ? { toolSelection: adapter.toolSelection }
+      : {}),
     ...(trace ? { trace } : {}),
   };
 }
