@@ -154,7 +154,6 @@ export function useProviderOutreach(
     readOnly ? "skip" : { requestId },
   );
   const launch = useMutation(api.providerOutreach.launch);
-  const stop = useMutation(api.providerOutreach.stop);
   const requestSuggestion = useMutation(
     api.providerOutreach.requestCadenceSuggestion,
   );
@@ -182,7 +181,6 @@ export function useProviderOutreach(
     });
   const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
   const [sendingAll, setSendingAll] = useState(false);
-  const [stopping, setStopping] = useState<string | null>(null);
   const busyRef = useRef(false);
   const suggestedFor = useRef<string | null>(null);
 
@@ -324,20 +322,6 @@ export function useProviderOutreach(
     }
   }
 
-  async function stopSequence(sequenceId: Id<"procurementOutreachSequences">) {
-    setStopping(sequenceId);
-    try {
-      const result = await stop({ sequenceId });
-      toast.success(
-        result.stopped ? "Outreach stopped" : "Outreach was already finished",
-      );
-    } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Could not stop outreach"));
-    } finally {
-      setStopping(null);
-    }
-  }
-
   return {
     panel,
     cadence,
@@ -354,8 +338,6 @@ export function useProviderOutreach(
         eligible.slice(0, MAX_LAUNCH_PROVIDERS).map((row) => row.brokerOrgId),
         true,
       ),
-    stopping,
-    stopSequence,
   };
 }
 export type ProviderOutreachController = ReturnType<typeof useProviderOutreach>;
@@ -703,34 +685,14 @@ function CandidateRow({
 /** Controls for an existing outreach sequence. */
 export function OutreachSequenceActions({
   sequence,
-  stopping,
-  readOnly,
-  onStop,
   onOpenThread,
 }: {
   sequence: SequenceView | null;
-  stopping: boolean;
-  readOnly: boolean;
-  onStop: (sequenceId: Id<"procurementOutreachSequences">) => void;
   onOpenThread: (threadId: Id<"procurementEmailThreads">) => void;
 }) {
   if (!sequence) return null;
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      {isLiveSequence(sequence) && !readOnly ? (
-        <PillButton
-          type="button"
-          size="xs"
-          variant="secondary"
-          disabled={stopping}
-          onClick={(event) => {
-            event.stopPropagation();
-            onStop(sequence.sequenceId);
-          }}
-        >
-          {stopping ? "Stopping…" : "Stop"}
-        </PillButton>
-      ) : null}
       {sequence.procurementEmailThreadId ? (
         <PillButton
           type="button"
