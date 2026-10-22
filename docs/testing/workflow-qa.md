@@ -2223,7 +2223,7 @@ directory lookup artifacts, `followup-typecheck.log`, `followup-convex-typecheck
 Local Chrome, ordinary operator, existing synthetic Intake Followups QA LLC
 request (`zh7fhb3xvawj0qqk0gzc2h1s258gmprm`), saved CGL request in Austin, TX:
 
-1. Open Client → Procurement → Request → Providers. **Auto add providers** appears
+1. Open Client → Procurement → Request → Providers → Outreach. **Auto add providers** appears
    beside **Add provider**, using the existing PillButton and app-shell action slot.
 2. Click Auto add providers. The directory match added Germani Insurance Services,
    Nadler Insurance and Embroker. All three appeared as **Observed**. The toast
@@ -2243,3 +2243,10 @@ No tests or migrations were written. Source review covered the all-location
 predicate, incomplete geography, partial coverage matching, status exclusions,
 operator authorization and transactional deduplication; these branches were not
 all separately exercised through the browser. Production was not deployed.
+
+After integrating the concurrent branch updates, repeated the browser check in
+the new Providers → Outreach layout: both actions rendered beside each other,
+three Observed rows remained, and clicking Auto add providers reported three
+already present with no additions. The integrated schema contained a misplaced
+inbox index on `threadMessages` referencing a nonexistent field; removed that
+invalid index while retaining the intended procurement-email inbox index.

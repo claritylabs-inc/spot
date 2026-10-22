@@ -81,7 +81,7 @@ marketing claim. The audit is retained in
 
 ## Manual procurement matching
 
-The operator request's Providers tab has **Auto add providers** beside **Add provider**.
+The operator request's Providers → Outreach view has **Auto add providers** beside **Add provider**.
 `procurementRequests.autoAddBrokers` derives criteria from the current saved
 request application, scans the complete provider-profile directory, and adds all
 eligible providers in one transaction. It does not cap results or rank away
