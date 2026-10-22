@@ -46,15 +46,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
 
 type CadenceField = keyof OutreachCadence;
 type CadenceSource = "jev" | "default" | "operator";
-type CandidateTab = "matched" | "unknown" | "excluded";
 
 const STYLE_LABELS: Record<OutreachCadence["style"], string> = {
   brief_nudge: "Brief nudge",
@@ -69,20 +63,6 @@ const BANNER_COPY: Record<string, string> = {
     "Requested coverages could not be determined, so coverage lines are not used to match providers.",
   lines_partly_unevaluated:
     "Other or unknown coverage types cannot be matched to provider lines and are ignored.",
-};
-
-const REASON_COPY: Record<string, string> = {
-  blacklisted: "Blacklisted provider",
-  inactive: "Inactive provider",
-  no_profile: "No appetite profile yet",
-  request_not_evaluable: "Request details are too thin to match",
-  geography_primary_not_serviced: "Does not write the primary location",
-  geography_none_serviced: "Does not write any requested location",
-  geography_partial: "Does not write every requested location",
-  geography_appetite_empty: "No service area on file",
-  geography_region_unknown: "Regional service needs verification",
-  lines_none_covered: "Covers none of the requested lines",
-  lines_appetite_empty: "No coverage lines on file",
 };
 
 const SKIP_COPY: Record<string, string> = {
@@ -408,7 +388,7 @@ function schedulePreview(
   return { text: steps.join(" · "), dropped: schedule.droppedFollowUps };
 }
 
-function CadenceCard({
+export function ProviderOutreachCadence({
   controller,
 }: {
   controller: ProviderOutreachController;
@@ -565,7 +545,6 @@ function CandidateRow({
   candidate,
   selectedContactId,
   onSelectContact,
-  tab,
   sequence,
   sendingId,
   canLaunch,
@@ -574,16 +553,11 @@ function CandidateRow({
   candidate: ProviderCandidateView;
   selectedContactId?: Id<"brokerContacts">;
   onSelectContact: (contactId: Id<"brokerContacts"> | null) => void;
-  tab: CandidateTab;
   sequence: SequenceView | null;
   sendingId: boolean;
   canLaunch: boolean;
   onSend: () => void;
 }) {
-  const reasons = candidate.reasons
-    .filter((reason) => reason !== "lines_partial")
-    .map((reason) => REASON_COPY[reason] ?? humanize(reason))
-    .join(" · ");
   const recipient = candidateRecipient(candidate, selectedContactId);
   const blocked = candidateLaunchBlock(candidate, selectedContactId);
   const contactLocked =
@@ -615,18 +589,11 @@ function CandidateRow({
             <TableNameLink href={`/operator/brokers/${candidate.brokerOrgId}`}>
               {candidate.name}
             </TableNameLink>
-            {reasons && (tab !== "matched" || candidate.partial) ? (
-              <p
-                className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-              >
-                {reasons}
-              </p>
-            ) : null}
           </div>
         </div>
       </TableCell>
       <TableCell className="min-w-64 whitespace-normal">
-        {tab !== "excluded" && (options.length > 0 || explicitRecipient) ? (
+        {options.length > 0 || explicitRecipient ? (
           <div>
             <Select
               value={contactValue}
@@ -705,10 +672,8 @@ function CandidateRow({
           </div>
         ) : (
           <span className="text-muted-foreground">
-            {tab === "excluded"
-              ? "—"
-              : (SKIP_COPY[candidate.skipReason ?? "no_contact_email"] ??
-                humanize(candidate.skipReason ?? "no_contact_email"))}
+            {SKIP_COPY[candidate.skipReason ?? "no_contact_email"] ??
+              humanize(candidate.skipReason ?? "no_contact_email")}
           </span>
         )}
       </TableCell>
@@ -716,29 +681,27 @@ function CandidateRow({
         <FitChips candidate={candidate} />
       </TableCell>
       <TableCell className="text-right">
-        {tab === "excluded" ? null : (
-          <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
-            {status ? (
-              <span
-                className={`text-muted-foreground ${typeStyle("caption.default")}`}
-              >
-                {status}
-              </span>
-            ) : null}
-            {blocked === "sequence_exists" ||
-            blocked === "outreach_status_progressed" ? null : (
-              <PillButton
-                type="button"
-                size="default"
-                variant={tab === "matched" ? "primary" : "secondary"}
-                disabled={!!blocked || !canLaunch || sendingId}
-                onClick={onSend}
-              >
-                {sendingId ? "Sending…" : "Send"}
-              </PillButton>
-            )}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
+          {status ? (
+            <span
+              className={`text-muted-foreground ${typeStyle("caption.default")}`}
+            >
+              {status}
+            </span>
+          ) : null}
+          {blocked === "sequence_exists" ||
+          blocked === "outreach_status_progressed" ? null : (
+            <PillButton
+              type="button"
+              size="default"
+              variant="primary"
+              disabled={!!blocked || !canLaunch || sendingId}
+              onClick={onSend}
+            >
+              {sendingId ? "Sending…" : "Send"}
+            </PillButton>
+          )}
+        </div>
       </TableCell>
     </TableRow>
   );
@@ -840,21 +803,8 @@ export function ProviderOutreachPanel({
   controller: ProviderOutreachController;
 }) {
   const { panel, sending, send, selectedContacts, selectContact } = controller;
-  const [selected, setSelected] = useState<CandidateTab>("matched");
   if (!panel) return null;
-  const tabs: { value: CandidateTab; label: string }[] = [
-    { value: "matched", label: "Matched" },
-    { value: "unknown", label: "Unknown fit" },
-    { value: "excluded", label: "Excluded" },
-  ];
-  // Matched always shows; the secondary tabs only exist when they have rows.
-  const visible = tabs.filter(
-    (tab) => tab.value === "matched" || panel.candidates[tab.value].length,
-  );
-  const tab = visible.some((item) => item.value === selected)
-    ? selected
-    : "matched";
-  const rows: ProviderCandidateView[] = panel.candidates[tab];
+  const rows = panel.candidates.matched;
   return (
     <div className="space-y-4">
       {panel.request.closedReason ? (
@@ -873,7 +823,6 @@ export function ProviderOutreachPanel({
           {BANNER_COPY[banner] ?? humanize(banner)}
         </p>
       ))}
-      <CadenceCard controller={controller} />
       <div className="sm:hidden">
         <PillButton
           type="button"
@@ -892,20 +841,6 @@ export function ProviderOutreachPanel({
       <section aria-label="Providers" className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className={typeStyle("body.medium")}>Providers</h2>
-          {visible.length > 1 ? (
-            <Tabs
-              value={tab}
-              onValueChange={(value) => setSelected(value as CandidateTab)}
-            >
-              <TabsList variant="pill" aria-label="Provider fit">
-                {visible.map((item) => (
-                  <TabsTrigger key={item.value} value={item.value}>
-                    {item.label} · {panel.candidates[item.value].length}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          ) : null}
         </div>
         <OperationalPanel as="div" data-operator-inline-fields>
           <Table>
@@ -929,7 +864,6 @@ export function ProviderOutreachPanel({
                     onSelectContact={(contactId) =>
                       selectContact(candidate.brokerOrgId, contactId)
                     }
-                    tab={tab}
                     sequence={
                       candidate.sequenceId
                         ? (panel.sequences.find(
@@ -948,11 +882,7 @@ export function ProviderOutreachPanel({
                     colSpan={4}
                     className="h-24 text-center text-muted-foreground"
                   >
-                    {tab === "matched"
-                      ? "No matched providers yet."
-                      : tab === "unknown"
-                        ? "No providers with unknown fit."
-                        : "No excluded providers."}
+                    No providers match the recorded coverage and service area.
                   </TableCell>
                 </TableRow>
               )}
@@ -963,11 +893,11 @@ export function ProviderOutreachPanel({
           <p
             className={`text-muted-foreground ${typeStyle("caption.default")}`}
           >
-            Showing the first{" "}
+            Matching is limited to the first{" "}
             {panel.candidates.matched.length +
               panel.candidates.unknown.length +
               panel.candidates.excluded.length}{" "}
-            providers.
+            providers in the directory.
           </p>
         ) : null}
       </section>

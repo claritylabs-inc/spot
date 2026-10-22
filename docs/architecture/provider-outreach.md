@@ -8,6 +8,12 @@ The procurement request Providers view matches the provider directory against th
 
 All browser writes require a direct operator. Operator tools use the same domain writers, with exact approval for external sending. Execution rechecks request, provider, recipient and sequence state; client access and impersonation do not grant send authority. Provider contact selection rejects Spot-owned identities. Each sequence gets a per-outreach packet link using the existing packet primitive. Request-wide link rotation leaves scoped links intact; packet access remains governed by existing token and released-file checks.
 
+## Request navigation
+
+The Providers page reads matching candidates directly and shows only providers that fit the request. There are no Add provider or Auto add provider controls, no Unknown/Excluded category tabs, and no empty manual-outreach card. Existing outreach/proposal records remain accessible below the matching list when present. Matching itself creates no outreach records or emails.
+
+Follow-up cadence is a separate left-menu item immediately beneath Providers, routed through `?view=cadence`. Both pages share the workspace's existing outreach controller, so cadence overrides and chosen contacts survive navigation between them and are used by Send/Send-all. The cadence page reuses the same inline row-card/select controls; there is no additional settings store or migration.
+
 ## Matching
 
 | Request coverage | Accepted provider codes |

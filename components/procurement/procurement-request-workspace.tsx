@@ -37,12 +37,9 @@ import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 import {
-  ProviderGeographyDialog,
-  providerGeographyPreflight,
-} from "./provider-geography-dialog";
-import {
   OutreachSequenceCell,
   ProviderOutreachPanel,
+  ProviderOutreachCadence,
   sequenceForOutreach,
   useProviderOutreach,
 } from "./provider-outreach-panel";
@@ -59,8 +56,6 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ConvexError } from "convex/values";
-import type { FunctionReturnType } from "convex/server";
 import {
   Copy,
   FileText,
@@ -72,6 +67,7 @@ import {
   Link,
   Upload,
   ChevronRight,
+  Clock3,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -1961,79 +1957,6 @@ function ImagePreview({
   );
 }
 
-function ProviderMatchResults({
-  result,
-  onClose,
-}: {
-  result: FunctionReturnType<typeof api.procurementRequests.autoAddBrokers>;
-  onClose: () => void;
-}) {
-  return (
-    <SettingsDrawer
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      title="Provider matches"
-      contentClassName="gap-5"
-    >
-      <InlineFieldCard>
-        <InlineFieldRow label="Any coverage">
-          {result.coverageLabels.join(", ")}
-        </InlineFieldRow>
-        <InlineFieldRow label="All locations">
-          {result.areaLabels.join("; ")}
-        </InlineFieldRow>
-        <InlineFieldRow label="Added">
-          {result.added} confirmed providers
-        </InlineFieldRow>
-        <InlineFieldRow label="Already on request">
-          {result.alreadyAdded}
-        </InlineFieldRow>
-        <InlineFieldRow label="Needs verification">
-          {result.needsVerification.length}
-        </InlineFieldRow>
-        <InlineFieldRow label="Not a match">
-          {result.coverageMismatch} coverage · {result.outsideArea} service area
-          · {result.unavailable} inactive or restricted
-        </InlineFieldRow>
-      </InlineFieldCard>
-      {!!result.unmappedCoverages.length && (
-        <OperationalPanel>
-          <OperationalPanelBody>
-            Other or unknown coverage types still need manual matching.
-          </OperationalPanelBody>
-        </OperationalPanel>
-      )}
-      {!!result.needsVerification.length && (
-        <InlineFieldCard title="Needs verification">
-          <InlineFieldRow label="Next step">
-            Check the missing fields, then run matching again. These providers
-            have not been added.
-          </InlineFieldRow>
-          {result.needsVerification.map((provider) => (
-            <InlineFieldRow
-              key={provider.brokerOrgId}
-              label={provider.name}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="min-w-0 flex-1">{provider.reason}</span>
-                <PillButton
-                  href={`/operator/brokers/${provider.brokerOrgId}`}
-                  target="_blank"
-                  variant="secondary"
-                >
-                  Review
-                </PillButton>
-              </div>
-            </InlineFieldRow>
-          ))}
-        </InlineFieldCard>
-      )}
-    </SettingsDrawer>
-  );
-}
-
 export function ProcurementRequestWorkspace({
   clientOrgId,
   requestId,
@@ -2046,7 +1969,7 @@ export function ProcurementRequestWorkspace({
   clientOrgId: Id<"organizations">;
   requestId: Id<"procurementRequests">;
   basePath: string;
-  view: "application" | "edit" | "proposals" | "files" | "email";
+  view: "application" | "edit" | "proposals" | "cadence" | "files" | "email";
   readOnly: boolean;
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
@@ -2085,51 +2008,6 @@ export function ProcurementRequestWorkspace({
   useEffect(() => {
     providerOutreachRef.current = providerOutreach;
   });
-  const autoAddBrokers = useMutation(api.procurementRequests.autoAddBrokers);
-  const [matchingBrokers, setMatchingBrokers] = useState(false);
-  const matchingBrokersRef = useRef(false);
-  const [geographyDialog, setGeographyDialog] = useState<{
-    key: number;
-    open: boolean;
-  } | null>(null);
-  const runAutoAddBrokers = useCallback(async () => {
-    if (readOnly || matchingBrokersRef.current) return;
-    matchingBrokersRef.current = true;
-    setMatchingBrokers(true);
-    try {
-      const result = await autoAddBrokers({ requestId });
-      onRightPanel(<ProviderMatchResults result={result} onClose={() => onRightPanel(null)} />);
-      const message = result.added
-        ? `${result.added} provider${result.added === 1 ? "" : "s"} added`
-        : result.needsVerification.length
-          ? "No new verified matches — review potential providers"
-          : result.alreadyAdded ? "No new verified providers to add" : "No providers match the recorded criteria";
-      if (result.added) toast.success(message);
-      else toast.info(message);
-    } catch (error) {
-      toast.error(
-        error instanceof ConvexError && typeof error.data === "string"
-          ? error.data
-          : getUserFacingErrorMessage(error, "Could not auto add providers"),
-      );
-    } finally {
-      matchingBrokersRef.current = false;
-      setMatchingBrokers(false);
-    }
-  }, [autoAddBrokers, onRightPanel, readOnly, requestId]);
-  // Missing or invalid request geography is fixed in a modal, then the match retries.
-  const handleAutoAddBrokers = useCallback(async () => {
-    if (readOnly || matchingBrokersRef.current) return;
-    const request = (result as RequestDetails | null | undefined)?.request;
-    if (request && !providerGeographyPreflight(request).ready) {
-      setGeographyDialog((current) => ({
-        key: (current?.key ?? 0) + 1,
-        open: true,
-      }));
-      return;
-    }
-    await runAutoAddBrokers();
-  }, [readOnly, result, runAutoAddBrokers]);
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
   const packetEditorRef = useRef<PacketEditorHandle>(null);
   const latestTabChange = useRef(0);
@@ -2426,17 +2304,6 @@ export function ProcurementRequestWorkspace({
         </PillButton>
       ) : view === "proposals" ? (
         <>
-          <PillButton type="button" onClick={() => openOutreachEditor()}>
-            <Plus className="size-3.5" />
-            Add provider
-          </PillButton>
-          <PillButton
-            type="button"
-            disabled={matchingBrokers}
-            onClick={() => void handleAutoAddBrokers()}
-          >
-            {matchingBrokers ? "Adding providers…" : "Auto add providers"}
-          </PillButton>
           <span className="hidden sm:contents">
           <PillButton
             type="button"
@@ -2483,9 +2350,6 @@ export function ProcurementRequestWorkspace({
     return () => onActions?.(null);
   }, [
     onActions,
-    openOutreachEditor,
-    handleAutoAddBrokers,
-    matchingBrokers,
     sendAllCount,
     providerOutreachBusy,
     canSendAll,
@@ -2601,14 +2465,17 @@ export function ProcurementRequestWorkspace({
   const menuGroups = [
     ...applicationGroups,
     {
-      label: "Providers",
+      label: "Outreach",
       items: [
         {
           key: "providers",
-          label: "Outreach",
+          label: "Providers",
           icon: PROVIDER_ICONS.providers,
-          count: details.outreaches.length,
+          count: providerOutreach.panel?.candidates.matched.length,
         },
+        ...(!readOnly
+          ? [{ key: "cadence", label: "Follow-up cadence", icon: Clock3 }]
+          : []),
         ...(details.emailThreads.length > 0 || view === "email"
           ? [
               {
@@ -2630,17 +2497,19 @@ export function ProcurementRequestWorkspace({
   const activeMenuKey =
     view === "proposals"
       ? "providers"
-      : view === "email"
-        ? "email"
-        : activeApplicationSection;
+      : view === "cadence"
+        ? "cadence"
+        : view === "email"
+          ? "email"
+          : activeApplicationSection;
   const selectMenu = async (key: string) => {
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
-    if (key === "providers" || key === "email") {
+    if (key === "providers" || key === "cadence" || key === "email") {
       closeRightPanel();
-      void changeView(key === "providers" ? "proposals" : "email");
+      void changeView(key === "providers" ? "proposals" : key);
       return;
     }
     setApplicationSection(key);
@@ -2740,13 +2609,11 @@ export function ProcurementRequestWorkspace({
           <ProviderOutreachPanel controller={providerOutreach} />
         ) : null}
 
-        {view === "proposals" ? (
-          details.outreaches.length === 0 ? (
-            <EmptyStateCard
-              title="No providers contacted yet"
-              description="Add a provider to track outreach and proposals."
-            />
-          ) : (
+        {view === "cadence" && !readOnly ? (
+          <ProviderOutreachCadence controller={providerOutreach} />
+        ) : null}
+
+        {view === "proposals" && details.outreaches.length > 0 ? (
             <OperationalPanel as="section">
               <Table>
                 <TableHeader>
@@ -2908,7 +2775,6 @@ export function ProcurementRequestWorkspace({
                 </TableBody>
               </Table>
             </OperationalPanel>
-          )
         ) : null}
 
         {view === "email" ? (
@@ -2996,23 +2862,6 @@ export function ProcurementRequestWorkspace({
               </OperationalPanel>
             )}
           </div>
-        ) : null}
-        {!readOnly && geographyDialog ? (
-          <ProviderGeographyDialog
-            key={geographyDialog.key}
-            open={geographyDialog.open}
-            onOpenChange={(open) =>
-              setGeographyDialog((current) =>
-                current ? { ...current, open } : current,
-              )
-            }
-            request={details.request}
-            onSaved={() => {
-              // The editor remounts from the saved request; drop the stale menu draft.
-              setDraft(null);
-              return runAutoAddBrokers();
-            }}
-          />
         ) : null}
       </div>
     </IntakeReviewCompact.Provider>
