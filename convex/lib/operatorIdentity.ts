@@ -342,7 +342,10 @@ export async function writeOperatorAudit(
       | "demo_lead_deleted"
       | "memory_cleared"
       | "setup_write"
-      | "impersonated_write";
+      | "impersonated_write"
+      | "second_factor_enrolled"
+      | "second_factor_recovery_used"
+      | "second_factor_reset";
     targetOrgId?: Id<"organizations">;
     targetUserId?: Id<"users">;
     summary: string;

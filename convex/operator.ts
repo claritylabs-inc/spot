@@ -5,7 +5,10 @@ import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
 import { createAccount } from "@convex-dev/auth/server";
-import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
+import {
+  getSessionUserId as getAuthUserId,
+  getSessionUserIdBeforeSecondFactor,
+} from "./lib/sessionIdentity";
 import {
   action,
   internalAction,
@@ -116,7 +119,7 @@ async function getOrgAdmin(ctx: QueryCtx, orgId: Id<"organizations">) {
 export const bootstrapViewer = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await getSessionUserIdBeforeSecondFactor(ctx);
     if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
     return bootstrapOperatorUser(ctx, userId);
   },
