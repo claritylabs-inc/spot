@@ -1,6 +1,8 @@
 "use node";
 
 import dayjs from "dayjs";
+import { escapeHtml } from "@claritylabs-inc/ui/lib/email";
+import { htmlToPlainText, parseInboundEmail } from "../lib/inboundEmailParser";
 import { v } from "convex/values";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 import { internal } from "../_generated/api";
@@ -424,8 +426,8 @@ function emailInputFor(
     operator,
     client: { name: request.clientName, summary: request.title },
     request: {
-      // The claim carries no line/region lists; the title and date stand in.
-      coverageLines: [],
+      coverageLines: request.coverageLines,
+      regions: request.regions,
       effectiveDate: request.targetEffectiveDate ?? undefined,
       isRenewal: request.isRenewal,
       packetFileCount: claim.packet.fileCount,
@@ -459,21 +461,12 @@ async function resolveDraft(
   const input = emailInputFor(claim, operator);
   let generated: Parameters<typeof composeOutreachEmail>[2];
   if (prepared.mode === "generate") {
-    // The claim does not carry the client org the router settings resolve from.
-    const request = await ctx.runQuery(
-      internal.procurementRequests.getInternal,
-      {
-        requestId: claim.sequence.requestId,
+    const attempt = await generateOutreachDraftText(ctx, claim.request.clientOrgId, input, {
+      trace: {
+        traceId: `provider-outreach-draft:${stepId}`,
+        channel: "web",
       },
-    );
-    const attempt = request?.clientOrgId
-      ? await generateOutreachDraftText(ctx, request.clientOrgId, input, {
-          trace: {
-            traceId: `provider-outreach-draft:${stepId}`,
-            channel: "web",
-          },
-        })
-      : null;
+    });
     if (attempt?.ok) generated = attempt;
     else if (attempt)
       warn(
@@ -724,7 +717,7 @@ export const classifyReply = internalAction({
             reply: {
               subject: context.message.subject.slice(0, 300),
               fromEmail: context.message.fromEmail,
-              text: context.message.text.slice(0, MAX_CLASSIFY_TEXT_CHARS),
+              text: parseInboundEmail({ subject: context.message.subject, text: context.message.text }).currentText.slice(0, MAX_CLASSIFY_TEXT_CHARS),
             },
             expectedRecipient: context.recipientEmail,
           },
@@ -790,28 +783,6 @@ function displayName(from: string): string | undefined {
   return name ? name.slice(0, 300) : undefined;
 }
 
-function htmlToText(html: string): string {
-  return html
-    .replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi, "")
-    .replace(/<br\s*\/?>|<\/(p|div|tr|li|h[1-6])>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function escapeHtmlText(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
 function formatBytes(size: number | null) {
   if (size === null) return "unknown size";
   return size < 1024
@@ -840,10 +811,10 @@ function toInboxEmail(email: ResendThreadEmail): InboxEmail {
     ? `\n\n[Attachments not downloaded: Resend does not provide inbox attachment downloads. ${notices.join("; ")}${omitted ? `; and ${omitted} more` : ""}.]`
     : "";
   const baseText =
-    email.text?.trim() || (email.html ? htmlToText(email.html) : "");
+    email.text?.trim() || (email.html ? htmlToPlainText(email.html, MAX_EMAIL_HTML_CHARS) : "");
   const received = dayjs(email.receivedAt);
   const noticeHtml = notices.length
-    ? `<p><em>${escapeHtmlText(noticeText.trim())}</em></p>`
+    ? `<p><em>${escapeHtml(noticeText.trim())}</em></p>`
     : "";
   return {
     resendInboxEmailId: email.id,

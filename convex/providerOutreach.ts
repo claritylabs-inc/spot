@@ -1,3 +1,4 @@
+import { isCapturedResourceId, operatorInboxAddress } from "./lib/resendInbox";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 
@@ -1391,6 +1392,9 @@ export type ClaimStepResult =
       sender: { userId: Id<"users">; name: string | null; email: string | null };
       inbox: InboxRecord | null;
       request: {
+        clientOrgId: Id<"organizations">;
+        coverageLines: string[];
+        regions: string[];
         title: string;
         clientName: string;
         targetEffectiveDate: string | null;
@@ -1569,6 +1573,10 @@ export const claimStepInternal = internalMutation({
       },
       inbox: await inboxForUser(ctx, sequence.senderUserId),
       request: {
+        clientOrgId: sequence.clientOrgId,
+        coverageLines: matchFor(world.request, world.client).needs.needs.map((need) => need.label),
+        regions: matchFor(world.request, world.client).geography.places.map((place) =>
+          place.region ? `${place.country}-${place.region}` : place.country),
         title: world.request.title,
         clientName: world.client.name,
         targetEffectiveDate: world.request.targetEffectiveDate ?? null,
@@ -1750,6 +1758,11 @@ export const recordInboxInternal = internalMutation({
     if (!step) return { stored: false, inbox: null };
     const sequence = await ctx.db.get(step.sequenceId);
     if (!sequence) return { stored: false, inbox: null };
+    const sender = await ctx.db.get(sequence.senderUserId);
+    if (!sender?.email || isCapturedResourceId(args.inbox.inboxId) ||
+        args.inbox.emailAddress.toLowerCase() !== operatorInboxAddress(sender.email).toLowerCase())
+      return { stored: false, inbox: null };
+
     const existing = await ctx.db
       .query("operatorOutreachInboxes")
       .withIndex("by_userId", (q) => q.eq("userId", sequence.senderUserId))

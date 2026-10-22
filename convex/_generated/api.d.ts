@@ -58,6 +58,7 @@ import type * as actions_policyExtraction from "../actions/policyExtraction.js";
 import type * as actions_processThreadChat from "../actions/processThreadChat.js";
 import type * as actions_proposalExtraction from "../actions/proposalExtraction.js";
 import type * as actions_proposalReview from "../actions/proposalReview.js";
+import type * as actions_providerOutreach from "../actions/providerOutreach.js";
 import type * as actions_reExtractFromFile from "../actions/reExtractFromFile.js";
 import type * as actions_reextractLegacyPolicies from "../actions/reextractLegacyPolicies.js";
 import type * as actions_renderEmailPreview from "../actions/renderEmailPreview.js";
@@ -537,6 +538,7 @@ declare const fullApi: ApiFromModules<{
   "actions/processThreadChat": typeof actions_processThreadChat;
   "actions/proposalExtraction": typeof actions_proposalExtraction;
   "actions/proposalReview": typeof actions_proposalReview;
+  "actions/providerOutreach": typeof actions_providerOutreach;
   "actions/reExtractFromFile": typeof actions_reExtractFromFile;
   "actions/reextractLegacyPolicies": typeof actions_reextractLegacyPolicies;
   "actions/renderEmailPreview": typeof actions_renderEmailPreview;
