@@ -41,6 +41,7 @@ export const followupBatchValidator = v.object({
   contextHash: v.string(),
   startedAt: v.number(),
   preloaded: v.optional(v.boolean()),
+  backgroundAttempts: v.optional(v.number()),
   enriching: v.optional(v.boolean()),
   preloadScopeHash: v.optional(v.string()),
   questions: v.array(followupQuestionValidator),

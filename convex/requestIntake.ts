@@ -2103,6 +2103,8 @@ async function followupPreloadScopeHash(
     ]),
   );
 }
+const MAX_FOLLOWUP_BACKGROUND_ATTEMPTS = 20;
+
 /** One generation per saved application context; revisiting after edits prepares a new context. */
 async function prepareFollowupBatch(
   ctx: MutationCtx,
@@ -2125,6 +2127,8 @@ async function prepareFollowupBatch(
       !request.intakeDetails?.coverages.some(line => line.coverage !== "unknown"))) return null;
     const previous = request.intakeFollowups?.[section];
     if (previous?.status === "pending") return null;
+    const background = preload && request.intakeStep !== 30;
+    if (background && (previous?.backgroundAttempts ?? 0) >= MAX_FOLLOWUP_BACKGROUND_ATTEMPTS) return null;
     const contextHash = await followupContextHash(ctx, request, section);
     if (previous?.contextHash === contextHash && previous.status !== "prepared" && !(retryFailed && previous.status === "failed")) return null;
     const scopeHash = await followupPreloadScopeHash(ctx, request);
@@ -2139,6 +2143,7 @@ async function prepareFollowupBatch(
       contextHash,
       startedAt: dayjs().valueOf(),
       preloaded: !!preload,
+      backgroundAttempts: (previous?.backgroundAttempts ?? 0) + (background ? 1 : 0),
       enriching: false,
       preloadScopeHash: scopeHash,
       questions: [],
@@ -2332,6 +2337,16 @@ export const finishFollowups = internalMutation({
     ) {
       // This inference completed successfully for an old context. Claim a new
       // evaluation for the changed context; never retry a failed/unknown call.
+      const background = request.intakeStep !== 30;
+      if (background && (batch.backgroundAttempts ?? 0) >= MAX_FOLLOWUP_BACKGROUND_ATTEMPTS) {
+        // Keep the old hash: terminal entry must prepare the current context.
+        await ctx.db.patch(requestId, {
+          intakeFollowups: { ...request.intakeFollowups, [section]: {
+            ...batch, status: "ready", questions: [], preloaded: false,
+          } },
+        });
+        return;
+      }
       const scopeHash = await followupPreloadScopeHash(ctx, request);
       const next = {
         ...batch,
@@ -2339,6 +2354,7 @@ export const finishFollowups = internalMutation({
         contextHash: currentContextHash,
         preloadScopeHash: scopeHash,
         preloaded: false,
+        backgroundAttempts: (batch.backgroundAttempts ?? 0) + (background ? 1 : 0),
         startedAt: dayjs().valueOf(),
         questions: [],
         status: "pending" as const,
@@ -2347,7 +2363,7 @@ export const finishFollowups = internalMutation({
         intakeFollowups: { ...request.intakeFollowups, [section]: next },
       });
       await ctx.scheduler.runAfter(
-        0,
+        background ? 5000 : 0,
         internal.actions.intakeFollowups.generate,
         {
           requestId,
