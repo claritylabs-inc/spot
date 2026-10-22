@@ -46,6 +46,10 @@ const proposalChildren = [
 ];
 
 const requestChildren = [
+  child("procurementOutreachSequences", "by_requestId_and_status", "requestId", undefined, [
+    child("procurementOutreachSteps", "by_sequenceId_and_index", "sequenceId"),
+  ]),
+  child("procurementOutreachCadences", "by_requestId", "requestId"),
   child("requestIntakeUploadIntents", "request", "requestId", ["fileId"]),
   child("requestIntakeFiles", "request", "requestId", ["fileId"]),
   child("intakeSlackEvents", "request_event", "requestId"),
