@@ -23,9 +23,11 @@ import {
 import {
   addressText,
   coverageRequestLabel,
+  detailsFromAnswers,
   type IntakeAddress,
   type IntakeDetails,
 } from "@/lib/insurance-intake-details";
+import type { IntakeAnswers } from "@/lib/insurance-intake";
 import type { IntakeApplication } from "@/lib/intake-application";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -50,8 +52,27 @@ export type ProviderGeographyRequest = {
   clientVisible?: boolean;
   intakeRevision?: number;
   updatedAt: number;
+  intakeAnswers?: IntakeAnswers;
+  intakeDetails?: IntakeDetails;
   application?: IntakeApplication | null;
 };
+
+/**
+ * The answers and details the direct editor shows and `updateApplication`
+ * publishes: newer saved edits first, then the accepted application. Saving
+ * here must start from the same source or it would overwrite those edits.
+ */
+function writableApplication(request: ProviderGeographyRequest) {
+  const answers =
+    request.intakeAnswers ?? request.application?.answers ?? {};
+  return {
+    answers,
+    details:
+      request.intakeDetails ??
+      request.application?.details ??
+      detailsFromAnswers(answers),
+  };
+}
 
 type AddressPath =
   | { kind: "location"; index: number }
@@ -124,20 +145,24 @@ const geographyRows = (details: IntakeDetails) =>
   );
 
 /**
- * Whether auto add can run. Geography is only the blocker when the shared
- * criteria reject the application and an address is at fault; any other
- * failure (no saved application, no supported coverage) is left to the server,
- * whose message the operator already sees.
+ * Whether auto add can run. The server matches the accepted application, so
+ * geography blocks only when its criteria reject it and an address is at
+ * fault, in the accepted application or in the newer edits a save would
+ * publish. Any other failure (no application, no supported coverage) is left
+ * to the server, whose message the operator already sees.
  */
-export function providerGeographyPreflight(
-  application: IntakeApplication | null | undefined,
-) {
+export function providerGeographyPreflight(request: ProviderGeographyRequest) {
+  const { application } = request;
   if (!application) return { ready: true };
   try {
     procurementBrokerCriteria(application);
     return { ready: true };
   } catch {
-    return { ready: !geographyRows(application.details).length };
+    return {
+      ready:
+        !geographyRows(application.details).length &&
+        !geographyRows(writableApplication(request).details).length,
+    };
   }
 }
 
@@ -184,7 +209,10 @@ const regionNames = (country: string | undefined) =>
 
 type Snapshot = {
   request: ProviderGeographyRequest;
-  application: IntakeApplication;
+  answers: IntakeAnswers;
+  details: IntakeDetails;
+  /** The accepted application still lacks geography, so a save is needed even with no rows. */
+  applicationBlocked: boolean;
   rows: Row[];
   edits: Record<string, Edit>;
 };
@@ -196,7 +224,8 @@ function snapshot(
 ): Snapshot | null {
   const { application } = request;
   if (!application) return null;
-  const rows = geographyRows(application.details);
+  const { answers, details } = writableApplication(request);
+  const rows = geographyRows(details);
   const unchanged = (row: Row) => {
     const before = previous?.rows.find((item) => item.key === row.key);
     const strip = (address: IntakeAddress) =>
@@ -205,7 +234,9 @@ function snapshot(
   };
   return {
     request,
-    application,
+    answers,
+    details,
+    applicationBlocked: geographyRows(application.details).length > 0,
     rows,
     edits: Object.fromEntries(
       rows.map((row) => [
@@ -275,7 +306,7 @@ export function ProviderGeographyDialog({
     setBusy(true);
     setError(null);
     try {
-      if (base.rows.length) {
+      if (base.rows.length || base.applicationBlocked) {
         const details = base.rows.reduce((next, row) => {
           const edit = base.edits[row.key];
           const patch: Partial<IntakeAddress> = {};
@@ -286,7 +317,7 @@ export function ProviderGeographyDialog({
           return Object.keys(patch).length
             ? patchAddress(next, row.path, patch)
             : next;
-        }, base.application.details);
+        }, base.details);
         const { request: saved } = base;
         await saveApplication({
           requestId: saved._id,
@@ -298,7 +329,7 @@ export function ProviderGeographyDialog({
           replacingPolicyId: saved.replacingPolicyId ?? null,
           resultingPolicyId: saved.resultingPolicyId ?? null,
           clientVisible: saved.clientVisible ?? true,
-          answers: base.application.answers,
+          answers: base.answers,
           details,
         });
       }
@@ -355,6 +386,9 @@ export function ProviderGeographyDialog({
           {base && !base.rows.length ? (
             <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
               Every address now has the geography providers need.
+              {base.applicationBlocked
+                ? " Saving applies your latest edits to the request application."
+                : ""}
             </p>
           ) : null}
           {base?.rows.length ? (
@@ -480,7 +514,7 @@ export function ProviderGeographyDialog({
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
             {busy
               ? "Saving…"
-              : base?.rows.length
+              : base?.rows.length || base?.applicationBlocked
                 ? "Save and add providers"
                 : "Add providers"}
           </PillButton>
