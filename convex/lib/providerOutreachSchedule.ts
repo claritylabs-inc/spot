@@ -6,6 +6,7 @@ dayjs.extend(utc);
 export const OUTREACH_STYLES = ["brief_nudge", "concise_recap", "detailed_recap"] as const;
 export type OutreachStyle = (typeof OUTREACH_STYLES)[number];
 export const MAX_OUTREACH_FOLLOW_UPS = 4;
+export const MAX_LAUNCH_PROVIDERS = 50;
 /** Interval choices offered to Jev and operators; the schedule accepts any positive integer. */
 export const OUTREACH_INTERVAL_OPTIONS = [2, 3, 5, 7] as const;
 export const OUTREACH_DEFAULT_CADENCE = {

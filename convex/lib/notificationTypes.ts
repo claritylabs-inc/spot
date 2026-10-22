@@ -53,7 +53,7 @@ export function notificationActionHref(
 ): string | undefined {
   if (!payload) return undefined;
   if (actionType === "view_operator_procurement" && "requestId" in payload && "clientOrgId" in payload) {
-    return `/operator/clients/${payload.clientOrgId}/procurement/${payload.requestId}`;
+    return `/operator/clients/${payload.clientOrgId}/procurement/${payload.requestId}?view=proposals`;
   }
   if (actionType === "view_policy" && "policyId" in payload) {
     return `/policies/${payload.policyId}${payload.tab ? `?tab=${encodeURIComponent(payload.tab)}` : ""}`;
