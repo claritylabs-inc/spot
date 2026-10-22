@@ -1,3 +1,7 @@
+import {
+  procurementBrokerCriteria,
+  matchesProcurementBroker,
+} from "./lib/procurementBrokerMatching";
 import { procurementApplicationInputSchema } from "./lib/procurementApplicationInput";
 import { detailsFromAnswers } from "../lib/insurance-intake-details";
 import { intakeAnswersValidator } from "./lib/insuranceIntakeSchema";
@@ -1250,6 +1254,98 @@ export const createOutreach = mutation({
       ...args,
       source: "operator",
     });
+  },
+});
+
+/** Manual matching only: add tracking rows, never send or release a packet. */
+export const autoAddBrokers = mutation({
+  args: { requestId: v.id("procurementRequests") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await requireDirectOperatorWrite(ctx, operator.userId);
+    const request = await requireRequest(ctx, args.requestId);
+    const criteria = procurementBrokerCriteria(
+      submittedIntakeApplication(request),
+    );
+    // Scan the complete directory: a result limit must not hide eligible markets.
+    const profiles = await ctx.db.query("brokerProfiles").collect();
+    const outreaches = await ctx.db
+      .query("procurementBrokerOutreaches")
+      .withIndex("request", (q) => q.eq("requestId", request._id))
+      .collect();
+    const addedIds = new Set(
+      outreaches.flatMap((row) => (row.brokerOrgId ? [row.brokerOrgId] : [])),
+    );
+    let added = 0;
+    let alreadyAdded = 0;
+    let missingAppetite = 0;
+    for (const profile of profiles) {
+      if (
+        profile.networkStatus === "blacklisted" ||
+        profile.networkStatus === "inactive"
+      )
+        continue;
+      const broker = await ctx.db.get(profile.brokerOrgId);
+      if (
+        !broker ||
+        broker.deletedAt ||
+        broker.type !== "broker" ||
+        isSpotOwnedBrokerIdentity(broker)
+      )
+        continue;
+      if (
+        !profile.lineOfBusinessCodes.length ||
+        (!profile.writingStates.length &&
+          criteria.areas.some((area) => !!area.state)) ||
+        (!profile.writingCountries?.length && !profile.writingStates.length)
+      ) {
+        missingAppetite++;
+      }
+      if (!matchesProcurementBroker(profile, criteria)) continue;
+      if (
+        addedIds.has(broker._id) ||
+        outreaches.some(
+          (row) =>
+            !row.brokerOrgId &&
+            row.brokerName.trim().toLowerCase() ===
+              broker.name.trim().toLowerCase(),
+        )
+      ) {
+        alreadyAdded++;
+        continue;
+      }
+      await createProcurementOutreachByOperator(ctx, {
+        operatorUserId: operator.userId,
+        requestId: request._id,
+        brokerOrgId: broker._id,
+        status: "observed",
+        source: "operator",
+      });
+      addedIds.add(broker._id);
+      added++;
+    }
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "setup_write",
+      targetOrgId: request.clientOrgId,
+      summary: `Auto added ${added} matching brokers to procurement request ${request.title}`,
+      metadata: {
+        domain: "procurement",
+        operation: "auto_add_brokers",
+        requestId: request._id,
+        coverageCodes: criteria.codes,
+        areas: criteria.areas,
+        added,
+        alreadyAdded,
+        missingAppetite,
+      },
+    });
+    return {
+      added,
+      alreadyAdded,
+      missingAppetite,
+      unmappedCoverages: criteria.unmappedCoverages,
+    };
   },
 });
 
