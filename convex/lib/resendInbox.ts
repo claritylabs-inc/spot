@@ -1,3 +1,4 @@
+import dayjs from "dayjs";
 import { z } from "zod";
 import { extractEmailAddress } from "./emailAddress";
 import {
@@ -248,14 +249,6 @@ const inboxWireSchema = z
 const labelListWireSchema = z
   .object({ data: z.array(labelWireSchema) })
   .transform((w) => w.data);
-
-const threadWireSchema = z.object({
-  id: z.string(),
-  subject: nullableString,
-  folder: z.enum(["inbox", "archive", "spam", "trash", "sent"]),
-  labels: defaulted(z.array(labelWireSchema), []),
-  read: z.boolean(),
-});
 
 const attachmentWireSchema = z.object({
   id: z.string(),
@@ -1215,40 +1208,80 @@ export function operatorInboxFromName(
 
 // --- Webhooks ---------------------------------------------------------------
 
-const inboxWebhookEmailSchema = threadEmailBaseSchema.omit({
-  html: true,
-  text: true,
+export type InboxWebhookEventType = "inbox.email.received" | "inbox.email.sent";
+const INBOX_WEBHOOK_EVENT_TYPES: readonly string[] = [
+  "inbox.email.received",
+  "inbox.email.sent",
+];
+
+/**
+ * The documented `inbox.email.*` payload carries `data.inbox_id`,
+ * `data.thread_id` and `data.email_id`; those are the only fields required to
+ * record an event durably (the body is fetched with `getThreadEmail`).
+ * `data.email.received_at` only orders replies and is optional here.
+ */
+const inboxWebhookDataSchema = z.object({
+  inbox_id: z.string().min(1),
+  thread_id: z.string().min(1),
+  email_id: z.string().min(1),
+  source: z.string().nullish(),
+  email: z.object({ received_at: z.string().nullish() }).nullish(),
 });
 
-const inboxWebhookEventSchema = z.object({
-  type: z.enum(["inbox.email.received", "inbox.email.sent"]),
-  created_at: z.string(),
-  data: z.object({
-    /** `inbox.email.sent` is always `system`, even for API and dashboard sends. */
-    source: z.string().nullish(),
-    inbox_id: z.string(),
-    thread_id: z.string(),
-    email_id: z.string(),
-    thread: threadWireSchema.nullish(),
-    email: inboxWebhookEmailSchema,
-  }),
-});
+export type InboxWebhookEvent = {
+  type: InboxWebhookEventType;
+  inboxId: string;
+  threadId: string;
+  emailId: string;
+  /** Epoch ms of `data.email.received_at`; undefined when absent or unparseable. */
+  occurredAt?: number;
+  /** `inbox.email.sent` is always `system`, even for API and dashboard sends. */
+  source?: string;
+};
 
-export type ResendInboxThread = z.output<typeof threadWireSchema>;
-export type InboxWebhookEvent = z.output<typeof inboxWebhookEventSchema>;
+export type InboxWebhookParse =
+  | { kind: "event"; event: InboxWebhookEvent }
+  /** A valid payload of another event type (draft, thread, inbox events): acknowledge it. */
+  | { kind: "unrecognized"; type: string }
+  /** Not JSON, no type, or a recognized type missing a required id: never acknowledge as handled. */
+  | { kind: "malformed"; type: string | null; reason: string };
 
-/** Parse a verified `inbox.email.received` / `inbox.email.sent` payload; null for other events. */
-export function parseInboxWebhookEvent(
-  rawBody: string,
-): InboxWebhookEvent | null {
+/** Parse an already signature-verified webhook body. */
+export function parseInboxWebhookEvent(rawBody: string): InboxWebhookParse {
   let json: unknown;
   try {
     json = JSON.parse(rawBody);
   } catch {
-    return null;
+    return { kind: "malformed", type: null, reason: "body is not JSON" };
   }
-  const parsed = inboxWebhookEventSchema.safeParse(json);
-  return parsed.success ? parsed.data : null;
+  const body =
+    json && typeof json === "object" ? (json as Record<string, unknown>) : null;
+  const type = typeof body?.type === "string" ? body.type : null;
+  if (!type) return { kind: "malformed", type: null, reason: "missing type" };
+  if (!INBOX_WEBHOOK_EVENT_TYPES.includes(type)) {
+    return { kind: "unrecognized", type };
+  }
+  const data = inboxWebhookDataSchema.safeParse(body?.data);
+  if (!data.success) {
+    return {
+      kind: "malformed",
+      type,
+      reason: `invalid data: ${data.error.issues[0]?.path.join(".") || "data"}`,
+    };
+  }
+  const receivedAt = data.data.email?.received_at;
+  const occurred = receivedAt ? dayjs(receivedAt) : null;
+  return {
+    kind: "event",
+    event: {
+      type: type as InboxWebhookEventType,
+      inboxId: data.data.inbox_id,
+      threadId: data.data.thread_id,
+      emailId: data.data.email_id,
+      ...(occurred?.isValid() ? { occurredAt: occurred.valueOf() } : {}),
+      ...(data.data.source ? { source: data.data.source } : {}),
+    },
+  };
 }
 
 /**
