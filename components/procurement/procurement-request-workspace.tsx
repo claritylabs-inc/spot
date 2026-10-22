@@ -2673,12 +2673,12 @@ export function ProcurementRequestWorkspace({
           </>
         ) : null}
 
+        {view === "proposals" && !readOnly ? (
+          <ProviderOutreachPanel controller={providerOutreach} />
+        ) : null}
+
         {view === "proposals" ? (
-          <div className="space-y-5">
-          {!readOnly ? (
-            <ProviderOutreachPanel controller={providerOutreach} />
-          ) : null}
-          {details.outreaches.length === 0 ? (
+          details.outreaches.length === 0 ? (
             <EmptyStateCard
               title="No providers contacted yet"
               description="Add a provider to track outreach and proposals."
@@ -2845,8 +2845,7 @@ export function ProcurementRequestWorkspace({
                 </TableBody>
               </Table>
             </OperationalPanel>
-          )}
-          </div>
+          )
         ) : null}
 
         {view === "email" ? (

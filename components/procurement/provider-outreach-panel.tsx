@@ -15,11 +15,11 @@ import {
 } from "@/convex/lib/brokerProfileValidation";
 import {
   buildOutreachSchedule,
+  MAX_LAUNCH_PROVIDERS,
   MAX_OUTREACH_FOLLOW_UPS,
   OUTREACH_INTERVAL_OPTIONS,
   type OutreachCadence,
 } from "@/convex/lib/providerOutreachSchedule";
-import { MAX_LAUNCH_PROVIDERS } from "@/convex/lib/providerOutreachValidators";
 import type {
   ProviderCandidateView,
   SequenceView,
@@ -178,19 +178,33 @@ export function useProviderOutreach(
 
   const edited = overrides.requestId === requestId ? overrides.values : {};
 
-  // The server upserts by fingerprint and never replays an unchanged one, so
-  // asking whenever the stored suggestion is missing or outdated is safe.
+  // The suggestion is keyed server-side by a fingerprint of the request's
+  // coverages, effective date and geography, which the panel does not expose.
+  // Rebuild a stable key from those same facts: each distinct set is asked for
+  // once (the server never replays an unchanged fingerprint), so a changed
+  // request is picked up even after a failed attempt, and nothing loops.
   const cadenceState = panel?.cadence;
   const canLaunch = panel?.request.canLaunch ?? false;
+  const cadenceCurrent = cadenceState?.current ?? false;
+  const factsKey = panel
+    ? JSON.stringify([
+        panel.needs.lines.map((line) => line.coverage).sort(),
+        [...panel.needs.unevaluated].sort(),
+        panel.request.targetEffectiveDate,
+        panel.geography.places
+          .map((place) => `${place.country}:${place.region ?? ""}`)
+          .sort(),
+      ])
+    : null;
   useEffect(() => {
-    if (!panel || !canLaunch || cadenceState?.current) return;
-    const key = `${requestId}:${cadenceState?.cadenceId ?? "none"}:${cadenceState?.updatedAt ?? 0}`;
+    if (!factsKey || !canLaunch || cadenceCurrent) return;
+    const key = `${requestId}:${factsKey}`;
     if (suggestedFor.current === key) return;
     suggestedFor.current = key;
     void requestSuggestion({ requestId }).catch(() => {
       // Defaults apply; the suggestion is optional.
     });
-  }, [panel, canLaunch, cadenceState, requestId, requestSuggestion]);
+  }, [factsKey, canLaunch, cadenceCurrent, requestId, requestSuggestion]);
 
   const picks =
     cadenceState?.current && cadenceState.status === "ready"
@@ -269,13 +283,13 @@ export function useProviderOutreach(
       const skipped = result.skipped.length;
       if (launched) {
         toast.success(
-          `Outreach sent to ${launched} provider${launched === 1 ? "" : "s"}${skipped ? ` · ${skipped} skipped` : ""}`,
+          `Outreach started for ${launched} provider${launched === 1 ? "" : "s"}${skipped ? ` · ${skipped} skipped` : ""}`,
           {
             description: skipped ? launchSummary(result.skipped) : undefined,
           },
         );
       } else {
-        toast.error(`No outreach sent · ${skipped} skipped`, {
+        toast.error(`No outreach started · ${skipped} skipped`, {
           description: launchSummary(result.skipped) || undefined,
         });
       }
@@ -545,7 +559,7 @@ function CandidateRow({
       ? "Already on this request"
       : null;
   return (
-    <OperationalItem className="flex items-center justify-between gap-4">
+    <OperationalItem className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="min-w-0 flex-1">
         <p
           className={`flex flex-wrap items-center gap-2 text-foreground ${typeStyle("body.medium")}`}
@@ -579,7 +593,7 @@ function CandidateRow({
         {tab !== "excluded" ? <FitChips candidate={candidate} /> : null}
       </div>
       {tab === "excluded" ? null : (
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
           {status ? (
             <span
               className={`text-muted-foreground ${typeStyle("caption.default")}`}
@@ -639,8 +653,14 @@ export function OutreachSequenceCell({
   onOpenThread: (threadId: Id<"procurementEmailThreads">) => void;
 }) {
   if (!sequence) return <span className="text-muted-foreground">—</span>;
+  // Captured steps were never delivered; a recorded sentAt survives a later cancel.
+  const captured = sequence.steps.filter(
+    (step) => step.status === "captured",
+  ).length;
   const sent = sequence.steps.filter(
-    (step) => step.status === "sent" || step.status === "captured",
+    (step) =>
+      step.status === "sent" ||
+      (step.status !== "captured" && step.sentAt !== null),
   ).length;
   return (
     <div className="flex min-w-40 flex-wrap items-center gap-x-3 gap-y-1">
@@ -649,7 +669,13 @@ export function OutreachSequenceCell({
           {sequenceStatusText(sequence)}
         </p>
         <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-          {sent} of {sequence.steps.length} sent
+          {[
+            `${sent} sent`,
+            captured ? `${captured} captured` : "",
+            `${sequence.steps.length} total`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
       </div>
       {isLiveSequence(sequence) && !readOnly ? (
