@@ -51,7 +51,7 @@ subtitle. Persistent status tags belong in the overview or active-tab body.
 - Omit sidebar headings when filenames or controls already identify the
   section. Separate groups with spacing and subtle dividers. Show upload and
   extraction progress in toasts, never as notes in or below a dropzone.
-- Broker and client selectors show `OrgBrandIcon` beside each option and the
+- Provider and client selectors show `OrgBrandIcon` beside each option and the
   selected company name. `SearchableSelect` supports an optional option icon;
   keep the company name as the searchable and accessible text.
 - Give a request-specific forwarding address its own bounded value-pair card,
@@ -111,7 +111,7 @@ Rules:
 1. A page or pane should normally have one base surface.
 2. A nested surface must communicate a real grouping, selection, or action.
 3. Do not alternate white, gray, and tinted containers just to create texture.
-4. Broker or carrier branding may color its owned identity surface. It must not
+4. Provider or carrier branding may color its owned identity surface. It must not
    replace neutral application structure or status colors.
 5. Muted text is for supporting information. Primary names, values, and actions
    remain `text-foreground`.
@@ -265,7 +265,7 @@ wrapping, and truncation local.
 
 ## Actions and controls
 
-Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save and footer Close/Cancel buttons when the sidebar already has a close control. Creation and consequential workflow actions remain explicit. Record-keyed editors keep drafts scoped when switching rows. Client Files also uses sidebar editing and footer preview/download/archive/restore actions; sidebar settings tables may contain switches. Procurement files have a label and independent Client visibility and Broker visibility switches in an `OperationalPanel` with divided `OperationalItem` rows. Both switches work before upload. Uploads link the underlying stored file automatically; purpose, status, broker outreach, and a client-file selector are not editable fields. Broker visibility immediately includes an available attachment on existing shared packet links. Legacy outreach-bound files retain their scoped access until migration or an explicit broker visibility edit. `@claritylabs-inc/ui/components/file-download-button` owns storage-file downloads that fetch a blob before saving, preserving the open app and sidebar across cross-origin storage URLs.
+Sidebar edits use `useLocalFirstAutoSave` and `AutoSaveStatus`; omit manual Save and footer Close/Cancel buttons when the sidebar already has a close control. Creation and consequential workflow actions remain explicit. Record-keyed editors keep drafts scoped when switching rows. Client Files also uses sidebar editing and footer preview/download/archive/restore actions; sidebar settings tables may contain switches. Procurement files have a label and independent Client visibility and Provider visibility switches in an `OperationalPanel` with divided `OperationalItem` rows. Both switches work before upload. Uploads link the underlying stored file automatically; purpose, status, provider outreach, and a client-file selector are not editable fields. Provider visibility immediately includes an available attachment on existing shared packet links. Legacy outreach-bound files retain their scoped access until migration or an explicit provider visibility edit. `@claritylabs-inc/ui/components/file-download-button` owns storage-file downloads that fetch a blob before saving, preserving the open app and sidebar across cross-origin storage URLs.
 
 - Use `PillButton` for pill-shaped product actions, including primary, secondary,
   destructive, footer, link, download, and icon-only actions.

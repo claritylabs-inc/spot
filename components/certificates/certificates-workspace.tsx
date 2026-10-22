@@ -293,7 +293,7 @@ export function CertificatesWorkspace({
         return;
       }
       if ((result as { status?: string }).status === "held_policy_change_required") {
-        toast.message((result as { message?: string }).message ?? "Broker review is needed before reissue.");
+        toast.message((result as { message?: string }).message ?? "Provider review is needed before reissue.");
         return;
       }
       toast.success("Certificate reissued");
@@ -321,7 +321,7 @@ export function CertificatesWorkspace({
       if ((result as { status?: string }).status === "held_policy_change_required") {
         toast.message(
           (result as { message?: string }).message ??
-            "Broker review is needed before generating this version.",
+            "Provider review is needed before generating this version.",
         );
         return false;
       }

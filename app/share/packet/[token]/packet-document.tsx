@@ -659,9 +659,9 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
           <footer className="space-y-4 py-4">
             <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
               Spot helps businesses manage their insurance and works with
-              brokers to find coverage. We organize company information, prepare
+              providers to find coverage. We organize company information, prepare
               submissions, and coordinate questions and next steps between
-              businesses and their brokers.
+              businesses and their providers.
             </p>
             <TextLink
               href="https://spot.insure/partners/brokers"

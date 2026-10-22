@@ -17,7 +17,8 @@ export type AppShellSlotName =
   | "breadcrumb"
   | "rightPanel"
   | "artifactPanel"
-  | "sidebar";
+  | "sidebar"
+  | "secondaryNav";
 
 type SlotOwners = Record<AppShellSlotName, string[]>;
 type SlotTargets = Record<AppShellSlotName, HTMLElement | null>;
@@ -28,6 +29,7 @@ const EMPTY_OWNERS: SlotOwners = {
   rightPanel: [],
   artifactPanel: [],
   sidebar: [],
+  secondaryNav: [],
 };
 const EMPTY_TARGETS: SlotTargets = {
   actions: null,
@@ -35,6 +37,7 @@ const EMPTY_TARGETS: SlotTargets = {
   rightPanel: null,
   artifactPanel: null,
   sidebar: null,
+  secondaryNav: null,
 };
 
 type AppShellSlotsValue = {

@@ -141,7 +141,7 @@ export function OperatorCertificatesWorkspace({
       if (status === "ambiguous_certificate_holder" || status === "held_policy_change_required") {
         toast.message(
           (result as { message?: string }).message ??
-            "Broker review is required before reissue.",
+            "Provider review is required before reissue.",
         );
         return;
       }
@@ -165,7 +165,7 @@ export function OperatorCertificatesWorkspace({
       if ((result as { status?: string }).status === "held_policy_change_required") {
         toast.message(
           (result as { message?: string }).message ??
-            "Broker review is required before generating this version.",
+            "Provider review is required before generating this version.",
         );
         return false;
       }

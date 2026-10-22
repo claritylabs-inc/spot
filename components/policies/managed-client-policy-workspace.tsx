@@ -87,7 +87,7 @@ const EXTRACTION_STATUS: Record<
 };
 
 function displayUploadedBy(side?: ClientPolicyRow["uploadedBySide"]) {
-  if (side === "broker") return "Broker";
+  if (side === "broker") return "Provider";
   if (side === "client") return "Client";
   if (side === "email_scan") return "Email scan";
   if (side === "agent_email") return "Agent email";

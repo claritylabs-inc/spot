@@ -1,6 +1,7 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useContext, useLayoutEffect, useRef, useState } from "react";
+import { InlineFieldsContext } from "@/components/ui/inline-fields";
 import { Plus } from "lucide-react";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
@@ -16,6 +17,7 @@ export function CredentialsInput({ value, onChange }: { value:string; onChange:(
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const focusRow = useRef<number | null>(null);
   const [pasteError, setPasteError] = useState<string | null>(null);
+  const inline = useContext(InlineFieldsContext);
   useLayoutEffect(() => {
     if (focusRow.current === null) return;
     inputs.current[focusRow.current]?.focus();
@@ -26,10 +28,10 @@ export function CredentialsInput({ value, onChange }: { value:string; onChange:(
     if (focus !== undefined) focusRow.current = focus;
     onChange(next.join("\n"));
   }
-  return <div className="space-y-4">
-    <ol aria-label="Licenses, certifications, and professional qualifications" className="space-y-3">
-      {rows.map((row,index)=><li key={index} className="flex items-center gap-3">
-        <Input ref={element => { inputs.current[index] = element; }} aria-label={`Qualification ${index+1}`} placeholder="License, certification, or qualification" className="h-12 min-w-0 flex-1"
+  return <div className={inline ? "space-y-1 py-1" : "space-y-4"}>
+    <ol aria-label="Licenses, certifications, and professional qualifications" className={inline ? "space-y-1" : "space-y-3"}>
+      {rows.map((row,index)=><li key={index} className={`flex items-center ${inline ? "gap-2" : "gap-3"}`}>
+        <Input ref={element => { inputs.current[index] = element; }} aria-label={`Qualification ${index+1}`} placeholder={inline ? "Not provided" : "License, certification, or qualification"} className={`${inline ? "" : "h-12"} min-w-0 flex-1`}
           value={row} maxLength={MAX_LENGTH} onChange={event=>update(rows.map((item,i)=>i===index?event.target.value:item))}
           onPaste={event => {
             const lines = event.clipboardData.getData("text").split(/\r\n|\r|\n/).filter(line => line.trim());
@@ -54,8 +56,8 @@ export function CredentialsInput({ value, onChange }: { value:string; onChange:(
           onClick={()=>update(rows.length===1?[""]:rows.filter((_,i)=>i!==index), Math.max(0, Math.min(index, rows.length - 2)))}/>
       </li>)}
     </ol>
-    {pasteError && <p role="alert" className={`text-destructive ${typeStyle("body.root")}`}>{pasteError}</p>}
-    <PillButton type="button" variant="secondary" size="large" disabled={rows.length>=MAX_ROWS} onClick={()=>update([...rows, ""], rows.length)}>
+    {pasteError && <p role="alert" className={`text-destructive ${typeStyle(inline ? "body.default" : "body.root")}`}>{pasteError}</p>}
+    <PillButton type="button" variant="secondary" size={inline ? "default" : "large"} disabled={rows.length>=MAX_ROWS} onClick={()=>update([...rows, ""], rows.length)}>
       <Plus aria-hidden="true" className="size-4"/>Add qualification
     </PillButton>
   </div>;

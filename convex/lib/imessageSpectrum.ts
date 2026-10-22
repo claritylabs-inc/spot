@@ -50,7 +50,7 @@ const RECENT_THREADING_PAGE_SIZE = 20;
 const CONTACT_CARD_NAME = "Spot";
 const CONTACT_CARD_URL = "https://spot.insure";
 const CONTACT_CARD_NOTE =
-  "Spot is an insurance intelligence assistant from Tools for Enlightenment for policies, certificates, renewals, and broker follow-ups.";
+  "Spot is an insurance intelligence assistant from Tools for Enlightenment for policies, certificates, renewals, and provider follow-ups.";
 // Apple message GUIDs (optionally a `p:<n>/` part id). Spectrum webhook ids
 // are opaque and may not be GUIDs, in which case threaded replies are skipped.
 const IMESSAGE_GUID =

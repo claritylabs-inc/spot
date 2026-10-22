@@ -1,4 +1,5 @@
 "use node";
+import { REQUIREMENT_PROVISIONS } from "../lib/complianceTypes";
 import { extractWorkforcePolicy } from "../lib/intakeWorkforcePrefill";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
@@ -144,7 +145,10 @@ export const extract = internalAction({
           })
         : undefined;
       const coverages = new Map<CoverageId, CoverageRequest>();
-      const provisionRequirements: { coverage: string; provisions: ("additional_insured" | "waiver_of_subrogation" | "primary_non_contributory")[] }[] = [];
+      const provisionRequirements: {
+        coverage: string;
+        provisions: { provision: "additional_insured" | "waiver_of_subrogation" | "primary_non_contributory"; confidence: number }[];
+      }[] = [];
       for (const [requirementIndex, requirement] of requirements.entries()) {
         const coverage = lines[requirement.lineOfBusiness ?? ""];
         if (!coverage || requirement.scope === "vendors") continue;
@@ -156,7 +160,13 @@ export const extract = internalAction({
           !imageVerdicts?.get(requirementIndex)?.verified
         )
           continue;
-        provisionRequirements.push({ coverage, provisions: requirement.provisions ?? [] });
+        provisionRequirements.push({
+          coverage,
+          provisions: REQUIREMENT_PROVISIONS.flatMap((provision) => {
+            const confidence = requirement.provisionProbabilities?.[provision];
+            return confidence === undefined ? [] : [{ provision, confidence }];
+          }),
+        });
         const row = coverages.get(coverage) ?? newCoverage(coverage);
         for (const limit of requirement.limits ?? []) {
           const key = intakeLimitKey(coverage, limit);

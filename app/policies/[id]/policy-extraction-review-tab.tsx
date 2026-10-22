@@ -328,7 +328,7 @@ export function PolicyExtractionReview({
                   </p>
                 </div>
                 {brokerRequested ? (
-                  <StatusTag tone="warning">Broker requested</StatusTag>
+                  <StatusTag tone="warning">Provider requested</StatusTag>
                 ) : null}
               </div>
 

@@ -12,7 +12,7 @@ address displayed in Spot rather than guessing a handle or using an older
 domain.
 
 An administrator can turn **Available by email** on or off. For a managed
-client, the broker administrator controls who Spot recognizes as belonging to
+client, the provider administrator controls who Spot recognizes as belonging to
 that client.
 
 ## Recognized senders
@@ -99,7 +99,7 @@ For a faster, safer result, include:
 
 Email is an AI-only Spot surface. A human operator does not silently join the
 email thread. For a human handoff, use the dedicated Slack support channel or
-contact the broker or service contact directly.
+contact the provider or service contact directly.
 
 Email recipients can see the reply and any attachment. Remove unrelated
 recipients before sharing private information. Spot avoids exposing internal
@@ -119,7 +119,7 @@ for choosing the correct audience.
 
 ### Spot cannot identify the client
 
-Ask the broker administrator to review **Inbound email access**. Do not broaden
+Ask the provider administrator to review **Inbound email access**. Do not broaden
 an approved domain merely to solve a one-person issue; adding that person's
 exact address is safer.
 

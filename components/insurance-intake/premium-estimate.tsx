@@ -3,10 +3,18 @@ import { Card, CardContent } from "@claritylabs-inc/ui/components/card";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { typeStyle } from "@/lib/typography";
 
-export function IntakePremiumEstimate({ estimate }: {estimate?: {
+export type IntakePremiumEstimateValue = {
   status: "pending" | "running" | "completed" | "failed";
   currency: string; minimumMonthly?: number; maximumMonthly?: number;
-}}) {
+};
+/** Range, lower-only and upper-only bounds share one wording across surfaces. */
+export function formatPremiumEstimate(estimate: IntakePremiumEstimateValue) {
+  const format = (amount: number) => new Intl.NumberFormat("en-US", {style:"currency",currency:estimate.currency,maximumFractionDigits:0}).format(amount);
+  if (estimate.minimumMonthly !== undefined && estimate.maximumMonthly !== undefined) return `${format(estimate.minimumMonthly)}–${format(estimate.maximumMonthly)}`;
+  if (estimate.minimumMonthly !== undefined) return `Starting from ${format(estimate.minimumMonthly)}`;
+  if (estimate.maximumMonthly !== undefined) return `About ${format(estimate.maximumMonthly)}`;
+}
+export function IntakePremiumEstimate({ estimate }: {estimate?: IntakePremiumEstimateValue}) {
   const loading = !estimate || estimate.status === "pending" || estimate.status === "running";
   const ready = estimate?.status === "completed" && (estimate.minimumMonthly !== undefined || estimate.maximumMonthly !== undefined);
   const range = ready && estimate.minimumMonthly !== undefined && estimate.maximumMonthly !== undefined;
@@ -20,7 +28,7 @@ export function IntakePremiumEstimate({ estimate }: {estimate?: {
       </div>
       {ready ? <>
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className={typeStyle("heading.page")}>{range ? `${format(estimate.minimumMonthly!)}–${format(estimate.maximumMonthly!)}` : estimate.minimumMonthly !== undefined ? `Starting from ${format(estimate.minimumMonthly)}` : `About ${format(estimate.maximumMonthly!)}`}</span>
+          <span className={typeStyle("heading.page")}>{formatPremiumEstimate(estimate)}</span>
           <span className={`text-foreground/80 ${typeStyle("body.root")}`}>{estimate.currency} / month</span>
         </div>
         {range && <div role="img" aria-label={`Rough estimated range: ${format(estimate.minimumMonthly!)} to ${format(estimate.maximumMonthly!)} ${estimate.currency} per month`} className="space-y-3">

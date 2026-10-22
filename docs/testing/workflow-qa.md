@@ -1,5 +1,78 @@
 # Platform workflow QA
 
+## Intake latency follow-up — October 22, 2026
+
+Scope: speculative additional-question preparation, compact generation context,
+nonblocking unknown-scope coverage matching, and bounded interactive decisions.
+Three isolated Sonnet writers and a separate Sonnet reviewer were coordinated
+with `cl-conductor-manager`; assignment and review records are in
+`.context/intake-latency/`.
+
+Measurement before implementation: the configured production export contained
+one non-intake error call; the configured source-development export was empty.
+There are no successful intake samples for p50/p95 by taskKind. The priority
+order remains a code-based hypothesis, and no measured latency improvement is
+claimed. Successful-call duration percentiles must exclude errors and be reported
+with counts; call duration is distinct from end-to-end applicant wait time.
+
+The writer's synthetic five-coverage/four-vehicle/five-driver prompt decreased
+from 116,558 characters to 29,892 characters (29,934 UTF-8 bytes), retaining all
+39 reference hints. This is a payload-size comparison, not a latency benchmark.
+
+Browser workflow to rerun with a local synthetic quote applicant:
+1. Save company name and a known coverage, finish another section, and pause
+   five seconds. Confirm a single background batch starts before step 30.
+2. Save rapidly, then change a base fact during generation. Confirm the newest
+   context wins, stale questions never publish, and one batch runs at a time.
+   After 20 background attempts, confirm speculation stops while terminal
+   preparation remains available. Include facts changing away and back.
+3. Revisit with unchanged facts; confirm no new call. Exercise a failed call,
+   savings switch, and submission; confirm no automatic replay or late writes.
+4. Enter an unknown scope. Click Next while matching is pending; navigation
+   must proceed. A settled exact-scope result may open suggestions; late or
+   changed-scope results must never reroute or overwrite entered answers.
+5. Exercise decision timeout fallback and reload persistence without submitting
+   or sending any external notification. Remove the synthetic fixture afterward.
+
+Validation: all 133 existing tests across 20 files passed at `a4939445`. After
+the review-driven cap and stale-context fixes, root and Convex TypeScript checks
+and all five existing intake authorization tests passed at `c6fb3f1f`. Changed-file
+ESLint passed with no errors and the pre-existing application effect-dependency
+warning. Independent Sonnet review found no blocking defects. The final delta
+was checked with the focused suite; the full suite was not rerun for that delta.
+
+Browser outcome: **not run** for this packet. The manager VM has no visible
+Chrome/CDP desktop configured; existing local servers and another session's
+operator fixture were left undisturbed. Code/contract validation does not claim
+browser E2E or live inference accuracy. Structured question streaming remains
+unsupported by the existing chat-only target, so only fully validated questions
+are published. No Vercel previews or production deployments were used, and no
+new unit tests were added after implementation.
+
+## Intake decision follow-up — October 22, 2026
+
+PR #531 follow-up splits vehicle, workforce, cyber and company verification into
+atomic judgments, uses structured criteria and stable taxonomy evidence, and
+routes uncertain outcomes to the existing applicant fields. Separate intake gates
+default to 0.7 for suggestions, 0.8 for prefills and 0.9 for question omission.
+GL provision provenance carries the actual classifier probability. Versioned
+vehicle/cyber evidence keys invalidate legacy proposals without changing accepted
+applicant answers.
+
+Validation on the integrated follow-up: all 133 existing tests across 20 files
+passed (`npm test -- --maxWorkers=2`), and changed-file ESLint passed. Full ESLint also passed in the isolated VM
+with nine warnings, all in untouched files. Existing
+prefill acceptance fixtures were adjusted to the new 0.8 default; no new unit
+tests were added. Root and Convex TypeScript checks passed on the integrated
+commit in an isolated worker VM; attempts in the manager VM were memory-killed
+while a separate UI QA session's local servers were running. Temporary logs and
+assignment/review records are in `.context/decide-fixes/`.
+
+No Vercel previews or production deployments were used. This is code/contract
+validation, not live Jev accuracy calibration or browser E2E coverage of these
+new inference outcomes. The earlier browser coverage below still describes the
+ordinary input flows; uncertain decisions deliberately retain those controls.
+
 ## Introduction spacing refinement — October 20, 2026
 
 Local Chrome real-component preview passed top-aligned introduction content,

@@ -57,7 +57,7 @@ function ProvenanceBadge({ side }: { side: UploadedBySide }) {
         variant="outline"
         className="border-current/20 bg-transparent text-current"
       >
-        Broker provided
+        From provider
       </Badge>
     );
   }

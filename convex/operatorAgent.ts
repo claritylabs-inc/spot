@@ -422,7 +422,7 @@ function policyDisplayName(policy: {
 
 const DISPLAY_REFERENCE_FALLBACKS: Record<string, string> = {
   orgId: "the selected organization",
-  brokerOrgId: "the selected broker",
+  brokerOrgId: "the selected provider",
   policyId: "the selected policy",
   policyId1: "the first selected policy",
   policyId2: "the second selected policy",
@@ -430,7 +430,7 @@ const DISPLAY_REFERENCE_FALLBACKS: Record<string, string> = {
   resultingPolicyId: "the resulting policy",
   clientFileId: "the selected client file",
   procurementRequestId: "the selected procurement request",
-  procurementOutreachId: "the selected broker outreach",
+  procurementOutreachId: "the selected provider outreach",
   procurementFileItemId: "the selected procurement file",
   procurementEmailThreadId: "the selected email thread",
   requirementId: "the selected requirement",
@@ -984,14 +984,14 @@ function normalizeProcurementOutreachId(
   if (typeof value !== "string") {
     throw new NoWriteInputError(
       "invalid_identifier",
-      "Procurement broker outreach ID is required",
+      "Procurement provider outreach ID is required",
     );
   }
   const outreachId = ctx.db.normalizeId("procurementBrokerOutreaches", value);
   if (!outreachId)
     throw new NoWriteInputError(
       "invalid_identifier",
-      "Invalid procurement broker outreach ID",
+      "Invalid procurement provider outreach ID",
     );
   return outreachId;
 }
@@ -2711,7 +2711,7 @@ async function executeToolDomain(
 
   if (toolName === "create_broker_network_profile") {
     const name = normalizedOptionalText(input.name);
-    if (!name) throw new Error("Broker name is required");
+    if (!name) throw new Error("Provider name is required");
     return await createStandaloneBrokerByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       name,

@@ -147,7 +147,7 @@ async function requireConnectClientOrg(
   const org = await ctx.db.get(orgId);
   if (!org) throw new Error("Organization not found");
   if ((org.type ?? "client") === "broker") {
-    throw new Error("Connect vendor/client features are not available for broker organizations");
+    throw new Error("Connect vendor/client features are not available for provider organizations");
   }
   return org;
 }
@@ -159,7 +159,7 @@ async function requireConnectVendorOrg(
   const org = await ctx.db.get(orgId);
   if (!org) throw new Error("Vendor organization not found");
   if ((org.type ?? "client") === "broker") {
-    throw new Error("Broker organizations cannot be connected as vendors");
+    throw new Error("Provider organizations cannot be connected as vendors");
   }
   return org;
 }

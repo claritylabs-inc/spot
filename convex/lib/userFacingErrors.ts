@@ -25,7 +25,7 @@ const defaultMessages: Record<UserFacingErrorCode, string> = {
   AUTH_REQUIRED: "Your session has expired. Sign in again and retry this action.",
   ORG_ACCESS_REQUIRED: "You don’t have access to this organization.",
   ORG_ADMIN_REQUIRED: "Only an organization admin can perform this action.",
-  BROKER_ADMIN_REQUIRED: "Only a broker admin can perform this action.",
+  BROKER_ADMIN_REQUIRED: "Only a provider admin can perform this action.",
   CLIENT_ADMIN_REQUIRED: "Only a client admin can perform this action.",
   OPERATOR_REQUIRED: "This action is available only to Spot operators.",
   OPERATOR_OWNER_REQUIRED: "Only a Spot operator owner can perform this action.",

@@ -8,7 +8,7 @@ import { isFixedVehicleFollowup } from "../lib/intake-vehicle-underwriting";
 import { intakePrefillEvidence, invalidateIntakePrefills } from "../lib/intake-prefill-state";
 import { followupPrefillValidator } from "./lib/intakeFollowupSchema";
 import { mergeIntakePrefills } from "./lib/intakePrefills";
-import { jevProceedThreshold } from "./lib/jevThreshold";
+import { jevDecisionBand } from "./lib/jevThreshold";
 import { intakeSubmissionProblems } from "../lib/intake-submission";
 import { driverModelContext } from "../lib/intake-drivers";
 import { intakeQuestionHistory } from "../lib/intake-question-history";
@@ -863,6 +863,7 @@ export const save = mutation({
           const research = request.intakeCyberResearch;
           const researched = research?.status === "completed" && prefilled.contextHash === `cyber:${research.fingerprint}` &&
             research.sourceKey === intakeCyberResearchKey({ ...request.intakeAnswers, ...args.answers }, args.details) &&
+            jevDecisionBand(prefilled.confidence, "prefill") === "high" &&
             research.suggestions?.some(proposal => proposal.questionId === row.id && proposal.answer === row.answer && proposal.confidence === prefilled.confidence);
           if (!existing && !researched) throw new Error("Invalid inferred answer provenance");
         }
@@ -1008,6 +1009,7 @@ export const save = mutation({
     await ctx.db.patch(request._id, {
       clientOrgId,
       intakeAnswers: answers,
+      ...(answers.intakeGoal === "savings" ? { intakeFollowups: undefined } : {}),
       ...(request.intakeSubmittedAt && answersChanged
         ? {
             intakeAmendedAt: dayjs().valueOf(),
@@ -1049,6 +1051,12 @@ export const save = mutation({
       updatedAt: dayjs().valueOf(),
       updatedByUserId: user._id,
     });
+    if (!request.intakeSubmittedAt && answers.intakeGoal !== "savings") {
+      await ctx.scheduler.runAfter(5000, internal.requestIntake.warmFollowupsAfterSave, {
+        requestId: request._id,
+        revision,
+      });
+    }
     if (
       args.step !== request.intakeStep ||
       details?.revenueStep !== request.intakeDetails?.revenueStep ||
@@ -1799,7 +1807,7 @@ export const finishRequirementPrefill = internalMutation({
     intakeFileId: v.id("requestIntakeFiles"), coveragesJson: v.string(),
     workforceProposals: v.optional(v.array(v.object({questionId:v.string(),answer:v.string(),confidence:v.number()}))),
     companyIdentity: v.optional(v.string()),
-    provisionRequirements: v.optional(v.array(v.object({ coverage: v.string(), provisions: v.array(v.union(v.literal("additional_insured"), v.literal("waiver_of_subrogation"), v.literal("primary_non_contributory"))) }))),
+    provisionRequirements: v.optional(v.array(v.object({ coverage: v.string(), provisions: v.array(v.object({ provision: v.union(v.literal("additional_insured"), v.literal("waiver_of_subrogation"), v.literal("primary_non_contributory")), confidence: v.number() })) }))),
   },
   handler: async (ctx, { intakeFileId, coveragesJson, provisionRequirements, workforceProposals, companyIdentity }) => {
     const file = await ctx.db.get(intakeFileId);
@@ -1826,7 +1834,7 @@ export const finishRequirementPrefill = internalMutation({
       for(const question of questions) {
         const proposal=workforceProposals?.find(row=>row.questionId===question.id);
         const saved=followups.find(row=>row.id===question.id);
-        if(!proposal || !Number.isFinite(proposal.confidence) || proposal.confidence<Math.max(.7,jevProceedThreshold()) || proposal.confidence>1 || saved?.answer.trim() || saved?.skipped || !followupQuestionVisible(question,followups))continue;
+        if(!proposal || !Number.isFinite(proposal.confidence) || jevDecisionBand(proposal.confidence,"prefill")!=="high" || proposal.confidence>1 || saved?.answer.trim() || saved?.skipped || !followupQuestionVisible(question,followups))continue;
         const row={...question,answer:proposal.answer,prefilled:{confidence:proposal.confidence,contextHash:`workforce:${file._id}`}};
         validateFollowupAnswers([row]);
         if(saved)followups[followups.indexOf(saved)]=row;else followups.push(row);
@@ -1837,7 +1845,9 @@ export const finishRequirementPrefill = internalMutation({
     if (!request.intakeSubmittedAt && request.intakeAnswers?.intakeGoal !== "savings" && provisionRequirements?.length) {
       const current = request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {});
       const questions = bakedCoverageQuestions({ answers: request.intakeAnswers ?? {}, details: current });
-      const glProvisions = new Set(provisionRequirements.filter(row => row.coverage === "general_liability").flatMap(row => row.provisions));
+      const glProvisions = provisionRequirements
+        .filter(row => row.coverage === "general_liability")
+        .flatMap(row => row.provisions);
       const targets = [
         ["additional_insured", "gl.coverage.additional_insureds"],
         ["waiver_of_subrogation", "gl.coverage.waiver_requirements"],
@@ -1845,8 +1855,13 @@ export const finishRequirementPrefill = internalMutation({
       ] as const;
       const proposals = targets.flatMap(([provision, source]) => {
         const question = questions.find(row => row.source?.endsWith(` · ${source}`));
-        // Classification already passed Jev's threshold and source-excerpt grounding.
-        return glProvisions.has(provision) && question ? [{ questionId: question.id, answer: "Yes" as const, confidence: jevProceedThreshold() }] : [];
+        const supported = glProvisions.find(row =>
+          row.provision === provision && jevDecisionBand(row.confidence, "prefill") === "high",
+        );
+        // Preserve the actual upstream probability; the writer rechecks its risk gate.
+        return supported && question
+          ? [{ questionId: question.id, answer: "Yes" as const, confidence: supported.confidence }]
+          : [];
       });
       const followups = mergeIntakePrefills(current.followups ?? [], questions, proposals, `requirements:${file._id}`);
       if (JSON.stringify(followups) !== JSON.stringify(current.followups ?? []))
@@ -1963,7 +1978,7 @@ export const finishVehicleRelevance = internalMutation({
     if(!request?.ownerUserId || request.deletedAt || request.intakeSubmittedAt || !details || !job || job.status!=="running" || job.fingerprint!==fingerprint ||
       job.sourceKey!==vehicleRelevanceKey(request.intakeAnswers??{},details))return null;
     const allowed=new Set(vehicleRelevanceCandidates(request.intakeAnswers??{},details).map(candidate=>candidate.id));
-    const excludedIds=failed?[]:[...new Set(decisions.filter(row=>allowed.has(row.id) && Number.isFinite(row.irrelevantProbability) && row.irrelevantProbability>=jevProceedThreshold() && row.irrelevantProbability<=1).map(row=>row.id))];
+    const excludedIds=failed?[]:[...new Set(decisions.filter(row=>allowed.has(row.id) && Number.isFinite(row.irrelevantProbability) && jevDecisionBand(row.irrelevantProbability,"omission")==="high" && row.irrelevantProbability<=1).map(row=>row.id))];
     await ctx.db.patch(requestId,{intakeVehicleRelevance:{...job,status:failed?"failed":"completed",excludedIds}});
     return null;
   },
@@ -2088,6 +2103,8 @@ async function followupPreloadScopeHash(
     ]),
   );
 }
+const MAX_FOLLOWUP_BACKGROUND_ATTEMPTS = 20;
+
 /** One generation per saved application context; revisiting after edits prepares a new context. */
 async function prepareFollowupBatch(
   ctx: MutationCtx,
@@ -2104,14 +2121,17 @@ async function prepareFollowupBatch(
       request.intakeAnswers?.intakeGoal === "savings"
     )
       return null;
-    const contextHash = await followupContextHash(ctx, request, section);
-    const scopeHash = await followupPreloadScopeHash(ctx, request);
+    // Wait for enough scope to make background questions useful. Terminal entry
+    // can still prepare incomplete applications through the ordinary path.
+    if (preload && (!request.intakeAnswers?.legalName?.trim() ||
+      !request.intakeDetails?.coverages.some(line => line.coverage !== "unknown"))) return null;
     const previous = request.intakeFollowups?.[section];
-    // One pass starts only at the terminal section, with complete history.
-    // Legacy warmup callers remain compatible but cannot spend model calls.
-    if (preload) return null;
     if (previous?.status === "pending") return null;
+    const background = preload && request.intakeStep !== 30;
+    if (background && (previous?.backgroundAttempts ?? 0) >= MAX_FOLLOWUP_BACKGROUND_ATTEMPTS) return null;
+    const contextHash = await followupContextHash(ctx, request, section);
     if (previous?.contextHash === contextHash && previous.status !== "prepared" && !(retryFailed && previous.status === "failed")) return null;
+    const scopeHash = await followupPreloadScopeHash(ctx, request);
     console.info("[intakeFollowups] preparing batch", {
       requestId, section, background: preload,
       reason: previous ? "application_facts_changed" : "first_preparation",
@@ -2123,6 +2143,7 @@ async function prepareFollowupBatch(
       contextHash,
       startedAt: dayjs().valueOf(),
       preloaded: !!preload,
+      backgroundAttempts: (previous?.backgroundAttempts ?? 0) + (background ? 1 : 0),
       enriching: false,
       preloadScopeHash: scopeHash,
       questions: [],
@@ -2145,10 +2166,15 @@ export const prepareFollowups = mutation({
   },
 });
 
-/** Compatibility for already scheduled warmup jobs; no provisional inference. */
+/** Coalesce autosaves; the last saved revision prepares one context at a time. */
 export const warmFollowupsAfterSave = internalMutation({
-  args: { requestId: v.id("procurementRequests") },
-  handler: async () => null,
+  args: { requestId: v.id("procurementRequests"), revision: v.optional(v.number()) },
+  handler: async (ctx, { requestId, revision }) => {
+    const request = await ctx.db.get(requestId);
+    if (!request || request.deletedAt || revision === undefined ||
+      request.intakeRevision !== revision) return null;
+    return prepareFollowupBatch(ctx, request, "additional", true);
+  },
 });
 
 /** Provisional candidates are never exposed as ready questions. */
@@ -2311,6 +2337,17 @@ export const finishFollowups = internalMutation({
     ) {
       // This inference completed successfully for an old context. Claim a new
       // evaluation for the changed context; never retry a failed/unknown call.
+      const background = request.intakeStep !== 30;
+      if (background && (batch.backgroundAttempts ?? 0) >= MAX_FOLLOWUP_BACKGROUND_ATTEMPTS) {
+        // Invalidate the hash: facts may have changed away and back while this
+        // batch ran, so even its original hash cannot certify an empty result.
+        await ctx.db.patch(requestId, {
+          intakeFollowups: { ...request.intakeFollowups, [section]: {
+            ...batch, contextHash: `stale:${batch.token}`, status: "ready", questions: [], preloaded: false,
+          } },
+        });
+        return;
+      }
       const scopeHash = await followupPreloadScopeHash(ctx, request);
       const next = {
         ...batch,
@@ -2318,6 +2355,7 @@ export const finishFollowups = internalMutation({
         contextHash: currentContextHash,
         preloadScopeHash: scopeHash,
         preloaded: false,
+        backgroundAttempts: (batch.backgroundAttempts ?? 0) + (background ? 1 : 0),
         startedAt: dayjs().valueOf(),
         questions: [],
         status: "pending" as const,
@@ -2326,7 +2364,7 @@ export const finishFollowups = internalMutation({
         intakeFollowups: { ...request.intakeFollowups, [section]: next },
       });
       await ctx.scheduler.runAfter(
-        0,
+        background ? 5000 : 0,
         internal.actions.intakeFollowups.generate,
         {
           requestId,
@@ -2677,6 +2715,21 @@ export const retryFailedPremiumEstimateInternal = internalMutation({
     return null;
   },
 });
+
+/** Operator-requested estimate for the current accepted application. A failed
+ * current attempt retries only when the operator saw that exact attempt.
+ */
+export async function refreshPremiumEstimateByOperator(ctx: MutationCtx, request: Doc<"procurementRequests">, expectedStartedAt?: number) {
+  const source=await premiumEstimateSource(ctx,request,false);
+  if(!request.intakeSubmittedAt || !source)throw new Error("Only submitted applications have premium estimates");
+  const estimate=request.intakePremiumEstimate;
+  if(estimate && !estimate.provisional && estimate.contentHash===source.contentHash){
+    if(estimate.status!=="failed")throw new Error("The estimate is already current");
+    if(estimate.startedAt!==expectedStartedAt)throw new Error("The estimate changed. Reload before retrying.");
+  }
+  await ctx.db.patch(request._id,{intakePremiumEstimate:undefined});
+  await preparePremiumEstimateForRequest(ctx,{...request,intakePremiumEstimate:undefined});
+}
 
 /** Administrative recovery after logs confirm failure BEFORE inference submission.
  * Never use for a timeout, unknown outcome, or a previously completed estimate.

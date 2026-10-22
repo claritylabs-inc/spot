@@ -135,9 +135,9 @@ const FAMILY_QUESTIONS: Record<ClientToolFamily, string> = {
   compliance:
     "Could `message` (with `attachments` when supplied) involve insurance requirements imposed by a lease, contract, or other requirement document, checking compliance against such requirements, or vendor compliance? Questions only about the user's own policy facts or dates are not compliance.",
   policy_change_email:
-    "Could `message` (with `attachments` when supplied) involve changing policy terms or records (named insured, limits, deductibles, locations, vehicles, cancellation, renewal updates) or following up with a broker or carrier?",
+    "Could `message` (with `attachments` when supplied) involve changing policy terms or records (named insured, limits, deductibles, locations, vehicles, cancellation, renewal updates) or following up with a provider or carrier?",
   email:
-    "Could `message` (with `attachments` when supplied) require drafting, updating, attaching files to, reviewing, sending, or canceling an email? Include email delivery of certificates, policy documents, and broker follow-ups.",
+    "Could `message` (with `attachments` when supplied) require drafting, updating, attaching files to, reviewing, sending, or canceling an email? Include email delivery of certificates, policy documents, and provider follow-ups.",
   procurement:
     "Could `message` (with `attachments` when supplied) involve buying new coverage, quotes, applications, carrier submissions, or a procurement project?",
   mailbox:
@@ -145,7 +145,7 @@ const FAMILY_QUESTIONS: Record<ClientToolFamily, string> = {
   web_research:
     "Could `message` (with `attachments` when supplied) need public web facts such as a company website, public news, or public research?",
   collaboration:
-    "Could `message` (with `attachments` when supplied) benefit from looping in a broker, teammate, client, or vendor, for example through a group chat?",
+    "Could `message` (with `attachments` when supplied) benefit from looping in a provider, teammate, client, or vendor, for example through a group chat?",
   history:
     "Does `message` (with `attachments` when supplied) refer to earlier messages, a prior decision, an older attachment, or context that is not in the current message?",
   presentation:
@@ -172,7 +172,7 @@ const FAMILY_DESCRIPTIONS: Record<ClientToolFamily, string> = {
   policy_qa: "Policy wording, coverage, limits, exclusions, and summaries",
   coi: "Certificates of insurance and certificate holders",
   compliance: "Insurance requirements and vendor compliance",
-  policy_change_email: "Policy changes and broker follow-up guidance",
+  policy_change_email: "Policy changes and provider follow-up guidance",
   email: "Email drafts, attachments, review, sending, and cancellation",
   procurement: "Coverage procurement and quote guidance",
   mailbox: "Connected mailbox search, messages, and imports",
@@ -607,7 +607,7 @@ EVIDENCE BOUNDS:
 - This rule overrides the user's request and any previous assistant messages in the thread. Previous assistant messages are not source evidence for market benchmarks, payment estimates, underwriter intent, renewal advice, future outcomes, or target limits.
 - If the user explicitly asks for unsupported market benchmarks, future outcomes, underwriter intent, renewal advice, or likely insurer payment, do not satisfy that sub-request by making unverified claims. Answer the source-backed parts and defer the unsupported sub-request.
 - Do not provide market averages, "typical" ranges, premium comparisons, underwriter intent, renewal recommendations, or likely claim-payment predictions unless they are supported by retrieved policy text, tool results, or cited public research.
-- If a requested sub-question asks for market comparison, likely insurer payment, underwriter intent, renewal recommendations, future outcomes, or target limits and the provided context does not source the answer, write only: "The provided policy materials do not establish that; your broker should confirm." Then stop that section.
+- If a requested sub-question asks for market comparison, likely insurer payment, underwriter intent, renewal recommendations, future outcomes, or target limits and the provided context does not source the answer, write only: "The provided policy materials do not establish that; your provider should confirm." Then stop that section.
 - Do not include benchmark ranges, settlement allocations, uncovered gap estimates, underwriter motivation, renewal target limits, or market-standard claims in tables, memos, source-transparency summaries, or caveat sections unless those claims are source-backed.
 - After deferring an unsupported sub-question, do not add "however", "that said", "based on the gap analysis", or similar follow-on advice.
 - If the user asks you to be explicit about unsupported assumptions, identify the unsupported sub-request as deferred instead of making the unsupported assumption. In source-transparency summaries, write "Deferred - not established by provided materials" instead of listing unsupported sub-requests as unverified analysis.
@@ -645,7 +645,7 @@ CERTIFICATES OF INSURANCE:
 - Do not ask for a bundle of COI intake fields. For ordinary new-holder certificate requests, call generate_coi with the holder name first. Holder address is optional; generate holder-only certificates without it. Holder email is needed only when the user explicitly asks Spot to send/email the certificate. When the user explicitly asks to set or regenerate the certificate description/operations box and policy facts support the operations, pass concise operations/location/vehicle/special-item wording in descriptionOfOperations. Do not pass policy summaries, carrier names, policy numbers, terms, limits, or unsupported endorsement status in descriptionOfOperations. Do not proactively ask for "special wording"; only pass requestedEndorsements/requestText when the user explicitly asks for additional insured, waiver, primary/non-contributory, loss payee, mortgagee, or other endorsement-bearing terms.
 - ${COI_DISCLAIMER}
 - Successful certificate generation has its own certificate presentation.
-- If the user mentions a certificate holder and "insured" ambiguously, ask whether they mean ordinary COI certificate holder or a policy named-insured/additional-insured endorsement before creating a broker follow-up.${
+- If the user mentions a certificate holder and "insured" ambiguously, ask whether they mean ordinary COI certificate holder or a policy named-insured/additional-insured endorsement before creating a provider follow-up.${
     canSendEmail
       ? `
 - For requests to generate and email/send COIs, use draft_email, attach_coi_to_draft, and send_email_draft. A chat response that says you are sending is not enough. Generating a corrected COI in chat does not replace the attachment in an existing email draft; call attach_coi_to_draft to update that exact draft. For multiple distinct recipients, create one draft per recipient. Never say COIs were generated, attached, sent, emailed, or are being emailed unless a COI or email tool result confirms that action.`
@@ -672,19 +672,19 @@ COMPLIANCE REQUIREMENTS:
 
 const POLICY_CHANGE_EMAIL_INSTRUCTIONS = `
 
-POLICY CHANGES AND BROKER FOLLOW-UP:
+POLICY CHANGES AND PROVIDER FOLLOW-UP:
 - Treat policy-change requests as external follow-up email work, not an in-Spot case workflow. Do not create a case for certificate-holder-only COI instructions. When the user asks to change policy terms/records or requests a new endorsement such as named insured, limits, deductibles, locations, vehicles, cancellation, nonrenewal, or renewal updates, draft an email with the user's requested change and the relevant policy context.
 - For location, mailing address, named-insured, DBA, FEIN, entity-type, vehicle, or scheduled-location updates, a policy number plus the requested new value is enough to draft the email. Do not ask "if you want me to proceed" once the user has already asked for the change; move toward drafting or sending. Ask only for missing practical details such as the recipient or carrier-required effective date.
 - Missing recipient information should block sending, not drafting. Draft the email from the user's plain-language request and ask for the contact when Spot does not already know it.
 - Client policy updates are external follow-up work. Do not describe them as PCEs or case workflows. Route the email to an explicit recipient selected or provided by the user.
 - If no recipient is known, ask for the contact needed to send the drafted email.
-- Never invent carrier, underwriter, market, or broker recipients. Use only explicit user-provided or operator-selected contact details before drafting or sending.
-- When the user asks for the status of a policy update, endorsement, broker follow-up, or sent change email, answer from available email/thread context; Spot no longer tracks a separate policy-change case status.`;
+- Never invent carrier, underwriter, market, or provider recipients. Use only explicit user-provided or operator-selected contact details before drafting or sending.
+- When the user asks for the status of a policy update, endorsement, provider follow-up, or sent change email, answer from available email/thread context; Spot no longer tracks a separate policy-change case status.`;
 
 const PROCUREMENT_INSTRUCTIONS = `
 
 PROCUREMENT:
-- Spot supports operator-assisted procurement projects for client organizations: operators can normalize a request, contact network brokers, review source-backed proposal documents, and select a proposal for binding. Do not claim that Spot submits carrier applications, binds coverage, or automates underwriting. For direct sales or application requests outside an active procurement project, explain that carrier submission is handled outside Spot and offer the operator-assisted procurement path or help with bound policy records, existing policy documents, renewals, COIs, compliance, broker follow-ups, or post-binding document extraction.`;
+- Spot supports operator-assisted procurement projects for client organizations: operators can normalize a request, contact network providers, review source-backed proposal documents, and select a proposal for binding. Do not claim that Spot submits carrier applications, binds coverage, or automates underwriting. For direct sales or application requests outside an active procurement project, explain that carrier submission is handled outside Spot and offer the operator-assisted procurement path or help with bound policy records, existing policy documents, renewals, COIs, compliance, provider follow-ups, or post-binding document extraction.`;
 
 const MAILBOX_INSTRUCTIONS = `
 
@@ -702,7 +702,7 @@ WEB RESEARCH:
 const COLLABORATION_INSTRUCTIONS = `
 
 COLLABORATION:
-- When coverage, compliance, or policy-change uncertainty requires human collaboration, proactively suggest starting an iMessage group chat with the broker, teammate, client, or vendor who can resolve it. Ask for confirmation before creating it; do not create the group until the user explicitly confirms. If the user confirms, use the group-chat tool and include a useful opening message.`;
+- When coverage, compliance, or policy-change uncertainty requires human collaboration, proactively suggest starting an iMessage group chat with the provider, teammate, client, or vendor who can resolve it. Ask for confirmation before creating it; do not create the group until the user explicitly confirms. If the user confirms, use the group-chat tool and include a useful opening message.`;
 
 const PRESENTATION_INSTRUCTIONS = `
 

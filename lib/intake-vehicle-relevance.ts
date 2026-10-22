@@ -18,7 +18,7 @@ export function vehicleRelevanceEvidence(answers: Record<string, unknown>, detai
 
 /** Exact evidence matching prevents decisions surviving changed uses or reordered vehicles. */
 export function vehicleRelevanceKey(answers: Record<string, unknown>, details: IntakeDetails) {
-  return JSON.stringify(["vehicle-relevance-v1", BAKED_COVERAGE_QUESTIONS_VERSION, vehicleRelevanceEvidence(answers, details)]);
+  return JSON.stringify(["vehicle-relevance-v2", BAKED_COVERAGE_QUESTIONS_VERSION, vehicleRelevanceEvidence(answers, details)]);
 }
 
 export function vehicleRelevanceCandidates(answers: Record<string, unknown>, details: IntakeDetails) {

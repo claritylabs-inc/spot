@@ -91,7 +91,11 @@ export function IntakeVehicleUnderwritingFields({
                 value={values[field.key] ?? ""}
                 maxLength={2000}
                 placeholder={
-                  "placeholder" in field ? field.placeholder : undefined
+                  inline
+                    ? "Not provided"
+                    : "placeholder" in field
+                      ? field.placeholder
+                      : undefined
                 }
                 onChange={(event) => change(event.target.value)}
               />

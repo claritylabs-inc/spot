@@ -1,20 +1,11 @@
 "use client";
 import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
-import { RemoveButton } from "@/components/ui/remove-button";
 import {
   InlineFieldsContext,
   InlineFieldCard,
   InlineFieldRow,
 } from "@/components/ui/inline-fields";
-import { Plus } from "lucide-react";
-import { PillButton } from "@/components/ui/pill-button";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@claritylabs-inc/ui/components/dropdown-menu";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Tabs,
   TabsList,
@@ -31,21 +22,32 @@ import {
   type IntakeField,
 } from "@/lib/insurance-intake";
 import {
-  coverageRequestLabel,
-  COVERAGE_OPTIONS,
-  newCoverage,
   type IntakeDetails,
 } from "@/lib/insurance-intake-details";
 import { typeStyle } from "@/lib/typography";
 import {
-  IntakeCoverageLimits,
-  IntakeCoverageScope,
   IntakeRegistration,
   IntakeMailingAddress,
   IntakeLocations,
   IntakeRelatedEntities,
   IntakeRevenueFields,
 } from "./details-fields";
+import { IntakeFollowupRows } from "./application-quote-fields";
+import {
+  IntakeCoveragePanel,
+  IntakeCoverageSection,
+  type CoveragePanelTarget,
+} from "./application-coverage-section";
+import {
+  coverageSectionKey,
+  OTHER_COVERAGE_SECTION,
+} from "./application-section-nav";
+import {
+  intakeCoverageAnswerRows,
+  intakeQuoteSections,
+  visibleIntakeFollowups,
+} from "@/lib/intake-application";
+import { intakeCatalogCoverage } from "@/lib/intake-acord-questions";
 
 const COUNTRY_CODES: Record<string, string> = {
   "United States": "us",
@@ -57,8 +59,10 @@ export function IntakeApplicationFields({
   companyOnly = false,
   companyGroup = false,
   activeSection,
+  onRemoveCoverage,
+  onRightPanel,
+  requestCard,
   extraRows = [],
-  onToolbarActions,
   answers,
   details,
   onAnswersChange,
@@ -67,69 +71,77 @@ export function IntakeApplicationFields({
   companyOnly?: boolean;
   companyGroup?: boolean;
   activeSection?: string;
+  onRemoveCoverage?: (section: string) => void;
+  onRightPanel?: (node: React.ReactNode) => void;
+  requestCard?: React.ReactNode;
   extraRows?: { label: string; value?: React.ReactNode }[];
-  onToolbarActions?: (node: React.ReactNode) => void;
   answers: IntakeAnswers;
   details: IntakeDetails;
   onAnswersChange: (answers: IntakeAnswers) => void;
   onDetailsChange: (details: IntakeDetails) => void;
 }) {
   const titles = [
-    ...(!companyOnly
-      ? ["Contact details", "Request details", "Coverage Requested"]
-      : []),
+    ...(!companyOnly ? ["Contact details", "Request details"] : []),
     "Business details",
     "Addresses",
     "Related legal entities",
     "Revenue",
     "Locations",
-    ...(!companyOnly ? ["Insurance history"] : []),
+    ...(!companyOnly
+      ? ["Insurance history", ...intakeQuoteSections(details, true)]
+      : []),
   ];
   const [selected, setSelected] = useState(titles[0]);
   const visible = activeSection ?? selected;
-  const addCoverage = useMemo(
-    () => (
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={<PillButton variant="secondary" size="default" />}
-        >
-          <Plus className="size-3.5" />
-          Add coverage
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {COVERAGE_OPTIONS.filter(
-            (option) =>
-              !details.coverages.some((line) => line.coverage === option.id),
-          ).map((option) => (
-            <DropdownMenuItem
-              key={option.id}
-              onClick={() =>
-                onDetailsChange({
-                  ...details,
-                  coverages:
-                    option.id === "unknown"
-                      ? [newCoverage("unknown")]
-                      : [
-                          ...details.coverages.filter(
-                            (line) => line.coverage !== "unknown",
-                          ),
-                          newCoverage(option.id),
-                        ],
-                })
-              }
-            >
-              {option.label}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    ),
-    [details, onDetailsChange],
-  );
+  // Panels edit items of the visible coverage; leaving the section closes them.
+  const [panelState, setPanelState] = useState<{
+    section?: string;
+    target: CoveragePanelTarget;
+  } | null>(null);
+  const panel =
+    panelState?.section === activeSection ? panelState.target : null;
+  const openPanel = (target: CoveragePanelTarget) =>
+    setPanelState({ section: activeSection, target });
+  const panelShown = useRef(false);
+  const panelMounts = useRef(0);
+  const closePanel = useCallback(() => {
+    setPanelState(null);
+    panelShown.current = false;
+    onRightPanel?.(null);
+  }, [onRightPanel]);
+  // The panel renders outside this tree; re-send it so it edits current details.
   useEffect(() => {
-    onToolbarActions?.(visible === "Coverage Requested" ? addCoverage : null);
-    return () => onToolbarActions?.(null);
-  }, [visible, addCoverage, onToolbarActions]);
+    if (!onRightPanel) return;
+    if (!panel) {
+      if (panelShown.current) onRightPanel(null);
+      panelShown.current = false;
+      return;
+    }
+    panelShown.current = true;
+    onRightPanel(
+      <PanelLifecycle
+        onMount={() => {
+          panelMounts.current += 1;
+        }}
+        onUnmount={() => {
+          panelMounts.current -= 1;
+          // The shell may remount the panel when its container appears; only
+          // an unmount with no remaining mount means another panel replaced it.
+          queueMicrotask(() => {
+            if (panelMounts.current === 0) setPanelState(null);
+          });
+        }}
+      >
+        <IntakeCoveragePanel
+          answers={answers}
+          details={details}
+          onDetailsChange={onDetailsChange}
+          target={panel}
+          onClose={closePanel}
+        />
+      </PanelLifecycle>,
+    );
+  }, [panel, answers, details, onDetailsChange, onRightPanel, closePanel]);
 
   const formationParts = (answers.formation ?? "")
     .split(",")
@@ -181,6 +193,21 @@ export function IntakeApplicationFields({
       </InlineFieldRow>
     </div>
   );
+  const businessName = answers.legalName || answers.dba;
+  const coverageIds = details.coverages.map((line) => line.coverage);
+  const coverageAnswers = intakeCoverageAnswerRows(answers, details);
+  const followupRows = (rows: typeof coverageAnswers) => (
+    <IntakeFollowupRows
+      rows={rows}
+      details={details}
+      businessName={businessName}
+      industry={answers.industry}
+      onChange={onDetailsChange}
+    />
+  );
+  const unownedCoverageAnswers = coverageAnswers.filter(
+    (row) => !intakeCatalogCoverage(row, coverageIds),
+  );
   const text = (key: IntakeField, multiline = false) => (
     <InlineFieldRow key={key} label={INTAKE_FIELDS[key]}>
       {key === "website" ? (
@@ -224,7 +251,12 @@ export function IntakeApplicationFields({
       ].includes(title);
     if (title !== visible && !grouped) return null;
     const fields = (
-      <fieldset aria-label={title} className="min-w-0 space-y-3">
+      <fieldset
+        aria-label={
+          title === OTHER_COVERAGE_SECTION ? "Other coverage details" : title
+        }
+        className="min-w-0 space-y-5"
+      >
         {grouped && title !== "Business details" && (
           <legend className={typeStyle("heading.item")}>{title}</legend>
         )}
@@ -232,12 +264,12 @@ export function IntakeApplicationFields({
       </fieldset>
     );
     return activeSection ? (
-      <div className="space-y-3">{fields}</div>
+      <div className="space-y-5">{fields}</div>
     ) : (
       <TabsContent value={title}>{fields}</TabsContent>
     );
   };
-  return (
+  const sections = (
     <InlineFieldsContext.Provider value={true}>
       <Tabs
         data-operator-inline-fields
@@ -270,6 +302,8 @@ export function IntakeApplicationFields({
         {!companyOnly &&
           section(
             "Request details",
+            <>
+            {requestCard}
             <InlineFieldCard>
               {text("trigger")}
               {!extraRows.some(
@@ -281,130 +315,37 @@ export function IntakeApplicationFields({
                   {row.value}
                 </InlineFieldRow>
               ))}
-            </InlineFieldCard>,
+            </InlineFieldCard>
+            </>,
           )}
         {!companyOnly &&
+          visible.startsWith("coverage:") &&
+          visible !== OTHER_COVERAGE_SECTION &&
+          (() => {
+            const coverageIndex = details.coverages.findIndex(
+              (line) => coverageSectionKey(line.coverage) === visible,
+            );
+            return coverageIndex < 0 ? null : (
+              <IntakeCoverageSection
+                answers={answers}
+                details={details}
+                onDetailsChange={onDetailsChange}
+                coverageIndex={coverageIndex}
+                onRemove={() => onRemoveCoverage?.(visible)}
+                panel={panel}
+                onOpenPanel={openPanel}
+              />
+            );
+          })()}
+        {!companyOnly &&
           section(
-            "Coverage Requested",
+            OTHER_COVERAGE_SECTION,
             <div className="space-y-5">
-              {!onToolbarActions && (
-                <div className="flex justify-end">{addCoverage}</div>
-              )}
-              {!details.coverages.length && (
-                <InlineFieldCard>
-                  <InlineFieldRow label="Coverage requested">
-                    <div className="px-3 py-2 text-muted-foreground">
-                      No coverage selected
-                    </div>
-                  </InlineFieldRow>
+              {unownedCoverageAnswers.length > 0 && (
+                <InlineFieldCard wideLabels title="Saved coverage questions">
+                  {followupRows(unownedCoverageAnswers)}
                 </InlineFieldCard>
               )}
-              {details.coverages.map((line, index) => {
-                const one = { ...details, coverages: [line], coverageIndex: 0 };
-                const change = (next: IntakeDetails) =>
-                  onDetailsChange({
-                    ...details,
-                    coverages: details.coverages.map((current, i) =>
-                      i === index ? next.coverages[0] : current,
-                    ),
-                  });
-                return (
-                  <InlineFieldCard
-                    key={line.coverage}
-                    title={coverageRequestLabel(line)}
-                    actions={
-                      <div className="flex items-center gap-2">
-                        {line.coverage === "property" && (
-                          <PillButton
-                            variant="secondary"
-                            size="default"
-                            disabled={(line.properties?.length ?? 0) >= 30}
-                            onClick={() =>
-                              change({
-                                ...one,
-                                coverages: [
-                                  {
-                                    ...line,
-                                    properties: [
-                                      ...(line.properties ?? []),
-                                      { address: {}, details: "" },
-                                    ],
-                                  },
-                                ],
-                              })
-                            }
-                          >
-                            <Plus className="size-3.5" />
-                            Add location
-                          </PillButton>
-                        )}
-                        {line.coverage === "commercial_auto" && (
-                          <PillButton
-                            variant="secondary"
-                            size="default"
-                            disabled={(line.vehicles?.length ?? 0) >= 30}
-                            onClick={() =>
-                              change({
-                                ...one,
-                                coverages: [
-                                  {
-                                    ...line,
-                                    vehicles: [
-                                      ...(line.vehicles ?? []),
-                                      {
-                                        year: "",
-                                        make: "",
-                                        model: "",
-                                        vin: "",
-                                      },
-                                    ],
-                                  },
-                                ],
-                              })
-                            }
-                          >
-                            <Plus className="size-3.5" />
-                            Add vehicle
-                          </PillButton>
-                        )}
-                        <RemoveButton
-                          onClick={() =>
-                            onDetailsChange({
-                              ...details,
-                              coverages: details.coverages.filter(
-                                (_, i) => i !== index,
-                              ),
-                            })
-                          }
-                          label="Remove coverage"
-                        />
-                      </div>
-                    }
-                  >
-                    <IntakeCoverageLimits details={one} onChange={change} />
-                    <IntakeCoverageScope details={one} onChange={change} />
-                    <InlineFieldRow label="Additional coverage requests">
-                      <Textarea
-                        rows={1}
-                        aria-label={`${coverageRequestLabel(line)} additional coverage requests`}
-                        placeholder="Not provided"
-                        value={line.additionalCoverages ?? ""}
-                        onChange={(event) =>
-                          change({
-                            ...one,
-                            coverages: [
-                              {
-                                ...line,
-                                additionalCoverages: event.target.value,
-                              },
-                            ],
-                          })
-                        }
-                      />
-                    </InlineFieldRow>
-                  </InlineFieldCard>
-                );
-              })}
               {(["limitsNote", "scopeNote", "additionalNote"] as const).some(
                 (key) => details[key]?.trim(),
               ) && (
@@ -535,7 +476,37 @@ export function IntakeApplicationFields({
               ))}
             </InlineFieldCard>,
           )}
+        {!companyOnly &&
+          section(
+            "Follow-up answers",
+            <InlineFieldCard wideLabels>
+              {followupRows(visibleIntakeFollowups(details, "additional"))}
+            </InlineFieldCard>,
+          )}
       </Tabs>
     </InlineFieldsContext.Provider>
   );
+  return sections;
+}
+
+/** Reports mounts so the owner notices when another panel replaces this one. */
+function PanelLifecycle({
+  onMount,
+  onUnmount,
+  children,
+}: {
+  onMount: () => void;
+  onUnmount: () => void;
+  children: React.ReactNode;
+}) {
+  const callbacks = useRef({ onMount, onUnmount });
+  useEffect(() => {
+    callbacks.current = { onMount, onUnmount };
+  });
+  useEffect(() => {
+    const current = callbacks.current;
+    current.onMount();
+    return () => current.onUnmount();
+  }, []);
+  return children;
 }

@@ -71,7 +71,7 @@ ${sections((tool) => tool.surface === "imperative" && tool.audience === "public"
 ## What clients cannot do
 
 - Upload, edit, archive, or re-extract policies, or manage shared files: Spot staff do this. Clients share documents through insurance requests (\`attach_request_document\`).
-- Edit, cancel, or comment on a submitted insurance request, see broker proposals, or select a proposal: Spot staff run procurement. Binding coverage is not a client action.
+- Edit, cancel, or comment on a submitted insurance request, see provider proposals, or select a proposal: Spot staff run procurement. Binding coverage is not a client action.
 - Edit the agent email address, create Slack channels, or reset the organization.
 
 ## Other agent interfaces

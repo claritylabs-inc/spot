@@ -164,7 +164,12 @@ export const resolveRecipients = internalQuery({
       const normalized = normalizedToken(recipient);
       if (normalized === "me" || normalized === "myself") continue;
 
-      if (normalized === "broker" || normalized === "my broker") {
+      if (
+        normalized === "broker" ||
+        normalized === "my broker" ||
+        normalized === "provider" ||
+        normalized === "my provider"
+      ) {
         unresolved.push(recipient);
         continue;
       }

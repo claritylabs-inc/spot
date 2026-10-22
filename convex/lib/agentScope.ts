@@ -199,7 +199,7 @@ export const resolveForAction = internalQuery({
     if (primaryType === "broker") {
       throwUserFacingError(
         userFacingErrorCodes.orgAccessRequired,
-        "Broker organizations have profile and team access only.",
+        "Provider organizations have profile and team access only.",
       );
     }
 

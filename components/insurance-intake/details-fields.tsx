@@ -12,8 +12,6 @@ import {
 import { Building2, MapPin, X } from "lucide-react";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import dayjs from "dayjs";
-import { IntakeVehicleUnderwritingFields } from "./vehicle-underwriting-fields";
-import { vehicleUnderwritingValues } from "@/lib/intake-vehicle-underwriting";
 import { IntakeVehicleFields } from "./vehicle-fields";
 import {
   DateField,
@@ -82,6 +80,7 @@ import {
   newCoverage,
   type CoverageId,
   type IntakeDetails,
+  type IntakeLocation,
 } from "@/lib/insurance-intake-details";
 import { typeStyle } from "@/lib/typography";
 import { Plus, ChevronDown, ChevronUp, CircleHelp } from "lucide-react";
@@ -1673,196 +1672,124 @@ export function IntakeAdditionalCoverages({ details, onChange }: Props) {
     </FieldGroup>
   );
 }
+/** Operator rows for one insured property location. */
+export function IntakePropertyLocationRows({
+  property,
+  index,
+  onChange: change,
+}: {
+  property: IntakeLocation;
+  index: number;
+  onChange: (patch: Partial<IntakeLocation>) => void;
+}) {
+  return (
+    <>
+      <InlineFieldRow label="Location name">
+        <Input
+          aria-label={`Insured location ${index + 1} name`}
+          value={property.name ?? ""}
+          placeholder="Not provided"
+          onChange={(event) =>
+            change({ name: event.target.value })
+          }
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Address">
+        <AddressAutofillInput
+          id={`insured-location-${index}`}
+          showMap={false}
+          value={property.address}
+          onChange={(address) => change({ address })}
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Activities">
+        <Textarea
+          aria-label={`Insured location ${index + 1} activities`}
+          rows={1}
+          placeholder="Not provided"
+          value={property.details ?? ""}
+          onChange={(event) =>
+            change({
+              details: event.target.value,
+              activitiesPrefilled: false,
+            })
+          }
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Owned or leased">
+        <Select
+          value={property.ownership || null}
+          onValueChange={(value) =>
+            change({
+              ownership: value as "owned" | "leased" | "unknown",
+            })
+          }
+        >
+          <SelectTrigger
+            aria-label={`Insured location ${index + 1} ownership`}
+          >
+            <SelectValue>
+              {property.ownership === "owned"
+                ? "Owned"
+                : property.ownership === "leased"
+                  ? "Leased"
+                  : property.ownership === "unknown"
+                    ? UNKNOWN_ANSWER
+                    : "Not provided"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="owned">Owned</SelectItem>
+            <SelectItem value="leased">Leased</SelectItem>
+            <SelectItem value="unknown">
+              {UNKNOWN_ANSWER}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </InlineFieldRow>
+      <InlineFieldRow label="Staff">
+        <Input
+          aria-label={`Insured location ${index + 1} staff`}
+          inputMode="numeric"
+          value={property.staff ?? ""}
+          placeholder="Not provided"
+          onChange={(event) =>
+            change({
+              staff: event.target.value.replace(/[^0-9]/g, ""),
+            })
+          }
+        />
+      </InlineFieldRow>
+    </>
+  );
+}
 export function IntakeCoverageScope({ details, onChange, activeCoverageIndex, disabled = false }: Props & { activeCoverageIndex?: number }) {
   const inline = useContext(InlineFieldsContext);
+  // Operator rows: vehicles and locations are edited from their own panels.
   if (inline)
     return (
       <>
-        {details.coverages.map((line, index) => {
-          const update = (patch: Partial<typeof line>) =>
-            onChange({
-              ...details,
-              coverages: details.coverages.map((row, i) =>
-                i === index ? { ...row, ...patch } : row,
-              ),
-            });
-          if (line.coverage === "property")
-            return (
-              <div
-                key={line.coverage}
-                className={
-                  line.properties?.length ? "space-y-3 p-4" : "contents"
-                }
-              >
-                {!line.properties?.length && (
-                  <InlineFieldRow label="Locations to insure">
-                    <div className="px-3 py-2 text-muted-foreground">
-                      No locations added
-                    </div>
-                  </InlineFieldRow>
-                )}
-                {(line.properties ?? []).map((property, i) => {
-                  const change = (patch: Partial<typeof property>) =>
-                    update({
-                      properties: (line.properties ?? []).map((row, j) =>
-                        i === j ? { ...row, ...patch } : row,
-                      ),
-                    });
-                  return (
-                    <InlineFieldCard
-                      key={i}
-                      title={property.name?.trim() || `Location ${i + 1}`}
-                      actions={
-                        <RemoveButton
-                          onClick={() =>
-                            update({
-                              properties: (line.properties ?? []).filter(
-                                (_, j) => j !== i,
-                              ),
-                            })
-                          }
-                          label={`Remove location ${i + 1}`}
-                        />
-                      }
-                    >
-                      <InlineFieldRow label="Location name">
-                        <Input
-                          aria-label={`Insured location ${i + 1} name`}
-                          value={property.name ?? ""}
-                          placeholder="Not provided"
-                          onChange={(event) =>
-                            change({ name: event.target.value })
-                          }
-                        />
-                      </InlineFieldRow>
-                      <InlineFieldRow label="Address">
-                        <AddressAutofillInput
-                          id={`insured-location-${i}`}
-                          showMap={false}
-                          value={property.address}
-                          onChange={(address) => change({ address })}
-                        />
-                      </InlineFieldRow>
-                      <InlineFieldRow label="Activities">
-                        <Textarea
-                          aria-label={`Insured location ${i + 1} activities`}
-                          rows={1}
-                          placeholder="Not provided"
-                          value={property.details ?? ""}
-                          onChange={(event) =>
-                            change({
-                              details: event.target.value,
-                              activitiesPrefilled: false,
-                            })
-                          }
-                        />
-                      </InlineFieldRow>
-                      <InlineFieldRow label="Owned or leased">
-                        <Select
-                          value={property.ownership || null}
-                          onValueChange={(value) =>
-                            change({ ownership: value as "owned" | "leased" })
-                          }
-                        >
-                          <SelectTrigger
-                            aria-label={`Insured location ${i + 1} ownership`}
-                          >
-                            <SelectValue>
-                              {property.ownership === "owned"
-                                ? "Owned"
-                                : property.ownership === "leased"
-                                  ? "Leased"
-                                  : "Not provided"}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="owned">Owned</SelectItem>
-                            <SelectItem value="leased">Leased</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </InlineFieldRow>
-                      <InlineFieldRow label="Staff">
-                        <Input
-                          aria-label={`Insured location ${i + 1} staff`}
-                          inputMode="numeric"
-                          value={property.staff ?? ""}
-                          placeholder="Not provided"
-                          onChange={(event) =>
-                            change({
-                              staff: event.target.value.replace(/[^0-9]/g, ""),
-                            })
-                          }
-                        />
-                      </InlineFieldRow>
-                    </InlineFieldCard>
-                  );
-                })}
-              </div>
-            );
-          if (line.coverage === "commercial_auto")
-            return (
-              <div
-                key={line.coverage}
-                className={line.vehicles?.length ? "space-y-3 p-4" : "contents"}
-              >
-                {!line.vehicles?.length && (
-                  <InlineFieldRow label="Vehicles to insure">
-                    <div className="px-3 py-2 text-muted-foreground">
-                      No vehicles added
-                    </div>
-                  </InlineFieldRow>
-                )}
-                {(line.vehicles ?? []).map((vehicle, i) => (
-                  <InlineFieldCard
-                    key={i}
-                    title={`Vehicle ${i + 1}`}
-                    actions={
-                      <RemoveButton
-                        onClick={() =>
-                          update({
-                            vehicles: (line.vehicles ?? []).filter(
-                              (_, j) => i !== j,
-                            ),
-                          })
-                        }
-                        label={`Remove vehicle ${i + 1}`}
-                      />
-                    }
-                  >
-                    <IntakeVehicleFields
-                      country={details.registrationCountry}
-                      id={`insured-vehicle-${i}`}
-                      vehicle={vehicle}
-                      onChange={(next) =>
-                        update({
-                          vehicles: (line.vehicles ?? []).map((row, j) =>
-                            i === j ? next : row,
-                          ),
-                        })
-                      }
-                    />
-                    <IntakeVehicleUnderwritingFields id={`vehicle-details-${i}`} values={vehicleUnderwritingValues(vehicle,i,details.followups)} onChange={underwriting=>update({vehicles:(line.vehicles ?? []).map((row,j)=>j===i?{...row,underwriting}:row)})}/>
-                  </InlineFieldCard>
-                ))}
-              </div>
-            );
-          if (["other", "unknown"].includes(line.coverage))
-            return (
-              <InlineFieldRow key={line.coverage} label="What to insure">
-                <Textarea
-                  disabled={disabled}
+        {details.coverages.map((line, index) =>
+          ["other", "unknown"].includes(line.coverage) ? (
+            <InlineFieldRow key={line.coverage} label="What to insure">
+              <Textarea
+                disabled={disabled}
                 aria-label={line.coverage === "unknown" ? "What are you looking to get insured?" : `What to insure for ${coverageRequestLabel(line)}`}
-                  rows={1}
-                  placeholder="Not provided"
-                  value={line.scopeDescription ?? ""}
-                  onChange={(event) =>
-                    update({ scopeDescription: event.target.value })
-                  }
-                />
-              </InlineFieldRow>
-            );
-          return null;
-        })}
+                rows={1}
+                placeholder="Not provided"
+                value={line.scopeDescription ?? ""}
+                onChange={(event) =>
+                  onChange({
+                    ...details,
+                    coverages: details.coverages.map((row, i) =>
+                      i === index ? { ...row, scopeDescription: event.target.value } : row,
+                    ),
+                  })
+                }
+              />
+            </InlineFieldRow>
+          ) : null,
+        )}
       </>
     );
   return (

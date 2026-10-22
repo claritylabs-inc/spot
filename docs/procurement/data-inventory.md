@@ -7,7 +7,7 @@ Every procurement request has exactly two ordinary Markdown files in
 
 | File | Readership | Content |
 | --- | --- | --- |
-| `private.md` | Operators only; YAML `visibility: private`. | Internal work, broker observations, follow-ups, and file-handling notes. |
+| `private.md` | Operators only; YAML `visibility: private`. | Internal work, provider observations, follow-ups, and file-handling notes. |
 | `public.md` | The request’s authorized shared audience; YAML `visibility: shared`. | Shared submission material and initial request narrative by default. |
 
 Explicitly private operator intake goes into `private.md`. There are no
@@ -19,7 +19,7 @@ The exact-confirmed operator tool is `update_procurement_packet`.
 
 The public filename does not publish content to the anonymous internet.
 Reading requires authorized request access or a valid issued packet link.
-Operators may read both files; client and broker sharing exposes public content
+Operators may read both files; client and provider sharing exposes public content
 only. Filenames and visibility must agree. Front matter cannot change the
 owning organization/request or grant editing authority.
 
@@ -45,7 +45,7 @@ client-file rows, with short-lived upload intents cleaning abandoned blobs.
 | Active table | Responsibility |
 | --- | --- |
 | `procurementRequests` | Request identity, workflow, effective date, packet revision, policy links, inbox routing and audit stamps. |
-| `procurementBrokerOutreaches` | Broker/contact identity, market status and sent state; observations belong in the request’s `private.md`. |
+| `procurementBrokerOutreaches` | Provider/contact identity, market status and sent state; observations belong in the request’s `private.md`. |
 | `procurementFileItems` | Request/outreach/file/message association, purpose, status and artifact release. Missing `clientFileId` means an outstanding request. |
 | `procurementPacketLinks` | Token hash, recipient, revocation/expiry and historical issuance snapshots; valid links read live shared content and artifacts. |
 | `procurementPacketViews` | Token-validated access audit without raw magic-link tokens. |

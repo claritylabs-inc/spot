@@ -223,7 +223,7 @@ export const NOTIFICATION_SETTINGS_ROWS: readonly NotificationSettingsRow[] = [
   },
   {
     type: "broker_action",
-    label: "Broker action needed",
+    label: "Provider action needed",
     group: "Client activity",
     audiences: ["broker"],
   },
