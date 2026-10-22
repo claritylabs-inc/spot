@@ -256,6 +256,7 @@ import type * as lib_intakeApplication from "../lib/intakeApplication.js";
 import type * as lib_intakeDetailsSchema from "../lib/intakeDetailsSchema.js";
 import type * as lib_intakeDiagnostics from "../lib/intakeDiagnostics.js";
 import type * as lib_intakeFollowupInputs from "../lib/intakeFollowupInputs.js";
+import type * as lib_intakeFollowupPrompt from "../lib/intakeFollowupPrompt.js";
 import type * as lib_intakeFollowupSchema from "../lib/intakeFollowupSchema.js";
 import type * as lib_intakeIndustry from "../lib/intakeIndustry.js";
 import type * as lib_intakePrefills from "../lib/intakePrefills.js";
@@ -720,6 +721,7 @@ declare const fullApi: ApiFromModules<{
   "lib/intakeDetailsSchema": typeof lib_intakeDetailsSchema;
   "lib/intakeDiagnostics": typeof lib_intakeDiagnostics;
   "lib/intakeFollowupInputs": typeof lib_intakeFollowupInputs;
+  "lib/intakeFollowupPrompt": typeof lib_intakeFollowupPrompt;
   "lib/intakeFollowupSchema": typeof lib_intakeFollowupSchema;
   "lib/intakeIndustry": typeof lib_intakeIndustry;
   "lib/intakePrefills": typeof lib_intakePrefills;

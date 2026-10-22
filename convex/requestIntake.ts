@@ -2119,15 +2119,15 @@ async function prepareFollowupBatch(
       request.intakeAnswers?.intakeGoal === "savings"
     )
       return null;
-    const contextHash = await followupContextHash(ctx, request, section);
-    const scopeHash = await followupPreloadScopeHash(ctx, request);
-    const previous = request.intakeFollowups?.[section];
     // Wait for enough scope to make background questions useful. Terminal entry
     // can still prepare incomplete applications through the ordinary path.
     if (preload && (!request.intakeAnswers?.legalName?.trim() ||
       !request.intakeDetails?.coverages.some(line => line.coverage !== "unknown"))) return null;
+    const previous = request.intakeFollowups?.[section];
     if (previous?.status === "pending") return null;
+    const contextHash = await followupContextHash(ctx, request, section);
     if (previous?.contextHash === contextHash && previous.status !== "prepared" && !(retryFailed && previous.status === "failed")) return null;
+    const scopeHash = await followupPreloadScopeHash(ctx, request);
     console.info("[intakeFollowups] preparing batch", {
       requestId, section, background: preload,
       reason: previous ? "application_facts_changed" : "first_preparation",

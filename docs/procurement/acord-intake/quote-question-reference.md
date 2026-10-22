@@ -46,15 +46,17 @@ answers or account metadata. `quote-question-reference-import.json` contains onl
 the source fingerprint and aggregate counts for reproducibility. Pattern changes
 require rerunning the import; semantic merges require review.
 
-At terminal section entry, one `intake_additional_questions` call receives the
-complete application/history and the shortlist. It performs gap assessment,
+After coalesced draft saves (once company and coverage are known), or at terminal
+section entry if needed, one `intake_additional_questions` call receives deduplicated
+application facts/history and the shortlist. The prompt is bounded to 96,000 UTF-8
+bytes; hints are trimmed before any application facts, and oversized facts fail before inference. It performs gap assessment,
 semantic novelty, applicability and primitive selection together. It returns
 up to eight questions or an empty list. Deterministic shape, reference-ID,
 exact-repeat, capacity, owner, token and context checks remain in code. No
 separate gap/novelty/prefill/repair inference runs. New definitions retain the
 reference ID in their source marker; legacy date hints exclude these definitions.
-An unchanged context is cached, including empty/failed outcomes. History saves
-do not preload provisional generations. A successfully completed result made
+An unchanged context is cached, including empty/failed outcomes. History saves prepare a current context in the background; only a complete,
+validated batch becomes visible. Revision checks coalesce saves and pending batches prevent overlap. A successfully completed result made
 stale by changed base facts may start one pass for that new context; failed or
 unknown inference never automatically replays.
 
