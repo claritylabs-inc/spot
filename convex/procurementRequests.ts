@@ -7,7 +7,11 @@ import {
   validCoverageLimit,
   validateIntakeDetails,
 } from "../lib/insurance-intake-details";
-import { hashIntakeToken, submissionContent } from "./requestIntake";
+import {
+  hashIntakeToken,
+  refreshPremiumEstimateByOperator,
+  submissionContent,
+} from "./requestIntake";
 import { saveMarkdownDocument } from "./markdownDocuments";
 import { readPacketDocument } from "./lib/packetDocuments";
 import {
@@ -869,6 +873,36 @@ export const updateApplication = mutation({
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     return await updateApplicationByOperator(ctx, operator.userId, args);
+  },
+});
+
+/** Explicit operator request; opening the request never schedules an estimate. */
+export const refreshPremiumEstimate = mutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    expectedStartedAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await requireDirectOperatorWrite(ctx, operator.userId);
+    const request = await requireRequest(ctx, args.requestId);
+    await refreshPremiumEstimateByOperator(
+      ctx,
+      request,
+      args.expectedStartedAt,
+    );
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "setup_write",
+      targetOrgId: request.clientOrgId,
+      summary: `Requested a premium estimate for ${request.title}`,
+      metadata: {
+        domain: "procurement",
+        requestId: request._id,
+        action: "refresh_premium_estimate",
+      },
+    });
+    return null;
   },
 });
 

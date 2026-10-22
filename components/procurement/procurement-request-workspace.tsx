@@ -10,7 +10,14 @@ import {
 import type { IntakeAnswers } from "@/lib/insurance-intake";
 import { IntakeReviewCompact } from "@/components/insurance-intake/company-review";
 import { IntakeApplicationReview } from "@/components/insurance-intake/application-review";
-import type { IntakeApplication } from "@/lib/intake-application";
+import {
+  intakeQuoteSections,
+  type IntakeApplication,
+} from "@/lib/intake-application";
+import {
+  formatPremiumEstimate,
+  type IntakePremiumEstimateValue,
+} from "@/components/insurance-intake/premium-estimate";
 
 import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
@@ -154,6 +161,12 @@ type RequestSummary = {
   intakeDetails?: IntakeDetails;
   application?: IntakeApplication | null;
   intakeSubmittedAt?: number;
+  intakeSubmittedContentHash?: string;
+  intakePremiumEstimate?: IntakePremiumEstimateValue & {
+    contentHash: string;
+    startedAt: number;
+    provisional?: boolean;
+  };
   completionOutcome?: React.ComponentProps<
     typeof RequestCompletionOutcome
   >["outcome"];
@@ -647,6 +660,66 @@ function ProposalReviewDetails({
           </div>
         </details>
       ) : null}
+    </div>
+  );
+}
+
+function OperatorPremiumEstimate({
+  request,
+  readOnly,
+}: {
+  request: RequestSummary;
+  readOnly: boolean;
+}) {
+  const refresh = useMutation(api.procurementRequests.refreshPremiumEstimate);
+  const [busy, setBusy] = useState(false);
+  const estimate = request.intakePremiumEstimate;
+  const current =
+    !!estimate &&
+    !estimate.provisional &&
+    estimate.contentHash === request.intakeSubmittedContentHash;
+  const amount =
+    estimate?.status === "completed" ? formatPremiumEstimate(estimate) : undefined;
+  const running =
+    current && (estimate.status === "pending" || estimate.status === "running");
+  const action = readOnly || running ? null : current ? (
+    estimate.status === "failed" ? "Retry estimate" : null
+  ) : estimate ? "Refresh estimate" : "Estimate premium";
+  return (
+    <div className="flex min-h-9 flex-wrap items-center justify-between gap-3 px-3 py-1">
+      <span className={current && amount ? "" : "text-muted-foreground"}>
+        {running
+          ? "Estimating…"
+          : current && estimate.status === "failed"
+            ? "Estimate unavailable"
+            : amount
+              ? `${amount} ${estimate!.currency} / month${current ? "" : " · earlier application version"}`
+              : "Not estimated"}
+      </span>
+      {action && (
+        <PillButton
+          variant="secondary"
+          size="default"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await refresh({
+                requestId: request._id,
+                expectedStartedAt: estimate?.startedAt,
+              });
+            } catch (error) {
+              toast.error(
+                getUserFacingErrorMessage(error, "Could not estimate premium"),
+              );
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {action}
+        </PillButton>
+      )}
     </div>
   );
 }
@@ -2205,8 +2278,23 @@ export function ProcurementRequestWorkspace({
       </div>
     ),
   });
+  const reviewedDetails = readOnly
+    ? details.request.application?.details
+    : (details.request.intakeDetails ?? details.request.application?.details);
+  const applicationSections = [
+    "Contact details",
+    "Request details",
+    "Coverage Requested",
+    "Insurance history",
+    ...(reviewedDetails ? intakeQuoteSections(reviewedDetails, !readOnly) : []),
+  ];
+  const activeApplicationSection = applicationSections.includes(
+    applicationSection,
+  )
+    ? applicationSection
+    : applicationSections[0];
   const documentRows =
-    applicationSection === "Request details"
+    activeApplicationSection === "Request details"
       ? [
           fileRow("requirements", "Insurance requirements"),
           ...(details.files.some(
@@ -2214,8 +2302,23 @@ export function ProcurementRequestWorkspace({
           )
             ? [fileRow("supporting", "Other documents")]
             : []),
+          ...(details.request.application &&
+          details.request.application.answers.intakeGoal !== "savings" &&
+          details.request.application.details.coverages.length
+            ? [
+                {
+                  label: "Estimated monthly premium",
+                  value: (
+                    <OperatorPremiumEstimate
+                      request={details.request}
+                      readOnly={readOnly}
+                    />
+                  ),
+                },
+              ]
+            : []),
         ]
-      : applicationSection === "Insurance history"
+      : activeApplicationSection === "Insurance history"
         ? [
             ...(details.request.application?.answers.currentInsurance !==
               "No" ||
@@ -2238,7 +2341,7 @@ export function ProcurementRequestWorkspace({
             value={
               view === "proposals" || view === "email"
                 ? view
-                : applicationSection
+                : activeApplicationSection
             }
             onValueChange={async (next) => {
               if (
@@ -2260,12 +2363,7 @@ export function ProcurementRequestWorkspace({
             }}
           >
             <TabsList variant="pill" aria-label="Procurement request details">
-              {[
-                "Contact details",
-                "Request details",
-                "Coverage Requested",
-                "Insurance history",
-              ].map((title) => (
+              {applicationSections.map((title) => (
                 <TabsTrigger key={title} value={title}>
                   {title}
                 </TabsTrigger>
@@ -2288,14 +2386,14 @@ export function ProcurementRequestWorkspace({
                 request={details.request}
                 policies={policyOptions}
                 onClose={() => {}}
-                activeSection={applicationSection}
+                activeSection={activeApplicationSection}
                 extraRows={documentRows}
                 onCoverageActions={setCoverageActions}
                 saveRef={requestEditorRef}
               />
             ) : details.request.application ? (
               <IntakeApplicationReview
-                activeSection={applicationSection}
+                activeSection={activeApplicationSection}
                 extraRows={documentRows}
                 application={details.request.application}
               />

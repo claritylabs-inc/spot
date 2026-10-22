@@ -1,8 +1,6 @@
 "use client";
-import { hasCommercialAuto } from "@/lib/intake-drivers";
 import { IntakeAutoQuoteReview } from "./auto-quote-fields";
 import { IntakeDriverReview } from "./driver-fields";
-import { followupQuestionVisible } from "@/lib/intake-followups";
 import { IntakeFollowupReview } from "./followup-review";
 import { useState, type ReactNode } from "react";
 import {
@@ -11,9 +9,18 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@claritylabs-inc/ui/components/tabs";
-import type { IntakeApplication } from "@/lib/intake-application";
+import {
+  intakeQuoteSections,
+  type IntakeApplication,
+} from "@/lib/intake-application";
 import { IntakeCompanyReview, IntakeRequestReview } from "./company-review";
 import { typeStyle } from "@/lib/typography";
+
+const QUOTE_SECTIONS = {
+  "Quote details": "autoQuote",
+  "Driver schedule": "drivers",
+  "Follow-up answers": "followups",
+} as const;
 
 /** One structured application presentation for intake and operator surfaces. */
 export function IntakeApplicationReview({
@@ -34,22 +41,10 @@ export function IntakeApplicationReview({
     { title: "Coverage Requested", section: "coverage" as const },
     { title: "Business details", section: null },
     { title: "Insurance history", section: "history" as const },
-    ...(hasCommercialAuto(application.details) &&
-    (application.details.freightHauled ||
-      application.details.coverages.some((line) =>
-        line.vehicles?.some((vehicle) => vehicle.estimatedValue),
-      ))
-      ? [{ title: "Quote details", section: "autoQuote" as const }]
-      : []),
-    ...(hasCommercialAuto(application.details) &&
-    application.details.drivers?.length
-      ? [{ title: "Driver schedule", section: "drivers" as const }]
-      : []),
-    ...(application.details.followups?.some((row) =>
-      row.section === "additional" && followupQuestionVisible(row, application.details.followups),
-    )
-      ? [{ title: "Follow-up answers", section: "followups" as const }]
-      : []),
+    ...intakeQuoteSections(application.details).map((title) => ({
+      title,
+      section: QUOTE_SECTIONS[title],
+    })),
   ];
   const content = (section: (typeof groups)[number]["section"]) =>
     section === "autoQuote" ? (

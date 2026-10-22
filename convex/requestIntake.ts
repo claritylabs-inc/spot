@@ -2678,6 +2678,21 @@ export const retryFailedPremiumEstimateInternal = internalMutation({
   },
 });
 
+/** Operator-requested estimate for the current accepted application. A failed
+ * current attempt retries only when the operator saw that exact attempt.
+ */
+export async function refreshPremiumEstimateByOperator(ctx: MutationCtx, request: Doc<"procurementRequests">, expectedStartedAt?: number) {
+  const source=await premiumEstimateSource(ctx,request,false);
+  if(!request.intakeSubmittedAt || !source)throw new Error("Only submitted applications have premium estimates");
+  const estimate=request.intakePremiumEstimate;
+  if(estimate && !estimate.provisional && estimate.contentHash===source.contentHash){
+    if(estimate.status!=="failed")throw new Error("The estimate is already current");
+    if(estimate.startedAt!==expectedStartedAt)throw new Error("The estimate changed. Reload before retrying.");
+  }
+  await ctx.db.patch(request._id,{intakePremiumEstimate:undefined});
+  await preparePremiumEstimateForRequest(ctx,{...request,intakePremiumEstimate:undefined});
+}
+
 /** Administrative recovery after logs confirm failure BEFORE inference submission.
  * Never use for a timeout, unknown outcome, or a previously completed estimate.
  */

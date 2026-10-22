@@ -15,7 +15,6 @@ import { routeAnswerComplete } from "@/lib/route-input";
 import { parseCalendarDateInput } from "@/lib/date-format";
 import { intakeSection, atIntakeSectionStart } from "@/lib/intake-sections";
 import { isFixedVehicleFollowup } from "@/lib/intake-vehicle-underwriting";
-import type { IntakeFollowupAnswer } from "@/lib/intake-followups";
 import { mergeRequirementCoverageSuggestions } from "@/lib/intake-requirement-prefill";
 import { invalidateIntakePrefills } from "@/lib/intake-prefill-state";
 import { IntakeSectionIntroduction } from "./section-introduction";
@@ -28,7 +27,7 @@ import { VehicleSpecificationLookup } from "./vehicle-specification-lookup";
 import { IntakeDriverFields } from "./driver-fields";
 import { INTAKE_STEP_FIELDS } from "@/lib/intake-question-history";
 import { IntakeFollowups } from "./followups";
-import { intakeFollowupLastPageIndex, intakeFollowupPages, intakeFollowupPageTitle, personalizeIntakeQuestion, followupQuestionVisible, expandIntakeFollowupQuestion, type IntakeFollowupQuestion } from "@/lib/intake-followups";
+import { intakeFollowupLastPageIndex, intakeFollowupPages, intakeFollowupPageTitle, personalizeIntakeQuestion, followupQuestionVisible, expandIntakeFollowupQuestion, withIntakeFollowupAnswer, type IntakeFollowupQuestion } from "@/lib/intake-followups";
 import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { captureAnalytics } from "@/lib/analytics";
 import dayjs from "dayjs";
@@ -858,16 +857,8 @@ function Application({
       }) });
       return;
     }
-    const {prefilled:_prefilled, ...definition}=question as IntakeFollowupAnswer;
-    question=definition;
     const current = state.current.details ?? details;
-    const rows = current.followups ?? [];
-    const updatedRows = rows.some((row) => row.id === question.id)
-        ? rows.map((row) =>
-            row.id === question.id ? { ...question, answer, skipped: false } : row,
-          )
-        : [...rows, { ...question, answer, skipped: false }];
-    changeDetails({...current,followups:updatedRows.map(row=>{if(followupQuestionVisible(row,updatedRows))return row;const {prefilled:_prefilled,...definition}=row;return {...definition,answer:"",skipped:true};})});
+    changeDetails({...current,followups:withIntakeFollowupAnswer(current.followups ?? [],question,answer)});
   }
   function change(field: IntakeField, value: string) {
     if (field === "phone" && (state.current.answers.phone ?? "") === value) return;

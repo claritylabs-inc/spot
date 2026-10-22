@@ -305,3 +305,22 @@ export function intakeFollowupLastPageIndex(
     questions.findIndex((question) => question.id === last?.id),
   );
 }
+
+/** Save one approved answer and skip children whose parent no longer matches. */
+export function withIntakeFollowupAnswer(
+  rows: IntakeFollowupAnswer[],
+  question: IntakeFollowupQuestion,
+  answer: string,
+): IntakeFollowupAnswer[] {
+  const { prefilled: _prefilled, ...definition } = question as IntakeFollowupAnswer;
+  const updatedRows = rows.some((row) => row.id === definition.id)
+    ? rows.map((row) =>
+        row.id === definition.id ? { ...definition, answer, skipped: false } : row,
+      )
+    : [...rows, { ...definition, answer, skipped: false }];
+  return updatedRows.map((row) => {
+    if (followupQuestionVisible(row, updatedRows)) return row;
+    const { prefilled: _prefilled, ...inactive } = row;
+    return { ...inactive, answer: "", skipped: true };
+  });
+}

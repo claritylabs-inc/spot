@@ -46,6 +46,16 @@ import {
   IntakeRelatedEntities,
   IntakeRevenueFields,
 } from "./details-fields";
+import {
+  IntakeDriverScheduleFields,
+  IntakeFollowupRows,
+  IntakeQuoteDetailsFields,
+} from "./application-quote-fields";
+import {
+  intakeQuoteSections,
+  visibleIntakeFollowups,
+} from "@/lib/intake-application";
+import { intakeCatalogCoverage } from "@/lib/intake-acord-questions";
 
 const COUNTRY_CODES: Record<string, string> = {
   "United States": "us",
@@ -83,7 +93,9 @@ export function IntakeApplicationFields({
     "Related legal entities",
     "Revenue",
     "Locations",
-    ...(!companyOnly ? ["Insurance history"] : []),
+    ...(!companyOnly
+      ? ["Insurance history", ...intakeQuoteSections(details, true)]
+      : []),
   ];
   const [selected, setSelected] = useState(titles[0]);
   const visible = activeSection ?? selected;
@@ -180,6 +192,21 @@ export function IntakeApplicationFields({
         />
       </InlineFieldRow>
     </div>
+  );
+  const businessName = answers.legalName || answers.dba;
+  const coverageIds = details.coverages.map((line) => line.coverage);
+  const coverageAnswers = visibleIntakeFollowups(details, "acord");
+  const followupRows = (rows: typeof coverageAnswers) => (
+    <IntakeFollowupRows
+      rows={rows}
+      details={details}
+      businessName={businessName}
+      industry={answers.industry}
+      onChange={onDetailsChange}
+    />
+  );
+  const unownedCoverageAnswers = coverageAnswers.filter(
+    (row) => !intakeCatalogCoverage(row, coverageIds),
   );
   const text = (key: IntakeField, multiline = false) => (
     <InlineFieldRow key={key} label={INTAKE_FIELDS[key]}>
@@ -402,9 +429,47 @@ export function IntakeApplicationFields({
                         }
                       />
                     </InlineFieldRow>
+                    {line.coverage === "cyber" &&
+                      (
+                        [
+                          ["privacyPolicyUrl", "Privacy policy"],
+                          ["termsUrl", "Terms of service"],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <InlineFieldRow key={key} label={label}>
+                          <Input
+                            aria-label={label}
+                            type="url"
+                            placeholder="Not provided"
+                            maxLength={2000}
+                            value={details.cyberDocuments?.[key] ?? ""}
+                            onChange={(event) =>
+                              onDetailsChange({
+                                ...details,
+                                cyberDocuments: {
+                                  ...details.cyberDocuments,
+                                  [key]: event.target.value,
+                                },
+                              })
+                            }
+                          />
+                        </InlineFieldRow>
+                      ))}
+                    {followupRows(
+                      coverageAnswers.filter(
+                        (row) =>
+                          intakeCatalogCoverage(row, coverageIds) ===
+                          line.coverage,
+                      ),
+                    )}
                   </InlineFieldCard>
                 );
               })}
+              {unownedCoverageAnswers.length > 0 && (
+                <InlineFieldCard title="Other saved coverage details">
+                  {followupRows(unownedCoverageAnswers)}
+                </InlineFieldCard>
+              )}
               {(["limitsNote", "scopeNote", "additionalNote"] as const).some(
                 (key) => details[key]?.trim(),
               ) && (
@@ -533,6 +598,29 @@ export function IntakeApplicationFields({
                   {row.value}
                 </InlineFieldRow>
               ))}
+            </InlineFieldCard>,
+          )}
+        {!companyOnly &&
+          section(
+            "Quote details",
+            <IntakeQuoteDetailsFields
+              details={details}
+              onChange={onDetailsChange}
+            />,
+          )}
+        {!companyOnly &&
+          section(
+            "Driver schedule",
+            <IntakeDriverScheduleFields
+              details={details}
+              onChange={onDetailsChange}
+            />,
+          )}
+        {!companyOnly &&
+          section(
+            "Follow-up answers",
+            <InlineFieldCard>
+              {followupRows(visibleIntakeFollowups(details, "additional"))}
             </InlineFieldCard>,
           )}
       </Tabs>

@@ -8,6 +8,9 @@ import {
   detailsFromAnswers,
   type IntakeDetails,
 } from "./insurance-intake-details";
+import { hasCommercialAuto } from "./intake-drivers";
+import { followupQuestionVisible, type IntakeFollowupAnswer } from "./intake-followups";
+import { isFixedVehicleFollowup } from "./intake-vehicle-underwriting";
 
 export type IntakeApplication = {
   answers: IntakeAnswers;
@@ -133,4 +136,38 @@ export function companyNotesMarkdown(
         generated.some((value) => value.trim() === content.trim()) ? "" : block,
     )
     .trim();
+}
+
+/** Visible follow-up answers for one section, excluding typed vehicle facts. */
+export function visibleIntakeFollowups(
+  details: IntakeDetails,
+  section: IntakeFollowupAnswer["section"],
+) {
+  return (details.followups ?? []).filter(
+    (row) =>
+      row.section === section &&
+      !isFixedVehicleFollowup(row) &&
+      followupQuestionVisible(row, details.followups),
+  );
+}
+
+/** Quote sections after the base application; editors show auto sections before data exists. */
+export function intakeQuoteSections(details: IntakeDetails, editable = false) {
+  const auto = hasCommercialAuto(details);
+  return [
+    ...(auto &&
+    (editable ||
+      details.freightHauled ||
+      details.coverages.some((line) =>
+        line.vehicles?.some((vehicle) => vehicle.estimatedValue),
+      ))
+      ? (["Quote details"] as const)
+      : []),
+    ...(auto && (editable || details.drivers?.length)
+      ? (["Driver schedule"] as const)
+      : []),
+    ...(visibleIntakeFollowups(details, "additional").length
+      ? (["Follow-up answers"] as const)
+      : []),
+  ];
 }
