@@ -37,12 +37,10 @@ import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 import {
-  ProviderGeographyDialog,
-  providerGeographyPreflight,
-} from "./provider-geography-dialog";
-import {
+  FitChips,
   OutreachSequenceCell,
   ProviderOutreachPanel,
+  ProviderOutreachCadence,
   sequenceForOutreach,
   useProviderOutreach,
 } from "./provider-outreach-panel";
@@ -59,8 +57,6 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ConvexError } from "convex/values";
-import type { FunctionReturnType } from "convex/server";
 import {
   Copy,
   FileText,
@@ -72,6 +68,7 @@ import {
   Link,
   Upload,
   ChevronRight,
+  Clock3,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -149,7 +146,7 @@ import {
 } from "@claritylabs-inc/ui/components/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
+import { formatDisplayDateTime } from "@/lib/date-format";
 import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -1961,79 +1958,6 @@ function ImagePreview({
   );
 }
 
-function ProviderMatchResults({
-  result,
-  onClose,
-}: {
-  result: FunctionReturnType<typeof api.procurementRequests.autoAddBrokers>;
-  onClose: () => void;
-}) {
-  return (
-    <SettingsDrawer
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      title="Provider matches"
-      contentClassName="gap-5"
-    >
-      <InlineFieldCard>
-        <InlineFieldRow label="Any coverage">
-          {result.coverageLabels.join(", ")}
-        </InlineFieldRow>
-        <InlineFieldRow label="All locations">
-          {result.areaLabels.join("; ")}
-        </InlineFieldRow>
-        <InlineFieldRow label="Added">
-          {result.added} confirmed providers
-        </InlineFieldRow>
-        <InlineFieldRow label="Already on request">
-          {result.alreadyAdded}
-        </InlineFieldRow>
-        <InlineFieldRow label="Needs verification">
-          {result.needsVerification.length}
-        </InlineFieldRow>
-        <InlineFieldRow label="Not a match">
-          {result.coverageMismatch} coverage · {result.outsideArea} service area
-          · {result.unavailable} inactive or restricted
-        </InlineFieldRow>
-      </InlineFieldCard>
-      {!!result.unmappedCoverages.length && (
-        <OperationalPanel>
-          <OperationalPanelBody>
-            Other or unknown coverage types still need manual matching.
-          </OperationalPanelBody>
-        </OperationalPanel>
-      )}
-      {!!result.needsVerification.length && (
-        <InlineFieldCard title="Needs verification">
-          <InlineFieldRow label="Next step">
-            Check the missing fields, then run matching again. These providers
-            have not been added.
-          </InlineFieldRow>
-          {result.needsVerification.map((provider) => (
-            <InlineFieldRow
-              key={provider.brokerOrgId}
-              label={provider.name}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="min-w-0 flex-1">{provider.reason}</span>
-                <PillButton
-                  href={`/operator/brokers/${provider.brokerOrgId}`}
-                  target="_blank"
-                  variant="secondary"
-                >
-                  Review
-                </PillButton>
-              </div>
-            </InlineFieldRow>
-          ))}
-        </InlineFieldCard>
-      )}
-    </SettingsDrawer>
-  );
-}
-
 export function ProcurementRequestWorkspace({
   clientOrgId,
   requestId,
@@ -2046,7 +1970,7 @@ export function ProcurementRequestWorkspace({
   clientOrgId: Id<"organizations">;
   requestId: Id<"procurementRequests">;
   basePath: string;
-  view: "application" | "edit" | "proposals" | "files" | "email";
+  view: "application" | "edit" | "proposals" | "cadence" | "files" | "email";
   readOnly: boolean;
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
@@ -2085,51 +2009,6 @@ export function ProcurementRequestWorkspace({
   useEffect(() => {
     providerOutreachRef.current = providerOutreach;
   });
-  const autoAddBrokers = useMutation(api.procurementRequests.autoAddBrokers);
-  const [matchingBrokers, setMatchingBrokers] = useState(false);
-  const matchingBrokersRef = useRef(false);
-  const [geographyDialog, setGeographyDialog] = useState<{
-    key: number;
-    open: boolean;
-  } | null>(null);
-  const runAutoAddBrokers = useCallback(async () => {
-    if (readOnly || matchingBrokersRef.current) return;
-    matchingBrokersRef.current = true;
-    setMatchingBrokers(true);
-    try {
-      const result = await autoAddBrokers({ requestId });
-      onRightPanel(<ProviderMatchResults result={result} onClose={() => onRightPanel(null)} />);
-      const message = result.added
-        ? `${result.added} provider${result.added === 1 ? "" : "s"} added`
-        : result.needsVerification.length
-          ? "No new verified matches — review potential providers"
-          : result.alreadyAdded ? "No new verified providers to add" : "No providers match the recorded criteria";
-      if (result.added) toast.success(message);
-      else toast.info(message);
-    } catch (error) {
-      toast.error(
-        error instanceof ConvexError && typeof error.data === "string"
-          ? error.data
-          : getUserFacingErrorMessage(error, "Could not auto add providers"),
-      );
-    } finally {
-      matchingBrokersRef.current = false;
-      setMatchingBrokers(false);
-    }
-  }, [autoAddBrokers, onRightPanel, readOnly, requestId]);
-  // Missing or invalid request geography is fixed in a modal, then the match retries.
-  const handleAutoAddBrokers = useCallback(async () => {
-    if (readOnly || matchingBrokersRef.current) return;
-    const request = (result as RequestDetails | null | undefined)?.request;
-    if (request && !providerGeographyPreflight(request).ready) {
-      setGeographyDialog((current) => ({
-        key: (current?.key ?? 0) + 1,
-        open: true,
-      }));
-      return;
-    }
-    await runAutoAddBrokers();
-  }, [readOnly, result, runAutoAddBrokers]);
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
   const packetEditorRef = useRef<PacketEditorHandle>(null);
   const latestTabChange = useRef(0);
@@ -2426,17 +2305,6 @@ export function ProcurementRequestWorkspace({
         </PillButton>
       ) : view === "proposals" ? (
         <>
-          <PillButton type="button" onClick={() => openOutreachEditor()}>
-            <Plus className="size-3.5" />
-            Add provider
-          </PillButton>
-          <PillButton
-            type="button"
-            disabled={matchingBrokers}
-            onClick={() => void handleAutoAddBrokers()}
-          >
-            {matchingBrokers ? "Adding providers…" : "Auto add providers"}
-          </PillButton>
           <span className="hidden sm:contents">
           <PillButton
             type="button"
@@ -2483,9 +2351,6 @@ export function ProcurementRequestWorkspace({
     return () => onActions?.(null);
   }, [
     onActions,
-    openOutreachEditor,
-    handleAutoAddBrokers,
-    matchingBrokers,
     sendAllCount,
     providerOutreachBusy,
     canSendAll,
@@ -2601,14 +2466,19 @@ export function ProcurementRequestWorkspace({
   const menuGroups = [
     ...applicationGroups,
     {
-      label: "Providers",
+      label: "Outreach",
       items: [
         {
           key: "providers",
-          label: "Outreach",
+          label: "Providers",
           icon: PROVIDER_ICONS.providers,
-          count: details.outreaches.length,
+          count: details.outreaches.length + (providerOutreach.panel?.candidates.matched.filter(
+            (candidate) => !details.outreaches.some((outreach) => outreach.brokerOrgId === candidate.brokerOrgId),
+          ).length ?? 0),
         },
+        ...(!readOnly
+          ? [{ key: "cadence", label: "Follow-up cadence", icon: Clock3 }]
+          : []),
         ...(details.emailThreads.length > 0 || view === "email"
           ? [
               {
@@ -2630,17 +2500,19 @@ export function ProcurementRequestWorkspace({
   const activeMenuKey =
     view === "proposals"
       ? "providers"
-      : view === "email"
-        ? "email"
-        : activeApplicationSection;
+      : view === "cadence"
+        ? "cadence"
+        : view === "email"
+          ? "email"
+          : activeApplicationSection;
   const selectMenu = async (key: string) => {
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
-    if (key === "providers" || key === "email") {
+    if (key === "providers" || key === "cadence" || key === "email") {
       closeRightPanel();
-      void changeView(key === "providers" ? "proposals" : "email");
+      void changeView(key === "providers" ? "proposals" : key);
       return;
     }
     setApplicationSection(key);
@@ -2736,179 +2608,155 @@ export function ProcurementRequestWorkspace({
           </>
         ) : null}
 
-        {view === "proposals" && !readOnly ? (
-          <ProviderOutreachPanel controller={providerOutreach} />
+        {view === "proposals" ? (
+          <ProviderOutreachPanel
+            controller={providerOutreach}
+            readOnly={readOnly}
+            submittedProviders={details.outreaches.map((outreach) => {
+              const proposal = activeProposals.find(
+                (row) => row.outreachId === outreach._id,
+              );
+              const candidate = providerOutreach.panel
+                ? [
+                    ...providerOutreach.panel.candidates.matched,
+                    ...providerOutreach.panel.candidates.unknown,
+                    ...providerOutreach.panel.candidates.excluded,
+                  ].find((row) => row.brokerOrgId === outreach.brokerOrgId)
+                : undefined;
+              const broker = brokers?.find(
+                (row) => row._id === outreach.brokerOrgId,
+              );
+              const sequence = sequenceForOutreach(
+                providerOutreach.panel?.sequences,
+                outreach._id,
+              );
+              return {
+                key: outreach._id,
+                brokerOrgId: outreach.brokerOrgId,
+                row: (
+                  <TableRow key={outreach._id}>
+                    <TableCell className="whitespace-normal">
+                      <div className="flex items-center gap-3">
+                        <OrgBrandIcon
+                          name={outreach.brokerName}
+                          iconUrl={candidate?.iconUrl ?? broker?.iconUrl}
+                          website={candidate?.website ?? broker?.website}
+                          size="md"
+                        />
+                        <span className={typeStyle("body.medium")}>
+                          {outreach.brokerName}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="min-w-64 whitespace-normal">
+                      <span className="break-all">
+                        {sequence?.recipient.email ??
+                          outreach.contactEmail ??
+                          "—"}
+                      </span>
+                      {outreach.contactName ? (
+                        <p
+                          className={`text-muted-foreground ${typeStyle("caption.default")}`}
+                        >
+                          {outreach.contactName}
+                        </p>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="whitespace-normal">
+                      {candidate ? <FitChips candidate={candidate} /> : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-2">
+                        <OutreachStatusTag status={outreach.status} />
+                        {proposal && proposalExtractionState(proposal) ? (
+                          <ProposalExtractionStatus
+                            proposal={proposal}
+                            readOnly={readOnly}
+                          />
+                        ) : proposal ? (
+                          <StatusTag
+                            indicator={
+                              proposal.status === "draft"
+                                ? "draft"
+                                : proposal.status === "selected"
+                                  ? "complete"
+                                  : proposal.status === "withdrawn"
+                                    ? "cancelled"
+                                    : proposal.status === "archived"
+                                      ? "inactive"
+                                      : "progress"
+                            }
+                            progress={
+                              proposal.status === "reviewed" ? 0.75 : 0.4
+                            }
+                            tone={
+                              proposal.status === "selected"
+                                ? "success"
+                                : proposal.status === "reviewed"
+                                  ? "info"
+                                  : "neutral"
+                            }
+                          >
+                            {proposal.status.charAt(0).toUpperCase() +
+                              proposal.status.slice(1).replaceAll("_", " ")}
+                          </StatusTag>
+                        ) : null}
+
+                        {!readOnly && sequence ? (
+                          <OutreachSequenceCell
+                            sequence={sequence}
+                            readOnly={readOnly}
+                            stopping={
+                              providerOutreach.stopping === sequence.sequenceId
+                            }
+                            onStop={(sequenceId) =>
+                              void providerOutreach.stopSequence(sequenceId)
+                            }
+                            onOpenThread={(threadId) =>
+                              void openEmail(threadId)
+                            }
+                          />
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {!readOnly &&
+                        candidate &&
+                        !candidate.launchBlock &&
+                        providerOutreach.panel?.request.canLaunch ? (
+                          <PillButton
+                            type="button"
+                            disabled={providerOutreach.sending.size > 0 || providerOutreach.sendingAll}
+                            onClick={() =>
+                              void providerOutreach.send(candidate.brokerOrgId)
+                            }
+                          >
+                            {providerOutreach.sending.has(candidate.brokerOrgId)
+                              ? "Sending…"
+                              : "Send"}
+                          </PillButton>
+                        ) : null}
+                        <PillButton
+                          type="button"
+                          variant="secondary"
+                          onClick={() =>
+                            openOutreachEditor(outreach, proposal?._id)
+                          }
+                        >
+                          View details
+                        </PillButton>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ),
+              };
+            })}
+          />
         ) : null}
 
-        {view === "proposals" ? (
-          details.outreaches.length === 0 ? (
-            <EmptyStateCard
-              title="No providers contacted yet"
-              description="Add a provider to track outreach and proposals."
-            />
-          ) : (
-            <OperationalPanel as="section">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Provider</TableHead>
-                    <TableHead>Status</TableHead>
-                    {!readOnly ? <TableHead>Sequence</TableHead> : null}
-                    <TableHead>Premium</TableHead>
-                    <TableHead>Review</TableHead>
-                    <TableHead>Documents</TableHead>
-                    <TableHead>Updated</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {details.outreaches.map((outreach) => {
-                    const proposal = activeProposals.find(
-                      (row) => row.outreachId === outreach._id,
-                    );
-                    const contact = [
-                      outreach.contactName,
-                      outreach.contactEmail,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ");
-                    const offer = (proposal?.extractedOffer ?? {}) as {
-                      premium?: string;
-                      premiumAmount?: number;
-                    };
-                    const sequence = sequenceForOutreach(
-                      providerOutreach.panel?.sequences,
-                      outreach._id,
-                    );
-                    const review = proposal?.reviews[0];
-                    const conclusion = review?.stale
-                      ? undefined
-                      : (review?.staffConclusion ?? review?.modelConclusion);
-                    return (
-                      <TableRow
-                        key={outreach._id}
-                        tabIndex={0}
-                        onClick={() => openOutreachEditor(outreach)}
-                        onKeyDown={(event) =>
-                          openRowOnKeyboard(event, () =>
-                            openOutreachEditor(outreach),
-                          )
-                        }
-                        className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                      >
-                        <TableCell className="min-w-52 max-w-96 whitespace-normal">
-                          <p
-                            className={`text-foreground ${typeStyle("body.medium")}`}
-                          >
-                            {outreach.brokerName}
-                          </p>
-                          {contact ? (
-                            <p
-                              className={`mt-1 break-words text-muted-foreground ${typeStyle("caption.default")}`}
-                            >
-                              {contact}
-                            </p>
-                          ) : null}
-                        </TableCell>
-                        <TableCell>
-                          {proposal && proposalExtractionState(proposal) ? (
-                            <ProposalExtractionStatus
-                              proposal={proposal}
-                              readOnly={readOnly}
-                            />
-                          ) : proposal ? (
-                            <StatusTag
-                              indicator={
-                                proposal.status === "draft"
-                                  ? "draft"
-                                  : proposal.status === "selected"
-                                    ? "complete"
-                                    : proposal.status === "withdrawn"
-                                      ? "cancelled"
-                                      : proposal.status === "archived"
-                                        ? "inactive"
-                                        : "progress"
-                              }
-                              progress={
-                                proposal.status === "reviewed" ? 0.75 : 0.4
-                              }
-                              tone={
-                                proposal.status === "selected"
-                                  ? "success"
-                                  : proposal.status === "reviewed"
-                                    ? "info"
-                                    : "neutral"
-                              }
-                            >
-                              {proposal.status.charAt(0).toUpperCase() +
-                                proposal.status.slice(1).replaceAll("_", " ")}
-                            </StatusTag>
-                          ) : (
-                            <OutreachStatusTag status={outreach.status} />
-                          )}
-                        </TableCell>
-                        {!readOnly ? (
-                          <TableCell>
-                            <OutreachSequenceCell
-                              sequence={sequence}
-                              readOnly={readOnly}
-                              stopping={
-                                !!sequence &&
-                                providerOutreach.stopping === sequence.sequenceId
-                              }
-                              onStop={(sequenceId) =>
-                                void providerOutreach.stopSequence(sequenceId)
-                              }
-                              onOpenThread={(threadId) =>
-                                void openEmail(threadId)
-                              }
-                            />
-                          </TableCell>
-                        ) : null}
-                        <TableCell className="text-muted-foreground">
-                          {offer.premium ?? offer.premiumAmount ?? "—"}
-                        </TableCell>
-                        <TableCell>
-                          {review?.stale ? (
-                            <StatusTag tone="warning">Stale</StatusTag>
-                          ) : conclusion ? (
-                            <StatusTag
-                              tone={
-                                conclusion === "meets_requirements"
-                                  ? "success"
-                                  : "warning"
-                              }
-                            >
-                              {REVIEW_CONCLUSION_LABELS[conclusion]}
-                            </StatusTag>
-                          ) : proposal ? (
-                            <StatusTag indicator="pending">
-                              Not reviewed
-                            </StatusTag>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-muted-foreground">
-                            {proposal?.documents.length ?? "—"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatDisplayDate(
-                            Math.max(
-                              outreach.updatedAt,
-                              proposal?.updatedAt ?? 0,
-                            ),
-                            "—",
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </OperationalPanel>
-          )
+        {view === "cadence" && !readOnly ? (
+          <ProviderOutreachCadence controller={providerOutreach} />
         ) : null}
 
         {view === "email" ? (
@@ -2996,23 +2844,6 @@ export function ProcurementRequestWorkspace({
               </OperationalPanel>
             )}
           </div>
-        ) : null}
-        {!readOnly && geographyDialog ? (
-          <ProviderGeographyDialog
-            key={geographyDialog.key}
-            open={geographyDialog.open}
-            onOpenChange={(open) =>
-              setGeographyDialog((current) =>
-                current ? { ...current, open } : current,
-              )
-            }
-            request={details.request}
-            onSaved={() => {
-              // The editor remounts from the saved request; drop the stale menu draft.
-              setDraft(null);
-              return runAutoAddBrokers();
-            }}
-          />
         ) : null}
       </div>
     </IntakeReviewCompact.Provider>

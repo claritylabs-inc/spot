@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
 import dayjs from "dayjs";
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ import {
   TableNameLink,
 } from "@/components/ui/table";
 import { PillButton } from "@/components/ui/pill-button";
+import { OutreachStatusTag } from "./procurement-shared";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -46,15 +47,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
 
 type CadenceField = keyof OutreachCadence;
 type CadenceSource = "jev" | "default" | "operator";
-type CandidateTab = "matched" | "unknown" | "excluded";
 
 const STYLE_LABELS: Record<OutreachCadence["style"], string> = {
   brief_nudge: "Brief nudge",
@@ -69,20 +64,6 @@ const BANNER_COPY: Record<string, string> = {
     "Requested coverages could not be determined, so coverage lines are not used to match providers.",
   lines_partly_unevaluated:
     "Other or unknown coverage types cannot be matched to provider lines and are ignored.",
-};
-
-const REASON_COPY: Record<string, string> = {
-  blacklisted: "Blacklisted provider",
-  inactive: "Inactive provider",
-  no_profile: "No appetite profile yet",
-  request_not_evaluable: "Request details are too thin to match",
-  geography_primary_not_serviced: "Does not write the primary location",
-  geography_none_serviced: "Does not write any requested location",
-  geography_partial: "Does not write every requested location",
-  geography_appetite_empty: "No service area on file",
-  geography_region_unknown: "Regional service needs verification",
-  lines_none_covered: "Covers none of the requested lines",
-  lines_appetite_empty: "No coverage lines on file",
 };
 
 const SKIP_COPY: Record<string, string> = {
@@ -408,7 +389,7 @@ function schedulePreview(
   return { text: steps.join(" · "), dropped: schedule.droppedFollowUps };
 }
 
-function CadenceCard({
+export function ProviderOutreachCadence({
   controller,
 }: {
   controller: ProviderOutreachController;
@@ -536,7 +517,7 @@ function CadenceCard({
   );
 }
 
-function FitChips({ candidate }: { candidate: ProviderCandidateView }) {
+export function FitChips({ candidate }: { candidate: ProviderCandidateView }) {
   const chips = [
     ...candidate.lines.covered.map((line) => ({
       key: `c-${line}`,
@@ -565,7 +546,6 @@ function CandidateRow({
   candidate,
   selectedContactId,
   onSelectContact,
-  tab,
   sequence,
   sendingId,
   canLaunch,
@@ -574,16 +554,11 @@ function CandidateRow({
   candidate: ProviderCandidateView;
   selectedContactId?: Id<"brokerContacts">;
   onSelectContact: (contactId: Id<"brokerContacts"> | null) => void;
-  tab: CandidateTab;
   sequence: SequenceView | null;
   sendingId: boolean;
   canLaunch: boolean;
   onSend: () => void;
 }) {
-  const reasons = candidate.reasons
-    .filter((reason) => reason !== "lines_partial")
-    .map((reason) => REASON_COPY[reason] ?? humanize(reason))
-    .join(" · ");
   const recipient = candidateRecipient(candidate, selectedContactId);
   const blocked = candidateLaunchBlock(candidate, selectedContactId);
   const contactLocked =
@@ -596,11 +571,7 @@ function CandidateRow({
     selectedContactId ?? candidate.recipient?.contactId ?? "request";
   const explicitRecipient =
     candidate.recipient && !candidate.recipient.contactId;
-  const status = sequence
-    ? sequenceStatusText(sequence)
-    : candidate.outreach
-      ? "Already on this request"
-      : null;
+  const status = sequence ? sequenceStatusText(sequence) : null;
   return (
     <TableRow>
       <TableCell className="whitespace-normal">
@@ -615,18 +586,11 @@ function CandidateRow({
             <TableNameLink href={`/operator/brokers/${candidate.brokerOrgId}`}>
               {candidate.name}
             </TableNameLink>
-            {reasons && (tab !== "matched" || candidate.partial) ? (
-              <p
-                className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-              >
-                {reasons}
-              </p>
-            ) : null}
           </div>
         </div>
       </TableCell>
       <TableCell className="min-w-64 whitespace-normal">
-        {tab !== "excluded" && (options.length > 0 || explicitRecipient) ? (
+        {options.length > 0 || explicitRecipient ? (
           <div>
             <Select
               value={contactValue}
@@ -705,40 +669,43 @@ function CandidateRow({
           </div>
         ) : (
           <span className="text-muted-foreground">
-            {tab === "excluded"
-              ? "—"
-              : (SKIP_COPY[candidate.skipReason ?? "no_contact_email"] ??
-                humanize(candidate.skipReason ?? "no_contact_email"))}
+            {SKIP_COPY[candidate.skipReason ?? "no_contact_email"] ??
+              humanize(candidate.skipReason ?? "no_contact_email")}
           </span>
         )}
       </TableCell>
       <TableCell className="whitespace-normal">
         <FitChips candidate={candidate} />
       </TableCell>
-      <TableCell className="text-right">
-        {tab === "excluded" ? null : (
-          <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
-            {status ? (
-              <span
-                className={`text-muted-foreground ${typeStyle("caption.default")}`}
-              >
-                {status}
-              </span>
-            ) : null}
-            {blocked === "sequence_exists" ||
-            blocked === "outreach_status_progressed" ? null : (
-              <PillButton
-                type="button"
-                size="default"
-                variant={tab === "matched" ? "primary" : "secondary"}
-                disabled={!!blocked || !canLaunch || sendingId}
-                onClick={onSend}
-              >
-                {sendingId ? "Sending…" : "Send"}
-              </PillButton>
-            )}
-          </div>
+      <TableCell>
+        {candidate.outreach ? (
+          <OutreachStatusTag status={candidate.outreach.status} />
+        ) : (
+          <span className="text-muted-foreground">Not contacted</span>
         )}
+        {status ? (
+          <span
+            className={`text-muted-foreground ${typeStyle("caption.default")}`}
+          >
+            {status}
+          </span>
+        ) : null}
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex flex-wrap items-center gap-3 sm:shrink-0 sm:justify-end">
+          {blocked === "sequence_exists" ||
+          blocked === "outreach_status_progressed" ? null : (
+            <PillButton
+              type="button"
+              size="default"
+              variant="primary"
+              disabled={!!blocked || !canLaunch || sendingId}
+              onClick={onSend}
+            >
+              {sendingId ? "Sending…" : "Send"}
+            </PillButton>
+          )}
+        </div>
       </TableCell>
     </TableRow>
   );
@@ -836,35 +803,35 @@ export function OutreachSequenceCell({
 
 export function ProviderOutreachPanel({
   controller,
+  submittedProviders = [],
+  readOnly = false,
 }: {
   controller: ProviderOutreachController;
+  submittedProviders?: {
+    key: string;
+    brokerOrgId?: Id<"organizations">;
+    row: ReactNode;
+  }[];
+  readOnly?: boolean;
 }) {
   const { panel, sending, send, selectedContacts, selectContact } = controller;
-  const [selected, setSelected] = useState<CandidateTab>("matched");
-  if (!panel) return null;
-  const tabs: { value: CandidateTab; label: string }[] = [
-    { value: "matched", label: "Matched" },
-    { value: "unknown", label: "Unknown fit" },
-    { value: "excluded", label: "Excluded" },
-  ];
-  // Matched always shows; the secondary tabs only exist when they have rows.
-  const visible = tabs.filter(
-    (tab) => tab.value === "matched" || panel.candidates[tab.value].length,
+  if (!panel && !readOnly) return null;
+  const submittedIds = new Set(
+    submittedProviders.map((row) => row.brokerOrgId),
   );
-  const tab = visible.some((item) => item.value === selected)
-    ? selected
-    : "matched";
-  const rows: ProviderCandidateView[] = panel.candidates[tab];
+  const rows = (panel?.candidates.matched ?? []).filter(
+    (candidate) => !submittedIds.has(candidate.brokerOrgId),
+  );
   return (
     <div className="space-y-4">
-      {panel.request.closedReason ? (
+      {panel?.request.closedReason ? (
         <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
           This request is{" "}
           {humanize(panel.request.closedReason).replace("request ", "")}, so
           outreach cannot be sent.
         </p>
       ) : null}
-      {panel.banners.map((banner) => (
+      {panel?.banners.map((banner) => (
         <p
           key={banner}
           role="status"
@@ -873,39 +840,26 @@ export function ProviderOutreachPanel({
           {BANNER_COPY[banner] ?? humanize(banner)}
         </p>
       ))}
-      <CadenceCard controller={controller} />
-      <div className="sm:hidden">
-        <PillButton
-          type="button"
-          disabled={
-            !panel.request.canLaunch ||
-            !controller.sendAllCount ||
-            sending.size > 0
-          }
-          onClick={() => void controller.sendAll()}
-        >
-          {sending.size > 0
-            ? "Starting…"
-            : `Send to all matched (${controller.sendAllCount})`}
-        </PillButton>
-      </div>
+      {!readOnly && panel ? (
+        <div className="sm:hidden">
+          <PillButton
+            type="button"
+            disabled={
+              !panel.request.canLaunch ||
+              !controller.sendAllCount ||
+              sending.size > 0
+            }
+            onClick={() => void controller.sendAll()}
+          >
+            {sending.size > 0
+              ? "Starting…"
+              : `Send to all matched (${controller.sendAllCount})`}
+          </PillButton>
+        </div>
+      ) : null}
       <section aria-label="Providers" className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className={typeStyle("body.medium")}>Providers</h2>
-          {visible.length > 1 ? (
-            <Tabs
-              value={tab}
-              onValueChange={(value) => setSelected(value as CandidateTab)}
-            >
-              <TabsList variant="pill" aria-label="Provider fit">
-                {visible.map((item) => (
-                  <TabsTrigger key={item.value} value={item.value}>
-                    {item.label} · {panel.candidates[item.value].length}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          ) : null}
         </div>
         <OperationalPanel as="div" data-operator-inline-fields>
           <Table>
@@ -914,12 +868,14 @@ export function ProviderOutreachPanel({
                 <TableHead>Provider</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Coverage</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="text-right">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
+              {submittedProviders.map((provider) => provider.row)}
               {rows.length ? (
                 rows.map((candidate) => (
                   <CandidateRow
@@ -929,45 +885,40 @@ export function ProviderOutreachPanel({
                     onSelectContact={(contactId) =>
                       selectContact(candidate.brokerOrgId, contactId)
                     }
-                    tab={tab}
                     sequence={
                       candidate.sequenceId
-                        ? (panel.sequences.find(
+                        ? (panel!.sequences.find(
                             (row) => row.sequenceId === candidate.sequenceId,
                           ) ?? null)
                         : null
                     }
                     sendingId={sending.has(candidate.brokerOrgId)}
-                    canLaunch={panel.request.canLaunch && sending.size === 0}
+                    canLaunch={!!panel?.request.canLaunch && sending.size === 0}
                     onSend={() => void send(candidate.brokerOrgId)}
                   />
                 ))
-              ) : (
+              ) : !submittedProviders.length ? (
                 <TableRow>
                   <TableCell
-                    colSpan={4}
+                    colSpan={5}
                     className="h-24 text-center text-muted-foreground"
                   >
-                    {tab === "matched"
-                      ? "No matched providers yet."
-                      : tab === "unknown"
-                        ? "No providers with unknown fit."
-                        : "No excluded providers."}
+                    No providers match the recorded coverage and service area.
                   </TableCell>
                 </TableRow>
-              )}
+              ) : null}
             </TableBody>
           </Table>
         </OperationalPanel>
-        {panel.providersBounded ? (
+        {panel?.providersBounded ? (
           <p
             className={`text-muted-foreground ${typeStyle("caption.default")}`}
           >
-            Showing the first{" "}
+            Matching is limited to the first{" "}
             {panel.candidates.matched.length +
               panel.candidates.unknown.length +
               panel.candidates.excluded.length}{" "}
-            providers.
+            providers in the directory.
           </p>
         ) : null}
       </section>
