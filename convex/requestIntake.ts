@@ -1009,6 +1009,7 @@ export const save = mutation({
     await ctx.db.patch(request._id, {
       clientOrgId,
       intakeAnswers: answers,
+      ...(answers.intakeGoal === "savings" ? { intakeFollowups: undefined } : {}),
       ...(request.intakeSubmittedAt && answersChanged
         ? {
             intakeAmendedAt: dayjs().valueOf(),
@@ -1050,6 +1051,12 @@ export const save = mutation({
       updatedAt: dayjs().valueOf(),
       updatedByUserId: user._id,
     });
+    if (!request.intakeSubmittedAt && answers.intakeGoal !== "savings") {
+      await ctx.scheduler.runAfter(5000, internal.requestIntake.warmFollowupsAfterSave, {
+        requestId: request._id,
+        revision,
+      });
+    }
     if (
       args.step !== request.intakeStep ||
       details?.revenueStep !== request.intakeDetails?.revenueStep ||
@@ -2115,9 +2122,10 @@ async function prepareFollowupBatch(
     const contextHash = await followupContextHash(ctx, request, section);
     const scopeHash = await followupPreloadScopeHash(ctx, request);
     const previous = request.intakeFollowups?.[section];
-    // One pass starts only at the terminal section, with complete history.
-    // Legacy warmup callers remain compatible but cannot spend model calls.
-    if (preload) return null;
+    // Wait for enough scope to make background questions useful. Terminal entry
+    // can still prepare incomplete applications through the ordinary path.
+    if (preload && (!request.intakeAnswers?.legalName?.trim() ||
+      !request.intakeDetails?.coverages.some(line => line.coverage !== "unknown"))) return null;
     if (previous?.status === "pending") return null;
     if (previous?.contextHash === contextHash && previous.status !== "prepared" && !(retryFailed && previous.status === "failed")) return null;
     console.info("[intakeFollowups] preparing batch", {
@@ -2153,10 +2161,15 @@ export const prepareFollowups = mutation({
   },
 });
 
-/** Compatibility for already scheduled warmup jobs; no provisional inference. */
+/** Coalesce autosaves; the last saved revision prepares one context at a time. */
 export const warmFollowupsAfterSave = internalMutation({
-  args: { requestId: v.id("procurementRequests") },
-  handler: async () => null,
+  args: { requestId: v.id("procurementRequests"), revision: v.optional(v.number()) },
+  handler: async (ctx, { requestId, revision }) => {
+    const request = await ctx.db.get(requestId);
+    if (!request || request.deletedAt || revision === undefined ||
+      request.intakeRevision !== revision) return null;
+    return prepareFollowupBatch(ctx, request, "additional", true);
+  },
 });
 
 /** Provisional candidates are never exposed as ready questions. */

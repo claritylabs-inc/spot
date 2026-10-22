@@ -205,7 +205,7 @@ Intake review uses shared row primitives for follow-up answers and driver summar
 
 Vehicle-scoped catalog questions share one “More about [vehicle]” intake page per vehicle, using shared Field/Select/Input primitives and concise labels with unit examples. Ordinary business and generated follow-ups retain one question per page. Each answer keeps its server-approved ID/definition; hidden equipment children remain conditional and clear on parent edits. Navigation persists the first question index of each group, preserving existing draft cursor compatibility, and records blank visible fields as skipped when leaving the page.
 
-Additional questions prepare once at terminal section entry using current original base and catalog facts; generated answers never recursively trigger more questions. Only changed base/catalog facts or uploads invalidate the terminal list. Failed/unknown outcomes do not replay automatically. Empty or unavailable batches skip their introduction and question page directly to review, preserving saved answers.
+Additional questions prepare in the background five seconds after the latest draft save once company name and known coverage exist. Revision checks coalesce typing, pending batches prevent overlapping calls, and context hashes reuse unchanged results. Terminal entry prepares immediately if needed; generated answers never recursively trigger more questions. Only changed base/catalog facts or uploads invalidate the terminal list. Failed/unknown outcomes do not replay automatically. Empty or unavailable batches skip their introduction and question page directly to review, preserving saved answers.
 
 Intake section introductions use the shared frame, typography and pill controls, with short copy for each of the seven quote sections and savings-specific policy/review copy. `IntakeDetails.sectionIntroductions` records acknowledged sections as draft-only UI metadata; it is excluded from accepted facts and model context/hash. Review edits and mid-section resumes bypass introductions. Switching purposes resets introductions for changed sections, while company switching retains seen state and request-owned vehicle/driver details entered earlier.
 
@@ -278,7 +278,7 @@ ACORD/catalog facts. Its context hash, generation evidence and
 stale-result checks exclude generated additional answers. Existing generated
 question definitions are supplied only to prevent duplicates. Completing or
 revisiting the final list cannot generate another list; only changed base or
-catalog facts/uploads invalidate it. No provisional or automatic enrichment pass runs for a completed context. Current ready batches open
+catalog facts/uploads invalidate it. Background preparation publishes only a fully validated batch for the current context; successful stale completions prepare the changed context, while failed or unknown calls never replay for unchanged facts. No automatic enrichment pass runs for a completed context. Current ready batches open
 without a preparation screen, and completed/skipped additional answers receive
 the same Complete badge as other review sections.
 
@@ -471,3 +471,9 @@ submission. Savings reviews skip Coverage and retain their existing submission
 authorization. Company-profile promotion excludes request consent.
 
 Operator procurement editors keep commercial auto quote facts under Coverage Requested: freight hauled in the auto coverage card, approximate value in each vehicle card, and one card per driver beside the vehicle cards (Add vehicle/Add driver in the coverage header). Vehicle and location cards are siblings of their coverage card, never nested. A Follow-up answers tab appears when additional questions exist; read-only views keep the `IntakeApplicationReview` Quote details and Driver schedule tabs. Coverage Requested edits catalog answers under their owning coverage (unowned answers in Other saved coverage details) and cyber privacy/terms links. Follow-up rows reuse the applicant's typed controls; `withIntakeFollowupAnswer` clears inactive children the same way on both surfaces.
+
+### Intake latency bounds
+
+`intakeFollowupPrompt.ts` removes duplicated history, hashes and UI bookkeeping from the generation input, preserving typed facts, blank/skipped base questions, driver redaction and upload metadata. Reference hints are trimmed first under a 96,000-byte UTF-8 budget; oversized application facts fail before inference rather than being truncated. The current router stream target supports chat messages only, so structured questions remain hidden until final validation.
+
+Unknown-scope coverage matching runs after the saved text settles, outside navigation. Next uses an already-ready result for that exact request/scope or continues immediately; late results never move the page or overwrite answers. Interactive industry, coverage, date, body-type and vehicle-specification verification decisions use a 5-second router budget and 6-second transport timeout. Their existing manual fallbacks remain available. Retrieval and generation preceding vehicle verification retain their existing execution path.
