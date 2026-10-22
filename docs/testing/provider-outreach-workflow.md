@@ -31,3 +31,11 @@ Cleanup: stop synthetic sequences, revoke synthetic packet links, and remove syn
 All observations above used the local anonymous Convex deployment in capture mode, not a Vercel preview. No unit tests were added. Real inbox attachment mirroring currently retains metadata and an explicit notice; the documented Inboxes API supplies no verified attachment-byte retrieval endpoint. View thread opens the mirrored Spot Email view because no stable dashboard thread URL was verified. Synthetic packet links remain local-only.
 
 Final integrated root TypeScript, full ESLint (zero errors, nine pre-existing warnings), and local Next.js build passed. Local Convex code generation also passed. Logs are under `.context/outreach/`.
+
+## Request Inbox — October 22, 2026
+
+Local Chrome at localhost:8080 with normal operator authentication and the anonymous Convex backend verified the single Inbox for forwarded mail and synthetic Resend mirror records. Conversations open in the standard app-shell right panel, with secondary classification and quote filing under Details. Mailbox address opens a toolbar popover; no address footer remains.
+
+Passed: search/clear, Needs reply and Sent filters, keyboard selection, same-row selection, closing/reopening, reload/deep links, mobile without horizontal overflow, dark mode, 40-to-41 conversation pagination, and moving a forwarded thread between requests then restoring it. The old request clears its selection after reassignment. Backend probes verified unauthorized reads fail, mismatched request/thread reads return null, foreign threads stay excluded, Resend reassignment fails, stored outreach links determine filing context, and reader DTOs omit raw HTML.
+
+Artifacts: `.context/qa/request-inbox/{desktop-inbox,mobile-reader,dark-reader}.png`, `browser-results.json`, and `.context/outreach/inbox-boundary-results.json`. These synthetic mirror records validate presentation and isolation, not live Resend delivery. No external emails, Vercel previews, production changes, or new unit tests were used.

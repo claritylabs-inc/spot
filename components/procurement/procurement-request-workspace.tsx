@@ -36,6 +36,7 @@ import {
 import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
+import { RequestInbox } from "./request-inbox";
 import {
   FitChips,
   OutreachSequenceCell,
@@ -52,16 +53,13 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
-  Copy,
   FileText,
   Loader2,
-  Mail,
   StickyNote,
   Trash2,
   Plus,
@@ -81,7 +79,6 @@ import {
   PacketWorkspace,
 } from "@/components/procurement/packet-workspace";
 import {
-  EmailCategoryBadge,
   OUTREACH_STATUS_OPTIONS,
   OutreachStatusTag,
   ProcurementEmailDrawer,
@@ -104,15 +101,12 @@ import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
-import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
 import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalItem,
-  OperationalLabelValueList,
-  OperationalLabelValueRow,
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
@@ -131,14 +125,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableRow } from "@/components/ui/table";
 import {
   Tabs,
   TabsList,
@@ -146,22 +133,11 @@ import {
 } from "@claritylabs-inc/ui/components/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { formatDisplayDateTime } from "@/lib/date-format";
 import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const NONE = "__none__";
-
-function openRowOnKeyboard(
-  event: KeyboardEvent<HTMLTableRowElement>,
-  open: () => void,
-) {
-  if (event.key === "Enter" || event.key === " ") {
-    event.preventDefault();
-    open();
-  }
-}
 
 type PolicyOption = {
   policyId: Id<"policies">;
@@ -2040,14 +2016,18 @@ export function ProcurementRequestWorkspace({
     },
     [removeFileItem],
   );
-  const changeView = async (nextView: string) => {
+  const changeView = async (nextView: string, threadId?: string) => {
     const change = ++latestTabChange.current;
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
+    if (emailDrawerRef.current && !(await emailDrawerRef.current.save())) return;
     if (change !== latestTabChange.current) return;
-    router.push(`${basePath}/${requestId}?view=${nextView}`);
+    closeRightPanel();
+    router.push(
+      `${basePath}/${requestId}?view=${nextView}${threadId ? `&thread=${threadId}` : ""}`,
+    );
   };
   const { openWithUrl, closePdf } = usePdf();
 
@@ -2265,6 +2245,10 @@ export function ProcurementRequestWorkspace({
   );
 
   const emailDrawerRef = useRef<ProcurementEmailDrawerHandle>(null);
+  const closeEmail = useCallback(() => {
+    closeRightPanel();
+    router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
+  }, [closeRightPanel, router, basePath, requestId]);
   const openEmail = useCallback(
     async (emailThreadId: Id<"procurementEmailThreads">) => {
       if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
@@ -2275,15 +2259,33 @@ export function ProcurementRequestWorkspace({
           key={emailThreadId}
           ref={emailDrawerRef}
           emailThreadId={emailThreadId}
+          requestId={requestId}
           requests={requestOptions}
           readOnly={readOnly}
-          onClose={closeRightPanel}
+          onClose={closeEmail}
         />,
       );
     },
-    [closePdf, closeRightPanel, onRightPanel, readOnly, requestOptions],
+    [closePdf, closeEmail, onRightPanel, readOnly, requestOptions, requestId],
   );
 
+  const selectedInboxThreadId = searchParams.get("thread");
+  // The Inbox keeps its selection in the URL so a thread can be deep-linked.
+  const selectInboxThread = useCallback(
+    async (
+      threadId: Id<"procurementEmailThreads"> | null,
+      options?: { replace?: boolean },
+    ) => {
+      if (threadId && threadId === selectedInboxThreadId) return;
+      if (emailDrawerRef.current && !(await emailDrawerRef.current.save())) return;
+      closePdf();
+      onRightPanel(null);
+      const href = `${basePath}/${requestId}?view=email${threadId ? `&thread=${threadId}` : ""}`;
+      if (options?.replace) router.replace(href, { scroll: false });
+      else router.push(href, { scroll: false });
+    },
+    [basePath, requestId, router, closePdf, onRightPanel, selectedInboxThreadId],
+  );
   const sendAllCount = providerOutreach.sendAllCount;
   const providerOutreachBusy = providerOutreach.sending.size > 0;
   const canSendAll = providerOutreach.panel?.request.canLaunch ?? false;
@@ -2479,16 +2481,11 @@ export function ProcurementRequestWorkspace({
         ...(!readOnly
           ? [{ key: "cadence", label: "Follow-up cadence", icon: Clock3 }]
           : []),
-        ...(details.emailThreads.length > 0 || view === "email"
-          ? [
-              {
-                key: "email",
-                label: "Imported email",
-                icon: PROVIDER_ICONS.email,
-                count: details.emailThreads.length,
-              },
-            ]
-          : []),
+        {
+          key: "email",
+          label: "Inbox",
+          icon: PROVIDER_ICONS.email,
+        },
       ],
     },
   ];
@@ -2713,7 +2710,7 @@ export function ProcurementRequestWorkspace({
                               void providerOutreach.stopSequence(sequenceId)
                             }
                             onOpenThread={(threadId) =>
-                              void openEmail(threadId)
+                              void changeView("email", threadId)
                             }
                           />
                         ) : null}
@@ -2760,90 +2757,15 @@ export function ProcurementRequestWorkspace({
         ) : null}
 
         {view === "email" ? (
-          <div className="space-y-4">
-            <OperationalLabelValueList>
-              <OperationalLabelValueRow
-                label="Forward email to"
-                verticalAlign="center"
-                value={
-                  <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <span
-                      className={`min-w-0 break-all ${typeStyle("technical.codeCompact")}`}
-                    >
-                      {details.request.forwardingAddress}
-                    </span>
-                    <PillButton
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void copyAddress()}
-                    >
-                      <Copy className="size-3.5" />
-                      Copy address
-                    </PillButton>
-                  </div>
-                }
-              />
-            </OperationalLabelValueList>
-            {details.emailThreads.length === 0 ? (
-              <EmptyStateCard
-                title="No email imported for this request"
-                description="Forward a thread to this request’s address."
-                icon={<Mail className="size-6" />}
-              />
-            ) : (
-              <OperationalPanel as="section">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>Participant</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Last activity</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {details.emailThreads.map((email) => (
-                      <TableRow
-                        key={email._id}
-                        tabIndex={0}
-                        className="cursor-pointer"
-                        onClick={() => openEmail(email._id)}
-                        onKeyDown={(event) =>
-                          openRowOnKeyboard(
-                            event,
-                            () => void openEmail(email._id),
-                          )
-                        }
-                      >
-                        <TableCell className="min-w-64 whitespace-normal">
-                          <p
-                            className={`text-foreground ${typeStyle("body.medium")}`}
-                          >
-                            {email.subject}
-                          </p>
-                          <p
-                            className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                          >
-                            {email.messageCount}{" "}
-                            {email.messageCount === 1 ? "message" : "messages"}
-                          </p>
-                        </TableCell>
-                        <TableCell className="max-w-64 truncate text-muted-foreground">
-                          {email.participantEmails[0] ?? "Unknown"}
-                        </TableCell>
-                        <TableCell>
-                          <EmailCategoryBadge category={email.category} />
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatDisplayDateTime(email.latestMessageAt, "—")}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </OperationalPanel>
-            )}
-          </div>
+          <RequestInbox
+            key={requestId}
+            requestId={requestId}
+            forwardingAddress={details.request.forwardingAddress}
+            selectedThreadId={searchParams.get("thread")}
+            onSelect={selectInboxThread}
+            onOpenThread={openEmail}
+            onCopyAddress={() => void copyAddress()}
+          />
         ) : null}
       </div>
     </IntakeReviewCompact.Provider>

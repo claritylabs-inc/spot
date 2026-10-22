@@ -2308,3 +2308,7 @@ Helium at localhost:3207 verified Providers immediately renders the nine matchin
 ### Combined provider submission status — October 22, 2026
 
 Helium at localhost:3207 verified a single bordered shared Table contains HUB's existing Request sent outreach and eight uncontacted matches, with nine providers in navigation and eight eligible in Send-all. HUB appears once with the saved Derek May recipient, current sequence status/captured-step count, Stop control and View details. View details opens the existing provider/proposal drawer; closing returns to the same table. No Send or Stop action was invoked, and no outreach data was created or changed during this review. TypeScript, touched-file ESLint and whitespace validation passed. Evidence: `.context/provider-email-completion/providers-unified-status.png` and `types-unified-table.log`. No tests or migrations were written.
+
+### Centralized request Inbox — October 22, 2026
+
+Local Chrome verified forwarded and synthetic Resend conversations in one request Inbox using the standard app-shell right panel. Search, filters, keyboard selection, close/reopen, deep links, pagination, mobile/dark presentation, forwarding-address popover and forwarded reassignment passed. Request isolation and Resend reassignment guards passed authenticated backend probes. See [provider outreach workflow QA](provider-outreach-workflow.md) for repeatable cases and artifacts. Live inbox delivery remains unverified; no external sends or Vercel previews were used.
