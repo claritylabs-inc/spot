@@ -5,7 +5,6 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
-  internalQuery,
   mutation,
   query,
   type MutationCtx,
@@ -17,6 +16,8 @@ import {
   isSpotOwnedBrokerIdentity,
 } from "./lib/brokerProfileValidation";
 import { requireCompanyRequest } from "./lib/companyRequest";
+import { notify } from "./lib/notify";
+import { getEmailDeliveryMode } from "./lib/resend";
 import { requireOperator, writeOperatorAudit } from "./lib/operatorIdentity";
 import {
   normalizeProcurementEmail,
@@ -630,7 +631,40 @@ async function terminalizeSequence(
     ...(args.status === "responded" ? { respondedAt: args.now } : {}),
     updatedAt: args.now,
   });
+  // One notification per transition into manual handoff; callers only reach
+  // here when the status actually changes, so a duplicate webhook cannot repeat it.
+  if (args.status === "responded" || args.reason === "recipient_unmonitored")
+    await notifyManualHandoff(ctx, sequence, args.reason, args.now);
   return cancelled;
+}
+
+async function notifyManualHandoff(
+  ctx: MutationCtx,
+  sequence: Sequence,
+  reason: string,
+  now: number,
+) {
+  const [request, broker] = await Promise.all([
+    ctx.db.get(sequence.requestId),
+    ctx.db.get(sequence.brokerOrgId),
+  ]);
+  const provider = broker?.name ?? "A provider";
+  const title =
+    reason === "recipient_unmonitored"
+      ? `${provider} contact is unmonitored`
+      : reason === "reply_check_timeout"
+        ? `${provider} replied; review needed`
+        : `${provider} replied`;
+  await notify(ctx, {
+    orgId: sequence.clientOrgId,
+    userId: sequence.senderUserId,
+    relatedOrgId: sequence.brokerOrgId,
+    type: "broker_action",
+    severity: "info",
+    title,
+    body: `Automated follow-ups stopped${request ? ` on ${request.title}` : ""}. Continue the conversation by hand.`,
+    nowMs: now,
+  });
 }
 
 export async function stopProviderOutreachByOperator(
@@ -728,6 +762,59 @@ function validatedCadence(cadence: OutreachCadenceInput): OutreachCadenceInput {
   };
 }
 
+/**
+ * One live scoped link per outreach. A valid link for the same recipient at the
+ * current packet revision is reused (the provider may already hold it); any
+ * other earlier live link is revoked so stale grants do not accumulate.
+ */
+async function scopedPacketLink(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    request: Doc<"procurementRequests">;
+    outreachId: Id<"procurementBrokerOutreaches">;
+    recipientLabel: string;
+    recipientEmail: string;
+    now: number;
+  },
+) {
+  const links = await ctx.db
+    .query("procurementPacketLinks")
+    .withIndex("outreach", (q) => q.eq("outreachId", args.outreachId))
+    .take(50);
+  const revision = args.request.packetRevision ?? 0;
+  const live = links.filter(
+    (link) =>
+      link.revokedAt === undefined &&
+      (link.expiresAt === undefined || link.expiresAt > args.now),
+  );
+  const reusable = live.find(
+    (link) =>
+      !!link.token &&
+      link.recipientEmail === args.recipientEmail.toLowerCase() &&
+      link.packetRevisionAtIssue === revision,
+  );
+  const revokedIds: Id<"procurementPacketLinks">[] = [];
+  for (const link of live) {
+    if (link._id === reusable?._id) continue;
+    await ctx.db.patch(link._id, {
+      revokedAt: args.now,
+      revokedByUserId: args.operatorUserId,
+      updatedAt: args.now,
+    });
+    revokedIds.push(link._id);
+  }
+  if (reusable) return { id: reusable._id, reused: true as const, revokedIds };
+  const minted = await mintPacketLinkForOperator(ctx, {
+    operatorUserId: args.operatorUserId,
+    requestId: args.request._id,
+    outreachId: args.outreachId,
+    recipientLabel: args.recipientLabel,
+    recipientEmail: args.recipientEmail,
+  });
+  return { id: minted.id, reused: false as const, revokedIds };
+}
+
 export async function launchProviderOutreachByOperator(
   ctx: MutationCtx,
   args: {
@@ -741,8 +828,8 @@ export async function launchProviderOutreachByOperator(
   },
 ): Promise<ProviderOutreachLaunchResult> {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
-  const brokerOrgIds = [...new Set(args.brokerOrgIds)];
-  if (!brokerOrgIds.length || brokerOrgIds.length > MAX_LAUNCH_PROVIDERS)
+  // Cap the raw input first: duplicates must not widen the loop.
+  if (!args.brokerOrgIds.length || args.brokerOrgIds.length > MAX_LAUNCH_PROVIDERS)
     throw new Error(`Select one to ${MAX_LAUNCH_PROVIDERS} providers`);
   const cadence = validatedCadence(args.cadence);
   const { request, client } = await loadCompanyRequest(ctx, args.requestId);
@@ -826,12 +913,13 @@ export async function launchProviderOutreachByOperator(
         source: "operator",
       }));
     }
-    const link = await mintPacketLinkForOperator(ctx, {
+    const link = await scopedPacketLink(ctx, {
       operatorUserId: args.operatorUserId,
-      requestId: request._id,
+      request,
       outreachId,
       recipientLabel: org.name,
       recipientEmail: recipient.email,
+      now,
     });
     const schedule = buildOutreachSchedule({
       launchAt: now,
@@ -885,6 +973,8 @@ export async function launchProviderOutreachByOperator(
         sequenceId,
         brokerOrgId: org._id,
         packetLinkId: link.id,
+        packetLinkReused: link.reused,
+        revokedPacketLinkIds: link.revokedIds,
         verdict: evaluation.fit.verdict,
         partial: evaluation.fit.partial,
         recipientDomain: recipient.email.split("@")[1] ?? null,
@@ -952,6 +1042,7 @@ export const requestCadenceSuggestion = mutation({
         fingerprint,
         status: "pending",
         picks: undefined,
+        generationStartedAt: undefined,
         updatedAt: now,
       });
     } else {
@@ -971,11 +1062,14 @@ export const requestCadenceSuggestion = mutation({
 });
 
 /** Facts for the Jev cadence call; null when the row is stale or no longer pending. */
-export const getCadenceInputInternal = internalQuery({
+export const getCadenceInputInternal = internalMutation({
   args: { cadenceId: v.id("procurementOutreachCadences") },
   handler: async (ctx, { cadenceId }) => {
     const row = await ctx.db.get(cadenceId);
-    if (!row || row.status !== "pending") return null;
+    // One-shot: the first caller marks inference started; any other queued
+    // action for this row (old or new fingerprint) gets null and never generates.
+    if (!row || row.status !== "pending" || row.generationStartedAt !== undefined)
+      return null;
     let loaded: Awaited<ReturnType<typeof loadCompanyRequest>>;
     try {
       loaded = await loadCompanyRequest(ctx, row.requestId);
@@ -985,6 +1079,7 @@ export const getCadenceInputInternal = internalQuery({
     const { request, client } = loaded;
     const match = matchFor(request, client);
     if (cadenceFingerprint(request, match) !== row.fingerprint) return null;
+    await ctx.db.patch(row._id, { generationStartedAt: dayjs().valueOf() });
     const orgs = await ctx.db
       .query("organizations")
       .withIndex("deletion_type", (q) => q.eq("deletedAt", undefined).eq("type", "broker"))
@@ -1157,6 +1252,10 @@ async function checkStepWorld(
     // Never overtake an unsent predecessor (initial or earlier follow-up).
     if (!previous || !stepDone(previous))
       return { kind: "skip", reason: "predecessor_pending" };
+    // A follow-up to a captured email has no real thread: sending it live would
+    // reach the provider as a standalone message with no initial email.
+    if (previous.status === "captured" && getEmailDeliveryMode() !== "capture")
+      return { kind: "stop", reason: "capture_lineage_live_mode" };
   }
   return {
     kind: "ok",
@@ -1196,6 +1295,13 @@ export type ClaimStepResult =
       recovered: boolean;
       /** A real (non-captured) predecessor was sent: the reply needs `resendThreadId` and `lastOutboundEmailId`. */
       threadRequired: boolean;
+      /**
+       * The predecessor was captured (never really sent). Only valid while
+       * `EMAIL_DELIVERY_MODE=capture`; the claim already stops the sequence with
+       * `capture_lineage_live_mode` otherwise. Actions must also refuse any live
+       * send when this is true (defense in depth).
+       */
+      capturedPredecessor: boolean;
       step: {
         stepId: Id<"procurementOutreachSteps">;
         index: number;
@@ -1369,6 +1475,7 @@ export const claimStepInternal = internalMutation({
       leaseUntil,
       recovered,
       threadRequired: step.kind === "follow_up" && world.previous?.status === "sent",
+      capturedPredecessor: world.previous?.status === "captured",
       step: {
         stepId: step._id,
         index: step.index,
@@ -1868,13 +1975,55 @@ export const releaseStepInternal = internalMutation({
 // Inbox webhook events (durable) and message mirroring
 // ---------------------------------------------------------------------------
 
-/** Persists a verified webhook event once and schedules `handleInboxEvent`. */
+/**
+ * Blocks sends the moment an inbound reply is known, before its body is
+ * fetched. `active` and `reply_check` become `reply_check` with the reply as
+ * the pending one. `replyCheckStartedAt` holds the provider receive time of the
+ * pending reply, so a later-arriving but older (or duplicate) event can never
+ * displace a newer pending reply; only a strictly newer `occurredAt` does.
+ * Without `occurredAt` (claim-time fallback) an existing hold is never replaced.
+ */
+async function holdForInboundReply(
+  ctx: MutationCtx,
+  sequence: Sequence,
+  args: { emailId: string; occurredAt: number | null; fallbackAt: number; now: number },
+): Promise<{ isPending: boolean; status: SequenceStatus }> {
+  if (sequence.status === "active") {
+    await ctx.db.patch(sequence._id, {
+      status: "reply_check",
+      pendingReplyEmailId: args.emailId,
+      replyCheckStartedAt: args.occurredAt ?? args.fallbackAt,
+      updatedAt: args.now,
+    });
+    return { isPending: true, status: "reply_check" };
+  }
+  if (sequence.status !== "reply_check") return { isPending: false, status: sequence.status };
+  if (sequence.pendingReplyEmailId === args.emailId)
+    return { isPending: true, status: "reply_check" };
+  if (args.occurredAt !== null && args.occurredAt > (sequence.replyCheckStartedAt ?? 0)) {
+    await ctx.db.patch(sequence._id, {
+      pendingReplyEmailId: args.emailId,
+      replyCheckStartedAt: args.occurredAt,
+      updatedAt: args.now,
+    });
+    return { isPending: true, status: "reply_check" };
+  }
+  return { isPending: false, status: "reply_check" };
+}
+
+/**
+ * Persists a verified webhook event once and schedules `handleInboxEvent`.
+ * A newly recorded `received` event for a known thread holds the sequence in
+ * `reply_check` in this same transaction. `occurredAt` is the email's Resend
+ * `received_at` (epoch ms), used only to order replies.
+ */
 export const recordInboxEventInternal = internalMutation({
   args: {
     emailId: v.string(),
     eventType: inboxEventTypeValidator,
     inboxId: v.string(),
     threadId: v.string(),
+    occurredAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const known = await ctx.db
@@ -1914,6 +2063,19 @@ export const recordInboxEventInternal = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+    if (args.eventType === "inbox.email.received") {
+      const sequence = await ctx.db
+        .query("procurementOutreachSequences")
+        .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", args.threadId))
+        .first();
+      if (sequence)
+        await holdForInboundReply(ctx, sequence, {
+          emailId: args.emailId,
+          occurredAt: args.occurredAt ?? null,
+          fallbackAt: now,
+          now,
+        });
+    }
     await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.handleInboxEvent, {
       eventId,
     });
@@ -2010,7 +2172,19 @@ export const claimInboxEventInternal = internalMutation({
       });
       return { status: "skipped", reason: "event_expired" };
     }
-    const route = await routeInboxEvent(ctx, event);
+    let route = await routeInboxEvent(ctx, event);
+    if (route.kind === "sequence" && event.eventType === "inbox.email.received") {
+      const sequence = await ctx.db.get(route.sequenceId);
+      if (sequence) {
+        const held = await holdForInboundReply(ctx, sequence, {
+          emailId: event.emailId,
+          occurredAt: null,
+          fallbackAt: event.createdAt,
+          now,
+        });
+        route = { ...route, sequenceStatus: held.status };
+      }
+    }
     if (route.kind === "unmatched" && now - event.createdAt < INBOX_EVENT_MAPPING_WINDOW_MS) {
       const runAt = now + INBOX_EVENT_RETRY_MS;
       await ctx.db.patch(event._id, {
@@ -2344,23 +2518,31 @@ export const applyInboundInboxEmailInternal = internalMutation({
         await terminalizeSequence(ctx, sequence, { status: "stopped", reason: "bounced", now });
         status = "stopped";
       }
-    } else if (isLiveOrHandoffTarget(sequence.status)) {
-      await ctx.db.patch(sequence._id, {
-        status: "reply_check",
-        pendingReplyEmailId: emailId,
-        replyCheckStartedAt: now,
-        updatedAt: now,
-      });
-      await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.classifyReply, {
-        sequenceId: sequence._id,
-        emailId,
-      });
-      status = "reply_check";
-      classifyScheduled = true;
     } else if (sequence.status === "completed") {
       // Final step already sent: nothing to resume, hand straight to the operator.
-      await ctx.db.patch(sequence._id, { status: "responded", respondedAt: now, updatedAt: now });
+      await terminalizeSequence(ctx, sequence, {
+        status: "responded",
+        reason: "provider_replied",
+        now,
+      });
       status = "responded";
+    } else {
+      // Normally a no-op: the record/claim steps already held the sequence. Only
+      // the newest reply is classified; an older or repeated one just stays mirrored.
+      const held = await holdForInboundReply(ctx, sequence, {
+        emailId,
+        occurredAt: args.email.occurredAt,
+        fallbackAt: now,
+        now,
+      });
+      status = held.status;
+      if (held.isPending) {
+        await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.classifyReply, {
+          sequenceId: sequence._id,
+          emailId,
+        });
+        classifyScheduled = true;
+      }
     }
     await finishEvent(ctx, event, now);
     return {
@@ -2380,8 +2562,13 @@ export const applyInboundInboxEmailInternal = internalMutation({
 // Reply classification
 // ---------------------------------------------------------------------------
 
-/** The reply to classify; null when it is no longer the pending one (stale). */
-export const getReplyContextInternal = internalQuery({
+/**
+ * One-shot claim of the reply to classify. Returns `claimed` once per
+ * (sequence, email): the first caller records `replyClassificationEmailId`
+ * before any inference, so a repeated action never replays it. `stale` means
+ * the email is no longer the pending reply.
+ */
+export const getReplyContextInternal = internalMutation({
   args: { sequenceId: v.id("procurementOutreachSequences"), emailId: v.string() },
   handler: async (ctx, args) => {
     const sequence = await ctx.db.get(args.sequenceId);
@@ -2390,28 +2577,35 @@ export const getReplyContextInternal = internalQuery({
       sequence.status !== "reply_check" ||
       sequence.pendingReplyEmailId !== args.emailId
     )
-      return null;
+      return { status: "stale" as const };
+    if (sequence.replyClassificationEmailId === args.emailId)
+      return { status: "already_claimed" as const };
     const message = await ctx.db
       .query("procurementEmailMessages")
       .withIndex("by_resendInboxEmailId", (q) => q.eq("resendInboxEmailId", args.emailId))
       .first();
+    // Not mirrored yet: leave unclaimed; recovery hands it to the operator on timeout.
+    if (!message) return { status: "not_ready" as const };
+    await ctx.db.patch(sequence._id, {
+      replyClassificationEmailId: args.emailId,
+      updatedAt: dayjs().valueOf(),
+    });
     const request = await ctx.db.get(sequence.requestId);
     return {
+      status: "claimed" as const,
       sequenceId: sequence._id,
       emailId: args.emailId,
       inboxId: sequence.inboxId ?? null,
       resendThreadId: sequence.resendThreadId ?? null,
       recipientEmail: sequence.recipient.email,
       requestTitle: request?.title ?? null,
-      message: message
-        ? {
-            subject: message.subject,
-            fromEmail: message.fromEmail,
-            fromName: message.fromName ?? null,
-            text: message.currentText.slice(0, 20_000),
-            receivedAt: message.receivedAt,
-          }
-        : null,
+      message: {
+        subject: message.subject,
+        fromEmail: message.fromEmail,
+        fromName: message.fromName ?? null,
+        text: message.currentText.slice(0, 20_000),
+        receivedAt: message.receivedAt,
+      },
     };
   },
 });
@@ -2485,29 +2679,56 @@ export const applyReplyClassificationInternal = internalMutation({
 
 const RECOVERY_SCAN = 200;
 const RECOVERY_DISPATCH = 50;
+const BLOCKED_RECHECK_MS = 5 * 60 * 1000;
 
 export const recoverInternal = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = dayjs().valueOf();
     let dispatched = 0;
+    const dispatch = async (stepId: Id<"procurementOutreachSteps">) => {
+      await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.sendStep, { stepId });
+      dispatched += 1;
+    };
 
-    // Due scheduled steps. Scan wider than the dispatch limit: a held
-    // (reply_check) or out-of-order step must not starve the rest.
+    // Expired leases first: the earlier attempt's outcome is unknown and claim
+    // reuses its draft and keys. Held or finished sequences never consume the budget.
+    const expired = await ctx.db
+      .query("procurementOutreachSteps")
+      .withIndex("by_status_and_leaseUntil", (q) => q.eq("status", "sending").lte("leaseUntil", now))
+      .take(RECOVERY_SCAN);
+    for (const step of expired) {
+      const sequence = await ctx.db.get(step.sequenceId);
+      if (!sequence || !isLive(sequence.status)) {
+        await ctx.db.patch(step._id, {
+          status: "cancelled",
+          error: "stopped_while_sending",
+          leaseToken: undefined,
+          leaseUntil: undefined,
+          updatedAt: now,
+        });
+        continue;
+      }
+      if (sequence.status !== "active" || dispatched >= RECOVERY_DISPATCH) continue;
+      await dispatch(step._id);
+    }
+
+    // Due scheduled steps. Rows that cannot run yet are pushed into the future so
+    // they leave the scan window instead of starving later rows; the sequence
+    // re-times its unsent steps when the predecessor finishes or the hold resolves.
     const due = await ctx.db
       .query("procurementOutreachSteps")
       .withIndex("by_status_and_dueAt", (q) => q.eq("status", "scheduled").lte("dueAt", now))
       .take(RECOVERY_SCAN);
     for (const step of due) {
-      if (dispatched >= RECOVERY_DISPATCH) break;
       const sequence = await ctx.db.get(step.sequenceId);
-      if (!sequence) continue;
-      if (sequence.status !== "active") {
-        if (!isLive(sequence.status))
-          await ctx.db.patch(step._id, { status: "cancelled", updatedAt: now });
+      if (!sequence || !isLive(sequence.status)) {
+        await ctx.db.patch(step._id, { status: "cancelled", updatedAt: now });
         continue;
       }
-      if (step.index > 0) {
+      let blockedFor: number | null = null;
+      if (sequence.status !== "active") blockedFor = REPLY_CHECK_TIMEOUT_MS;
+      else if (step.index > 0) {
         const previous = await ctx.db
           .query("procurementOutreachSteps")
           .withIndex("by_sequenceId_and_index", (q) =>
@@ -2515,24 +2736,14 @@ export const recoverInternal = internalMutation({
           )
           .unique();
         // Neither skip ahead of, nor overtake, an unfinished predecessor.
-        if (!previous || !stepDone(previous)) continue;
+        if (!previous || !stepDone(previous)) blockedFor = BLOCKED_RECHECK_MS;
       }
-      await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.sendStep, {
-        stepId: step._id,
-      });
-      dispatched += 1;
-    }
-
-    // Expired leases: the earlier attempt's outcome is unknown; claim reuses its draft and keys.
-    const expired = await ctx.db
-      .query("procurementOutreachSteps")
-      .withIndex("by_status_and_leaseUntil", (q) => q.eq("status", "sending").lte("leaseUntil", now))
-      .take(RECOVERY_DISPATCH);
-    for (const step of expired) {
-      await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.sendStep, {
-        stepId: step._id,
-      });
-      dispatched += 1;
+      if (blockedFor !== null) {
+        await ctx.db.patch(step._id, { dueAt: now + blockedFor, updatedAt: now });
+        continue;
+      }
+      if (dispatched >= RECOVERY_DISPATCH) break;
+      await dispatch(step._id);
     }
 
     // A reply check that never resolved becomes a manual handoff.
@@ -2572,7 +2783,8 @@ export const recoverInternal = internalMutation({
         q.eq("status", "processing").lte("updatedAt", now - INBOX_EVENT_LEASE_MS),
       )
       .take(RECOVERY_DISPATCH);
-    for (const event of [...events, ...stuckEvents])
+    const eventBatch = [...events, ...stuckEvents].slice(0, RECOVERY_DISPATCH);
+    for (const event of eventBatch)
       await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.handleInboxEvent, {
         eventId: event._id,
       });
@@ -2581,7 +2793,7 @@ export const recoverInternal = internalMutation({
       steps: dispatched,
       replyChecksTimedOut: checking.length,
       cadencesFailed: pendingCadences.length,
-      events: events.length + stuckEvents.length,
+      events: eventBatch.length,
     };
   },
 });
