@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useAction, useMutation } from "convex/react";
 import { Mail as MailIcon, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -98,7 +98,7 @@ export function usePendingEmailActions(
   return { pendingEmail, busy, run };
 }
 
-function formatEmailAddressList(
+export function formatEmailAddressList(
   addresses: string[] | undefined,
 ): string | null {
   return addresses?.filter(Boolean).join(", ") || null;
@@ -149,7 +149,7 @@ function sanitizeEmailPreviewHtml(html: string | undefined): string | null {
   return document.body.innerHTML;
 }
 
-function EmailBodyPreview({ html, text }: { html?: string; text: string }) {
+export function EmailBodyPreview({ html, text }: { html?: string; text: string }) {
   const safeHtml = useMemo(() => sanitizeEmailPreviewHtml(html), [html]);
 
   if (safeHtml) {
@@ -168,7 +168,7 @@ function EmailBodyPreview({ html, text }: { html?: string; text: string }) {
   );
 }
 
-function EmailHeaderRow({
+export function EmailHeaderRow({
   label,
   value,
 }: {
@@ -189,12 +189,29 @@ function EmailHeaderRow({
   );
 }
 
-function EmailHeaderAttachments({
+/** Header grid shared by the client and operator email panels. */
+export function EmailHeaderGrid({ children }: { children: ReactNode }) {
+  return (
+    <dl
+      className="grid items-start gap-x-4 border-b border-input px-5 py-5"
+      style={{
+        gridTemplateColumns: "5rem minmax(0, 1fr)",
+        rowGap: "0.375rem",
+      }}
+    >
+      {children}
+    </dl>
+  );
+}
+
+export function EmailHeaderAttachments({
   attachments,
   threadId,
+  operatorThreadId,
 }: {
-  attachments: ThreadMessage["attachments"];
-  threadId: Id<"threads">;
+  attachments: Array<{ filename: string; contentType?: string; fileId?: Id<"_storage"> }> | undefined;
+  threadId?: Id<"threads">;
+  operatorThreadId?: string;
 }) {
   if (!attachments?.length) return null;
   return (
@@ -203,9 +220,138 @@ function EmailHeaderAttachments({
         Attachments
       </dt>
       <dd className="col-span-1 min-w-0">
-        <ChatAttachmentList attachments={attachments} threadId={threadId} size="compact" collapseAfter={2} />
+        <ChatAttachmentList
+          attachments={attachments}
+          threadId={threadId}
+          operatorThreadId={operatorThreadId}
+          size="compact"
+          collapseAfter={2}
+        />
       </dd>
     </>
+  );
+}
+
+/** Bordered card shell shared by single email summary cards. */
+export function EmailCardFrame({
+  compact = false,
+  children,
+}: {
+  compact?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`${compact ? "mt-2" : ""} w-fit min-w-64 max-w-md overflow-hidden rounded-md border border-input bg-card transition-colors hover:border-border-hover hover:bg-foreground/[0.025] sm:min-w-72`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Clickable summary block: kind label, subject and recipients, plus optional extras. */
+export function EmailCardSummary({
+  label,
+  subject,
+  recipients,
+  onOpen,
+  children,
+}: {
+  label: string;
+  subject: string;
+  recipients: string;
+  onOpen?: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="block w-full min-w-0 px-3 py-2.5 text-left"
+    >
+      <span className="min-w-0 flex-1">
+        <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.medium")}`}>
+          {label}
+        </span>
+        <span className={`block truncate text-foreground/90 ${typeStyle("body.large")}`}>
+          {subject}
+        </span>
+        <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}>
+          {recipients}
+        </span>
+        {children}
+      </span>
+    </button>
+  );
+}
+
+/** Container for several emails with a title row and divided rows. */
+export function EmailStackFrame({
+  label,
+  action,
+  children,
+}: {
+  label: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="w-full max-w-md overflow-hidden rounded-md border border-input bg-card">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+        <p className={`min-w-0 truncate text-foreground/90 ${typeStyle("body.large")}`}>
+          {label}
+        </p>
+        {action}
+      </div>
+      <div className="divide-y divide-border">{children}</div>
+    </div>
+  );
+}
+
+export function EmailStackRow({
+  subject,
+  recipients,
+  attachmentCount,
+  status,
+  isOpen,
+  onOpen,
+}: {
+  subject: string;
+  recipients: string;
+  attachmentCount: number;
+  status: { label: string } & StatusPresentation;
+  isOpen: boolean;
+  onOpen?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`block w-full min-w-0 px-3 py-2.5 text-left transition-colors ${
+        isOpen ? "bg-foreground/[0.035]" : "hover:bg-foreground/[0.025]"
+      }`}
+    >
+      <span className="flex min-w-0 items-start justify-between gap-3">
+        <span className="min-w-0">
+          <span className={`block truncate text-foreground/90 ${typeStyle("body.large")}`}>
+            {subject}
+          </span>
+          <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}>
+            {recipients}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          {attachmentCount > 0 ? (
+            <span className={`text-muted-foreground/45 ${typeStyle("caption.default")}`}>
+              {attachmentCount} file{attachmentCount === 1 ? "" : "s"}
+            </span>
+          ) : null}
+          <StatusTag tone={status.tone} indicator={status.indicator}>
+            {status.label}
+          </StatusTag>
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -262,26 +408,13 @@ export function EmailSummaryCard({
       : "View sent email";
 
   return (
-    <div
-      className={`${compact ? "mt-2" : ""} w-fit min-w-64 max-w-md overflow-hidden rounded-md border border-input bg-card transition-colors hover:border-border-hover hover:bg-foreground/[0.025] sm:min-w-72`}
-    >
-      <button
-        type="button"
-        onClick={() => onOpen?.(message)}
-        className="block w-full min-w-0 px-3 py-2.5 text-left"
-      >
-        <span className="min-w-0 flex-1">
-          <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.medium")}`}>
-            {emailStatus(message).summary}
-          </span>
-          <span className={`block truncate text-foreground/90 ${typeStyle("body.large")}`}>
-            {emailPreview(message)}
-          </span>
-          <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}>
-            {emailRecipients(message)}
-          </span>
-        </span>
-      </button>
+    <EmailCardFrame compact={compact}>
+      <EmailCardSummary
+        label={emailStatus(message).summary}
+        subject={emailPreview(message)}
+        recipients={emailRecipients(message)}
+        onOpen={() => onOpen?.(message)}
+      />
       {isOpen ? null : (
         <div className="flex items-center justify-end gap-1.5 border-t border-border px-3 py-2.5">
           <PillButton
@@ -320,7 +453,7 @@ export function EmailSummaryCard({
           ) : null}
         </div>
       )}
-    </div>
+    </EmailCardFrame>
   );
 }
 
@@ -389,12 +522,10 @@ export function EmailStackCard({
   }
 
   return (
-    <div className="w-full max-w-md overflow-hidden rounded-md border border-input bg-card">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
-        <p className={`min-w-0 truncate text-foreground/90 ${typeStyle("body.large")}`}>
-          {stackLabel}
-        </p>
-        {draftCount > 1 ? (
+    <EmailStackFrame
+      label={stackLabel}
+      action={
+        draftCount > 1 ? (
           <ActionPill
             type="button"
             size="compact"
@@ -406,47 +537,21 @@ export function EmailStackCard({
           >
             Send all
           </ActionPill>
-        ) : null}
-      </div>
-      <div className="divide-y divide-border">
-        {orderedMessages.map((message) => {
-          const attachmentCount = message.attachments?.length ?? 0;
-          const isOpen = isOpenMessageId === message._id;
-          const status = emailStatus(message);
-          return (
-            <button
-              key={message._id}
-              type="button"
-              onClick={() => onOpen?.(message)}
-              className={`block w-full min-w-0 px-3 py-2.5 text-left transition-colors ${
-                isOpen ? "bg-foreground/[0.035]" : "hover:bg-foreground/[0.025]"
-              }`}
-            >
-              <span className="flex min-w-0 items-start justify-between gap-3">
-                <span className="min-w-0">
-                  <span className={`block truncate text-foreground/90 ${typeStyle("body.large")}`}>
-                    {emailPreview(message)}
-                  </span>
-                  <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}>
-                    {emailRecipients(message)}
-                  </span>
-                </span>
-                <span className="flex shrink-0 items-center gap-1.5">
-                  {attachmentCount > 0 ? (
-                    <span className={`text-muted-foreground/45 ${typeStyle("caption.default")}`}>
-                      {attachmentCount} file{attachmentCount === 1 ? "" : "s"}
-                    </span>
-                  ) : null}
-                  <StatusTag tone={status.tone} indicator={status.indicator}>
-                    {status.label}
-                  </StatusTag>
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
+        ) : null
+      }
+    >
+      {orderedMessages.map((message) => (
+        <EmailStackRow
+          key={message._id}
+          subject={emailPreview(message)}
+          recipients={emailRecipients(message)}
+          attachmentCount={message.attachments?.length ?? 0}
+          status={emailStatus(message)}
+          isOpen={isOpenMessageId === message._id}
+          onOpen={() => onOpen?.(message)}
+        />
+      ))}
+    </EmailStackFrame>
   );
 }
 
@@ -505,13 +610,7 @@ export function EmailThreadSidebar({
       closeLabel="Close email"
       onClose={onClose}
       header={
-        <dl
-          className="grid items-start gap-x-4 border-b border-input px-5 py-5"
-          style={{
-            gridTemplateColumns: "5rem minmax(0, 1fr)",
-            rowGap: "0.375rem",
-          }}
-        >
+        <EmailHeaderGrid>
           <EmailHeaderRow label="From" value={fromLine} />
           <EmailHeaderRow label="To" value={toLine} />
           <EmailHeaderRow label="Cc" value={ccLine} />
@@ -521,7 +620,7 @@ export function EmailThreadSidebar({
             attachments={pendingEmail ? pendingEmail.attachments : message.attachments}
             threadId={message.threadId}
           />
-        </dl>
+        </EmailHeaderGrid>
       }
       footer={
         isDraft ? (
