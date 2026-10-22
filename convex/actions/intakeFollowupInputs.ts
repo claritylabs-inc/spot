@@ -54,8 +54,8 @@ export const vehicleBodyType = action({
             },
           },
         } },
-        executionBudgetMs: 60000,
-      }, { telemetry: ctx });
+        executionBudgetMs: 5000,
+      }, { telemetry: ctx, abortSignal: AbortSignal.timeout(6000) });
       const answer = result.answers.body;
       // Below the prefill band the applicant chooses the body type themselves.
       const band = answer?.type === "choice" ? jevDecisionBand(jevChoiceConfidence(answer), "prefill") : "uncertain";
@@ -87,8 +87,8 @@ export const dates = action({
         trace: { traceId: `intake-inputs:${requestId}`, channel: "web" },
         state: followupInputState(questions),
         questions: followupInputQuestions(questions),
-        executionBudgetMs: 60000,
-      }, { telemetry: ctx });
+        executionBudgetMs: 5000,
+      }, { telemetry: ctx, abortSignal: AbortSignal.timeout(6000) });
       // Only a confident single-fact date selection changes the control; anything else stays a text input for the applicant.
       const selected = questions.filter((question, index) => withSelectedFollowupInput(question, index, result.answers[followupInputKey(index)], result.answers[followupCompoundKey(index)])?.kind === "date").map(question => question.id);
       console.info("[intakeFollowupInputs] dates", { requestId, questions: questions.length, dates: selected.length, retainedText: questions.length - selected.length });
