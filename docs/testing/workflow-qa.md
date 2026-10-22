@@ -1,5 +1,29 @@
 # Platform workflow QA
 
+## Intake decision follow-up — October 22, 2026
+
+PR #531 follow-up splits vehicle, workforce, cyber and company verification into
+atomic judgments, uses structured criteria and stable taxonomy evidence, and
+routes uncertain outcomes to the existing applicant fields. Separate intake gates
+default to 0.7 for suggestions, 0.8 for prefills and 0.9 for question omission.
+GL provision provenance carries the actual classifier probability. Versioned
+vehicle/cyber evidence keys invalidate legacy proposals without changing accepted
+applicant answers.
+
+Validation on the integrated follow-up: all 133 existing tests across 20 files
+passed (`npm test -- --maxWorkers=2`), and changed-file ESLint passed. Full ESLint also passed in the isolated VM
+with nine warnings, all in untouched files. Existing
+prefill acceptance fixtures were adjusted to the new 0.8 default; no new unit
+tests were added. Root and Convex TypeScript checks passed on the integrated
+commit in an isolated worker VM; attempts in the manager VM were memory-killed
+while a separate UI QA session's local servers were running. Temporary logs and
+assignment/review records are in `.context/decide-fixes/`.
+
+No Vercel previews or production deployments were used. This is code/contract
+validation, not live Jev accuracy calibration or browser E2E coverage of these
+new inference outcomes. The earlier browser coverage below still describes the
+ordinary input flows; uncertain decisions deliberately retain those controls.
+
 ## Introduction spacing refinement — October 20, 2026
 
 Local Chrome real-component preview passed top-aligned introduction content,

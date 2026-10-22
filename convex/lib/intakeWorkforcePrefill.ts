@@ -51,4 +51,3 @@ function claimVerificationQuestions(index:number):[string,DecisionQuestion][]{
     }}],
   ];
 }
-

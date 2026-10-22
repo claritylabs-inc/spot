@@ -92,6 +92,8 @@ export function boundIntakeFollowupQuestions(
 }
 
 export const FOLLOWUP_STEPS = { acord: 29, additional: 30 } as const;
+// Shared form validation checks probability shape; server writers and provenance
+// checks own the configurable confidence gate for accepting new inferences.
 export function validateFollowupAnswers(rows: IntakeFollowupAnswer[] = []) {
   if (
     rows.length > MAX_INTAKE_FOLLOWUPS ||
@@ -104,7 +106,7 @@ export function validateFollowupAnswers(rows: IntakeFollowupAnswer[] = []) {
       !row.label.trim() ||
       (row.skipped !== undefined && typeof row.skipped !== "boolean") ||
       (row.skipped === true && !!row.answer.trim()) ||
-      (row.prefilled !== undefined && ((!row.prefilled.contextHash.startsWith("cyber:") && !row.prefilled.contextHash.startsWith("workforce:") && (row.kind !== "yes_no" || !["Yes", "No"].includes(row.answer))) || !Number.isFinite(row.prefilled.confidence) || row.prefilled.confidence < .7 || row.prefilled.confidence > 1 || !row.prefilled.contextHash || row.prefilled.contextHash.length > 200)) ||
+      (row.prefilled !== undefined && ((!row.prefilled.contextHash.startsWith("cyber:") && !row.prefilled.contextHash.startsWith("workforce:") && (row.kind !== "yes_no" || !["Yes", "No"].includes(row.answer))) || !Number.isFinite(row.prefilled.confidence) || row.prefilled.confidence < 0 || row.prefilled.confidence > 1 || !row.prefilled.contextHash || row.prefilled.contextHash.length > 200)) ||
       (isWorkforceProviderSource(row.source) && row.answer.trim().startsWith("{") && !parseWorkforceProvider(row.answer)) ||
       (row.source?.endsWith(" · shared.operations.annual_payroll") && row.answer.trim().startsWith("{") && !parsePayrollAnswer(row.answer)) ||
       (row.source?.endsWith(" · wc.terms.covered_jurisdictions") && row.answer.trim().startsWith("{") && !parseWorkJurisdictions(row.answer)) ||
