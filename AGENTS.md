@@ -238,3 +238,5 @@ clears dependent scope/exceptions on country removal; explicit exceptions win.
 classification for the operator's manual Auto add providers action. Its compact
 results drawer lists request-relevant verification gaps; unknown providers are
 not auto-added. See `docs/research/provider-geography-2026-10-22.md`.
+
+Procurement mail has one request-scoped Inbox (`?view=email`), backed by the existing `procurementEmailThreads` and `procurementEmailMessages`. Forwarded imports and Resend outreach share a paginated read projection, request-bound conversation reads, and the shared message renderer. Existing classification, attachments and quote filing remain canonical; linked outreach wins over email-address inference. Resend conversations cannot be reassigned away from the originating request; forwarded conversations retain within-company reassignment. Reply notifications and outreach thread actions open the Inbox.

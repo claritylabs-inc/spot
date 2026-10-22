@@ -697,7 +697,7 @@ async function notifyManualHandoff(
   const subject = request ? ` on ${request.title}` : "";
   const body = needsAttention
     ? `Outreach to ${provider}${subject} ${status === "failed" ? "failed" : "stopped"} (${code}). Automated follow-ups stopped; review the Providers tab.`
-    : `Automated follow-ups stopped${subject}. Continue the conversation by hand.`;
+    : `Automated follow-ups stopped${subject}. Review the conversation in the request Inbox.`;
   // Scheduled, so a notification failure can never roll back the state change.
   // The explicit userId keeps this operator-private: it is neither org-wide nor
   // eligible for the client's Slack/email fan-out. Warning uses the operator's
@@ -709,7 +709,13 @@ async function notifyManualHandoff(
     type: "mailbox_attention",
     severity: "warning",
     actionType: "view_operator_procurement",
-    actionPayload: { clientOrgId: sequence.clientOrgId, requestId: sequence.requestId },
+    actionPayload: {
+      clientOrgId: sequence.clientOrgId,
+      requestId: sequence.requestId,
+      view: needsAttention ? "proposals" : "email",
+      ...(!needsAttention && sequence.procurementEmailThreadId
+        ? { emailThreadId: sequence.procurementEmailThreadId } : {}),
+    },
     title,
     body,
     coalesceKeyParts: needsAttention

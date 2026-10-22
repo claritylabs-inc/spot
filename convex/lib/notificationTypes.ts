@@ -11,7 +11,12 @@ export const notificationActionTypeValidator = v.union(
 );
 
 export const notificationActionPayloadValidator = v.union(
-  v.object({ clientOrgId: v.id("organizations"), requestId: v.id("procurementRequests") }),
+  v.object({
+    clientOrgId: v.id("organizations"),
+    requestId: v.id("procurementRequests"),
+    view: v.optional(v.union(v.literal("email"), v.literal("proposals"))),
+    emailThreadId: v.optional(v.id("procurementEmailThreads")),
+  }),
   v.object({ policyId: v.id("policies"), tab: v.optional(v.string()) }),
   v.object({
     threadId: v.id("threads"),
@@ -53,7 +58,7 @@ export function notificationActionHref(
 ): string | undefined {
   if (!payload) return undefined;
   if (actionType === "view_operator_procurement" && "requestId" in payload && "clientOrgId" in payload) {
-    return `/operator/clients/${payload.clientOrgId}/procurement/${payload.requestId}?view=proposals`;
+    return `/operator/clients/${payload.clientOrgId}/procurement/${payload.requestId}?view=${payload.view ?? "proposals"}${payload.emailThreadId ? `&thread=${payload.emailThreadId}` : ""}`;
   }
   if (actionType === "view_policy" && "policyId" in payload) {
     return `/policies/${payload.policyId}${payload.tab ? `?tab=${encodeURIComponent(payload.tab)}` : ""}`;
