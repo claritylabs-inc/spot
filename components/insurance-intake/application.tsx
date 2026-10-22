@@ -447,7 +447,9 @@ function Application({
       .filter(question => !isFixedVehicleFollowup(question) &&
         followupQuestionVisible(question, details.followups) &&
         !details.followups?.find(row => row.id === question.id)?.prefilled);
-  const followupEntryChecked = (followupBatch?.status === "ready" && followupBatch.current) || checkedFollowupEntry === `${requestId}:${followupSection}`;
+  const followupEntryChecked = (followupBatch?.status === "ready" && followupBatch.current) ||
+    (checkedFollowupEntry === `${requestId}:${followupSection}` &&
+      (followupBatch?.status !== "ready" || followupBatch.current));
   const followupEntryFailed = checkedFollowupEntry === `${requestId}:${followupSection}:failed`;
   const currentSection = intakeSection(step);
   const sectionStart = atIntakeSectionStart(step, followupPageIndex, isSavings) ||
