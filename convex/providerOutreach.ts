@@ -105,18 +105,6 @@ const MAX_STEPS_PER_SEQUENCE = 10;
 const SHORT_TEXT = 500;
 /** Longest a step may wait for an impersonating sender before the sequence stops. */
 const IMPERSONATION_MAX_DEFER_MS = 24 * 60 * 60 * 1000;
-const DEFERRAL_MARKER = "Sender is impersonating a client; waiting since ";
-function deferralMarker(since: number) {
-  return `${DEFERRAL_MARKER}${since}`;
-}
-/** The first deferral time survives re-claims because the marker rides in `error`, which only a send clears. */
-function deferralStartedAt(step: Pick<Step, "error">, now: number) {
-  const match = /waiting since (\d{10,})$/.exec(step.error ?? "");
-  return match ? Number(match[1]) : now;
-}
-function keepDeferralMarker(step: Pick<Step, "error">) {
-  return step.error?.startsWith(DEFERRAL_MARKER) ? step.error : undefined;
-}
 
 function isLive(status: SequenceStatus) {
   return LIVE_SEQUENCE_STATUSES.includes(status);
@@ -1306,7 +1294,7 @@ async function checkStepWorld(
     )
     .first();
   if (impersonating) {
-    const since = deferralStartedAt(step, now);
+    const since = step.impersonationDeferredAt ?? now;
     if (now - since > IMPERSONATION_MAX_DEFER_MS)
       return { kind: "stop", reason: "impersonation_deferral_exceeded" };
     return {
@@ -1504,7 +1492,8 @@ export const claimStepInternal = internalMutation({
       await ctx.db.patch(step._id, {
         status: "scheduled",
         dueAt: Math.max(step.dueAt, check.runAt),
-        error: deferralMarker(check.since),
+        impersonationDeferredAt: check.since,
+        error: "Sender is impersonating a client",
         leaseToken: undefined,
         leaseUntil: undefined,
         updatedAt: now,
@@ -1537,7 +1526,7 @@ export const claimStepInternal = internalMutation({
       leaseToken,
       leaseUntil,
       firstAttemptAt,
-      error: keepDeferralMarker(step),
+      error: undefined,
       updatedAt: now,
     });
     const earlier = await ctx.db
@@ -1671,7 +1660,8 @@ export const beginSendInternal = internalMutation({
       await ctx.db.patch(step._id, {
         status: "scheduled",
         dueAt: Math.max(step.dueAt, check.runAt),
-        error: deferralMarker(check.since),
+        impersonationDeferredAt: check.since,
+        error: "Sender is impersonating a client",
         attempts: Math.max(0, step.attempts - 1),
         leaseToken: undefined,
         leaseUntil: undefined,
@@ -2303,8 +2293,8 @@ async function routeInboxEvent(
 
 /**
  * Whether an unmapped event could still gain a sequence: only if a recently
- * updated, live sequence in the same inbox has no thread id yet (its first
- * email's sent-event or finish has not landed). Bounded scan; if the bound is
+ * updated sequence in the same inbox has no thread id yet (its first
+ * email's sent-event or finish has not landed, including a send stopped in flight). Bounded scan; if the bound is
  * hit, waiting is assumed. Anything else is unmatched immediately.
  */
 async function mappingMayAppear(
@@ -2313,7 +2303,7 @@ async function mappingMayAppear(
   now: number,
 ) {
   const LIMIT = 100;
-  for (const status of LIVE_SEQUENCE_STATUSES) {
+  for (const status of SEQUENCE_STATUSES) {
     const recent = await ctx.db
       .query("procurementOutreachSequences")
       .withIndex("by_status_and_updatedAt", (q) =>

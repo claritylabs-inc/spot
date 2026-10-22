@@ -2876,6 +2876,7 @@ export default defineSchema({
     leaseToken: v.optional(v.string()),
     leaseUntil: v.optional(v.number()),
     firstAttemptAt: v.optional(v.number()),
+    impersonationDeferredAt: v.optional(v.number()),
     generationStartedAt: v.optional(v.number()),
     draft: v.optional(
       v.object({
