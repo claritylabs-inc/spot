@@ -1965,7 +1965,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Correct the recipient-based category or assigned request for an imported procurement email thread. Request moves are limited to another request for the same client; the originally addressed request remains immutable.",
+      "Correct a procurement email thread's category or reassign a forwarded thread within the same client. Provider outreach conversations stay with their originating request. The originally addressed request remains immutable.",
     inputSchema: z
       .object({
         procurementEmailThreadId,

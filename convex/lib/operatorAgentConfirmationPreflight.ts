@@ -1073,6 +1073,9 @@ export async function preflightOperatorToolConfirmation(
         if (request.clientOrgId !== thread.clientOrgId) {
           throw new Error("Email thread can move only within the same client");
         }
+        if (thread.resendThreadId && request._id !== thread.requestId) {
+          throw new Error("Provider outreach conversations stay with their originating request");
+        }
         if (request._id === thread.requestId && args.input.category == null) {
           throw new Error("No email thread fields changed");
         }

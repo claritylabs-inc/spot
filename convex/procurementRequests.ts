@@ -43,6 +43,7 @@ import {
   isSpotOwnedDomain,
 } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -1842,7 +1843,7 @@ export async function getProcurementEmailThreadDetails(
       .collect(),
   ]);
   const hydratedMessages = await Promise.all(
-    messages.map(async (message) => ({
+    messages.map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
       ...message,
       files: await Promise.all(
         message.clientFileIds.map(async (clientFileId) => {
@@ -1949,7 +1950,8 @@ export async function previewProcurementEmailReconciliation(
   ).filter(
     (outreach): outreach is NonNullable<typeof outreach> => outreach !== null,
   );
-  const matchingOutreaches = eligibleOutreaches.filter(
+  const linkedOutreach = eligibleOutreaches.find((outreach) => outreach._id === thread.outreachId);
+  const matchingOutreaches = linkedOutreach ? [linkedOutreach] : eligibleOutreaches.filter(
     (outreach) =>
       outreach.contactEmail &&
       participantEmails.has(normalizeProcurementEmail(outreach.contactEmail)),
@@ -2043,18 +2045,17 @@ export async function previewProcurementEmailReconciliation(
 
 /** Request-bound inbox projection; never reads the operator's other conversations. */
 export const getInbox = query({
-  args: { requestId: v.id("procurementRequests") },
-  handler: async (ctx, { requestId }) => {
+  args: { requestId: v.id("procurementRequests"), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { requestId, paginationOpts }) => {
     await requireOperator(ctx);
     await requireRequest(ctx, requestId);
-    const limit = 200;
-    const rows = await ctx.db
+    const result = await ctx.db
       .query("procurementEmailThreads")
       .withIndex("request", (q) => q.eq("requestId", requestId))
       .order("desc")
-      .take(limit + 1);
+      .paginate({ ...paginationOpts, numItems: Math.max(1, Math.min(40, paginationOpts.numItems)) });
     const threads = await Promise.all(
-      rows.slice(0, limit).filter(activeEmailThread).map(async (thread) => {
+      result.page.filter(activeEmailThread).map(async (thread) => {
         const [latest, candidateSequence] = await Promise.all([
           ctx.db.query("procurementEmailMessages")
             .withIndex("thread", (q) => q.eq("threadId", thread._id))
@@ -2086,7 +2087,8 @@ export const getInbox = query({
           messageCount: thread.messageCount,
           source: thread.resendThreadId ? "resend" as const : "forwarded" as const,
           latestDirection,
-          needsReply: latestDirection === "inbound" && sequence?.status === "responded",
+          needsReply: latestDirection === "inbound" && sequence !== null &&
+            ["responded", "stopped", "failed"].includes(sequence.status) && sequence.stopReason !== "bounced",
           sequenceStatus: sequence?.status ?? null,
           preview: latest?.currentText.replace(/\s+/g, " ").trim().slice(0, 240) ?? "",
           fromName: latest?.fromName ?? null,
@@ -2094,7 +2096,7 @@ export const getInbox = query({
         };
       }),
     );
-    return { threads, truncated: rows.length > limit, limit };
+    return { ...result, page: threads };
   },
 });
 
@@ -2415,7 +2417,8 @@ export const ingestEmailInternal = internalMutation({
       const candidate = await ctx.db.get(parent.threadId);
       if (
         candidate?.clientOrgId === addressedRequest.clientOrgId &&
-        !candidate.deletedAt
+        !candidate.deletedAt &&
+        (!candidate.resendThreadId || candidate.requestId === addressedRequest._id)
       ) {
         thread = candidate;
         break;

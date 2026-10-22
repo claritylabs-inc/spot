@@ -1,5 +1,6 @@
 import { v, type Infer } from "convex/values";
 import { RESEND_IDEMPOTENCY_SAFE_RETRY_MS } from "./resendInbox";
+import { emailContentValidator } from "./threadMessageValidators";
 
 /**
  * Shared validators and constants for the provider-outreach durable state
@@ -130,6 +131,7 @@ export const inboxEmailValidator = v.object({
   inReplyTo: v.optional(v.string()),
   references: v.array(v.string()),
   text: v.string(),
+  forwarded: emailContentValidator.fields.forwarded,
   html: v.optional(v.string()),
   /** Epoch ms of the Resend `received_at`. */
   occurredAt: v.number(),
