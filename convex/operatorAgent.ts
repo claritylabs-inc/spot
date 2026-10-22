@@ -5,6 +5,7 @@ import {
   operatorExecutionPlanSchema,
 } from "./lib/operatorRunPlan";
 import { jevProceedThreshold } from "./lib/jevThreshold";
+import { planningRequiredByProbabilities } from "./lib/operatorPlanning";
 import { readUnlinkedIntakeByOperator } from "./lib/intakeDiagnostics";
 import {
   prepareApplicationToolUpdate,
@@ -1400,6 +1401,8 @@ export async function enqueueOperatorMessage(
     slackThreadContext?: SlackThreadContextSnapshot;
     toolArtifacts?: Array<{ type: string; data: unknown }>;
     requireUploadIntent?: boolean;
+    /** Operator asked for a plan before acting (plan mode). */
+    planRequested?: boolean;
   },
 ) {
   const thread = await requireOperatorThread(
@@ -1571,6 +1574,7 @@ export async function enqueueOperatorMessage(
     executionKind: "goal",
     objective: content,
     status: "queued",
+    ...(args.planRequested ? { planRequested: true } : {}),
     checkpoint: { iteration: 0, executionCount: 0 },
     createdAt: now,
     updatedAt: now,
@@ -3954,6 +3958,7 @@ export const sendMessage = mutation({
     content: v.string(),
     pageContext: v.optional(pageContextValidator),
     attachments: v.optional(v.array(operatorAttachmentValidator)),
+    planMode: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -3972,6 +3977,7 @@ export const sendMessage = mutation({
       pageContext: args.pageContext,
       attachments: args.attachments,
       requireUploadIntent: Boolean(args.attachments?.length),
+      planRequested: args.planMode,
     });
     return { threadId, ...result };
   },
@@ -4029,6 +4035,7 @@ export const rerunTurn = mutation({
       content: original.content,
       attachments: original.attachments,
       emailContent: original.emailContent,
+      planRequested: source.planRequested,
       toolArtifacts: [{ type: "operator_turn_rerun", data: args }],
     });
     const summary = [
@@ -6204,11 +6211,18 @@ export const recordPlanningAssessmentInternal = internalMutation({
       )
     )
       throw new Error("Invalid planning probability");
-    if (
-      !args.assessment.required &&
-      probabilities.some((p) => p !== null && p >= jevProceedThreshold())
-    )
-      throw new Error("Confident multi-step workflows require a plan");
+    const requiredByAnswers = planningRequiredByProbabilities(
+      Object.values(args.assessment.probabilities),
+      jevProceedThreshold(),
+    );
+    if (args.assessment.source === "operator") {
+      if (!args.assessment.required || !run.planRequested)
+        throw new Error("Operator plan requests require a plan");
+    } else if (args.assessment.required !== requiredByAnswers) {
+      throw new Error(
+        "Planning requires every answer to be conclusive with at least one confident yes",
+      );
+    }
     await ctx.db.patch(run._id, {
       planningAssessment: args.assessment,
       updatedAt: dayjs().valueOf(),

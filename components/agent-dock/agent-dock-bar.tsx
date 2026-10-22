@@ -28,7 +28,9 @@ function TabButton({
   label,
   onSelect,
   onClose,
+  closeHint,
 }: {
+  closeHint?: string;
   active: boolean;
   label: string;
   onSelect: () => void;
@@ -79,6 +81,7 @@ function TabButton({
         <button
           type="button"
           aria-label={`Close ${label}`}
+          title={closeHint ? `Close (${closeHint})` : undefined}
           onClick={onClose}
           className="absolute right-2 flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/tab:opacity-100"
         >
@@ -121,6 +124,7 @@ function ThreadTab({
       label={summary?.title ?? "Chat"}
       onSelect={() => dock.openThread(tab.threadId)}
       onClose={() => closeTab(tab.threadId)}
+      closeHint={active ? "⌥W" : undefined}
     />
   );
 }
@@ -155,6 +159,7 @@ export function AgentDockBar({
       <button
         type="button"
         aria-label={adapter.newChatLabel}
+        title={`${adapter.newChatLabel} (⌥N)`}
         onClick={dock.newChat}
         className={cn(
           TAB_ITEM_CLASS,
@@ -195,7 +200,7 @@ export function AgentDockBar({
           variant="icon"
           size="compact"
           iconOnly
-          label="History"
+          label="All chats (⌥H)"
           aria-pressed={open && dock.view === "history"}
           className={cn(
             open && dock.view === "history" && "bg-foreground/6 text-foreground",
@@ -212,7 +217,7 @@ export function AgentDockBar({
             variant="icon"
             size="compact"
             iconOnly
-            label={mode === "full" ? "Restore" : "Full screen"}
+            label={mode === "full" ? "Restore (⌥E)" : "Expand (⌥E)"}
             onClick={dock.toggleFull}
           >
             {mode === "full" ? (
@@ -228,7 +233,7 @@ export function AgentDockBar({
             variant="icon"
             size="compact"
             iconOnly
-            label="Minimize"
+            label="Minimize (⌘J)"
             onClick={() => dock.setMode("collapsed")}
           >
             <X className="size-3.5" />

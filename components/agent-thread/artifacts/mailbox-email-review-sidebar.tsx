@@ -39,7 +39,8 @@ import {
   DropdownMenuTrigger,
 } from "@claritylabs-inc/ui/components/dropdown-menu";
 import { typeStyle } from "@/lib/typography";
-import { ActionPill, ArtifactSidebar, useBusyKey } from "./shell";
+import { ChatArtifact } from "@/components/chat/artifact";
+import { ActionPill, useBusyKey } from "./shell";
 import { asNumber, asRecord, asRecords } from "./normalize";
 
 type MailboxAttachment = {
@@ -441,7 +442,7 @@ export function MailboxEmailReviewSidebar({
     : [["own_org", "Import requirements"]];
 
   return (
-    <ArtifactSidebar
+    <ChatArtifact
       title={liveEmail?.subject ?? email.subject}
       closeLabel="Close email review"
       onClose={onClose}
@@ -592,6 +593,6 @@ export function MailboxEmailReviewSidebar({
           Loading email
         </div>
       )}
-    </ArtifactSidebar>
+    </ChatArtifact>
   );
 }

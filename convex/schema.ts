@@ -4661,6 +4661,7 @@ export default defineSchema({
       v.union(v.literal("goal"), v.literal("direct_tool")),
     ),
     objective: v.string(),
+    planRequested: v.optional(v.boolean()),
     planningAssessment: v.optional(operatorPlanningAssessmentValidator),
     executionPlan: v.optional(operatorExecutionPlanValidator),
     status: v.union(

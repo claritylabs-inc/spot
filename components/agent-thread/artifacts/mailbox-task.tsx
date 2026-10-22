@@ -19,7 +19,8 @@ import {
   type LiveMailboxEmail,
 } from "./mailbox-email-review-sidebar";
 import { asNumber, asRecord, asRecords, asString } from "./normalize";
-import { ActionPill, ArtifactSidebar, useBusyKey } from "./shell";
+import { ChatArtifact } from "@/components/chat/artifact";
+import { ActionPill, useBusyKey } from "./shell";
 import { typeStyle } from "@/lib/typography";
 
 export function normalizeMailboxTask(data: unknown) {
@@ -441,7 +442,7 @@ export function MailboxTaskSidebar({
       ? "Needs review"
       : undefined;
   return (
-    <ArtifactSidebar
+    <ChatArtifact
       title={mailboxTaskDisplayName(task)}
       status={
         statusLabel ? (
@@ -456,6 +457,6 @@ export function MailboxTaskSidebar({
       {artifact.type === "mailbox_task" ? (
         <MailboxTaskDetail task={task} orgId={orgId} threadId={threadId} />
       ) : null}
-    </ArtifactSidebar>
+    </ChatArtifact>
   );
 }

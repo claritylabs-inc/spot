@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState, type ReactNode } from "react";
 import { useConvexAuth, useQuery } from "convex/react";
-import { Clock, ExternalLink, Loader2, MoreHorizontal, Plus, X } from "lucide-react";
+import { Clock, ExternalLink, Loader2, MoreHorizontal, Plus } from "lucide-react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@claritylabs-inc/ui/components/dropdown-menu";
 import { BrandWordmark } from "@/components/auth-shell";
 import { BROWSER_EXTENSION_WELCOME_URL, notifyBrowserExtension } from "@/lib/browser-extension";
@@ -19,6 +19,7 @@ import {
   AppShellSlotsProvider,
   useAppShellSlot,
 } from "@/components/app-shell-slots";
+import { ChatArtifact } from "@/components/chat/artifact";
 import { EntityPreviewPanel } from "@/components/entity-preview-panel";
 import { PdfProvider, usePdf } from "@/components/pdf-context";
 import { PillButton } from "@/components/ui/pill-button";
@@ -163,29 +164,17 @@ function CapturePreviewPanel() {
   const text = capture?.preview;
   return (
     <AppShellPortal slot="artifactPanel" active={text != null}>
-      <div className="flex h-full w-full min-w-0 flex-col bg-background">
-        <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
-          <span className={cn("text-foreground", typeStyle("body.medium"))}>
-            Page context
-          </span>
-          <button
-            type="button"
-            aria-label="Close page context"
-            onClick={capture?.closePreview}
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground/40 transition-colors hover:bg-foreground/4 hover:text-foreground"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-        <div
-          className={cn(
-            "ph-no-capture min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words p-4",
-            typeStyle("body.default"),
-          )}
-        >
-          {text}
-        </div>
-      </div>
+      <ChatArtifact
+        title="Page context"
+        closeLabel="Close page context"
+        onClose={() => capture?.closePreview()}
+        bodyClassName={cn(
+          "ph-no-capture whitespace-pre-wrap break-words",
+          typeStyle("body.default"),
+        )}
+      >
+        {text}
+      </ChatArtifact>
     </AppShellPortal>
   );
 }

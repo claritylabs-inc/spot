@@ -9,15 +9,16 @@ import {
 import {
   EmailBodyPreview,
   EmailCardFrame,
-  EmailCardSummary,
   EmailHeaderAttachments,
-  EmailHeaderGrid,
-  EmailHeaderRow,
   EmailStackFrame,
   EmailStackRow,
   formatEmailAddressList,
 } from "@/components/agent-thread/artifacts/email";
-import { ArtifactSidebar } from "@/components/agent-thread/artifacts/shell";
+import {
+  ChatArtifact,
+  ChatArtifactMeta,
+  ChatArtifactMetaRow,
+} from "@/components/chat/artifact";
 import { ChatAttachmentList } from "@/components/chat/attachment-chip";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -73,45 +74,70 @@ export function useOperatorEmailDrafts(messages: OperatorAgentMessage[]) {
   );
 }
 
-function DraftCardDetails({
+/** One draft as a compact card: label and status, subject, recipients, a line of body. */
+function DraftCard({
   draft,
   threadId,
+  onOpen,
 }: {
   draft: OperatorEmailDraftView;
   threadId: string;
+  onOpen: () => void;
 }) {
   const status = draftStatus(draft);
   const preview = bodyPreview(draft.text);
   return (
-    <div className="space-y-1.5 px-3 pb-2.5">
-      <div className="flex min-w-0 items-center gap-2">
-        <StatusTag tone={status.tone} indicator={status.indicator}>
-          {status.label}
-        </StatusTag>
-        {draft.sendBlockedReason ? (
+    <EmailCardFrame>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="block w-full min-w-0 space-y-0.5 px-3 py-2 text-left"
+      >
+        <span className="flex min-w-0 items-center justify-between gap-2">
           <span
-            className={`min-w-0 truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}
+            className={`min-w-0 truncate text-muted-foreground/55 ${typeStyle("caption.medium")}`}
           >
-            {draft.sendBlockedReason}
+            {draft.organizationName
+              ? `Email draft · ${draft.organizationName}`
+              : "Email draft"}
+          </span>
+          <StatusTag
+            tone={status.tone}
+            indicator={status.indicator}
+            className="shrink-0"
+          >
+            {status.label}
+          </StatusTag>
+        </span>
+        <span
+          className={`block truncate text-foreground/90 ${typeStyle("body.medium")}`}
+        >
+          {draft.subject || "(no subject)"}
+        </span>
+        <span
+          className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}
+        >
+          {draft.sendBlockedReason ?? draftRecipients(draft)}
+        </span>
+        {preview ? (
+          <span
+            className={`block truncate text-muted-foreground/70 ${typeStyle("caption.default")}`}
+          >
+            {preview}
           </span>
         ) : null}
-      </div>
-      {preview ? (
-        <p
-          className={`line-clamp-2 break-words text-muted-foreground/70 ${typeStyle("body.default")}`}
-        >
-          {preview}
-        </p>
-      ) : null}
+      </button>
       {draft.attachments.length > 0 ? (
-        <ChatAttachmentList
-          attachments={draft.attachments}
-          operatorThreadId={threadId}
-          size="compact"
-          collapseAfter={2}
-        />
+        <div className="px-3 pb-2">
+          <ChatAttachmentList
+            attachments={draft.attachments}
+            operatorThreadId={threadId}
+            size="compact"
+            collapseAfter={2}
+          />
+        </div>
       ) : null}
-    </div>
+    </EmailCardFrame>
   );
 }
 
@@ -132,19 +158,11 @@ export function OperatorEmailDraftCards({
     const [draft] = drafts;
     return (
       <div className="mt-3">
-        <EmailCardFrame>
-          <EmailCardSummary
-            label={
-              draft.organizationName
-                ? `Email draft · ${draft.organizationName}`
-                : "Email draft"
-            }
-            subject={draft.subject || "(no subject)"}
-            recipients={draftRecipients(draft)}
-            onOpen={() => onOpen(draft)}
-          />
-          <DraftCardDetails draft={draft} threadId={threadId} />
-        </EmailCardFrame>
+        <DraftCard
+          draft={draft}
+          threadId={threadId}
+          onOpen={() => onOpen(draft)}
+        />
       </div>
     );
   }
@@ -179,7 +197,8 @@ export function OperatorEmailDraftPanel({
 }) {
   const status = draftStatus(draft);
   return (
-    <ArtifactSidebar
+    <ChatArtifact
+      eyebrow={draft.organizationName}
       title={draft.subject || "(no subject)"}
       status={
         <StatusTag
@@ -192,21 +211,17 @@ export function OperatorEmailDraftPanel({
       }
       closeLabel="Close email draft"
       onClose={onClose}
-      header={
-        <EmailHeaderGrid>
-          <EmailHeaderRow label="From" value={draft.from ?? null} />
-          <EmailHeaderRow label="To" value={formatEmailAddressList(draft.to)} />
-          <EmailHeaderRow label="Cc" value={formatEmailAddressList(draft.cc)} />
-          <EmailHeaderRow label="Bcc" value={formatEmailAddressList(draft.bcc)} />
-          <EmailHeaderRow
+      meta={
+        <ChatArtifactMeta>
+          <ChatArtifactMetaRow label="From" value={draft.from ?? null} />
+          <ChatArtifactMetaRow label="To" value={formatEmailAddressList(draft.to)} />
+          <ChatArtifactMetaRow label="Cc" value={formatEmailAddressList(draft.cc)} />
+          <ChatArtifactMetaRow label="Bcc" value={formatEmailAddressList(draft.bcc)} />
+          <ChatArtifactMetaRow
             label="Reply-To"
             value={formatEmailAddressList(draft.replyTo)}
           />
-          <EmailHeaderRow
-            label="Client"
-            value={draft.organizationName ?? null}
-          />
-          <EmailHeaderRow
+          <ChatArtifactMetaRow
             label="Updated"
             value={formatDisplayDateTime(draft.updatedAt)}
           />
@@ -214,20 +229,19 @@ export function OperatorEmailDraftPanel({
             attachments={draft.attachments}
             operatorThreadId={threadId}
           />
-        </EmailHeaderGrid>
+        </ChatArtifactMeta>
       }
       footer={
-        draft.status === "draft" ? (
+        draft.status === "draft" && draft.sendBlockedReason ? (
           <p
             className={`min-w-0 text-muted-foreground/60 ${typeStyle("caption.default")}`}
           >
-            {draft.sendBlockedReason ??
-              "Ask Spot to send it. You will be asked to approve the exact email."}
+            {draft.sendBlockedReason}
           </p>
         ) : null
       }
     >
       <EmailBodyPreview html={draft.html} text={draft.text} />
-    </ArtifactSidebar>
+    </ChatArtifact>
   );
 }

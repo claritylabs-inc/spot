@@ -164,9 +164,24 @@ function answerProbability(
 }
 
 /**
- * Code owns the decision: plan only when some answer is a confident yes. An
- * uncertain or missing answer no longer forces a plan, but is still recorded
- * as `uncertain` so the assessment stays auditable.
+ * Whether the four answers call for an automatic plan: every answer is
+ * present and conclusive, and at least one is a confident yes. Anything
+ * inconclusive means no plan; operators can request one in plan mode.
+ */
+export function planningRequiredByProbabilities(
+  probabilities: readonly (number | null)[],
+  threshold: number,
+): boolean {
+  const conclusive = probabilities.every(
+    (p) => p !== null && (p >= threshold || p <= 1 - threshold),
+  );
+  return conclusive && probabilities.some((p) => p !== null && p >= threshold);
+}
+
+/**
+ * Code owns the decision: plan automatically only on a conclusive yes. An
+ * uncertain or missing answer means no plan, recorded as `uncertain` so the
+ * assessment stays auditable.
  */
 export function planningAssessmentFromAnswers(
   answers: Record<string, { type: string; noul?: unknown }>,
@@ -180,11 +195,12 @@ export function planningAssessmentFromAnswers(
   };
   const threshold = jevProceedThreshold();
   const values = Object.values(probabilities);
-  const confidentYes = values.some((p) => p !== null && p >= threshold);
-  const allConfidentNo = values.every((p) => p !== null && p <= 1 - threshold);
+  const conclusive = values.every(
+    (p) => p !== null && (p >= threshold || p <= 1 - threshold),
+  );
   return {
-    required: confidentYes,
-    source: confidentYes || allConfidentNo ? "jev" : "uncertain",
+    required: planningRequiredByProbabilities(values, threshold),
+    source: conclusive ? "jev" : "uncertain",
     probabilities,
     ...(requestId ? { requestId } : {}),
   };

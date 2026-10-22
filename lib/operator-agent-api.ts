@@ -108,6 +108,7 @@ type SendMessageArgs = {
   content: string;
   pageContext?: PageContext;
   attachments?: BackendAttachment[];
+  planMode?: boolean;
 };
 type OperatorUploadTarget = {
   uploadUrl: string;
