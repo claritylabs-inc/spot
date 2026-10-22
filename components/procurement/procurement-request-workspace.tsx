@@ -143,6 +143,7 @@ import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const NONE = "__none__";
+const SUBMISSION_NOTES_SECTION = "Submission notes";
 
 function openRowOnKeyboard(
   event: KeyboardEvent<HTMLTableRowElement>,
@@ -1996,6 +1997,7 @@ export function ProcurementRequestWorkspace({
   const proposals = useQuery(api.procurementProposals.list, { requestId });
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
   const packetEditorRef = useRef<PacketEditorHandle>(null);
+  const submissionNotesRef = useRef<PacketEditorHandle>(null);
   const latestTabChange = useRef(0);
   const removeFileItem = useMutation(api.procurementRequests.removeFileItem);
   const [removingFileId, setRemovingFileId] = useState<string | null>(null);
@@ -2030,6 +2032,11 @@ export function ProcurementRequestWorkspace({
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
+      return;
+    if (
+      submissionNotesRef.current &&
+      !(await submissionNotesRef.current.save())
+    )
       return;
     if (change !== latestTabChange.current) return;
     router.push(`${basePath}/${requestId}?view=${nextView}`);
@@ -2083,13 +2090,18 @@ export function ProcurementRequestWorkspace({
   const openPacketLink = useCallback(async () => {
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
+    if (
+      submissionNotesRef.current &&
+      !(await submissionNotesRef.current.save())
+    )
+      return;
     closePdf();
     onRightPanel(
       <PacketLinkDrawer
         requestId={requestId}
         onClose={closeRightPanel}
         beforeRegenerate={() =>
-          packetEditorRef.current?.save() ?? Promise.resolve(true)
+          submissionNotesRef.current?.save() ?? Promise.resolve(true)
         }
       />,
     );
@@ -2440,6 +2452,11 @@ export function ProcurementRequestWorkspace({
       label: "Providers",
       items: [
         {
+          key: SUBMISSION_NOTES_SECTION,
+          label: SUBMISSION_NOTES_SECTION,
+          icon: PROVIDER_ICONS.notes,
+        },
+        {
           key: "providers",
           label: "Outreach",
           icon: PROVIDER_ICONS.providers,
@@ -2458,9 +2475,11 @@ export function ProcurementRequestWorkspace({
       ],
     },
   ];
-  const activeApplicationSection = applicationGroups.some((group) =>
-    group.items.some((item) => item.key === applicationSection),
-  )
+  const activeApplicationSection =
+    applicationSection === SUBMISSION_NOTES_SECTION ||
+    applicationGroups.some((group) =>
+      group.items.some((item) => item.key === applicationSection),
+    )
     ? applicationSection
     : "Contact details";
   const activeMenuKey =
@@ -2473,6 +2492,11 @@ export function ProcurementRequestWorkspace({
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
+      return;
+    if (
+      submissionNotesRef.current &&
+      !(await submissionNotesRef.current.save())
+    )
       return;
     if (key === "providers" || key === "email") {
       closeRightPanel();
@@ -2547,7 +2571,16 @@ export function ProcurementRequestWorkspace({
                 }
               />
             ) : null}
-            {!readOnly ? (
+            {activeApplicationSection === SUBMISSION_NOTES_SECTION ? (
+              <PacketWorkspace
+                key={`${requestId}:submission-notes`}
+                ref={submissionNotesRef}
+                readOnly={readOnly}
+                requestId={requestId}
+                filename="public.md"
+                inlineNotes
+              />
+            ) : !readOnly ? (
               <RequestEditor
                 key={requestId}
                 inline

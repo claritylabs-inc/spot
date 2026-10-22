@@ -2,6 +2,10 @@
 import { MarkdownReview } from "@/components/ui/markdown-review";
 import { hideApplicationControlMarkers } from "@/lib/intake-markdown-presentation";
 import { replaceEditorBody, splitEditorMarkdown } from "@/lib/markdown-editor";
+import {
+  joinSubmissionNotes,
+  splitSubmissionNotes,
+} from "@/lib/intake-application";
 
 import {
   useEffect,
@@ -254,37 +258,62 @@ function LoadedPacketEditor({
     () => ({ save: readOnly ? async () => true : autoSave.saveNow }),
     [autoSave.saveNow, readOnly],
   );
-  if (inlineNotes)
+  if (inlineNotes) {
+    const shared = filename === "public.md";
+    // Submission notes edit public.md prose; the generated application block stays as saved.
+    const body = splitEditorMarkdown(draft).body;
+    const { notes, application } = shared
+      ? splitSubmissionNotes(body)
+      : { notes: body, application: null };
     return (
       <section className="space-y-2" data-review-content>
         <label
-          htmlFor={`request-notes-${requestId}`}
+          htmlFor={`request-${shared ? "submission" : "internal"}-notes-${requestId}`}
           className={
             inlineNotes === "sidebar" ? "sr-only" : typeStyle("body.medium")
           }
         >
-          Internal notes
+          {shared ? "Submission notes" : "Internal notes"}
         </label>
+        {shared ? (
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+            Shown first on provider packet links and visible to the client. Add
+            context, questions, or request details the application does not
+            capture. Markdown is supported.
+          </p>
+        ) : null}
         <Textarea
-          id={`request-notes-${requestId}`}
-          value={splitEditorMarkdown(draft).body}
+          id={`request-${shared ? "submission" : "internal"}-notes-${requestId}`}
+          value={shared ? notes.replace(/^\n+/, "") : notes}
           onChange={(event) =>
-            setDraft(replaceEditorBody(draft, event.target.value))
+            setDraft(
+              replaceEditorBody(
+                draft,
+                joinSubmissionNotes(event.target.value, application),
+              ),
+            )
           }
           onBlur={() => {
             if (!readOnly) void autoSave.saveNow();
           }}
           readOnly={readOnly}
-          placeholder="Add internal notes about this application…"
+          placeholder={
+            shared
+              ? "Add context, questions, or details for providers…"
+              : "Add internal notes about this application…"
+          }
           className={
             inlineNotes === "sidebar"
               ? "min-h-[50vh] resize-none"
-              : "min-h-24 resize-y"
+              : shared
+                ? "min-h-64 resize-y"
+                : "min-h-24 resize-y"
           }
         />
         <AutoSaveStatus status={autoSave.status} />
       </section>
     );
+  }
   return (
     <>
       <AutoSaveStatus status={autoSave.status} />

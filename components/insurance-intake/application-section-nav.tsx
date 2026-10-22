@@ -11,6 +11,7 @@ import {
   Lock,
   Mail,
   MessageSquareMore,
+  NotebookText,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -160,7 +161,11 @@ export function applicationSectionGroups(
   ];
 }
 
-export const PROVIDER_ICONS = { providers: Users, email: Mail } as const;
+export const PROVIDER_ICONS = {
+  notes: NotebookText,
+  providers: Users,
+  email: Mail,
+} as const;
 
 const COLLAPSED_KEY = "spot:section-menu-collapsed";
 

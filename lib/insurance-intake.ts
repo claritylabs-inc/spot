@@ -1,7 +1,11 @@
 import { isFixedVehicleFollowup, vehicleUnderwritingRows } from "./intake-vehicle-underwriting";
 import { AUTO_QUOTE_QUESTIONS } from "./intake-auto-quote";
 import { DRIVER_QUESTIONS } from "./intake-drivers";
-import { followupQuestionVisible, formatIntakeFollowupAnswer } from "./intake-followups";
+import {
+  followupQuestionVisible,
+  formatIntakeFollowupAnswer,
+  type IntakeFollowupAnswer,
+} from "./intake-followups";
 import dayjs from "dayjs";
 import { vehicleMakeLabel } from "./vehicle-display";
 import {
@@ -178,10 +182,62 @@ export function completedIntakeSteps(a: IntakeAnswers) {
   return steps;
 }
 
+export type CatalogCoverageOwner = (
+  row: IntakeFollowupAnswer,
+  coverageIds: string[],
+) => string | undefined;
+/** Answered catalog questions grouped under the coverage that asked them, then
+ * generated follow-ups. Underwriter wording is kept; catalog IDs stay in source data. */
+function followupMarkdown(
+  details: IntakeDetails,
+  table: (rows: [string, string][]) => string,
+  catalogCoverage?: CatalogCoverageOwner,
+) {
+  const answered = (section: IntakeFollowupAnswer["section"]) =>
+    (details.followups ?? []).filter(
+      (row) =>
+        row.section === section &&
+        !isFixedVehicleFollowup(row) &&
+        row.answer.trim() &&
+        followupQuestionVisible(row, details.followups),
+    );
+  const rows = (answers: IntakeFollowupAnswer[]) =>
+    table(answers.map((row) => [row.label, formatIntakeFollowupAnswer(row)]));
+  const catalog = answered("acord");
+  const coverageIds = details.coverages.map((line) => line.coverage);
+  const owners = new Map(
+    catalog.map((row) => [row.id, catalogCoverage?.(row, coverageIds)]),
+  );
+  const groups = [
+    ...details.coverages.map((line) => ({
+      title: coverageRequestLabel(line),
+      answers: catalog.filter((row) => owners.get(row.id) === line.coverage),
+    })),
+    {
+      title: "Other underwriting details",
+      answers: catalog.filter((row) => !owners.get(row.id)),
+    },
+  ].filter((group) => group.answers.length);
+  const followups = answered("additional");
+  return [
+    ...(groups.length
+      ? [
+          `## Underwriting details\n\n${groups
+            .map((group) => `### ${group.title}\n\n${rows(group.answers)}`)
+            .join("\n\n")}`,
+        ]
+      : []),
+    ...(followups.length
+      ? [`## Follow-up questions\n\n${rows(followups)}`]
+      : []),
+  ];
+}
+
 export function intakeMarkdown(
   answers: IntakeAnswers,
   fields: IntakeField[] = Object.keys(INTAKE_FIELDS) as IntakeField[],
   details?: IntakeDetails,
+  catalogCoverage?: CatalogCoverageOwner,
 ) {
   const allowed = new Set(fields);
   const cell = (value: string) =>
@@ -203,6 +259,7 @@ export function intakeMarkdown(
       fields: [
         "trigger",
         "effectiveDate",
+        "deadline",
         "timingUnknown",
         "requirements",
         "requestDetails",
@@ -239,7 +296,13 @@ export function intakeMarkdown(
     },
     {
       title: "Insurance history",
-      fields: ["currentInsurance", "claims", "cancellations"],
+      fields: [
+        "currentInsurance",
+        "currentInsuranceDetails",
+        "claims",
+        "cancellations",
+        "changes",
+      ],
     },
   ];
   const sections = groups
@@ -271,6 +334,13 @@ export function intakeMarkdown(
                 ]);
               if (line.scopeDescription)
                 rows.push(["Scope", line.scopeDescription]);
+              if (line.coverage === "cyber")
+                for (const [key, label] of [
+                  ["privacyPolicyUrl", "Privacy policy"],
+                  ["termsUrl", "Terms of service"],
+                ] as const)
+                  if (details.cyberDocuments?.[key]?.trim())
+                    rows.push([label, details.cyberDocuments[key]!.trim()]);
               line.vehicles?.forEach((vehicle, index) =>
                 rows.push([
                   `Vehicle ${index + 1}`,
@@ -322,8 +392,10 @@ ${table(
         "description",
         "requirements",
         "requestDetails",
+        "currentInsuranceDetails",
         "claims",
         "cancellations",
+        "changes",
       ]);
       const rows: [string, string][] = keys
         .filter(
@@ -332,6 +404,14 @@ ${table(
             !(key === "locations" && details?.locations.length),
         )
         .map((key) => [INTAKE_FIELDS[key], value(key)]);
+      if (
+        group.title === "Insurance history" &&
+        details?.noCurrentInsuranceReason?.trim()
+      )
+        rows.push([
+          "Why the business has no current insurance",
+          details.noCurrentInsuranceReason,
+        ]);
       const paragraphs = keys
         .filter((key) => prose.has(key))
         .map((key) => table([[INTAKE_FIELDS[key], value(key)]]));
@@ -362,10 +442,11 @@ ${table(
         `## ${group.title}\n\n${[table(rows), ...paragraphs, ...locations].filter(Boolean).join("\n\n")}`,
       ];
     })
-    .concat(fields.length === Object.keys(INTAKE_FIELDS).length ? (["acord", "additional"] as const).flatMap((section) => {
-      const rows = details?.followups?.filter((row) => !isFixedVehicleFollowup(row) && row.section === section && row.answer.trim() && followupQuestionVisible(row,details?.followups)) ?? [];
-      return rows.length ? [`## ${section === "acord" ? "Coverage details" : "Additional details"}\n\n${table(rows.map((row) => [row.source ? `${row.label} (${row.source})` : row.label, formatIntakeFollowupAnswer(row)]))}`] : [];
-    }) : [])
+    .concat(
+      details && fields.length === Object.keys(INTAKE_FIELDS).length
+        ? followupMarkdown(details, table, catalogCoverage)
+        : [],
+    )
     .join("\n\n");
   const drivers = details?.coverages.some(line=>line.coverage==="commercial_auto") && details.drivers?.length && allowed.size === Object.keys(INTAKE_FIELDS).length
     ? `## Driver schedule\n\n${table(details.drivers.map(driver=>[driver.name, `License: ${driver.licenseJurisdiction} · ${driver.licenseClass}; experience: ${driver.yearsExperience} years; accidents in past five years: ${driver.accidents} ${driver.accidentDetails}; violations/suspensions in past five years: ${driver.violations} ${driver.violationDetails}. Full license and birth date are retained in the authorized application.`]))}` : "";

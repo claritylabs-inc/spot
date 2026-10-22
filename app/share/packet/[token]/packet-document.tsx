@@ -4,6 +4,7 @@ import {
   MarkdownReviewTable,
 } from "@/components/ui/markdown-review";
 import { hideApplicationControlMarkers } from "@/lib/intake-markdown-presentation";
+import { splitSubmissionNotes } from "@/lib/intake-application";
 
 import {
   useEffect,
@@ -255,9 +256,28 @@ function HeadingMenu({
   );
 }
 
+/** Without a managed application block, all shared prose stays as request details. */
+function packetParts(markdown: string) {
+  const { notes, application } = splitSubmissionNotes(markdown);
+  if (!application) return { notes: "", details: markdown };
+  return {
+    // The panel supplies the heading; a leading generic one would repeat it.
+    notes: notes
+      .trim()
+      .replace(
+        /^#{1,3} (?:request|notes|submission notes|additional context)\s*\n+/i,
+        "",
+      ),
+    details: application,
+  };
+}
+
 export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
+  const parts = useMemo(() => packetParts(view.markdown), [view.markdown]);
+  const notes = parts.notes;
+  const hasNotes = Boolean(notes);
   const presentedMarkdown = hideApplicationControlMarkers(
-    view.markdown,
+    parts.details,
   ).replace(/^#{1,2} Request\s*\n+(?=#{2,6} Contact details\b)/gm, "");
   const markdownComponents = useMemo<Components>(
     () => ({
@@ -363,6 +383,7 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
     if (!content) return;
     const ids = [
       ...(hasContact ? ["contact-spot"] : []),
+      ...(hasNotes ? ["submission-notes"] : []),
       "packet-details",
       ...packetMarkdown.headings.map((heading) => heading.id),
       ...(hasFiles ? ["packet-files"] : []),
@@ -413,11 +434,12 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
       window.removeEventListener("resize", scheduleUpdate);
       window.removeEventListener("hashchange", restoreFragment);
     };
-  }, [packetMarkdown, hasFiles, hasContact, firstDestination]);
+  }, [packetMarkdown, hasFiles, hasContact, hasNotes, firstDestination]);
 
   const current =
     active === "packet-details" ||
     (active === "contact-spot" && hasContact) ||
+    (active === "submission-notes" && hasNotes) ||
     (active === "packet-files" && hasFiles) ||
     packetMarkdown.headings.some((heading) => heading.id === active)
       ? active
@@ -461,6 +483,18 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
                     navigate={navigate}
                   >
                     Contact Spot
+                  </OutlineLink>
+                </li>
+              )}
+              {hasNotes && (
+                <li className="shrink-0">
+                  <OutlineLink
+                    id="submission-notes"
+                    active={current}
+                    primary
+                    navigate={navigate}
+                  >
+                    Submission notes
                   </OutlineLink>
                 </li>
               )}
@@ -526,11 +560,13 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
                 <span className="min-w-0 flex-1 truncate text-left">
                   {current === "contact-spot"
                     ? "Contact Spot"
-                    : current === "packet-files"
-                      ? "All files"
-                      : (packetMarkdown.headings.find(
-                          (heading) => heading.id === current,
-                        )?.label ?? "Request Details")}
+                    : current === "submission-notes"
+                      ? "Submission notes"
+                      : current === "packet-files"
+                        ? "All files"
+                        : (packetMarkdown.headings.find(
+                            (heading) => heading.id === current,
+                          )?.label ?? "Request Details")}
                 </span>
                 <ChevronUp aria-hidden="true" className="size-4 shrink-0" />
               </DropdownMenuTrigger>
@@ -544,6 +580,15 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
                   <SectionMenuItem
                     id="contact-spot"
                     label="Contact Spot"
+                    active={current}
+                    primary
+                    navigate={navigateFromMenu}
+                  />
+                )}
+                {hasNotes && (
+                  <SectionMenuItem
+                    id="submission-notes"
+                    label="Submission notes"
                     active={current}
                     primary
                     navigate={navigateFromMenu}
@@ -623,6 +668,16 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
                   </PillButton>
                 </div>
               </div>
+            </PacketSection>
+          )}
+          {hasNotes && (
+            <PacketSection id="submission-notes">
+              <h2 className={typeStyle("heading.section")}>
+                Submission notes
+              </h2>
+              <ProseMarkdown gfm breaks className="mt-4 space-y-4">
+                {notes}
+              </ProseMarkdown>
             </PacketSection>
           )}
           <article id="packet-details" aria-label="Request Details">

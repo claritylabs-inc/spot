@@ -15,6 +15,7 @@ import {
   type IntakeFollowupAnswer,
 } from "./intake-followups";
 import { bakedCoverageQuestions } from "./intake-coverage-questions";
+import { intakeCatalogCoverage } from "./intake-acord-questions";
 import { isFixedVehicleFollowup } from "./intake-vehicle-underwriting";
 
 export type IntakeApplication = {
@@ -62,7 +63,13 @@ export function submittedIntakeApplication(
 export const APPLICATION_START = "<!-- spot-current-application:start -->";
 export const APPLICATION_END = "<!-- spot-current-application:end -->";
 export function applicationMarkdownBlock(application: IntakeApplication) {
-  return `${APPLICATION_START}\n${intakeMarkdown(application.answers, undefined, application.details)}\n${APPLICATION_END}`;
+  const markdown = intakeMarkdown(
+    application.answers,
+    undefined,
+    application.details,
+    intakeCatalogCoverage,
+  );
+  return `${APPLICATION_START}\n${markdown}\n${APPLICATION_END}`;
 }
 /** The existing marker pair retains ownership; prose outside it is untouched. */
 export function projectApplicationMarkdown(
@@ -78,9 +85,17 @@ export function projectApplicationMarkdown(
       body.slice(0, start) + block + body.slice(end + APPLICATION_END.length)
     );
   if (originalAnswers) {
+    // Earlier projections omitted these fields; their saved text must still match.
+    const earlier: IntakeAnswers = Object.fromEntries(
+      Object.entries(originalAnswers).filter(
+        ([key]) =>
+          !["deadline", "currentInsuranceDetails", "changes"].includes(key),
+      ),
+    );
     for (const original of [
       legacyIntakeMarkdown(originalAnswers),
       intakeMarkdown(originalAnswers),
+      intakeMarkdown(earlier),
     ]) {
       const legacy = `## Request\n\n${original}`;
       if (body.includes(legacy)) return body.replace(legacy, block);
@@ -88,6 +103,24 @@ export function projectApplicationMarkdown(
   }
   // Removing a managed block is a deliberate publication choice. Do not re-add it on read.
   return body;
+}
+/** public.md prose outside the managed application block is the request's
+ * submission notes. Prose after the block reads as notes and moves before it
+ * on the next edit; split(join(notes, block)) returns the same notes. */
+export function splitSubmissionNotes(body: string) {
+  const start = body.indexOf(APPLICATION_START);
+  const end = start >= 0 ? body.indexOf(APPLICATION_END, start) : -1;
+  if (start < 0 || end < 0) return { notes: body, application: null };
+  const before = body.slice(0, start).replace(/\n\n$/, "");
+  const after = body.slice(end + APPLICATION_END.length).trim();
+  return {
+    notes: after ? [before.trim(), after].filter(Boolean).join("\n\n") : before,
+    application: body.slice(start, end + APPLICATION_END.length),
+  };
+}
+export function joinSubmissionNotes(notes: string, application: string | null) {
+  if (!application) return notes;
+  return notes ? `${notes}\n\n${application}` : application;
 }
 export function companyApplicationProfile(application: IntakeApplication) {
   const answers: IntakeAnswers = Object.fromEntries(
