@@ -71,6 +71,142 @@ function unknownValue(value: unknown) {
   return literal(value) ?? "Not provided";
 }
 
+/** Email draft tools whose unsent-draft metadata (never the body) is retained as evidence. */
+export const EMAIL_DRAFT_EVIDENCE_TOOLS = new Set([
+  "draft_email",
+  "update_email_draft",
+  "attach_policy_pdf_to_draft",
+  "attach_client_file_to_draft",
+  "attach_file_to_draft",
+  "attach_coi_to_draft",
+  "list_email_drafts",
+]);
+const MAX_EMAIL_DRAFTS = 3;
+type EmailDraft = {
+  draftId: string;
+  status: string;
+  subject?: string;
+  to: string[];
+  cc: string[];
+  attachments: string[];
+  blockedReason?: string;
+};
+
+function addresses(value: unknown): string[] {
+  return Array.isArray(value)
+    ? strings(value, 10)
+    : [literal(value, 200) ?? []].flat();
+}
+
+/**
+ * Normalizes operator and client email tool results (and its own projection)
+ * to draft metadata. Bodies are intentionally dropped.
+ */
+export function projectEmailDraftEvidence(
+  output: unknown,
+): { drafts: EmailDraft[] } | null {
+  const result = record(output);
+  const items = Array.isArray(result.drafts)
+    ? result.drafts.slice(0, MAX_EMAIL_DRAFTS * 2)
+    : [result];
+  const drafts = items.flatMap((item): EmailDraft[] => {
+    const draft = record(item);
+    const draftId = identifier(
+      draft.draftId ?? draft.pendingEmailId ?? draft.id,
+    );
+    const status = literal(draft.status, 40);
+    if (!draftId || !status) return [];
+    return [
+      {
+        draftId,
+        status,
+        subject: literal(draft.subject, 200),
+        to: addresses(draft.to ?? draft.responseTo ?? draft.recipientEmail),
+        cc: addresses(draft.cc ?? draft.responseCc ?? draft.ccAddresses),
+        attachments: (Array.isArray(draft.attachments) ? draft.attachments : [])
+          .slice(0, 10)
+          .flatMap(
+            (attachment) =>
+              literal(record(attachment).filename ?? attachment, 200) ?? [],
+          ),
+        blockedReason: literal(
+          draft.blockedReason ??
+            draft.sendBlockedReason ??
+            (status === "needs_confirmation"
+              ? draft.confirmationReason
+              : undefined),
+          1000,
+        ),
+      },
+    ];
+  });
+  return drafts.length ? { drafts } : null;
+}
+
+function addEmailDrafts(builder: Candidates, drafts: EmailDraft[]) {
+  // Only current unsent drafts get follow-ups; the email itself is rendered elsewhere.
+  for (const draft of drafts
+    .filter((item) => ["draft", "needs_confirmation"].includes(item.status))
+    .slice(-MAX_EMAIL_DRAFTS)) {
+    const subject = draft.subject ?? "Email draft";
+    const referenceId = builder.reference({
+      kind: "email_draft",
+      recordId: draft.draftId,
+      label: subject,
+    });
+    if (!referenceId) continue;
+    const blocked = Boolean(draft.blockedReason);
+    builder.add(
+      `Follow-up actions for the unsent email draft "${subject}"; sending still requires exact approval`,
+      {
+        type: "ActionGroup",
+        props: {
+          actions: [
+            { label: "View draft", referenceId },
+            blocked
+              ? {
+                  label: "Resolve what blocks it",
+                  followUp: `Help me resolve what is blocking email draft ${draft.draftId}. Do not send it yet.`,
+                }
+              : {
+                  label: "Send this draft",
+                  followUp: `Send email draft ${draft.draftId}.`,
+                },
+            {
+              label: "Make it shorter",
+              followUp: `Make email draft ${draft.draftId} shorter and update the draft without changing its recipients or attachments. Do not send it.`,
+            },
+            {
+              label: "Add an attachment",
+              followUp: `Add an attachment to email draft ${draft.draftId}. Ask me which file if it is unclear. Do not send it.`,
+            },
+            {
+              label: "Cancel draft",
+              followUp: `Cancel email draft ${draft.draftId}.`,
+            },
+          ],
+        },
+        children: [],
+      },
+    );
+    if (blocked)
+      builder.add(`Why the email draft "${subject}" cannot be sent yet`, {
+        type: "FindingsList",
+        props: {
+          findings: [
+            {
+              label: "Send is blocked",
+              detail: draft.blockedReason ?? "",
+              status: "missing",
+              sourceIds: [referenceId],
+            },
+          ],
+        },
+        children: [],
+      });
+  }
+}
+
 class Candidates {
   candidates: PresentationCandidate[] = [];
   references: PresentationReference[] = [];
@@ -1167,6 +1303,7 @@ export function buildPresentationCandidates(evidence: PresentationEvidence): {
     evidence.tools.length > tools.length ||
     tools.some((tool) => record(tool.output).bounded === true);
   const knownPolicies = new Map<string, Policy>();
+  const emailDrafts = new Map<string, EmailDraft>();
   for (const tool of tools) {
     if (tool.name === "list_policies" && evidence.audience !== "operator")
       continue;
@@ -1224,6 +1361,9 @@ export function buildPresentationCandidates(evidence: PresentationEvidence): {
   for (const tool of tools) {
     const output = outputOf(tool.output);
     if (!output) continue;
+    if (EMAIL_DRAFT_EVIDENCE_TOOLS.has(tool.name))
+      for (const draft of projectEmailDraftEvidence(output)?.drafts ?? [])
+        emailDrafts.set(draft.draftId, draft);
     if (tool.name === "lookup_policy_section")
       addPolicySources(
         builder,
@@ -1263,5 +1403,6 @@ export function buildPresentationCandidates(evidence: PresentationEvidence): {
     )
       addProviders(builder, tool.name, output);
   }
+  addEmailDrafts(builder, [...emailDrafts.values()]);
   return builder.result();
 }

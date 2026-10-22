@@ -321,6 +321,8 @@ export type ClRouterGenerateRequest = {
   maxTokens?: number;
   executionBudgetMs?: number;
   tools?: ClRouterToolDefinition[];
+  /** `caller`: Spot already chose the offered tools; cl-router skips its own tool selection. */
+  toolSelection?: "router" | "caller";
   trace?: ClRouterTraceInput;
 };
 
@@ -1099,6 +1101,7 @@ const GENERATE_BODY_KEYS = [
   "maxTokens",
   "executionBudgetMs",
   "tools",
+  "toolSelection",
 ] as const satisfies readonly (keyof ClRouterGenerateRequest)[];
 
 const EMBED_BODY_KEYS = [

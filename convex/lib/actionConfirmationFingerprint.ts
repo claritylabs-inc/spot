@@ -1,5 +1,6 @@
 import type { Doc } from "../_generated/dataModel";
 import { countCoiAttachments } from "./coiAttachmentGuards";
+import { parseReplyToAddresses } from "./emailAddress";
 
 type PendingEmailConfirmationPayload = Extract<
   Doc<"threadActionConfirmations">["payload"],
@@ -37,9 +38,19 @@ export async function pendingEmailDraftFingerprint(
     | "emailBody"
     | "attachments"
     | "referencedPolicyIds"
+    | "operatorThreadId"
+    | "replyTo"
   >,
 ): Promise<string> {
   return actionConfirmationFingerprint({
+    // Operator approvals cover where replies go; client fingerprints are unchanged.
+    ...(draft.operatorThreadId
+      ? {
+          replyTo: parseReplyToAddresses(draft.replyTo).map((a) =>
+            a.toLowerCase(),
+          ),
+        }
+      : {}),
     recipientEmail: draft.recipientEmail.trim().toLowerCase(),
     ccAddresses: (draft.ccAddresses ?? []).map((value) =>
       value.trim().toLowerCase(),

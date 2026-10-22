@@ -19,6 +19,7 @@ export const presentationReferenceValidator = v.object({
     v.literal("vendor"),
     v.literal("file"),
     v.literal("source"),
+    v.literal("email_draft"),
   ),
   recordId: v.string(),
   label: v.string(),

@@ -448,6 +448,16 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
         presentation={working ? undefined : msg.presentation}
         structuredReferences
         onFollowUp={onPresentationFollowUp}
+        onOpenReference={(reference) => {
+          const draft =
+            reference.kind === "email_draft"
+              ? relatedEmailMessages.find(
+                  (message) => message.pendingEmailId === reference.recordId,
+                )
+              : undefined;
+          if (draft) openEmail(draft);
+          return Boolean(draft);
+        }}
         presentationDisabled={presentationDisabled}
         body={emailCard ? (
           <EmailSummaryCard

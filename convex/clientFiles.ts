@@ -21,6 +21,7 @@ import {
 } from "./lib/clientFileNames";
 import {
   assertNoOperatorImpersonation,
+  createClientFileFromGeneratedCertificate,
   findReusableClientFileByContent,
   normalizeClientFileSha256,
   requireClientOrganization,
@@ -272,6 +273,37 @@ export const getForOperatorInternal = internalQuery({
       updatedAt: file.updatedAt,
       url: await ctx.storage.getUrl(file.fileId),
     };
+  },
+});
+
+/** An active file of exactly this client organization, shaped as an email attachment. */
+export const getForEmailAttachmentInternal = internalQuery({
+  args: { orgId: v.id("organizations"), clientFileId: v.string() },
+  handler: async (ctx, args) => {
+    const clientFileId = ctx.db.normalizeId("clientFiles", args.clientFileId);
+    const file = clientFileId ? await ctx.db.get(clientFileId) : null;
+    if (!file || file.orgId !== args.orgId || !activeClientFile(file)) {
+      return null;
+    }
+    return {
+      filename: file.name,
+      contentType: file.contentType,
+      size: file.size,
+      fileId: file.fileId,
+    };
+  },
+});
+
+/** Files a generated certificate PDF in the client's dropbox so email drafts can attach it. */
+export const fileGeneratedCertificateInternal = internalMutation({
+  args: {
+    operatorUserId: v.id("users"),
+    orgId: v.id("organizations"),
+    fileId: v.id("_storage"),
+    filename: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await createClientFileFromGeneratedCertificate(ctx, args);
   },
 });
 

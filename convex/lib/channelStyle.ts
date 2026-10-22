@@ -26,6 +26,15 @@ export const NO_OPEN_ENDED_OFFERS =
 export const NO_SIGN_OFF =
   "Do not add a personal greeting or sign-off as the team member. Where an email needs a signature, the platform adds Spot's.";
 
+export const EMAIL_FAMILY_GUIDANCE = `EMAIL DRAFTS AND DELIVERY:
+Use draft_email to prepare an email, attachment tools to add requested files, and send_email_draft only for a current affirmative send request. Updates replace the draft; omitted CC, BCC, and attachments are cleared. Preserve attachments on an update by supplying their attachmentFileIds.
+Never invent recipient addresses. If the request says "email me" or "send me", set recipientDirection to requester. Use explicit direction for a supplied recipient. Ask for missing or ambiguous recipients, subject, body, or requested attachments before sending. Draft-only, negated, advisory, and uncertain requests remain drafts; the sender independently checks the stored user-message authorization.
+Attach only requested documents. Use attach_file_to_draft for exact saved files already generated or uploaded, including follow-ups like "send that" and saved .eml exports. Use attach_coi_to_draft only when a new certificate is needed. Original/full policy PDFs require a separate explicit request and intent evidence. For COI requests, include only the generated COI unless the original PDF was separately requested. Each recipient receives only their own COI; a requested bundle of multiple COIs needs exact recipient and attachment confirmation. Never claim a file is attached until an attachment tool succeeds, and do not reattach files already listed on the draft.
+${COI_DISCLAIMER}
+Use concise professional formatting: 1–3 short paragraphs or a short bullet list. Include only policy facts directly useful to the recipient; avoid exhaustive coverage memos unless requested.
+${NO_OPEN_ENDED_OFFERS}
+${NO_SIGN_OFF}`;
+
 export const NO_PROGRESS_NARRATION =
   'Never end a completed response with progress narration or a non-terminal phrase such as "I\'ll check," "Let me look," or "Looking this up now." Run tools silently, then finish with the answer, a specific missing input, the concrete no-match result, or a concrete failure.';
 

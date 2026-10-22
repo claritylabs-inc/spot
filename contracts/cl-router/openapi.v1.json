@@ -3025,6 +3025,14 @@
               ]
             }
           },
+          "toolSelection": {
+            "description": "Who selects among the supplied tools. `router` (default) lets the router decide whether and which tools run; `caller` skips router tool selection: every supplied tool stays available with automatic tool choice.",
+            "type": "string",
+            "enum": [
+              "router",
+              "caller"
+            ]
+          },
           "trace": {
             "type": "object",
             "properties": {
@@ -3880,6 +3888,14 @@
                 "inputSchema"
               ]
             }
+          },
+          "toolSelection": {
+            "description": "Who selects among the supplied tools. `router` (default) lets the router decide whether and which tools run; `caller` skips router tool selection: every supplied tool stays available with automatic tool choice.",
+            "type": "string",
+            "enum": [
+              "router",
+              "caller"
+            ]
           },
           "trace": {
             "type": "object",

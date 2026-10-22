@@ -140,6 +140,10 @@ import {
 import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
 import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmationPreflight";
 import {
+  OPERATOR_EMAIL_SEND_SUMMARY_LIMIT,
+  operatorEmailSendConfirmation,
+} from "./operatorEmailDrafts";
+import {
   confirmedPreflightOperatorToolFailure,
   executionOperatorToolFailure,
   operatorNoWriteCode,
@@ -300,6 +304,13 @@ const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "attach_client_file",
   "search_thread_history",
   "read_thread_attachment",
+  "draft_email",
+  "update_email_draft",
+  "attach_policy_pdf_to_draft",
+  "attach_client_file_to_draft",
+  "list_email_drafts",
+  "send_email_draft",
+  "cancel_email_draft",
 ]);
 
 function boundedJson(value: unknown, maximum = 8_000) {
@@ -538,6 +549,13 @@ async function operatorConfirmationSummary(
     const client = await ctx.db.get(orgId);
     return `Import into ${client!.name}'s policy library\nFiles: ${files.map((file) => file.fileName).join(", ")}\nGrouping: ${input.mode === "combined" ? "one policy containing all selected PDFs" : `${files.length} separate policies (one per PDF)`}\nQueue extraction; duplicate PDFs reuse existing policies.`;
   }
+  if (toolName === "send_email_draft") {
+    const { summary } = await operatorEmailSendConfirmation(ctx, {
+      threadId: context.threadId,
+      draftId: input.draftId,
+    });
+    return boundedDisplayText(summary, OPERATOR_EMAIL_SEND_SUMMARY_LIMIT, true);
+  }
   if (toolName !== "update_broker_network_profile") {
     return operatorDisplaySummary(
       ctx,
@@ -688,6 +706,7 @@ export function normalizeOperatorCoiBatch(
       "policyId",
       "fileId",
       "fileName",
+      "clientFileId",
       "size",
       "certificateId",
       "policyCertificateId",
@@ -879,6 +898,20 @@ function normalizedOptionalText(value: unknown) {
   if (value === null) return undefined;
   if (typeof value !== "string") return undefined;
   return value.trim() || undefined;
+}
+
+/** The applicant's own contact details, for addressing email from records. */
+function applicantContactFromAnswers(...sources: unknown[]) {
+  for (const source of sources) {
+    const answers = recordValue(source);
+    const contact = {
+      name: normalizedOptionalText(answers?.name),
+      email: normalizedOptionalText(answers?.email),
+      phone: normalizedOptionalText(answers?.phone),
+    };
+    if (contact.name || contact.email || contact.phone) return contact;
+  }
+  return null;
 }
 
 function normalizeOperatorPageContext(
@@ -2023,8 +2056,23 @@ async function executeToolDomain(
       operatorUserId: args.operatorUserId,
       requestId,
     });
-    if (intake) return intake;
-    return await getProcurementRequestDetails(ctx, requestId);
+    if (intake) {
+      return {
+        ...intake,
+        applicantContact: applicantContactFromAnswers(
+          intake.application?.answers,
+          intake.intakeAnswers,
+        ),
+      };
+    }
+    const details = await getProcurementRequestDetails(ctx, requestId);
+    return {
+      ...details,
+      applicantContact: applicantContactFromAnswers(
+        details.request.application?.answers,
+        details.request.intakeAnswers,
+      ),
+    };
   }
 
   if (toolName === "list_procurement_proposals") {
@@ -3106,6 +3154,7 @@ async function executeToolActionDomain(
     channel: OperatorChannel;
     idempotencyKey?: string;
     confirmationId?: Id<"operatorAgentConfirmations">;
+    threadMessageId?: Id<"operatorAgentMessages">;
   },
 ): Promise<OperatorActionToolResult> {
   if (args.toolName === "list_mcp_tools" || args.toolName === "call_mcp_tool") {
@@ -3139,6 +3188,7 @@ async function executeToolActionDomain(
         input: args.input,
         channel: args.channel,
         confirmationId: args.confirmationId,
+        messageId: args.threadMessageId,
       },
     )) as OperatorActionToolResult;
   }
@@ -3220,6 +3270,30 @@ async function executeToolActionDomain(
         createdByUserId: args.operatorUserId,
       },
     );
+    // File each generated certificate so outbound email drafts can attach it
+    // with attach_client_file_to_draft.
+    const batchRecord = recordValue(batch);
+    if (batchRecord && Array.isArray(batchRecord.results)) {
+      for (const row of batchRecord.results) {
+        const certificate = recordValue(row);
+        if (
+          !certificate ||
+          typeof certificate.fileId !== "string" ||
+          typeof certificate.fileName !== "string"
+        ) {
+          continue;
+        }
+        certificate.clientFileId = await ctx.runMutation(
+          internal.clientFiles.fileGeneratedCertificateInternal,
+          {
+            operatorUserId: args.operatorUserId,
+            orgId: target.orgId,
+            fileId: certificate.fileId as Id<"_storage">,
+            filename: certificate.fileName,
+          },
+        );
+      }
+    }
     return normalizeOperatorCoiBatch(batch);
   }
 
@@ -5262,7 +5336,7 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
     if (
       spec.execution !== "action" ||
       spec.confirmation !== "none" ||
-      spec.effect !== "read"
+      (spec.effect !== "read" && spec.effect !== "reversible_write")
     ) {
       throw new Error("This operator tool cannot run as an unconfirmed action");
     }
@@ -5399,6 +5473,7 @@ export const executeUnconfirmedActionToolInternal = internalAction({
         input: prepared.input,
         channel: args.channel,
         idempotencyKey: args.idempotencyKey,
+        threadMessageId: args.threadMessageId,
       });
       const readResult = recordValue(output.result);
       if (
@@ -5615,7 +5690,14 @@ export const getRunContextInternal = internalQuery({
         ),
       },
     });
-    return { run, thread, messages: messages.reverse(), toolNames };
+    return {
+      run,
+      thread,
+      messages: messages.reverse(),
+      toolNames,
+      operatorName: operator.user.name,
+      operatorEmail: operator.user.email,
+    };
   },
 });
 
@@ -5906,7 +5988,14 @@ export const requestToolConfirmationInternal = internalMutation({
         input: inputJson,
         inputHash: args.inputHash,
         sourceFingerprint:
-          args.toolName === "import_policy_files"
+          args.toolName === "send_email_draft"
+            ? (
+                await operatorEmailSendConfirmation(ctx, {
+                  threadId: args.threadId,
+                  draftId: input.draftId,
+                })
+              ).fingerprint
+            : args.toolName === "import_policy_files"
             ? await operatorPolicySourceFingerprint(
                 await resolveOperatorPolicySources(ctx, {
                   operatorUserId: args.operatorUserId,
@@ -6155,9 +6244,9 @@ export const recordPlanningAssessmentInternal = internalMutation({
       throw new Error("Invalid planning probability");
     if (
       !args.assessment.required &&
-      probabilities.some((p) => p === null || p > 1 - jevProceedThreshold())
+      probabilities.some((p) => p !== null && p >= jevProceedThreshold())
     )
-      throw new Error("Uncertain workflows require a plan");
+      throw new Error("Confident multi-step workflows require a plan");
     await ctx.db.patch(run._id, {
       planningAssessment: args.assessment,
       updatedAt: dayjs().valueOf(),
@@ -6198,11 +6287,15 @@ export const recordExecutionPlanInternal = internalMutation({
   },
 });
 
+const OPERATOR_ROUTER_FALLBACK_POLL_MS = 10_000;
+
 export const waitForRouterInternal = internalMutation({
   args: {
     runId: v.id("operatorAgentRuns"),
     expectedRunnerAttempt: v.optional(v.number()),
     expectedCheckpointIteration: v.number(),
+    invocationKey: v.optional(v.string()),
+    families: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
@@ -6217,11 +6310,39 @@ export const waitForRouterInternal = internalMutation({
       return;
     await ctx.db.patch(run._id, {
       status: "queued",
+      // Re-runs while the router job is pending reuse the families chosen for it.
+      ...(args.families
+        ? {
+            checkpoint: {
+              executionCount: 0,
+              ...run.checkpoint,
+              iteration: args.expectedCheckpointIteration,
+              families: args.families,
+            },
+          }
+        : {}),
       updatedAt: dayjs().valueOf(),
     });
-    await ctx.scheduler.runAfter(2_000, internal.operatorAgentRunner.run, {
-      runId: run._id,
-    });
+    // routerJobs.finish wakes the run when its job ends; this slower poll only
+    // recovers a lost wake-up. A job that finished before the run was queued
+    // found it still running, so resume now.
+    const job = args.invocationKey
+      ? await ctx.db
+          .query("routerJobs")
+          .withIndex("invocation", (q) =>
+            q.eq("invocationKey", args.invocationKey!),
+          )
+          .unique()
+      : null;
+    const jobEnded =
+      job?.status === "succeeded" ||
+      job?.status === "failed" ||
+      job?.status === "cancelled";
+    await ctx.scheduler.runAfter(
+      jobEnded ? 0 : OPERATOR_ROUTER_FALLBACK_POLL_MS,
+      internal.operatorAgentRunner.run,
+      { runId: run._id },
+    );
   },
 });
 
@@ -6266,6 +6387,7 @@ export const continueRunInternal = internalMutation({
     expectedRunnerAttempt: v.optional(v.number()),
     expectedCheckpointIteration: v.optional(v.number()),
     modelContinuationStorageId: v.optional(v.id("_storage")),
+    families: v.optional(v.array(v.string())),
     summary: v.string(),
     usedTools: v.array(v.string()),
     toolCalls: v.array(
@@ -6331,6 +6453,7 @@ export const continueRunInternal = internalMutation({
           (run.checkpoint?.executionCount ?? 0) + args.toolCalls.length,
         summary: args.summary.slice(-6_000),
         lastToolName: args.usedTools.at(-1),
+        families: args.families ?? run.checkpoint?.families,
       },
       updatedAt: now,
     });

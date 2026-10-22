@@ -11,8 +11,8 @@ Collapsed activity shows each represented category icon once, in first-use order
 | Public research | `Globe` | `web_search`, `research_client`, `research_broker` |
 | Organizations | `Building2` | `search_organizations`, `get_organization`, `create_client_organization`, `update_organization_profile`, `set_client_access_status` |
 | Provider network | `Users` | `get_broker_network_profile`, `list_broker_network_profiles`, `create_broker_network_profile`, `update_broker_network_profile`, `create_procurement_broker_outreach`, `update_procurement_broker_outreach` |
-| Email | `Mail` | `list_company_mailboxes`, `search_company_email`, `read_company_email_thread`, `get_procurement_forwarding_address`, `list_procurement_email_threads`, `get_procurement_email_thread`, `preview_procurement_email_reconciliation`, `update_procurement_email_thread`, `file_procurement_email_quote` |
-| Files and attachments | `Paperclip` | `get_company_email_attachment`, `read_thread_attachment`, `list_client_files`, `read_client_file`, `attach_client_file`, `add_client_file`, `update_client_file`, `create_procurement_file_item`, `update_procurement_file_item` |
+| Email | `Mail` | `draft_email`, `update_email_draft`, `list_email_drafts`, `list_company_mailboxes`, `search_company_email`, `read_company_email_thread`, `get_procurement_forwarding_address`, `list_procurement_email_threads`, `get_procurement_email_thread`, `preview_procurement_email_reconciliation`, `update_procurement_email_thread`, `file_procurement_email_quote` |
+| Files and attachments | `Paperclip` | `get_company_email_attachment`, `read_thread_attachment`, `attach_policy_pdf_to_draft`, `attach_client_file_to_draft`, `list_client_files`, `read_client_file`, `attach_client_file`, `add_client_file`, `update_client_file`, `create_procurement_file_item`, `update_procurement_file_item` |
 | Policies and coverage | `Shield` | `list_policies`, `lookup_policy`, `compare_coverages`, `lookup_policy_section`, `attach_policy_document`, `confirm_policy_fact`, `get_policy_status`, `import_policy_files` |
 | Compliance and certificates | `ClipboardCheck` | `lookup_compliance_requirements`, `generate_coi` |
 | Conversations | `MessagesSquare` | `search_thread_history`, `list_operator_conversations`, `read_operator_conversation` |
@@ -24,10 +24,10 @@ Collapsed activity shows each represented category icon once, in first-use order
 | Extraction | `ScanText` | `list_extraction_issues`, `retry_failed_policy_extraction`, `retry_procurement_proposal_extraction`, `cancel_procurement_proposal_extraction` |
 | Addresses | `MapPin` | `lookup_address` |
 | Platform health | `Activity` | `get_operator_overview`, `get_routing_status`, `get_channel_health` |
-| Outbound messages | `Send` | `send_operator_slack_message` |
+| Outbound messages | `Send` | `send_operator_slack_message`, `send_email_draft` |
 | Configuration | `Settings2` | `set_client_feature_flag`, `invite_operator` |
 | Archive | `Archive` | `archive_procurement_proposal` |
-| Deletion | `Trash2` | `clear_all_agent_memory` |
+| Deletion | `Trash2` | `clear_all_agent_memory`, `cancel_email_draft` |
 
 Configured MCP calls use `McpToolActivityIcon` and the server's `OrgBrandIcon`
 (logo URL, then website favicon/initial fallback). Collapsed summaries deduplicate
