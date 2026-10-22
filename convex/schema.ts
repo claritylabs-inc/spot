@@ -698,6 +698,8 @@ export default defineSchema({
       }),
     ),
     writingCountries: v.optional(v.array(v.string())),
+    nationwideCountries: v.optional(v.array(v.string())),
+    excludedStates: v.optional(v.array(v.string())),
     writingStates: v.array(v.string()),
     lineOfBusinessCodes: v.array(v.string()),
     createdByUserId: v.optional(v.id("users")),

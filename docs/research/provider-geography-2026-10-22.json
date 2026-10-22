@@ -1,0 +1,2537 @@
+[
+  {
+    "provider": "Blue Lagoon Insurance Services, LLC dba BLIS",
+    "website": "https://www.blisins.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.blisins.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Mighty Oak Insurance Services",
+    "website": "https://mightyoaksf.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB",
+      "CGL",
+      "CYBER",
+      "EO",
+      "INMRC",
+      "PROP",
+      "WORK"
+    ],
+    "sources": [
+      "https://mightyoaksf.com/"
+    ],
+    "findings": [
+      "Official homepage product/service descriptions name these commercial coverage classes. No service-area expansion is inferred from the office address or licensing alone; specialty/program conditions remain applicable."
+    ]
+  },
+  {
+    "provider": "Corgi",
+    "website": "https://www.corgi.insure/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.corgi.insure/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Menlo Insurance Services",
+    "website": "https://www.menloinsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB",
+      "BOP",
+      "CGL",
+      "CYBER",
+      "EO",
+      "PROP",
+      "UMBRC",
+      "WORK"
+    ],
+    "sources": [
+      "https://www.menloinsurance.com/"
+    ],
+    "findings": [
+      "Official homepage product/service descriptions name these commercial coverage classes. No service-area expansion is inferred from the office address or licensing alone; specialty/program conditions remain applicable."
+    ]
+  },
+  {
+    "provider": "Harper",
+    "website": "https://www.harperinsure.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.harperinsure.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Vouch",
+    "website": "https://www.vouch.us/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.vouch.us/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "M&W Insurance Services",
+    "website": "https://www.mwins.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB",
+      "BOP",
+      "EO",
+      "HLTH",
+      "UMBRC",
+      "WORK"
+    ],
+    "sources": [
+      "https://www.mwins.com/"
+    ],
+    "findings": [
+      "Official homepage product/service descriptions name these commercial coverage classes. No service-area expansion is inferred from the office address or licensing alone; specialty/program conditions remain applicable."
+    ]
+  },
+  {
+    "provider": "JJ Pro Insurance Services",
+    "website": "https://jjproinsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "EO",
+      "WORK"
+    ],
+    "sources": [
+      "https://jjproinsurance.com/"
+    ],
+    "findings": [
+      "Official homepage product/service descriptions name these commercial coverage classes. No service-area expansion is inferred from the office address or licensing alone; specialty/program conditions remain applicable."
+    ]
+  },
+  {
+    "provider": "Miller United Insurance Brokerage",
+    "website": "https://www.millerunited.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.millerunited.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Focus West Insurance",
+    "website": "https://focuswestinsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB",
+      "CGL",
+      "CYBER",
+      "DO",
+      "EO",
+      "EPLI",
+      "HLTH",
+      "PROP",
+      "SURE",
+      "WORK"
+    ],
+    "sources": [
+      "https://focuswestinsurance.com/"
+    ],
+    "findings": [
+      "Official homepage product/service descriptions name these commercial coverage classes. No service-area expansion is inferred from the office address or licensing alone; specialty/program conditions remain applicable."
+    ]
+  },
+  {
+    "provider": "NeitClem Wholesale Insurance Brokerage",
+    "website": "https://www.neitclem.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "CGL",
+      "CYBER",
+      "EO"
+    ],
+    "sources": [
+      "https://www.neitclem.com/"
+    ],
+    "findings": [
+      "Official homepage product/service descriptions name these commercial coverage classes. No service-area expansion is inferred from the office address or licensing alone; specialty/program conditions remain applicable."
+    ]
+  },
+  {
+    "provider": "Charlie Porter Insurance Agency (Farmers)",
+    "website": "https://agents.farmers.com/ca/menlo-park/charlie-porter/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://agents.farmers.com/ca/menlo-park/charlie-porter/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "ISU Massie & Beck Insurance Services",
+    "website": "https://www.isumassie.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://isumassie.com/"
+    ],
+    "findings": [
+      "The provider describes a nationwide presence offering business risk-management programs and confirms 50-state authority."
+    ]
+  },
+  {
+    "provider": "J.R. Hillman Insurance",
+    "website": "https://www.jrhillman.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.jrhillman.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "N&N Insurance",
+    "website": "https://www.nninsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "BOP",
+      "CGL",
+      "PROP"
+    ],
+    "sources": [
+      "https://www.nninsurance.com/"
+    ],
+    "findings": [
+      "Official homepage product/service descriptions name these commercial coverage classes. No service-area expansion is inferred from the office address or licensing alone; specialty/program conditions remain applicable."
+    ]
+  },
+  {
+    "provider": "Montgomery Risk",
+    "website": "https://www.montgomeryrisk.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.montgomeryrisk.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Castro Risk",
+    "website": "https://castrorisk.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://castrorisk.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Embarcadero Risk",
+    "website": "https://embarcaderorisk.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://embarcaderorisk.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Fillmore Risk",
+    "website": "https://fillmorerisk.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://fillmorerisk.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Folsom Risk",
+    "website": "https://folsomrisk.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://folsomrisk.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Fort Mason Partners",
+    "website": "https://fortmasonpartners.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://fortmasonpartners.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Hayes Risk",
+    "website": "https://hayesrisk.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://hayesrisk.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Kearny Risk",
+    "website": "https://kearnyrisk.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://kearnyrisk.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Mission Bay Coverage",
+    "website": "https://missionbaycoverage.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://missionbaycoverage.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Nob Hill Coverage",
+    "website": "https://nobhillcoverage.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://nobhillcoverage.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Potrero Risk",
+    "website": "https://potrerorisk.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://potrerorisk.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Van Ness Partners",
+    "website": "https://vannesspartners.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://vannesspartners.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Yerba Buena Partners",
+    "website": "https://yerbabuenapartners.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://yerbabuenapartners.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "KBD Insurance",
+    "website": "https://kbdinsurance.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON",
+      "QC"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB",
+      "CGL",
+      "CYBER",
+      "EO",
+      "PROP"
+    ],
+    "sources": [
+      "https://kbdinsurance.com/about/",
+      "https://kbdinsurance.com/business/"
+    ],
+    "findings": [
+      "Commercial insurance is marketed to Quebec and Ontario businesses. Published product navigation includes professional liability, cyber, commercial property and commercial auto."
+    ]
+  },
+  {
+    "provider": "Mitch Insurance",
+    "website": "https://www.mitchinsurance.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB",
+      "CGL",
+      "CYBER",
+      "EO",
+      "PROP"
+    ],
+    "sources": [
+      "https://mitchinsurance.com/commercial-insurance/",
+      "https://mitchinsurance.com/commercial-insurance/cyber/",
+      "https://mitchinsurance.com/commercial-insurance/professional-liability/"
+    ],
+    "findings": [
+      "Dedicated Ontario commercial, professional-liability and cyber pages provide quote routes and explicit coverage offerings."
+    ]
+  },
+  {
+    "provider": "BrokerForce Insurance",
+    "website": "https://brokerforce.ca",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://brokerforce.ca/blog/commercial-general-liability-cgl-insurance-in-ontario/",
+      "https://brokerforce.ca/blog/commercial-property-insurance-in-ontario/"
+    ],
+    "findings": [
+      "Provider-authored Ontario commercial GL and property pages invite commercial quote requests. No national Canadian scope is inferred."
+    ]
+  },
+  {
+    "provider": "Scrivens Insurance",
+    "website": "https://www.scrivens.ca",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "CRIME",
+      "DO",
+      "EO",
+      "PROP"
+    ],
+    "sources": [
+      "https://www.scrivens.ca/business-insurance/commercial-general-liability-insurance",
+      "https://www.scrivens.ca/contact"
+    ],
+    "findings": [
+      "Ontario commercial GL page and published commercial navigation identify property, crime, E&O and D&O offerings in the Ontario commercial offering."
+    ]
+  },
+  {
+    "provider": "Halpenny Insurance Brokers",
+    "website": "https://www.halpenny.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB",
+      "BANDM",
+      "INMRC",
+      "PROP"
+    ],
+    "sources": [
+      "https://www.halpenny.com/commercial-insurance/"
+    ],
+    "findings": [
+      "Commercial brokerage explicitly targets Ottawa and Eastern Ontario and lists property, commercial fleets, builders risk, equipment breakdown and professional liability. Canadian national scope is left unassigned."
+    ]
+  },
+  {
+    "provider": "Morison Insurance",
+    "website": "https://www.morisoninsurance.ca",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB",
+      "CGL",
+      "CYBER",
+      "EO",
+      "INMRC",
+      "PROP"
+    ],
+    "sources": [
+      "https://www.morisoninsurance.ca/",
+      "https://www.morisoninsurance.ca/business-insurance/commercial-cyber-insurance/",
+      "https://www.morisoninsurance.ca/business-insurance/professional-liability-insurance/"
+    ],
+    "findings": [
+      "Commercial services expressly serve Ontario; dedicated professional-liability and cyber pages corroborate those classes. Property, commercial auto, GL and tools/equipment are published products."
+    ]
+  },
+  {
+    "provider": "Terry Lau Insurance Broker",
+    "website": "https://terrylauinsurancebroker.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB"
+    ],
+    "sources": [
+      "https://terrylauinsurancebroker.com/",
+      "https://terrylauinsurancebroker.com/cgl-insurance/",
+      "https://terrylauinsurancebroker.com/driving-instructor-insurance/"
+    ],
+    "findings": [
+      "Commercial auto and CGL are expressly offered to Ontario businesses; driving-instructor/fleet specialism remains relevant context, not a generic nationwide claim."
+    ]
+  },
+  {
+    "provider": "Cowan Insurance Group",
+    "website": "https://www.cowangroup.ca",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "EO"
+    ],
+    "sources": [
+      "https://www.cowangroup.ca/business-insurance-in-hamilton/",
+      "https://www.cowangroup.ca/home/business-insurance/liability-insurance/professional-liability-insurance/"
+    ],
+    "findings": [
+      "Hamilton Ontario commercial service and a dedicated professional-liability product page establish the recorded market and E&O class. No all-provinces claim is assigned."
+    ]
+  },
+  {
+    "provider": "The Insurance Lab",
+    "website": "https://www.theinsurancelab.ca",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB",
+      "CYBER",
+      "EO"
+    ],
+    "sources": [
+      "https://www.theinsurancelab.ca/",
+      "https://www.theinsurancelab.ca/commercial-insurance",
+      "https://www.theinsurancelab.ca/professional-liability"
+    ],
+    "findings": [
+      "Ontario-wide business service is explicit. The commercial page offers E&O, cyber and commercial auto, with an Ontario E&O detail page."
+    ]
+  },
+  {
+    "provider": "Unibrokers",
+    "website": "https://brokersuneet.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "EO"
+    ],
+    "sources": [
+      "https://brokersuneet.com/services/business-insurance",
+      "https://brokersuneet.com/services/professional-insurance"
+    ],
+    "findings": [
+      "The recorded Suneet Sharma/Unibrokers site explicitly serves Ontario businesses and offers professional-liability insurance."
+    ]
+  },
+  {
+    "provider": "All Line Insurance",
+    "website": "https://www.alllineinsurance.ca",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB"
+    ],
+    "sources": [
+      "https://www.alllineinsurance.ca/automobile-insurance/",
+      "https://www.alllineinsurance.ca/commercial-insurance/"
+    ],
+    "findings": [
+      "Ontario service and commercial-auto/property quote routes are published. The service region remains Ontario only, without inferring broader Canadian appetite."
+    ]
+  },
+  {
+    "provider": "Alton Risk Insurance Services",
+    "website": "https://altonrisk.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://altonrisk.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Founder Shield",
+    "website": "https://foundershield.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://foundershield.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Zyber Insurance",
+    "website": "https://www.zyberinsurance.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.zyberinsurance.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Insurevents",
+    "website": "https://www.insurevents.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.insurevents.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Franklin Insurance Solutions",
+    "website": "https://franklininsurancesolutions.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://franklininsurancesolutions.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Embroker",
+    "website": "https://www.embroker.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.embroker.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Techrug",
+    "website": "https://www.techrug.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.techrug.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "R.V. Nuccio & Associates (RVNA)",
+    "website": "https://www.rvnuccio.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.rvnuccio.com/"
+    ],
+    "findings": [
+      "The provider explicitly describes nationwide insurance-broker and program-administrator operations. Product/program eligibility still needs provider confirmation."
+    ]
+  },
+  {
+    "provider": "eSpecialty Insurance",
+    "website": "https://www.especialty.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.especialty.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Fusco Orsini & Associates Insurance Services",
+    "website": "https://www.foagency.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.foagency.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "BlackFire Cyber Insurance",
+    "website": "https://www.blackfirecyberinsurance.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.blackfirecyberinsurance.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Newfront",
+    "website": "https://www.newfront.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.newfront.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Insureon",
+    "website": "https://www.insureon.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.insureon.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Heffernan Insurance Brokers",
+    "website": "https://www.heffins.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.heffins.com/"
+    ],
+    "findings": [
+      "The provider describes insurance and financial services for businesses and individuals nationwide."
+    ]
+  },
+  {
+    "provider": "American Insurance Specialists (Allen Financial)",
+    "website": null,
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Francis L. Dean & Associates",
+    "website": "https://fdean.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://fdean.com/FAQs"
+    ],
+    "findings": [
+      "The FAQ explicitly says it writes business in all 50 states and Washington DC."
+    ]
+  },
+  {
+    "provider": "Athos Insurance Services",
+    "website": "https://www.athosinsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.athosinsurance.com/"
+    ],
+    "findings": [
+      "The provider explicitly states that its specialty business services all 50 states."
+    ]
+  },
+  {
+    "provider": "Polaris Risk Management & Insurance Services",
+    "website": "https://www.polaris-ins.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.polaris-ins.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Instant Risk Coverage (IRC)",
+    "website": "https://ircnow.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://ircnow.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Coverwatch",
+    "website": "https://www.coverwatch.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.coverwatch.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Lamda Broking",
+    "website": "https://www.lamdabroking.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.lamdabroking.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Howden Israel",
+    "website": "https://www.howden.co.il",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.howden.co.il"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Engelman Insurance",
+    "website": "https://www.engelman-ins.co.il",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.engelman-ins.co.il"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Yeadim Insurance",
+    "website": "https://www.yeadim-bit.co.il",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.yeadim-bit.co.il"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Bollinsure Insurance Services",
+    "website": "https://www.bollinsure.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.bollinsure.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Saberlines Insurance Services",
+    "website": "https://www.saberlinesins.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.saberlinesins.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "AEC Insurance Services",
+    "website": "https://www.aecinsuranceservices.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.aecinsuranceservices.com/"
+    ],
+    "findings": [
+      "The agency explicitly advertises serving clients nationwide, including clients moving or growing into new states."
+    ]
+  },
+  {
+    "provider": "Nadler Insurance",
+    "website": "https://www.nadlerinsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.nadlerinsurance.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Germani Insurance Services",
+    "website": "https://germaniinsurance.net/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://germaniinsurance.net/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "DiNicola Insurance Services",
+    "website": "https://www.dinicolains.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.dinicolains.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Golden Benchmark",
+    "website": "https://www.goldenbenchmark.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.goldenbenchmark.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "CGI Agency",
+    "website": "https://www.cgiagency.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB"
+    ],
+    "sources": [
+      "https://www.cgiagency.com/"
+    ],
+    "findings": [
+      "Official homepage product/service descriptions name these commercial coverage classes. No service-area expansion is inferred from the office address or licensing alone; specialty/program conditions remain applicable."
+    ]
+  },
+  {
+    "provider": "Stonepoint Insurance Services",
+    "website": "https://www.stonepointinsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.stonepointinsurance.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "The Insurance Lab (California)",
+    "website": "https://goinsurancelab.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://goinsurancelab.com/"
+    ],
+    "findings": [
+      "The provider expressly markets nationwide placement of hard-to-place and excess/surplus risks. Class-level routing does not establish a particular risk is eligible."
+    ]
+  },
+  {
+    "provider": "Prime Sentinel Insurance Solutions",
+    "website": "https://primesentinelins.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://primesentinelins.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "CF&P Insurance Brokers",
+    "website": "https://www.cfpinsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.cfpinsurance.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Solutions Specialty Insurance Brokers",
+    "website": "https://solutionsspecialty.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [
+      "AUTOB",
+      "CGL",
+      "EO",
+      "GARAG",
+      "PROP",
+      "SURE",
+      "WORK"
+    ],
+    "sources": [
+      "https://solutionsspecialty.com/"
+    ],
+    "findings": [
+      "Official homepage product/service descriptions name these commercial coverage classes. No service-area expansion is inferred from the office address or licensing alone; specialty/program conditions remain applicable."
+    ]
+  },
+  {
+    "provider": "Heritage Insurance Agency",
+    "website": "https://www.heritage-agency.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.heritage-agency.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "David E. Quan Insurance Agency",
+    "website": "https://www.quaninsurance.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.quaninsurance.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Roberti's Insurance Agency",
+    "website": "https://www.robertiagency.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.robertiagency.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Employer Insurance Services",
+    "website": "https://www.employersi.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.employersi.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Gillespie Insurance Services",
+    "website": "https://www.giscoverage.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.giscoverage.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Express Center Insurance Services",
+    "website": "https://www.ecis1.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.ecis1.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Amelia Risk",
+    "website": "https://ameliarisk.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://ameliarisk.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "AIG",
+    "website": "https://www.aig.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.aig.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Alliance Risk",
+    "website": "https://joinalliancerisk.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://joinalliancerisk.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "At-Bay",
+    "website": "https://www.at-bay.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.at-bay.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Aon",
+    "website": "https://www.aon.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.aon.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Armilla",
+    "website": "https://www.armilla.ai/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.armilla.ai/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "CNA",
+    "website": "https://www.cna.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.cna.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Chubb",
+    "website": "https://www.chubb.com/us-en/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.chubb.com/us-en/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Berkshire Hathaway Specialty Insurance",
+    "website": "https://www.bhspecialty.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.bhspecialty.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "biBerk",
+    "website": "https://www.biberk.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.biberk.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Beazley",
+    "website": "https://www.beazley.com/en-us/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.beazley.com/en-us/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "CFC",
+    "website": "https://www.cfc.com/en-us/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.cfc.com/en-us/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Coterie Insurance",
+    "website": "https://coterieinsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://coterieinsurance.com/"
+    ],
+    "findings": [
+      "The homepage explicitly advertises admitted BOP, GL and professional-liability products in all 50 states."
+    ]
+  },
+  {
+    "provider": "Cowbell",
+    "website": "https://cowbell.insure/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://cowbell.insure/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Counterpart",
+    "website": "https://yourcounterpart.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://yourcounterpart.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Coalition",
+    "website": "https://www.coalitioninc.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.coalitioninc.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Coverdash",
+    "website": "https://www.coverdash.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.coverdash.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Gallagher",
+    "website": "https://www.ajg.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.ajg.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Foxquilt",
+    "website": "https://www.foxquilt.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA",
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.foxquilt.com/about-us.html"
+    ],
+    "findings": [
+      "The business-insurance distribution page explicitly lists 50 US states and eight Canadian provinces. Canadian provinces are unnamed, so no Canada-wide or Ontario assignment is inferred from its Toronto office."
+    ]
+  },
+  {
+    "provider": "ERGO NEXT Insurance",
+    "website": "https://www.nextinsurance.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.nextinsurance.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Layr",
+    "website": "https://withlayr.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://withlayr.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Hiscox",
+    "website": "https://www.hiscox.com/small-business-insurance",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [
+      "AK"
+    ],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.hiscox.com/small-business-insurance/errors-and-omissions-insurance/e-and-o-coverage",
+      "https://www.hiscox.com/small-business-insurance/general-liability-insurance",
+      "https://www.hiscox.com/small-business-insurance/state"
+    ],
+    "findings": [
+      "Official state and product pages describe a 49-state plus DC small-business offering and expressly exclude Alaska. Detailed product/class eligibility remains conditional."
+    ]
+  },
+  {
+    "provider": "Kinro",
+    "website": "https://kinro.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://kinro.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "HUB International",
+    "website": "https://www.hubinternational.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "CA"
+    ],
+    "newlyConfirmedRegions": [
+      "ON"
+    ],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.hubinternational.com/en-CA/products/business-insurance/errors-and-omissions/",
+      "https://www.hubinternational.com/en-ca/affinity/ontario-medical-association/",
+      "https://www.hubinternational.com/en-ca/offices/ca/ontario/toronto-king-st/"
+    ],
+    "findings": [
+      "The Toronto office expressly markets commercial brokerage, including national business clients. Canadian E&O and Ontario cyber programs corroborate the commercial market; only Ontario is newly confirmed, not every province or product."
+    ]
+  },
+  {
+    "provider": "Marsh McLennan Agency",
+    "website": "https://www.marshmma.com/us/mma/about-us.html",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.marshmma.com/us/mma/about-us.html"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Markel",
+    "website": "https://www.markel.com/us",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.markel.com/us"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Marsh",
+    "website": "https://www.marsh.com/en/home.html",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.marsh.com/en/home.html"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Lockton",
+    "website": "https://global.lockton.com/us/en",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://global.lockton.com/us/en"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Mylo",
+    "website": "https://choosemylo.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://choosemylo.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Liberty Mutual",
+    "website": "https://www.libertymutual.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.libertymutual.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Pie Insurance",
+    "website": "https://www.pieinsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.pieinsurance.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Nationwide",
+    "website": "https://www.nationwide.com/business/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.nationwide.com/business/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Resilience",
+    "website": "https://cyberresilience.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://cyberresilience.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "RiskCube",
+    "website": "https://riskcubeai.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://riskcubeai.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Relm",
+    "website": "https://relminsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://relminsurance.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "The Baldwin Group",
+    "website": "https://baldwin.com/business-insurance/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://baldwin.com/business-insurance/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Simply Business",
+    "website": "https://www.simplybusiness.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.simplybusiness.com/business-insurance/states/"
+    ],
+    "findings": [
+      "The business-insurance quote directory publishes state-specific service pages across all 50 states. Product and carrier eligibility still vary."
+    ]
+  },
+  {
+    "provider": "TechInsurance",
+    "website": "https://www.techinsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": true,
+    "newlyConfirmedCountries": [
+      "US"
+    ],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [
+      "US"
+    ],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.techinsurance.com/"
+    ],
+    "findings": [
+      "The provider describes agents specializing in insurance for technology businesses in all 50 states, beyond a licensing-only statement."
+    ]
+  },
+  {
+    "provider": "Risklytics",
+    "website": "https://www.risklytics.ai/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.risklytics.ai/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "The Hartford",
+    "website": "https://www.thehartford.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.thehartford.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "StartupInsurance.ai",
+    "website": "https://www.startupinsurance.ai/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.startupinsurance.ai/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "WTW",
+    "website": "https://www.wtwco.com/en-us",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": false,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.wtwco.com/en-us"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "THREE",
+    "website": "https://threeinsurance.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://threeinsurance.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "USI Insurance Services",
+    "website": "https://www.usi.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.usi.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "WithCoverage",
+    "website": "https://www.withcoverage.com",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.withcoverage.com"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Travelers",
+    "website": "https://www.travelers.com/business-insurance/technology",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.travelers.com/business-insurance/technology"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  },
+  {
+    "provider": "Zurich U.S.",
+    "website": "https://www.zurichna.com/",
+    "reviewedAt": "2026-10-22",
+    "homepageAvailable": true,
+    "updated": false,
+    "newlyConfirmedCountries": [],
+    "newlyConfirmedRegions": [],
+    "nationwideCountries": [],
+    "excludedStates": [],
+    "additionalCoverageCodes": [],
+    "sources": [
+      "https://www.zurichna.com/"
+    ],
+    "findings": [
+      "No additional service-area assertion established in this pass. Existing profile retained. Missing fields remain unverified."
+    ]
+  }
+]

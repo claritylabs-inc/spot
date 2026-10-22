@@ -16,6 +16,7 @@ import {
   BROKER_REGION_CODES,
   brokerRegionCountry,
   brokerWritingCountries,
+  brokerAreaFit,
   CANADIAN_PROVINCES,
   USPS_STATE_NAMES,
 } from "./brokerProfileValidation";
@@ -257,6 +258,8 @@ export function requestMatchContext(
 export type ProviderFitProfile = {
   networkStatus: "prospect" | "active" | "inactive" | "blacklisted";
   writingCountries?: string[];
+  nationwideCountries?: string[];
+  excludedStates?: string[];
   writingStates: string[];
   lineOfBusinessCodes: string[];
 };
@@ -292,15 +295,8 @@ export type ProviderFit = {
   lines: { fit: DimensionFit; covered: LobNeed[]; missing: LobNeed[] };
 };
 
-function placeServiced(
-  place: OutreachPlace,
-  countries: ReadonlySet<string>,
-  regionsByCountry: ReadonlyMap<string, ReadonlySet<string>>,
-) {
-  if (!countries.has(place.country)) return false;
-  const regions = regionsByCountry.get(place.country);
-  // No listed regions for the country means country-wide.
-  return !regions?.size || (!!place.region && regions.has(place.region));
+function placeServiced(place: OutreachPlace, profile: ProviderFitProfile) {
+  return brokerAreaFit(profile, place.country, place.region) === "match";
 }
 
 export function classifyProvider(
@@ -337,28 +333,17 @@ export function classifyProvider(
     result.geography.fit = "unknown";
     result.reasons.push("geography_appetite_empty");
   } else if (geographyEvaluable) {
-    const regionsByCountry = new Map<string, Set<string>>();
-    for (const code of profile.writingStates) {
-      const country = brokerRegionCountry(code);
-      countries.add(country);
-      regionsByCountry.set(
-        country,
-        (regionsByCountry.get(country) ?? new Set()).add(code),
-      );
-    }
     for (const place of geography.places)
-      (placeServiced(place, countries, regionsByCountry)
+      (placeServiced(place, profile)
         ? result.geography.serviced
         : result.geography.unserviced
       ).push(place);
     const hasUnknownRegion = geography.places.some(
       (place) =>
-        (place.country === "US" || place.country === "CA") &&
-        !place.region &&
-        !!regionsByCountry.get(place.country)?.size,
+        brokerAreaFit(profile, place.country, place.region) === "unknown",
     );
     const primaryServiced = geography.primary
-      ? placeServiced(geography.primary, countries, regionsByCountry)
+      ? placeServiced(geography.primary, profile)
       : !!result.geography.serviced.length;
     if (hasUnknownRegion) {
       result.geography.fit = "unknown";

@@ -263,6 +263,18 @@ function validateBrokerProfileFields(input: Record<string, unknown>) {
         : undefined,
     });
   }
+  if (Array.isArray(input.nationwideCountries))
+    normalizeBrokerWritingCountries(
+      input.nationwideCountries.filter(
+        (value): value is string => typeof value === "string",
+      ),
+    );
+  if (Array.isArray(input.excludedStates))
+    normalizeBrokerWritingStates(
+      input.excludedStates.filter(
+        (value): value is string => typeof value === "string",
+      ),
+    );
   if (Array.isArray(input.writingStates)) {
     normalizeBrokerWritingStates(
       input.writingStates.filter(

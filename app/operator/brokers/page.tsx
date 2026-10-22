@@ -1,4 +1,5 @@
 "use client";
+import { brokerRegionCountry } from "@/convex/lib/brokerProfileValidation";
 
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
@@ -151,7 +152,7 @@ export default function OperatorBrokersPage() {
                       />
                     </TableCell>
                     <TableCell className="whitespace-normal text-muted-foreground">
-                      {row.profile?.writingStates.join(", ") || "—"}
+                      {[...(row.profile?.nationwideCountries ?? []).map(code => `${code} nationwide`), ...(row.profile?.writingStates ?? []).filter(code => !(row.profile?.nationwideCountries ?? []).includes(brokerRegionCountry(code)))].join(", ") || "—"}
                     </TableCell>
                     <TableCell className="whitespace-normal text-muted-foreground">
                       {row.profile?.lineOfBusinessCodes.join(", ") || "—"}

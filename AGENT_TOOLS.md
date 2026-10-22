@@ -494,3 +494,11 @@ Intake System One audit: owner-scoped `actions/intakeIndustry:suggestProfile` re
 Provider appetite writes accept `writingCountries` (ISO two-letter codes) and `writingStates` (US states/DC or Canadian provinces/territories). Country removal clears dependent regions; region-only writes include their country. Explicit geography edits override automated regional enrichment. Existing state-only profiles infer their countries on read without a data migration.
 
 Provider `lineOfBusinessCodes` writes use the verified ACORD PCS 2.11.0 LineOfBusiness catalog. The shared provider enum excludes interchange-only `UN`/`BLANK`; unknown appetite is an empty list. Existing commercial/personal variants and distinct valid codes are preserved, with exact `Motorcycle` case. The portal, operator/MCP schemas, server validation and research share the catalog in `convex/lib/linesOfBusiness.ts`; source provenance is in `docs/architecture/acord-provider-appetite.md`.
+
+Provider network create/update tools also accept optional `nationwideCountries`
+and `excludedStates`. Nationwide scope requires explicit service evidence, not
+just a license or an empty region list. Country removal clears its nationwide
+selection and exclusions; exclusions apply only within nationwide countries and
+override included regions. Geography edits retain manual precedence. These fields
+share the existing operator role, exact approval and impersonation boundaries;
+there is no new send or scheduling capability.

@@ -114,3 +114,22 @@ The operation uses the ordinary direct-operator writer, including impersonation
 protection and per-provider audit entries, plus a matching-run audit with criteria
 and counts. It does not send email, release documents, invite users, or run on a
 schedule. A missing application, coverage or location fails before any writes.
+
+### Nationwide scope and actionable results
+
+Provider geography also supports optional `nationwideCountries` and
+`excludedStates`; old records need no migration. Nationwide scope requires a
+selected country and explicit service evidence. Empty subdivisions never imply
+nationwide service. Excluded regions must belong to a nationwide country and
+win over individual inclusions; removing a country or nationwide scope clears
+its dependent exceptions. Both editors use the same searchable primitives.
+Explicit edits claim the existing manual ownership of regional research.
+
+`procurementBrokerMatch` classifies coverage mismatch, outside the recorded
+area, needs verification, or confirmed. Auto-add counts existing outreach first,
+then adds confirmed new rows. Its report includes only request-relevant missing
+appetite candidates, rather than the old directory-wide missing-field count.
+The existing right-hand SettingsDrawer uses compact inline rows for the summary
+and review links; the operator stays on the request. Directory state filters
+also recognize nationwide service and honor exclusions. See the
+[129-provider research review](../research/provider-geography-2026-10-22.md).
