@@ -47,11 +47,13 @@ export function AppetiteRegionsField({
   value,
   onChange,
   disabled,
+  ariaLabel = "States / provinces serviced",
 }: {
   countries: string[];
   value: string[];
   onChange: (value: string[]) => void;
   disabled?: boolean;
+  ariaLabel?: string;
 }) {
   const options = regions.filter((option) =>
     countries.includes(brokerRegionCountry(option.value)),
@@ -60,7 +62,7 @@ export function AppetiteRegionsField({
     <div className="w-full">
       <SearchableMultiSelect
         typographyRole="control.menu"
-        ariaLabel="States / provinces serviced"
+        ariaLabel={ariaLabel}
         placeholder="Select states / provinces"
         options={options}
         value={value}
@@ -72,6 +74,41 @@ export function AppetiteRegionsField({
           className={`px-3 py-1 text-muted-foreground ${typeStyle("caption.default")}`}
         >
           Select Canada or United States to choose states or provinces.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function AppetiteNationwideField({
+  countries: selectedCountries,
+  value,
+  onChange,
+  disabled,
+}: {
+  countries: string[];
+  value: string[];
+  onChange: (value: string[]) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="w-full">
+      <SearchableMultiSelect
+        typographyRole="control.menu"
+        ariaLabel="Nationwide service"
+        placeholder="No nationwide service confirmed"
+        options={countries.filter((option) =>
+          selectedCountries.includes(option.value),
+        )}
+        value={value}
+        onChange={onChange}
+        disabled={disabled || !selectedCountries.length}
+      />
+      {!!value.length && (
+        <p
+          className={`px-3 py-1 text-muted-foreground ${typeStyle("caption.default")}`}
+        >
+          Includes all states/provinces, except any exclusions below.
         </p>
       )}
     </div>

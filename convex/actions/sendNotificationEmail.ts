@@ -12,7 +12,7 @@ import {
   getNotificationFromAddress,
   sendResendEmail,
 } from "../lib/resend";
-import { getPortalUrlForOrg } from "../lib/domains";
+import { getAuthSiteUrl, getPortalUrlForOrg } from "../lib/domains";
 import { resolveNotificationThreadContext } from "../lib/notificationThreadContext";
 
 export const send = internalAction({
@@ -84,7 +84,9 @@ export const send = internalAction({
 
     // Notification emails are Spot-branded. Broker white-labeling was retired
     // when broker organizations became supplier profiles.
-    const siteUrl = getPortalUrlForOrg(recipientOrg);
+    const siteUrl = notification.actionType === "view_operator_procurement"
+      ? getAuthSiteUrl()
+      : getPortalUrlForOrg(recipientOrg);
     const ctaUrl = `${siteUrl}${notificationActionHref(
       notification.actionType,
       notification.actionPayload,

@@ -2250,3 +2250,45 @@ three Observed rows remained, and clicking Auto add providers reported three
 already present with no additions. The integrated schema contained a misplaced
 inbox index on `threadMessages` referencing a nonexistent field; removed that
 invalid index while retaining the intended procurement-email inbox index.
+
+## Provider geography and matching feedback — October 22, 2026
+
+In local Chrome, ran the existing synthetic Texas CGL procurement request after
+sourced provider appetite updates. Auto add providers added 11 more markets;
+the table increased from three to 14 Observed rows. The results drawer showed
+Texas and General liability, 11 added, three already present, and 41 named
+verification candidates with reasons. A repeat added zero and showed 14 already
+present. Server readback confirmed 14 unique providers, no sent timestamps and
+no issued packet revisions. The old generic 77-provider success toast is gone.
+
+Visual inspection found that a long provider name squeezed the drawer table's
+reason column; replaced that table with wrapping InlineFieldRow primitives and
+Review actions, then verified the updated drawer. Hiscox's Appetite showed
+United States nationwide, Alaska excluded, and the nationwide explanation; the
+exception selector has its own accessible name. Both geography editors use the
+shared controls. Read-only availability reporting over the existing Ontario
+E&O/cyber request found nine confirmed provider matches using the production
+matcher, without modifying that client's outreach.
+
+Evidence: `.context/provider-geography/{matching-results,nationwide-exception}.png`,
+`final-readback.json` and `request-availability.json`. Root/Convex TypeScript,
+touched-file ESLint, whitespace checks and local deployment passed. No unit tests
+or migrations were written. Browser checks did not separately exercise every
+country-removal combination or the broker-member editor; those paths were
+source-reviewed and share the validated normalization owner. Production unchanged.
+
+Integrated concurrent request-geography prompting and shared coverage mappings.
+The new nationwide/exception predicate is shared by both manual matching and
+outreach fit classification. Corrected unsupported row-layout props without
+changing the primitive; the inspected wrapping layout is preserved.
+
+Final integrated root/Convex TypeScript, touched-file lint, whitespace checks
+and local deployment passed after the parallel outreach implementation landed.
+A refreshed browser repeat showed 14 already present, zero added, 41 verification
+candidates, 22 coverage mismatches and 51 recorded-area mismatches. Shared package
+mappings changed two exclusion categories without changing confirmed additions.
+The latest screenshot retains the simple wrapping rows and provider Review links.
+
+## Automated provider outreach — October 22, 2026
+
+Local capture QA passed geography correction and retry, reactive partial/unknown matching, cadence provenance and overrides, individual and matched-only bulk launch, Stop/reload, and mobile/dark presentation. Readback confirmed captured steps without sent timestamps, no external inbox provisioning, and captured-step replay skipped. Signature/body boundary probes and unauthenticated operator mutations behaved as expected. See [the provider outreach evidence ledger](provider-outreach-workflow.md) for artifacts and explicit partial/not-run cases. Live inbox delivery, replies and unknown-outcome recovery still require a configured restricted test target. No Vercel previews, unit tests or production changes were used.

@@ -263,6 +263,18 @@ function validateBrokerProfileFields(input: Record<string, unknown>) {
         : undefined,
     });
   }
+  if (Array.isArray(input.nationwideCountries))
+    normalizeBrokerWritingCountries(
+      input.nationwideCountries.filter(
+        (value): value is string => typeof value === "string",
+      ),
+    );
+  if (Array.isArray(input.excludedStates))
+    normalizeBrokerWritingStates(
+      input.excludedStates.filter(
+        (value): value is string => typeof value === "string",
+      ),
+    );
   if (Array.isArray(input.writingStates)) {
     normalizeBrokerWritingStates(
       input.writingStates.filter(
@@ -952,24 +964,45 @@ export async function preflightOperatorToolConfirmation(
       await preflightProcurementRequestUpdate(ctx, args.input);
       return;
     case "launch_procurement_provider_outreach": {
-      const request = await requireDocument(ctx, "procurementRequests", args.input.procurementRequestId, "Procurement request");
+      const request = await requireProcurementRequest(
+        ctx,
+        args.input.procurementRequestId,
+      );
       requireCompanyRequest(request);
-      if (request.deletedAt || request.status === "completed" || request.status === "cancelled") throw new Error("Procurement request is closed");
+      if (
+        request.deletedAt ||
+        request.status === "completed" ||
+        request.status === "cancelled"
+      )
+        throw new Error("Procurement request is closed");
       await requireClientOrganization(ctx, request.clientOrgId);
-      if (!Array.isArray(args.input.brokerOrgIds) || !args.input.brokerOrgIds.length || args.input.brokerOrgIds.length > 50) throw new Error("Select one to 50 providers");
+      if (
+        !Array.isArray(args.input.brokerOrgIds) ||
+        !args.input.brokerOrgIds.length ||
+        args.input.brokerOrgIds.length > 50
+      )
+        throw new Error("Select one to 50 providers");
       for (const brokerOrgId of args.input.brokerOrgIds) {
-        const broker = await requireDocument(ctx, "organizations", brokerOrgId, "Provider");
-        if (broker.type !== "broker" || broker.deletedAt) throw new Error("Provider not found");
-        assertExternalBrokerIdentity(broker);
+        const broker = await requireBrokerOrganization(ctx, brokerOrgId);
+        if (!broker || broker.deletedAt) throw new Error("Provider not found");
       }
       return;
     }
     case "stop_procurement_provider_outreach": {
-      const request = await requireDocument(ctx, "procurementRequests", args.input.procurementRequestId, "Procurement request");
+      const request = await requireProcurementRequest(
+        ctx,
+        args.input.procurementRequestId,
+      );
       requireCompanyRequest(request);
       await requireClientOrganization(ctx, request.clientOrgId);
-      const sequence = await requireDocument(ctx, "procurementOutreachSequences", args.input.sequenceId, "Outreach sequence");
-      if (sequence.requestId !== request._id) throw new Error("Sequence does not belong to the request");
+      const sequence = await requireDocument(
+        ctx,
+        "procurementOutreachSequences",
+        args.input.sequenceId,
+        "Outreach sequence",
+      );
+      if (sequence.requestId !== request._id)
+        throw new Error("Sequence does not belong to the request");
       return;
     }
     case "create_procurement_broker_outreach":

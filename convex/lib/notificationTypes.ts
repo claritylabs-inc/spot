@@ -4,12 +4,14 @@ import dayjs from "dayjs";
 import { v, type Infer } from "convex/values";
 
 export const notificationActionTypeValidator = v.union(
+  v.literal("view_operator_procurement"),
   v.literal("view_policy"),
   v.literal("view_thread"),
   v.literal("view_vendor_compliance"),
 );
 
 export const notificationActionPayloadValidator = v.union(
+  v.object({ clientOrgId: v.id("organizations"), requestId: v.id("procurementRequests") }),
   v.object({ policyId: v.id("policies"), tab: v.optional(v.string()) }),
   v.object({
     threadId: v.id("threads"),
@@ -50,6 +52,9 @@ export function notificationActionHref(
   payload: NotificationActionPayload | undefined,
 ): string | undefined {
   if (!payload) return undefined;
+  if (actionType === "view_operator_procurement" && "requestId" in payload && "clientOrgId" in payload) {
+    return `/operator/clients/${payload.clientOrgId}/procurement/${payload.requestId}?view=proposals`;
+  }
   if (actionType === "view_policy" && "policyId" in payload) {
     return `/policies/${payload.policyId}${payload.tab ? `?tab=${encodeURIComponent(payload.tab)}` : ""}`;
   }

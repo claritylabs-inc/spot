@@ -698,6 +698,8 @@ export default defineSchema({
       }),
     ),
     writingCountries: v.optional(v.array(v.string())),
+    nationwideCountries: v.optional(v.array(v.string())),
+    excludedStates: v.optional(v.array(v.string())),
     writingStates: v.array(v.string()),
     lineOfBusinessCodes: v.array(v.string()),
     createdByUserId: v.optional(v.id("users")),
@@ -2876,6 +2878,7 @@ export default defineSchema({
     leaseToken: v.optional(v.string()),
     leaseUntil: v.optional(v.number()),
     firstAttemptAt: v.optional(v.number()),
+    impersonationDeferredAt: v.optional(v.number()),
     generationStartedAt: v.optional(v.number()),
     draft: v.optional(
       v.object({

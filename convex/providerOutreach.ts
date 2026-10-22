@@ -1,3 +1,4 @@
+import { isCapturedResourceId, operatorInboxAddress } from "./lib/resendInbox";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 
@@ -68,12 +69,14 @@ import {
   type OutreachCadenceInput,
   type OutreachCadenceSource,
   type StepDraft,
+  type StepFinishOutcome,
 } from "./lib/providerOutreachValidators";
 import {
   MAX_OUTREACH_FOLLOW_UPS,
   OUTREACH_DEFAULT_CADENCE,
   addBusinessDays,
   buildOutreachSchedule,
+  followUpCutoff,
   recomputeScheduleAfterSend,
 } from "./lib/providerOutreachSchedule";
 import { getClientPortalUrl } from "./lib/domains";
@@ -101,6 +104,8 @@ const SEQUENCE_STATUSES: readonly SequenceStatus[] = [
 ];
 const MAX_STEPS_PER_SEQUENCE = 10;
 const SHORT_TEXT = 500;
+/** Longest a step may wait for an impersonating sender before the sequence stops. */
+const IMPERSONATION_MAX_DEFER_MS = 24 * 60 * 60 * 1000;
 
 function isLive(status: SequenceStatus) {
   return LIVE_SEQUENCE_STATUSES.includes(status);
@@ -614,12 +619,15 @@ async function terminalizeSequence(
   for (const step of steps) {
     if (step._id === args.keepStepId) continue;
     if (step.status !== "scheduled" && step.status !== "sending") continue;
-    await ctx.db.patch(step._id, {
-      status: "cancelled",
-      leaseToken: undefined,
-      leaseUntil: undefined,
-      updatedAt: args.now,
-    });
+    // A cancelled in-flight send keeps its lease token so the worker can still
+    // record what actually happened (see `finishStepInternal`); nothing else
+    // can use it because every other fenced mutation requires `sending`.
+    await ctx.db.patch(
+      step._id,
+      step.status === "sending"
+        ? { status: "cancelled", updatedAt: args.now }
+        : { status: "cancelled", leaseToken: undefined, leaseUntil: undefined, updatedAt: args.now },
+    );
     cancelled += 1;
   }
   await ctx.db.patch(sequence._id, {
@@ -632,8 +640,13 @@ async function terminalizeSequence(
   });
   // One notification per transition into manual handoff; callers only reach
   // here when the status actually changes, so a duplicate webhook cannot repeat it.
-  if (args.status === "responded" || args.reason === "recipient_unmonitored")
-    await notifyManualHandoff(ctx, sequence, args.reason, args.now);
+  if (
+    args.status === "responded" ||
+    args.status === "failed" ||
+    args.reason === "recipient_unmonitored" ||
+    args.reason === "bounced"
+  )
+    await notifyManualHandoff(ctx, sequence, args.reason, args.now, args.status);
   return cancelled;
 }
 
@@ -642,30 +655,44 @@ async function notifyManualHandoff(
   sequence: Sequence,
   reason: string,
   now: number,
+  status: "stopped" | "failed" | "responded" | "completed",
 ) {
   const [request, broker] = await Promise.all([
     ctx.db.get(sequence.requestId),
     ctx.db.get(sequence.brokerOrgId),
   ]);
   const provider = broker?.name ?? "A provider";
-  const title =
-    reason === "recipient_unmonitored"
+  // Delivery problems are not replies: say so, with the bounded reason code only.
+  const needsAttention = status === "failed" || reason === "bounced";
+  const title = needsAttention
+    ? "Provider outreach needs attention"
+    : reason === "recipient_unmonitored"
       ? `${provider} contact is unmonitored`
       : reason === "reply_check_timeout"
         ? `${provider} replied; review needed`
         : `${provider} replied`;
+  const code = reason.replace(/[^a-z0-9_ -]/gi, "").slice(0, 80);
+  const subject = request ? ` on ${request.title}` : "";
+  const body = needsAttention
+    ? `Outreach to ${provider}${subject} ${status === "failed" ? "failed" : "stopped"} (${code}). Automated follow-ups stopped; review the Providers tab.`
+    : `Automated follow-ups stopped${subject}. Continue the conversation by hand.`;
   // Scheduled, so a notification failure can never roll back the state change.
   // The explicit userId keeps this operator-private: it is neither org-wide nor
-  // eligible for the client's Slack/email fan-out, and `info` severity sends no email.
+  // eligible for the client's Slack/email fan-out. Warning uses the operator's
+  // existing channel preferences for a reachable handoff.
   await ctx.scheduler.runAfter(0, internal.lib.notify.notifyInternal, {
     orgId: sequence.clientOrgId,
     userId: sequence.senderUserId,
     relatedOrgId: sequence.brokerOrgId,
-    type: "broker_action",
-    severity: "info",
+    type: "mailbox_attention",
+    severity: "warning",
+    actionType: "view_operator_procurement",
+    actionPayload: { clientOrgId: sequence.clientOrgId, requestId: sequence.requestId },
     title,
-    body: `Automated follow-ups stopped${request ? ` on ${request.title}` : ""}. Continue the conversation by hand.`,
-    coalesceKeyParts: ["provider_outreach_handoff", String(sequence._id)],
+    body,
+    coalesceKeyParts: needsAttention
+      ? ["provider_outreach_failed", String(sequence.requestId), code]
+      : ["provider_outreach_handoff", String(sequence._id)],
     nowMs: now,
   });
 }
@@ -924,6 +951,9 @@ export async function launchProviderOutreachByOperator(
       recipientEmail: recipient.email,
       now,
     });
+    // The first email is due at its staggered slot, matching its scheduled run,
+    // so the recovery cron cannot send it early.
+    const staggerMs = result.launched.length * LAUNCH_STAGGER_MS;
     const schedule = buildOutreachSchedule({
       launchAt: now,
       cadence,
@@ -951,7 +981,7 @@ export async function launchProviderOutreachByOperator(
           index: step.index,
           kind: step.kind,
           isFinal: step.isFinal,
-          dueAt: step.dueAt,
+          dueAt: step.index === 0 ? step.dueAt + staggerMs : step.dueAt,
           status: "scheduled",
           attempts: 0,
           createdAt: now,
@@ -959,7 +989,7 @@ export async function launchProviderOutreachByOperator(
         }),
       );
     await ctx.scheduler.runAfter(
-      result.launched.length * LAUNCH_STAGGER_MS,
+      staggerMs,
       internal.actions.providerOutreach.sendStep,
       { stepId: stepIds[0] },
     );
@@ -1163,7 +1193,7 @@ type WorldCheck =
   | { kind: "ok"; world: StepWorld }
   | { kind: "stop"; reason: string }
   | { kind: "skip"; reason: string }
-  | { kind: "defer"; reason: string; runAt: number };
+  | { kind: "defer"; reason: string; runAt: number; since: number };
 
 /**
  * The single revalidation used at claim and again immediately before the
@@ -1208,6 +1238,22 @@ async function checkStepWorld(
   } catch {
     return { kind: "stop", reason: "recipient_ineligible" };
   }
+  // The recipient is a snapshot: never retarget a sequence. Launch persists the
+  // chosen email on the outreach, so any change or clearing there stops it, and a
+  // snapshot contact must still be a live contact of this provider with that email.
+  const snapshotEmail = normalizeProcurementEmail(sequence.recipient.email);
+  if (normalizeProcurementEmail(outreach.contactEmail ?? "") !== snapshotEmail)
+    return { kind: "stop", reason: "recipient_changed" };
+  if (sequence.recipient.contactId) {
+    const contact = await ctx.db.get(sequence.recipient.contactId);
+    if (
+      !contact ||
+      contact.deletedAt !== undefined ||
+      contact.brokerOrgId !== sequence.brokerOrgId ||
+      normalizeProcurementEmail(contact.email ?? "") !== snapshotEmail
+    )
+      return { kind: "stop", reason: "recipient_changed" };
+  }
   // The first email re-checks fit; follow-ups only the hard exclusions above.
   if (step.index === 0) {
     const match = matchFor(request, client);
@@ -1226,6 +1272,19 @@ async function checkStepWorld(
   )
     return { kind: "stop", reason: "packet_link_unavailable" };
 
+  // Schedule-time cutoffs are re-checked at send time: a delayed follow-up must
+  // never land past the effective date/deadline cutoff or the 30-day span.
+  if (
+    step.index > 0 &&
+    dayjs
+      .utc(now)
+      .startOf("day")
+      .isAfter(
+        followUpCutoff(sequence.createdAt, { effectiveDate: request.targetEffectiveDate }),
+      )
+  )
+    return { kind: "stop", reason: "follow_up_window_closed" };
+
   const profileRow = await ctx.db
     .query("operatorProfiles")
     .withIndex("user", (q) => q.eq("userId", sequence.senderUserId))
@@ -1237,12 +1296,17 @@ async function checkStepWorld(
       q.eq("operatorUserId", sequence.senderUserId).eq("status", "active"),
     )
     .first();
-  if (impersonating)
+  if (impersonating) {
+    const since = step.impersonationDeferredAt ?? now;
+    if (now - since > IMPERSONATION_MAX_DEFER_MS)
+      return { kind: "stop", reason: "impersonation_deferral_exceeded" };
     return {
       kind: "defer",
       reason: "sender_impersonating",
       runAt: now + IMPERSONATION_DEFER_MS,
+      since,
     };
+  }
 
   let previous: Step | null = null;
   if (step.index > 0) {
@@ -1330,6 +1394,9 @@ export type ClaimStepResult =
       sender: { userId: Id<"users">; name: string | null; email: string | null };
       inbox: InboxRecord | null;
       request: {
+        clientOrgId: Id<"organizations">;
+        coverageLines: string[];
+        regions: string[];
         title: string;
         clientName: string;
         targetEffectiveDate: string | null;
@@ -1415,8 +1482,6 @@ export const claimStepInternal = internalMutation({
         await ctx.db.patch(step._id, {
           status: "cancelled",
           error: "stopped_while_sending",
-          leaseToken: undefined,
-          leaseUntil: undefined,
           updatedAt: now,
         });
       return { status: "skipped", reason: check.reason };
@@ -1433,6 +1498,8 @@ export const claimStepInternal = internalMutation({
       await ctx.db.patch(step._id, {
         status: "scheduled",
         dueAt: Math.max(step.dueAt, check.runAt),
+        impersonationDeferredAt: check.since,
+        error: "Sender is impersonating a client",
         leaseToken: undefined,
         leaseUntil: undefined,
         updatedAt: now,
@@ -1466,6 +1533,7 @@ export const claimStepInternal = internalMutation({
       leaseUntil,
       firstAttemptAt,
       error: undefined,
+      impersonationDeferredAt: undefined,
       updatedAt: now,
     });
     const earlier = await ctx.db
@@ -1508,6 +1576,10 @@ export const claimStepInternal = internalMutation({
       },
       inbox: await inboxForUser(ctx, sequence.senderUserId),
       request: {
+        clientOrgId: sequence.clientOrgId,
+        coverageLines: matchFor(world.request, world.client).needs.needs.map((need) => need.label),
+        regions: matchFor(world.request, world.client).geography.places.map((place) =>
+          place.region ? `${place.country}-${place.region}` : place.country),
         title: world.request.title,
         clientName: world.client.name,
         targetEffectiveDate: world.request.targetEffectiveDate ?? null,
@@ -1551,6 +1623,26 @@ async function fencedStep(
 }
 
 /**
+ * Like `fencedStep`, but also accepts a `cancelled` step that still carries this
+ * worker's lease token (a stop landed mid-send), within the provider's
+ * idempotency window. Used only to record what actually happened or to drop the
+ * token; it can never start new work.
+ */
+async function leasedStepAfterStop(
+  ctx: MutationCtx,
+  stepId: Id<"procurementOutreachSteps">,
+  leaseToken: string,
+  now: number,
+) {
+  const step = await ctx.db.get(stepId);
+  if (!step || step.leaseToken !== leaseToken) return null;
+  if (step.status === "sending") return step;
+  if (step.status === "cancelled" && now - (step.firstAttemptAt ?? 0) <= DELIVERY_RETRY_WINDOW_MS)
+    return step;
+  return null;
+}
+
+/**
  * Checkpoint immediately before the network send: re-runs the claim checks and
  * extends the lease. On failure the sequence is already stopped (or the step
  * deferred) and the worker must not send.
@@ -1566,17 +1658,21 @@ export const beginSendInternal = internalMutation({
     const check = await checkStepWorld(ctx, step, sequence, now);
     if (check.kind === "ok") {
       const leaseUntil = now + STEP_LEASE_MS;
-      await ctx.db.patch(step._id, { leaseUntil, updatedAt: now });
+      await ctx.db.patch(step._id, { leaseUntil, impersonationDeferredAt: undefined, updatedAt: now });
       return { ok: true as const, leaseUntil };
     }
     if (check.kind === "stop") {
       await terminalizeSequence(ctx, sequence, { status: "stopped", reason: check.reason, now });
+      // This worker is told not to send, so nothing remains to record: drop its token.
+      await ctx.db.patch(step._id, { leaseToken: undefined, leaseUntil: undefined });
       return { ok: false as const, reason: check.reason };
     }
     if (check.kind === "defer") {
       await ctx.db.patch(step._id, {
         status: "scheduled",
         dueAt: Math.max(step.dueAt, check.runAt),
+        impersonationDeferredAt: check.since,
+        error: "Sender is impersonating a client",
         attempts: Math.max(0, step.attempts - 1),
         leaseToken: undefined,
         leaseUntil: undefined,
@@ -1670,6 +1766,12 @@ export const recordInboxInternal = internalMutation({
       .withIndex("by_userId", (q) => q.eq("userId", sequence.senderUserId))
       .first();
     if (!existing) {
+    const sender = await ctx.db.get(sequence.senderUserId);
+    if (!sender?.email || isCapturedResourceId(args.inbox.inboxId) ||
+        args.inbox.emailAddress.toLowerCase() !== operatorInboxAddress(sender.email).toLowerCase())
+      return { stored: false, inbox: null };
+
+
       const taken = await ctx.db
         .query("operatorOutreachInboxes")
         .withIndex("by_inboxId", (q) => q.eq("inboxId", args.inbox.inboxId))
@@ -1757,6 +1859,75 @@ async function scheduleRemainingSteps(
   return { completed: false as const, nextStepId: first.stepId, nextDueAt: first.dueAt };
 }
 
+/** Facts of a real send: email id, thread, delivery ledger, and (first email) packet link and outreach. */
+async function recordSentFacts(
+  ctx: MutationCtx,
+  args: {
+    sequence: Sequence;
+    step: Step;
+    outcome: Extract<StepFinishOutcome, { kind: "sent" }>;
+    now: number;
+  },
+) {
+  const { sequence, step, outcome, now } = args;
+  await ctx.db.patch(sequence._id, {
+    lastOutboundEmailId: outcome.resendEmailId,
+    ...(outcome.resendThreadId && !sequence.resendThreadId
+      ? { resendThreadId: outcome.resendThreadId }
+      : {}),
+    updatedAt: now,
+  });
+  await recordDeliveryAttempt(ctx, {
+    sequence,
+    step,
+    status: "sent",
+    now,
+    resendEmailId: outcome.resendEmailId,
+  });
+  if (step.index !== 0) return;
+  // Same effect as procurementPacket.recordDeliveryInternal, applied to the real send.
+  const link = await ctx.db.get(sequence.packetLinkId);
+  if (link)
+    await ctx.db.patch(link._id, {
+      deliveryStatus: "sent",
+      deliveryError: undefined,
+      sentAt: now,
+      updatedAt: now,
+    });
+  const outreach = await ctx.db.get(sequence.outreachId);
+  if (outreach)
+    await ctx.db.patch(outreach._id, {
+      sentAt: now,
+      ...(link ? { packetRevisionAtIssue: link.packetRevisionAtIssue } : {}),
+      updatedByUserId: sequence.senderUserId,
+      updatedAt: now,
+    });
+  await writeOperatorAudit(ctx, {
+    operatorUserId: sequence.senderUserId,
+    type: "setup_write",
+    targetOrgId: sequence.clientOrgId,
+    summary: "Sent provider packet by automated outreach",
+    metadata: {
+      domain: "procurement",
+      operation: "send_packet",
+      requestId: sequence.requestId,
+      outreachId: sequence.outreachId,
+      linkId: sequence.packetLinkId,
+      sequenceId: sequence._id,
+      status: "sent",
+    },
+  });
+}
+
+/**
+ * Records the outcome of a send. If a stop cancelled the step mid-send, the
+ * worker's still-held lease token is accepted once (within the idempotency
+ * window): the step stays `cancelled` and the sequence keeps its terminal
+ * status, nothing is rescheduled, but a real send's email id, time, thread,
+ * delivery ledger and (first email) link/outreach facts are persisted so the
+ * webhook maps and the operator sees that it was delivered. A captured outcome
+ * after a stop records nothing and never claims a delivery.
+ */
 export const finishStepInternal = internalMutation({
   args: {
     stepId: v.id("procurementOutreachSteps"),
@@ -1765,13 +1936,33 @@ export const finishStepInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = dayjs().valueOf();
-    const step = await fencedStep(ctx, args.stepId, args.leaseToken, now, {
-      allowExpired: true,
-    });
+    const step = await leasedStepAfterStop(ctx, args.stepId, args.leaseToken, now);
     if (!step) return { applied: false as const, reason: "stale_lease" };
     const sequence = await ctx.db.get(step.sequenceId);
     if (!sequence) return { applied: false as const, reason: "sequence_missing" };
     const { outcome } = args;
+    if (step.status === "cancelled") {
+      await ctx.db.patch(step._id, {
+        ...(outcome.kind === "sent"
+          ? {
+              sentAt: now,
+              resendEmailId: outcome.resendEmailId,
+              ...(outcome.resendDraftId ? { resendDraftId: outcome.resendDraftId } : {}),
+            }
+          : {}),
+        leaseToken: undefined,
+        leaseUntil: undefined,
+        updatedAt: now,
+      });
+      if (outcome.kind === "sent") await recordSentFacts(ctx, { sequence, step, outcome, now });
+      return {
+        applied: true as const,
+        recordedAfterStop: true as const,
+        sequenceStatus: sequence.status,
+        nextStepId: null,
+        nextDueAt: null,
+      };
+    }
     await ctx.db.patch(step._id, {
       status: outcome.kind === "sent" ? "sent" : "captured",
       ...(outcome.kind === "sent"
@@ -1786,58 +1977,15 @@ export const finishStepInternal = internalMutation({
       leaseUntil: undefined,
       updatedAt: now,
     });
-    if (outcome.kind === "sent") {
-      await ctx.db.patch(sequence._id, {
-        lastOutboundEmailId: outcome.resendEmailId,
-        ...(outcome.resendThreadId && !sequence.resendThreadId
-          ? { resendThreadId: outcome.resendThreadId }
-          : {}),
-        updatedAt: now,
-      });
-      await recordDeliveryAttempt(ctx, {
-        sequence,
-        step,
-        status: "sent",
-        now,
-        resendEmailId: outcome.resendEmailId,
-      });
-      if (step.index === 0) {
-        // Same effect as procurementPacket.recordDeliveryInternal, applied to the real send.
-        const link = await ctx.db.get(sequence.packetLinkId);
-        if (link)
-          await ctx.db.patch(link._id, {
-            deliveryStatus: "sent",
-            deliveryError: undefined,
-            sentAt: now,
-            updatedAt: now,
-          });
-        const outreach = await ctx.db.get(sequence.outreachId);
-        if (outreach)
-          await ctx.db.patch(outreach._id, {
-            sentAt: now,
-            ...(link ? { packetRevisionAtIssue: link.packetRevisionAtIssue } : {}),
-            updatedByUserId: sequence.senderUserId,
-            updatedAt: now,
-          });
-        await writeOperatorAudit(ctx, {
-          operatorUserId: sequence.senderUserId,
-          type: "setup_write",
-          targetOrgId: sequence.clientOrgId,
-          summary: "Sent provider packet by automated outreach",
-          metadata: {
-            domain: "procurement",
-            operation: "send_packet",
-            requestId: sequence.requestId,
-            outreachId: sequence.outreachId,
-            linkId: sequence.packetLinkId,
-            sequenceId: sequence._id,
-            status: "sent",
-          },
-        });
-      }
-    }
+    if (outcome.kind === "sent") await recordSentFacts(ctx, { sequence, step, outcome, now });
     if (sequence.status !== "active")
-      return { applied: true as const, sequenceStatus: sequence.status, nextStepId: null, nextDueAt: null };
+      return {
+        applied: true as const,
+        recordedAfterStop: false as const,
+        sequenceStatus: sequence.status,
+        nextStepId: null,
+        nextDueAt: null,
+      };
     const request = await ctx.db.get(sequence.requestId);
     const next = await scheduleRemainingSteps(ctx, sequence, request, {
       anchorAt: now,
@@ -1845,6 +1993,7 @@ export const finishStepInternal = internalMutation({
     });
     return {
       applied: true as const,
+      recordedAfterStop: false as const,
       sequenceStatus: next.completed ? ("completed" as const) : sequence.status,
       nextStepId: next.nextStepId,
       nextDueAt: next.nextDueAt,
@@ -1865,10 +2014,13 @@ export const failStepInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = dayjs().valueOf();
-    const step = await fencedStep(ctx, args.stepId, args.leaseToken, now, {
-      allowExpired: true,
-    });
+    const step = await leasedStepAfterStop(ctx, args.stepId, args.leaseToken, now);
     if (!step) return { applied: false as const, reason: "stale_lease" };
+    if (step.status === "cancelled") {
+      // Stopped mid-send and the send did not complete: just drop the token.
+      await ctx.db.patch(step._id, { leaseToken: undefined, leaseUntil: undefined });
+      return { applied: true as const, outcome: "cancelled" as const };
+    }
     const sequence = await ctx.db.get(step.sequenceId);
     if (!sequence) return { applied: false as const, reason: "sequence_missing" };
     const message = shorten(args.failure.message);
@@ -1932,10 +2084,13 @@ export const releaseStepInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = dayjs().valueOf();
-    const step = await fencedStep(ctx, args.stepId, args.leaseToken, now, {
-      allowExpired: true,
-    });
+    const step = await leasedStepAfterStop(ctx, args.stepId, args.leaseToken, now);
     if (!step) return { applied: false as const, reason: "stale_lease" };
+    if (step.status === "cancelled") {
+      // Stopped mid-send and the send did not complete: just drop the token.
+      await ctx.db.patch(step._id, { leaseToken: undefined, leaseUntil: undefined });
+      return { applied: true as const, outcome: "cancelled" as const };
+    }
     const sequence = await ctx.db.get(step.sequenceId);
     if (!sequence) return { applied: false as const, reason: "sequence_missing" };
     if (!isLive(sequence.status)) {
@@ -1980,38 +2135,41 @@ export const releaseStepInternal = internalMutation({
 
 /**
  * Blocks sends the moment an inbound reply is known, before its body is
- * fetched. `active` and `reply_check` become `reply_check` with the reply as
- * the pending one. `replyCheckStartedAt` holds the provider receive time of the
- * pending reply, so a later-arriving but older (or duplicate) event can never
- * displace a newer pending reply; only a strictly newer `occurredAt` does.
- * Without `occurredAt` (claim-time fallback) an existing hold is never replaced.
+ * fetched. An `active` sequence becomes `reply_check` with this reply pending.
+ * A second distinct reply while one is pending is never allowed to replace it
+ * (a human reply could be buried under a later auto-reply that then resumes the
+ * sequence): the sequence is handed to the operator as `responded`, and every
+ * email stays mirrored. The same pending email again is a no-op, except that a
+ * known provider time replaces the arrival-time fallback. Timestamps are only
+ * recorded (clamped to now) and never decide a timeout: recovery uses `updatedAt`.
  */
 async function holdForInboundReply(
   ctx: MutationCtx,
   sequence: Sequence,
   args: { emailId: string; occurredAt: number | null; fallbackAt: number; now: number },
 ): Promise<{ isPending: boolean; status: SequenceStatus }> {
+  const observed = (at: number) => Math.min(at, args.now);
   if (sequence.status === "active") {
     await ctx.db.patch(sequence._id, {
       status: "reply_check",
       pendingReplyEmailId: args.emailId,
-      replyCheckStartedAt: args.occurredAt ?? args.fallbackAt,
+      replyCheckStartedAt: observed(args.occurredAt ?? args.fallbackAt),
       updatedAt: args.now,
     });
     return { isPending: true, status: "reply_check" };
   }
   if (sequence.status !== "reply_check") return { isPending: false, status: sequence.status };
-  if (sequence.pendingReplyEmailId === args.emailId)
-    return { isPending: true, status: "reply_check" };
-  if (args.occurredAt !== null && args.occurredAt > (sequence.replyCheckStartedAt ?? 0)) {
-    await ctx.db.patch(sequence._id, {
-      pendingReplyEmailId: args.emailId,
-      replyCheckStartedAt: args.occurredAt,
-      updatedAt: args.now,
-    });
+  if (sequence.pendingReplyEmailId === args.emailId) {
+    if (args.occurredAt !== null && sequence.replyCheckStartedAt !== observed(args.occurredAt))
+      await ctx.db.patch(sequence._id, { replyCheckStartedAt: observed(args.occurredAt) });
     return { isPending: true, status: "reply_check" };
   }
-  return { isPending: false, status: "reply_check" };
+  await terminalizeSequence(ctx, sequence, {
+    status: "responded",
+    reason: "multiple_replies_during_check",
+    now: args.now,
+  });
+  return { isPending: false, status: "responded" };
 }
 
 /**
@@ -2151,6 +2309,31 @@ async function routeInboxEvent(
 }
 
 /**
+ * Whether an unmapped event could still gain a sequence: only if a recently
+ * updated sequence in the same inbox has no thread id yet (its first
+ * email's sent-event or finish has not landed, including a send stopped in flight). Bounded scan; if the bound is
+ * hit, waiting is assumed. Anything else is unmatched immediately.
+ */
+async function mappingMayAppear(
+  ctx: MutationCtx,
+  event: Doc<"providerOutreachWebhookEvents">,
+  now: number,
+) {
+  const LIMIT = 100;
+  for (const status of SEQUENCE_STATUSES) {
+    const recent = await ctx.db
+      .query("procurementOutreachSequences")
+      .withIndex("by_status_and_updatedAt", (q) =>
+        q.eq("status", status).gte("updatedAt", now - INBOX_EVENT_MAPPING_WINDOW_MS),
+      )
+      .take(LIMIT);
+    if (recent.length >= LIMIT) return true;
+    if (recent.some((row) => row.inboxId === event.inboxId && !row.resendThreadId)) return true;
+  }
+  return false;
+}
+
+/**
  * Leases a webhook event and resolves its sequence. Until the outbound
  * email/thread mapping exists the claim reschedules itself (bounded); after the
  * window an unmapped event is returned as `unmatched` so the action can label
@@ -2189,7 +2372,11 @@ export const claimInboxEventInternal = internalMutation({
         route = { ...route, sequenceStatus: held.status };
       }
     }
-    if (route.kind === "unmatched" && now - event.createdAt < INBOX_EVENT_MAPPING_WINDOW_MS) {
+    if (
+      route.kind === "unmatched" &&
+      now - event.createdAt < INBOX_EVENT_MAPPING_WINDOW_MS &&
+      (await mappingMayAppear(ctx, event, now))
+    ) {
       const runAt = now + INBOX_EVENT_RETRY_MS;
       await ctx.db.patch(event._id, {
         status: "pending",
@@ -2741,16 +2928,21 @@ export const recoverInternal = internalMutation({
     for (const step of expired) {
       const sequence = await ctx.db.get(step.sequenceId);
       if (!sequence || !isLive(sequence.status)) {
+        // Keep the token: a late worker may still record what it really sent.
         await ctx.db.patch(step._id, {
           status: "cancelled",
           error: "stopped_while_sending",
-          leaseToken: undefined,
-          leaseUntil: undefined,
           updatedAt: now,
         });
         continue;
       }
-      if (sequence.status !== "active" || dispatched >= RECOVERY_DISPATCH) continue;
+      if (sequence.status !== "active") {
+        // Held: push the lease out so held rows stop crowding the scan window. The
+        // original token stays valid for its worker; the sequence is re-timed on resume.
+        await ctx.db.patch(step._id, { leaseUntil: now + REPLY_CHECK_TIMEOUT_MS });
+        continue;
+      }
+      if (dispatched >= RECOVERY_DISPATCH) continue;
       await dispatch(step._id);
     }
 
@@ -2811,20 +3003,24 @@ export const recoverInternal = internalMutation({
     for (const row of pendingCadences)
       await ctx.db.patch(row._id, { status: "failed", updatedAt: now });
 
-    // Webhook events waiting to be (re)handled.
-    const events = await ctx.db
-      .query("providerOutreachWebhookEvents")
-      .withIndex("by_status_and_updatedAt", (q) =>
-        q.eq("status", "pending").lte("updatedAt", now - 60_000),
-      )
-      .take(RECOVERY_DISPATCH);
+    // Webhook events: abandoned `processing` leases first (a crashed handler has
+    // already consumed the mapping window), then pending ones, 50 in total.
     const stuckEvents = await ctx.db
       .query("providerOutreachWebhookEvents")
       .withIndex("by_status_and_updatedAt", (q) =>
         q.eq("status", "processing").lte("updatedAt", now - INBOX_EVENT_LEASE_MS),
       )
       .take(RECOVERY_DISPATCH);
-    const eventBatch = [...events, ...stuckEvents].slice(0, RECOVERY_DISPATCH);
+    const pendingEvents =
+      stuckEvents.length < RECOVERY_DISPATCH
+        ? await ctx.db
+            .query("providerOutreachWebhookEvents")
+            .withIndex("by_status_and_updatedAt", (q) =>
+              q.eq("status", "pending").lte("updatedAt", now - 60_000),
+            )
+            .take(RECOVERY_DISPATCH - stuckEvents.length)
+        : [];
+    const eventBatch = [...stuckEvents, ...pendingEvents];
     for (const event of eventBatch)
       await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.handleInboxEvent, {
         eventId: event._id,

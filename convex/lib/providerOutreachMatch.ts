@@ -8,6 +8,7 @@ import {
   submittedIntakeApplication,
   type IntakeApplication,
 } from "../../lib/intake-application";
+import { followupQuestionVisible } from "../../lib/intake-followups";
 import { parseWorkJurisdictions } from "../../lib/intake-jurisdictions";
 import {
   assertExternalBrokerIdentity,
@@ -15,6 +16,7 @@ import {
   BROKER_REGION_CODES,
   brokerRegionCountry,
   brokerWritingCountries,
+  brokerAreaFit,
   CANADIAN_PROVINCES,
   USPS_STATE_NAMES,
 } from "./brokerProfileValidation";
@@ -24,7 +26,9 @@ import { providerCodesForCoverage } from "./coverageLobMapping";
 // Request side
 // ---------------------------------------------------------------------------
 
-type RequestApplicationSource = Parameters<typeof submittedIntakeApplication>[0] & {
+type RequestApplicationSource = Parameters<
+  typeof submittedIntakeApplication
+>[0] & {
   intakeDetails?: IntakeDetails;
 };
 type OrgApplicationSource = {
@@ -36,7 +40,8 @@ export function requestApplicationDetails(
   request: RequestApplicationSource,
   org?: OrgApplicationSource,
 ): IntakeDetails | null {
-  const submitted: IntakeApplication | null = submittedIntakeApplication(request);
+  const submitted: IntakeApplication | null =
+    submittedIntakeApplication(request);
   return (
     submitted?.details ??
     request.intakeDetails ??
@@ -50,7 +55,7 @@ export type OutreachPlace = { country: string; region?: string };
 export type RequestGeography = {
   /** Deduplicated, ordered: locations, coverage property addresses, work jurisdictions. */
   places: OutreachPlace[];
-  /** First location, otherwise the registration region. Null when none resolves. */
+  /** First operating location, otherwise mailing or registration region. Null when none resolves. */
   primary: OutreachPlace | null;
   /** The places came from the registration address because nothing else resolved. */
   fromRegistration: boolean;
@@ -93,7 +98,8 @@ export function normalizeCountry(value?: string | null) {
   const text = value?.trim();
   if (!text) return undefined;
   const upper = text.toUpperCase();
-  if (/^[A-Z]{2}$/.test(upper)) return COUNTRY_CODES.has(upper) ? upper : undefined;
+  if (/^[A-Z]{2}$/.test(upper))
+    return COUNTRY_CODES.has(upper) ? upper : undefined;
   const key = normalizedKey(text);
   return COUNTRY_ALIASES[key] ?? COUNTRY_BY_NAME.get(key);
 }
@@ -148,12 +154,19 @@ export function requestGeography(
       if (place) others.push(place);
     }
   for (const row of details.followups ?? []) {
-    if (!row.source?.endsWith(WC_JURISDICTIONS_SOURCE) || row.skipped) continue;
-    for (const jurisdiction of parseWorkJurisdictions(row.answer)?.locations ?? []) {
+    if (
+      !row.source?.endsWith(WC_JURISDICTIONS_SOURCE) ||
+      row.skipped ||
+      !followupQuestionVisible(row, details.followups)
+    )
+      continue;
+    for (const jurisdiction of parseWorkJurisdictions(row.answer)?.locations ??
+      []) {
       const place = normalizePlace(jurisdiction);
       if (place) others.push(place);
     }
   }
+  const mailing = addressPlace(details.mailingAddress);
   const registration =
     addressPlace(details.registrationAddress) ??
     normalizePlace({
@@ -161,13 +174,16 @@ export function requestGeography(
       region: details.registrationState,
     });
   const places: OutreachPlace[] = [];
-  for (const place of [...locations, ...others])
+  for (const place of [
+    ...(locations.length ? locations : mailing ? [mailing] : []),
+    ...others,
+  ])
     if (!places.some((known) => samePlace(known, place))) places.push(place);
   const fromRegistration = !places.length && !!registration;
   if (fromRegistration && registration) places.push(registration);
   return {
     places,
-    primary: locations[0] ?? registration ?? null,
+    primary: locations[0] ?? mailing ?? registration ?? places[0] ?? null,
     fromRegistration,
   };
 }
@@ -190,11 +206,18 @@ export function requestLobNeeds(
   const needs: LobNeed[] = [];
   const unevaluated: CoverageId[] = [];
   for (const { coverage } of details?.coverages ?? []) {
-    if (needs.some((need) => need.coverage === coverage) || unevaluated.includes(coverage))
+    if (
+      needs.some((need) => need.coverage === coverage) ||
+      unevaluated.includes(coverage)
+    )
       continue;
     const acceptedCodes = providerCodesForCoverage(coverage);
     if (acceptedCodes)
-      needs.push({ coverage, label: coverageOption(coverage).label, acceptedCodes });
+      needs.push({
+        coverage,
+        label: coverageOption(coverage).label,
+        acceptedCodes,
+      });
     else unevaluated.push(coverage);
   }
   return { needs, unevaluated };
@@ -235,6 +258,8 @@ export function requestMatchContext(
 export type ProviderFitProfile = {
   networkStatus: "prospect" | "active" | "inactive" | "blacklisted";
   writingCountries?: string[];
+  nationwideCountries?: string[];
+  excludedStates?: string[];
   writingStates: string[];
   lineOfBusinessCodes: string[];
 };
@@ -246,6 +271,7 @@ export type ProviderFitReason =
   | "geography_primary_not_serviced"
   | "geography_none_serviced"
   | "geography_partial"
+  | "geography_region_unknown"
   | "geography_appetite_empty"
   | "lines_none_covered"
   | "lines_partial"
@@ -269,15 +295,8 @@ export type ProviderFit = {
   lines: { fit: DimensionFit; covered: LobNeed[]; missing: LobNeed[] };
 };
 
-function placeServiced(
-  place: OutreachPlace,
-  countries: ReadonlySet<string>,
-  regionsByCountry: ReadonlyMap<string, ReadonlySet<string>>,
-) {
-  if (!countries.has(place.country)) return false;
-  const regions = regionsByCountry.get(place.country);
-  // No listed regions for the country means country-wide.
-  return !regions?.size || !place.region || regions.has(place.region);
+function placeServiced(place: OutreachPlace, profile: ProviderFitProfile) {
+  return brokerAreaFit(profile, place.country, place.region) === "match";
 }
 
 export function classifyProvider(
@@ -296,7 +315,10 @@ export function classifyProvider(
     result.reasons.push("no_profile");
     return result;
   }
-  if (profile.networkStatus === "blacklisted" || profile.networkStatus === "inactive") {
+  if (
+    profile.networkStatus === "blacklisted" ||
+    profile.networkStatus === "inactive"
+  ) {
     result.verdict = "excluded";
     result.reasons.push(profile.networkStatus);
     return result;
@@ -305,26 +327,35 @@ export function classifyProvider(
   // Geography
   const countries = new Set(brokerWritingCountries(profile));
   const geographyEvaluable = geography.places.length > 0;
-  const geographyAppetiteEmpty = !countries.size && !profile.writingStates.length;
+  const geographyAppetiteEmpty =
+    !countries.size && !profile.writingStates.length;
   if (geographyEvaluable && geographyAppetiteEmpty) {
     result.geography.fit = "unknown";
     result.reasons.push("geography_appetite_empty");
   } else if (geographyEvaluable) {
-    const regionsByCountry = new Map<string, Set<string>>();
-    for (const code of profile.writingStates) {
-      const country = brokerRegionCountry(code);
-      countries.add(country);
-      regionsByCountry.set(country, (regionsByCountry.get(country) ?? new Set()).add(code));
-    }
     for (const place of geography.places)
-      (placeServiced(place, countries, regionsByCountry)
+      (placeServiced(place, profile)
         ? result.geography.serviced
         : result.geography.unserviced
       ).push(place);
+    const hasUnknownRegion = geography.places.some(
+      (place) =>
+        brokerAreaFit(profile, place.country, place.region) === "unknown",
+    );
     const primaryServiced = geography.primary
-      ? placeServiced(geography.primary, countries, regionsByCountry)
+      ? placeServiced(geography.primary, profile)
       : !!result.geography.serviced.length;
-    if (!primaryServiced) {
+    if (
+      geography.primary &&
+      brokerAreaFit(profile, geography.primary.country, geography.primary.region) ===
+        "excluded"
+    ) {
+      result.geography.fit = "excluded";
+      result.reasons.push("geography_primary_not_serviced");
+    } else if (hasUnknownRegion) {
+      result.geography.fit = "unknown";
+      result.reasons.push("geography_region_unknown");
+    } else if (!primaryServiced) {
       result.geography.fit = "excluded";
       result.reasons.push(
         geography.primary
@@ -378,7 +409,13 @@ export function classifyProvider(
 export type OutreachContact = {
   _id?: string;
   name: string;
-  role: "general" | "submissions" | "underwriting" | "claims" | "billing" | "other";
+  role:
+    | "general"
+    | "submissions"
+    | "underwriting"
+    | "claims"
+    | "billing"
+    | "other";
   email?: string;
   lineOfBusinessCodes: readonly string[];
   deletedAt?: number;
@@ -405,7 +442,10 @@ const ROLE_RANK: Record<OutreachContact["role"], number> = {
 const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
 function usableEmail(value?: string | null) {
-  const email = value?.trim().toLowerCase().replace(/^mailto:/, "");
+  const email = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/^mailto:/, "");
   return email && EMAIL_PATTERN.test(email) ? email : undefined;
 }
 
@@ -416,8 +456,15 @@ function usableEmail(value?: string | null) {
 export function selectRecipient(
   contacts: readonly OutreachContact[],
   needCodes: readonly string[],
-  outreach?: { contactEmail?: string | null; contactName?: string | null } | null,
-  broker?: { name?: string | null; website?: string | null; slug?: string | null } | null,
+  outreach?: {
+    contactEmail?: string | null;
+    contactName?: string | null;
+  } | null,
+  broker?: {
+    name?: string | null;
+    website?: string | null;
+    slug?: string | null;
+  } | null,
 ): RecipientSelection {
   const live = contacts.filter((contact) => !contact.deletedAt);
   let spotOwned = false;
@@ -432,8 +479,14 @@ export function selectRecipient(
   };
 
   const explicit = usableEmail(outreach?.contactEmail);
-  if (explicit && external(explicit, outreach?.contactName)) {
-    const known = live.find((contact) => usableEmail(contact.email) === explicit);
+  if (outreach?.contactEmail?.trim()) {
+    if (!explicit) return { ok: false, reason: "no_contact_email" };
+    if (!external(explicit, outreach.contactName))
+      return { ok: false, reason: "spot_owned_contact" };
+
+    const known = live.find(
+      (contact) => usableEmail(contact.email) === explicit,
+    );
     return {
       ok: true,
       recipient: {
@@ -476,5 +529,8 @@ export function selectRecipient(
           role: contact.role,
         },
       };
-  return { ok: false, reason: spotOwned ? "spot_owned_contact" : "no_contact_email" };
+  return {
+    ok: false,
+    reason: spotOwned ? "spot_owned_contact" : "no_contact_email",
+  };
 }

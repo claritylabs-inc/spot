@@ -22,7 +22,7 @@ export const INBOX_EVENT_RETRY_MS = 20 * 1000;
 export const INBOX_EVENT_GIVE_UP_MS = 24 * 60 * 60 * 1000;
 export const INBOX_EVENT_LEASE_MS = 5 * 60 * 1000;
 export const IMPERSONATION_DEFER_MS = 5 * 60 * 1000;
-export const MAX_LAUNCH_PROVIDERS = 50;
+export { MAX_LAUNCH_PROVIDERS } from "./providerOutreachSchedule";
 export const MAX_PANEL_PROVIDERS = 500;
 export const MAX_PANEL_SEQUENCES = 200;
 export const MAX_CONTACTS_PER_PROVIDER = 20;

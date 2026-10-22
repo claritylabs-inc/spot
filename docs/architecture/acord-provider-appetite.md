@@ -99,10 +99,11 @@ normalized; country names and accent-insensitive province names are supported.
 
 A country selection alone does not establish service in every US state or
 Canadian province. Missing appetite remains unknown and is reported in the
-result. Other/unknown intake coverage needs manual matching. BOP alone does not
-imply standalone general liability/property; personal auto, personal umbrella
-and specialty marine workers compensation do not imply their general commercial
-counterparts. Umbrella does not match excess-only appetite. The underlying
+result. Other/unknown intake coverage needs manual matching. The shared
+`coverageLobMapping` owner accepts package component classes and excess/umbrella
+alternatives for request matching; it does not promise a standalone product or
+particular policy form. Personal auto, personal umbrella and specialty marine
+workers compensation do not imply their general commercial counterparts. The underlying
 publicly researched appetite remains a class-level indicator, not underwriting
 acceptance for the client's industry, limits or detailed risk.
 
@@ -114,3 +115,27 @@ The operation uses the ordinary direct-operator writer, including impersonation
 protection and per-provider audit entries, plus a matching-run audit with criteria
 and counts. It does not send email, release documents, invite users, or run on a
 schedule. A missing application, coverage or location fails before any writes.
+
+### Nationwide scope and actionable results
+
+Provider geography also supports optional `nationwideCountries` and
+`excludedStates`; old records need no migration. Nationwide scope requires a
+selected country and explicit service evidence. Empty subdivisions never imply
+nationwide service. Excluded regions must belong to a nationwide country and
+win over individual inclusions; removing a country or nationwide scope clears
+its dependent exceptions. Both editors use the same searchable primitives.
+Explicit edits claim the existing manual ownership of regional research.
+
+`procurementBrokerMatch` classifies coverage mismatch, outside the recorded
+area, needs verification, or confirmed. Auto-add counts existing outreach first,
+then adds confirmed new rows. Its report includes only request-relevant missing
+appetite candidates, rather than the old directory-wide missing-field count.
+The existing right-hand SettingsDrawer uses compact inline rows for the summary
+and review links; the operator stays on the request. Directory state filters
+also recognize nationwide service and honor exclusions. See the
+[129-provider research review](../research/provider-geography-2026-10-22.md).
+
+The nationwide/exception predicate is shared as `brokerAreaFit` by manual
+procurement matching and the provider-outreach fit classifier. Missing US/CA
+regional appetite remains unknown unless nationwide scope is explicit. The
+existing missing-request-geography prompt remains in front of Auto add.

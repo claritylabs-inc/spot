@@ -60,6 +60,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
+import type { FunctionReturnType } from "convex/server";
 import {
   Copy,
   FileText,
@@ -1960,6 +1961,79 @@ function ImagePreview({
   );
 }
 
+function ProviderMatchResults({
+  result,
+  onClose,
+}: {
+  result: FunctionReturnType<typeof api.procurementRequests.autoAddBrokers>;
+  onClose: () => void;
+}) {
+  return (
+    <SettingsDrawer
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title="Provider matches"
+      contentClassName="gap-5"
+    >
+      <InlineFieldCard>
+        <InlineFieldRow label="Any coverage">
+          {result.coverageLabels.join(", ")}
+        </InlineFieldRow>
+        <InlineFieldRow label="All locations">
+          {result.areaLabels.join("; ")}
+        </InlineFieldRow>
+        <InlineFieldRow label="Added">
+          {result.added} confirmed providers
+        </InlineFieldRow>
+        <InlineFieldRow label="Already on request">
+          {result.alreadyAdded}
+        </InlineFieldRow>
+        <InlineFieldRow label="Needs verification">
+          {result.needsVerification.length}
+        </InlineFieldRow>
+        <InlineFieldRow label="Not a match">
+          {result.coverageMismatch} coverage · {result.outsideArea} service area
+          · {result.unavailable} inactive or restricted
+        </InlineFieldRow>
+      </InlineFieldCard>
+      {!!result.unmappedCoverages.length && (
+        <OperationalPanel>
+          <OperationalPanelBody>
+            Other or unknown coverage types still need manual matching.
+          </OperationalPanelBody>
+        </OperationalPanel>
+      )}
+      {!!result.needsVerification.length && (
+        <InlineFieldCard title="Needs verification">
+          <InlineFieldRow label="Next step">
+            Check the missing fields, then run matching again. These providers
+            have not been added.
+          </InlineFieldRow>
+          {result.needsVerification.map((provider) => (
+            <InlineFieldRow
+              key={provider.brokerOrgId}
+              label={provider.name}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1">{provider.reason}</span>
+                <PillButton
+                  href={`/operator/brokers/${provider.brokerOrgId}`}
+                  target="_blank"
+                  variant="secondary"
+                >
+                  Review
+                </PillButton>
+              </div>
+            </InlineFieldRow>
+          ))}
+        </InlineFieldCard>
+      )}
+    </SettingsDrawer>
+  );
+}
+
 export function ProcurementRequestWorkspace({
   clientOrgId,
   requestId,
@@ -2024,27 +2098,14 @@ export function ProcurementRequestWorkspace({
     setMatchingBrokers(true);
     try {
       const result = await autoAddBrokers({ requestId });
-      toast.success(
-        result.added
-          ? `${result.added} provider${result.added === 1 ? "" : "s"} added`
-          : "No new matching providers",
-        {
-          description: [
-            "Matches at least one requested coverage and every request location.",
-            result.alreadyAdded
-              ? `${result.alreadyAdded} already on this request.`
-              : "",
-            result.missingAppetite
-              ? `${result.missingAppetite} providers have missing coverage or service-area data.`
-              : "",
-            result.unmappedCoverages.length
-              ? "Other or unknown coverage types require manual matching."
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" "),
-        },
-      );
+      onRightPanel(<ProviderMatchResults result={result} onClose={() => onRightPanel(null)} />);
+      const message = result.added
+        ? `${result.added} provider${result.added === 1 ? "" : "s"} added`
+        : result.needsVerification.length
+          ? "No new verified matches — review potential providers"
+          : result.alreadyAdded ? "No new verified providers to add" : "No providers match the recorded criteria";
+      if (result.added) toast.success(message);
+      else toast.info(message);
     } catch (error) {
       toast.error(
         error instanceof ConvexError && typeof error.data === "string"
@@ -2055,7 +2116,7 @@ export function ProcurementRequestWorkspace({
       matchingBrokersRef.current = false;
       setMatchingBrokers(false);
     }
-  }, [autoAddBrokers, readOnly, requestId]);
+  }, [autoAddBrokers, onRightPanel, readOnly, requestId]);
   // Missing or invalid request geography is fixed in a modal, then the match retries.
   const handleAutoAddBrokers = useCallback(async () => {
     if (readOnly || matchingBrokersRef.current) return;
@@ -2376,6 +2437,7 @@ export function ProcurementRequestWorkspace({
           >
             {matchingBrokers ? "Adding providers…" : "Auto add providers"}
           </PillButton>
+          <span className="hidden sm:contents">
           <PillButton
             type="button"
             disabled={sendAllCount === 0 || providerOutreachBusy || !canSendAll}
@@ -2385,6 +2447,7 @@ export function ProcurementRequestWorkspace({
               ? "Sending…"
               : `Send to all matched (${sendAllCount})`}
           </PillButton>
+          </span>
         </>
       ) : view === "files" ? (
         <PillButton type="button" onClick={() => openUpload()}>

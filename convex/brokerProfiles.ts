@@ -17,6 +17,8 @@ import {
   normalizeBrokerLineOfBusinessCodes,
   resolveBrokerAppetite,
   brokerWritingCountries,
+  brokerRegionCountry,
+  BROKER_REGION_CODES,
 } from "./lib/brokerProfileValidation";
 import {
   requireOperator,
@@ -43,6 +45,8 @@ async function releaseResearchOwnership(
   broker: Doc<"organizations">,
   args: {
     writingCountries?: string[];
+    nationwideCountries?: string[];
+    excludedStates?: string[];
     writingStates?: string[];
     lineOfBusinessCodes?: string[];
     officeAddress?: unknown;
@@ -57,7 +61,10 @@ async function releaseResearchOwnership(
   ).filter(
     (field) =>
       args[field] !== undefined ||
-      (field === "writingStates" && args.writingCountries !== undefined),
+      (field === "writingStates" &&
+        (args.writingCountries !== undefined ||
+          args.nationwideCountries !== undefined ||
+          args.excludedStates !== undefined)),
   );
   if (profile && edited.length)
     await ctx.db.patch(profile._id, {
@@ -211,7 +218,14 @@ export async function listBrokerProfiles(
             value?.toLowerCase().includes(search),
           )) &&
         (!args.status || row.profile?.networkStatus === args.status) &&
-        (!state || row.profile?.writingStates.includes(state)) &&
+        (!state ||
+          (row.profile &&
+            (BROKER_REGION_CODES as readonly string[]).includes(state) &&
+            !row.profile.excludedStates?.includes(state) &&
+            (row.profile.writingStates.includes(state) ||
+              row.profile.nationwideCountries?.includes(
+                brokerRegionCountry(state),
+              )))) &&
         (!line || row.profile?.lineOfBusinessCodes.includes(line)),
     )
     .slice(0, limit);
@@ -225,6 +239,8 @@ export async function updateBrokerProfileByOperator(
     networkStatus?: "prospect" | "active" | "inactive" | "blacklisted";
     officeAddress?: Doc<"brokerProfiles">["officeAddress"];
     writingCountries?: string[];
+    nationwideCountries?: string[];
+    excludedStates?: string[];
     writingStates?: string[];
     lineOfBusinessCodes?: string[];
     name?: string;
@@ -326,6 +342,8 @@ export const upsert = mutation({
     networkStatus: v.optional(statusValidator),
     officeAddress: v.optional(addressValidator),
     writingCountries: v.optional(v.array(v.string())),
+    nationwideCountries: v.optional(v.array(v.string())),
+    excludedStates: v.optional(v.array(v.string())),
     writingStates: v.optional(v.array(v.string())),
     lineOfBusinessCodes: v.optional(v.array(v.string())),
   },
@@ -444,6 +462,8 @@ export async function createStandaloneBrokerByOperator(
     networkStatus?: "prospect" | "active" | "inactive" | "blacklisted";
     officeAddress?: Doc<"brokerProfiles">["officeAddress"];
     writingCountries?: string[];
+    nationwideCountries?: string[];
+    excludedStates?: string[];
     writingStates?: string[];
     lineOfBusinessCodes?: string[];
     source: "operator" | "agent" | "workspace_scan";
@@ -469,7 +489,9 @@ export async function createStandaloneBrokerByOperator(
     networkStatus: args.networkStatus ?? "prospect",
     officeAddress: args.officeAddress,
     ...appetite,
-    ...(args.writingCountries !== undefined
+    ...(args.writingCountries !== undefined ||
+    args.nationwideCountries !== undefined ||
+    args.excludedStates !== undefined
       ? { manualFields: ["writingStates" as const] }
       : {}),
     lineOfBusinessCodes,
@@ -496,6 +518,8 @@ export const createStandalone = mutation({
     networkStatus: statusValidator,
     officeAddress: v.optional(addressValidator),
     writingCountries: v.optional(v.array(v.string())),
+    nationwideCountries: v.optional(v.array(v.string())),
+    excludedStates: v.optional(v.array(v.string())),
     writingStates: v.array(v.string()),
     lineOfBusinessCodes: v.array(v.string()),
   },

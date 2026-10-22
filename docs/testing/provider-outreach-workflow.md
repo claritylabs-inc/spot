@@ -20,10 +20,14 @@ Cleanup: stop synthetic sequences, revoke synthetic packet links, and remove syn
 
 | Case | Status | Evidence |
 | --- | --- | --- |
-| Missing geography modal | Passed (desktop core path) | Local Chrome normal OTP sign-in; blank country opens modal, GB has no state selector, Cancel preserves blank, US/CA save retries auto-add, reload retains geography. `.context/qa/provider-outreach/geography-{dialog-empty,dialog-ready,saved-retry}.png` |
-| Matching and cadence | Not run | Full outreach panel implementation in progress |
-| Capture launch and dedupe | Not run | Implementation in progress |
-| Authorization and lifecycle | Not run | Implementation in progress |
+| Missing geography modal | Passed locally | Local Chrome normal OTP sign-in; blank country opens modal, GB has no state selector, Cancel preserves blank, US/CA save retries auto-add, reload retains geography. Missing property location corrected to Canada/Ontario; save retries successfully. `.context/qa/provider-outreach/geography-{dialog-empty,dialog-ready,saved-retry,property-mobile}.png` |
+| Matching and cadence | Passed locally | GL + Property, California + Ontario fixture: appetite edit moved Lakeview reactively into partial match with explicit missing line/region chips. Empty-appetite provider remained Unknown. Jev style displayed Suggested; changing interval to five days updated preview and Edited provenance. Merged Auto add opened Provider matches drawer. |
+| Capture launch and dedupe | Passed locally | Individual and send-all each captured step 0 once; active sequence removed from send-all count, unknown provider excluded. Readback: captured steps have attempt 1 and no sentAt; no operator inbox provisioned. Reinvoking sendStep on captured step returned skipped. |
+| Authorization and lifecycle | Partial | Unauthenticated launch/cadence denied. Stop cancelled follow-ups and persisted after reload; both synthetic sequences stopped. Request closure/proposal and impersonation guards source-reviewed, not separately browser-exercised. |
 | Real inbox send/reply/mirroring | Not run | Requires verified domain/webhook and authorized test recipient |
-| Recovery and unknown outcomes | Not run | Implementation in progress |
-| Rendered UI | Not run | Implementation in progress |
+| Recovery and unknown outcomes | Partial | Captured-step replay skipped. Local ingress: unsigned 401, signed unknown event 200, malformed received 400, unowned inbox 200, oversized body 413. Lease races and real delivery unknown-outcome recovery source-reviewed, not fault-injected against Resend. |
+| Rendered UI | Passed locally | Desktop, 390px mobile and dark mode inspected. Fixed cramped panel header and clipped mobile send-all. Screenshots: `matched-provider.png`, `captured-sequence.png`, `stopped-sequence.png`, `unknown-fit.png`, `panel-mobile-fixed.png`, `panel-dark.png`, `integrated-provider-matches.png` under `.context/qa/provider-outreach/`. |
+
+All observations above used the local anonymous Convex deployment in capture mode, not a Vercel preview. No unit tests were added. Real inbox attachment mirroring currently retains metadata and an explicit notice; the documented Inboxes API supplies no verified attachment-byte retrieval endpoint. View thread opens the mirrored Spot Email view because no stable dashboard thread URL was verified. Synthetic packet links remain local-only.
+
+Final integrated root TypeScript, full ESLint (zero errors, nine pre-existing warnings), and local Next.js build passed. Local Convex code generation also passed. Logs are under `.context/outreach/`.
