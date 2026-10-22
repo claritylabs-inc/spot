@@ -14,7 +14,8 @@ import {
   assertExternalBrokerIdentity,
   isSpotOwnedBrokerIdentity,
   normalizeBrokerLineOfBusinessCodes,
-  normalizeBrokerWritingStates,
+  resolveBrokerAppetite,
+  brokerWritingCountries,
 } from "./lib/brokerProfileValidation";
 import {
   requireOperator,
@@ -40,6 +41,7 @@ async function releaseResearchOwnership(
   ctx: MutationCtx,
   broker: Doc<"organizations">,
   args: {
+    writingCountries?: string[];
     writingStates?: string[];
     lineOfBusinessCodes?: string[];
     officeAddress?: unknown;
@@ -51,7 +53,11 @@ async function releaseResearchOwnership(
     .unique();
   const edited = (
     ["writingStates", "lineOfBusinessCodes", "officeAddress"] as const
-  ).filter((field) => args[field] !== undefined);
+  ).filter(
+    (field) =>
+      args[field] !== undefined ||
+      (field === "writingStates" && args.writingCountries !== undefined),
+  );
   if (profile && edited.length)
     await ctx.db.patch(profile._id, {
       manualFields: [...new Set([...(profile.manualFields ?? []), ...edited])],
@@ -61,7 +67,7 @@ async function releaseResearchOwnership(
     companyResearch: {
       ...broker.companyResearch,
       appliedBrokerFields: broker.companyResearch.appliedBrokerFields.filter(
-        (field) => args[field] === undefined,
+        (field) => !edited.includes(field),
       ),
     },
   });
@@ -145,7 +151,9 @@ async function profileRow(
         ? await ctx.storage.getUrl(broker.iconStorageId)
         : null,
     },
-    profile,
+    profile: profile
+      ? { ...profile, writingCountries: brokerWritingCountries(profile) }
+      : null,
     contacts: contacts.filter(Boolean),
     ...(includeNetworkActivity
       ? {
@@ -212,6 +220,7 @@ export async function updateBrokerProfileByOperator(
     brokerOrgId: Id<"organizations">;
     networkStatus?: "prospect" | "active" | "inactive" | "blacklisted";
     officeAddress?: Doc<"brokerProfiles">["officeAddress"];
+    writingCountries?: string[];
     writingStates?: string[];
     lineOfBusinessCodes?: string[];
     name?: string;
@@ -235,9 +244,7 @@ export async function updateBrokerProfileByOperator(
   const profilePatch = {
     networkStatus: args.networkStatus ?? existing?.networkStatus ?? "prospect",
     officeAddress: args.officeAddress ?? existing?.officeAddress,
-    writingStates: args.writingStates
-      ? normalizeBrokerWritingStates(args.writingStates)
-      : (existing?.writingStates ?? []),
+    ...resolveBrokerAppetite(args, existing),
     lineOfBusinessCodes: args.lineOfBusinessCodes
       ? normalizeBrokerLineOfBusinessCodes(args.lineOfBusinessCodes)
       : (existing?.lineOfBusinessCodes ?? []),
@@ -314,6 +321,7 @@ export const upsert = mutation({
     iconStorageId: v.optional(v.union(v.id("_storage"), v.null())),
     networkStatus: v.optional(statusValidator),
     officeAddress: v.optional(addressValidator),
+    writingCountries: v.optional(v.array(v.string())),
     writingStates: v.optional(v.array(v.string())),
     lineOfBusinessCodes: v.optional(v.array(v.string())),
   },
@@ -343,10 +351,6 @@ export const upsert = mutation({
       !(await ctx.storage.getMetadata(args.iconStorageId))
     )
       throw new Error("Broker logo not found");
-    const normalizedWritingStates =
-      args.writingStates === undefined
-        ? undefined
-        : normalizeBrokerWritingStates(args.writingStates);
     const normalizedLineOfBusinessCodes =
       args.lineOfBusinessCodes === undefined
         ? undefined
@@ -380,10 +384,7 @@ export const upsert = mutation({
               ...existing?.officeAddress,
               ...args.officeAddress,
             },
-      writingStates:
-        normalizedWritingStates === undefined
-          ? (existing?.writingStates ?? [])
-          : normalizedWritingStates,
+      ...resolveBrokerAppetite(args, existing),
       lineOfBusinessCodes:
         normalizedLineOfBusinessCodes === undefined
           ? (existing?.lineOfBusinessCodes ?? [])
@@ -438,6 +439,7 @@ export async function createStandaloneBrokerByOperator(
     website?: string;
     networkStatus?: "prospect" | "active" | "inactive" | "blacklisted";
     officeAddress?: Doc<"brokerProfiles">["officeAddress"];
+    writingCountries?: string[];
     writingStates?: string[];
     lineOfBusinessCodes?: string[];
     source: "operator" | "agent" | "workspace_scan";
@@ -447,7 +449,7 @@ export async function createStandaloneBrokerByOperator(
   const name = args.name.trim();
   if (!name) throw new Error("Broker name is required");
   assertExternalBrokerIdentity(args);
-  const writingStates = normalizeBrokerWritingStates(args.writingStates ?? []);
+  const appetite = resolveBrokerAppetite(args);
   const lineOfBusinessCodes = normalizeBrokerLineOfBusinessCodes(
     args.lineOfBusinessCodes ?? [],
   );
@@ -462,7 +464,10 @@ export async function createStandaloneBrokerByOperator(
     brokerOrgId,
     networkStatus: args.networkStatus ?? "prospect",
     officeAddress: args.officeAddress,
-    writingStates,
+    ...appetite,
+    ...(args.writingCountries !== undefined
+      ? { manualFields: ["writingStates" as const] }
+      : {}),
     lineOfBusinessCodes,
     createdByUserId: operator.userId,
     updatedByUserId: operator.userId,
@@ -486,6 +491,7 @@ export const createStandalone = mutation({
     website: v.optional(v.string()),
     networkStatus: statusValidator,
     officeAddress: v.optional(addressValidator),
+    writingCountries: v.optional(v.array(v.string())),
     writingStates: v.array(v.string()),
     lineOfBusinessCodes: v.array(v.string()),
   },

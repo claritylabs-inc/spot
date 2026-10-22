@@ -14,9 +14,11 @@ import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
 import {
   normalizeBrokerLineOfBusinessCodes,
   normalizeBrokerWritingStates,
-  USPS_STATE_CODES,
+  BROKER_REGION_CODES,
+  BROKER_COUNTRY_CODES,
+  normalizeBrokerWritingCountries,
 } from "./brokerProfileValidation";
-import { AcordLobCodeSchema, lobLabel } from "./linesOfBusiness";
+import { ProviderAcordLobCodeSchema, lobLabel } from "./linesOfBusiness";
 import {
   GENERATE_COI_DESCRIPTION,
   generateCoiInputSchema,
@@ -191,10 +193,10 @@ const brokerOfficeAddress = z.object({
   country: omittable(z.string().max(100)),
 });
 const brokerWritingState = z
-  .enum(USPS_STATE_CODES)
-  .describe("Exact two-letter USPS state code");
-const brokerLineOfBusinessCode = AcordLobCodeSchema.describe(
-  "Exact ACORD LOBCd. Common commercial values: CGL = General Liability, PROP = Commercial Property, AUTOB = Business Automobile. Never invent an abbreviation.",
+  .enum(BROKER_REGION_CODES)
+  .describe("Exact two-letter US state or Canadian province/territory code");
+const brokerLineOfBusinessCode = ProviderAcordLobCodeSchema.describe(
+  "Exact ACORD PCS LineOfBusiness code. Unknown/blank markers are excluded; an empty list means not yet known. Common commercial values: CGL = General Liability, PROP = Commercial Property, AUTOB = Business Automobile. Never invent an abbreviation.",
 );
 const optionalHttpUrl = z
   .url()
@@ -959,9 +961,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   get_broker_network_profile: defineOperatorTool({
     family: "broker_network",
-    version: 1,
+    version: 2,
     description:
-      "Read one exact external supplier-network insurance provider profile; Spot-owned brands are ineligible. Includes neutral organization identity, office, writing states, exact ACORD LOBCd values, portal contacts, last outreach, proposal count, and persisted research outcome, sources and confidence-scored findings.",
+      "Read one exact external supplier-network insurance provider profile; Spot-owned brands are ineligible. Includes neutral organization identity, office, serviced countries and states/provinces, exact ACORD LOBCd values, portal contacts, last outreach, proposal count, and persisted research outcome, sources and confidence-scored findings.",
     inputSchema: z.object({ brokerOrgId: organizationId }),
     capability: "operator.organizations.read",
     effect: "read",
@@ -972,9 +974,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   list_broker_network_profiles: defineOperatorTool({
     family: "broker_network",
-    version: 2,
+    version: 3,
     description:
-      "Search the external supplier-network insurance provider directory by ONE name or domain substring, status, USPS writing state, or exact ACORD LOBCd value. query is one literal substring (maximum 200 characters), NOT a list or batch search. For multiple identities, call separately per identity or omit query to list and compare the bounded results. A rejected query is not evidence of absence; correct it before concluding no match. Spot-owned brands are excluded, including legacy broker rows.",
+      "Search the external supplier-network insurance provider directory by ONE name or domain substring, status, US state/Canadian province code, or exact ACORD LOBCd value. query is one literal substring (maximum 200 characters), NOT a list or batch search. For multiple identities, call separately per identity or omit query to list and compare the bounded results. A rejected query is not evidence of absence; correct it before concluding no match. Spot-owned brands are excluded, including legacy broker rows.",
     inputSchema: z.object({
       query: omittable(z.string().max(200)),
       status: omittable(brokerNetworkStatus),
@@ -1653,9 +1655,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   create_broker_network_profile: defineOperatorTool({
     family: "broker_network",
-    version: 3,
+    version: 5,
     description:
-      "Register a new external supplier-network insurance provider organization and its network profile with no portal users and no invites. The legacy broker type covers carriers, MGAs, wholesalers, agencies and producers; record only evidenced roles. Spot-owned brands and domains cannot be registered; treat them as Spot. Search the broker network first and update the existing profile instead when the broker is already registered. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values. Creation queues Jev-orchestrated public research to fill missing profile fields; inspect the research outcome before claiming completion.",
+      "Register a new external supplier-network insurance provider organization and its network profile with no portal users and no invites. The legacy broker type covers carriers, MGAs, wholesalers, agencies and producers; record only evidenced roles. Spot-owned brands and domains cannot be registered; treat them as Spot. Search the broker network first and update the existing profile instead when the broker is already registered. Countries use ISO two-letter codes; writing states/provinces use US/Canadian abbreviations and lines use exact ACORD LOBCd values. Creation queues Jev-orchestrated public research to fill missing profile fields; inspect the research outcome before claiming completion.",
     inputSchema: z.object({
       name: z.string().min(1).max(200),
       website: omittable(optionalHttpUrl).describe(
@@ -1665,8 +1667,13 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         "Defaults to prospect for a broker that has not yet placed business",
       ),
       officeAddress: omittable(brokerOfficeAddress),
-      writingStates: omittable(z.array(brokerWritingState).max(60)).describe(
-        "Complete supported-state list using exact USPS codes",
+      writingCountries: omittable(
+        z.array(z.enum(BROKER_COUNTRY_CODES)).max(250),
+      ).describe(
+        "Replacement list of ISO two-letter country codes. Omit to preserve; removing a country removes its regions.",
+      ),
+      writingStates: omittable(z.array(brokerWritingState).max(64)).describe(
+        "Complete supported state/province list using exact US/Canadian codes",
       ),
       lineOfBusinessCodes: omittable(
         z.array(brokerLineOfBusinessCode).max(100),
@@ -1682,9 +1689,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   update_broker_network_profile: defineOperatorTool({
     family: "broker_network",
-    version: 3,
+    version: 5,
     description:
-      "Update supplied fields on one exact external supplier-network insurance provider profile. Spot-owned identities are rejected. Writing states use USPS abbreviations and lines use exact ACORD LOBCd values; omitted fields remain unchanged. Explicit profile edits, including empty lists, take precedence over automated enrichment. Identity edits queue fresh public research.",
+      "Update supplied fields on one exact external supplier-network insurance provider profile. Spot-owned identities are rejected. Countries use ISO two-letter codes; writing states/provinces use US/Canadian abbreviations and lines use exact ACORD LOBCd values; omitted fields remain unchanged. Explicit profile edits, including empty lists, take precedence over automated enrichment. Identity edits queue fresh public research.",
     inputSchema: z
       .object({
         brokerOrgId: organizationId,
@@ -1693,8 +1700,13 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         ),
         networkStatus: omittable(brokerNetworkStatus),
         officeAddress: omittable(brokerOfficeAddress),
-        writingStates: omittable(z.array(brokerWritingState).max(60)).describe(
-          "Replacement list of exact USPS state codes. Omit to preserve the saved list.",
+        writingCountries: omittable(
+          z.array(z.enum(BROKER_COUNTRY_CODES)).max(250),
+        ).describe(
+          "Replacement list of ISO two-letter country codes. Omit to preserve; removing a country removes its regions.",
+        ),
+        writingStates: omittable(z.array(brokerWritingState).max(64)).describe(
+          "Replacement list of exact US state or Canadian province/territory codes. Omit to preserve the saved list.",
         ),
         lineOfBusinessCodes: omittable(
           z.array(brokerLineOfBusinessCode).max(100),
@@ -2217,6 +2229,13 @@ export function parseOperatorAgentToolInput(
     typeof input === "object"
   ) {
     const brokerInput = input as Record<string, unknown>;
+    if (
+      Array.isArray(brokerInput.writingCountries) &&
+      brokerInput.writingCountries.every(
+        (value): value is string => typeof value === "string",
+      )
+    )
+      normalizeBrokerWritingCountries(brokerInput.writingCountries);
     if (
       Array.isArray(brokerInput.writingStates) &&
       brokerInput.writingStates.every(

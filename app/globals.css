@@ -165,6 +165,16 @@
   }
 }
 
+/* Compact searchable selects retain their shared menu type through portals. */
+[data-typography-role="control.menu"] {
+  font-size: var(--text-base) !important;
+  line-height: var(--leading-normal) !important;
+}
+[data-typography-role="control.menu"] * {
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+
 /* Reuse intake controls at operator form density. */
 [data-operator-form]
   :is([data-slot="input-group"], [data-slot="input-group-input"]) {

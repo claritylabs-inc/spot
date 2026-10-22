@@ -17,6 +17,8 @@ import {
   assertExternalBrokerIdentity,
   normalizeBrokerLineOfBusinessCodes,
   normalizeBrokerWritingStates,
+  normalizeBrokerWritingCountries,
+  resolveBrokerAppetite,
 } from "./brokerProfileValidation";
 import { assertNoOperatorImpersonation } from "./clientFiles";
 import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
@@ -244,6 +246,21 @@ function validateBrokerProfileFields(input: Record<string, unknown>) {
     name: typeof input.name === "string" ? input.name : undefined,
     website: typeof input.website === "string" ? input.website : undefined,
   });
+  if (Array.isArray(input.writingCountries)) {
+    const writingCountries = normalizeBrokerWritingCountries(
+      input.writingCountries.filter(
+        (value): value is string => typeof value === "string",
+      ),
+    );
+    resolveBrokerAppetite({
+      writingCountries,
+      writingStates: Array.isArray(input.writingStates)
+        ? input.writingStates.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : undefined,
+    });
+  }
   if (Array.isArray(input.writingStates)) {
     normalizeBrokerWritingStates(
       input.writingStates.filter(

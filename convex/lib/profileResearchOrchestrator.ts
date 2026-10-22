@@ -10,12 +10,12 @@ import {
   publicResearchUrl,
   samePublicResearchSite,
 } from "./companyResearch";
-import { USPS_STATE_CODES, USPS_STATE_NAMES } from "./brokerProfileValidation";
 import {
-  ACORD_LOB_CODES,
-  ACORD_LOB_LABELS,
-  isLobCode,
-} from "./linesOfBusiness";
+  BROKER_REGION_CODES,
+  CANADIAN_PROVINCES,
+  USPS_STATE_NAMES,
+} from "./brokerProfileValidation";
+import { PROVIDER_ACORD_LOB_CODES, ACORD_LOB_LABELS } from "./linesOfBusiness";
 
 type Evidence = { topic: string; text: string; urls: string[] };
 type ResearchTrace = NonNullable<Parameters<typeof clRouterDecide>[0]["trace"]>;
@@ -319,13 +319,15 @@ export async function selectBrokerAppetiteWithTrace(
   trace: ResearchTrace,
 ): Promise<BrokerAppetite> {
   const options = [
-    ...USPS_STATE_CODES.map((code) => ({
+    ...BROKER_REGION_CODES.map((code) => ({
       key: `state_${code}`,
       code,
       kind: "state",
-      label: USPS_STATE_NAMES[code],
+      label:
+        USPS_STATE_NAMES[code] ??
+        CANADIAN_PROVINCES[code as keyof typeof CANADIAN_PROVINCES],
     })),
-    ...ACORD_LOB_CODES.filter(isLobCode).map((code) => ({
+    ...PROVIDER_ACORD_LOB_CODES.map((code) => ({
       key: `line_${code}`,
       code,
       kind: "line",

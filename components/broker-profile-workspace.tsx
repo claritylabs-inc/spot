@@ -12,7 +12,15 @@ import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
 import { Input } from "@claritylabs-inc/ui/components/input";
-import { TokenListField } from "@/components/broker-network/token-list-field";
+import {
+  AppetiteCountriesField,
+  AppetiteRegionsField,
+} from "@/components/broker-network/appetite-geography-fields";
+import {
+  brokerWritingCountries,
+  brokerRegionCountry,
+} from "@/convex/lib/brokerProfileValidation";
+import { AcordLinesField } from "@/components/broker-network/acord-lines-field";
 import {
   OperationalPanel,
   OperationalPanelBody,
@@ -89,6 +97,9 @@ function BrokerProfileEditor({
   const [postalCode, setPostalCode] = useState(
     profile.profile?.officeAddress?.postalCode ?? "",
   );
+  const [writingCountries, setWritingCountries] = useState(() =>
+    brokerWritingCountries(profile.profile),
+  );
   const [writingStates, setWritingStates] = useState(
     profile.profile?.writingStates ?? [],
   );
@@ -104,6 +115,7 @@ function BrokerProfileEditor({
     city,
     state,
     postalCode,
+    writingCountries,
     writingStates,
     lines,
   };
@@ -148,6 +160,10 @@ function BrokerProfileEditor({
                   : undefined,
             }
           : undefined,
+        writingCountries:
+          next.writingCountries !== previous.writingCountries
+            ? next.writingCountries
+            : undefined,
         writingStates:
           next.writingStates !== previous.writingStates
             ? next.writingStates
@@ -302,24 +318,39 @@ function BrokerProfileEditor({
       </OperationalPanel>
       <OperationalPanel>
         <OperationalPanelBody className="grid gap-5 sm:grid-cols-2">
-          <Field label="States serviced" help="Press Enter or comma to add.">
-            <TokenListField
+          <Field label="Countries serviced">
+            <AppetiteCountriesField
+              value={writingCountries}
+              disabled={disabled}
+              onChange={(countries) => {
+                setWritingCountries(countries);
+                setWritingStates((current) =>
+                  current.filter((code) =>
+                    countries.includes(brokerRegionCountry(code)),
+                  ),
+                );
+              }}
+            />
+          </Field>
+          <Field label="States / provinces serviced">
+            <AppetiteRegionsField
+              countries={writingCountries}
               value={writingStates}
               onChange={setWritingStates}
-              placeholder="CA, NV, OR"
-              ariaLabel="Add writing state"
               disabled={disabled}
             />
           </Field>
+        </OperationalPanelBody>
+      </OperationalPanel>
+      <OperationalPanel>
+        <OperationalPanelBody>
           <Field
             label="ACORD lines of business"
-            help="Press Enter or comma to add exact LOBCd values."
+            help="Select coverage names or search by ACORD code."
           >
-            <TokenListField
+            <AcordLinesField
               value={lines}
               onChange={setLines}
-              placeholder="CGL, PROP, UMBRC"
-              ariaLabel="Add ACORD line"
               disabled={disabled}
             />
           </Field>

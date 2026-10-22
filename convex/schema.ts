@@ -685,6 +685,7 @@ export default defineSchema({
         country: v.optional(v.string()),
       }),
     ),
+    writingCountries: v.optional(v.array(v.string())),
     writingStates: v.array(v.string()),
     lineOfBusinessCodes: v.array(v.string()),
     createdByUserId: v.optional(v.id("users")),

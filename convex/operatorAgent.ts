@@ -2721,6 +2721,7 @@ async function executeToolDomain(
         input.officeAddress && typeof input.officeAddress === "object"
           ? input.officeAddress
           : undefined,
+      writingCountries: stringList(input.writingCountries),
       writingStates: stringList(input.writingStates),
       lineOfBusinessCodes: stringList(input.lineOfBusinessCodes),
       source: "agent",
@@ -2736,6 +2737,7 @@ async function executeToolDomain(
         input.officeAddress && typeof input.officeAddress === "object"
           ? input.officeAddress
           : undefined,
+      writingCountries: stringList(input.writingCountries),
       writingStates: stringList(input.writingStates),
       lineOfBusinessCodes: stringList(input.lineOfBusinessCodes),
       name: normalizedOptionalText(input.name),
