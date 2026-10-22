@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useConvexAuth, useMutation } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/convex/_generated/api";
 import { AuthCard, AuthMinimalShell, BrandWordmark } from "@/components/auth-shell";
+import { OperatorSecondFactor } from "@/components/operator/operator-second-factor";
 import { OtpField } from "@/components/ui/otp-field";
 import { PillButton } from "@/components/ui/pill-button";
 import { completeOtpSignIn } from "@/lib/auth-sign-in";
@@ -29,7 +30,18 @@ export default function OperatorLoginPage() {
   const { signIn, signOut } = useAuthActions();
   const { isAuthenticated } = useConvexAuth();
   const bootstrap = useMutation(api.operator.bootstrapViewer);
-  const [step, setStep] = useState<"email" | "code">("email");
+  const [step, setStep] = useState<"email" | "code" | "bootstrapped" | "second-factor">("email");
+  // Fixed when the challenge opens, so finishing enrollment keeps the
+  // recovery codes on screen after the session becomes verified.
+  const [enrolled, setEnrolled] = useState(false);
+  const secondFactor = useQuery(
+    api.operatorSecondFactor.status,
+    step === "bootstrapped" ? {} : "skip",
+  );
+  if (step === "bootstrapped" && secondFactor !== undefined && !secondFactor?.verified) {
+    setEnrolled(!!secondFactor?.enrolled);
+    setStep("second-factor");
+  }
   const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -40,7 +52,7 @@ export default function OperatorLoginPage() {
     if (!isAuthenticated || bootstrappingRef.current) return;
     bootstrappingRef.current = true;
     bootstrap({})
-      .then(() => router.replace("/operator"))
+      .then(() => setStep((current) => (current === "second-factor" ? current : "bootstrapped")))
       .catch(async (err: unknown) => {
         setError(friendlyError(getUserFacingErrorMessage(err, "")));
         await signOut();
@@ -50,6 +62,11 @@ export default function OperatorLoginPage() {
         bootstrappingRef.current = false;
       });
   }, [bootstrap, isAuthenticated, router, signOut]);
+
+  // Only an already-verified session skips the challenge.
+  useEffect(() => {
+    if (step === "bootstrapped" && secondFactor?.verified) router.replace("/operator");
+  }, [router, secondFactor, step]);
 
   async function sendCode(event: React.FormEvent) {
     event.preventDefault();
@@ -83,11 +100,29 @@ export default function OperatorLoginPage() {
   return (
     <AuthMinimalShell>
       <AuthCard
-        title="Operator login"
-        subtitle="For Clarity Labs team members."
+        title={step === "second-factor" ? "Two-factor authentication" : "Operator login"}
+        subtitle="For Tools for Enlightenment team members."
         logo={<BrandWordmark />}
       >
-        {step === "email" ? (
+        {step === "bootstrapped" ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : step === "second-factor" ? (
+          <div className="space-y-4">
+            <OperatorSecondFactor enrolled={enrolled} onDone={() => router.replace("/operator")} />
+            <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+              Wrong account?{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  void signOut().then(() => setStep("email"));
+                }}
+                className={`text-foreground hover:opacity-70 ${typeStyle("control.buttonCompact")}`}
+              >
+                Sign out
+              </button>
+            </p>
+          </div>
+        ) : step === "email" ? (
           <form onSubmit={sendCode} className="space-y-4">
             <div>
               <label className={`mb-1.5 block text-muted-foreground ${typeStyle("label.field")}`}>

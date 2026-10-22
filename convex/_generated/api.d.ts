@@ -53,6 +53,7 @@ import type * as actions_operatorChannelDelivery from "../actions/operatorChanne
 import type * as actions_operatorGoogleWorkspace from "../actions/operatorGoogleWorkspace.js";
 import type * as actions_operatorMcp from "../actions/operatorMcp.js";
 import type * as actions_operatorMcpOAuth from "../actions/operatorMcpOAuth.js";
+import type * as actions_operatorSecondFactor from "../actions/operatorSecondFactor.js";
 import type * as actions_ownComplianceMonitor from "../actions/ownComplianceMonitor.js";
 import type * as actions_policyExtraction from "../actions/policyExtraction.js";
 import type * as actions_processThreadChat from "../actions/processThreadChat.js";
@@ -308,6 +309,7 @@ import type * as lib_operatorMcpOAuth from "../lib/operatorMcpOAuth.js";
 import type * as lib_operatorMcpToolCatalog from "../lib/operatorMcpToolCatalog.js";
 import type * as lib_operatorPlanning from "../lib/operatorPlanning.js";
 import type * as lib_operatorRunPlan from "../lib/operatorRunPlan.js";
+import type * as lib_operatorSecondFactor from "../lib/operatorSecondFactor.js";
 import type * as lib_operatorSlackConfig from "../lib/operatorSlackConfig.js";
 import type * as lib_operatorToolRecovery from "../lib/operatorToolRecovery.js";
 import type * as lib_orgBranding from "../lib/orgBranding.js";
@@ -424,6 +426,7 @@ import type * as operatorMcpOAuth from "../operatorMcpOAuth.js";
 import type * as operatorMcpServers from "../operatorMcpServers.js";
 import type * as operatorPolicyImports from "../operatorPolicyImports.js";
 import type * as operatorProvisioning from "../operatorProvisioning.js";
+import type * as operatorSecondFactor from "../operatorSecondFactor.js";
 import type * as operatorSlack from "../operatorSlack.js";
 import type * as orgWiki from "../orgWiki.js";
 import type * as organizations from "../organizations.js";
@@ -519,6 +522,7 @@ declare const fullApi: ApiFromModules<{
   "actions/operatorGoogleWorkspace": typeof actions_operatorGoogleWorkspace;
   "actions/operatorMcp": typeof actions_operatorMcp;
   "actions/operatorMcpOAuth": typeof actions_operatorMcpOAuth;
+  "actions/operatorSecondFactor": typeof actions_operatorSecondFactor;
   "actions/ownComplianceMonitor": typeof actions_ownComplianceMonitor;
   "actions/policyExtraction": typeof actions_policyExtraction;
   "actions/processThreadChat": typeof actions_processThreadChat;
@@ -774,6 +778,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorMcpToolCatalog": typeof lib_operatorMcpToolCatalog;
   "lib/operatorPlanning": typeof lib_operatorPlanning;
   "lib/operatorRunPlan": typeof lib_operatorRunPlan;
+  "lib/operatorSecondFactor": typeof lib_operatorSecondFactor;
   "lib/operatorSlackConfig": typeof lib_operatorSlackConfig;
   "lib/operatorToolRecovery": typeof lib_operatorToolRecovery;
   "lib/orgBranding": typeof lib_orgBranding;
@@ -890,6 +895,7 @@ declare const fullApi: ApiFromModules<{
   operatorMcpServers: typeof operatorMcpServers;
   operatorPolicyImports: typeof operatorPolicyImports;
   operatorProvisioning: typeof operatorProvisioning;
+  operatorSecondFactor: typeof operatorSecondFactor;
   operatorSlack: typeof operatorSlack;
   orgWiki: typeof orgWiki;
   organizations: typeof organizations;

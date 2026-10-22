@@ -1,7 +1,7 @@
 "use client";
 
 import { RootLoading } from "@/components/root-loading";
-import { useConvexAuth, useMutation } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "@/convex/_generated/api";
@@ -205,11 +205,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     api.orgs.viewerOrg,
     isAuthenticated ? {} : "skip",
   );
+  const isOperatorViewer = isAuthenticated && viewer?.accountKind === "operator";
+  // Not cached: a stale "verified" must never skip the challenge.
+  const secondFactor = useQuery(
+    api.operatorSecondFactor.status,
+    isOperatorViewer ? {} : "skip",
+  );
+  const secondFactorPending = isOperatorViewer && secondFactor?.verified !== true;
   const operatorContext = useCachedQuery(
     "authGuard.operator.current",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (api as any).operator.current,
-    isAuthenticated && viewer?.accountKind === "operator" ? {} : "skip",
+    isOperatorViewer && secondFactor?.verified ? {} : "skip",
   );
   const pendingInvitation = useCachedQuery(
     "authGuard.pendingInvitationForViewer",
@@ -322,6 +329,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     if (isAuthenticated && viewer !== undefined) {
+      if (secondFactorPending) {
+        if (secondFactor !== undefined && !isOperatorLogin) {
+          router.replace("/operator/login");
+        }
+        return;
+      }
       const hasOperatorImpersonation = !!operatorContext?.activeImpersonation;
       if (
         viewer?.accountKind === "operator" &&
@@ -404,6 +417,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     viewer,
     viewerOrg,
     operatorContext,
+    secondFactor,
+    secondFactorPending,
     impersonationStopReturnHref,
     router,
     pathname,
@@ -437,13 +452,17 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   if (
     isLoading ||
     (isAuthenticated && viewer === undefined) ||
-    (isAuthenticated &&
-      viewer?.accountKind === "operator" &&
-      operatorContext === undefined) ||
+    // The login page hosts the challenge and must stay mounted through it.
+    (isOperatorViewer &&
+      !isOperatorLogin &&
+      (secondFactor === undefined ||
+        (secondFactor?.verified && operatorContext === undefined))) ||
     (isAuthenticated && pendingInvitation && !inviteAcceptError)
   ) {
     if (pathname === "/") return <RootLoading />;
     if (isPublic) return rootRedirectLoading;
+    // The shell reads operator data, which an unverified session cannot.
+    if (secondFactorPending) return null;
 
     if (shouldShowOperatorLoading) {
       return <OperatorLoading pathname={pathname} />;
@@ -462,6 +481,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated && !isPublic) {
+    return rootRedirectLoading;
+  }
+
+  // Waiting for redirect to the operator second-factor challenge
+  if (secondFactorPending && !isOperatorLogin) {
     return rootRedirectLoading;
   }
 
