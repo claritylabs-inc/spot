@@ -49,6 +49,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import {
   Copy,
   FileText,
@@ -1994,6 +1995,47 @@ export function ProcurementRequestWorkspace({
   });
   const brokers = useCachedOperatorBrokers() as BrokerOption[] | undefined;
   const proposals = useQuery(api.procurementProposals.list, { requestId });
+  const autoAddBrokers = useMutation(api.procurementRequests.autoAddBrokers);
+  const [matchingBrokers, setMatchingBrokers] = useState(false);
+  const matchingBrokersRef = useRef(false);
+  const handleAutoAddBrokers = useCallback(async () => {
+    if (readOnly || matchingBrokersRef.current) return;
+    matchingBrokersRef.current = true;
+    setMatchingBrokers(true);
+    try {
+      const result = await autoAddBrokers({ requestId });
+      toast.success(
+        result.added
+          ? `${result.added} provider${result.added === 1 ? "" : "s"} added`
+          : "No new matching providers",
+        {
+          description: [
+            "Matches at least one requested coverage and every request location.",
+            result.alreadyAdded
+              ? `${result.alreadyAdded} already on this request.`
+              : "",
+            result.missingAppetite
+              ? `${result.missingAppetite} providers have missing coverage or service-area data.`
+              : "",
+            result.unmappedCoverages.length
+              ? "Other or unknown coverage types require manual matching."
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
+        },
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof ConvexError && typeof error.data === "string"
+          ? error.data
+          : getUserFacingErrorMessage(error, "Could not auto add providers"),
+      );
+    } finally {
+      matchingBrokersRef.current = false;
+      setMatchingBrokers(false);
+    }
+  }, [autoAddBrokers, readOnly, requestId]);
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
   const packetEditorRef = useRef<PacketEditorHandle>(null);
   const latestTabChange = useRef(0);
@@ -2286,10 +2328,19 @@ export function ProcurementRequestWorkspace({
           Share link
         </PillButton>
       ) : view === "proposals" ? (
-        <PillButton type="button" onClick={() => openOutreachEditor()}>
-          <Plus className="size-3.5" />
-          Add provider
-        </PillButton>
+        <>
+          <PillButton type="button" onClick={() => openOutreachEditor()}>
+            <Plus className="size-3.5" />
+            Add provider
+          </PillButton>
+          <PillButton
+            type="button"
+            disabled={matchingBrokers}
+            onClick={() => void handleAutoAddBrokers()}
+          >
+            {matchingBrokers ? "Adding providers…" : "Auto add providers"}
+          </PillButton>
+        </>
       ) : view === "files" ? (
         <PillButton type="button" onClick={() => openUpload()}>
           <Upload className="size-3.5" />
@@ -2325,6 +2376,8 @@ export function ProcurementRequestWorkspace({
   }, [
     onActions,
     openOutreachEditor,
+    handleAutoAddBrokers,
+    matchingBrokers,
     openPacketLink,
     openNotes,
     openUpload,
