@@ -8,7 +8,7 @@ import { isFixedVehicleFollowup } from "../lib/intake-vehicle-underwriting";
 import { intakePrefillEvidence, invalidateIntakePrefills } from "../lib/intake-prefill-state";
 import { followupPrefillValidator } from "./lib/intakeFollowupSchema";
 import { mergeIntakePrefills } from "./lib/intakePrefills";
-import { jevProceedThreshold } from "./lib/jevThreshold";
+import { jevDecisionBand } from "./lib/jevThreshold";
 import { intakeSubmissionProblems } from "../lib/intake-submission";
 import { driverModelContext } from "../lib/intake-drivers";
 import { intakeQuestionHistory } from "../lib/intake-question-history";
@@ -1799,7 +1799,7 @@ export const finishRequirementPrefill = internalMutation({
     intakeFileId: v.id("requestIntakeFiles"), coveragesJson: v.string(),
     workforceProposals: v.optional(v.array(v.object({questionId:v.string(),answer:v.string(),confidence:v.number()}))),
     companyIdentity: v.optional(v.string()),
-    provisionRequirements: v.optional(v.array(v.object({ coverage: v.string(), provisions: v.array(v.union(v.literal("additional_insured"), v.literal("waiver_of_subrogation"), v.literal("primary_non_contributory"))) }))),
+    provisionRequirements: v.optional(v.array(v.object({ coverage: v.string(), provisions: v.array(v.object({ provision: v.union(v.literal("additional_insured"), v.literal("waiver_of_subrogation"), v.literal("primary_non_contributory")), confidence: v.number() })) }))),
   },
   handler: async (ctx, { intakeFileId, coveragesJson, provisionRequirements, workforceProposals, companyIdentity }) => {
     const file = await ctx.db.get(intakeFileId);
@@ -1826,7 +1826,7 @@ export const finishRequirementPrefill = internalMutation({
       for(const question of questions) {
         const proposal=workforceProposals?.find(row=>row.questionId===question.id);
         const saved=followups.find(row=>row.id===question.id);
-        if(!proposal || !Number.isFinite(proposal.confidence) || proposal.confidence<Math.max(.7,jevProceedThreshold()) || proposal.confidence>1 || saved?.answer.trim() || saved?.skipped || !followupQuestionVisible(question,followups))continue;
+        if(!proposal || !Number.isFinite(proposal.confidence) || jevDecisionBand(proposal.confidence,"prefill")!=="high" || proposal.confidence>1 || saved?.answer.trim() || saved?.skipped || !followupQuestionVisible(question,followups))continue;
         const row={...question,answer:proposal.answer,prefilled:{confidence:proposal.confidence,contextHash:`workforce:${file._id}`}};
         validateFollowupAnswers([row]);
         if(saved)followups[followups.indexOf(saved)]=row;else followups.push(row);
@@ -1837,7 +1837,9 @@ export const finishRequirementPrefill = internalMutation({
     if (!request.intakeSubmittedAt && request.intakeAnswers?.intakeGoal !== "savings" && provisionRequirements?.length) {
       const current = request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {});
       const questions = bakedCoverageQuestions({ answers: request.intakeAnswers ?? {}, details: current });
-      const glProvisions = new Set(provisionRequirements.filter(row => row.coverage === "general_liability").flatMap(row => row.provisions));
+      const glProvisions = provisionRequirements
+        .filter(row => row.coverage === "general_liability")
+        .flatMap(row => row.provisions);
       const targets = [
         ["additional_insured", "gl.coverage.additional_insureds"],
         ["waiver_of_subrogation", "gl.coverage.waiver_requirements"],
@@ -1845,8 +1847,13 @@ export const finishRequirementPrefill = internalMutation({
       ] as const;
       const proposals = targets.flatMap(([provision, source]) => {
         const question = questions.find(row => row.source?.endsWith(` · ${source}`));
-        // Classification already passed Jev's threshold and source-excerpt grounding.
-        return glProvisions.has(provision) && question ? [{ questionId: question.id, answer: "Yes" as const, confidence: jevProceedThreshold() }] : [];
+        const supported = glProvisions.find(row =>
+          row.provision === provision && jevDecisionBand(row.confidence, "prefill") === "high",
+        );
+        // Preserve the actual upstream probability; the writer rechecks its risk gate.
+        return supported && question
+          ? [{ questionId: question.id, answer: "Yes" as const, confidence: supported.confidence }]
+          : [];
       });
       const followups = mergeIntakePrefills(current.followups ?? [], questions, proposals, `requirements:${file._id}`);
       if (JSON.stringify(followups) !== JSON.stringify(current.followups ?? []))
@@ -1963,7 +1970,7 @@ export const finishVehicleRelevance = internalMutation({
     if(!request?.ownerUserId || request.deletedAt || request.intakeSubmittedAt || !details || !job || job.status!=="running" || job.fingerprint!==fingerprint ||
       job.sourceKey!==vehicleRelevanceKey(request.intakeAnswers??{},details))return null;
     const allowed=new Set(vehicleRelevanceCandidates(request.intakeAnswers??{},details).map(candidate=>candidate.id));
-    const excludedIds=failed?[]:[...new Set(decisions.filter(row=>allowed.has(row.id) && Number.isFinite(row.irrelevantProbability) && row.irrelevantProbability>=jevProceedThreshold() && row.irrelevantProbability<=1).map(row=>row.id))];
+    const excludedIds=failed?[]:[...new Set(decisions.filter(row=>allowed.has(row.id) && Number.isFinite(row.irrelevantProbability) && jevDecisionBand(row.irrelevantProbability,"omission")==="high" && row.irrelevantProbability<=1).map(row=>row.id))];
     await ctx.db.patch(requestId,{intakeVehicleRelevance:{...job,status:failed?"failed":"completed",excludedIds}});
     return null;
   },

@@ -10,12 +10,12 @@ const question: IntakeFollowupQuestion = {
 };
 // Failure modes: low/invalid confidence, Unknown, invented IDs, wrong controls,
 // overwritten human answers/skips, and inferred children of inactive parents.
-test("only a supported Yes/No with at least 70% joint confidence can prefill", () => {
+test("only a supported Yes/No with at least 80% decision confidence can prefill", () => {
   expect(
     intakeBooleanPrefill(question, {
       choice: "No",
-      confidence: 0.7,
-      probabilities: { No: 0.7 },
+      confidence: 0.8,
+      probabilities: { No: 0.8 },
     })?.answer,
   ).toBe("No");
   for (const decision of [
