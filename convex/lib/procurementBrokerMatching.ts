@@ -5,12 +5,10 @@ import type {
   IntakeAddress,
 } from "../../lib/insurance-intake-details";
 import {
-  BROKER_COUNTRY_CODES,
-  CANADIAN_PROVINCES,
-  USPS_STATE_NAMES,
   brokerRegionCountry,
   brokerWritingCountries,
 } from "./brokerProfileValidation";
+import { normalizeCountry, normalizeRegion } from "./providerOutreachMatch";
 
 // Alternatives identify the requested class, not every product in a package.
 // BOP alone does not establish either component's standalone availability.
@@ -23,25 +21,6 @@ const coverageCodes: Partial<Record<CoverageId, readonly string[]>> = {
   cyber: ["CYBER"],
   umbrella: ["UMBRC", "UMBRL"],
 };
-const normalize = (value: string) =>
-  value
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-const countryNames = new Intl.DisplayNames(["en"], { type: "region" });
-const countries = new Map(
-  BROKER_COUNTRY_CODES.flatMap(
-    (code) =>
-      [
-        [normalize(code), code],
-        [normalize(countryNames.of(code) ?? code), code],
-      ] as [string, string][],
-  ),
-);
-countries.set("usa", "US");
-countries.set("united states of america", "US");
-countries.set("uk", "GB");
 
 export function procurementBrokerCriteria(
   application: IntakeApplication | null,
@@ -81,18 +60,16 @@ export function procurementBrokerCriteria(
 }
 
 function requestArea(address: IntakeAddress) {
-  const country = countries.get(normalize(address.country ?? ""));
+  const country = normalizeCountry(address.country);
   if (!country)
     throw new ConvexError(
       "Set a country for every operating and property location in the request application before auto adding providers.",
     );
   if (country !== "US" && country !== "CA") return { country };
-  const regions: Readonly<Record<string, string>> =
-    country === "CA" ? CANADIAN_PROVINCES : USPS_STATE_NAMES;
-  const value = normalize(address.state ?? "").replace(/^(us|ca)-/, "");
-  const state = Object.keys(regions).find(
-    (code) => normalize(code) === value || normalize(regions[code]) === value,
-  );
+  const normalizedRegion = normalizeRegion(address.state);
+  const state = normalizedRegion && brokerRegionCountry(normalizedRegion) === country
+    ? normalizedRegion
+    : undefined;
   if (!state)
     throw new ConvexError(
       "Set a valid state or province for every US or Canadian operating and property location before auto adding providers.",

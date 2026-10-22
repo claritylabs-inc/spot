@@ -36,6 +36,10 @@ import {
 import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
+import {
+  ProviderGeographyDialog,
+  providerGeographyPreflight,
+} from "./provider-geography-dialog";
 
 import {
   useCallback,
@@ -1998,7 +2002,11 @@ export function ProcurementRequestWorkspace({
   const autoAddBrokers = useMutation(api.procurementRequests.autoAddBrokers);
   const [matchingBrokers, setMatchingBrokers] = useState(false);
   const matchingBrokersRef = useRef(false);
-  const handleAutoAddBrokers = useCallback(async () => {
+  const [geographyDialog, setGeographyDialog] = useState<{
+    key: number;
+    open: boolean;
+  } | null>(null);
+  const runAutoAddBrokers = useCallback(async () => {
     if (readOnly || matchingBrokersRef.current) return;
     matchingBrokersRef.current = true;
     setMatchingBrokers(true);
@@ -2036,6 +2044,19 @@ export function ProcurementRequestWorkspace({
       setMatchingBrokers(false);
     }
   }, [autoAddBrokers, readOnly, requestId]);
+  // Missing or invalid request geography is fixed in a modal, then the match retries.
+  const handleAutoAddBrokers = useCallback(async () => {
+    if (readOnly || matchingBrokersRef.current) return;
+    const request = (result as RequestDetails | null | undefined)?.request;
+    if (!providerGeographyPreflight(request?.application).ready) {
+      setGeographyDialog((current) => ({
+        key: (current?.key ?? 0) + 1,
+        open: true,
+      }));
+      return;
+    }
+    await runAutoAddBrokers();
+  }, [readOnly, result, runAutoAddBrokers]);
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
   const packetEditorRef = useRef<PacketEditorHandle>(null);
   const latestTabChange = useRef(0);
@@ -2858,6 +2879,23 @@ export function ProcurementRequestWorkspace({
               </OperationalPanel>
             )}
           </div>
+        ) : null}
+        {!readOnly && geographyDialog ? (
+          <ProviderGeographyDialog
+            key={geographyDialog.key}
+            open={geographyDialog.open}
+            onOpenChange={(open) =>
+              setGeographyDialog((current) =>
+                current ? { ...current, open } : current,
+              )
+            }
+            request={details.request}
+            onSaved={() => {
+              // The editor remounts from the saved request; drop the stale menu draft.
+              setDraft(null);
+              return runAutoAddBrokers();
+            }}
+          />
         ) : null}
       </div>
     </IntakeReviewCompact.Provider>

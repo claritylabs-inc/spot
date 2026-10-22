@@ -70,6 +70,8 @@ function normalizedKey(value: string) {
   return value
     .trim()
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 }
@@ -97,7 +99,7 @@ export function normalizeCountry(value?: string | null) {
 }
 /** US state / CA province text to its code. "CA" is California here. */
 export function normalizeRegion(value?: string | null) {
-  const text = value?.trim();
+  const text = value?.trim().replace(/^(?:US|CA)-/i, "");
   if (!text) return undefined;
   const upper = text.toUpperCase();
   if (REGION_CODES.has(upper)) return upper;

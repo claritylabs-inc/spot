@@ -2849,6 +2849,7 @@ export default defineSchema({
     pendingReplyEmailId: v.optional(v.string()),
     respondedAt: v.optional(v.number()),
     replyCheckStartedAt: v.optional(v.number()),
+    replyClassificationEmailId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -2899,6 +2900,7 @@ export default defineSchema({
   procurementOutreachCadences: defineTable({
     requestId: v.id("procurementRequests"),
     fingerprint: v.string(),
+    generationStartedAt: v.optional(v.number()),
     status: v.union(
       v.literal("pending"),
       v.literal("ready"),

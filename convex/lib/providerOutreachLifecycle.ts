@@ -57,8 +57,8 @@ export function outreachLeavesRequestSent(
  * Terminalizes the `active`/`reply_check` sequences of one outreach or one request and
  * cancels their `scheduled`/`sending` steps. Idempotent: sequences already `responded`,
  * `completed`, `stopped`, or `failed` are left as they are. Every step claim re-checks the
- * sequence, request, and outreach, so an in-flight or already-scheduled `sendStep` cannot
- * send after this commits; a `sending` step's finisher must treat `cancelled` as final.
+ * sequence, request, and outreach, so queued work cannot claim after this commits. A provider request already in
+ * flight may still deliver; its finisher must treat `cancelled` as final.
  */
 export async function stopOutreachSequences(
   ctx: MutationCtx,
