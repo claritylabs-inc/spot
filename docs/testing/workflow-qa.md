@@ -2308,3 +2308,7 @@ Helium at localhost:3207 verified Providers immediately renders the nine matchin
 ### Combined provider submission status — October 22, 2026
 
 Helium at localhost:3207 verified a single bordered shared Table contains HUB's existing Request sent outreach and eight uncontacted matches, with nine providers in navigation and eight eligible in Send-all. HUB appears once with the saved Derek May recipient, current sequence status/captured-step count, Stop control and View details. View details opens the existing provider/proposal drawer; closing returns to the same table. No Send or Stop action was invoked, and no outreach data was created or changed during this review. TypeScript, touched-file ESLint and whitespace validation passed. Evidence: `.context/provider-email-completion/providers-unified-status.png` and `types-unified-table.log`. No tests or migrations were written.
+
+### Provider status presentation — October 22, 2026
+
+Helium verified the table begins directly below the navbar without a Providers heading. HUB's Status cell shows only Request sent; the Active/next-date and sent/captured/total summaries are absent. Stop and View details remain in the actions cell. Eight other matches retain Not contacted and their contact selectors. No send/stop or data mutation was invoked. TypeScript and touched-file lint passed.

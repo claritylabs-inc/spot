@@ -38,7 +38,7 @@ import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 import {
   FitChips,
-  OutreachSequenceCell,
+  OutreachSequenceActions,
   ProviderOutreachPanel,
   ProviderOutreachCadence,
   sequenceForOutreach,
@@ -2702,8 +2702,13 @@ export function ProcurementRequestWorkspace({
                           </StatusTag>
                         ) : null}
 
+
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-wrap justify-end gap-2">
                         {!readOnly && sequence ? (
-                          <OutreachSequenceCell
+                          <OutreachSequenceActions
                             sequence={sequence}
                             readOnly={readOnly}
                             stopping={
@@ -2717,10 +2722,6 @@ export function ProcurementRequestWorkspace({
                             }
                           />
                         ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
                         {!readOnly &&
                         candidate &&
                         !candidate.launchBlock &&
