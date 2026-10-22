@@ -35,7 +35,6 @@ import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { MarkdownEditor } from "@/components/ui/markdown-editor";
-import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -266,48 +265,32 @@ function LoadedPacketEditor({
       ? splitSubmissionNotes(body)
       : { notes: body, application: null };
     return (
-      <section className="space-y-2" data-review-content>
-        <label
-          htmlFor={`request-${shared ? "submission" : "internal"}-notes-${requestId}`}
-          className={
-            inlineNotes === "sidebar" ? "sr-only" : typeStyle("body.medium")
-          }
-        >
+      <section
+        className="space-y-2"
+        data-review-content
+        onBlur={() => {
+          if (!readOnly) void autoSave.saveNow();
+        }}
+      >
+        <h2 className="sr-only">
           {shared ? "Submission notes" : "Internal notes"}
-        </label>
-        {shared ? (
-          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-            Shown first on provider packet links and visible to the client. Add
-            context, questions, or request details the application does not
-            capture. Markdown is supported.
-          </p>
-        ) : null}
-        <Textarea
-          id={`request-${shared ? "submission" : "internal"}-notes-${requestId}`}
+        </h2>
+        <MarkdownEditor
+          label={shared ? "Submission notes" : "Internal notes"}
           value={shared ? notes.replace(/^\n+/, "") : notes}
-          onChange={(event) =>
+          onChange={(value) =>
             setDraft(
-              replaceEditorBody(
-                draft,
-                joinSubmissionNotes(event.target.value, application),
-              ),
+              replaceEditorBody(draft, joinSubmissionNotes(value, application)),
             )
           }
-          onBlur={() => {
-            if (!readOnly) void autoSave.saveNow();
-          }}
           readOnly={readOnly}
-          placeholder={
-            shared
-              ? "Add context, questions, or details for providers…"
-              : "Add internal notes about this application…"
-          }
+          showProperties={false}
           className={
             inlineNotes === "sidebar"
-              ? "min-h-[50vh] resize-none"
+              ? "[&_.tiptap]:min-h-[50vh]"
               : shared
-                ? "min-h-64 resize-y"
-                : "min-h-24 resize-y"
+                ? "[&_.tiptap]:min-h-[calc(100dvh-10rem)]"
+                : "[&_.tiptap]:min-h-40"
           }
         />
         <AutoSaveStatus status={autoSave.status} />
@@ -349,6 +332,7 @@ function LoadedPacketEditor({
         }}
       />
       <MarkdownEditor
+        showToolbar
         className="[&_.tiptap]:min-h-40"
         showProperties={false}
         preview={

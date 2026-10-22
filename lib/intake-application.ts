@@ -231,7 +231,8 @@ export function intakeCoverageAnswerRows(
         saved.get(question.id) ?? { ...question, answer: "" },
       ]),
   );
-  for (const row of saved.values()) if (!rows.has(row.id)) rows.set(row.id, row);
+  for (const row of saved.values())
+    if (!rows.has(row.id)) rows.set(row.id, row);
   return [...rows.values()].filter(
     (row) =>
       !isFixedVehicleFollowup(row) &&
@@ -243,6 +244,20 @@ export function intakeCoverageAnswerRows(
 /** Review sections after the base application. Editors keep auto quote facts
  * and drivers under the commercial auto coverage instead of separate tabs.
  */
+/** Saved answers for coverages no longer requested still inform providers, so
+ * they are presented with the generated follow-up questions. */
+export function intakeFollowupAnswerRows(
+  answers: IntakeAnswers,
+  details: IntakeDetails,
+) {
+  const coverageIds = details.coverages.map((line) => line.coverage);
+  return [
+    ...intakeCoverageAnswerRows(answers, details).filter(
+      (row) => !intakeCatalogCoverage(row, coverageIds),
+    ),
+    ...visibleIntakeFollowups(details, "additional"),
+  ];
+}
 export function intakeQuoteSections(details: IntakeDetails, editable = false) {
   const auto = hasCommercialAuto(details) && !editable;
   return [
@@ -253,9 +268,7 @@ export function intakeQuoteSections(details: IntakeDetails, editable = false) {
       ))
       ? (["Quote details"] as const)
       : []),
-    ...(auto && details.drivers?.length
-      ? (["Driver schedule"] as const)
-      : []),
+    ...(auto && details.drivers?.length ? (["Driver schedule"] as const) : []),
     ...(visibleIntakeFollowups(details, "additional").length
       ? (["Follow-up answers"] as const)
       : []),

@@ -2009,6 +2009,7 @@ function SourceDrawer({
                 Notes
               </p>
               <MarkdownEditor
+                showToolbar
                 value={internalNotes}
                 onChange={setInternalNotes}
                 label="Requirement source notes"
@@ -3201,6 +3202,7 @@ function ComplianceWorkspace({
                   Notes
                 </p>
                 <MarkdownEditor
+                  showToolbar
                   value={sourceDetails.internalNotes}
                   onChange={(value) => setSourceDetail("internalNotes", value)}
                   label="New requirement source notes"

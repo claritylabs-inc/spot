@@ -1,5 +1,6 @@
 "use client";
 import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
+import type { IntakeFollowupAnswer } from "@/lib/intake-followups";
 import {
   InlineFieldsContext,
   InlineFieldCard,
@@ -21,9 +22,7 @@ import {
   type IntakeAnswers,
   type IntakeField,
 } from "@/lib/insurance-intake";
-import {
-  type IntakeDetails,
-} from "@/lib/insurance-intake-details";
+import { type IntakeDetails } from "@/lib/insurance-intake-details";
 import { typeStyle } from "@/lib/typography";
 import {
   IntakeRegistration,
@@ -43,11 +42,9 @@ import {
   OTHER_COVERAGE_SECTION,
 } from "./application-section-nav";
 import {
-  intakeCoverageAnswerRows,
+  intakeFollowupAnswerRows,
   intakeQuoteSections,
-  visibleIntakeFollowups,
 } from "@/lib/intake-application";
-import { intakeCatalogCoverage } from "@/lib/intake-acord-questions";
 
 const COUNTRY_CODES: Record<string, string> = {
   "United States": "us",
@@ -194,9 +191,7 @@ export function IntakeApplicationFields({
     </div>
   );
   const businessName = answers.legalName || answers.dba;
-  const coverageIds = details.coverages.map((line) => line.coverage);
-  const coverageAnswers = intakeCoverageAnswerRows(answers, details);
-  const followupRows = (rows: typeof coverageAnswers) => (
+  const followupRows = (rows: IntakeFollowupAnswer[]) => (
     <IntakeFollowupRows
       rows={rows}
       details={details}
@@ -204,9 +199,6 @@ export function IntakeApplicationFields({
       industry={answers.industry}
       onChange={onDetailsChange}
     />
-  );
-  const unownedCoverageAnswers = coverageAnswers.filter(
-    (row) => !intakeCatalogCoverage(row, coverageIds),
   );
   const text = (key: IntakeField, multiline = false) => (
     <InlineFieldRow key={key} label={INTAKE_FIELDS[key]}>
@@ -252,9 +244,7 @@ export function IntakeApplicationFields({
     if (title !== visible && !grouped) return null;
     const fields = (
       <fieldset
-        aria-label={
-          title === OTHER_COVERAGE_SECTION ? "Other coverage details" : title
-        }
+        aria-label={title === OTHER_COVERAGE_SECTION ? "Coverage notes" : title}
         className="min-w-0 space-y-5"
       >
         {grouped && title !== "Business details" && (
@@ -303,19 +293,19 @@ export function IntakeApplicationFields({
           section(
             "Request details",
             <>
-            {requestCard}
-            <InlineFieldCard>
-              {text("trigger")}
-              {!extraRows.some(
-                (row) => row.label === "Insurance requirements",
-              ) && text("requirements", true)}
-              {text("requestDetails", true)}
-              {extraRows.map((row) => (
-                <InlineFieldRow key={row.label} label={row.label}>
-                  {row.value}
-                </InlineFieldRow>
-              ))}
-            </InlineFieldCard>
+              {requestCard}
+              <InlineFieldCard>
+                {text("trigger")}
+                {!extraRows.some(
+                  (row) => row.label === "Insurance requirements",
+                ) && text("requirements", true)}
+                {text("requestDetails", true)}
+                {extraRows.map((row) => (
+                  <InlineFieldRow key={row.label} label={row.label}>
+                    {row.value}
+                  </InlineFieldRow>
+                ))}
+              </InlineFieldCard>
             </>,
           )}
         {!companyOnly &&
@@ -341,15 +331,10 @@ export function IntakeApplicationFields({
           section(
             OTHER_COVERAGE_SECTION,
             <div className="space-y-5">
-              {unownedCoverageAnswers.length > 0 && (
-                <InlineFieldCard wideLabels title="Saved coverage questions">
-                  {followupRows(unownedCoverageAnswers)}
-                </InlineFieldCard>
-              )}
               {(["limitsNote", "scopeNote", "additionalNote"] as const).some(
                 (key) => details[key]?.trim(),
               ) && (
-                <InlineFieldCard title="Coverage notes">
+                <InlineFieldCard>
                   {(["limitsNote", "scopeNote", "additionalNote"] as const).map(
                     (key, index) => (
                       <InlineFieldRow
@@ -480,7 +465,7 @@ export function IntakeApplicationFields({
           section(
             "Follow-up answers",
             <InlineFieldCard wideLabels>
-              {followupRows(visibleIntakeFollowups(details, "additional"))}
+              {followupRows(intakeFollowupAnswerRows(answers, details))}
             </InlineFieldCard>,
           )}
       </Tabs>
