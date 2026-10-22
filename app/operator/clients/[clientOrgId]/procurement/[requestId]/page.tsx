@@ -46,6 +46,7 @@ export default function OperatorProcurementRequestPage() {
   const view =
     normalizedView === "edit" ||
     normalizedView === "proposals" ||
+    normalizedView === "cadence" ||
     normalizedView === "files" ||
     normalizedView === "email"
       ? normalizedView

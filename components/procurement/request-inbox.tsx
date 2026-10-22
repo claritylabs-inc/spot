@@ -1,32 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { useQuery } from "convex/react";
 import dayjs from "dayjs";
 import { ArrowLeft, Copy, Inbox, Loader2, Search } from "lucide-react";
 
-import {
-  EmailCategoryBadge,
-  ProcurementEmailMessage,
-} from "@/components/procurement/procurement-shared";
+import { ProcurementEmailMessage } from "@/components/procurement/procurement-shared";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { ProcurementEmailCategory } from "@/convex/lib/procurement";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
-import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import { Input } from "@claritylabs-inc/ui/components/input";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
-  OperationalPanel,
-  OperationalPanelBody,
-} from "@claritylabs-inc/ui/components/operational-panel";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@claritylabs-inc/ui/components/select";
 
 type InboxThread = {
   _id: Id<"procurementEmailThreads">;
@@ -57,6 +52,11 @@ type InboxResult = {
 };
 
 type Filter = "all" | "needs_reply" | "sent";
+const FILTER_LABELS: Record<Filter, string> = {
+  all: "All mail",
+  needs_reply: "Needs reply",
+  sent: "Sent",
+};
 
 const SEQUENCE_LABELS: Record<
   NonNullable<InboxThread["sequenceStatus"]>,
@@ -116,15 +116,32 @@ function ThreadRow({
   return (
     <button
       type="button"
+      data-thread-id={thread._id}
       onClick={onSelect}
       aria-current={selected ? "true" : undefined}
-      className={`block w-full border-t border-border px-4 py-3 text-left outline-none first:border-t-0 hover:bg-muted/60 focus-visible:bg-muted ${selected ? "bg-muted" : ""}`}
+      className={`block w-full border-b border-l-2 border-border px-4 py-2.5 text-left outline-none hover:bg-muted/50 focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40 ${selected ? "border-l-foreground bg-muted" : "border-l-transparent"}`}
     >
       <span className="flex items-baseline justify-between gap-3">
-        <span
-          className={`min-w-0 truncate text-foreground ${typeStyle("body.medium")}`}
-        >
-          {participant(thread)}
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          {thread.needsReply ? (
+            <span
+              className="size-1.5 shrink-0 self-center rounded-full bg-primary"
+              role="img"
+              aria-label="Needs reply"
+            />
+          ) : null}
+          <span
+            className={`min-w-0 truncate text-foreground ${typeStyle("body.medium")}`}
+          >
+            {participant(thread)}
+          </span>
+          {thread.messageCount > 1 ? (
+            <span
+              className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
+            >
+              {thread.messageCount}
+            </span>
+          ) : null}
         </span>
         <span
           className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
@@ -140,28 +157,11 @@ function ThreadRow({
       </span>
       {thread.preview ? (
         <span
-          className={`mt-0.5 line-clamp-2 break-words text-muted-foreground ${typeStyle("caption.default")}`}
+          className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}
         >
           {thread.preview}
         </span>
       ) : null}
-      <span className="mt-2 flex flex-wrap items-center gap-1">
-        {thread.needsReply ? (
-          <Badge variant="destructive">Needs reply</Badge>
-        ) : null}
-        <Badge variant="outline">
-          {thread.messageCount}{" "}
-          {thread.messageCount === 1 ? "message" : "messages"}
-        </Badge>
-        <Badge variant="outline">
-          {thread.source === "resend" ? "Resend" : "Forwarded"}
-        </Badge>
-        {thread.sequenceStatus ? (
-          <Badge variant="secondary">
-            {SEQUENCE_LABELS[thread.sequenceStatus]}
-          </Badge>
-        ) : null}
-      </span>
     </button>
   );
 }
@@ -184,9 +184,14 @@ function Reader({
     requestId,
   });
   const loaded = result?.thread._id === thread._id ? result : undefined;
+  const meta = [
+    thread.needsReply ? "Needs reply" : null,
+    thread.source === "resend" ? "Provider outreach" : "Forwarded mail",
+    thread.sequenceStatus ? SEQUENCE_LABELS[thread.sequenceStatus] : null,
+  ].filter(Boolean);
   return (
     <div className="flex min-w-0 flex-col">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+      <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4">
         <div className="min-w-0">
           <PillButton
             type="button"
@@ -199,40 +204,30 @@ function Reader({
             Inbox
           </PillButton>
           <h2
-            className={`break-words text-foreground ${typeStyle("heading.micro")}`}
+            className={`break-words text-foreground ${typeStyle("heading.section")}`}
           >
             {thread.subject}
           </h2>
           <p
             className={`mt-1 break-words text-muted-foreground ${typeStyle("caption.default")}`}
           >
-            {thread.participantEmails.join(", ") || "No participants recorded"}
+            {[
+              thread.participantEmails.join(", ") || "No participants recorded",
+              ...meta,
+            ].join(" · ")}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-1">
-            <EmailCategoryBadge category={thread.category} />
-            <Badge variant="outline">
-              {thread.source === "resend" ? "Resend" : "Forwarded"}
-            </Badge>
-            {thread.needsReply ? (
-              <Badge variant="destructive">Needs reply</Badge>
-            ) : null}
-            {thread.sequenceStatus ? (
-              <Badge variant="secondary">
-                {SEQUENCE_LABELS[thread.sequenceStatus]}
-              </Badge>
-            ) : null}
-          </div>
         </div>
         <PillButton
           type="button"
-          variant="secondary"
-          size="default"
+          variant="ghost"
+          size="xs"
+          className="shrink-0"
           onClick={() => onDetails(thread._id)}
         >
           {readOnly ? "View details" : "Details"}
         </PillButton>
       </div>
-      <div className="space-y-3 p-4">
+      <div className="max-w-3xl px-6 pb-8">
         {result === undefined ? (
           <div className="flex h-32 items-center justify-center text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />
@@ -243,7 +238,11 @@ function Reader({
           </p>
         ) : (
           loaded.messages.map((message) => (
-            <ProcurementEmailMessage key={message._id} message={message} />
+            <ProcurementEmailMessage
+              key={message._id}
+              message={message}
+              variant="flat"
+            />
           ))
         )}
       </div>
@@ -252,8 +251,8 @@ function Reader({
 }
 
 /**
- * The request's conversations, newest first. Selection is owned by the caller
- * (the `thread` URL parameter) so deep links work; it is only honored when the
+ * The request's mailbox, newest first. Selection is owned by the caller (the
+ * `thread` URL parameter) so deep links work; it is only honored when the
  * thread is in this request's loaded list.
  */
 export function RequestInbox({
@@ -311,26 +310,63 @@ export function RequestInbox({
   );
   const selected =
     inbox.threads.find((thread) => thread._id === selectedThreadId) ?? null;
+
+  // Arrow keys move through the list, Escape leaves the conversation. The
+  // handler lives on the list, so search and the filter keep their own keys.
+  function onListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.key === "Escape") {
+      if (selected) onSelect(null);
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const focusedId = (event.target as HTMLElement).closest<HTMLElement>(
+      "[data-thread-id]",
+    )?.dataset.threadId;
+    const current = visible.findIndex(
+      (thread) => thread._id === (focusedId ?? selected?._id),
+    );
+    const next =
+      visible[
+        Math.min(
+          visible.length - 1,
+          Math.max(0, current + (event.key === "ArrowDown" ? 1 : -1)),
+        )
+      ];
+    if (!next) return;
+    onSelect(next._id, { replace: true });
+    event.currentTarget
+      .querySelector<HTMLElement>(`[data-thread-id="${next._id}"]`)
+      ?.focus();
+  }
+
   const forwarding = (
-    <p
-      className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground ${typeStyle("caption.default")}`}
+    <div
+      className={`space-y-1 text-muted-foreground ${typeStyle("caption.default")}`}
     >
-      <span>Forward email to</span>
-      <span
-        className={`break-all text-foreground ${typeStyle("technical.codeCompact")}`}
-      >
-        {forwardingAddress}
-      </span>
-      <PillButton
-        type="button"
-        variant="ghost"
-        size="xs"
-        onClick={onCopyAddress}
-      >
-        <Copy className="size-3.5" />
-        Copy
-      </PillButton>
-    </p>
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span>This request’s mailbox address:</span>
+        <span
+          className={`break-all text-foreground ${typeStyle("technical.codeCompact")}`}
+        >
+          {forwardingAddress}
+        </span>
+        <PillButton
+          type="button"
+          variant="ghost"
+          size="xs"
+          onClick={onCopyAddress}
+        >
+          <Copy className="size-3.5" />
+          Copy
+        </PillButton>
+      </p>
+      <p>
+        Forward or copy mail here to file it in this Inbox. Provider outreach is
+        sent from the operator’s own inbox, not this address.
+      </p>
+    </div>
   );
 
   if (!inbox.threads.length)
@@ -338,7 +374,7 @@ export function RequestInbox({
       <div className="space-y-3">
         <EmptyStateCard
           title="No conversations yet"
-          description="Provider replies and forwarded emails for this request appear here."
+          description="Provider outreach, replies and forwarded mail for this request appear here."
           icon={<Inbox className="size-6" />}
         />
         {forwarding}
@@ -349,34 +385,47 @@ export function RequestInbox({
     <div className="space-y-3">
       <OperationalPanel
         as="section"
-        className="grid lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]"
+        className="grid lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]"
       >
         <div
           className={`min-w-0 flex-col border-border lg:flex lg:border-r ${selected ? "hidden" : "flex"}`}
         >
-          <div className="space-y-3 border-b border-border p-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <div className="flex gap-2 border-b border-border p-2">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 aria-label="Search conversations"
-                placeholder="Search conversations"
+                placeholder="Search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="pl-8"
               />
             </div>
-            <Tabs
+            <Select
               value={filter}
               onValueChange={(value) => setFilter(value as Filter)}
             >
-              <TabsList variant="pill" aria-label="Filter conversations">
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="needs_reply">Needs reply</TabsTrigger>
-                <TabsTrigger value="sent">Sent</TabsTrigger>
-              </TabsList>
-            </Tabs>
+              <SelectTrigger
+                aria-label="Filter conversations"
+                className="w-32 shrink-0"
+              >
+                <SelectValue>{FILTER_LABELS[filter]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(FILTER_LABELS) as Filter[]).map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {FILTER_LABELS[value]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto lg:max-h-[calc(100vh-18rem)]">
+          <div
+            role="list"
+            aria-label="Conversations"
+            onKeyDown={onListKeyDown}
+            className="min-h-0 flex-1 overflow-y-auto lg:max-h-[calc(100vh-16rem)]"
+          >
             {visible.length ? (
               visible.map((thread) => (
                 <ThreadRow
@@ -436,13 +485,13 @@ export function RequestInbox({
               onDetails={onDetails}
             />
           ) : (
-            <OperationalPanelBody className="flex h-full min-h-48 items-center justify-center text-center">
+            <div className="flex h-full min-h-48 items-center justify-center p-6 text-center">
               <p
                 className={`text-muted-foreground ${typeStyle("body.default")}`}
               >
                 Select a conversation to read it.
               </p>
-            </OperationalPanelBody>
+            </div>
           )}
         </div>
       </OperationalPanel>

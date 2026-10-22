@@ -308,19 +308,16 @@ export type ProcurementEmailMessageData = NonNullable<
 /** One stored message with its forwarded history and files; plain text only. */
 export function ProcurementEmailMessage({
   message,
+  variant = "card",
 }: {
   message: ProcurementEmailMessageData;
+  /** `flat` drops the box for a reading pane; `card` is the drawer's default. */
+  variant?: "card" | "flat";
 }) {
   const forwarded = message.forwarded as ForwardedEmail | undefined;
   const forwardedEmail = forwarded?.email;
-  return (
-    <OperationalPanel as="div">
-      <OperationalPanelHeader
-        title={message.fromName ?? message.fromEmail}
-        description={formatDisplayDateTime(message.receivedAt, "—")}
-        action={<Mail className="size-4 text-muted-foreground" />}
-      />
-      <OperationalPanelBody className="space-y-4">
+  const content = (
+    <>
         <div
           className={`space-y-1 text-muted-foreground ${typeStyle("caption.default")}`}
         >
@@ -369,7 +366,8 @@ export function ProcurementEmailMessage({
         <p
           className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
         >
-          {message.currentText || "(No forwarder note)"}
+          {message.currentText ||
+            (forwardedEmail ? "(No forwarder note)" : "(No message text)")}
         </p>
 
         {forwardedEmail?.body ? (
@@ -404,6 +402,31 @@ export function ProcurementEmailMessage({
             )}
           </div>
         ) : null}
+    </>
+  );
+  if (variant === "flat")
+    return (
+      <article className="space-y-4 border-t border-border py-5 first:border-t-0 first:pt-0">
+        <header className="flex items-baseline justify-between gap-3">
+          <p className={`min-w-0 truncate text-foreground ${typeStyle("body.medium")}`}>
+            {message.fromName ?? message.fromEmail}
+          </p>
+          <p className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}>
+            {formatDisplayDateTime(message.receivedAt, "—")}
+          </p>
+        </header>
+        {content}
+      </article>
+    );
+  return (
+    <OperationalPanel as="div">
+      <OperationalPanelHeader
+        title={message.fromName ?? message.fromEmail}
+        description={formatDisplayDateTime(message.receivedAt, "—")}
+        action={<Mail className="size-4 text-muted-foreground" />}
+      />
+      <OperationalPanelBody className="space-y-4">
+        {content}
       </OperationalPanelBody>
     </OperationalPanel>
   );
@@ -609,7 +632,7 @@ export function ProcurementEmailDrawer({
       onOpenChange={async (open) => {
         if (!open && (await save())) onClose();
       }}
-      title={result?.thread.subject ?? "Imported email"}
+      title={result?.thread.subject ?? "Email"}
       footer={
         !readOnly &&
         reconciliation?.filable &&
@@ -639,7 +662,7 @@ export function ProcurementEmailDrawer({
         </div>
       ) : result === null ? (
         <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-          This imported email is no longer available.
+          This email is no longer available.
         </p>
       ) : (
         <div className="space-y-5">
