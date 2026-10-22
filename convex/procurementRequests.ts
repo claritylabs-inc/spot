@@ -1824,9 +1824,15 @@ export async function listProcurementEmailThreads(
 export async function getProcurementEmailThreadDetails(
   ctx: Ctx,
   emailThreadId: Id<"procurementEmailThreads">,
+  expectedRequestId?: Id<"procurementRequests">,
 ) {
   const thread = await ctx.db.get(emailThreadId);
-  if (!thread || thread.deletedAt) return null;
+  if (
+    !thread ||
+    thread.deletedAt ||
+    (expectedRequestId &&
+      (thread.requestId !== expectedRequestId || thread.archivedAt))
+  ) return null;
   const [request, addressedRequest, messages] = await Promise.all([
     requireRequest(ctx, thread.requestId),
     requireRequest(ctx, thread.addressedRequestId),
@@ -2035,11 +2041,72 @@ export async function previewProcurementEmailReconciliation(
   };
 }
 
+/** Request-bound inbox projection; never reads the operator's other conversations. */
+export const getInbox = query({
+  args: { requestId: v.id("procurementRequests") },
+  handler: async (ctx, { requestId }) => {
+    await requireOperator(ctx);
+    await requireRequest(ctx, requestId);
+    const limit = 200;
+    const rows = await ctx.db
+      .query("procurementEmailThreads")
+      .withIndex("request", (q) => q.eq("requestId", requestId))
+      .order("desc")
+      .take(limit + 1);
+    const threads = await Promise.all(
+      rows.slice(0, limit).filter(activeEmailThread).map(async (thread) => {
+        const [latest, candidateSequence] = await Promise.all([
+          ctx.db.query("procurementEmailMessages")
+            .withIndex("thread", (q) => q.eq("threadId", thread._id))
+            .order("desc").first(),
+          thread.resendThreadId
+            ? ctx.db.query("procurementOutreachSequences")
+                .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", thread.resendThreadId))
+                .order("desc").first()
+            : null,
+        ]);
+        const sequence = candidateSequence?.requestId === requestId &&
+          candidateSequence.procurementEmailThreadId === thread._id
+          ? candidateSequence : null;
+        const inbox = sequence?.inboxId
+          ? await ctx.db.query("operatorOutreachInboxes")
+              .withIndex("by_inboxId", (q) => q.eq("inboxId", sequence.inboxId!))
+              .first()
+          : null;
+        const latestDirection = latest && inbox
+          ? normalizeProcurementEmail(latest.fromEmail) === normalizeProcurementEmail(inbox.emailAddress)
+            ? "outbound" as const : "inbound" as const
+          : "unknown" as const;
+        return {
+          _id: thread._id,
+          subject: thread.subject,
+          category: thread.category,
+          participantEmails: thread.participantEmails,
+          latestMessageAt: thread.latestMessageAt,
+          messageCount: thread.messageCount,
+          source: thread.resendThreadId ? "resend" as const : "forwarded" as const,
+          latestDirection,
+          needsReply: latestDirection === "inbound" && sequence?.status === "responded",
+          sequenceStatus: sequence?.status ?? null,
+          preview: latest?.currentText.replace(/\s+/g, " ").trim().slice(0, 240) ?? "",
+          fromName: latest?.fromName ?? null,
+          fromEmail: latest?.fromEmail ?? null,
+        };
+      }),
+    );
+    return { threads, truncated: rows.length > limit, limit };
+  },
+});
+
 export const getEmailThread = query({
-  args: { emailThreadId: v.id("procurementEmailThreads") },
+  args: {
+    emailThreadId: v.id("procurementEmailThreads"),
+    requestId: v.optional(v.id("procurementRequests")),
+  },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
-    return await getProcurementEmailThreadDetails(ctx, args.emailThreadId);
+    if (args.requestId) await requireRequest(ctx, args.requestId);
+    return await getProcurementEmailThreadDetails(ctx, args.emailThreadId, args.requestId);
   },
 });
 
@@ -2083,6 +2150,9 @@ export async function updateProcurementEmailThreadByOperator(
     patch.categoryReason = `Set manually through ${args.source}`;
   }
   if (args.requestId !== undefined && args.requestId !== thread.requestId) {
+    if (thread.resendThreadId) {
+      throw new Error("Provider outreach conversations stay with their originating request");
+    }
     const nextRequest = await requireRequest(ctx, args.requestId);
     if (nextRequest.clientOrgId !== thread.clientOrgId) {
       throw new Error("Email thread can move only within the same client");
