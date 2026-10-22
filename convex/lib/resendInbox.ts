@@ -26,7 +26,6 @@ import {
 const RESEND_API_BASE = "https://api.resend.com";
 const REQUEST_TIMEOUT_MS = 30_000;
 
-export const RESEND_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 /** Replay window with a safety margin below Resend's 24h key expiry. */
 export const RESEND_IDEMPOTENCY_SAFE_RETRY_MS = 23 * 60 * 60 * 1000;
 
@@ -98,7 +97,6 @@ export type ResendInboxOperation =
   | "getDraft"
   | "sendDraft"
   | "replyToThreadEmail"
-  | "getThread"
   | "getThreadEmail"
   | "listThreadEmails"
   | "addThreadLabels"
@@ -137,7 +135,7 @@ export function isCapturedResourceId(id: string | undefined): boolean {
 function captured(
   operation: ResendInboxOperation,
   key: string,
-): { status: "captured"; operation: ResendInboxOperation; captureId: string } {
+): Extract<ResendInboxResult<never>, { status: "captured" }> {
   console.log("[resend-inbox] Captured without calling Resend", { operation });
   return {
     status: "captured",
@@ -164,21 +162,6 @@ export type ResendInbox = {
 
 export type ResendInboxLabel = { id: string; name: string; color: string };
 
-export type ResendThreadFolder =
-  | "inbox"
-  | "archive"
-  | "spam"
-  | "trash"
-  | "sent";
-
-export type ResendInboxThread = {
-  id: string;
-  subject: string | null;
-  folder: ResendThreadFolder;
-  labels: ResendInboxLabel[];
-  read: boolean;
-};
-
 export type ResendInboxAttachment = {
   id: string;
   filename: string | null;
@@ -202,7 +185,7 @@ export type ResendThreadEmail = {
   receivedAt: string;
 };
 
-export type ResendInboxDraft = {
+type ResendInboxDraft = {
   id: string;
   type: "reply" | "standalone";
   to: string[];
@@ -219,14 +202,10 @@ export type ResendInboxDraft = {
 
 // --- Wire schemas -----------------------------------------------------------
 
-const nullableString = z
-  .string()
-  .nullish()
-  .transform((v) => v ?? null);
-const stringList = z
-  .array(z.string())
-  .nullish()
-  .transform((v) => v ?? []);
+const defaulted = <T extends z.ZodType, F>(schema: T, fallback: F) =>
+  schema.nullish().transform((v) => v ?? fallback);
+const nullableString = defaulted(z.string(), null);
+const stringList = defaulted(z.array(z.string()), [] as string[]);
 
 const labelWireSchema = z.object({
   id: z.string(),
@@ -244,14 +223,8 @@ const inboxWireSchema = z
     domain_id: nullableString,
     receiving_address: nullableString,
     from_name: nullableString,
-    unread: z
-      .number()
-      .nullish()
-      .transform((v) => v ?? 0),
-    drafts: z
-      .number()
-      .nullish()
-      .transform((v) => v ?? 0),
+    unread: defaulted(z.number(), 0),
+    drafts: defaulted(z.number(), 0),
     last_received: nullableString,
     created_at: z.string(),
     updated_at: z.string(),
@@ -276,26 +249,18 @@ const labelListWireSchema = z
   .object({ data: z.array(labelWireSchema) })
   .transform((w) => w.data);
 
-const threadWireSchema = z
-  .object({
-    id: z.string(),
-    subject: nullableString,
-    folder: z.enum(["inbox", "archive", "spam", "trash", "sent"]),
-    labels: z
-      .array(labelWireSchema)
-      .nullish()
-      .transform((v) => v ?? []),
-    read: z.boolean(),
-  })
-  .transform((w): ResendInboxThread => w);
+const threadWireSchema = z.object({
+  id: z.string(),
+  subject: nullableString,
+  folder: z.enum(["inbox", "archive", "spam", "trash", "sent"]),
+  labels: defaulted(z.array(labelWireSchema), []),
+  read: z.boolean(),
+});
 
 const attachmentWireSchema = z.object({
   id: z.string(),
   filename: nullableString,
-  size: z
-    .number()
-    .nullish()
-    .transform((v) => v ?? null),
+  size: defaulted(z.number(), null),
 });
 
 const threadEmailBaseSchema = z.object({
@@ -310,14 +275,8 @@ const threadEmailBaseSchema = z.object({
   message_id: nullableString,
   html: nullableString,
   text: nullableString,
-  attachments: z
-    .array(attachmentWireSchema)
-    .nullish()
-    .transform((v) => v ?? []),
-  read: z
-    .boolean()
-    .nullish()
-    .transform((v) => v ?? false),
+  attachments: defaulted(z.array(attachmentWireSchema), []),
+  read: defaulted(z.boolean(), false),
   received_at: z.string(),
 });
 
@@ -347,10 +306,7 @@ const threadEmailWireSchema =
 
 const threadEmailListWireSchema = z
   .object({
-    has_more: z
-      .boolean()
-      .nullish()
-      .transform((v) => v ?? false),
+    has_more: defaulted(z.boolean(), false),
     data: z.array(threadEmailBaseSchema),
   })
   .transform((w) => ({
@@ -571,6 +527,15 @@ async function call<T>(
 
 // --- Input guards -----------------------------------------------------------
 
+function invalid(
+  operation: ResendInboxOperation,
+  message: string,
+): ResendInboxError {
+  return new ResendInboxError("permanent", operation, message, {
+    code: "validation_error",
+  });
+}
+
 function requireIdempotencyKey(
   operation: ResendInboxOperation,
   key: string | undefined,
@@ -591,21 +556,17 @@ function requireNonEmpty(
   label: string,
   value: string,
 ): string {
-  if (!value.trim()) {
-    throw new ResendInboxError("permanent", operation, `${label} is required`, {
-      code: "validation_error",
-    });
-  }
+  if (!value.trim()) throw invalid(operation, `${label} is required`);
   return value;
 }
 
-function assertRealResourceId(
+function assertRealResourceIds(
   operation: ResendInboxOperation,
-  id: string,
+  ...ids: string[]
 ): void {
   // Capture mode never calls Resend, so placeholder ids are expected there.
   if (getEmailDeliveryMode() === "capture") return;
-  if (isCapturedResourceId(id)) {
+  if (ids.some(isCapturedResourceId)) {
     throw new ResendInboxError(
       "permanent",
       operation,
@@ -688,7 +649,7 @@ export async function getInbox(
   inboxIdOrAddress: string,
 ): Promise<ResendInboxResult<ResendInbox>> {
   requireNonEmpty("getInbox", "inbox", inboxIdOrAddress);
-  assertRealResourceId("getInbox", inboxIdOrAddress);
+  assertRealResourceIds("getInbox", inboxIdOrAddress);
   return call(
     {
       operation: "getInbox",
@@ -754,7 +715,7 @@ export async function ensureInbox(
 export function listLabels(
   inboxId: string,
 ): Promise<ResendInboxResult<ResendInboxLabel[]>> {
-  assertRealResourceId("listLabels", inboxId);
+  assertRealResourceIds("listLabels", inboxId);
   return call(
     {
       operation: "listLabels",
@@ -771,7 +732,7 @@ export function createLabel(
   inboxId: string,
   label: { name: string; color?: string },
 ): Promise<ResendInboxResult<{ id: string }>> {
-  assertRealResourceId("createLabel", inboxId);
+  assertRealResourceIds("createLabel", inboxId);
   requireNonEmpty("createLabel", "name", label.name);
   return call(
     {
@@ -797,7 +758,7 @@ export async function ensureLabels(
   inboxId: string,
   names: readonly string[],
 ): Promise<ResendInboxResult<Record<string, string>>> {
-  assertRealResourceId("ensureLabels", inboxId);
+  assertRealResourceIds("ensureLabels", inboxId);
   if (getEmailDeliveryMode() === "capture") {
     return captured("ensureLabels", `${inboxId}:${names.join("|")}`);
   }
@@ -882,23 +843,14 @@ export async function createDraft(
     operation,
     params.idempotencyKey,
   );
-  assertRealResourceId(operation, params.inboxId);
+  assertRealResourceIds(operation, params.inboxId);
   if (!params.text && !params.html) {
-    throw new ResendInboxError(
-      "permanent",
-      operation,
-      "text or html is required",
-      {
-        code: "validation_error",
-      },
-    );
+    throw invalid(operation, "text or html is required");
   }
   if (Boolean(params.threadId) !== Boolean(params.replyToEmailId)) {
-    throw new ResendInboxError(
-      "permanent",
+    throw invalid(
       operation,
       "threadId and replyToEmailId must be provided together",
-      { code: "validation_error" },
     );
   }
 
@@ -951,12 +903,11 @@ export async function createDraft(
 }
 
 /** `GET /inboxes/{id}/drafts/{draftId}`. */
-export function getDraft(
+function getDraft(
   inboxId: string,
   draftId: string,
 ): Promise<ResendInboxResult<ResendInboxDraft>> {
-  assertRealResourceId("getDraft", inboxId);
-  assertRealResourceId("getDraft", draftId);
+  assertRealResourceIds("getDraft", inboxId, draftId);
   return call(
     {
       operation: "getDraft",
@@ -993,18 +944,11 @@ export async function sendDraft(
   if (getEmailDeliveryMode() === "capture") {
     return captured(operation, idempotencyKey);
   }
-  assertRealResourceId(operation, params.inboxId);
-  assertRealResourceId(operation, params.draftId);
+  assertRealResourceIds(operation, params.inboxId, params.draftId);
 
   if (getEmailDeliveryMode() === "restricted") {
-    const draft = await request(
-      {
-        operation: "getDraft",
-        method: "GET",
-        path: `/inboxes/${seg(params.inboxId)}/drafts/${seg(params.draftId)}`,
-      },
-      draftWireSchema,
-    );
+    const draft = await getDraft(params.inboxId, params.draftId);
+    if (draft.status !== "ok") return draft;
     const policy = evaluateRecipientDeliveryPolicy([
       ...draft.data.to,
       ...draft.data.cc,
@@ -1057,14 +1001,7 @@ export async function replyToThreadEmail(
     params.idempotencyKey,
   );
   if (!params.text && !params.html) {
-    throw new ResendInboxError(
-      "permanent",
-      operation,
-      "text or html is required",
-      {
-        code: "validation_error",
-      },
-    );
+    throw invalid(operation, "text or html is required");
   }
   if (getEmailDeliveryMode() === "capture") {
     logLocalEmailCapture({
@@ -1078,9 +1015,12 @@ export async function replyToThreadEmail(
     });
     return captured(operation, idempotencyKey);
   }
-  assertRealResourceId(operation, params.inboxId);
-  assertRealResourceId(operation, params.threadId);
-  assertRealResourceId(operation, params.emailId);
+  assertRealResourceIds(
+    operation,
+    params.inboxId,
+    params.threadId,
+    params.emailId,
+  );
 
   const emailPath = `/inboxes/${seg(params.inboxId)}/threads/${seg(params.threadId)}/emails/${seg(params.emailId)}`;
   if (getEmailDeliveryMode() === "restricted") {
@@ -1125,33 +1065,13 @@ export async function replyToThreadEmail(
 
 // --- Threads ----------------------------------------------------------------
 
-/** `GET /inboxes/{id}/threads/{threadId}`. */
-export function getThread(
-  inboxId: string,
-  threadId: string,
-): Promise<ResendInboxResult<ResendInboxThread>> {
-  assertRealResourceId("getThread", inboxId);
-  assertRealResourceId("getThread", threadId);
-  return call(
-    {
-      operation: "getThread",
-      method: "GET",
-      path: `/inboxes/${seg(inboxId)}/threads/${seg(threadId)}`,
-    },
-    threadWireSchema,
-    `${inboxId}:${threadId}`,
-  );
-}
-
-/** `GET .../threads/{threadId}/emails/{emailId}`: body, headers-less message and attachment metadata. */
+/** `GET .../threads/{threadId}/emails/{emailId}`: body and attachment metadata (no headers or content types are documented). */
 export function getThreadEmail(
   inboxId: string,
   threadId: string,
   emailId: string,
 ): Promise<ResendInboxResult<ResendThreadEmail>> {
-  assertRealResourceId("getThreadEmail", inboxId);
-  assertRealResourceId("getThreadEmail", threadId);
-  assertRealResourceId("getThreadEmail", emailId);
+  assertRealResourceIds("getThreadEmail", inboxId, threadId, emailId);
   return call(
     {
       operation: "getThreadEmail",
@@ -1171,15 +1091,9 @@ export function listThreadEmails(
 ): Promise<
   ResendInboxResult<{ emails: ResendThreadEmail[]; hasMore: boolean }>
 > {
-  assertRealResourceId("listThreadEmails", inboxId);
-  assertRealResourceId("listThreadEmails", threadId);
+  assertRealResourceIds("listThreadEmails", inboxId, threadId);
   if (page.after && page.before) {
-    throw new ResendInboxError(
-      "permanent",
-      "listThreadEmails",
-      "after and before cannot be combined",
-      { code: "validation_error" },
-    );
+    throw invalid("listThreadEmails", "after and before cannot be combined");
   }
   return call(
     {
@@ -1207,17 +1121,9 @@ export function addThreadLabels(
   labelIds: string[],
 ): Promise<ResendInboxResult<ResendInboxLabel[]>> {
   const operation = "addThreadLabels";
-  assertRealResourceId(operation, inboxId);
-  assertRealResourceId(operation, threadId);
+  assertRealResourceIds(operation, inboxId, threadId);
   if (labelIds.length < 1 || labelIds.length > 10) {
-    throw new ResendInboxError(
-      "permanent",
-      operation,
-      "1-10 label ids required",
-      {
-        code: "validation_error",
-      },
-    );
+    throw invalid(operation, "1-10 label ids required");
   }
   return call(
     {
@@ -1238,17 +1144,9 @@ export function setThreadLabels(
   labelIds: string[],
 ): Promise<ResendInboxResult<ResendInboxLabel[]>> {
   const operation = "setThreadLabels";
-  assertRealResourceId(operation, inboxId);
-  assertRealResourceId(operation, threadId);
+  assertRealResourceIds(operation, inboxId, threadId);
   if (labelIds.length > 100) {
-    throw new ResendInboxError(
-      "permanent",
-      operation,
-      "at most 100 label ids",
-      {
-        code: "validation_error",
-      },
-    );
+    throw invalid(operation, "at most 100 label ids");
   }
   return call(
     {
@@ -1298,12 +1196,7 @@ export function operatorInboxAddress(
     .slice(0, 64)
     .replace(/\.+$/g, "");
   if (!local) {
-    throw new ResendInboxError(
-      "permanent",
-      "ensureInbox",
-      "operator email has no usable localpart",
-      { code: "validation_error" },
-    );
+    throw invalid("ensureInbox", "operator email has no usable localpart");
   }
   return `${local}@${domain}`;
 }
@@ -1322,25 +1215,9 @@ export function operatorInboxFromName(
 
 // --- Webhooks ---------------------------------------------------------------
 
-const inboxWebhookEmailSchema = z.object({
-  id: z.string(),
-  direction: z.enum(["inbound", "outbound"]),
-  from: z.string(),
-  to: stringList,
-  cc: stringList,
-  bcc: stringList,
-  reply_to: stringList,
-  subject: nullableString,
-  message_id: nullableString,
-  attachments: z
-    .array(attachmentWireSchema)
-    .nullish()
-    .transform((v) => v ?? []),
-  read: z
-    .boolean()
-    .nullish()
-    .transform((v) => v ?? false),
-  received_at: z.string(),
+const inboxWebhookEmailSchema = threadEmailBaseSchema.omit({
+  html: true,
+  text: true,
 });
 
 const inboxWebhookEventSchema = z.object({
@@ -1357,6 +1234,7 @@ const inboxWebhookEventSchema = z.object({
   }),
 });
 
+export type ResendInboxThread = z.output<typeof threadWireSchema>;
 export type InboxWebhookEvent = z.output<typeof inboxWebhookEventSchema>;
 
 /** Parse a verified `inbox.email.received` / `inbox.email.sent` payload; null for other events. */
@@ -1371,4 +1249,14 @@ export function parseInboxWebhookEvent(
   }
   const parsed = inboxWebhookEventSchema.safeParse(json);
   return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Sender-only bounce check. The Inboxes API documents no headers or content
+ * type on thread emails, so `multipart/report` and DSN headers cannot be read;
+ * only the `from` address is available.
+ */
+export function isBounceSender(from: string): boolean {
+  const address = extractEmailAddress(from) ?? from.trim().toLowerCase();
+  return /^(?:mailer-daemon|postmaster)@/.test(address);
 }
