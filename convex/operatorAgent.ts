@@ -6174,6 +6174,7 @@ export const waitForRouterInternal = internalMutation({
     runId: v.id("operatorAgentRuns"),
     expectedRunnerAttempt: v.optional(v.number()),
     expectedCheckpointIteration: v.number(),
+    invocationKey: v.optional(v.string()),
     families: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
@@ -6203,9 +6204,22 @@ export const waitForRouterInternal = internalMutation({
       updatedAt: dayjs().valueOf(),
     });
     // routerJobs.finish wakes the run when its job ends; this slower poll only
-    // recovers a lost wake-up.
+    // recovers a lost wake-up. A job that finished before the run was queued
+    // found it still running, so resume now.
+    const job = args.invocationKey
+      ? await ctx.db
+          .query("routerJobs")
+          .withIndex("invocation", (q) =>
+            q.eq("invocationKey", args.invocationKey!),
+          )
+          .unique()
+      : null;
+    const jobEnded =
+      job?.status === "succeeded" ||
+      job?.status === "failed" ||
+      job?.status === "cancelled";
     await ctx.scheduler.runAfter(
-      OPERATOR_ROUTER_FALLBACK_POLL_MS,
+      jobEnded ? 0 : OPERATOR_ROUTER_FALLBACK_POLL_MS,
       internal.operatorAgentRunner.run,
       { runId: run._id },
     );

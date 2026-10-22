@@ -1139,6 +1139,7 @@ export const run = internalAction({
           runId: args.runId,
           expectedCheckpointIteration: expectedCheckpointIteration ?? 0,
           expectedRunnerAttempt,
+          invocationKey: error.invocationKey,
           ...(pendingFamilies ? { families: pendingFamilies } : {}),
         });
         return { status: "queued" };
