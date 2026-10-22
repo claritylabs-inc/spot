@@ -268,6 +268,7 @@ import type * as lib_jevComposite from "../lib/jevComposite.js";
 import type * as lib_jevEvidenceChoices from "../lib/jevEvidenceChoices.js";
 import type * as lib_jevImages from "../lib/jevImages.js";
 import type * as lib_jevThreshold from "../lib/jevThreshold.js";
+import type * as lib_leakedToolCallText from "../lib/leakedToolCallText.js";
 import type * as lib_linesOfBusiness from "../lib/linesOfBusiness.js";
 import type * as lib_localSeedData from "../lib/localSeedData.js";
 import type * as lib_magicLinkTokens from "../lib/magicLinkTokens.js";
@@ -739,6 +740,7 @@ declare const fullApi: ApiFromModules<{
   "lib/jevEvidenceChoices": typeof lib_jevEvidenceChoices;
   "lib/jevImages": typeof lib_jevImages;
   "lib/jevThreshold": typeof lib_jevThreshold;
+  "lib/leakedToolCallText": typeof lib_leakedToolCallText;
   "lib/linesOfBusiness": typeof lib_linesOfBusiness;
   "lib/localSeedData": typeof lib_localSeedData;
   "lib/magicLinkTokens": typeof lib_magicLinkTokens;
