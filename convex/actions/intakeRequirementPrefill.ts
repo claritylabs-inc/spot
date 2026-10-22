@@ -1,6 +1,7 @@
 "use node";
 import { REQUIREMENT_PROVISIONS } from "../lib/complianceTypes";
 import { extractWorkforcePolicy } from "../lib/intakeWorkforcePrefill";
+import { ACORD_LOB_TO_COVERAGE as lines } from "../lib/coverageLobMapping";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -23,18 +24,6 @@ import {
   type CoverageRequest,
 } from "../../lib/insurance-intake-details";
 
-const lines: Record<string, CoverageId> = {
-  CGL: "general_liability",
-  PROP: "property",
-  AUTOB: "commercial_auto",
-  WORK: "workers_compensation",
-  WCMA: "workers_compensation",
-  EO: "professional_liability",
-  PL: "professional_liability",
-  CYBER: "cyber",
-  UMBRC: "umbrella",
-  EXLIA: "umbrella",
-};
 const limitKeys: Record<string, string> = {
   per_occurrence: "each_occurrence",
   general_aggregate: "aggregate",
