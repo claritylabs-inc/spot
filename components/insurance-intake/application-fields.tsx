@@ -99,7 +99,9 @@ export function IntakeApplicationFields({
     target: CoveragePanelTarget;
   } | null>(null);
   const panel =
-    panelState?.section === activeSection ? panelState.target : null;
+    panelState && panelState.section === activeSection
+      ? panelState.target
+      : null;
   const openPanel = (target: CoveragePanelTarget) =>
     setPanelState({ section: activeSection, target });
   const panelShown = useRef(false);
