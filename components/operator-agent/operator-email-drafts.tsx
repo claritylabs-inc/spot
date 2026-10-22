@@ -11,13 +11,15 @@ import {
   EmailCardFrame,
   EmailCardSummary,
   EmailHeaderAttachments,
-  EmailHeaderGrid,
-  EmailHeaderRow,
   EmailStackFrame,
   EmailStackRow,
   formatEmailAddressList,
 } from "@/components/agent-thread/artifacts/email";
-import { ArtifactSidebar } from "@/components/agent-thread/artifacts/shell";
+import {
+  ChatArtifact,
+  ChatArtifactMeta,
+  ChatArtifactMetaRow,
+} from "@/components/chat/artifact";
 import { ChatAttachmentList } from "@/components/chat/attachment-chip";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -179,7 +181,12 @@ export function OperatorEmailDraftPanel({
 }) {
   const status = draftStatus(draft);
   return (
-    <ArtifactSidebar
+    <ChatArtifact
+      eyebrow={
+        draft.organizationName
+          ? `Email draft · ${draft.organizationName}`
+          : "Email draft"
+      }
       title={draft.subject || "(no subject)"}
       status={
         <StatusTag
@@ -192,21 +199,17 @@ export function OperatorEmailDraftPanel({
       }
       closeLabel="Close email draft"
       onClose={onClose}
-      header={
-        <EmailHeaderGrid>
-          <EmailHeaderRow label="From" value={draft.from ?? null} />
-          <EmailHeaderRow label="To" value={formatEmailAddressList(draft.to)} />
-          <EmailHeaderRow label="Cc" value={formatEmailAddressList(draft.cc)} />
-          <EmailHeaderRow label="Bcc" value={formatEmailAddressList(draft.bcc)} />
-          <EmailHeaderRow
+      meta={
+        <ChatArtifactMeta>
+          <ChatArtifactMetaRow label="From" value={draft.from ?? null} />
+          <ChatArtifactMetaRow label="To" value={formatEmailAddressList(draft.to)} />
+          <ChatArtifactMetaRow label="Cc" value={formatEmailAddressList(draft.cc)} />
+          <ChatArtifactMetaRow label="Bcc" value={formatEmailAddressList(draft.bcc)} />
+          <ChatArtifactMetaRow
             label="Reply-To"
             value={formatEmailAddressList(draft.replyTo)}
           />
-          <EmailHeaderRow
-            label="Client"
-            value={draft.organizationName ?? null}
-          />
-          <EmailHeaderRow
+          <ChatArtifactMetaRow
             label="Updated"
             value={formatDisplayDateTime(draft.updatedAt)}
           />
@@ -214,7 +217,7 @@ export function OperatorEmailDraftPanel({
             attachments={draft.attachments}
             operatorThreadId={threadId}
           />
-        </EmailHeaderGrid>
+        </ChatArtifactMeta>
       }
       footer={
         draft.status === "draft" ? (
@@ -228,6 +231,6 @@ export function OperatorEmailDraftPanel({
       }
     >
       <EmailBodyPreview html={draft.html} text={draft.text} />
-    </ArtifactSidebar>
+    </ChatArtifact>
   );
 }

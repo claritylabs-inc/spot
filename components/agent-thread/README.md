@@ -8,11 +8,11 @@ The thread route is intentionally thin. Tenant message UI and artifact surfaces 
 - `types.ts` defines the shared thread message, artifact data and `ThreadArtifactRef` side-panel shapes. Artifact modules must import types from here instead of from the route.
 - `thread-content.tsx` adapts tenant thread data, mutations, the open artifact panel, and queued messages to the shared list and composer. Route files pass thread identity, viewer metadata, and shell callbacks into this component.
 - `thread-message.tsx` renders tenant-specific message details (references, sources, receipts, pending email countdown) and artifacts through the shared chat turns. `thread-messages.ts` groups and stabilizes tenant records.
-- `artifacts/` contains one module per artifact family. Each module owns its summary card, right-panel detail view and normalization helpers for that artifact's data shape. `artifacts/shell.tsx` owns the shared right-panel shell and busy action pill; `artifacts/normalize.ts` owns loose payload readers.
+- `artifacts/` contains one module per artifact family. Each module owns its summary card, artifact detail view and normalization helpers for that artifact's data shape. `artifacts/shell.tsx` owns the busy action pill and `useBusyKey`; the artifact frame itself is `components/chat/artifact.tsx`; `artifacts/normalize.ts` owns loose payload readers.
 
 ## Adding An Artifact
 
-1. Add a module under `artifacts/` that exports a compact summary card and a right-panel component built on `ArtifactSidebar`.
+1. Add a module under `artifacts/` that exports a compact summary card and an artifact component built on `ChatArtifact` from `components/chat/artifact.tsx`.
 2. Put parsing/normalization beside the artifact module, not in the route page.
 3. Add exports to `artifacts/index.ts` and a `ThreadArtifactRef` kind in `types.ts`.
 4. In `thread-content.tsx`, only map the open ref to the right panel. Keep data-shaping logic inside the artifact module.
@@ -26,4 +26,4 @@ Web chat follows a messaging contract rather than an execution-console contract:
 - Reconcile streamed text with the final saved response. Keep source links, files, delivery status, and actionable artifacts because they change what the user can verify or do next.
 - Detailed tool audit data remains in internal telemetry and channel adapters. The optional activity summary shows tool labels only; model reasoning and tool payloads stay private.
 
-Artifact summary cards should be compact, truncate long labels and expose one clear action that opens the right panel. Right panels share the 48px header height, close button pattern and bottom action bar through `ArtifactSidebar`; pass a footer only when there are actionable controls.
+Artifact summary cards should be compact, truncate long labels and expose one clear action that opens the artifact. Artifacts open as a card beside the dock conversation (portaled into the `artifactPanel` slot) and share the title bar, close button, meta rows (`ChatArtifactMeta`/`ChatArtifactMetaRow`) and bottom action bar through `ChatArtifact`; pass a footer only when there are actionable controls.

@@ -11,7 +11,7 @@ import type { ThreadArtifactRef, ToolArtifactData } from "../types";
 import { formatDisplayDate } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { asNumber, asRecord, asRecords, asString } from "./normalize";
-import { ArtifactSidebar } from "./shell";
+import { ChatArtifact } from "@/components/chat/artifact";
 
 type VendorComplianceCheck = {
   requirementId?: string;
@@ -271,14 +271,14 @@ export function VendorComplianceSidebar({
 }) {
   const rows = normalizeVendorComplianceRows(artifact.data);
   return (
-    <ArtifactSidebar
+    <ChatArtifact
       title="Vendor compliance checks"
       status={<VendorCountBadge count={rows.length} />}
       closeLabel="Close vendor compliance checks"
       onClose={onClose}
     >
       <VendorComplianceChecklist rows={rows} />
-    </ArtifactSidebar>
+    </ChatArtifact>
   );
 }
 
