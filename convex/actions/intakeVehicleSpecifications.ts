@@ -280,9 +280,9 @@ export const lookup = action({
               ...(row.appliesToAllVariants ? [universalCheck(index)] : []),
             ]),
           ),
-          executionBudgetMs: 60000,
+          executionBudgetMs: 5000,
         },
-        { telemetry: ctx },
+        { telemetry: ctx, abortSignal: AbortSignal.timeout(6000) },
       );
       const probability = (key: string) => {
         const answer = decisions.answers[key];

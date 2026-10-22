@@ -73,8 +73,8 @@ export const suggest = action({
             }],
           ];
         })),
-        executionBudgetMs: 60000,
-      }, { telemetry: ctx });
+        executionBudgetMs: 5000,
+      }, { telemetry: ctx, abortSignal: AbortSignal.timeout(6000) });
       // Atomic components combine as a minimum: wanted, and not declined. Low
       // or uncertain components suggest nothing; the applicant's own coverage
       // picker stays the manual path, and an unsupported coverage is never
