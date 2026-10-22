@@ -37,6 +37,7 @@ import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 import {
+  FitChips,
   OutreachSequenceCell,
   ProviderOutreachPanel,
   ProviderOutreachCadence,
@@ -145,7 +146,7 @@ import {
 } from "@claritylabs-inc/ui/components/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
+import { formatDisplayDateTime } from "@/lib/date-format";
 import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -2471,7 +2472,9 @@ export function ProcurementRequestWorkspace({
           key: "providers",
           label: "Providers",
           icon: PROVIDER_ICONS.providers,
-          count: providerOutreach.panel?.candidates.matched.length,
+          count: details.outreaches.length + (providerOutreach.panel?.candidates.matched.filter(
+            (candidate) => !details.outreaches.some((outreach) => outreach.brokerOrgId === candidate.brokerOrgId),
+          ).length ?? 0),
         },
         ...(!readOnly
           ? [{ key: "cadence", label: "Follow-up cadence", icon: Clock3 }]
@@ -2605,176 +2608,155 @@ export function ProcurementRequestWorkspace({
           </>
         ) : null}
 
-        {view === "proposals" && !readOnly ? (
-          <ProviderOutreachPanel controller={providerOutreach} />
+        {view === "proposals" ? (
+          <ProviderOutreachPanel
+            controller={providerOutreach}
+            readOnly={readOnly}
+            submittedProviders={details.outreaches.map((outreach) => {
+              const proposal = activeProposals.find(
+                (row) => row.outreachId === outreach._id,
+              );
+              const candidate = providerOutreach.panel
+                ? [
+                    ...providerOutreach.panel.candidates.matched,
+                    ...providerOutreach.panel.candidates.unknown,
+                    ...providerOutreach.panel.candidates.excluded,
+                  ].find((row) => row.brokerOrgId === outreach.brokerOrgId)
+                : undefined;
+              const broker = brokers?.find(
+                (row) => row._id === outreach.brokerOrgId,
+              );
+              const sequence = sequenceForOutreach(
+                providerOutreach.panel?.sequences,
+                outreach._id,
+              );
+              return {
+                key: outreach._id,
+                brokerOrgId: outreach.brokerOrgId,
+                row: (
+                  <TableRow key={outreach._id}>
+                    <TableCell className="whitespace-normal">
+                      <div className="flex items-center gap-3">
+                        <OrgBrandIcon
+                          name={outreach.brokerName}
+                          iconUrl={candidate?.iconUrl ?? broker?.iconUrl}
+                          website={candidate?.website ?? broker?.website}
+                          size="md"
+                        />
+                        <span className={typeStyle("body.medium")}>
+                          {outreach.brokerName}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="min-w-64 whitespace-normal">
+                      <span className="break-all">
+                        {sequence?.recipient.email ??
+                          outreach.contactEmail ??
+                          "—"}
+                      </span>
+                      {outreach.contactName ? (
+                        <p
+                          className={`text-muted-foreground ${typeStyle("caption.default")}`}
+                        >
+                          {outreach.contactName}
+                        </p>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="whitespace-normal">
+                      {candidate ? <FitChips candidate={candidate} /> : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-2">
+                        <OutreachStatusTag status={outreach.status} />
+                        {proposal && proposalExtractionState(proposal) ? (
+                          <ProposalExtractionStatus
+                            proposal={proposal}
+                            readOnly={readOnly}
+                          />
+                        ) : proposal ? (
+                          <StatusTag
+                            indicator={
+                              proposal.status === "draft"
+                                ? "draft"
+                                : proposal.status === "selected"
+                                  ? "complete"
+                                  : proposal.status === "withdrawn"
+                                    ? "cancelled"
+                                    : proposal.status === "archived"
+                                      ? "inactive"
+                                      : "progress"
+                            }
+                            progress={
+                              proposal.status === "reviewed" ? 0.75 : 0.4
+                            }
+                            tone={
+                              proposal.status === "selected"
+                                ? "success"
+                                : proposal.status === "reviewed"
+                                  ? "info"
+                                  : "neutral"
+                            }
+                          >
+                            {proposal.status.charAt(0).toUpperCase() +
+                              proposal.status.slice(1).replaceAll("_", " ")}
+                          </StatusTag>
+                        ) : null}
+
+                        {!readOnly && sequence ? (
+                          <OutreachSequenceCell
+                            sequence={sequence}
+                            readOnly={readOnly}
+                            stopping={
+                              providerOutreach.stopping === sequence.sequenceId
+                            }
+                            onStop={(sequenceId) =>
+                              void providerOutreach.stopSequence(sequenceId)
+                            }
+                            onOpenThread={(threadId) =>
+                              void openEmail(threadId)
+                            }
+                          />
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {!readOnly &&
+                        candidate &&
+                        !candidate.launchBlock &&
+                        providerOutreach.panel?.request.canLaunch ? (
+                          <PillButton
+                            type="button"
+                            disabled={providerOutreach.sending.size > 0 || providerOutreach.sendingAll}
+                            onClick={() =>
+                              void providerOutreach.send(candidate.brokerOrgId)
+                            }
+                          >
+                            {providerOutreach.sending.has(candidate.brokerOrgId)
+                              ? "Sending…"
+                              : "Send"}
+                          </PillButton>
+                        ) : null}
+                        <PillButton
+                          type="button"
+                          variant="secondary"
+                          onClick={() =>
+                            openOutreachEditor(outreach, proposal?._id)
+                          }
+                        >
+                          View details
+                        </PillButton>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ),
+              };
+            })}
+          />
         ) : null}
 
         {view === "cadence" && !readOnly ? (
           <ProviderOutreachCadence controller={providerOutreach} />
-        ) : null}
-
-        {view === "proposals" && details.outreaches.length > 0 ? (
-            <OperationalPanel as="section">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Provider</TableHead>
-                    <TableHead>Status</TableHead>
-                    {!readOnly ? <TableHead>Sequence</TableHead> : null}
-                    <TableHead>Premium</TableHead>
-                    <TableHead>Review</TableHead>
-                    <TableHead>Documents</TableHead>
-                    <TableHead>Updated</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {details.outreaches.map((outreach) => {
-                    const proposal = activeProposals.find(
-                      (row) => row.outreachId === outreach._id,
-                    );
-                    const contact = [
-                      outreach.contactName,
-                      outreach.contactEmail,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ");
-                    const offer = (proposal?.extractedOffer ?? {}) as {
-                      premium?: string;
-                      premiumAmount?: number;
-                    };
-                    const sequence = sequenceForOutreach(
-                      providerOutreach.panel?.sequences,
-                      outreach._id,
-                    );
-                    const review = proposal?.reviews[0];
-                    const conclusion = review?.stale
-                      ? undefined
-                      : (review?.staffConclusion ?? review?.modelConclusion);
-                    return (
-                      <TableRow
-                        key={outreach._id}
-                        tabIndex={0}
-                        onClick={() => openOutreachEditor(outreach)}
-                        onKeyDown={(event) =>
-                          openRowOnKeyboard(event, () =>
-                            openOutreachEditor(outreach),
-                          )
-                        }
-                        className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                      >
-                        <TableCell className="min-w-52 max-w-96 whitespace-normal">
-                          <p
-                            className={`text-foreground ${typeStyle("body.medium")}`}
-                          >
-                            {outreach.brokerName}
-                          </p>
-                          {contact ? (
-                            <p
-                              className={`mt-1 break-words text-muted-foreground ${typeStyle("caption.default")}`}
-                            >
-                              {contact}
-                            </p>
-                          ) : null}
-                        </TableCell>
-                        <TableCell>
-                          {proposal && proposalExtractionState(proposal) ? (
-                            <ProposalExtractionStatus
-                              proposal={proposal}
-                              readOnly={readOnly}
-                            />
-                          ) : proposal ? (
-                            <StatusTag
-                              indicator={
-                                proposal.status === "draft"
-                                  ? "draft"
-                                  : proposal.status === "selected"
-                                    ? "complete"
-                                    : proposal.status === "withdrawn"
-                                      ? "cancelled"
-                                      : proposal.status === "archived"
-                                        ? "inactive"
-                                        : "progress"
-                              }
-                              progress={
-                                proposal.status === "reviewed" ? 0.75 : 0.4
-                              }
-                              tone={
-                                proposal.status === "selected"
-                                  ? "success"
-                                  : proposal.status === "reviewed"
-                                    ? "info"
-                                    : "neutral"
-                              }
-                            >
-                              {proposal.status.charAt(0).toUpperCase() +
-                                proposal.status.slice(1).replaceAll("_", " ")}
-                            </StatusTag>
-                          ) : (
-                            <OutreachStatusTag status={outreach.status} />
-                          )}
-                        </TableCell>
-                        {!readOnly ? (
-                          <TableCell>
-                            <OutreachSequenceCell
-                              sequence={sequence}
-                              readOnly={readOnly}
-                              stopping={
-                                !!sequence &&
-                                providerOutreach.stopping === sequence.sequenceId
-                              }
-                              onStop={(sequenceId) =>
-                                void providerOutreach.stopSequence(sequenceId)
-                              }
-                              onOpenThread={(threadId) =>
-                                void openEmail(threadId)
-                              }
-                            />
-                          </TableCell>
-                        ) : null}
-                        <TableCell className="text-muted-foreground">
-                          {offer.premium ?? offer.premiumAmount ?? "—"}
-                        </TableCell>
-                        <TableCell>
-                          {review?.stale ? (
-                            <StatusTag tone="warning">Stale</StatusTag>
-                          ) : conclusion ? (
-                            <StatusTag
-                              tone={
-                                conclusion === "meets_requirements"
-                                  ? "success"
-                                  : "warning"
-                              }
-                            >
-                              {REVIEW_CONCLUSION_LABELS[conclusion]}
-                            </StatusTag>
-                          ) : proposal ? (
-                            <StatusTag indicator="pending">
-                              Not reviewed
-                            </StatusTag>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-muted-foreground">
-                            {proposal?.documents.length ?? "—"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatDisplayDate(
-                            Math.max(
-                              outreach.updatedAt,
-                              proposal?.updatedAt ?? 0,
-                            ),
-                            "—",
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </OperationalPanel>
         ) : null}
 
         {view === "email" ? (
