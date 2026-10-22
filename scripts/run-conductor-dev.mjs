@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   conductorPorts,
   ensureNode24,
+  freePorts,
   repairLocalConvexSelection,
   repoRoot,
   withoutCloudConvexSelection,
@@ -35,6 +36,7 @@ if (repairLocalConvexSelection()) {
 }
 
 const { web, convexCloud, convexSite } = conductorPorts();
+freePorts([web, convexCloud, convexSite]);
 const logDirectory = path.join(repoRoot, ".context", "logs");
 mkdirSync(logDirectory, { recursive: true });
 for (const name of ["web", "convex"]) {

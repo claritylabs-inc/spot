@@ -399,6 +399,49 @@ export function conductorPorts(workspaceRoot = repoRoot) {
   };
 }
 
+// Stops anything still listening on this workspace's ports (for example a
+// Convex local backend orphaned by a previous run) so a fresh run can bind them.
+export function freePorts(ports) {
+  for (const port of ports) {
+    const lookup = spawnSync(
+      "lsof",
+      ["-t", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN"],
+      { encoding: "utf8" },
+    );
+    const pids = (lookup.stdout ?? "")
+      .split("\n")
+      .map((line) => Number.parseInt(line, 10))
+      .filter((pid) => Number.isInteger(pid) && pid !== process.pid);
+    for (const pid of pids) {
+      console.log(`Stopping stale process ${pid} on port ${port}.`);
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {}
+    }
+    if (pids.length === 0) continue;
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      const alive = pids.filter((pid) => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      if (alive.length === 0) break;
+      spawnSync("sleep", ["0.1"]);
+      if (Date.now() >= deadline) {
+        for (const pid of alive) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {}
+        }
+      }
+    }
+  }
+}
+
 export function conductorLocalRuntimeOverrides() {
   const { web } = conductorPorts();
   const appUrl = `http://localhost:${web}`;
