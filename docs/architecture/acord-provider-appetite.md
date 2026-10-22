@@ -78,3 +78,39 @@ rewrite or migration was needed. **65** have recorded lines; **17** remain
 unknown. No coverage was added from a company name, office address or generic
 marketing claim. The audit is retained in
 `.context/qa/provider-acord/provider-audit.json`.
+
+## Manual procurement matching
+
+The operator request's Providers → Outreach view has **Auto add providers** beside **Add provider**.
+`procurementRequests.autoAddBrokers` derives criteria from the current saved
+request application, scans the complete provider-profile directory, and adds all
+eligible providers in one transaction. It does not cap results or rank away
+otherwise eligible providers.
+
+`convex/lib/procurementBrokerMatching.ts` owns the deterministic mapping of
+intake coverage IDs to ACORD classes. A provider must match at least one requested
+coverage class and every recorded operating/property jurisdiction. Operating
+locations take precedence over the request's mailing address; the latter is the
+fallback when no operating locations are recorded. The matcher uses only this
+request's saved facts, never company notes, organization headquarters, a request
+title or unsaved draft inputs. US/Canadian addresses require a recognized state
+or province. ISO country/region codes and English country/region names are
+normalized; country names and accent-insensitive province names are supported.
+
+A country selection alone does not establish service in every US state or
+Canadian province. Missing appetite remains unknown and is reported in the
+result. Other/unknown intake coverage needs manual matching. BOP alone does not
+imply standalone general liability/property; personal auto, personal umbrella
+and specialty marine workers compensation do not imply their general commercial
+counterparts. Umbrella does not match excess-only appetite. The underlying
+publicly researched appetite remains a class-level indicator, not underwriting
+acceptance for the client's industry, limits or detailed risk.
+
+Inactive, restricted/blacklisted, deleted and Spot-owned providers are excluded.
+Existing linked outreaches and matching unlinked historical broker names are
+skipped; repeat and concurrent runs cannot create duplicate auto-added rows.
+New rows use **Observed**, with no sent timestamp or issued packet revision.
+The operation uses the ordinary direct-operator writer, including impersonation
+protection and per-provider audit entries, plus a matching-run audit with criteria
+and counts. It does not send email, release documents, invite users, or run on a
+schedule. A missing application, coverage or location fails before any writes.

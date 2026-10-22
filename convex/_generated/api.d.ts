@@ -339,6 +339,7 @@ import type * as lib_policyToolResolution from "../lib/policyToolResolution.js";
 import type * as lib_policyVersioning from "../lib/policyVersioning.js";
 import type * as lib_procurement from "../lib/procurement.js";
 import type * as lib_procurementApplicationInput from "../lib/procurementApplicationInput.js";
+import type * as lib_procurementBrokerMatching from "../lib/procurementBrokerMatching.js";
 import type * as lib_procurementCapabilities from "../lib/procurementCapabilities.js";
 import type * as lib_procurementCompletionOutcome from "../lib/procurementCompletionOutcome.js";
 import type * as lib_procurementNarrative from "../lib/procurementNarrative.js";
@@ -807,6 +808,7 @@ declare const fullApi: ApiFromModules<{
   "lib/policyVersioning": typeof lib_policyVersioning;
   "lib/procurement": typeof lib_procurement;
   "lib/procurementApplicationInput": typeof lib_procurementApplicationInput;
+  "lib/procurementBrokerMatching": typeof lib_procurementBrokerMatching;
   "lib/procurementCapabilities": typeof lib_procurementCapabilities;
   "lib/procurementCompletionOutcome": typeof lib_procurementCompletionOutcome;
   "lib/procurementNarrative": typeof lib_procurementNarrative;
