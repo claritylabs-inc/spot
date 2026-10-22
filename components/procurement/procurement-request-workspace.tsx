@@ -40,6 +40,12 @@ import {
   ProviderGeographyDialog,
   providerGeographyPreflight,
 } from "./provider-geography-dialog";
+import {
+  OutreachSequenceCell,
+  ProviderOutreachPanel,
+  sequenceForOutreach,
+  useProviderOutreach,
+} from "./provider-outreach-panel";
 
 import {
   useCallback,
@@ -1999,6 +2005,12 @@ export function ProcurementRequestWorkspace({
   });
   const brokers = useCachedOperatorBrokers() as BrokerOption[] | undefined;
   const proposals = useQuery(api.procurementProposals.list, { requestId });
+  const providerOutreach = useProviderOutreach(requestId, readOnly);
+  // The header actions depend on primitives only; handlers read the latest controller.
+  const providerOutreachRef = useRef(providerOutreach);
+  useEffect(() => {
+    providerOutreachRef.current = providerOutreach;
+  });
   const autoAddBrokers = useMutation(api.procurementRequests.autoAddBrokers);
   const [matchingBrokers, setMatchingBrokers] = useState(false);
   const matchingBrokersRef = useRef(false);
@@ -2048,7 +2060,7 @@ export function ProcurementRequestWorkspace({
   const handleAutoAddBrokers = useCallback(async () => {
     if (readOnly || matchingBrokersRef.current) return;
     const request = (result as RequestDetails | null | undefined)?.request;
-    if (!providerGeographyPreflight(request?.application).ready) {
+    if (request && !providerGeographyPreflight(request).ready) {
       setGeographyDialog((current) => ({
         key: (current?.key ?? 0) + 1,
         open: true,
@@ -2332,6 +2344,9 @@ export function ProcurementRequestWorkspace({
     [closePdf, closeRightPanel, onRightPanel, readOnly, requestOptions],
   );
 
+  const sendAllCount = providerOutreach.sendAllCount;
+  const providerOutreachBusy = providerOutreach.sending.size > 0;
+  const canSendAll = providerOutreach.panel?.request.canLaunch ?? false;
   useEffect(() => {
     if (readOnly) {
       onActions?.(null);
@@ -2360,6 +2375,15 @@ export function ProcurementRequestWorkspace({
             onClick={() => void handleAutoAddBrokers()}
           >
             {matchingBrokers ? "Adding providers…" : "Auto add providers"}
+          </PillButton>
+          <PillButton
+            type="button"
+            disabled={sendAllCount === 0 || providerOutreachBusy || !canSendAll}
+            onClick={() => void providerOutreachRef.current.sendAll()}
+          >
+            {providerOutreachBusy
+              ? "Sending…"
+              : `Send to all matched (${sendAllCount})`}
           </PillButton>
         </>
       ) : view === "files" ? (
@@ -2399,6 +2423,9 @@ export function ProcurementRequestWorkspace({
     openOutreachEditor,
     handleAutoAddBrokers,
     matchingBrokers,
+    sendAllCount,
+    providerOutreachBusy,
+    canSendAll,
     openPacketLink,
     openNotes,
     openUpload,
@@ -2647,7 +2674,11 @@ export function ProcurementRequestWorkspace({
         ) : null}
 
         {view === "proposals" ? (
-          details.outreaches.length === 0 ? (
+          <div className="space-y-5">
+          {!readOnly ? (
+            <ProviderOutreachPanel controller={providerOutreach} />
+          ) : null}
+          {details.outreaches.length === 0 ? (
             <EmptyStateCard
               title="No providers contacted yet"
               description="Add a provider to track outreach and proposals."
@@ -2659,6 +2690,7 @@ export function ProcurementRequestWorkspace({
                   <TableRow>
                     <TableHead>Provider</TableHead>
                     <TableHead>Status</TableHead>
+                    {!readOnly ? <TableHead>Sequence</TableHead> : null}
                     <TableHead>Premium</TableHead>
                     <TableHead>Review</TableHead>
                     <TableHead>Documents</TableHead>
@@ -2680,6 +2712,10 @@ export function ProcurementRequestWorkspace({
                       premium?: string;
                       premiumAmount?: number;
                     };
+                    const sequence = sequenceForOutreach(
+                      providerOutreach.panel?.sequences,
+                      outreach._id,
+                    );
                     const review = proposal?.reviews[0];
                     const conclusion = review?.stale
                       ? undefined
@@ -2747,6 +2783,24 @@ export function ProcurementRequestWorkspace({
                             <OutreachStatusTag status={outreach.status} />
                           )}
                         </TableCell>
+                        {!readOnly ? (
+                          <TableCell>
+                            <OutreachSequenceCell
+                              sequence={sequence}
+                              readOnly={readOnly}
+                              stopping={
+                                !!sequence &&
+                                providerOutreach.stopping === sequence.sequenceId
+                              }
+                              onStop={(sequenceId) =>
+                                void providerOutreach.stopSequence(sequenceId)
+                              }
+                              onOpenThread={(threadId) =>
+                                void openEmail(threadId)
+                              }
+                            />
+                          </TableCell>
+                        ) : null}
                         <TableCell className="text-muted-foreground">
                           {offer.premium ?? offer.premiumAmount ?? "—"}
                         </TableCell>
@@ -2791,7 +2845,8 @@ export function ProcurementRequestWorkspace({
                 </TableBody>
               </Table>
             </OperationalPanel>
-          )
+          )}
+          </div>
         ) : null}
 
         {view === "email" ? (
