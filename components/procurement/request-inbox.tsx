@@ -13,7 +13,11 @@ import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import { Input } from "@claritylabs-inc/ui/components/input";
-import { Popover, PopoverTrigger, PopoverContent } from "@claritylabs-inc/ui/components/popover";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@claritylabs-inc/ui/components/popover";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Select,
@@ -23,7 +27,9 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 
-type InboxThread = FunctionReturnType<typeof api.procurementRequests.getInbox>["page"][number];
+type InboxThread = FunctionReturnType<
+  typeof api.procurementRequests.getInbox
+>["page"][number];
 const PAGE_SIZE = 40;
 
 type Filter = "all" | "needs_reply" | "sent";
@@ -167,7 +173,8 @@ export function RequestInbox({
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const lastLoadedSelection = useRef<string | null>(null);
-  const selected = inboxThreads.find((thread) => thread._id === selectedThreadId) ?? null;
+  const selected =
+    inboxThreads.find((thread) => thread._id === selectedThreadId) ?? null;
   const selectionLoaded = selected !== null;
   const selectedId = selected?._id;
   useEffect(() => {
@@ -179,7 +186,8 @@ export function RequestInbox({
     if (selectionLoaded) {
       lastLoadedSelection.current = selectedThreadId;
     } else if (
-      status !== "LoadingFirstPage" && selectedThreadId &&
+      status !== "LoadingFirstPage" &&
+      selectedThreadId &&
       (exhausted || lastLoadedSelection.current === selectedThreadId)
     ) {
       onSelect(null, { replace: true });
@@ -240,46 +248,91 @@ export function RequestInbox({
       <div className="flex flex-wrap items-center gap-2 border-b border-border p-2">
         <div className="relative min-w-36 flex-1 sm:max-w-sm">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input aria-label="Search conversations" placeholder="Search mail" value={search}
-            onChange={(event) => setSearch(event.target.value)} className="pl-8" />
+          <Input
+            aria-label="Search conversations"
+            placeholder="Search mail"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="pl-8"
+          />
         </div>
-        <Select value={filter} onValueChange={(value) => setFilter(value as Filter)}>
-          <SelectTrigger aria-label="Filter conversations" className="w-32 shrink-0">
+        <Select
+          value={filter}
+          onValueChange={(value) => setFilter(value as Filter)}
+        >
+          <SelectTrigger
+            aria-label="Filter conversations"
+            className="w-32 shrink-0"
+          >
             <SelectValue>{FILTER_LABELS[filter]}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {(Object.keys(FILTER_LABELS) as Filter[]).map((value) => (
-              <SelectItem key={value} value={value}>{FILTER_LABELS[value]}</SelectItem>
+              <SelectItem key={value} value={value}>
+                {FILTER_LABELS[value]}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Popover>
-          <PopoverTrigger render={<PillButton type="button" variant="ghost" className="ml-auto" />}>
+          <PopoverTrigger
+            render={
+              <PillButton type="button" variant="ghost" className="ml-auto" />
+            }
+          >
             <Mail className="size-3.5" /> Mailbox address
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-80 max-w-[calc(100vw-2rem)] p-4">
-            <p className={typeStyle("body.medium")}>Forward or copy mail here</p>
-            <p className={"break-all " + typeStyle("technical.codeCompact")}>{forwardingAddress}</p>
-            <PillButton type="button" variant="secondary" onClick={onCopyAddress}>
+          <PopoverContent
+            align="end"
+            className="w-80 max-w-[calc(100vw-2rem)] p-4"
+          >
+            <p className={typeStyle("body.medium")}>
+              Forward or copy mail here
+            </p>
+            <p className={"break-all " + typeStyle("technical.codeCompact")}>
+              {forwardingAddress}
+            </p>
+            <PillButton
+              type="button"
+              variant="secondary"
+              onClick={onCopyAddress}
+            >
               <Copy className="size-3.5" /> Copy address
             </PillButton>
           </PopoverContent>
         </Popover>
       </div>
       <div role="group" aria-label="Conversations" onKeyDown={onListKeyDown}>
-        {visible.length ? visible.map((thread) => (
-          <ThreadRow key={thread._id} thread={thread} selected={thread._id === selected?._id}
-            onSelect={() => onSelect(thread._id)} />
-        )) : exhausted && !inboxThreads.length ? (
-          <EmptyStateCard title="No conversations yet"
+        {visible.length ? (
+          visible.map((thread) => (
+            <ThreadRow
+              key={thread._id}
+              thread={thread}
+              selected={thread._id === selected?._id}
+              onSelect={() => onSelect(thread._id)}
+            />
+          ))
+        ) : exhausted && !inboxThreads.length ? (
+          <EmptyStateCard
+            title="No conversations yet"
             description="Provider outreach, replies and forwarded mail for this request appear here."
-            icon={<Inbox className="size-6" />} />
+            icon={<Inbox className="size-6" />}
+          />
         ) : (
           <div className="space-y-2 p-4">
             <p className={typeStyle("body.medium")}>No conversations match</p>
-            <p className={"text-muted-foreground " + typeStyle("body.default")}>No loaded conversations match your search or filter.</p>
+            <p className={"text-muted-foreground " + typeStyle("body.default")}>
+              No loaded conversations match your search or filter.
+            </p>
             {term || filter !== "all" ? (
-              <PillButton type="button" variant="secondary" onClick={() => { setSearch(""); setFilter("all"); }}>
+              <PillButton
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setSearch("");
+                  setFilter("all");
+                }}
+              >
                 Clear search and filters
               </PillButton>
             ) : null}
@@ -288,10 +341,19 @@ export function RequestInbox({
       </div>
       {canLoadMore || status === "LoadingMore" ? (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
-          <p className={"text-muted-foreground " + typeStyle("caption.default")}>
-            {selectedThreadId && !selected ? "Load older mail to find this conversation." : "Search and filters cover loaded mail."}
+          <p
+            className={"text-muted-foreground " + typeStyle("caption.default")}
+          >
+            {selectedThreadId && !selected
+              ? "Load older mail to find this conversation."
+              : "Search and filters cover loaded mail."}
           </p>
-          <PillButton type="button" variant="secondary" disabled={status === "LoadingMore"} onClick={() => loadMore(PAGE_SIZE)}>
+          <PillButton
+            type="button"
+            variant="secondary"
+            disabled={status === "LoadingMore"}
+            onClick={() => loadMore(PAGE_SIZE)}
+          >
             {status === "LoadingMore" ? "Loading…" : "Load more conversations"}
           </PillButton>
         </div>
