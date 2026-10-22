@@ -870,8 +870,14 @@ export const run = internalAction({
         id: agentMsgId,
         content,
         routerRequestId: turn.routerRequestId,
+        // Unsent drafts keep their own card; only metadata-based follow-ups are composed.
         presentationTools:
-          surface === "web" && !emailResult ? presentationTools : undefined,
+          surface === "web" &&
+          (!emailResult ||
+            emailResult.status === "draft" ||
+            emailResult.status === "needs_confirmation")
+            ? presentationTools
+            : undefined,
         referencedPolicyIds:
           presentedPolicyIds.size > 0 ? [...presentedPolicyIds] : undefined,
         citedSections: citedSections.size > 0 ? [...citedSections] : undefined,

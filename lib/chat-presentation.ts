@@ -24,6 +24,7 @@ const presentationReferenceSchema = z
       "vendor",
       "file",
       "source",
+      "email_draft",
     ]),
     recordId: id,
     label,
