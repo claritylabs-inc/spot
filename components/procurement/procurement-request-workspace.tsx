@@ -40,6 +40,7 @@ import {
   ProviderGeographyDialog,
   providerGeographyPreflight,
 } from "./provider-geography-dialog";
+import { RequestInbox } from "./request-inbox";
 import {
   OutreachSequenceCell,
   ProviderOutreachPanel,
@@ -62,10 +63,8 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import type { FunctionReturnType } from "convex/server";
 import {
-  Copy,
   FileText,
   Loader2,
-  Mail,
   StickyNote,
   Trash2,
   Plus,
@@ -84,7 +83,6 @@ import {
   PacketWorkspace,
 } from "@/components/procurement/packet-workspace";
 import {
-  EmailCategoryBadge,
   OUTREACH_STATUS_OPTIONS,
   OutreachStatusTag,
   ProcurementEmailDrawer,
@@ -114,8 +112,6 @@ import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalItem,
-  OperationalLabelValueList,
-  OperationalLabelValueRow,
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
@@ -149,7 +145,7 @@ import {
 } from "@claritylabs-inc/ui/components/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
+import { formatDisplayDate } from "@/lib/date-format";
 import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -2161,14 +2157,28 @@ export function ProcurementRequestWorkspace({
     },
     [removeFileItem],
   );
-  const changeView = async (nextView: string) => {
+  // The Inbox keeps its selection in the URL so a thread can be deep-linked.
+  const selectInboxThread = useCallback(
+    (
+      threadId: Id<"procurementEmailThreads"> | null,
+      options?: { replace?: boolean },
+    ) => {
+      const href = `${basePath}/${requestId}?view=email${threadId ? `&thread=${threadId}` : ""}`;
+      if (options?.replace) router.replace(href, { scroll: false });
+      else router.push(href, { scroll: false });
+    },
+    [basePath, requestId, router],
+  );
+  const changeView = async (nextView: string, threadId?: string) => {
     const change = ++latestTabChange.current;
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
     if (change !== latestTabChange.current) return;
-    router.push(`${basePath}/${requestId}?view=${nextView}`);
+    router.push(
+      `${basePath}/${requestId}?view=${nextView}${threadId ? `&thread=${threadId}` : ""}`,
+    );
   };
   const { openWithUrl, closePdf } = usePdf();
 
@@ -2609,16 +2619,12 @@ export function ProcurementRequestWorkspace({
           icon: PROVIDER_ICONS.providers,
           count: details.outreaches.length,
         },
-        ...(details.emailThreads.length > 0 || view === "email"
-          ? [
-              {
-                key: "email",
-                label: "Imported email",
-                icon: PROVIDER_ICONS.email,
-                count: details.emailThreads.length,
-              },
-            ]
-          : []),
+        {
+          key: "email",
+          label: "Inbox",
+          icon: PROVIDER_ICONS.email,
+          count: details.emailThreads.length,
+        },
       ],
     },
   ];
@@ -2859,7 +2865,7 @@ export function ProcurementRequestWorkspace({
                                 void providerOutreach.stopSequence(sequenceId)
                               }
                               onOpenThread={(threadId) =>
-                                void openEmail(threadId)
+                                void changeView("email", threadId)
                               }
                             />
                           </TableCell>
@@ -2912,90 +2918,16 @@ export function ProcurementRequestWorkspace({
         ) : null}
 
         {view === "email" ? (
-          <div className="space-y-4">
-            <OperationalLabelValueList>
-              <OperationalLabelValueRow
-                label="Forward email to"
-                verticalAlign="center"
-                value={
-                  <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <span
-                      className={`min-w-0 break-all ${typeStyle("technical.codeCompact")}`}
-                    >
-                      {details.request.forwardingAddress}
-                    </span>
-                    <PillButton
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void copyAddress()}
-                    >
-                      <Copy className="size-3.5" />
-                      Copy address
-                    </PillButton>
-                  </div>
-                }
-              />
-            </OperationalLabelValueList>
-            {details.emailThreads.length === 0 ? (
-              <EmptyStateCard
-                title="No email imported for this request"
-                description="Forward a thread to this request’s address."
-                icon={<Mail className="size-6" />}
-              />
-            ) : (
-              <OperationalPanel as="section">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>Participant</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Last activity</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {details.emailThreads.map((email) => (
-                      <TableRow
-                        key={email._id}
-                        tabIndex={0}
-                        className="cursor-pointer"
-                        onClick={() => openEmail(email._id)}
-                        onKeyDown={(event) =>
-                          openRowOnKeyboard(
-                            event,
-                            () => void openEmail(email._id),
-                          )
-                        }
-                      >
-                        <TableCell className="min-w-64 whitespace-normal">
-                          <p
-                            className={`text-foreground ${typeStyle("body.medium")}`}
-                          >
-                            {email.subject}
-                          </p>
-                          <p
-                            className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                          >
-                            {email.messageCount}{" "}
-                            {email.messageCount === 1 ? "message" : "messages"}
-                          </p>
-                        </TableCell>
-                        <TableCell className="max-w-64 truncate text-muted-foreground">
-                          {email.participantEmails[0] ?? "Unknown"}
-                        </TableCell>
-                        <TableCell>
-                          <EmailCategoryBadge category={email.category} />
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatDisplayDateTime(email.latestMessageAt, "—")}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </OperationalPanel>
-            )}
-          </div>
+          <RequestInbox
+            key={requestId}
+            requestId={requestId}
+            forwardingAddress={details.request.forwardingAddress}
+            selectedThreadId={searchParams.get("thread")}
+            readOnly={readOnly}
+            onSelect={selectInboxThread}
+            onDetails={(threadId) => void openEmail(threadId)}
+            onCopyAddress={() => void copyAddress()}
+          />
         ) : null}
         {!readOnly && geographyDialog ? (
           <ProviderGeographyDialog
