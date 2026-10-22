@@ -656,13 +656,16 @@ async function notifyManualHandoff(
         : `${provider} replied`;
   // Scheduled, so a notification failure can never roll back the state change.
   // The explicit userId keeps this operator-private: it is neither org-wide nor
-  // eligible for the client's Slack/email fan-out, and `info` severity sends no email.
+  // eligible for the client's Slack/email fan-out. Warning uses the operator's
+  // existing channel preferences for a reachable handoff.
   await ctx.scheduler.runAfter(0, internal.lib.notify.notifyInternal, {
     orgId: sequence.clientOrgId,
     userId: sequence.senderUserId,
     relatedOrgId: sequence.brokerOrgId,
-    type: "broker_action",
-    severity: "info",
+    type: "mailbox_attention",
+    severity: "warning",
+    actionType: "view_operator_procurement",
+    actionPayload: { clientOrgId: sequence.clientOrgId, requestId: sequence.requestId },
     title,
     body: `Automated follow-ups stopped${request ? ` on ${request.title}` : ""}. Continue the conversation by hand.`,
     coalesceKeyParts: ["provider_outreach_handoff", String(sequence._id)],
