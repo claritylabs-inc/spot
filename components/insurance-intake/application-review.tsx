@@ -10,6 +10,7 @@ import {
   TabsContent,
 } from "@claritylabs-inc/ui/components/tabs";
 import {
+  intakeFollowupAnswerRows,
   intakeQuoteSections,
   type IntakeApplication,
 } from "@/lib/intake-application";
@@ -55,7 +56,10 @@ export function IntakeApplicationReview({
       <IntakeFollowupReview
         details={application.details}
         businessName={application.answers.legalName || application.answers.dba}
-        answers={(application.details.followups ?? []).filter(row => row.section === "additional")}
+        answers={intakeFollowupAnswerRows(
+          application.answers,
+          application.details,
+        )}
       />
     ) : section ? (
       <IntakeRequestReview

@@ -128,6 +128,7 @@ function WikiEditor({
         />
       ) : null}
       <MarkdownEditor
+        showToolbar
         showProperties={false}
         showViewSwitcher={showViewSwitcher}
         preview={

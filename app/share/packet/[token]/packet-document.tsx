@@ -1,113 +1,151 @@
 "use client";
 import {
-  markdownReviewRows,
-  MarkdownReviewTable,
-} from "@/components/ui/markdown-review";
-import { hideApplicationControlMarkers } from "@/lib/intake-markdown-presentation";
-
-import {
-  useEffect,
+  Children,
+  isValidElement,
   useMemo,
-  useRef,
-  useState,
   type ComponentPropsWithoutRef,
+  type ReactNode,
 } from "react";
-import type { Components } from "react-markdown";
-import { ArrowUpRight, Check, ChevronUp, ListTree } from "lucide-react";
+import type { Components, ExtraProps } from "react-markdown";
+import { ArrowUpRight } from "lucide-react";
 import { toast } from "sonner";
 import { ProseMarkdown } from "@/components/prose-markdown";
 import { PillButton } from "@/components/ui/pill-button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@claritylabs-inc/ui/components/dropdown-menu";
-import {
-  OperationalLabelValueList,
-  OperationalLabelValueRow,
-  OperationalPanel,
-} from "@claritylabs-inc/ui/components/operational-panel";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { SpotWordmark } from "@claritylabs-inc/ui/components/brand/spot-wordmark";
 import { TextLink } from "@/components/ui/text-link";
 import { formatDisplayDateTimeUtc } from "@/lib/date-format";
+import { splitSubmissionNotes } from "@/lib/intake-application";
+import { hideApplicationControlMarkers } from "@/lib/intake-markdown-presentation";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
-import { preparePacketMarkdown, type PacketHeading } from "./packet-markdown";
+import { preparePacketMarkdown } from "./packet-markdown";
 import type { PacketView } from "./view";
 
-function PacketSection({
-  className,
-  children,
-  ...props
-}: ComponentPropsWithoutRef<"div">) {
-  return (
-    <OperationalPanel
-      {...props}
-      data-packet-section
-      tabIndex={-1}
-      className={cn(
-        "scroll-mt-8 p-6 outline-none transition-colors duration-150 data-[arrival=true]:border-border-focus data-[arrival=true]:bg-foreground/[0.02] focus-visible:ring-1 focus-visible:ring-border-focus motion-reduce:transition-none print:overflow-visible print:border-0 print:p-0 print:ring-0",
+type HeadingTag = "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+type HeadingRole = "heading.section" | "heading.item" | "heading.micro";
+
+/** Maps authored heading levels onto typography roles; levels differ by size only. */
+function packetHeadings(roles: Record<HeadingTag, HeadingRole>): Components {
+  return Object.fromEntries(
+    (Object.keys(roles) as HeadingTag[]).map((Tag) => [
+      Tag,
+      function PacketHeading({
+        node,
         className,
+        ...props
+      }: ComponentPropsWithoutRef<HeadingTag> & { node?: unknown }) {
+        void node;
+        return (
+          <Tag
+            {...props}
+            data-prose-heading=""
+            className={cn(typeStyle(roles[Tag]), className)}
+          />
+        );
+      },
+    ]),
+  );
+}
+
+/** Application: each top-level heading opens a section; coverages and groups sit below it. */
+const applicationHeadings = packetHeadings({
+  h1: "heading.section",
+  h2: "heading.section",
+  h3: "heading.micro",
+  h4: "heading.micro",
+  h5: "heading.micro",
+  h6: "heading.micro",
+});
+
+/** Submission notes sit under their card title, so they start one level down. */
+const noteHeadings = packetHeadings({
+  h1: "heading.item",
+  h2: "heading.item",
+  h3: "heading.micro",
+  h4: "heading.micro",
+  h5: "heading.micro",
+  h6: "heading.micro",
+});
+
+const NOTE_PROSE_SPACING =
+  "[&_h1]:mt-7 [&_h1]:mb-2 [&_h2]:mt-7 [&_h2]:mb-2 [&_h3]:mt-5 [&_h3]:mb-1.5 [&_h4]:mt-5 [&_h4]:mb-1.5 [&_h5]:mt-5 [&_h5]:mb-1.5 [&_h6]:mt-5 [&_h6]:mb-1.5 [&_p]:my-3 [&_ul]:my-3 [&_ol]:my-3";
+
+const APPLICATION_PROSE_SPACING =
+  "[&>section+section]:mt-10 [&>section+section]:border-t [&>section+section]:border-border [&>section+section]:pt-10 [&_h1]:mb-4 [&_h2]:mb-4 [&_h3]:mt-8 [&_h3]:mb-3 [&_h2+h3]:mt-0 [&_h4]:mt-6 [&_h4]:mb-2 [&_h5]:mt-5 [&_h5]:mb-2 [&_h6]:mt-5 [&_h6]:mb-2 [&_h1:first-child]:mt-0 [&_h2:first-child]:mt-0 [&_h3:first-child]:mt-0";
+
+/** One label/value line in the application's two-column list. */
+function Pair({ label, children }: { label: ReactNode; children: ReactNode }) {
+  return (
+    <div className="grid gap-1 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] sm:gap-6">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 whitespace-pre-wrap break-words">{children}</dd>
+    </div>
+  );
+}
+
+function PairList({
+  separated = false,
+  children,
+}: {
+  separated?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <dl
+      className={cn(
+        "my-0 grid gap-y-3 [&+dl]:mt-3",
+        separated &&
+          "[&+dl]:mt-6 [&+dl]:border-t [&+dl]:border-border/60 [&+dl]:pt-6",
       )}
     >
       {children}
-    </OperationalPanel>
+    </dl>
   );
 }
 
 type PacketFile = NonNullable<PacketView>["files"][number];
-function PacketFileRows({ files }: { files: PacketFile[] }) {
+function PacketFilePairs({ files }: { files: PacketFile[] }) {
   const groups = [
     { category: "requirements", label: "Insurance requirements" },
     { category: "policy", label: "Current policies" },
     { category: "loss_runs", label: "Loss runs / claims history" },
     { category: "supporting", label: "Other documents" },
   ];
-  return (
-    <>
-      {groups.map((group) => {
-        const documents = files.filter(
-          (file) => (file.documentCategory ?? "supporting") === group.category,
-        );
-        if (!documents.length) return null;
-        return (
-          <OperationalLabelValueRow
-            key={group.category}
-            label={
-              <span className={typeStyle("body.root")}>{group.label}</span>
-            }
-            value={
-              <div className={`space-y-2 ${typeStyle("body.root")}`}>
-                {documents.map((file) =>
-                  file.downloadUrl ? (
-                    <a
-                      key={file._id}
-                      href={file.downloadUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block break-words underline underline-offset-2"
-                    >
-                      {file.name}
-                    </a>
-                  ) : (
-                    <span key={file._id} className="block break-words">
-                      {file.name}
-                      <span
-                        className={`ml-2 text-muted-foreground ${typeStyle("caption.default")}`}
-                      >
-                        Listed
-                      </span>
-                    </span>
-                  ),
-                )}
-              </div>
-            }
-          />
-        );
-      })}
-    </>
-  );
+  return groups.map((group) => {
+    const documents = files.filter(
+      (file) => (file.documentCategory ?? "supporting") === group.category,
+    );
+    if (!documents.length) return null;
+    return (
+      <Pair key={group.category} label={group.label}>
+        <span className="block space-y-1">
+          {documents.map((file) =>
+            file.downloadUrl ? (
+              <a
+                key={file._id}
+                href={file.downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block break-words underline underline-offset-2"
+              >
+                {file.name}
+              </a>
+            ) : (
+              <span key={file._id} className="block break-words">
+                {file.name}
+                <span
+                  className={`ml-2 text-muted-foreground ${typeStyle("caption.default")}`}
+                >
+                  Listed
+                </span>
+              </span>
+            ),
+          )}
+        </span>
+      </Pair>
+    );
+  });
 }
 function filesForPart(files: PacketFile[], part: unknown) {
   const categories =
@@ -123,182 +161,56 @@ function filesForPart(files: PacketFile[], part: unknown) {
   );
 }
 
-type Navigate = (id: string) => void;
+function cellText(node: ExtraProps["node"]): string {
+  if (!node) return "";
+  return node.children
+    .map((child) =>
+      child.type === "text"
+        ? child.value
+        : child.type === "element"
+          ? cellText(child)
+          : "",
+    )
+    .join("");
+}
 
-function OutlineLink({
-  id,
-  active,
+/** Without a managed application block, all shared prose stays as request details. */
+function packetParts(markdown: string) {
+  const { notes, application } = splitSubmissionNotes(markdown);
+  if (!application) return { notes: "", details: markdown, application: false };
+  return {
+    // The card supplies the heading; a leading generic one would repeat it.
+    notes: notes
+      .trim()
+      .replace(
+        /^#{1,3} (?:request|notes|submission notes|additional context)\s*\n+/i,
+        "",
+      ),
+    details: application,
+    application: true,
+  };
+}
+
+function DocumentSection({
+  title,
   children,
-  primary = false,
-  navigate,
-}: {
-  id: string;
-  active: string;
-  children: React.ReactNode;
-  primary?: boolean;
-  navigate: Navigate;
-}) {
+  ...props
+}: ComponentPropsWithoutRef<"section"> & { title: string }) {
   return (
-    <a
-      href={`#${encodeURIComponent(id)}`}
-      onClick={(event) => {
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-          return;
-        event.preventDefault();
-        navigate(id);
-      }}
-      aria-current={active === id ? "location" : undefined}
-      className={cn(
-        "flex items-center justify-between gap-3 rounded-md px-3 py-2 wrap-anywhere hover:bg-foreground/[0.03] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus",
-        typeStyle(primary ? "body.medium" : "body.default"),
-        primary ? "text-foreground" : "text-muted-foreground",
-        active === id && "bg-muted text-foreground",
-      )}
-    >
-      {children}
-    </a>
-  );
-}
-
-function HeadingOutline({
-  headings,
-  active,
-  navigate,
-}: {
-  headings: PacketHeading[];
-  active: string;
-  navigate: Navigate;
-}) {
-  return (
-    <ul className="space-y-1 pl-4">
-      {headings.map((heading) => (
-        <li key={heading.id}>
-          <OutlineLink id={heading.id} active={active} navigate={navigate}>
-            {heading.label}
-          </OutlineLink>
-          {heading.children.length > 0 && (
-            <HeadingOutline
-              headings={heading.children}
-              active={active}
-              navigate={navigate}
-            />
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function SectionMenuItem({
-  id,
-  label,
-  active,
-  navigate,
-  primary = false,
-}: {
-  id: string;
-  label: string;
-  active: string;
-  navigate: Navigate;
-  primary?: boolean;
-}) {
-  return (
-    <DropdownMenuItem
-      onClick={() => navigate(id)}
-      aria-current={id === active ? "location" : undefined}
-      className="min-h-11 shrink-0 gap-3 px-3"
-    >
-      <span
-        className={cn(
-          "min-w-0 flex-1",
-          typeStyle(primary ? "body.medium" : "body.default"),
-        )}
-      >
-        {label}
-      </span>
-      {id === active && (
-        <Check aria-label="Current section" className="size-4" />
-      )}
-    </DropdownMenuItem>
-  );
-}
-
-function HeadingMenu({
-  headings,
-  active,
-  navigate,
-}: {
-  headings: PacketHeading[];
-  active: string;
-  navigate: Navigate;
-}) {
-  return (
-    <div className="pl-4" role="presentation">
-      {headings.map((heading) => (
-        <div key={heading.id} role="presentation">
-          <SectionMenuItem
-            id={heading.id}
-            label={heading.label}
-            active={active}
-            navigate={navigate}
-          />
-          {heading.children.length > 0 && (
-            <HeadingMenu
-              headings={heading.children}
-              active={active}
-              navigate={navigate}
-            />
-          )}
-        </div>
-      ))}
-    </div>
+    <section {...props} className="scroll-mt-8">
+      <h2 className={typeStyle("heading.section")}>{title}</h2>
+      <OperationalPanel className="mt-3 p-6 sm:p-8 print:border-0 print:p-0">
+        {children}
+      </OperationalPanel>
+    </section>
   );
 }
 
 export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
+  const parts = useMemo(() => packetParts(view.markdown), [view.markdown]);
   const presentedMarkdown = hideApplicationControlMarkers(
-    view.markdown,
+    parts.details,
   ).replace(/^#{1,2} Request\s*\n+(?=#{2,6} Contact details\b)/gm, "");
-  const markdownComponents = useMemo<Components>(
-    () => ({
-      ...markdownReviewRows,
-      table: ({ node, ...props }) => {
-        const files = filesForPart(
-          view.files,
-          node?.properties?.dataRequestFilePart,
-        );
-        return (
-          <MarkdownReviewTable
-            {...props}
-            node={node}
-            extraRows={
-              files.length ? <PacketFileRows files={files} /> : undefined
-            }
-          />
-        );
-      },
-      section: ({ children, node }) => {
-        const files = node?.properties?.dataFilesInTable
-          ? []
-          : filesForPart(view.files, node?.properties?.dataRequestPart);
-        return (
-          <section
-            data-packet-section
-            tabIndex={-1}
-            className="scroll-mt-8 outline-none"
-          >
-            {children}
-            {files.length > 0 && (
-              <OperationalLabelValueList className="my-3">
-                <PacketFileRows files={files} />
-              </OperationalLabelValueList>
-            )}
-          </section>
-        );
-      },
-    }),
-    [view.files],
-  );
   const packetMarkdown = useMemo(
     () => preparePacketMarkdown(presentedMarkdown),
     [presentedMarkdown],
@@ -307,372 +219,174 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
     () => [packetMarkdown.rehypePacketSections],
     [packetMarkdown],
   );
-  const contactEmail = view.contactEmail;
-  const hasContact = Boolean(contactEmail);
-  const hasFiles = view.files.length > 0;
-  const firstDestination = hasContact ? "contact-spot" : "packet-details";
-  const [active, setActive] = useState(firstDestination);
-  const menuDestination = useRef<string | null>(null);
-  const contentRef = useRef<HTMLElement>(null);
-  const restoredHash = useRef(false);
-  const arrival = useRef<HTMLElement | null>(null);
-  const arrivalTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
+  const applicationComponents = useMemo<Components>(
+    () => ({
+      ...applicationHeadings,
+      table: ({ node, children }) => {
+        const files = filesForPart(
+          view.files,
+          node?.properties?.dataRequestFilePart,
+        );
+        const firstLabel = node
+          ? cellText(
+              node.children
+                .flatMap((group) =>
+                  group.type === "element" && group.tagName === "tbody"
+                    ? group.children
+                    : [],
+                )
+                .find((row) => row.type === "element")
+                ?.children.find(
+                  (cell) => cell.type === "element",
+                ) as ExtraProps["node"],
+            )
+          : "";
+        return (
+          <PairList
+            separated={/^(?:Location|Property|Vehicle)\b/.test(firstLabel)}
+          >
+            {children}
+            {files.length > 0 && <PacketFilePairs files={files} />}
+          </PairList>
+        );
+      },
+      thead: () => null,
+      tbody: ({ children }) => <>{children}</>,
+      tr: ({ children }) => {
+        const cells = Children.toArray(children)
+          .filter(isValidElement)
+          .map((cell) => (cell.props as { children?: ReactNode }).children);
+        return <Pair label={cells[0]}>{cells[1]}</Pair>;
+      },
+      section: ({ children, node }) => {
+        const files = node?.properties?.dataFilesInTable
+          ? []
+          : filesForPart(view.files, node?.properties?.dataRequestPart);
+        return (
+          <section className="scroll-mt-8">
+            {children}
+            {files.length > 0 && (
+              <PairList>
+                <PacketFilePairs files={files} />
+              </PairList>
+            )}
+          </section>
+        );
+      },
+    }),
+    [view.files],
   );
-
-  function destination(id: string) {
-    let target = document.getElementById(id);
-    if (id === "packet-details")
-      target =
-        target?.querySelector<HTMLElement>("[data-packet-section]") ?? null;
-    const section = target?.closest<HTMLElement>("[data-packet-section]");
-    if (!target || !section || !contentRef.current?.contains(section))
-      return null;
-    return {
-      section,
-      target: target === section.firstElementChild ? section : target,
-    };
-  }
-
-  function navigateFromMenu(id: string) {
-    menuDestination.current = id;
-  }
-
-  function navigate(id: string) {
-    const found = destination(id);
-    if (!found) return;
-    found.target.scrollIntoView({ block: "start" });
-    found.section.focus({ preventScroll: true });
-    if (arrival.current) delete arrival.current.dataset.arrival;
-    clearTimeout(arrivalTimeout.current);
-    arrival.current = found.section;
-    found.section.dataset.arrival = "true";
-    arrivalTimeout.current = setTimeout(() => {
-      delete found.section.dataset.arrival;
-      arrival.current = null;
-    }, 1200);
-    const hash = `#${encodeURIComponent(id)}`;
-    if (window.location.hash !== hash) window.history.pushState(null, "", hash);
-    setActive(id);
-  }
-
-  useEffect(() => () => clearTimeout(arrivalTimeout.current), []);
-
-  useEffect(() => {
-    const content = contentRef.current;
-    if (!content) return;
-    const ids = [
-      ...(hasContact ? ["contact-spot"] : []),
-      "packet-details",
-      ...packetMarkdown.headings.map((heading) => heading.id),
-      ...(hasFiles ? ["packet-files"] : []),
-    ];
-    const targets = ids.flatMap((id) => {
-      const element = document.getElementById(id);
-      return element ? [element] : [];
-    });
-    let frame = 0;
-    function update() {
-      frame = 0;
-      let current = firstDestination;
-      for (const target of targets) {
-        if (target.getBoundingClientRect().top <= 64) current = target.id;
-      }
-      if (
-        hasFiles &&
-        window.scrollY > 0 &&
-        window.scrollY + window.innerHeight >=
-          document.documentElement.scrollHeight - 2
-      )
-        current = "packet-files";
-      setActive(current);
-    }
-    function scheduleUpdate() {
-      if (!frame) frame = window.requestAnimationFrame(update);
-    }
-    function restoreFragment() {
-      const id = ids.find(
-        (id) => `#${encodeURIComponent(id)}` === window.location.hash,
-      );
-      if (id) destination(id)?.target.scrollIntoView();
-    }
-    update();
-    if (!restoredHash.current) {
-      restoreFragment();
-      restoredHash.current = true;
-    }
-    const observer = new ResizeObserver(scheduleUpdate);
-    observer.observe(content);
-    window.addEventListener("scroll", scheduleUpdate, { passive: true });
-    window.addEventListener("resize", scheduleUpdate);
-    window.addEventListener("hashchange", restoreFragment);
-    return () => {
-      observer.disconnect();
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", scheduleUpdate);
-      window.removeEventListener("resize", scheduleUpdate);
-      window.removeEventListener("hashchange", restoreFragment);
-    };
-  }, [packetMarkdown, hasFiles, hasContact, firstDestination]);
-
-  const current =
-    active === "packet-details" ||
-    (active === "contact-spot" && hasContact) ||
-    (active === "packet-files" && hasFiles) ||
-    packetMarkdown.headings.some((heading) => heading.id === active)
-      ? active
-      : firstDestination;
+  const contactEmail = view.contactEmail;
 
   return (
-    <div className="min-h-dvh bg-background text-foreground [&_[id]]:scroll-mt-8">
-      <a
-        href="#packet-details"
-        onClick={(event) => {
-          event.preventDefault();
-          navigate("packet-details");
-        }}
-        className={`fixed top-0 left-6 z-20 -translate-y-full rounded-md bg-background p-3 focus:translate-y-2 print:hidden ${typeStyle("control.button")}`}
-      >
-        Skip to request details
-      </a>
-      <div className="mx-auto grid max-w-7xl items-start gap-6 px-6 pt-6 pb-28 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-10 lg:px-8 lg:py-8 print:block print:max-w-none print:p-0">
-        <aside className="lg:sticky lg:top-8">
-          <div className="flex items-center gap-6 lg:block lg:px-3">
-            <SpotWordmark />
-          </div>
-          {view.expiresAt !== undefined && (
-            <p
-              className={`mt-3 text-muted-foreground lg:px-3 ${typeStyle("caption.default")}`}
-            >
-              Available until {formatDisplayDateTimeUtc(view.expiresAt)}
-            </p>
-          )}
-          <nav
-            aria-label="Packet contents"
-            className="mt-6 hidden lg:block print:hidden"
-          >
-            <ul className="flex max-h-[calc(100dvh-14rem)] flex-col gap-4">
-              {hasContact && (
-                <li className="shrink-0">
-                  <OutlineLink
-                    id="contact-spot"
-                    active={current}
-                    primary
-                    navigate={navigate}
-                  >
-                    Contact Spot
-                  </OutlineLink>
-                </li>
-              )}
-              <li className="flex min-h-0 flex-col gap-2">
-                <OutlineLink
-                  id="packet-details"
-                  active={current}
-                  primary
-                  navigate={navigate}
-                >
-                  Request Details
-                </OutlineLink>
-                <div className="min-h-0 overflow-y-auto">
-                  <HeadingOutline
-                    headings={packetMarkdown.outline}
-                    active={current}
-                    navigate={navigate}
-                  />
-                </div>
-              </li>
-              {hasFiles && (
-                <li className="shrink-0">
-                  <OutlineLink
-                    id="packet-files"
-                    active={current}
-                    primary
-                    navigate={navigate}
-                  >
-                    <span>All files</span>
-                    <span className="text-muted-foreground">
-                      {view.files.length}
-                    </span>
-                  </OutlineLink>
-                </li>
-              )}
-            </ul>
-          </nav>
-          <nav
-            aria-label="Jump to packet section"
-            className="fixed right-6 bottom-[max(1rem,env(safe-area-inset-bottom))] left-6 z-10 rounded-full bg-background shadow-sm lg:hidden print:hidden"
-          >
-            <DropdownMenu
-              modal={false}
-              onOpenChange={(open) => {
-                if (open) menuDestination.current = null;
-              }}
-              onOpenChangeComplete={(open) => {
-                if (!open && menuDestination.current)
-                  navigate(menuDestination.current);
-              }}
-            >
-              <DropdownMenuTrigger
-                aria-label="Jump to section"
-                render={
-                  <PillButton
-                    size="large"
-                    variant="secondary"
-                    className="w-full"
-                  />
-                }
-              >
-                <ListTree aria-hidden="true" className="size-4 shrink-0" />
-                <span className="min-w-0 flex-1 truncate text-left">
-                  {current === "contact-spot"
-                    ? "Contact Spot"
-                    : current === "packet-files"
-                      ? "All files"
-                      : (packetMarkdown.headings.find(
-                          (heading) => heading.id === current,
-                        )?.label ?? "Request Details")}
-                </span>
-                <ChevronUp aria-hidden="true" className="size-4 shrink-0" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="top"
-                sideOffset={8}
-                className="flex max-h-[min(60dvh,var(--available-height))] flex-col overflow-y-hidden"
-                finalFocus={() => (menuDestination.current ? false : true)}
-              >
-                {hasContact && (
-                  <SectionMenuItem
-                    id="contact-spot"
-                    label="Contact Spot"
-                    active={current}
-                    primary
-                    navigate={navigateFromMenu}
-                  />
-                )}
-                <SectionMenuItem
-                  id="packet-details"
-                  label="Request Details"
-                  active={current}
-                  primary
-                  navigate={navigateFromMenu}
-                />
-                <div className="min-h-0 overflow-y-auto">
-                  <HeadingMenu
-                    headings={packetMarkdown.outline}
-                    active={current}
-                    navigate={navigateFromMenu}
-                  />
-                </div>
-                {hasFiles && (
-                  <SectionMenuItem
-                    id="packet-files"
-                    label={`All files (${view.files.length})`}
-                    active={current}
-                    primary
-                    navigate={navigateFromMenu}
-                  />
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </nav>
-        </aside>
-        <main ref={contentRef} className="min-w-0 space-y-6 print:mt-6">
-          <h1 className={`text-balance ${typeStyle("heading.page")}`}>
-            {view.title}
-          </h1>
-          {contactEmail && (
-            <PacketSection id="contact-spot">
-              <h2 className={typeStyle("heading.section")}>Contact Spot</h2>
-              <p
-                className={`mt-2 text-muted-foreground ${typeStyle("body.default")}`}
-              >
-                Send questions, quotes, or additional documents.
-              </p>
-              <div className="mt-6 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-                <div className="min-w-0">
-                  <p className={typeStyle("body.medium")}>Spot team</p>
-                  <p
-                    className={`mt-1 wrap-anywhere text-muted-foreground ${typeStyle("body.default")}`}
-                  >
-                    {contactEmail}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-2 print:hidden">
-                  <PillButton
-                    variant="secondary"
-                    className="flex-1 xl:flex-none"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(contactEmail);
-                        toast.success("Email copied");
-                      } catch {
-                        toast.error(
-                          "Could not copy the email. Select and copy the address above.",
-                        );
-                      }
-                    }}
-                  >
-                    Copy email
-                  </PillButton>
-                  <PillButton
-                    href={`mailto:${contactEmail}`}
-                    className="flex-1 xl:flex-none"
-                  >
-                    Email Spot{" "}
-                    <ArrowUpRight aria-hidden="true" className="size-3.5" />
-                  </PillButton>
-                </div>
-              </div>
-            </PacketSection>
-          )}
-          <article id="packet-details" aria-label="Request Details">
-            {view.markdown.trim() ? (
-              <ProseMarkdown
-                gfm
-                headingRole="heading.section"
-                rehypePlugins={plugins}
-                components={markdownComponents}
-                className="space-y-5 [&>section>:first-child]:mt-0 [&>section>:last-child]:mb-0 print:space-y-8"
-              >
-                {presentedMarkdown}
-              </ProseMarkdown>
-            ) : (
-              <PacketSection>
-                <p
-                  className={`text-muted-foreground ${typeStyle("body.default")}`}
-                >
-                  No request details have been shared yet.
-                </p>
-              </PacketSection>
-            )}
-          </article>
-          {hasFiles && (
-            <PacketSection id="packet-files">
-              <h2 className={typeStyle("heading.section")}>All files</h2>
-              <div className="mt-4">
-                <OperationalLabelValueList>
-                  <PacketFileRows files={view.files} />
-                </OperationalLabelValueList>
-              </div>
-            </PacketSection>
-          )}
-          <footer className="space-y-4 py-4">
+    <div className="min-h-dvh bg-background text-foreground">
+      <main className="mx-auto max-w-3xl space-y-10 px-6 pt-8 pb-20 sm:pt-12 print:max-w-none print:p-0">
+        <header className="space-y-8">
+          <SpotWordmark />
+          <div className="space-y-2">
+            <h1 className={`text-balance ${typeStyle("heading.page")}`}>
+              {view.title}
+            </h1>
             <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-              Spot helps businesses manage their insurance and works with
-              providers to find coverage. We organize company information, prepare
-              submissions, and coordinate questions and next steps between
-              businesses and their providers.
+              Prepared by Spot for {view.recipientLabel}
+              {view.expiresAt !== undefined &&
+                ` · Available until ${formatDisplayDateTimeUtc(view.expiresAt)}`}
             </p>
-            <TextLink
-              href="https://spot.insure/partners/brokers"
-              target="_blank"
-              rel="noopener noreferrer"
+          </div>
+        </header>
+        {contactEmail && (
+          <OperationalPanel className="space-y-4 p-6 print:border-0 print:p-0">
+            <div className="min-w-0 space-y-1">
+              <p className={typeStyle("body.medium")}>
+                Send questions, quotes, or documents to the Spot team
+              </p>
+              <p
+                className={`wrap-anywhere text-muted-foreground ${typeStyle("body.default")}`}
+              >
+                {contactEmail}
+              </p>
+            </div>
+            <div className="flex gap-2 print:hidden">
+              <PillButton
+                variant="secondary"
+                className="flex-1 sm:flex-none"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(contactEmail);
+                    toast.success("Email copied");
+                  } catch {
+                    toast.error(
+                      "Could not copy the email. Select and copy the address above.",
+                    );
+                  }
+                }}
+              >
+                Copy email
+              </PillButton>
+              <PillButton
+                href={`mailto:${contactEmail}`}
+                className="flex-1 sm:flex-none"
+              >
+                Email Spot{" "}
+                <ArrowUpRight aria-hidden="true" className="size-3.5" />
+              </PillButton>
+            </div>
+          </OperationalPanel>
+        )}
+        {parts.notes && (
+          <DocumentSection id="submission-notes" title="Submission notes">
+            <ProseMarkdown
+              gfm
+              breaks
+              components={noteHeadings}
+              className={NOTE_PROSE_SPACING}
             >
-              Become a partner
-            </TextLink>
-          </footer>
-        </main>
-      </div>
+              {parts.notes}
+            </ProseMarkdown>
+          </DocumentSection>
+        )}
+        <DocumentSection
+          id="packet-details"
+          title={parts.application ? "Application" : "Request details"}
+        >
+          {view.markdown.trim() ? (
+            <ProseMarkdown
+              gfm
+              rehypePlugins={plugins}
+              components={applicationComponents}
+              className={APPLICATION_PROSE_SPACING}
+            >
+              {presentedMarkdown}
+            </ProseMarkdown>
+          ) : (
+            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              No request details have been shared yet.
+            </p>
+          )}
+        </DocumentSection>
+        {view.files.length > 0 && (
+          <DocumentSection id="packet-files" title="All files">
+            <PairList>
+              <PacketFilePairs files={view.files} />
+            </PairList>
+          </DocumentSection>
+        )}
+        <footer className="space-y-3 border-t border-border pt-8">
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+            Spot helps businesses manage their insurance and works with
+            providers to find coverage. We organize company information, prepare
+            submissions, and coordinate questions and next steps between
+            businesses and their providers.
+          </p>
+          <TextLink
+            href="https://spot.insure/partners/brokers"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Become a partner
+          </TextLink>
+        </footer>
+      </main>
     </div>
   );
 }

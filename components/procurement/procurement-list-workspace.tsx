@@ -13,7 +13,14 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
-import { Copy, FileSearch, Loader2, PanelRightOpen, Plus } from "lucide-react";
+import {
+  Copy,
+  FileSearch,
+  Link,
+  Loader2,
+  PanelRightOpen,
+  Plus,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -509,6 +516,37 @@ export function ProcurementListWorkspace({
   );
   const [selectedRequestId, setSelectedRequestId] =
     useState<Id<"procurementRequests"> | null>(null);
+  const ensureShareUrl = useMutation(api.procurementPacket.ensureShareUrl);
+  const [copyingLinkId, setCopyingLinkId] =
+    useState<Id<"procurementRequests"> | null>(null);
+
+  async function copyShareLink(request: ProcurementRequestRow) {
+    setCopyingLinkId(request._id);
+    try {
+      const result = ensureShareUrl({ requestId: request._id });
+      // Passing the pending URL keeps the click's clipboard permission in Safari.
+      if (typeof ClipboardItem !== "undefined")
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": result.then(
+              ({ url }) => new Blob([url], { type: "text/plain" }),
+            ),
+          }),
+        ]);
+      else await navigator.clipboard.writeText((await result).url);
+      toast.success(
+        (await result).created
+          ? "Shareable link created and copied"
+          : "Shareable link copied",
+      );
+    } catch (error) {
+      toast.error(
+        getUserFacingErrorMessage(error, "Could not copy the shareable link"),
+      );
+    } finally {
+      setCopyingLinkId(null);
+    }
+  }
 
   const closeRightPanel = useCallback(() => {
     setSelectedRequestId(null);
@@ -583,6 +621,11 @@ export function ProcurementListWorkspace({
             <TableHead className="w-[18%]">Status</TableHead>
             <TableHead className="w-[18%]">Target date</TableHead>
             <TableHead className="w-[12%]">Updated</TableHead>
+            {!readOnly && (
+              <TableHead className="w-0">
+                <span className="sr-only">Actions</span>
+              </TableHead>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -614,6 +657,28 @@ export function ProcurementListWorkspace({
               <TableCell className="text-muted-foreground">
                 {formatDisplayDate(request.updatedAt, "\u2014")}
               </TableCell>
+              {!readOnly && (
+                <TableCell
+                  className="text-right"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
+                >
+                  <PillButton
+                    type="button"
+                    variant="icon"
+                    iconOnly
+                    label={`Copy shareable link for ${request.title}`}
+                    disabled={copyingLinkId === request._id}
+                    onClick={() => void copyShareLink(request)}
+                  >
+                    {copyingLinkId === request._id ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Link className="size-3.5" />
+                    )}
+                  </PillButton>
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>
