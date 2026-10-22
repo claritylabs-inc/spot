@@ -58,7 +58,8 @@ export function outreachLeavesRequestSent(
  * cancels their `scheduled`/`sending` steps. Idempotent: sequences already `responded`,
  * `completed`, `stopped`, or `failed` are left as they are. Every step claim re-checks the
  * sequence, request, and outreach, so queued work cannot claim after this commits. A provider request already in
- * flight may still deliver; its finisher must treat `cancelled` as final.
+ * flight may still deliver: a cancelled `sending` step keeps its lease token and
+ * `finishStepInternal` records the real outcome without resuming anything.
  */
 export async function stopOutreachSequences(
   ctx: MutationCtx,
@@ -99,12 +100,14 @@ export async function stopOutreachSequences(
       .take(MAX_STEPS_PER_SEQUENCE);
     for (const step of steps) {
       if (!PENDING_STEP_STATUSES.has(step.status)) continue;
-      await ctx.db.patch(step._id, {
-        status: "cancelled",
-        leaseToken: undefined,
-        leaseUntil: undefined,
-        updatedAt: now,
-      });
+      // A cancelled in-flight send keeps its lease token so its worker can still
+      // record the real outcome (`finishStepInternal`); scheduled steps drop theirs.
+      await ctx.db.patch(
+        step._id,
+        step.status === "sending"
+          ? { status: "cancelled", updatedAt: now }
+          : { status: "cancelled", leaseToken: undefined, leaseUntil: undefined, updatedAt: now },
+      );
       cancelledStepCount += 1;
     }
     await ctx.db.patch(sequence._id, {
