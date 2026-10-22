@@ -1,3 +1,4 @@
+import { readBoundedRequestBody } from "./lib/httpBody";
 import { startModelCall, finishModelCall } from "./modelRoutingEvents";
 import { callContextValidator, callResultValidator, modelCallResult } from "./lib/modelCallTelemetry";
 import dayjs from "dayjs";
@@ -371,30 +372,6 @@ export const assetHttp = httpAction(async (ctx, request) => {
     : new Response(null, { status: 404 });
 });
 
-async function boundedBody(request: Request): Promise<string | null> {
-  if (Number(request.headers.get("content-length")) > ROUTER_JOB_RESULT_BYTES)
-    return null;
-  const reader = request.body?.getReader();
-  if (!reader) return null;
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  let size = 0;
-  let text = "";
-  try {
-    for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      size += chunk.value.byteLength;
-      if (size > ROUTER_JOB_RESULT_BYTES) {
-        await reader.cancel();
-        return null;
-      }
-      text += decoder.decode(chunk.value, { stream: true });
-    }
-    return text + decoder.decode();
-  } finally {
-    reader.releaseLock();
-  }
-}
 
 export const recordToolActivity = internalMutation({
   args: {
@@ -564,7 +541,7 @@ export const resultHttp = httpAction(async (ctx, request) => {
   if (!row || !tokenHash) return new Response(null, { status: 404 });
   let body: Record<string, unknown>;
   try {
-    const raw = await boundedBody(request);
+    const raw = await readBoundedRequestBody(request, ROUTER_JOB_RESULT_BYTES);
     if (raw === null) return new Response(null, { status: 413 });
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))

@@ -1,3 +1,4 @@
+import { getProviderOutreachPanel, launchProviderOutreachByOperator, stopProviderOutreachByOperator } from "./providerOutreach";
 import { NoWriteInputError } from "./lib/noWriteInputError";
 import {
   operatorPlanningAssessmentValidator,
@@ -65,6 +66,7 @@ import {
   setFeatureFlagPatch,
 } from "./lib/featureFlags";
 import {
+  OPERATOR_AGENT_TOOL_REGISTRY,
   getOperatorAgentToolSpec,
   availableOperatorAgentToolNames,
   operatorToolRoleAllowed,
@@ -2743,6 +2745,36 @@ async function executeToolDomain(
       name: normalizedOptionalText(input.name),
       website:
         input.website === null ? null : normalizedOptionalText(input.website),
+    });
+  }
+
+  if (toolName === "list_procurement_provider_matches") {
+    return await getProviderOutreachPanel(
+      ctx,
+      normalizeProcurementRequestId(ctx, input.procurementRequestId),
+    );
+  }
+
+  if (toolName === "launch_procurement_provider_outreach") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.launch_procurement_provider_outreach.inputSchema.parse(input);
+    return await launchProviderOutreachByOperator(ctx, {
+      operatorUserId: args.operatorUserId,
+      requestId: normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
+      brokerOrgIds: parsed.brokerOrgIds.map((id) => normalizeOrganizationId(ctx, id)),
+      cadence: parsed.cadence,
+      cadenceSource: { followUpCount: "operator", intervalBusinessDays: "operator", style: "operator" },
+    });
+  }
+
+  if (toolName === "stop_procurement_provider_outreach") {
+    const sequenceId = typeof input.sequenceId === "string"
+      ? ctx.db.normalizeId("procurementOutreachSequences", input.sequenceId)
+      : null;
+    if (!sequenceId) throw new NoWriteInputError("invalid_identifier", "Invalid outreach sequence ID");
+    return await stopProviderOutreachByOperator(ctx, {
+      operatorUserId: args.operatorUserId,
+      requestId: normalizeProcurementRequestId(ctx, input.procurementRequestId),
+      sequenceId,
     });
   }
 

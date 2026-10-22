@@ -1741,35 +1741,69 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ),
   }),
   list_procurement_provider_matches: defineOperatorTool({
-    family: "procurement", version: 1,
-    description: "List bounded provider appetite matches, recipient choices, cadence and sequence state for one company-linked procurement request. Unknown fit is not a match; bounded results do not prove absence.",
+    family: "procurement",
+    version: 1,
+    description:
+      "List bounded provider appetite matches, recipient choices, cadence and sequence state for one company-linked procurement request. Unknown fit is not a match; bounded results do not prove absence.",
     inputSchema: z.object({ procurementRequestId }),
-    capability: "operator.procurement.read", effect: "read", requiredRole: "operator", confirmation: "none",
-    target: (input) => ({ kind: "procurement_request", id: input.procurementRequestId }),
-    summarize: (input) => `List provider matches for ${input.procurementRequestId}`,
+    capability: "operator.procurement.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) => ({
+      kind: "procurement_request",
+      id: input.procurementRequestId,
+    }),
+    summarize: (input) =>
+      `List provider matches for ${input.procurementRequestId}`,
   }),
   launch_procurement_provider_outreach: defineOperatorTool({
-    family: "procurement", version: 1,
-    description: "Send provider outreach immediately and schedule the exact approved follow-up cadence. First list matches and explicitly name at most 50 providers. Unknown-fit providers require individual selection; excluded providers cannot receive outreach. Existing active or responded sequences are skipped. The email shares the provider-scoped packet link.",
+    family: "procurement",
+    version: 1,
+    description:
+      "Send provider outreach immediately and schedule the exact approved follow-up cadence. First list matches and explicitly name at most 50 providers. Unknown-fit providers require individual selection; excluded providers cannot receive outreach. Existing active or responded sequences are skipped. The email shares the provider-scoped packet link.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgIds: z.array(organizationId).min(1).max(50),
       cadence: z.object({
         followUpCount: z.number().int().min(0).max(4),
-        intervalBusinessDays: z.union([z.literal(2), z.literal(3), z.literal(5), z.literal(7)]),
+        intervalBusinessDays: z.union([
+          z.literal(2),
+          z.literal(3),
+          z.literal(5),
+          z.literal(7),
+        ]),
         style: z.enum(["brief_nudge", "concise_recap", "detailed_recap"]),
       }),
     }),
-    capability: "operator.procurement.write", effect: "external_send", requiredRole: "operator", confirmation: "exact",
-    target: (input) => ({ kind: "procurement_request", id: input.procurementRequestId }),
-    summarize: (input) => `Send outreach to ${input.brokerOrgIds.length} providers for ${input.procurementRequestId}, with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days (${input.cadence.style})`,
+    capability: "operator.procurement.write",
+    effect: "external_send",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) => ({
+      kind: "procurement_request",
+      id: input.procurementRequestId,
+    }),
+    summarize: (input) =>
+      `Send outreach to ${input.brokerOrgIds.length} providers for ${input.procurementRequestId}, with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days (${input.cadence.style})`,
   }),
   stop_procurement_provider_outreach: defineOperatorTool({
-    family: "procurement", version: 1,
-    description: "Stop an automated provider outreach sequence and cancel its pending follow-ups for the exact request.",
-    inputSchema: z.object({ procurementRequestId, sequenceId: z.string().min(1) }),
-    capability: "operator.procurement.write", effect: "reversible_write", requiredRole: "operator", confirmation: "exact",
-    target: (input) => ({ kind: "procurement_request", id: input.procurementRequestId }),
+    family: "procurement",
+    version: 1,
+    description:
+      "Stop an automated provider outreach sequence and cancel its pending follow-ups for the exact request.",
+    inputSchema: z.object({
+      procurementRequestId,
+      sequenceId: z.string().min(1),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) => ({
+      kind: "procurement_request",
+      id: input.procurementRequestId,
+    }),
     summarize: (input) => `Stop provider outreach sequence ${input.sequenceId}`,
   }),
   create_procurement_broker_outreach: defineOperatorTool({

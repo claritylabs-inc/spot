@@ -230,6 +230,7 @@ import type * as lib_googleWorkspaceProvider from "../lib/googleWorkspaceProvide
 import type * as lib_googleWorkspaceTools from "../lib/googleWorkspaceTools.js";
 import type * as lib_googleWorkspaceValidators from "../lib/googleWorkspaceValidators.js";
 import type * as lib_googleWorkspaceVerification from "../lib/googleWorkspaceVerification.js";
+import type * as lib_httpBody from "../lib/httpBody.js";
 import type * as lib_imapDestination from "../lib/imapDestination.js";
 import type * as lib_imapMailbox from "../lib/imapMailbox.js";
 import type * as lib_imessageAgentContext from "../lib/imessageAgentContext.js";
@@ -353,6 +354,7 @@ import type * as lib_providerOutreachEmail from "../lib/providerOutreachEmail.js
 import type * as lib_providerOutreachLifecycle from "../lib/providerOutreachLifecycle.js";
 import type * as lib_providerOutreachMatch from "../lib/providerOutreachMatch.js";
 import type * as lib_providerOutreachSchedule from "../lib/providerOutreachSchedule.js";
+import type * as lib_providerOutreachValidators from "../lib/providerOutreachValidators.js";
 import type * as lib_quoWebhook from "../lib/quoWebhook.js";
 import type * as lib_requirementAttachmentIntent from "../lib/requirementAttachmentIntent.js";
 import type * as lib_resend from "../lib/resend.js";
@@ -452,6 +454,7 @@ import type * as procurementSms from "../procurementSms.js";
 import type * as proposalExtraction from "../proposalExtraction.js";
 import type * as proposalSourceNodes from "../proposalSourceNodes.js";
 import type * as proposalSourceSpans from "../proposalSourceSpans.js";
+import type * as providerOutreach from "../providerOutreach.js";
 import type * as quoBrokerWebhook from "../quoBrokerWebhook.js";
 import type * as rateLimits from "../rateLimits.js";
 import type * as reextractLegacyPolicies from "../reextractLegacyPolicies.js";
@@ -706,6 +709,7 @@ declare const fullApi: ApiFromModules<{
   "lib/googleWorkspaceTools": typeof lib_googleWorkspaceTools;
   "lib/googleWorkspaceValidators": typeof lib_googleWorkspaceValidators;
   "lib/googleWorkspaceVerification": typeof lib_googleWorkspaceVerification;
+  "lib/httpBody": typeof lib_httpBody;
   "lib/imapDestination": typeof lib_imapDestination;
   "lib/imapMailbox": typeof lib_imapMailbox;
   "lib/imessageAgentContext": typeof lib_imessageAgentContext;
@@ -829,6 +833,7 @@ declare const fullApi: ApiFromModules<{
   "lib/providerOutreachLifecycle": typeof lib_providerOutreachLifecycle;
   "lib/providerOutreachMatch": typeof lib_providerOutreachMatch;
   "lib/providerOutreachSchedule": typeof lib_providerOutreachSchedule;
+  "lib/providerOutreachValidators": typeof lib_providerOutreachValidators;
   "lib/quoWebhook": typeof lib_quoWebhook;
   "lib/requirementAttachmentIntent": typeof lib_requirementAttachmentIntent;
   "lib/resend": typeof lib_resend;
@@ -928,6 +933,7 @@ declare const fullApi: ApiFromModules<{
   proposalExtraction: typeof proposalExtraction;
   proposalSourceNodes: typeof proposalSourceNodes;
   proposalSourceSpans: typeof proposalSourceSpans;
+  providerOutreach: typeof providerOutreach;
   quoBrokerWebhook: typeof quoBrokerWebhook;
   rateLimits: typeof rateLimits;
   reextractLegacyPolicies: typeof reextractLegacyPolicies;

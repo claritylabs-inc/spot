@@ -12,18 +12,20 @@ All browser writes require a direct operator. Operator tools use the same domain
 
 | Request coverage | Accepted provider codes |
 | --- | --- |
-| General liability | CGL, BOP, CPKGE |
-| Property | PROP, BOP, CPKGE |
-| Workers compensation | WORK |
+| General liability | CGL, BOPGL, BOP, CPKGE |
+| Property | PROP, BOPPR, BOP, CPKGE |
+| Workers compensation | WORK, WORKP |
 | Commercial auto | AUTOB, TRUCK |
-| Professional liability | EO, PL |
+| Professional liability | EO, PL, PLMSC |
 | Cyber | CYBER |
-| Umbrella/excess | UMBRC, EXLIA |
+| Umbrella/excess | UMBRC, UMBRL, EXLIA |
 | Other/unknown | Unevaluable |
 
-Locations, property addresses and workers-compensation jurisdictions supply geography, with registration fallback. Country codes are ISO2 and US/Canadian regions use the existing provider region codes. A provider country without listed regions is country-wide. Missing primary-region service or zero covered lines excludes a provider; some covered regions/lines produce a partial match. Missing appetite is unknown fit. An undetermined request dimension is skipped with a banner. Inactive and blacklisted providers remain excluded. Unknown-fit providers require explicit individual selection and are excluded from send-all.
+Locations, property addresses and workers-compensation jurisdictions supply geography, with mailing address before registration fallback. Country codes are ISO2 and US/Canadian regions use the existing provider region codes. A provider country without listed regions is country-wide. Missing US/Canadian request regions are unknown for region-limited providers. Hidden follow-up answers do not supply geography. Missing primary-region service or zero covered lines excludes a provider; some covered regions/lines produce a partial match. Missing appetite is unknown fit. An undetermined request dimension is skipped with a banner. Inactive and blacklisted providers remain excluded. Unknown-fit providers require explicit individual selection and are excluded from send-all.
 
-Explicit outreach email wins; otherwise contact roles rank submissions, general, underwriting, other, then claims/billing, with overlapping lines preferred within a role. No eligible recipient means no send.
+Manual Auto-add retains its conservative all-locations requirement and requires explicit US/Canadian regional appetite; automated outreach displays partial matches and country-wide appetite under the rules above. Both use shared code aliases and geography normalization.
+
+Explicit outreach email wins; an invalid or Spot-owned explicit email blocks sending without substituting another recipient; otherwise contact roles rank submissions, general, underwriting, other, then claims/billing, with overlapping lines preferred within a role. No eligible recipient means no send.
 
 ## Durable execution
 

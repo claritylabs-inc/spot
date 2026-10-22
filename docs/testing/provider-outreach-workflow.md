@@ -20,7 +20,7 @@ Cleanup: stop synthetic sequences, revoke synthetic packet links, and remove syn
 
 | Case | Status | Evidence |
 | --- | --- | --- |
-| Missing geography modal | Passed (desktop core path) | Local Chrome normal OTP sign-in; blank country opens modal, GB has no state selector, Cancel preserves blank, US/CA save retries auto-add, reload retains geography. `.context/qa/provider-outreach/geography-{dialog-empty,dialog-ready,saved-retry}.png` |
+| Missing geography modal | Passed (desktop and mobile) | Local Chrome normal OTP sign-in; blank country opens modal, GB has no state selector, Cancel preserves blank, US/CA save retries auto-add, reload retains geography. Missing property location corrected to Canada/Ontario at 390px width; save retries successfully. `.context/qa/provider-outreach/geography-{dialog-empty,dialog-ready,saved-retry,property-mobile}.png` |
 | Matching and cadence | Not run | Full outreach panel implementation in progress |
 | Capture launch and dedupe | Not run | Implementation in progress |
 | Authorization and lifecycle | Not run | Implementation in progress |

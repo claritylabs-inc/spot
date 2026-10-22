@@ -1,26 +1,13 @@
 import { ConvexError } from "convex/values";
 import type { IntakeApplication } from "../../lib/intake-application";
-import type {
-  CoverageId,
-  IntakeAddress,
-} from "../../lib/insurance-intake-details";
+import type { IntakeAddress } from "../../lib/insurance-intake-details";
 import {
   brokerRegionCountry,
   brokerWritingCountries,
 } from "./brokerProfileValidation";
 import { normalizeCountry, normalizeRegion } from "./providerOutreachMatch";
 
-// Alternatives identify the requested class, not every product in a package.
-// BOP alone does not establish either component's standalone availability.
-const coverageCodes: Partial<Record<CoverageId, readonly string[]>> = {
-  general_liability: ["CGL", "BOPGL"],
-  property: ["PROP", "BOPPR"],
-  workers_compensation: ["WORK", "WORKP"],
-  commercial_auto: ["AUTOB"],
-  professional_liability: ["EO", "PL", "PLMSC"],
-  cyber: ["CYBER"],
-  umbrella: ["UMBRC", "UMBRL"],
-};
+import { COVERAGE_PROVIDER_LOB_CODES as coverageCodes } from "./coverageLobMapping";
 
 export function procurementBrokerCriteria(
   application: IntakeApplication | null,
@@ -67,9 +54,10 @@ function requestArea(address: IntakeAddress) {
     );
   if (country !== "US" && country !== "CA") return { country };
   const normalizedRegion = normalizeRegion(address.state);
-  const state = normalizedRegion && brokerRegionCountry(normalizedRegion) === country
-    ? normalizedRegion
-    : undefined;
+  const state =
+    normalizedRegion && brokerRegionCountry(normalizedRegion) === country
+      ? normalizedRegion
+      : undefined;
   if (!state)
     throw new ConvexError(
       "Set a valid state or province for every US or Canadian operating and property location before auto adding providers.",
