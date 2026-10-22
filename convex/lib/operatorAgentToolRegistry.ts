@@ -961,9 +961,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   get_broker_network_profile: defineOperatorTool({
     family: "broker_network",
-    version: 2,
+    version: 3,
     description:
-      "Read one exact external supplier-network insurance provider profile; Spot-owned brands are ineligible. Includes neutral organization identity, office, serviced countries and states/provinces, exact ACORD LOBCd values, portal contacts, last outreach, proposal count, and persisted research outcome, sources and confidence-scored findings.",
+      "Read one exact external supplier-network insurance provider profile; Spot-owned brands are ineligible. Includes neutral organization identity, office, serviced countries and states/provinces, exact ACORD LOBCd values, portal contacts plus operator-only networkContacts (people/team contact methods, roles, coverage context, notes, sources and a bounded flag), last outreach, proposal count, and persisted research outcome, sources and confidence-scored findings.",
     inputSchema: z.object({ brokerOrgId: organizationId }),
     capability: "operator.organizations.read",
     effect: "read",

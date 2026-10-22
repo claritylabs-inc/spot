@@ -1,3 +1,4 @@
+import { listProviderContacts } from "./brokerContacts";
 import { scheduleCompanyResearch } from "./companyResearch";
 import dayjs from "dayjs";
 import { v } from "convex/values";
@@ -157,6 +158,9 @@ async function profileRow(
     contacts: contacts.filter(Boolean),
     ...(includeNetworkActivity
       ? {
+          ...(includeResearch
+            ? { networkContacts: await listProviderContacts(ctx, broker._id) }
+            : {}),
           lastOutreachAt: lastOutreach?.sentAt,
           proposalCount: proposals.length,
         }

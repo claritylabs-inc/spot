@@ -1,3 +1,4 @@
+import { brokerContactFields } from "./lib/brokerContactFields";
 import {
   operatorPlanningAssessmentValidator,
   operatorExecutionPlanValidator,
@@ -657,6 +658,17 @@ export default defineSchema({
     unresolvedFields: v.array(v.string()),
     createdAt: v.number(),
   }).index("organization", ["orgId", "createdAt"]),
+
+  brokerContacts: defineTable({
+    brokerOrgId: v.id("organizations"),
+    ...brokerContactFields,
+    revision: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedByUserId: v.id("users"),
+    researchedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
+  }).index("by_brokerOrgId_and_deletedAt", ["brokerOrgId", "deletedAt"]),
 
   brokerProfiles: defineTable({
     manualFields: v.optional(

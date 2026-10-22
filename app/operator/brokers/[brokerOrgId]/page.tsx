@@ -12,6 +12,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
 import { AppShellPortal } from "@/components/app-shell-slots";
+import { ProviderContacts } from "@/components/broker-network/provider-contacts";
 import { BrokerActivity } from "@/components/broker-network/broker-activity";
 import {
   AppetiteCountriesField,
@@ -178,6 +179,7 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
         <TabsList variant="pill" aria-label="Provider">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="appetite">Appetite</TabsTrigger>
+          <TabsTrigger value="contacts">Contacts</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
         <TabsContent value="profile" className="space-y-5">
@@ -334,6 +336,9 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
               />
             </InlineFieldRow>
           </InlineFieldCard>
+        </TabsContent>
+        <TabsContent value="contacts">
+          <ProviderContacts brokerOrgId={row.broker._id} />
         </TabsContent>
         <TabsContent value="activity">
           <BrokerActivity brokerOrgId={row.broker._id} />

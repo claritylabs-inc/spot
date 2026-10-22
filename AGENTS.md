@@ -215,3 +215,12 @@ Intake System One decisions use nested typed evidence, known Choice candidates a
 Provider Appetite uses searchable enum selections for Countries serviced (ISO country codes) and States / provinces serviced (US states/DC and Canadian provinces/territories). `convex/lib/brokerProfileValidation.ts` owns normalization, country/region consistency and legacy country inference. Both provider editors share `components/broker-network/appetite-geography-fields.tsx`; country removal clears dependent regions and claims manual ownership over regional research. No data migration is needed for existing state-only profiles.
 
 Provider coverage-line appetite uses the shared ACORD PCS catalog through `convex/lib/linesOfBusiness.ts` and `components/broker-network/acord-lines-field.tsx`. The provider subset excludes `UN`/`BLANK`, preserves exact codes and unknown empty lists, and is shared with write validation and research. See `docs/architecture/acord-provider-appetite.md` for the extracted 2.11.0 model, source catalog and reproducible extraction script.
+
+Provider relationship contacts live in `brokerContacts`, separate from portal
+memberships and login permissions. `convex/brokerContacts.ts` owns operator-only,
+non-impersonated, audited saves with revision checks and recoverable removal.
+`components/broker-network/provider-contacts.tsx` owns the Contacts tab's inline
+cards, autosave, contact roles, exact ACORD coverage context and notes. Public
+research records retain source URLs, evidence and a checked timestamp; later
+operator edits are labeled and keep the original source evidence. The detail
+read tool exposes these as bounded `networkContacts`; directory lists omit them.
