@@ -241,22 +241,28 @@ export const lookup = action({
         process.env.SPOT_ENV === "local" ? "local-inline" : "durable",
       );
       const compact = (value: string) => value.trim().replace(/\s+/g, " ");
-      const knownUrls = new Set(
-        research.sources
-          .map((row) => publicResearchUrl(row.url))
-          .filter(Boolean),
-      );
-      const candidates = result.object.specifications.filter(
-        (row) =>
-          knownUrls.has(publicResearchUrl(row.sourceUrl)) &&
+      // Grounding compares normalized URLs; decisions must see the exact
+      // `sources[].url`, so each candidate is rewritten to its matching entry.
+      const sourceUrls = new Map<string, string>();
+      for (const source of research.sources) {
+        const normalized = publicResearchUrl(source.url);
+        if (normalized && !sourceUrls.has(normalized))
+          sourceUrls.set(normalized, source.url);
+      }
+      const candidates = result.object.specifications.flatMap((row) => {
+        const normalized = publicResearchUrl(row.sourceUrl);
+        const sourceUrl = normalized ? sourceUrls.get(normalized) : undefined;
+        return sourceUrl &&
           !!compact(row.excerpt) &&
           compact(research.text).includes(compact(row.excerpt)) &&
           (row.field === "seats"
             ? row.unit === "seats" &&
               Number.isInteger(row.value) &&
               row.value <= 100
-            : row.unit !== "seats"),
-      );
+            : row.unit !== "seats")
+          ? [{ ...row, sourceUrl }]
+          : [];
+      });
       if (!candidates.length) return { identity, specifications: [] };
       const decisions = await clRouterDecide(
         {
