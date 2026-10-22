@@ -99,10 +99,11 @@ normalized; country names and accent-insensitive province names are supported.
 
 A country selection alone does not establish service in every US state or
 Canadian province. Missing appetite remains unknown and is reported in the
-result. Other/unknown intake coverage needs manual matching. BOP alone does not
-imply standalone general liability/property; personal auto, personal umbrella
-and specialty marine workers compensation do not imply their general commercial
-counterparts. Umbrella does not match excess-only appetite. The underlying
+result. Other/unknown intake coverage needs manual matching. The shared
+`coverageLobMapping` owner accepts package component classes and excess/umbrella
+alternatives for request matching; it does not promise a standalone product or
+particular policy form. Personal auto, personal umbrella and specialty marine
+workers compensation do not imply their general commercial counterparts. The underlying
 publicly researched appetite remains a class-level indicator, not underwriting
 acceptance for the client's industry, limits or detailed risk.
 
@@ -133,3 +134,8 @@ The existing right-hand SettingsDrawer uses compact inline rows for the summary
 and review links; the operator stays on the request. Directory state filters
 also recognize nationwide service and honor exclusions. See the
 [129-provider research review](../research/provider-geography-2026-10-22.md).
+
+The nationwide/exception predicate is shared as `brokerAreaFit` by manual
+procurement matching and the provider-outreach fit classifier. Missing US/CA
+regional appetite remains unknown unless nationwide scope is explicit. The
+existing missing-request-geography prompt remains in front of Auto add.

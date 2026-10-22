@@ -2276,3 +2276,8 @@ touched-file ESLint, whitespace checks and local deployment passed. No unit test
 or migrations were written. Browser checks did not separately exercise every
 country-removal combination or the broker-member editor; those paths were
 source-reviewed and share the validated normalization owner. Production unchanged.
+
+Integrated concurrent request-geography prompting and shared coverage mappings.
+The new nationwide/exception predicate is shared by both manual matching and
+outreach fit classification. Corrected unsupported row-layout props without
+changing the primitive; the inspected wrapping layout is preserved.
