@@ -85,7 +85,7 @@ function requestAddresses(details: IntakeDetails): Row[] {
         {
           key: "mailing",
           path: { kind: "mailing" },
-          label: "Mailing address (no operating locations listed)",
+          label: "Mailing address",
           address: details.mailingAddress,
         },
       ];
@@ -95,7 +95,7 @@ function requestAddresses(details: IntakeDetails): Row[] {
         key: `property:${coverage}:${index}`,
         path: { kind: "property", coverage, property: index },
         label: named(
-          `${coverageRequestLabel(line)} property ${index + 1}`,
+          `${coverageRequestLabel(line)} · Location ${index + 1}`,
           property.name,
         ),
         address: property.address,
@@ -322,9 +322,8 @@ export function ProviderGeographyDialog({
         <DialogHeader>
           <DialogTitle>Set locations to match providers</DialogTitle>
           <DialogDescription>
-            Provider matching needs a country for every address, and a state or
-            province for US and Canadian ones. Providers are added right after
-            saving; nothing else in the application changes.
+            Set the missing countries and states or provinces to find matching
+            providers.
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[60vh] space-y-3 overflow-y-auto">
