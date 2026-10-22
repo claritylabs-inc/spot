@@ -263,31 +263,34 @@ export const lookup = action({
         const answer = decisions.answers[key];
         return answer?.type === "noul" ? answer.noul : undefined;
       };
-      let uncertain = 0;
+      const bands = { high: 0, low: 0, uncertain: 0 };
+      let prefillable = 0;
       const verified = candidates.flatMap((row, index) => {
         const support = minimum(
           SUPPORT_CHECKS.map((check) => probability(`${check}${index}`)),
         );
         const band = jevDecisionBand(support, "suggestion");
-        if (band === "uncertain") uncertain += 1;
+        bands[band] += 1;
         if (band !== "high") return [];
         // Only a verified, universal fact may prefill the field. Otherwise the
         // applicant still chooses the configuration or types the value.
         const universal = minimum([support, probability(`u${index}`)]);
-        return [
-          {
-            ...row,
-            appliesToAllVariants:
-              row.appliesToAllVariants &&
-              jevDecisionBand(universal, "prefill") === "high",
-          },
-        ];
+        const appliesToAllVariants =
+          row.appliesToAllVariants &&
+          jevDecisionBand(universal, "prefill") === "high";
+        if (appliesToAllVariants) prefillable += 1;
+        return [{ ...row, appliesToAllVariants }];
       });
-      if (uncertain)
-        console.info("[intakeVehicleSpecifications] left for applicant entry", {
-          requestId: args.requestId,
-          uncertain,
-        });
+      // Structural counts only: uncertain and low candidates are dropped and the
+      // applicant keeps ordinary manual entry. No answer or source text is logged.
+      console.info("[intakeVehicleSpecifications] verified", {
+        requestId: args.requestId,
+        candidates: candidates.length,
+        accepted: bands.high,
+        prefillable,
+        rejectedLow: bands.low,
+        leftForApplicant: bands.uncertain,
+      });
       return { identity, specifications: verified };
     } catch (error) {
       console.warn("[intakeVehicleSpecifications] unavailable", {

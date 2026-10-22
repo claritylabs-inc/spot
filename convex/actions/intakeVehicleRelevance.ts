@@ -158,6 +158,12 @@ export const run = internalAction({
         plan.push({ candidate: index, vehicles });
       });
       if (!plan.length) {
+        console.info("[intakeVehicleRelevance] decided", {
+          requestId: args.requestId,
+          candidates: candidates.length,
+          judged: 0,
+          retainedWithoutJudgment: candidates.length,
+        });
         await ctx.runMutation(internal.requestIntake.finishVehicleRelevance, {
           ...args,
           failed: false,
@@ -191,6 +197,7 @@ export const run = internalAction({
       };
       // Omission needs the strictest band. A low or uncertain aggregate leaves
       // the page for the applicant to answer; it is never assumed inapplicable.
+      const bands = { high: 0, low: 0, uncertain: 0 };
       const decisions = plan.flatMap(({ candidate, vehicles }) => {
         const neutral = probability(`n${candidate}`);
         const irrelevantProbability = minimum([
@@ -200,10 +207,21 @@ export const run = internalAction({
             probability(`x${candidate}_${vehicle}`),
           ]),
         ]);
-        return irrelevantProbability !== undefined &&
-          jevDecisionBand(irrelevantProbability, "omission") === "high"
+        const band = jevDecisionBand(irrelevantProbability, "omission");
+        bands[band] += 1;
+        return band === "high" && irrelevantProbability !== undefined
           ? [{ id: candidates[candidate].id, irrelevantProbability }]
           : [];
+      });
+      // Structural counts only: no evidence, candidate text or answers.
+      console.info("[intakeVehicleRelevance] decided", {
+        requestId: args.requestId,
+        candidates: candidates.length,
+        judged: plan.length,
+        retainedWithoutJudgment: candidates.length - plan.length,
+        omitted: bands.high,
+        retainedLow: bands.low,
+        retainedUncertain: bands.uncertain,
       });
       await ctx.runMutation(internal.requestIntake.finishVehicleRelevance, {
         ...args,
