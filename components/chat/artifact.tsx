@@ -98,7 +98,7 @@ export function ChatArtifact({
 /** Label/value rows for artifact headers such as email From/To or record facts. */
 export function ChatArtifactMeta({ children }: { children: ReactNode }) {
   return (
-    <dl className="grid grid-cols-[minmax(4.5rem,max-content)_minmax(0,1fr)] gap-x-4 gap-y-1.5">
+    <dl className="grid grid-cols-[minmax(4rem,max-content)_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1">
       {children}
     </dl>
   );
@@ -125,7 +125,7 @@ export function ChatArtifactMetaRow({
       <dd
         className={cn(
           "min-w-0 break-words text-foreground",
-          typeStyle("body.default"),
+          typeStyle("caption.default"),
         )}
       >
         {value}

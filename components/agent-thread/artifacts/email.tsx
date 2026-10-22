@@ -160,7 +160,7 @@ export function EmailBodyPreview({ html, text }: { html?: string; text: string }
   if (safeHtml) {
     return (
       <div
-        className={`break-words text-foreground/90 [overflow-wrap:anywhere] [&_a]:text-primary-light [&_a]:underline [&_img]:inline-block [&_img]:align-middle [&_p+p]:mt-3 ${typeStyle("body.default")}`}
+        className={`break-words text-foreground/90 [overflow-wrap:anywhere] [&_a]:text-primary-light [&_a]:underline [&_img]:inline-block [&_img]:align-middle [&_li+li]:mt-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p+p]:mt-3 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 ${typeStyle("body.default")}`}
         dangerouslySetInnerHTML={{ __html: safeHtml }}
       />
     );
