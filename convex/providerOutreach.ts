@@ -2598,6 +2598,9 @@ async function mirrorInboxEmail(
   if (thread?.deletedAt) thread = null;
   let threadId: Id<"procurementEmailThreads">;
   if (thread) {
+    if (thread.requestId !== request._id || thread.clientOrgId !== sequence.clientOrgId) {
+      throw new Error("Provider outreach conversation belongs to another request");
+    }
     threadId = thread._id;
     await ctx.db.patch(thread._id, {
       participantEmails: uniqueProcurementEmails([...thread.participantEmails, ...participants]),
