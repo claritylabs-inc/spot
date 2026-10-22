@@ -69,20 +69,21 @@ async function seedOAuthClientAndUser() {
 
 type OAuthTestHandle = Awaited<ReturnType<typeof seedOAuthClientAndUser>>["t"];
 
-function sessionFor(userId: Id<"users">) {
-  return { subject: `${userId}|session` };
+function sessionFor(userId: Id<"users">, sessionId = "session") {
+  return { subject: `${userId}|${sessionId}` };
 }
 
 async function createCode(options: {
   t: OAuthTestHandle;
   userId: Id<"users">;
+  sessionId?: Id<"authSessions">;
   clientId: string;
   codeChallenge: string;
   scope?: string;
   resource?: string;
 }) {
   return options.t
-    .withIdentity(sessionFor(options.userId))
+    .withIdentity(sessionFor(options.userId, options.sessionId))
     .mutation(createAuthorizationCodeFn, {
       clientId: options.clientId,
       redirectUri: REDIRECT_URI,
@@ -276,7 +277,7 @@ describe("operator oauth principals", () => {
 
   test("issues an operator token bound to the MCP resource and revalidates status", async () => {
     const t = convexTest(schema, modules);
-    const userId = await t.run(async (ctx) => {
+    const { userId, sessionId } = await t.run(async (ctx) => {
       const userId = await ctx.db.insert("users", {
         email: "operator@example.com",
         accountKind: "operator",
@@ -289,7 +290,17 @@ describe("operator oauth principals", () => {
         createdAt: dayjs().valueOf(),
         updatedAt: dayjs().valueOf(),
       });
-      return userId;
+      const sessionId = await ctx.db.insert("authSessions", {
+        userId,
+        expirationTime: dayjs().add(1, "day").valueOf(),
+      });
+      await ctx.db.insert("operatorSecondFactorSessions", {
+        sessionId,
+        userId,
+        method: "totp",
+        verifiedAt: dayjs().valueOf(),
+      });
+      return { userId, sessionId };
     });
     const client = await t.mutation(registerClientFn, {
       clientName: "Operator MCP",
@@ -300,6 +311,7 @@ describe("operator oauth principals", () => {
     const codeRaw = await createCode({
       t,
       userId,
+      sessionId,
       clientId: client.client_id,
       codeChallenge: await pkceChallenge(verifier),
       scope: "read write",

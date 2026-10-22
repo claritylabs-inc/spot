@@ -4,6 +4,7 @@ import migrationsTest from "@convex-dev/migrations/test";
 import dayjs from "dayjs";
 import { afterEach, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
 import { resolveActiveOperatorEmail } from "./lib/operatorIdentity";
 
@@ -19,6 +20,27 @@ const fixture = async () => {
   return t;
 };
 type Fixture = Awaited<ReturnType<typeof fixture>>;
+
+async function passSecondFactor(
+  t: Fixture,
+  userId: Id<"users">,
+  sessionId: Id<"authSessions">,
+) {
+  await t.run((ctx) =>
+    ctx.db.insert("operatorSecondFactorSessions", {
+      sessionId,
+      userId,
+      method: "totp",
+      verifiedAt: dayjs().valueOf(),
+    }),
+  );
+}
+
+function signedIn(result: unknown) {
+  if (!result || typeof result !== "object" || !("sessionId" in result))
+    throw new Error("Expected a verified auth session");
+  return result as { userId: Id<"users">; sessionId: Id<"authSessions"> };
+}
 
 async function requestCode(t: Fixture, email: string) {
   await t.mutation(internal.auth.store, {
@@ -75,10 +97,15 @@ test("all three verified mailboxes reuse the operator, primary address and role 
   ]) {
     await requestCode(t, email);
     expect(await verifyCode(t, email, "654321")).toBeNull();
-    expect(await verifyCode(t, email)).toMatchObject({ userId });
-    const current = await t
-      .withIdentity({ subject: `${userId}|session` })
-      .query(api.operator.current, {});
+    const session = signedIn(await verifyCode(t, email));
+    expect(session).toMatchObject({ userId });
+    const authed = t.withIdentity({ subject: `${userId}|${session.sessionId}` });
+    // An email code is only the first factor.
+    await expect(authed.query(api.operator.current, {})).rejects.toThrow(
+      /OPERATOR_REQUIRED/,
+    );
+    await passSecondFactor(t, userId, session.sessionId);
+    const current = await authed.query(api.operator.current, {});
     expect(current.user.email).toBe("terry@claritylabs.inc");
     expect(current.user.loginEmails).toHaveLength(3);
     expect(
@@ -110,12 +137,19 @@ test("first domain login automatically provisions an operator only after mailbox
   expect(
     await t.run((ctx) => ctx.db.query("authSessions").collect()),
   ).toHaveLength(0);
-  await verifyCode(t, "new.employee@spot.insure");
+  const session = signedIn(await verifyCode(t, "new.employee@spot.insure"));
   expect(await t.run((ctx) => ctx.db.get(user!._id))).toMatchObject({
     accountKind: "operator",
     onboardingComplete: true,
   });
-  expect(await authed.query(api.operator.current, {})).toMatchObject({
+  const verified = t.withIdentity({
+    subject: `${user!._id}|${session.sessionId}`,
+  });
+  await expect(verified.query(api.operator.current, {})).rejects.toThrow(
+    /OPERATOR_REQUIRED/,
+  );
+  await passSecondFactor(t, user!._id, session.sessionId);
+  expect(await verified.query(api.operator.current, {})).toMatchObject({
     profile: { role: "operator", status: "active" },
   });
   expect(await authed.mutation(api.operator.bootstrapViewer, {})).toEqual({

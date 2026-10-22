@@ -1,9 +1,17 @@
-import { isFixedVehicleFollowup, vehicleUnderwritingRows } from "./intake-vehicle-underwriting";
+import {
+  isFixedVehicleFollowup,
+  vehicleUnderwritingRows,
+} from "./intake-vehicle-underwriting";
 import { AUTO_QUOTE_QUESTIONS } from "./intake-auto-quote";
 import { DRIVER_QUESTIONS } from "./intake-drivers";
-import { followupQuestionVisible, formatIntakeFollowupAnswer } from "./intake-followups";
+import {
+  followupQuestionVisible,
+  formatIntakeFollowupAnswer,
+  type IntakeFollowupAnswer,
+} from "./intake-followups";
 import dayjs from "dayjs";
 import { vehicleMakeLabel } from "./vehicle-display";
+import { formatIntakeMoney, intakeCurrency } from "./intake-money";
 import {
   addressText,
   coverageOption,
@@ -111,14 +119,7 @@ export type IntakeAnswers = Partial<Record<IntakeField, string>>;
 export function missingIntakeAnswers(a: IntakeAnswers) {
   const missing: string[] = [];
   if (a.intakeGoal === "savings") {
-    return (
-      [
-        "name",
-        "email",
-        "legalName",
-        "description",
-      ] as const
-    )
+    return (["name", "email", "legalName", "description"] as const)
       .filter((key) => !a[key]?.trim())
       .map((key) => INTAKE_FIELDS[key]);
   }
@@ -170,28 +171,75 @@ export function legacyIntakeMarkdown(
 
 export function completedIntakeSteps(a: IntakeAnswers) {
   const steps: number[] = [];
-  if (a.name && a.email && a.trigger && a.effectiveDate)
-    steps.push(0);
+  if (a.name && a.email && a.trigger && a.effectiveDate) steps.push(0);
   if (a.coverage && a.coverageScope) steps.push(1);
   if (a.legalName && a.description) steps.push(2);
   if (a.currentInsurance) steps.push(3);
   return steps;
 }
 
+export type CatalogCoverageOwner = (
+  row: IntakeFollowupAnswer,
+  coverageIds: string[],
+) => string | undefined;
+/** Answered catalog questions grouped by the coverage that asked them, plus
+ * generated follow-ups. Underwriter wording is kept; catalog IDs stay in source data. */
+function underwritingAnswers(
+  details: IntakeDetails,
+  catalogCoverage?: CatalogCoverageOwner,
+) {
+  const answered = (section: IntakeFollowupAnswer["section"]) =>
+    (details.followups ?? []).filter(
+      (row) =>
+        row.section === section &&
+        !isFixedVehicleFollowup(row) &&
+        row.answer.trim() &&
+        followupQuestionVisible(row, details.followups),
+    );
+  const catalog = answered("acord");
+  const coverageIds = details.coverages.map((line) => line.coverage);
+  const owners = new Map(
+    catalog.map((row) => [row.id, catalogCoverage?.(row, coverageIds)]),
+  );
+  return {
+    forCoverage: (coverage: string) =>
+      catalog.filter((row) => owners.get(row.id) === coverage),
+    other: catalog.filter((row) => !owners.get(row.id)),
+    followups: answered("additional"),
+  };
+}
+
 export function intakeMarkdown(
   answers: IntakeAnswers,
   fields: IntakeField[] = Object.keys(INTAKE_FIELDS) as IntakeField[],
   details?: IntakeDetails,
+  catalogCoverage?: CatalogCoverageOwner,
 ) {
   const allowed = new Set(fields);
   const cell = (value: string) =>
     value.trim().replace(/\|/g, "\\|").replace(/\r?\n/g, "&#10;");
+  const currency = intakeCurrency(details?.registrationCountry);
+  const revenue = details?.revenue;
   const value = (key: IntakeField) => {
     const raw = answers[key]?.trim() ?? "";
-    return key === "effectiveDate" && /^\d{4}-\d{2}-\d{2}$/.test(raw)
+    if (key === "trailingRevenue" && revenue?.annualAmount)
+      return `${formatIntakeMoney(revenue.annualAmount, currency)} (${revenue.annualPeriod})`;
+    if (key === "projectedRevenue" && revenue?.projectedAmount)
+      return `${formatIntakeMoney(revenue.projectedAmount, currency)} (${revenue.projectedPeriod})`;
+    return ["effectiveDate", "deadline"].includes(key) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(raw)
       ? dayjs(raw).format("MMMM D, YYYY")
       : raw;
   };
+  const full =
+    Boolean(details) && fields.length === Object.keys(INTAKE_FIELDS).length;
+  const underwriting =
+    details && full ? underwritingAnswers(details, catalogCoverage) : undefined;
+  const questionRows = (rows: IntakeFollowupAnswer[]): [string, string][] =>
+    rows.map((row) => [
+      row.label.replace(/\s*Use YYYY-MM-DD\.?$/, ""),
+      formatIntakeFollowupAnswer(row, currency),
+    ]);
   const table = (rows: [string, string][]) =>
     rows.length
       ? `| Detail | Information |\n| --- | --- |\n${rows.map(([label, text]) => `| ${cell(label)} | ${cell(text)} |`).join("\n")}`
@@ -203,13 +251,14 @@ export function intakeMarkdown(
       fields: [
         "trigger",
         "effectiveDate",
+        "deadline",
         "timingUnknown",
         "requirements",
         "requestDetails",
       ],
     },
     {
-      title: "Coverage Requested",
+      title: "Coverage requested",
       fields: ["coverage", "limits", "coverageScope"],
     },
     {
@@ -239,16 +288,22 @@ export function intakeMarkdown(
     },
     {
       title: "Insurance history",
-      fields: ["currentInsurance", "claims", "cancellations"],
+      fields: [
+        "currentInsurance",
+        "currentInsuranceDetails",
+        "claims",
+        "cancellations",
+        "changes",
+      ],
     },
   ];
   const sections = groups
     .flatMap((group) => {
       const keys = group.fields.filter((key) => allowed.has(key) && value(key));
       if (!keys.length) return [];
-      if (group.title === "Coverage Requested" && details?.coverages.length) {
+      if (group.title === "Coverage requested" && details?.coverages.length) {
         return [
-          `## Coverage Requested\n\n${details.coverages
+          `## Coverage requested\n\n${details.coverages
             .map((line) => {
               const option = coverageOption(line.coverage);
               const rows: [string, string][] = option.limits
@@ -259,10 +314,9 @@ export function intakeMarkdown(
                 )
                 .map((limit) => [
                   limit.label,
-                  /^\$?[\d,]+(?:\.\d+)?$/.test(line.limits[limit.key]) &&
-                  limit.key !== "statutory"
-                    ? `$${line.limits[limit.key].replace(/^\$/, "")}`
-                    : line.limits[limit.key],
+                  limit.key === "statutory"
+                    ? line.limits[limit.key]
+                    : formatIntakeMoney(line.limits[limit.key], currency),
                 ]);
               if (line.additionalCoverages?.trim())
                 rows.push([
@@ -271,6 +325,13 @@ export function intakeMarkdown(
                 ]);
               if (line.scopeDescription)
                 rows.push(["Scope", line.scopeDescription]);
+              if (line.coverage === "cyber")
+                for (const [key, label] of [
+                  ["privacyPolicyUrl", "Privacy policy"],
+                  ["termsUrl", "Terms of service"],
+                ] as const)
+                  if (details.cyberDocuments?.[key]?.trim())
+                    rows.push([label, details.cyberDocuments[key]!.trim()]);
               line.vehicles?.forEach((vehicle, index) =>
                 rows.push([
                   `Vehicle ${index + 1}`,
@@ -279,7 +340,11 @@ export function intakeMarkdown(
                     .join(" ") + (vehicle.vin ? `\nVIN # ${vehicle.vin}` : ""),
                 ]),
               );
-              if(line.coverage==="commercial_auto")for(const group of vehicleUnderwritingRows(details!))for(const row of group.rows)if(row.value!=="Not provided")rows.push([`${group.title}: ${row.label}`,row.value]);
+              if (line.coverage === "commercial_auto")
+                for (const group of vehicleUnderwritingRows(details!))
+                  for (const row of group.rows)
+                    if (row.value !== "Not provided")
+                      rows.push([`${group.title}: ${row.label}`, row.value]);
               line.properties?.forEach((property, index) =>
                 rows.push([
                   property.name || `Property ${index + 1}`,
@@ -300,10 +365,10 @@ export function intakeMarkdown(
                     .join("\n\n"),
                 ]),
               );
-              return table([
-                ["Coverage Requested", coverageRequestLabel(line)],
+              return `### ${coverageRequestLabel(line)}\n\n${table([
                 ...rows,
-              ]);
+                ...questionRows(underwriting?.forCoverage(line.coverage) ?? []),
+              ])}`;
             })
             .join("\n\n")}
 
@@ -322,8 +387,10 @@ ${table(
         "description",
         "requirements",
         "requestDetails",
+        "currentInsuranceDetails",
         "claims",
         "cancellations",
+        "changes",
       ]);
       const rows: [string, string][] = keys
         .filter(
@@ -332,6 +399,14 @@ ${table(
             !(key === "locations" && details?.locations.length),
         )
         .map((key) => [INTAKE_FIELDS[key], value(key)]);
+      if (
+        group.title === "Insurance history" &&
+        details?.noCurrentInsuranceReason?.trim()
+      )
+        rows.push([
+          "Why the business has no current insurance",
+          details.noCurrentInsuranceReason,
+        ]);
       const paragraphs = keys
         .filter((key) => prose.has(key))
         .map((key) => table([[INTAKE_FIELDS[key], value(key)]]));
@@ -362,20 +437,45 @@ ${table(
         `## ${group.title}\n\n${[table(rows), ...paragraphs, ...locations].filter(Boolean).join("\n\n")}`,
       ];
     })
-    .concat(fields.length === Object.keys(INTAKE_FIELDS).length ? (["acord", "additional"] as const).flatMap((section) => {
-      const rows = details?.followups?.filter((row) => !isFixedVehicleFollowup(row) && row.section === section && row.answer.trim() && followupQuestionVisible(row,details?.followups)) ?? [];
-      return rows.length ? [`## ${section === "acord" ? "Coverage details" : "Additional details"}\n\n${table(rows.map((row) => [row.source ? `${row.label} (${row.source})` : row.label, formatIntakeFollowupAnswer(row)]))}`] : [];
-    }) : [])
+    .concat(
+      underwriting && [...underwriting.other, ...underwriting.followups].length
+        ? [
+            `## Follow-up questions\n\n${table(
+              questionRows([...underwriting.other, ...underwriting.followups]),
+            )}`,
+          ]
+        : [],
+    )
     .join("\n\n");
-  const drivers = details?.coverages.some(line=>line.coverage==="commercial_auto") && details.drivers?.length && allowed.size === Object.keys(INTAKE_FIELDS).length
-    ? `## Driver schedule\n\n${table(details.drivers.map(driver=>[driver.name, `License: ${driver.licenseJurisdiction} · ${driver.licenseClass}; experience: ${driver.yearsExperience} years; accidents in past five years: ${driver.accidents} ${driver.accidentDetails}; violations/suspensions in past five years: ${driver.violations} ${driver.violationDetails}. Full license and birth date are retained in the authorized application.`]))}` : "";
-  const quoteRows: [string,string][] = [];
+  const drivers =
+    details?.coverages.some((line) => line.coverage === "commercial_auto") &&
+    details.drivers?.length &&
+    allowed.size === Object.keys(INTAKE_FIELDS).length
+      ? `## Driver schedule\n\n${table(details.drivers.map((driver) => [driver.name, `License: ${driver.licenseJurisdiction} · ${driver.licenseClass}; experience: ${driver.yearsExperience} years; accidents in past five years: ${driver.accidents} ${driver.accidentDetails}; violations/suspensions in past five years: ${driver.violations} ${driver.violationDetails}. Full license and birth date are retained in the authorized application.`]))}`
+      : "";
+  const quoteRows: [string, string][] = [];
   if (details && allowed.size === Object.keys(INTAKE_FIELDS).length) {
-    if(details.coverages.some(line=>line.coverage==="commercial_auto")) {
-      if(details.freightHauled?.trim())quoteRows.push(["Freight hauled",details.freightHauled]);
-      for(const line of details.coverages)for(const vehicle of line.vehicles??[])if(vehicle.estimatedValue)quoteRows.push([[vehicle.year,vehicle.make,vehicle.model].filter(Boolean).join(" ")+" — approximate value",`$ ${vehicle.estimatedValue}`]);
+    if (details.coverages.some((line) => line.coverage === "commercial_auto")) {
+      if (details.freightHauled?.trim())
+        quoteRows.push(["Freight hauled", details.freightHauled]);
+      for (const line of details.coverages)
+        for (const vehicle of line.vehicles ?? [])
+          if (vehicle.estimatedValue)
+            quoteRows.push([
+              [vehicle.year, vehicle.make, vehicle.model]
+                .filter(Boolean)
+                .join(" ") + " — approximate value",
+              formatIntakeMoney(vehicle.estimatedValue, currency),
+            ]);
     }
   }
-  return [sections,drivers,quoteRows.length?`## Additional quote details\n\n${table(quoteRows)}`:""].filter(Boolean).join("\n\n");
-
+  return [
+    sections,
+    drivers,
+    quoteRows.length
+      ? `## Additional quote details\n\n${table(quoteRows)}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }

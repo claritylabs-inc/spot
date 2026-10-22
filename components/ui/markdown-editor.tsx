@@ -29,6 +29,7 @@ export function MarkdownEditor({
   className,
   showProperties = true,
   showViewSwitcher = true,
+  showToolbar = false,
   preview,
 }: {
   value: string;
@@ -41,6 +42,8 @@ export function MarkdownEditor({
   className?: string;
   showProperties?: boolean;
   showViewSwitcher?: boolean;
+  /** Shows the view switcher and toolbar actions row. */
+  showToolbar?: boolean;
   preview?: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -116,7 +119,7 @@ export function MarkdownEditor({
         className,
       )}
     >
-      {toolbarTarget ? (
+      {!showToolbar ? null : toolbarTarget ? (
         createPortal(toolbar, toolbarTarget)
       ) : (
         <div className="flex justify-end border-b border-border p-2">

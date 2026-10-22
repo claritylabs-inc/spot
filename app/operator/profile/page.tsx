@@ -15,6 +15,7 @@ import {
   OperationalPanelBody,
   OperationalPanelHeader,
 } from "@claritylabs-inc/ui/components/operational-panel";
+import { OperatorSecondFactorSettings } from "@/components/operator/operator-second-factor";
 import { PasswordSettings } from "@/components/profile/password-settings";
 import { StreamingPreference } from "@/components/profile/streaming-preference";
 import { ThemeModeSelector } from "@/components/ui/theme-mode-selector";
@@ -177,6 +178,7 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
 
         <FadeIn when={true} staggerIndex={2} duration={0.4}>
           <PasswordSettings />
+          <OperatorSecondFactorSettings />
           <OperationalPanel className="mt-4">
             <OperationalPanelHeader title="Appearance" />
             <OperationalPanelBody>
