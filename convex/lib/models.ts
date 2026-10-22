@@ -803,6 +803,10 @@ function agentLanguageModel(
         },
       },
       ...(resolved.route ? { initialRoutePin: resolved.route } : {}),
+      // The operator runner offers only the tool families it selected.
+      ...(run.taskKind === "operator_agent"
+        ? { toolSelection: "caller" as const }
+        : {}),
       assetStager: async (asset) => {
         const staged = await createSignedActionRouterAsset(ctx, {
           ...asset,
