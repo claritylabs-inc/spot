@@ -9,6 +9,7 @@ import type { PromptInputMessage } from "@/components/ai-elements/prompt-input/p
 import {
   AgentDockContextChip,
   AgentDockContextToggle,
+  AgentDockPlanToggle,
 } from "@/components/agent-dock/agent-dock-context-chip";
 import { useAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import { pageSuggestions } from "@/components/agent-dock/page-suggestions";
@@ -109,6 +110,7 @@ export function OperatorAgentChat({
     () => pageSuggestions(displayedPageContext, "operator"),
     [displayedPageContext],
   );
+  const [planMode, setPlanMode] = useState(false);
   const running = detail.activeRun || submitting;
   const toggleContext = () => {
     if (retainedThreadContext && activeThreadId) {
@@ -215,7 +217,9 @@ export function OperatorAgentChat({
             ...(!retainedThreadContext && availablePageContext
               ? { pageContext: availablePageContext }
               : {}),
+            ...(planMode ? { planMode: true } : {}),
           });
+          setPlanMode(false);
         } catch (error) {
           if (uploadedIntents.length > 0) {
             await discardUploads({ uploads: uploadedIntents }).catch(
@@ -237,6 +241,7 @@ export function OperatorAgentChat({
       startNewThread,
       runSubmission,
       retainedThreadContext,
+      planMode,
     ],
   );
 
@@ -326,17 +331,23 @@ export function OperatorAgentChat({
             />
           }
           toolbarEnd={
-            retainedThreadContext ? null : (
-              <AgentDockContextToggle
-                label={
-                  currentPageContext
-                    ? operatorPageContextLabel(currentPageContext)
-                    : null
-                }
-                attached={Boolean(availablePageContext)}
-                onToggle={toggleContext}
+            <>
+              <AgentDockPlanToggle
+                active={planMode}
+                onToggle={() => setPlanMode((current) => !current)}
               />
-            )
+              {retainedThreadContext ? null : (
+                <AgentDockContextToggle
+                  label={
+                    currentPageContext
+                      ? operatorPageContextLabel(currentPageContext)
+                      : null
+                  }
+                  attached={Boolean(availablePageContext)}
+                  onToggle={toggleContext}
+                />
+              )}
+            </>
           }
         />
       }
