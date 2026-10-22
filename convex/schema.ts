@@ -4102,7 +4102,6 @@ export default defineSchema({
     .index("organization_mutation", ["orgId", "clientMutationId"])
     .index("message", ["messageId"])
     .index("response", ["responseMessageId"])
-    .index("by_resendInboxEmailId", ["resendInboxEmailId"])
     .index("resend", ["resendEmailId"])
     .index("reply", ["replyToMessageId"])
     .index("thread_message", ["threadId", "slackMessageTs"])
