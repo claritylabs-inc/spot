@@ -220,7 +220,10 @@ Provider relationship contacts live in `brokerContacts`, separate from portal
 memberships and login permissions. `convex/brokerContacts.ts` owns operator-only,
 non-impersonated, audited saves with revision checks and recoverable removal.
 `components/broker-network/provider-contacts.tsx` owns the Contacts tab's inline
-cards, autosave, contact roles, exact ACORD coverage context and notes. Public
-research records retain source URLs, evidence and a checked timestamp; later
-operator edits are labeled and keep the original source evidence. The detail
+cards, autosave and the five visible fields: name, email, phone, exact ACORD
+coverage context and notes. Its title/action row uses the shared `FormSection`
+primitive without a card. Public research metadata (role, title, contact page,
+source URLs, evidence and checked timestamp) stays in the backend and is hidden
+from these cards. Operator edits preserve that metadata. Separate people and
+teams may share an inbox; create deduplication matches both email and name. The detail
 read tool exposes these as bounded `networkContacts`; directory lists omit them.

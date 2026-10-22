@@ -121,7 +121,7 @@ export const save = mutation({
         .take(201);
       const duplicate = current.find((row) =>
         email
-          ? row.email === email
+          ? row.email === email && row.name.toLowerCase() === name.toLowerCase()
           : phone
             ? row.phone === phone && row.name === name
             : row.name === name && row.contactUrl === contactUrl,

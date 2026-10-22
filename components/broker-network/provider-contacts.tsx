@@ -1,26 +1,18 @@
 "use client";
 
 import { useRef, useState } from "react";
-import dayjs from "dayjs";
 import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@claritylabs-inc/ui/components/select";
+import { FormSection } from "@claritylabs-inc/ui/components/form-section";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { PillButton } from "@/components/ui/pill-button";
 import { RemoveButton } from "@/components/ui/remove-button";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { AcordLinesField } from "./acord-lines-field";
-import { BROKER_CONTACT_ROLE_LABELS } from "@/convex/lib/brokerContactFields";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
@@ -51,46 +43,43 @@ export function ProviderContacts({
     }
   }
   return (
-    <div className="space-y-5">
-      <InlineFieldCard
-        title="Contacts"
-        actions={
-          <PillButton
-            variant="secondary"
-            size="compact"
-            disabled={
-              adding || result === undefined || result.contacts.length >= 200
-            }
-            onClick={() => void add()}
-          >
-            {adding ? "Adding…" : "Add contact"}
-          </PillButton>
-        }
-      >
+    <FormSection
+      title="Contacts"
+      divided={false}
+      action={
+        <PillButton
+          variant="secondary"
+          size="compact"
+          disabled={
+            adding || result === undefined || result.contacts.length >= 200
+          }
+          onClick={() => void add()}
+        >
+          {adding ? "Adding…" : "Add contact"}
+        </PillButton>
+      }
+    >
+      <div className="space-y-5">
         {result === undefined ? (
-          <p
-            className={`px-4 py-4 text-muted-foreground ${typeStyle("body.default")}`}
-          >
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
             Loading contacts…
           </p>
         ) : !result.contacts.length ? (
-          <p
-            className={`px-4 py-4 text-muted-foreground ${typeStyle("body.default")}`}
-          >
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
             Add submission inboxes, individual contacts and notes about when to
             reach each one.
           </p>
         ) : null}
-      </InlineFieldCard>
-      {result?.contacts.map((contact) => (
-        <ContactEditor key={contact._id} contact={contact} />
-      ))}
-      {result?.bounded && (
-        <p className={typeStyle("caption.default")}>
-          Showing the first 200 contacts.
-        </p>
-      )}
-    </div>
+        {result?.contacts.map((contact) => (
+          <ContactEditor key={contact._id} contact={contact} />
+        ))}
+        {result?.bounded && (
+          <p className={typeStyle("caption.default")}>
+            Showing the first 200 contacts.
+          </p>
+        )}
+      </div>
+    </FormSection>
   );
 }
 
@@ -101,11 +90,8 @@ function ContactEditor({ contact }: { contact: Doc<"brokerContacts"> }) {
   const [removing, setRemoving] = useState(false);
   const [values, setValues] = useState({
     name: contact.name,
-    title: contact.title ?? "",
-    role: contact.role,
     email: contact.email ?? "",
     phone: contact.phone ?? "",
-    contactUrl: contact.contactUrl ?? "",
     lineOfBusinessCodes: contact.lineOfBusinessCodes,
     notes: contact.notes ?? "",
   });
@@ -126,6 +112,9 @@ function ContactEditor({ contact }: { contact: Doc<"brokerContacts"> }) {
         brokerOrgId: contact.brokerOrgId,
         contactId: contact._id,
         expectedRevision: revision.current,
+        title: contact.title,
+        role: contact.role,
+        contactUrl: contact.contactUrl,
         sources: contact.sources,
         sourceKind: "manual",
       });
@@ -179,44 +168,13 @@ function ContactEditor({ contact }: { contact: Doc<"brokerContacts"> }) {
         </div>
       }
     >
-      <InlineFieldRow label="Name or team">
+      <InlineFieldRow label="Name">
         <Input
-          aria-label="Contact name or team"
+          aria-label="Contact name"
           value={values.name}
           onChange={(e) => set("name", e.target.value)}
           onBlur={() => void autoSave.saveNow()}
         />
-      </InlineFieldRow>
-      <InlineFieldRow label="Title">
-        <Input
-          aria-label="Contact title"
-          value={values.title}
-          onChange={(e) => set("title", e.target.value)}
-          onBlur={() => void autoSave.saveNow()}
-        />
-      </InlineFieldRow>
-      <InlineFieldRow label="Contact type">
-        <Select
-          items={BROKER_CONTACT_ROLE_LABELS}
-          value={values.role}
-          onValueChange={(value) => {
-            if (value && value in BROKER_CONTACT_ROLE_LABELS)
-              set("role", value as typeof values.role);
-          }}
-        >
-          <SelectTrigger aria-label="Contact type" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(BROKER_CONTACT_ROLE_LABELS).map(
-              ([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ),
-            )}
-          </SelectContent>
-        </Select>
       </InlineFieldRow>
       <InlineFieldRow label="Email">
         <Input
@@ -236,15 +194,6 @@ function ContactEditor({ contact }: { contact: Doc<"brokerContacts"> }) {
           onBlur={() => void autoSave.saveNow()}
         />
       </InlineFieldRow>
-      <InlineFieldRow label="Contact page">
-        <Input
-          aria-label="Contact page"
-          type="url"
-          value={values.contactUrl}
-          onChange={(e) => set("contactUrl", e.target.value)}
-          onBlur={() => void autoSave.saveNow()}
-        />
-      </InlineFieldRow>
       <InlineFieldRow label="Best for">
         <AcordLinesField
           value={values.lineOfBusinessCodes}
@@ -260,39 +209,6 @@ function ContactEditor({ contact }: { contact: Doc<"brokerContacts"> }) {
           onBlur={() => void autoSave.saveNow()}
         />
       </InlineFieldRow>
-      {!!contact.sources.length && (
-        <InlineFieldRow label="Sources">
-          <div className="space-y-1 px-3 py-2">
-            {contact.sources.map((source) => (
-              <a
-                key={source}
-                href={source}
-                target="_blank"
-                rel="noreferrer"
-                className="block underline underline-offset-4"
-              >
-                {new URL(source).hostname}
-              </a>
-            ))}
-            {contact.researchedAt && (
-              <p
-                className={`text-muted-foreground ${typeStyle("caption.default")}`}
-              >
-                Source checked{" "}
-                {dayjs(contact.researchedAt).format("MMM D, YYYY")}
-                {contact.sourceKind === "manual" ? " · Edited by operator" : ""}
-              </p>
-            )}
-            {contact.sourceQuote && (
-              <p
-                className={`text-muted-foreground ${typeStyle("caption.default")}`}
-              >
-                {contact.sourceQuote}
-              </p>
-            )}
-          </div>
-        </InlineFieldRow>
-      )}
     </InlineFieldCard>
   );
 }
