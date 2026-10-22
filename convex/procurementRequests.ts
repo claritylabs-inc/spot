@@ -68,6 +68,11 @@ import {
   type ProcurementEmailCategory,
 } from "./lib/procurement";
 import { seedRequestIntake } from "./lib/procurementNarrative";
+import {
+  outreachLeavesRequestSent,
+  requestStatusStopsOutreach,
+  stopOutreachSequences,
+} from "./lib/providerOutreachLifecycle";
 import { getAgentDomain } from "./lib/resend";
 import {
   throwUserFacingError,
@@ -823,6 +828,15 @@ export async function updateProcurementRequestByOperator(
   );
   if (changedFields.length === 0) throw new Error("No request fields changed");
   await ctx.db.patch(request._id, patch);
+  // Every status writer (update, application edit, operator tools, resulting policy,
+  // completion outcome) funnels through here, so one hook covers cancel and complete.
+  const stopReason = requestStatusStopsOutreach(patch.status);
+  if (stopReason)
+    await stopOutreachSequences(ctx, {
+      requestId: request._id,
+      reason: stopReason,
+      now: patch.updatedAt,
+    });
   const auditEventId = await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -1109,6 +1123,11 @@ export const remove = mutation({
       deletedByUserId: operator.userId,
       updatedAt: now,
     });
+    await stopOutreachSequences(ctx, {
+      requestId,
+      reason: "request_deleted",
+      now,
+    });
     await writeOperatorAudit(ctx, {
       operatorUserId: operator.userId,
       type: "setup_write",
@@ -1176,6 +1195,12 @@ export async function createProcurementOutreachByOperator(
     contactEmail?: string;
     contactPhone?: string;
     status?: OutreachStatus;
+    /**
+     * Internal only (not exposed by any public mutation or tool): create the
+     * tracking record without claiming it was sent. The outreach sender sets
+     * `sentAt` once the first email actually leaves.
+     */
+    deferSentAt?: boolean;
     source: "operator" | "agent" | "workspace_scan";
   },
 ) {
@@ -1198,6 +1223,7 @@ export async function createProcurementOutreachByOperator(
   }
   const now = dayjs().valueOf();
   const sent =
+    !args.deferSentAt &&
     args.source !== "workspace_scan" &&
     (args.status ?? "request_sent") === "request_sent";
   const outreachId = await ctx.db.insert("procurementBrokerOutreaches", {
@@ -1334,6 +1360,17 @@ export async function updateProcurementOutreachByOperator(
   );
   if (fields.length === 0) throw new Error("No outreach fields changed");
   await ctx.db.patch(outreach._id, patch);
+  const stopReason = outreachLeavesRequestSent(outreach.status, patch.status)
+    ? "outreach_status_changed"
+    : patch.brokerOrgId && patch.brokerOrgId !== outreach.brokerOrgId
+      ? "provider_changed"
+      : undefined;
+  if (stopReason)
+    await stopOutreachSequences(ctx, {
+      outreachId: outreach._id,
+      reason: stopReason,
+      now: patch.updatedAt,
+    });
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -2027,6 +2064,86 @@ const inboundAttachmentValidator = v.object({
   size: v.number(),
 });
 
+export type ProcurementEmailAttachment = {
+  fileId: Id<"_storage">;
+  filename: string;
+  contentType: string;
+  size: number;
+};
+
+const MAX_EMAIL_ATTACHMENTS = 20;
+
+/**
+ * Stores uploaded email attachments as org-owned client files (reusing identical
+ * content), schedules naming and company-information extraction for new files,
+ * and returns the client file ids in attachment order, at most 20.
+ *
+ * Authorization is the caller's: resolve the request with `requireRequest` (company
+ * request, live client) and pass that request's `clientOrgId`. Call
+ * `insertProcurementEmailFileItems` with the resulting ids once the message row exists.
+ */
+export async function storeProcurementEmailAttachments(
+  ctx: MutationCtx,
+  args: {
+    clientOrgId: Id<"organizations">;
+    attachments: ProcurementEmailAttachment[];
+    /** Subject of the carrying email; bounds the file-naming hint. */
+    subject: string;
+  },
+): Promise<Id<"clientFiles">[]> {
+  const storedClientFiles = await Promise.all(
+    args.attachments.slice(0, MAX_EMAIL_ATTACHMENTS).map((attachment) =>
+      createClientFileFromProcurementEmail(ctx, {
+        orgId: args.clientOrgId,
+        fileId: attachment.fileId,
+        originalName: attachment.filename,
+        contentType: attachment.contentType,
+        size: attachment.size,
+      }),
+    ),
+  );
+  for (const stored of storedClientFiles) {
+    if (!stored.created) continue;
+    await ctx.scheduler.runAfter(0, internal.actions.clientFileNaming.infer, {
+      clientFileId: stored.clientFileId,
+      expectedUpdatedAt: stored.expectedUpdatedAt,
+      hint: boundedClientFileHint(args.subject),
+    });
+    await scheduleClientFileCompanyInformation(ctx, stored.clientFileId);
+  }
+  return storedClientFiles.map((stored) => stored.clientFileId);
+}
+
+/**
+ * Lists stored email attachments as request file items tied to their source message.
+ * Same caller-owned authorization as `storeProcurementEmailAttachments`;
+ * `requestId` must belong to `clientOrgId`.
+ */
+export async function insertProcurementEmailFileItems(
+  ctx: MutationCtx,
+  args: {
+    requestId: Id<"procurementRequests">;
+    clientOrgId: Id<"organizations">;
+    emailMessageId: Id<"procurementEmailMessages">;
+    clientFileIds: Id<"clientFiles">[];
+    now: number;
+  },
+) {
+  for (const clientFileId of args.clientFileIds) {
+    const file = await ctx.db.get(clientFileId);
+    if (!file) continue;
+    await ctx.db.insert("procurementFileItems", {
+      requestId: args.requestId,
+      clientOrgId: args.clientOrgId,
+      clientFileId,
+      sourceEmailMessageId: args.emailMessageId,
+      label: file.name,
+      createdAt: args.now,
+      updatedAt: args.now,
+    });
+  }
+}
+
 export const ingestEmailInternal = internalMutation({
   args: {
     addressedRequestId: v.id("procurementRequests"),
@@ -2209,29 +2326,11 @@ export const ingestEmailInternal = internalMutation({
       });
     }
 
-    const storedClientFiles = await Promise.all(
-      args.attachments.slice(0, 20).map((attachment) =>
-        createClientFileFromProcurementEmail(ctx, {
-          orgId: addressedRequest.clientOrgId,
-          fileId: attachment.fileId,
-          originalName: attachment.filename,
-          contentType: attachment.contentType,
-          size: attachment.size,
-        }),
-      ),
-    );
-    for (const stored of storedClientFiles) {
-      if (!stored.created) continue;
-      await ctx.scheduler.runAfter(0, internal.actions.clientFileNaming.infer, {
-        clientFileId: stored.clientFileId,
-        expectedUpdatedAt: stored.expectedUpdatedAt,
-        hint: boundedClientFileHint(args.subject),
-      });
-      await scheduleClientFileCompanyInformation(ctx, stored.clientFileId);
-    }
-    const clientFileIds: Id<"clientFiles">[] = storedClientFiles.map(
-      (stored) => stored.clientFileId,
-    );
+    const clientFileIds = await storeProcurementEmailAttachments(ctx, {
+      clientOrgId: addressedRequest.clientOrgId,
+      attachments: args.attachments,
+      subject: args.subject,
+    });
     const emailMessageId = await ctx.db.insert("procurementEmailMessages", {
       threadId,
       clientOrgId: addressedRequest.clientOrgId,
@@ -2255,19 +2354,13 @@ export const ingestEmailInternal = internalMutation({
       receivedAt: args.receivedAt,
       createdAt: now,
     });
-    for (const clientFileId of clientFileIds) {
-      const file = await ctx.db.get(clientFileId);
-      if (!file) continue;
-      await ctx.db.insert("procurementFileItems", {
-        requestId,
-        clientOrgId: addressedRequest.clientOrgId,
-        clientFileId,
-        sourceEmailMessageId: emailMessageId,
-        label: file.name,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
+    await insertProcurementEmailFileItems(ctx, {
+      requestId,
+      clientOrgId: addressedRequest.clientOrgId,
+      emailMessageId,
+      clientFileIds,
+      now,
+    });
     await scheduleEmailThreadCompanyInformation(ctx, threadId);
     for (const clientFileId of restoredClientFileIds) {
       await scheduleClientFileCompanyInformation(ctx, clientFileId);
