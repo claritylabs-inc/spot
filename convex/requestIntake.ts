@@ -2339,10 +2339,11 @@ export const finishFollowups = internalMutation({
       // evaluation for the changed context; never retry a failed/unknown call.
       const background = request.intakeStep !== 30;
       if (background && (batch.backgroundAttempts ?? 0) >= MAX_FOLLOWUP_BACKGROUND_ATTEMPTS) {
-        // Keep the old hash: terminal entry must prepare the current context.
+        // Invalidate the hash: facts may have changed away and back while this
+        // batch ran, so even its original hash cannot certify an empty result.
         await ctx.db.patch(requestId, {
           intakeFollowups: { ...request.intakeFollowups, [section]: {
-            ...batch, status: "ready", questions: [], preloaded: false,
+            ...batch, contextHash: `stale:${batch.token}`, status: "ready", questions: [], preloaded: false,
           } },
         });
         return;
