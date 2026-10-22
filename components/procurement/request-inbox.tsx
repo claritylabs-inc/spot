@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type KeyboardEvent } from "react";
-import { useQuery } from "convex/react";
+import { usePaginatedQuery, useQuery } from "convex/react";
 import dayjs from "dayjs";
 import { ArrowLeft, Copy, Inbox, Loader2, Search } from "lucide-react";
 
@@ -45,11 +45,7 @@ type InboxThread = {
   fromName: string | null;
   fromEmail: string | null;
 };
-type InboxResult = {
-  threads: InboxThread[];
-  truncated: boolean;
-  limit: number;
-};
+const PAGE_SIZE = 40;
 
 type Filter = "all" | "needs_reply" | "sent";
 const FILTER_LABELS: Record<Filter, string> = {
@@ -275,22 +271,31 @@ export function RequestInbox({
   onDetails: (threadId: Id<"procurementEmailThreads">) => void;
   onCopyAddress: () => void;
 }) {
-  const inbox: InboxResult | undefined = useQuery(
+  const {
+    results: threads,
+    status,
+    loadMore,
+  } = usePaginatedQuery(
     api.procurementRequests.getInbox,
     { requestId },
+    { initialNumItems: PAGE_SIZE },
   );
+  const inboxThreads: InboxThread[] = threads;
+  const exhausted = status === "Exhausted";
+  const canLoadMore = status === "CanLoadMore";
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
-  // A deep link to a thread outside this request's loaded list is dropped.
+  // A deep link missing from the fully loaded list is dropped. While older
+  // mail is still unloaded it may just not have arrived yet, so it is kept.
   const unknownSelection =
-    inbox !== undefined &&
+    exhausted &&
     !!selectedThreadId &&
-    !inbox.threads.some((thread) => thread._id === selectedThreadId);
+    !inboxThreads.some((thread) => thread._id === selectedThreadId);
   useEffect(() => {
     if (unknownSelection) onSelect(null, { replace: true });
   }, [unknownSelection, onSelect]);
 
-  if (inbox === undefined)
+  if (status === "LoadingFirstPage")
     return (
       <OperationalPanel as="section">
         <div className="flex h-40 items-center justify-center text-muted-foreground">
@@ -300,7 +305,7 @@ export function RequestInbox({
     );
 
   const term = search.trim();
-  const visible = inbox.threads.filter(
+  const visible = inboxThreads.filter(
     (thread) =>
       (filter === "all" ||
         (filter === "needs_reply"
@@ -309,7 +314,7 @@ export function RequestInbox({
       matches(thread, term),
   );
   const selected =
-    inbox.threads.find((thread) => thread._id === selectedThreadId) ?? null;
+    inboxThreads.find((thread) => thread._id === selectedThreadId) ?? null;
 
   // Arrow keys move through the list, Escape leaves the conversation. The
   // handler lives on the list, so search and the filter keep their own keys.
@@ -369,7 +374,7 @@ export function RequestInbox({
     </div>
   );
 
-  if (!inbox.threads.length)
+  if (exhausted && !inboxThreads.length)
     return (
       <div className="space-y-3">
         <EmptyStateCard
@@ -465,13 +470,23 @@ export function RequestInbox({
               </div>
             )}
           </div>
-          {inbox.truncated ? (
-            <p
-              className={`border-t border-border px-4 py-2 text-muted-foreground ${typeStyle("caption.default")}`}
+          {canLoadMore || status === "LoadingMore" ? (
+            <div
+              className={`space-y-2 border-t border-border px-4 py-3 text-muted-foreground ${typeStyle("caption.default")}`}
             >
-              Showing the latest {inbox.limit} conversations. Search covers only
-              these.
-            </p>
+              <p>Search and filters cover only the mail loaded so far.</p>
+              <PillButton
+                type="button"
+                variant="secondary"
+                size="xs"
+                disabled={status === "LoadingMore"}
+                onClick={() => loadMore(PAGE_SIZE)}
+              >
+                {status === "LoadingMore"
+                  ? "Loading…"
+                  : "Load more conversations"}
+              </PillButton>
+            </div>
           ) : null}
         </div>
         <div className={`min-w-0 lg:block ${selected ? "block" : "hidden"}`}>
@@ -485,12 +500,24 @@ export function RequestInbox({
               onDetails={onDetails}
             />
           ) : (
-            <div className="flex h-full min-h-48 items-center justify-center p-6 text-center">
+            <div className="flex h-full min-h-48 flex-col items-center justify-center gap-3 p-6 text-center">
               <p
                 className={`text-muted-foreground ${typeStyle("body.default")}`}
               >
-                Select a conversation to read it.
+                {selectedThreadId && !exhausted
+                  ? "This conversation is older than the mail loaded so far."
+                  : "Select a conversation to read it."}
               </p>
+              {selectedThreadId && canLoadMore ? (
+                <PillButton
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  onClick={() => loadMore(PAGE_SIZE)}
+                >
+                  Load more conversations
+                </PillButton>
+              ) : null}
             </div>
           )}
         </div>
