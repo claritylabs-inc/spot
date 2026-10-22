@@ -1,8 +1,10 @@
 import type { IntakeAnswers } from "./insurance-intake";
+import dayjs from "dayjs";
 import {
   intakeMarkdown,
   legacyIntakeMarkdown,
   COMPANY_INTAKE_FIELDS,
+  INTAKE_FIELDS,
 } from "./insurance-intake";
 import {
   detailsFromAnswers,
@@ -92,11 +94,26 @@ export function projectApplicationMarkdown(
           !["deadline", "currentInsuranceDetails", "changes"].includes(key),
       ),
     );
+    // Earlier projections also used "Coverage Requested" and an unformatted deadline.
+    const previousPresentation = (markdown: string) => {
+      const deadline = originalAnswers.deadline?.trim() ?? "";
+      const label = `| ${INTAKE_FIELDS.deadline} |`;
+      const renamed = markdown.replace(
+        "## Coverage requested",
+        "## Coverage Requested",
+      );
+      return /^\d{4}-\d{2}-\d{2}$/.test(deadline)
+        ? renamed.replace(
+            `${label} ${dayjs(deadline).format("MMMM D, YYYY")} |`,
+            `${label} ${deadline} |`,
+          )
+        : renamed;
+    };
     for (const original of [
       legacyIntakeMarkdown(originalAnswers),
       intakeMarkdown(originalAnswers),
       intakeMarkdown(earlier),
-    ]) {
+    ].flatMap((markdown) => [markdown, previousPresentation(markdown)])) {
       const legacy = `## Request\n\n${original}`;
       if (body.includes(legacy)) return body.replace(legacy, block);
     }

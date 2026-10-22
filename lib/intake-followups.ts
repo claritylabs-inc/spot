@@ -5,6 +5,7 @@ import { parsePayrollAnswer, formatPayrollAnswer } from "./intake-payroll";
 import { intakeApplicantQuestion } from "./intake-applicant-wording";
 import { parseRouteValue, formatRouteValue } from "./route-input";
 import { formatDisplayDate } from "./date-format";
+import { formatIntakeMoney } from "./intake-money";
 /** Bounded, declarative questions. Model output never contains executable UI. */
 export type IntakeFollowupQuestion = {
   id: string;
@@ -183,7 +184,7 @@ export function expandIntakeFollowupQuestion(
     },
   ];
 }
-export function formatIntakeFollowupAnswer(row: IntakeFollowupAnswer): string {
+export function formatIntakeFollowupAnswer(row: IntakeFollowupAnswer, currency = "USD"): string {
   if (!row.answer) return "";
   if (row.answer === "I'm not sure") return row.answer;
   if (row.source?.endsWith(" · eo.services.credentials_list")) return row.answer.split("\n").map(item=>item.trim()).filter(Boolean).join("; ");
@@ -196,7 +197,7 @@ export function formatIntakeFollowupAnswer(row: IntakeFollowupAnswer): string {
     : row.kind === "date"
       ? formatDisplayDate(row.answer, row.answer)
     : row.kind === "currency"
-      ? `$ ${row.answer}`
+      ? formatIntakeMoney(row.answer, currency)
       : row.kind === "dropdown"
         ? intakeFollowupOptionLabel(row.answer)
         : row.answer;

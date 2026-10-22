@@ -11,6 +11,7 @@ import { OtpField } from "@/components/ui/otp-field";
 import { PillButton } from "@/components/ui/pill-button";
 import { completeOtpSignIn } from "@/lib/auth-sign-in";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { ConvexError } from "convex/values";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { typeStyle } from "@/lib/typography";
 
@@ -20,7 +21,19 @@ function friendlyError(raw: string): string {
   if (lower.includes("customer accounts")) return "This email is already associated with a customer account.";
   if (lower.includes("could not verify code") || lower.includes("invalid code")) return "That code didn't work.";
   if (lower.includes("expired")) return "This code has expired.";
+  if (lower.includes("too many") || lower.includes("rate limit")) {
+    const seconds = lower.match(/try again in (\d+) seconds/)?.[1];
+    return seconds
+      ? `Too many code requests. Try again in ${seconds} seconds.`
+      : "Too many code requests. Please wait a moment and try again.";
+  }
   return "Could not sign in to the operator console.";
+}
+
+// Convex redacts thrown messages to "Server Error"; ConvexError data survives.
+function errorText(err: unknown): string {
+  if (err instanceof ConvexError && typeof err.data === "string") return err.data;
+  return getUserFacingErrorMessage(err, "");
 }
 
 export default function OperatorLoginPage() {
@@ -42,7 +55,7 @@ export default function OperatorLoginPage() {
     bootstrap({})
       .then(() => router.replace("/operator"))
       .catch(async (err: unknown) => {
-        setError(friendlyError(getUserFacingErrorMessage(err, "")));
+        setError(friendlyError(errorText(err)));
         await signOut();
         setStep("email");
       })
@@ -61,7 +74,7 @@ export default function OperatorLoginPage() {
       setEmail(normalizedEmail);
       setStep("code");
     } catch (err) {
-      setError(friendlyError(getUserFacingErrorMessage(err, "")));
+      setError(friendlyError(errorText(err)));
     } finally {
       setLoading(false);
     }
@@ -75,7 +88,7 @@ export default function OperatorLoginPage() {
       await completeOtpSignIn(email, code);
       window.location.reload();
     } catch (err) {
-      setError(friendlyError(getUserFacingErrorMessage(err, "")));
+      setError(friendlyError(errorText(err)));
       setLoading(false);
     }
   }
