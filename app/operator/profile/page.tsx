@@ -13,6 +13,7 @@ import { ChatAvatar } from "@/components/chat/chat-message";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@claritylabs-inc/ui/components/input";
+import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import {
   OperationalPanel,
   OperationalPanelBody,
@@ -404,13 +405,12 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
                 />
               </InlineFieldRow>
               <InlineFieldRow label="iMessage phone">
-                <Input
+                <PhoneInput
                   aria-label="iMessage phone"
-                  type="tel"
-                  value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
+                  value={phone || undefined}
+                  onChange={(value) => setPhone(value ?? "")}
                   onBlur={() => void profileAutoSave.saveNow()}
-                  placeholder="+1 202 555 0100"
+                  defaultCountry="US"
                   autoComplete="tel"
                   title="Messages from this number can use the operator agent"
                 />

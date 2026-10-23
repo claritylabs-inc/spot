@@ -38,7 +38,7 @@ export async function queueIntakeSlack(
   const request = await ctx.db.get(requestId);
   if (!request || request.deletedAt) return;
   const answers = request.intakeAnswers ?? {};
-  const name = escape(answers.legalName || answers.name || "New applicant");
+  const name = escape(answers.dba || answers.legalName || answers.name || "New applicant");
   const link = request.clientOrgId
     ? answers.intakeGoal === "savings"
       ? `${getClientPortalUrl()}/operator/clients/${request.clientOrgId}/policies`

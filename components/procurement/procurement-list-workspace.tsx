@@ -32,6 +32,7 @@ import {
 } from "@/components/procurement/procurement-shared";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
+import { DateField } from "@claritylabs-inc/ui/components/date-field";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalLabelValueList,
@@ -57,6 +58,7 @@ import {
   TableNameLink,
 } from "@/components/ui/table";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
+import { useLocalDraft } from "@/hooks/use-local-draft";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate } from "@/lib/date-format";
@@ -228,34 +230,17 @@ function ProcurementRequestPreview({
                 </SelectContent>
               </Select>
             </div>
-            <label className="block space-y-1.5">
-              <span
-                className={`text-muted-foreground ${typeStyle("label.field")}`}
-              >
-                Target effective date
-              </span>
-              <Input
-                key={currentRequest.targetEffectiveDate ?? "unset"}
-                type="date"
-                aria-label="Target effective date"
-                defaultValue={currentRequest.targetEffectiveDate ?? ""}
-                disabled={saving}
-                onBlur={async (event) => {
-                  const input = event.currentTarget;
-                  if (!input.validity.valid) return;
-                  const value = input.value;
-                  if (value === (currentRequest.targetEffectiveDate ?? ""))
-                    return;
-                  if (
-                    !(await updateQuickField({
-                      targetEffectiveDate: value || null,
-                    }))
-                  ) {
-                    input.value = currentRequest.targetEffectiveDate ?? "";
-                  }
-                }}
-              />
-            </label>
+            <DateField
+              key={currentRequest.targetEffectiveDate ?? "unset"}
+              id="preview-effective-date"
+              label="Target effective date"
+              value={currentRequest.targetEffectiveDate ?? ""}
+              disabled={saving}
+              onChange={(value) => {
+                if (value === (currentRequest.targetEffectiveDate ?? "")) return;
+                void updateQuickField({ targetEffectiveDate: value || null });
+              }}
+            />
           </div>
         ) : null}
         <OperationalLabelValueList>
@@ -359,11 +344,18 @@ function NewProcurementRequestDrawer({
   onCreated: (requestId: Id<"procurementRequests">) => void;
 }) {
   const createRequest = useMutation(api.procurementRequests.create);
-  const [title, setTitle] = useState("");
-  const [narrative, setNarrative] = useState("");
-  const [targetEffectiveDate, setTargetEffectiveDate] = useState("");
-  const [status, setStatus] = useState<ProcurementRequestStatus>("draft");
-  const [replacingPolicyId, setReplacingPolicyId] = useState(NO_POLICY);
+  const [draft, updateDraft, discardDraft] = useLocalDraft(
+    `spot:new-procurement-request:${clientOrgId}`,
+    {
+      title: "",
+      narrative: "",
+      targetEffectiveDate: "",
+      status: "draft" as ProcurementRequestStatus,
+      replacingPolicyId: NO_POLICY,
+    },
+  );
+  const { title, narrative, targetEffectiveDate, status, replacingPolicyId } =
+    draft;
   const [saving, setSaving] = useState(false);
 
   async function create() {
@@ -384,6 +376,7 @@ function NewProcurementRequestDrawer({
             ? undefined
             : (replacingPolicyId as Id<"policies">),
       });
+      discardDraft();
       toast.success("Procurement request created");
       onCreated(result.requestId);
     } catch (error) {
@@ -407,7 +400,14 @@ function NewProcurementRequestDrawer({
       title="New procurement request"
       footer={
         <>
-          <PillButton type="button" variant="secondary" onClick={onClose}>
+          <PillButton
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              discardDraft();
+              onClose();
+            }}
+          >
             Cancel
           </PillButton>
           <PillButton type="button" onClick={create} disabled={saving}>
@@ -426,7 +426,7 @@ function NewProcurementRequestDrawer({
           </span>
           <Input
             value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            onChange={(event) => updateDraft({ title: event.target.value })}
             maxLength={200}
             placeholder="Property renewal replacement"
           />
@@ -439,25 +439,21 @@ function NewProcurementRequestDrawer({
           </span>
           <Textarea
             value={narrative}
-            onChange={(event) => setNarrative(event.target.value)}
+            onChange={(event) =>
+              updateDraft({ narrative: event.target.value })
+            }
             className="min-h-32"
             maxLength={20_000}
             placeholder="The client’s goals, coverage needs, timing, and constraints."
           />
         </label>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="block space-y-1.5">
-            <span
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              Target effective date
-            </span>
-            <Input
-              type="date"
-              value={targetEffectiveDate}
-              onChange={(event) => setTargetEffectiveDate(event.target.value)}
-            />
-          </label>
+          <DateField
+            id="new-request-effective-date"
+            label="Target effective date"
+            value={targetEffectiveDate}
+            onChange={(value) => updateDraft({ targetEffectiveDate: value })}
+          />
           <label className="block space-y-1.5">
             <span
               className={`text-muted-foreground ${typeStyle("caption.default")}`}
@@ -467,7 +463,7 @@ function NewProcurementRequestDrawer({
             <Select
               value={status}
               onValueChange={(value) =>
-                setStatus(value as ProcurementRequestStatus)
+                updateDraft({ status: value as ProcurementRequestStatus })
               }
             >
               <SelectTrigger className="w-full">
@@ -493,7 +489,7 @@ function NewProcurementRequestDrawer({
           </span>
           <SearchableSelect
             value={replacingPolicyId}
-            onChange={setReplacingPolicyId}
+            onChange={(value) => updateDraft({ replacingPolicyId: value })}
             options={[
               { value: NO_POLICY, label: "No policy" },
               ...policies.map((policy) => ({

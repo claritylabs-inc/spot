@@ -112,6 +112,7 @@ import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
 import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
+import { DateField } from "@claritylabs-inc/ui/components/date-field";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalItem,
@@ -1086,11 +1087,12 @@ function RequestEditor({
         />
       </InlineFieldRow>
       <InlineFieldRow label="Target effective date">
-        <Input
-          aria-label="Target effective date"
-          type="date"
+        <DateField
+          id="request-effective-date"
+          label="Target effective date"
+          hideLabel
           value={targetEffectiveDate}
-          onChange={(event) => setTargetEffectiveDate(event.target.value)}
+          onChange={setTargetEffectiveDate}
         />
       </InlineFieldRow>
       <InlineFieldRow label="Status">

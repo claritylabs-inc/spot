@@ -619,7 +619,8 @@ export async function prepareBusinessProfileToolUpdate(
     expectedName: org.name,
     expectedWebsite: org.website ?? "",
     expectedStatus: clientAccessStatus(org),
-    name: patch.answers?.legalName ?? org.name,
+    name:
+      answers.dba?.trim() || answers.legalName?.trim() || org.name,
     website: patch.answers?.website ?? org.website ?? "",
     status: clientAccessStatus(org),
     answers,
