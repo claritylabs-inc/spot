@@ -375,6 +375,8 @@ export async function createClientFileFromProcurementEmail(
     originalName: string;
     contentType: string;
     size: number;
+    /** Keep storage still referenced by a sent draft or another durable record. */
+    preserveSourceStorage?: boolean;
   },
 ) {
   await requireClientOrganization(ctx, args.orgId);
@@ -403,7 +405,7 @@ export async function createClientFileFromProcurementEmail(
     sha256,
   });
   if (contentMatch) {
-    await ctx.storage.delete(args.fileId);
+    if (!args.preserveSourceStorage) await ctx.storage.delete(args.fileId);
     return {
       clientFileId: contentMatch._id,
       created: false as const,
