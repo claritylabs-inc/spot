@@ -5,7 +5,6 @@ import {
   submittedIntakeApplication,
   companyApplicationProfile,
 } from "../lib/intake-application";
-import { fillRequestFromClientProfile } from "./lib/intakeApplication";
 
 const migrations = new Migrations<DataModel>(components.migrations);
 /** Additive, resumable. Original snapshots, prose, markers and links are never rewritten. */
@@ -84,13 +83,6 @@ export const releaseUntouchedIntakeFiles = migrations.define({
     await ctx.db.patch(request._id, {
       packetRevision: (request.packetRevision ?? 0) + 1,
     });
-  },
-});
-/** Open submitted requests take the blank company facts their client profile already has. */
-export const fillRequestsFromClientProfiles = migrations.define({
-  table: "procurementRequests",
-  migrateOne: async (ctx, request) => {
-    await fillRequestFromClientProfile(ctx, request);
   },
 });
 export const run = migrations.runner();
