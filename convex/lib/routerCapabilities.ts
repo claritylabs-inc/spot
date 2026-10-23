@@ -110,23 +110,3 @@ export function parseRouterModels(value: unknown): RouterModelEntry[] | null | u
   }
   return models;
 }
-
-export function routerModelSupportsTask(
-  task: string,
-  entry: RouterModelEntry,
-): boolean {
-  const { primitives, capabilities } = entry;
-  if (task === "embeddings") {
-    return capabilities.embedding || primitives.includes("embedding");
-  }
-  if (task === "voice_transcription") {
-    return capabilities.audioInput || primitives.includes("transcription");
-  }
-  if (primitives.includes("embedding") || primitives.includes("transcription")) {
-    return false;
-  }
-  if (task === "chat_vision" || task === "operator_agent") {
-    return capabilities.vision;
-  }
-  return true;
-}

@@ -20,7 +20,6 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { RouterJobFailed, RouterJobPending } from "./lib/routerJobClient";
-import type { ModelRoute } from "./lib/modelCatalog";
 import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
 import {
   buildAgentAttachmentParts,
@@ -484,7 +483,6 @@ export const run = internalAction({
           const continuation = continuationBlob
             ? (JSON.parse(await continuationBlob.text()) as {
                 messages: ModelMessage[];
-                route: ModelRoute;
                 parentRequestId?: string;
                 recovery?: unknown;
                 leakedCallRetries?: number;
@@ -535,6 +533,9 @@ export const run = internalAction({
       const executionJobStarted =
         (await ctx.runQuery(internal.routerJobs.get, {
           invocationKey: `${invocationKey}:0`,
+        })) !== null ||
+        (await ctx.runQuery(internal.routerJobs.get, {
+          invocationKey: `${invocationKey}:0:routed`,
         })) !== null;
       const resumed = !intentFamilies && executionJobStarted;
       const selectFamilies = () =>
@@ -614,19 +615,18 @@ export const run = internalAction({
                   .join(", "),
         });
       }
-      // The operator model is fixed configuration, not a Jev decision. A
-      // continuation reuses its pinned route; a failed lookup is left to the
-      // model client, which re-resolves it with its own failure telemetry.
-      const route: ModelRoute | undefined =
-        continuation?.route ??
+      const route =
         (await traceStage(
           recordActivity,
           `${stagePrefix}:model`,
           "selecting_model",
-          (): Promise<ModelRoute> =>
+          () =>
             ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {}),
-          (selected) => `${selected.provider} · ${selected.model}`,
-        ).catch(() => undefined));
+          (selected) =>
+            selected
+              ? `${selected.provider} · ${selected.model}`
+              : "Automatic router selection",
+        )) ?? undefined;
       pendingFamilies = familySelection.families;
       const offeredToolNames = operatorAgentToolNamesForFamilies(
         context.toolNames,
@@ -1102,7 +1102,6 @@ export const run = internalAction({
                             },
                           ]
                         : [...messages, ...result.response.messages],
-                    route: result.route,
                     parentRequestId: result.clRouter?.requestId,
                     recovery: nextRecovery,
                     leakedCallRetries: leakContinues

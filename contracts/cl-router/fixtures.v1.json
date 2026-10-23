@@ -191,9 +191,6 @@
         "tenantId": "glass",
         "orgId": "org_contract_fixture",
         "primitive": "reasoning",
-        "requirements": {
-          "structuredOutput": true
-        },
         "prompt": "Extract the source-backed policy fields.",
         "schema": {
           "type": "object",
@@ -223,10 +220,7 @@
       "value": {
         "tenantId": "glass",
         "orgId": "org_contract_fixture",
-        "primitive": "multimodal",
-        "requirements": {
-          "tools": true
-        },
+        "primitive": "text",
         "prompt": "Read the attached certificate.",
         "tools": [
           {
@@ -239,10 +233,9 @@
             }
           }
         ],
-        "toolSelection": "caller",
         "route": {
           "provider": "openai",
-          "model": "gpt-5.6-terra"
+          "model": "gpt-6.1-sol"
         },
         "trace": {
           "tags": {
@@ -270,7 +263,7 @@
         "costStatus": "priced",
         "model": {
           "provider": "fireworks",
-          "model": "accounts/fireworks/models/glm-5p2"
+          "model": "accounts/fireworks/models/muse-spark-open"
         },
         "routing": {
           "decision": "routed",
@@ -280,7 +273,7 @@
           "selectedTier": 2,
           "route": {
             "provider": "fireworks",
-            "model": "accounts/fireworks/models/glm-5p2"
+            "model": "accounts/fireworks/models/muse-spark-open"
           },
           "source": "jev",
           "attemptCount": 1
@@ -305,17 +298,17 @@
         "costStatus": "priced",
         "model": {
           "provider": "fireworks",
-          "model": "accounts/fireworks/models/deepseek-v4-flash"
+          "model": "accounts/fireworks/models/deepseek-v4p1-flash"
         },
         "routing": {
           "decision": "routed",
-          "primitive": "tool_use",
+          "primitive": "text",
           "difficulty": "standard",
           "requiredTier": 2,
           "selectedTier": 2,
           "route": {
             "provider": "fireworks",
-            "model": "accounts/fireworks/models/deepseek-v4-flash"
+            "model": "accounts/fireworks/models/deepseek-v4p1-flash"
           },
           "source": "jev",
           "attemptCount": 1
@@ -494,7 +487,7 @@
         "models": [
           {
             "provider": "openai",
-            "model": "gpt-5.5",
+            "model": "gpt-6-luna",
             "primitives": [
               "text",
               "multimodal",

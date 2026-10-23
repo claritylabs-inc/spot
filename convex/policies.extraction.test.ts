@@ -231,7 +231,7 @@ describe("declarations preview", () => {
       leaseId: "lease-1",
       fields: previewFields,
       previewVersion: "convex-sections-v1.0",
-      previewModel: "gpt-5.6-terra",
+      previewModel: "fixture-extraction-model",
     });
     expect(updated).toEqual({ updated: true });
     const policy = await t.run((ctx) => ctx.db.get(ids.policyId));
@@ -241,7 +241,7 @@ describe("declarations preview", () => {
       policyNumber: "GL-100",
       policyYear: 2026,
       extractionPreviewVersion: "convex-sections-v1.0",
-      extractionPreviewModel: "gpt-5.6-terra",
+      extractionPreviewModel: "fixture-extraction-model",
     });
     expect(policy?.pipelineError).toBeUndefined();
   });

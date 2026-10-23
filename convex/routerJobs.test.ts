@@ -4,8 +4,244 @@ import { afterEach, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import schema from "./schema";
 import { routerJobTokenHash } from "./routerJobs";
+import {
+  clRouterGenerateMaybeManual,
+  clRouterGenerateMaybeManualStream,
+} from "./lib/clRouterClient";
+import { createClRouterLanguageModel } from "./lib/clRouterLanguageModel";
+import { mapSpotCallToClRouterPrimitive } from "./lib/clRouterPrimitive";
+import { executeDurableRouterRequest } from "./lib/routerJobClient";
+import contractFixtures from "../contracts/cl-router/fixtures.v1.json";
 const modules = import.meta.glob("./**/*.ts");
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+
+// Transport invariants: retired pins may fall back only before execution;
+// unknown outcomes and partial streams must never replay inference. Durable
+// fallback must retain its identity across a runner continuation.
+const routerEnvironment = {
+  CL_ROUTER_URL: "https://router.example.com",
+  CL_ROUTER_SECRET: "test-only",
+};
+const route = { provider: "openai" as const, model: "fixture-live-model" };
+const generation = {
+  ...contractFixtures.fixtures.find(
+    (item) => item.schema === "GenerateResponse",
+  )!.value,
+  output: "Done",
+  model: route,
+};
+function capabilities(models = [route]) {
+  return {
+    apiVersion: "v1",
+    credentialMode: "router",
+    providers: [{ provider: "openai", configured: true }],
+    webRetrieval: { providers: [] },
+    models: models.map((model) => ({
+      ...model,
+      configured: true,
+      primitives: ["text", "reasoning"],
+      capabilities: {
+        vision: true,
+        tools: true,
+        structuredOutput: true,
+        embedding: false,
+        audioInput: false,
+      },
+    })),
+  };
+}
+function routerFailure(message: string, executionStarted = false) {
+  return {
+    error: {
+      code: "router_rejected",
+      message,
+      executionStarted,
+      retryable: false,
+    },
+  };
+}
+
+test("operator routing needs no stored pin; cleanup clears the old operator pin too", async () => {
+  const t = convexTest(schema, modules);
+  expect(
+    await t.query(internal.modelSettings.resolveOperatorAgentRoute, {}),
+  ).toBeNull();
+  await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", {});
+    await ctx.db.insert("globalModelSettings", {
+      key: "default",
+      updatedBy: userId,
+      updatedAt: 0,
+      routes: { operator_agent: route },
+      explicitRouteOverrides: ["operator_agent"],
+    });
+  });
+  expect(
+    await t.query(internal.modelSettings.resolveOperatorAgentRoute, {}),
+  ).toEqual(route);
+  await t.mutation(
+    internal.modelSettings.clearOperatorModelOverridesInternal,
+    {},
+  );
+  expect(
+    await t.query(internal.modelSettings.resolveOperatorAgentRoute, {}),
+  ).toBeNull();
+});
+
+test("generation lets the router infer image, tool, schema and context capabilities", async () => {
+  expect(mapSpotCallToClRouterPrimitive({ task: "chat_vision" })).toEqual({
+    primitive: "text",
+  });
+  expect(
+    mapSpotCallToClRouterPrimitive({
+      task: "chat",
+      taskKind: "operator_agent",
+    }),
+  ).toEqual({ primitive: "text" });
+  expect(mapSpotCallToClRouterPrimitive({ task: "extraction" })).toEqual({
+    primitive: "reasoning",
+  });
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockImplementation(async () => Response.json(generation));
+  const model = createClRouterLanguageModel({
+    task: "chat_vision",
+    taskKind: "operator_agent",
+    sessionKey: "test",
+    client: { environment: routerEnvironment, fetch: fetcher },
+  });
+  const options = {
+    prompt: [
+      {
+        role: "user" as const,
+        content: [{ type: "text" as const, text: "Hello" }],
+      },
+    ],
+  };
+  await model.doGenerate(options);
+  await model.doGenerate(options);
+  for (const [url, init] of fetcher.mock.calls) {
+    expect(String(url).endsWith("/v1/generate")).toBe(true);
+    const body = JSON.parse(String(init?.body));
+    expect(body.primitive).toBe("text");
+    expect(body).not.toHaveProperty("route");
+    expect(body).not.toHaveProperty("requirements");
+    expect(body).not.toHaveProperty("toolSelection");
+  }
+});
+
+test("live capabilities replace a retired pin without executing manual inference", async () => {
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockImplementation(async (url) =>
+      Response.json(
+        String(url).endsWith("/v1/capabilities") ? capabilities() : generation,
+      ),
+    );
+  await clRouterGenerateMaybeManual(
+    { primitive: "text", prompt: "Hello" },
+    { ...route, model: "retired-fixture" },
+    { environment: routerEnvironment, fetch: fetcher },
+  );
+  expect(
+    fetcher.mock.calls.map(([url]) => String(url).split("/").pop()),
+  ).toEqual(["capabilities", "generate"]);
+});
+
+test("an explicit live pin still uses manual generation", async () => {
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockImplementation(async (url) =>
+      Response.json(
+        String(url).endsWith("/v1/capabilities") ? capabilities() : generation,
+      ),
+    );
+  await clRouterGenerateMaybeManual(
+    { primitive: "text", prompt: "Hello" },
+    route,
+    { environment: routerEnvironment, fetch: fetcher },
+  );
+  expect(
+    fetcher.mock.calls.map(([url]) => String(url).split("/").pop()),
+  ).toEqual(["capabilities", "manual"]);
+});
+
+test.each([
+  ["The manual route is not in the model registry.", false, true],
+  ["The manual route is not in the model registry.", true, false],
+  ["Invalid tool schema", false, false],
+])(
+  "manual rejection %s (executionStarted=%s) only falls back for an unknown route",
+  async (message, executionStarted, fallback) => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
+      if (String(url).endsWith("/v1/capabilities"))
+        return Response.json(capabilities());
+      if (String(url).endsWith("/v1/manual"))
+        return Response.json(routerFailure(message, executionStarted), {
+          status: 400,
+        });
+      return Response.json(generation);
+    });
+    const call = clRouterGenerateMaybeManual(
+      { primitive: "text", prompt: "Hello" },
+      route,
+      { environment: routerEnvironment, fetch: fetcher },
+    );
+    if (fallback) await expect(call).resolves.toHaveProperty("output", "Done");
+    else await expect(call).rejects.toThrow(message);
+    expect(
+      fetcher.mock.calls.some(([url]) => String(url).endsWith("/v1/generate")),
+    ).toBe(fallback);
+  },
+);
+
+test("a pre-output SSE route rejection falls back, but output followed by rejection never replays", async () => {
+  for (const visible of [false, true]) {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
+      if (String(url).endsWith("/v1/capabilities"))
+        return Response.json(capabilities());
+      const error = {
+        type: "error",
+        ...routerFailure("The manual route is not in the model registry."),
+      };
+      const done = { ...generation, type: "done", finishReason: "stop" };
+      const events = String(url).endsWith("/v1/manual/stream")
+        ? [
+            ...(visible
+              ? [{ type: "text-delta", id: "1", delta: "Partial" }]
+              : []),
+            error,
+          ]
+        : [done];
+      return new Response(
+        events
+          .map(
+            (event) =>
+              `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
+          )
+          .join(""),
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    });
+    const response = await clRouterGenerateMaybeManualStream(
+      { primitive: "text", prompt: "Hello" },
+      route,
+      { environment: routerEnvironment, fetch: fetcher },
+    );
+    const events = [];
+    for await (const event of response.events) events.push(event.type);
+    expect(events).toEqual(visible ? ["text-delta", "error"] : ["done"]);
+    expect(
+      fetcher.mock.calls.some(([url]) =>
+        String(url).endsWith("/v1/generate/stream"),
+      ),
+    ).toBe(!visible);
+  }
+});
 
 async function fixture() {
   const t = convexTest(schema, modules);
@@ -54,6 +290,114 @@ test("prepares one invocation and rejects conflicting identities", async () => {
       })
     )?._id,
   ).toBe(row._id);
+});
+
+test("durable routed fallback reconnects even after the pin is removed", async () => {
+  const { t, args, row } = await fixture();
+  await t.run((ctx) =>
+    ctx.db.patch(row._id, {
+      operation: "manual",
+      status: "failed",
+      error: "The manual route is not in the model registry.",
+      failure: {
+        code: "router_rejected",
+        executionStarted: false,
+        retryable: false,
+      },
+    }),
+  );
+  vi.stubEnv("SPOT_ENV", "local");
+  vi.stubEnv("CONVEX_SITE_URL", "http://127.0.0.1:3211");
+  vi.stubEnv("SPOT_ROUTER_CALLBACK_URL", "");
+  vi.stubEnv("CL_ROUTER_URL", routerEnvironment.CL_ROUTER_URL);
+  vi.stubEnv("CL_ROUTER_SECRET", "x".repeat(32));
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockImplementation(async () =>
+      Response.json({ jobId: "router-fallback" }),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  await expect(
+    t.action((ctx) =>
+      executeDurableRouterRequest(
+        ctx,
+        "manual",
+        { primitive: "text", route, prompt: "Original prompt" },
+        args.invocationKey,
+        undefined,
+        { wait: "yield" },
+      ),
+    ),
+  ).rejects.toThrow("still running");
+  const fallback = (await t.query(internal.routerJobs.get, {
+    invocationKey: `${args.invocationKey}:routed`,
+  }))!;
+  expect(fallback.operation).toBe("generate");
+  const requestText = await t.run(async (ctx) =>
+    (await ctx.storage.get(fallback.requestStorageId!))!.text(),
+  );
+  expect(JSON.parse(requestText)).not.toHaveProperty("route");
+  const storageId = await t.run((ctx) =>
+    ctx.storage.store(new Blob([JSON.stringify(generation)])),
+  );
+  await t.mutation(internal.routerJobs.finish, {
+    id: fallback._id,
+    tokenHash: fallback.resultTokenHash,
+    jobId: "router-fallback",
+    invocationKey: fallback.invocationKey,
+    fingerprint: fallback.fingerprint,
+    status: "succeeded",
+    storageId,
+  });
+  for (const operation of ["manual", "generate"] as const) {
+    expect(
+      await t.action((ctx) =>
+        executeDurableRouterRequest(
+          ctx,
+          operation,
+          {
+            primitive: "text",
+            prompt: "Rebuilt prompt",
+            ...(operation === "manual" ? { route } : {}),
+          },
+          args.invocationKey,
+        ),
+      ),
+    ).toEqual(generation);
+  }
+  expect(
+    await t.run((ctx) => ctx.db.query("routerJobs").take(10)),
+  ).toHaveLength(2);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+test("a durable unknown execution outcome cannot create a routed fallback", async () => {
+  const { t, args, row } = await fixture();
+  await t.run((ctx) =>
+    ctx.db.patch(row._id, {
+      operation: "manual",
+      status: "failed",
+      error: "Router execution outcome is unknown",
+      failure: {
+        code: "router_unavailable",
+        executionStarted: true,
+        retryable: false,
+      },
+    }),
+  );
+  await expect(
+    t.action((ctx) =>
+      executeDurableRouterRequest(
+        ctx,
+        "manual",
+        { primitive: "text", route, prompt: "Hello" },
+        args.invocationKey,
+      ),
+    ),
+  ).rejects.toThrow("outcome is unknown");
+  expect(
+    await t.run((ctx) => ctx.db.query("routerJobs").take(10)),
+  ).toHaveLength(1);
 });
 
 test("accepts callback before submission ACK, binds identity, and removes duplicate result uploads", async () => {
