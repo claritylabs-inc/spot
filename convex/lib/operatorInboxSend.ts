@@ -409,7 +409,7 @@ export async function sendOperatorInboxDraft(
     // No response or a server error on the send itself: it may have gone out.
     await advance({ stage: "unknown", error: describeFailure(error) });
     throw new Error(
-      "Delivery outcome unknown. The draft stays locked while Spot verifies with Resend; it will not be sent again unless it is confirmed not sent.",
+      "Delivery outcome unknown. The draft stays locked while Spot checks Resend for evidence it was sent, and it will not be sent again.",
     );
   }
 

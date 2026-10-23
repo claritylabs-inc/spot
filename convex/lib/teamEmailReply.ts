@@ -9,7 +9,9 @@ import {
 import { pendingEmailDraftFingerprint } from "./actionConfirmationFingerprint";
 import { extractEmailAddress } from "./emailAddress";
 import { escapeHtml } from "./emailTemplate";
+import { requireOperatorForUser } from "./operatorIdentity";
 import { buildOperatorSignature } from "./teamEmail";
+import { resolveTeamThreadId } from "./teamEmailStore";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -188,4 +190,32 @@ export async function composeTeamReply(
       fingerprint,
     },
   };
+}
+
+export type TeamReplyPreviewResult =
+  | { ok: true; preview: TeamReplyPreview; teamEmailThreadId: Id<"teamEmailThreads"> }
+  | { ok: false; reason: string };
+
+/**
+ * The preview for an operator-agent reply, usable from any query or mutation
+ * (the confirmation preflight runs in one). It requires an active operator and
+ * a live, unarchived target, and writes nothing of its own. `teamEmailThreadId`
+ * may be a stale generation id; it resolves to the canonical team thread,
+ * which is returned so callers bind the approval to the real target.
+ */
+export async function previewTeamEmailReply(
+  ctx: Ctx,
+  args: { operatorUserId: Id<"users">; teamEmailThreadId: string; message: string },
+): Promise<TeamReplyPreviewResult> {
+  await requireOperatorForUser(ctx, args.operatorUserId);
+  const threadId = await resolveTeamThreadId(ctx, args.teamEmailThreadId);
+  if (!threadId) return { ok: false, reason: "Conversation not found." };
+  const composed = await composeTeamReply(ctx, {
+    operatorUserId: args.operatorUserId,
+    threadId,
+    message: args.message,
+  });
+  return composed.ok
+    ? { ok: true, preview: composed.preview, teamEmailThreadId: threadId }
+    : { ok: false, reason: composed.reason };
 }

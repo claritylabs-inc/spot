@@ -532,14 +532,21 @@ export async function operatorDraftBlocker(
   ctx: Ctx,
   draft: Doc<"pendingEmails">,
 ): Promise<string | null> {
+  // A reply draft cannot be updated: the person previews the reply again instead.
+  const redo = (updateText: string) =>
+    draft.directReplyKey
+      ? "Your sender details changed — preview the reply again before sending."
+      : updateText;
   if (!draft.transport || !draft.senderUserId) return SENDER_CHANGED_REASON;
   let identity: OperatorSenderIdentity;
   try {
     identity = await operatorSenderIdentity(ctx, draft.senderUserId);
   } catch {
-    return "The signing operator is no longer available — update the draft to re-sign.";
+    return redo(
+      "The signing operator is no longer available — update the draft to re-sign.",
+    );
   }
-  if (draft.fromHeader !== identity.fromHeader) return SENDER_CHANGED_REASON;
+  if (draft.fromHeader !== identity.fromHeader) return redo(SENDER_CHANGED_REASON);
   const copied = new Set(
     [draft.recipientEmail, ...(draft.ccAddresses ?? [])].map((address) =>
       address.trim().toLowerCase(),
@@ -547,11 +554,11 @@ export async function operatorDraftBlocker(
   );
   // The snapshot must equal the current setting: clearing or changing Always CC
   // invalidates the draft, not only a missing copy.
-  if ((draft.operatorAlwaysCcEmail ?? null) !== identity.alwaysCc) {
-    return "Always CC changed — update draft to re-sign.";
-  }
-  if (identity.alwaysCc && !copied.has(identity.alwaysCc)) {
-    return "Always CC changed — update draft to re-sign.";
+  if (
+    (draft.operatorAlwaysCcEmail ?? null) !== identity.alwaysCc ||
+    (identity.alwaysCc && !copied.has(identity.alwaysCc))
+  ) {
+    return redo("Always CC changed — update draft to re-sign.");
   }
   if (draft.orgId) {
     const organization = await ctx.db.get(draft.orgId);
@@ -588,7 +595,7 @@ export async function operatorDraftBlocker(
     if (!plan.owns && thread.ownerUserId !== draft.senderUserId) {
       const ownerAddress = await teamThreadOwnerAddress(ctx, thread.ownerUserId);
       if (ownerAddress && !copied.has(ownerAddress)) {
-        return "The thread owner changed — update the draft to copy them.";
+        return redo("The thread owner changed — update the draft to copy them.");
       }
     }
   }
@@ -666,14 +673,14 @@ export async function checkOperatorSendApproval(
     }
     const toolName = confirmation.payload.toolName;
     const input = JSON.parse(confirmation.payload.input) as Record<string, unknown>;
+    // A reply draft is bound to its confirmation when created (thread and message
+    // checked there, ids of any generation resolved); the fingerprint then pins
+    // the exact reply, target included.
     const targetsThisDraft =
       toolName === "send_email_draft"
         ? input.draftId === draft._id
         : REPLY_TOOL_NAMES.includes(toolName) &&
-          draft.directReplyKey === agentReplyKey(confirmation._id) &&
-          [input.teamEmailThreadId, input.procurementEmailThreadId].includes(
-            draft.teamEmailThreadId,
-          );
+          draft.directReplyKey === agentReplyKey(confirmation._id);
     if (!targetsThisDraft || confirmation.payload.sourceFingerprint !== fingerprint) {
       return denied("The draft changed since it was approved.");
     }
