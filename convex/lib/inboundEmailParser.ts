@@ -12,12 +12,12 @@ const INBOUND_EMAIL_PARSER_VERSION = "reply-2.3.9_forward-1.8.3";
 const PENDING_MESSAGE_ID_RE = /<?(?:spot|glass)-pending-([^@\s>]+)@[^>\s]+>?/gi;
 const MAX_CAPTURED_PENDING_EMAIL_ID_LENGTH = 128;
 
-type ParsedInboundMailbox = {
+export type ParsedInboundMailbox = {
   address?: string;
   name?: string;
 };
 
-type ParsedForwardedEmail = {
+export type ParsedForwardedEmail = {
   from?: ParsedInboundMailbox;
   to: ParsedInboundMailbox[];
   cc: ParsedInboundMailbox[];
@@ -26,7 +26,7 @@ type ParsedForwardedEmail = {
   body?: string;
 };
 
-type ParsedInboundEmail = {
+export type ParsedInboundEmail = {
   currentText: string;
   rawText?: string;
   rawHtml?: string;
@@ -36,6 +36,27 @@ type ParsedInboundEmail = {
   };
   parseInputTruncated: boolean;
 };
+
+/**
+ * One header from a Resend received-email payload, whose `headers` is either a
+ * `{ name, value }` list or a name-keyed object. Names match case-insensitively.
+ */
+export function receivedEmailHeader(
+  rawHeaders: unknown,
+  name: string,
+): string | undefined {
+  const lower = name.toLowerCase();
+  if (Array.isArray(rawHeaders)) {
+    return (rawHeaders as Array<{ name?: string; value?: string }>).find(
+      (header) => header.name?.toLowerCase() === lower,
+    )?.value;
+  }
+  if (rawHeaders && typeof rawHeaders === "object") {
+    const record = rawHeaders as Record<string, string>;
+    return record[lower] ?? record[name];
+  }
+  return undefined;
+}
 
 export function extractPendingEmailIdsFromHeaders(
   values: Array<string | undefined>,
