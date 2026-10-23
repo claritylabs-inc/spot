@@ -206,6 +206,8 @@ export const updateDraftInternal = internalMutation({
       status: "draft",
       scheduledSendTime: 0,
       sendBlockedReason: args.sendBlockedReason,
+      // Any edit voids a browser reply's approval of the earlier content.
+      directApproval: undefined,
       explicitSendAuthorization: undefined,
       coiBatchAuthorization: undefined,
     });
@@ -218,6 +220,10 @@ export const updateDraftRecipientInternal = internalMutation({
     recipientEmail: v.string(),
   },
   handler: async (ctx, args) => {
+    const draft = await ctx.db.get(args.id);
+    if (draft?.directApproval) {
+      await ctx.db.patch(draft._id, { directApproval: undefined });
+    }
     return await updateDraftRecipient(ctx, args.id, args.recipientEmail);
   },
 });
@@ -425,6 +431,10 @@ export const cancelInternal = internalMutation({
     // A claimed operator send may already have left; it can no longer be cancelled.
     if (pending && isOperatorEmailDraft(pending) && pending.status === "pending") {
       throw new Error("This email is already being sent.");
+    }
+    // A cancelled reply keeps no approval to send.
+    if (pending?.directApproval) {
+      await ctx.db.patch(pending._id, { directApproval: undefined });
     }
     return await cancelDraftOrPendingEmail(ctx, args.id);
   },

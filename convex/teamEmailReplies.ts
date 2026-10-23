@@ -11,7 +11,8 @@ import {
 } from "./_generated/server";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
-import { composeTeamReply } from "./lib/teamEmailReply";
+import { composeTeamReply, previewTeamEmailReply } from "./lib/teamEmailReply";
+import { resolveTeamThreadId } from "./lib/teamEmailStore";
 import { REPLY_TOOL_NAMES, agentReplyKey } from "./operatorEmailDrafts";
 
 /**
@@ -59,24 +60,15 @@ export const preview = query({
   },
 });
 
-/** Same preview for an operator-agent confirmation preflight, for an active operator. */
+/** `previewTeamEmailReply` for actions, which cannot call it directly. */
 export const previewInternal = internalQuery({
   args: {
     operatorUserId: v.id("users"),
-    teamEmailThreadId: v.id("teamEmailThreads"),
+    /** A team thread id, or a legacy procurement thread id that resolves to one. */
+    teamEmailThreadId: v.string(),
     message: v.string(),
   },
-  handler: async (ctx, args) => {
-    await requireOperatorForUser(ctx, args.operatorUserId);
-    const composed = await composeTeamReply(ctx, {
-      operatorUserId: args.operatorUserId,
-      threadId: args.teamEmailThreadId,
-      message: args.message,
-    });
-    return composed.ok
-      ? ({ ok: true, preview: composed.preview } as const)
-      : ({ ok: false, reason: composed.reason } as const);
-  },
+  handler: async (ctx, args) => await previewTeamEmailReply(ctx, args),
 });
 
 /**
@@ -161,10 +153,15 @@ export const prepareAgentReplyInternal = internalMutation({
       throw new Error("A completed approval for this reply is required.");
     }
     const input = JSON.parse(confirmation.payload.input) as Record<string, unknown>;
+    // The approved input may name the thread by an older id generation: compare
+    // what each id resolves to, not the raw strings.
+    const named = [input.teamEmailThreadId, input.procurementEmailThreadId].filter(
+      (id): id is string => typeof id === "string" && id.length > 0,
+    );
+    const resolved = await Promise.all(named.map((id) => resolveTeamThreadId(ctx, id)));
     if (
-      ![input.teamEmailThreadId, input.procurementEmailThreadId].includes(
-        args.teamEmailThreadId,
-      ) ||
+      !named.length ||
+      resolved.some((id) => id !== args.teamEmailThreadId) ||
       input.message !== args.message
     ) {
       throw new Error("The reply does not match what was approved.");
