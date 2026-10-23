@@ -1,6 +1,7 @@
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
+import type { RecordInboxResult } from "../operatorInboxes";
 import { extractEmailAddress } from "./emailAddress";
 import type { InboxRecord } from "./providerOutreachValidators";
 import { getEmailDeliveryMode, isSpotOutboundAddress } from "./resend";
@@ -14,36 +15,23 @@ import {
 } from "./resendInbox";
 import {
   agentInboxAddress,
-  assertTeamLocalpart,
-  deriveOperatorLocalpart,
-  getTeamEmailDomain,
   operatorFromName,
-  operatorTeamAddress,
+  operatorTeamAddressFor,
   TeamEmailError,
 } from "./teamEmail";
 
-/**
- * Inbox lifecycle for team email: create (or adopt) the operator's Resend
- * inbox, retire it when the address changes, and repair a stale `fromName`
- * lazily. Naming rules live in `teamEmail.ts`, transport in `resendInbox.ts`,
- * storage in `convex/operatorInboxes.ts`.
- *
- * `EMAIL_DELIVERY_MODE=capture` makes no Resend call and writes no row; the
- * result is flagged `captured` with placeholder ids that
- * `isCapturedResourceId` recognises. Under `restricted`, setup calls run
- * (they send nothing); the transport enforces recipients at draft/send time.
- */
-
 export type EnsuredTeamInbox = {
   inbox: InboxRecord;
-  /** Capture mode: `inbox` carries placeholder ids and nothing was persisted. */
+  /** Capture mode: placeholder ids, no Resend call, nothing persisted. */
   captured: boolean;
 };
 
 export type EnsuredOperatorInbox = EnsuredTeamInbox & {
-  /** The operator's saved Always CC address, if any. Validated when saved, not here. */
+  /** The saved Always CC address; validated when saved, not here. */
   alwaysCcEmail: string | null;
 };
+
+type Persist = Promise<RecordInboxResult>;
 
 function capturedInbox(key: string, emailAddress: string, fromName: string): InboxRecord {
   return {
@@ -57,98 +45,113 @@ function capturedInbox(key: string, emailAddress: string, fromName: string): Inb
   };
 }
 
+function unavailable(operation: "ensureInbox" | "updateInbox" | "ensureLabels") {
+  return new ResendInboxError("permanent", operation, "inbox provisioning unavailable", {
+    code: "captured_resource_id",
+  });
+}
+
+function conflict() {
+  return new ResendInboxError(
+    "permanent",
+    "ensureInbox",
+    "inbox address is already registered to another owner",
+    { code: "inbox_conflict" },
+  );
+}
+
+async function assertAddressAvailable(
+  ctx: ActionCtx,
+  emailAddress: string,
+  userId?: Id<"users">,
+): Promise<void> {
+  const ownership = await ctx.runQuery(
+    internal.operatorInboxes.addressOwnershipInternal,
+    { emailAddress, userId },
+  );
+  if (ownership === "conflict") throw conflict();
+}
+
 /**
- * Brings Resend and the database to `desired`:
- * - the stored active inbox already has this address: only `fromName` is
- *   repaired (Resend first, then the row);
- * - otherwise the inbox is created (or adopted on a 409), labelled and
- *   recorded, and `persist` retires whatever it replaces.
+ * Brings Resend and the database to `desired`. A stored inbox at this address
+ * only needs `fromName` repaired. Otherwise the inbox is created (or adopted
+ * on a 409), labelled and persisted; persisting retires the inbox it replaces.
+ * An adopted inbox is persisted with its remote `fromName` and repaired only
+ * afterwards, so a concurrent claim of the address is rejected before Resend
+ * is modified.
  */
 async function reconcileInbox(
   ctx: ActionCtx,
   desired: { emailAddress: string; fromName: string },
   current: InboxRecord | null,
-  persist: (inbox: InboxRecord) => Promise<InboxRecord | null>,
+  persist: (inbox: InboxRecord) => Persist,
 ): Promise<InboxRecord> {
-  const usable =
+  let inbox =
     current &&
     !isCapturedResourceId(current.inboxId) &&
     current.emailAddress.toLowerCase() === desired.emailAddress
       ? current
       : null;
 
-  if (usable) {
-    if (usable.fromName === desired.fromName) return usable;
+  if (!inbox) {
+    const ensured = await ensureInbox({
+      emailAddress: desired.emailAddress,
+      fromName: desired.fromName,
+      name: desired.emailAddress,
+    });
+    if (ensured.status !== "ok" || isCapturedResourceId(ensured.data.id)) {
+      throw unavailable("ensureInbox");
+    }
+    if (ensured.data.emailAddress.toLowerCase() !== desired.emailAddress) {
+      throw new ResendInboxError("permanent", "ensureInbox", "inbox address mismatch", {
+        code: "inbox_address_mismatch",
+      });
+    }
+    const labels = await ensureOutreachInboxLabels(ensured.data.id);
+    if (labels.status !== "ok") throw unavailable("ensureLabels");
+
+    const recorded = await persist({
+      inboxId: ensured.data.id,
+      emailAddress: desired.emailAddress,
+      fromName: ensured.data.fromName ?? "",
+      labelIds: labels.data,
+    });
+    if (recorded.status === "conflict") throw conflict();
+    if (recorded.status === "stale") {
+      throw new ResendInboxError(
+        "transient",
+        "ensureInbox",
+        "operator team address changed; retry",
+        { code: "inbox_stale" },
+      );
+    }
+    inbox = recorded.inbox;
+  }
+
+  if (inbox.fromName !== desired.fromName) {
     const updated = await updateInbox({
-      inboxId: usable.inboxId,
+      inboxId: inbox.inboxId,
       fromName: desired.fromName,
     });
     if (updated.status !== "ok") throw unavailable("updateInbox");
     await ctx.runMutation(internal.operatorInboxes.updateInboxFromNameInternal, {
-      inboxId: usable.inboxId,
+      inboxId: inbox.inboxId,
       fromName: desired.fromName,
     });
-    return { ...usable, fromName: desired.fromName };
+    inbox = { ...inbox, fromName: desired.fromName };
   }
-
-  const ensured = await ensureInbox({
-    emailAddress: desired.emailAddress,
-    fromName: desired.fromName,
-    name: desired.emailAddress,
-  });
-  if (ensured.status !== "ok" || isCapturedResourceId(ensured.data.id)) {
-    throw unavailable("ensureInbox");
-  }
-  // An adopted inbox must be the exact address derived for this identity.
-  if (ensured.data.emailAddress.toLowerCase() !== desired.emailAddress) {
-    throw new ResendInboxError("permanent", "ensureInbox", "inbox address mismatch", {
-      code: "inbox_address_mismatch",
-    });
-  }
-  if (ensured.data.adopted && ensured.data.fromName !== desired.fromName) {
-    const updated = await updateInbox({
-      inboxId: ensured.data.id,
-      fromName: desired.fromName,
-    });
-    if (updated.status !== "ok") throw unavailable("updateInbox");
-  }
-  const labels = await ensureOutreachInboxLabels(ensured.data.id);
-  if (labels.status !== "ok") throw unavailable("ensureLabels");
-
-  const stored = await persist({
-    inboxId: ensured.data.id,
-    emailAddress: desired.emailAddress,
-    fromName: desired.fromName,
-    labelIds: labels.data,
-  });
-  if (!stored) {
-    throw new ResendInboxError(
-      "permanent",
-      "ensureInbox",
-      "inbox is already registered to another owner",
-      { code: "inbox_conflict" },
-    );
-  }
-  return stored;
-}
-
-function unavailable(operation: "ensureInbox" | "updateInbox" | "ensureLabels") {
-  return new ResendInboxError(
-    "permanent",
-    operation,
-    "inbox provisioning unavailable",
-    { code: "captured_resource_id" },
-  );
+  return inbox;
 }
 
 /**
- * The operator's team inbox, created or repaired as needed. The address is
- * `operatorProfiles.teamEmailLocalpart` (else derived from the login email) on
- * `getTeamEmailDomain()`; the display name is the operator's full name.
+ * The operator's team inbox, created or repaired as needed. Requires an active
+ * operator. The address is their saved team localpart (else derived from the
+ * login email) on the team domain; the display name is their full name.
  *
- * Throws `TeamEmailError` (`name_required`, `invalid_localpart`,
- * `reserved_localpart`, `not_configured`) for identity problems the operator
- * must fix, and `ResendInboxError` for transport failures.
+ * Throws `TeamEmailError` for identity problems the operator must fix
+ * (`name_required`, `invalid_localpart`, `reserved_localpart`,
+ * `not_configured`) and `ResendInboxError` for transport failures and address
+ * conflicts (`inbox_conflict`, permanent; checked before any Resend mutation).
  */
 export async function ensureOperatorInbox(
   ctx: ActionCtx,
@@ -159,18 +162,8 @@ export async function ensureOperatorInbox(
     { userId },
   );
   const fromName = operatorFromName(identity.name);
-  const localpart = identity.teamEmailLocalpart
-    ? assertTeamLocalpart(identity.teamEmailLocalpart)
-    : identity.email
-      ? deriveOperatorLocalpart(identity.email)
-      : null;
-  if (!localpart) {
-    throw new TeamEmailError(
-      "invalid_localpart",
-      "Your account has no email; set a team address in Profile",
-    );
-  }
-  const emailAddress = operatorTeamAddress(localpart, getTeamEmailDomain());
+  const emailAddress = operatorTeamAddressFor(identity);
+  await assertAddressAvailable(ctx, emailAddress, userId);
 
   if (getEmailDeliveryMode() === "capture") {
     return {
@@ -194,11 +187,14 @@ export async function ensureOperatorInbox(
 
 /**
  * The shared command-channel inbox (`agent@team…`, `kind: "agent"`), created
- * or repaired as needed. Its display name is "Spot".
+ * or repaired as needed with the display name "Spot". Never adopts an address
+ * held by an operator row (`inbox_conflict`).
  */
 export async function ensureAgentInbox(ctx: ActionCtx): Promise<EnsuredTeamInbox> {
-  const emailAddress = agentInboxAddress(getTeamEmailDomain());
+  const emailAddress = agentInboxAddress();
   const fromName = "Spot";
+  await assertAddressAvailable(ctx, emailAddress);
+
   if (getEmailDeliveryMode() === "capture") {
     return { inbox: capturedInbox("agent", emailAddress, fromName), captured: true };
   }
@@ -216,11 +212,9 @@ export async function ensureAgentInbox(ctx: ActionCtx): Promise<EnsuredTeamInbox
 }
 
 /**
- * Validates an operator's Always CC setting: exactly one address, not
- * Spot-owned (agent, notification, auth or team domains), and not one of the
- * operator's own addresses (`ownAddresses`: team address and login emails).
- * Returns the normalized address; throws `TeamEmailError("invalid_always_cc")`.
- * Restricted delivery mode still applies at send time.
+ * Validates Always CC: one address, not Spot-owned, not in `ownAddresses` (the
+ * team address and login emails). Returns it normalized or throws
+ * `TeamEmailError("invalid_always_cc")`.
  */
 export function validateAlwaysCcEmail(
   value: string,

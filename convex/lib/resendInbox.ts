@@ -667,20 +667,15 @@ const FROM_NAME_MAX_LENGTH = 78;
 const INBOX_NAME_MAX_LENGTH = 64;
 
 export type UpdateInboxParams = {
-  /** Inbox id or inbox email address (never the receiving address). */
+  /** Inbox id or address (not the receiving address). */
   inboxId: string;
-  /** Name recipients see ("Name <address>"); an empty string removes it. */
+  /** An empty string removes it. */
   fromName?: string;
-  /** Internal dashboard name; recipients never see it. */
+  /** Internal name; recipients never see it. */
   name?: string;
 };
 
-/**
- * `PATCH /inboxes/{id}`: change the display name on sent mail and/or the
- * internal name. The address cannot change. Omitted fields keep their value.
- * This is inbox setup, not a send, so it runs in `restricted` mode and is
- * captured (no call) in `capture` mode.
- */
+/** `PATCH /inboxes/{id}`. Setup, not a send: runs in `restricted` mode, captured in `capture` mode. */
 export function updateInbox(
   params: UpdateInboxParams,
 ): Promise<ResendInboxResult<{ id: string }>> {
@@ -874,12 +869,15 @@ export async function ensureOutreachInboxLabels(
 
 // --- Drafts and sends -------------------------------------------------------
 
-/** Resend caps the combined decoded content of a draft's attachments at 25 MB. */
-export const MAX_DRAFT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+/**
+ * Resend documents "25 MB" of attachment content per draft without defining
+ * the unit, so the stricter decimal value is enforced.
+ */
+export const MAX_DRAFT_ATTACHMENT_BYTES = 25_000_000;
 
 export type DraftAttachment = {
   filename: string;
-  /** Base64-encoded file content. Drafts accept neither `path` nor `content_id`. */
+  /** Base64 content; drafts accept neither `path` nor `content_id`. */
   content: string;
   contentType: string;
 };
@@ -927,7 +925,7 @@ export type CreateDraftParams = {
   /** Reply draft: both `threadId` and `replyToEmailId` are required together. */
   threadId?: string;
   replyToEmailId?: string;
-  /** Base64 files, at most 25 MB combined. */
+  /** At most `MAX_DRAFT_ATTACHMENT_BYTES` combined. */
   attachments?: DraftAttachment[];
   idempotencyKey: string;
 };
@@ -1101,7 +1099,7 @@ export type ReplyToThreadEmailParams = {
   subject?: string;
   cc?: string | string[];
   bcc?: string | string[];
-  /** Also reply to the other `to` and `cc` recipients of the target message (`reply_all`). */
+  /** Sent as the documented boolean body field `reply_all`. */
   replyAll?: boolean;
   idempotencyKey: string;
   headers?: Record<string, string>;
@@ -1109,11 +1107,10 @@ export type ReplyToThreadEmailParams = {
 
 /**
  * `POST /inboxes/{id}/threads/{threadId}/emails/{emailId}/reply`. Resend
- * addresses the reply (original `to` for an outbound message, otherwise
- * Reply-To / sender; with `replyAll` also the message's other `to` and `cc`,
- * minus the inbox's own address), so under `restricted` the target message is
- * fetched and a superset of the derived recipients plus cc/bcc is checked
- * first.
+ * derives the recipients (the original `to` for an outbound message, otherwise
+ * Reply-To or sender; `replyAll` adds the message's other recipients), so under
+ * `restricted` the target is fetched and a superset of them plus cc/bcc is
+ * checked first.
  */
 export async function replyToThreadEmail(
   params: ReplyToThreadEmailParams,
@@ -1159,7 +1156,7 @@ export async function replyToThreadEmail(
           : [target.data.from];
     let derived = replyTargets;
     if (params.replyAll) {
-      // Resend leaves the inbox's own address out of a reply-all.
+      // The inbox's own address is not a reply-all recipient.
       const own = (
         await request(
           {
@@ -1357,11 +1354,9 @@ export function setThreadLabels(
   );
 }
 
-// --- Operator inbox naming (compatibility) -----------------------------------
-// Naming now lives in `teamEmail.ts`; these keep existing importers working
-// until their owners move to `ensureOperatorInbox`.
+// Deprecated aliases; naming lives in `teamEmail.ts`.
 
-/** Team-email failures surface as permanent transport validation errors. */
+
 function asInboxNamingError(error: unknown): unknown {
   return isTeamEmailError(error)
     ? new ResendInboxError("permanent", "ensureInbox", error.message, {
@@ -1379,10 +1374,7 @@ export function getProviderOutreachEmailDomain(): string {
   }
 }
 
-/**
- * @deprecated Derived from the login email only; ignores a saved
- * `teamEmailLocalpart`. Use `ensureOperatorInbox` for the real address.
- */
+/** @deprecated Ignores a saved `teamEmailLocalpart`; use `ensureOperatorInbox`. */
 export function operatorInboxAddress(
   operatorEmail: string,
   domain?: string,
@@ -1397,10 +1389,7 @@ export function operatorInboxAddress(
   }
 }
 
-/**
- * @deprecated Display-only: the operator's full name, or "Spot" when unset so
- * read paths never throw. Sending paths use `operatorFromName`, which errors.
- */
+/** @deprecated Display only: "Spot" when the name is unset, so read paths never throw. Send paths use `operatorFromName`. */
 export function operatorInboxFromName(
   operatorName: string | undefined,
 ): string {

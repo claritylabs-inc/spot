@@ -7,13 +7,15 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
+import { requireOperatorForUser } from "./lib/operatorIdentity";
 import { inboxRecordValidator } from "./lib/providerOutreachValidators";
+import { agentInboxAddress, operatorTeamAddressFor } from "./lib/teamEmail";
 
 /**
- * Storage for team inboxes (`operatorOutreachInboxes`): one active Resend
- * inbox per operator plus the shared `agent` command inbox. A row without
- * `status` is an active pre-cutover inbox; retired rows stay so replies to old
- * threads can still map. `convex/lib/operatorInbox.ts` drives these.
+ * Storage for `operatorOutreachInboxes`: one active inbox per operator plus the
+ * shared `agent` inbox. A row with no `status` is an active pre-cutover inbox.
+ * Retired rows are kept: they still map replies to old threads and keep
+ * reserving their address.
  */
 
 type InboxRow = Doc<"operatorOutreachInboxes">;
@@ -30,11 +32,12 @@ function toRecord(row: InboxRow) {
   };
 }
 
-/** The newest active operator inbox, counting pre-cutover rows with no status. */
-async function activeOperatorInbox(
-  ctx: Ctx,
-  userId: Id<"users">,
-): Promise<InboxRow | null> {
+const ownedByOperator = (row: InboxRow, userId: Id<"users">) =>
+  row.userId === userId && row.kind !== "agent";
+const ownedByAgent = (row: InboxRow) =>
+  row.kind === "agent" && row.userId === undefined;
+
+async function activeOperatorInbox(ctx: Ctx, userId: Id<"users">) {
   const [explicit, legacy] = await Promise.all([
     ctx.db
       .query("operatorOutreachInboxes")
@@ -51,38 +54,31 @@ async function activeOperatorInbox(
       .order("desc")
       .first(),
   ]);
-  const candidates = [explicit, legacy].filter(
-    (row): row is InboxRow => row !== null && row.kind !== "agent",
+  return (
+    [explicit, legacy]
+      .filter((row): row is InboxRow => row !== null && row.kind !== "agent")
+      .sort((a, b) => b._creationTime - a._creationTime)[0] ?? null
   );
-  candidates.sort((a, b) => b._creationTime - a._creationTime);
-  return candidates[0] ?? null;
 }
 
-async function activeAgentInbox(ctx: Ctx): Promise<InboxRow | null> {
-  const rows = await ctx.db
+async function rowsForAddress(ctx: Ctx, emailAddress: string) {
+  return await ctx.db
     .query("operatorOutreachInboxes")
-    .withIndex("by_kind", (q) => q.eq("kind", "agent"))
-    .order("desc")
-    .take(20);
-  return rows.find(isActive) ?? null;
+    .withIndex("by_emailAddress", (q) => q.eq("emailAddress", emailAddress))
+    .take(10);
 }
 
+/** Requires an active, valid operator; anything else throws. */
 export const getTeamIdentityInternal = internalQuery({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
-    const [user, profile, inbox] = await Promise.all([
-      ctx.db.get(args.userId),
-      ctx.db
-        .query("operatorProfiles")
-        .withIndex("user", (q) => q.eq("userId", args.userId))
-        .first(),
-      activeOperatorInbox(ctx, args.userId),
-    ]);
+    const { user, profile } = await requireOperatorForUser(ctx, args.userId);
+    const inbox = await activeOperatorInbox(ctx, args.userId);
     return {
-      name: user?.name?.trim() || null,
-      email: user?.email ?? null,
-      teamEmailLocalpart: profile?.teamEmailLocalpart ?? null,
-      alwaysCcEmail: profile?.alwaysCcEmail ?? null,
+      name: user.name?.trim() || null,
+      email: user.email ?? null,
+      teamEmailLocalpart: profile.teamEmailLocalpart ?? null,
+      alwaysCcEmail: profile.alwaysCcEmail ?? null,
       inbox: inbox ? toRecord(inbox) : null,
     };
   },
@@ -91,39 +87,79 @@ export const getTeamIdentityInternal = internalQuery({
 export const getAgentInboxInternal = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const row = await activeAgentInbox(ctx);
+    const rows = await ctx.db
+      .query("operatorOutreachInboxes")
+      .withIndex("by_kind", (q) => q.eq("kind", "agent"))
+      .order("desc")
+      .take(20);
+    const row = rows.find(isActive);
     return row ? toRecord(row) : null;
   },
 });
 
 /**
- * Stores the operator's active inbox and retires every other active inbox of
- * theirs (a localpart or domain change creates a new one). Idempotent by
- * `inboxId`; returns null when the inbox or address belongs to someone else.
+ * Whether `emailAddress` is free, already the caller's, or reserved by another
+ * owner. Retired rows count as reservations. Checked before any Resend call
+ * that could adopt or modify an inbox. Omit `userId` for the agent inbox.
+ */
+export const addressOwnershipInternal = internalQuery({
+  args: { emailAddress: v.string(), userId: v.optional(v.id("users")) },
+  handler: async (ctx, args): Promise<"free" | "own" | "conflict"> => {
+    const rows = await rowsForAddress(ctx, args.emailAddress.toLowerCase());
+    if (rows.length === 0) return "free";
+    const userId = args.userId;
+    const mine = (row: InboxRow) =>
+      userId ? ownedByOperator(row, userId) : ownedByAgent(row);
+    return rows.every(mine) ? "own" : "conflict";
+  },
+});
+
+export type RecordInboxResult =
+  | { status: "stored"; inbox: typeof inboxRecordValidator.type }
+  | { status: "conflict" }
+  | { status: "stale" };
+
+/**
+ * Activates the operator's inbox and retires their other active ones. Rechecks
+ * that the operator is still active and that the address is still the one
+ * their profile intends (it may have changed during the Resend calls), and
+ * that no other owner holds the address or inbox id. Idempotent by `inboxId`.
  */
 export const recordOperatorInboxInternal = internalMutation({
   args: { userId: v.id("users"), inbox: inboxRecordValidator },
-  handler: async (ctx, args): Promise<typeof inboxRecordValidator.type | null> => {
-    const now = dayjs().valueOf();
+  handler: async (ctx, args): Promise<RecordInboxResult> => {
+    const { user, profile } = await requireOperatorForUser(ctx, args.userId);
     const emailAddress = args.inbox.emailAddress.toLowerCase();
+    let intended: string;
+    try {
+      intended = operatorTeamAddressFor({
+        email: user.email ?? null,
+        teamEmailLocalpart: profile.teamEmailLocalpart ?? null,
+      });
+    } catch {
+      return { status: "stale" };
+    }
+    if (intended !== emailAddress) return { status: "stale" };
+
     const [byInbox, byAddress] = await Promise.all([
       ctx.db
         .query("operatorOutreachInboxes")
         .withIndex("by_inboxId", (q) => q.eq("inboxId", args.inbox.inboxId))
         .first(),
-      ctx.db
-        .query("operatorOutreachInboxes")
-        .withIndex("by_emailAddress", (q) => q.eq("emailAddress", emailAddress))
-        .first(),
+      rowsForAddress(ctx, emailAddress),
     ]);
-    const owned = (row: InboxRow | null) =>
-      row === null || (row.userId === args.userId && row.kind !== "agent");
-    if (!owned(byInbox) || !owned(byAddress)) return null;
+    if (
+      (byInbox && !ownedByOperator(byInbox, args.userId)) ||
+      byAddress.some((row) => !ownedByOperator(row, args.userId))
+    ) {
+      return { status: "conflict" };
+    }
 
+    const now = dayjs().valueOf();
     const current = { ...args.inbox, emailAddress };
-    // The same address with a new inbox id means the inbox was recreated.
-    const existing = byInbox ?? byAddress;
-    let storedId: InboxRow["_id"];
+    // The same address under a new inbox id means the inbox was recreated.
+    const existing = byInbox ?? byAddress[0];
+    let storedId: Id<"operatorOutreachInboxes">;
     if (existing) {
       await ctx.db.patch(existing._id, {
         ...current,
@@ -150,33 +186,35 @@ export const recordOperatorInboxInternal = internalMutation({
       if (row._id === storedId || row.kind === "agent" || !isActive(row)) continue;
       await ctx.db.patch(row._id, { status: "retired", retiredAt: now });
     }
-    return current;
+    return { status: "stored", inbox: current };
   },
 });
 
-/** Stores the shared command-channel inbox (`kind: "agent"`, no user), retiring any other active one. */
+/** Activates the shared `kind: "agent"` inbox (no user) and retires any other active one. */
 export const recordAgentInboxInternal = internalMutation({
   args: { inbox: inboxRecordValidator },
-  handler: async (ctx, args): Promise<typeof inboxRecordValidator.type | null> => {
-    const now = dayjs().valueOf();
+  handler: async (ctx, args): Promise<RecordInboxResult> => {
     const emailAddress = args.inbox.emailAddress.toLowerCase();
+    if (emailAddress !== agentInboxAddress()) return { status: "stale" };
+
     const [byInbox, byAddress] = await Promise.all([
       ctx.db
         .query("operatorOutreachInboxes")
         .withIndex("by_inboxId", (q) => q.eq("inboxId", args.inbox.inboxId))
         .first(),
-      ctx.db
-        .query("operatorOutreachInboxes")
-        .withIndex("by_emailAddress", (q) => q.eq("emailAddress", emailAddress))
-        .first(),
+      rowsForAddress(ctx, emailAddress),
     ]);
-    const owned = (row: InboxRow | null) =>
-      row === null || (row.kind === "agent" && row.userId === undefined);
-    if (!owned(byInbox) || !owned(byAddress)) return null;
+    if (
+      (byInbox && !ownedByAgent(byInbox)) ||
+      byAddress.some((row) => !ownedByAgent(row))
+    ) {
+      return { status: "conflict" };
+    }
 
+    const now = dayjs().valueOf();
     const current = { ...args.inbox, emailAddress };
-    const existing = byInbox ?? byAddress;
-    let storedId: InboxRow["_id"];
+    const existing = byInbox ?? byAddress[0];
+    let storedId: Id<"operatorOutreachInboxes">;
     if (existing) {
       await ctx.db.patch(existing._id, {
         ...current,
@@ -201,11 +239,11 @@ export const recordAgentInboxInternal = internalMutation({
       if (row._id === storedId || !isActive(row)) continue;
       await ctx.db.patch(row._id, { status: "retired", retiredAt: now });
     }
-    return current;
+    return { status: "stored", inbox: current };
   },
 });
 
-/** Records the display name Resend now sends with; returns false for an unknown inbox. */
+/** Records the display name Resend now sends with; false for an unknown inbox. */
 export const updateInboxFromNameInternal = internalMutation({
   args: { inboxId: v.string(), fromName: v.string() },
   handler: async (ctx, args) => {
