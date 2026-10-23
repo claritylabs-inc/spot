@@ -5432,6 +5432,7 @@ export default defineSchema({
 
   // One row per operator; heartbeats keep it fresh while the portal is open.
   operatorPresence: defineTable({
+    emailThreadId: v.optional(v.id("teamEmailThreads")),
     activity: v.optional(v.union(v.literal("viewing"), v.literal("replying"))),
     userId: v.id("users"),
     pathname: v.string(),
