@@ -610,6 +610,57 @@ export const list = query({
   },
 });
 
+/**
+ * Live procurement requests across every client, most recently updated first,
+ * for the operator Procurement page. Reads one bounded index page; deleted
+ * requests, savings reviews, requests without a company and requests of
+ * deleted clients are left out, as in `list`.
+ */
+export const listAcrossClients = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    await requireOperator(ctx);
+    const limit = Math.max(1, Math.min(args.limit ?? MAX_REQUESTS, MAX_REQUESTS));
+    const rows = await ctx.db
+      .query("procurementRequests")
+      .withIndex("by_deletedAt_and_updatedAt", (index) =>
+        index.eq("deletedAt", undefined),
+      )
+      .order("desc")
+      .take(MAX_REQUESTS * 2);
+    const clients = new Map<Id<"organizations">, Doc<"organizations"> | null>();
+    const live: Array<{
+      row: Doc<"procurementRequests">;
+      client: Doc<"organizations">;
+    }> = [];
+    for (const row of rows) {
+      if (live.length >= limit) break;
+      const clientOrgId = row.clientOrgId;
+      if (!clientOrgId || row.intakeAnswers?.intakeGoal === "savings") continue;
+      if (!clients.has(clientOrgId)) {
+        const client = await ctx.db.get(clientOrgId);
+        clients.set(
+          clientOrgId,
+          client && client.deletedAt === undefined && client.type === "client"
+            ? client
+            : null,
+        );
+      }
+      const client = clients.get(clientOrgId);
+      if (client) live.push({ row, client });
+    }
+    return {
+      requests: await Promise.all(
+        live.map(async ({ row, client }) => ({
+          ...(await requestRow(ctx, row)),
+          client: { _id: client._id, name: client.name },
+        })),
+      ),
+      bounded: rows.length === MAX_REQUESTS * 2,
+    };
+  },
+});
+
 // Narrow internal projections used by packet delivery actions.
 export const getInternal = internalQuery({
   args: { requestId: v.id("procurementRequests") },

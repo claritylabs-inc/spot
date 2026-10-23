@@ -99,6 +99,7 @@ export default function OperatorBrokersPage() {
     );
   });
   const selection = useRowSelection(
+    "brokers:list:selected",
     filteredRows?.map((row) => row.broker._id) ?? [],
   );
   const hasFilters = region !== ALL || line !== ALL || status !== ALL;

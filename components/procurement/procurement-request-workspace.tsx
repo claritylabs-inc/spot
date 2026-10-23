@@ -48,7 +48,12 @@ import { ReaderBoundary } from "@/components/inbox/reader-boundary";
 import { useResolvedThreadId } from "@/components/inbox/resolve-thread-id";
 import { TeamInbox } from "@/components/inbox/team-inbox";
 import type { InboxThread } from "@/components/inbox/team-inbox";
-import { ClientOutreachComposer } from "./client-outreach-composer";
+import {
+  ClientOutreachComposer,
+  RequestEmailAudienceTabs,
+  type RequestEmailAudience,
+} from "./client-outreach-composer";
+import { NewEmailComposer } from "@/components/inbox/new-email-composer";
 import {
   FitChips,
   OutreachSequenceActions,
@@ -76,7 +81,6 @@ import {
   ListChecks,
   Loader2,
   StickyNote,
-  Trash2,
   Plus,
   Link,
   Upload,
@@ -105,14 +109,6 @@ import {
   type ProcurementOutreachStatus,
   type ProcurementRequestStatus,
 } from "@/components/procurement/procurement-shared";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-} from "@claritylabs-inc/ui/components/alert-dialog";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -249,7 +245,8 @@ type RequestPanel =
   | { kind: "file"; fileItemId: string }
   | { kind: "image"; fileItemId: string }
   | {
-      kind: "client-composer";
+      kind: "composer";
+      audience: RequestEmailAudience;
       informationFormId?: Id<"procurementInformationForms">;
     }
   | { kind: "information"; target: InformationDrawerTarget };
@@ -899,7 +896,6 @@ function RequestEditorFrame({
 }
 
 type RequestEditorHandle = PacketEditorHandle & {
-  openDelete: () => void;
   acceptUpdatedAt: (updatedAt: number) => void;
   addCoverage: (coverage: CoverageId) => void;
   removeCoverage: (section: string) => void;
@@ -935,7 +931,6 @@ function RequestEditor({
   policies: PolicyOption[];
   onClose: () => void;
 }) {
-  const router = useRouter();
   const saveApplication = useMutation(
     api.procurementRequests.updateApplication,
   );
@@ -952,13 +947,6 @@ function RequestEditor({
       request.application?.details ??
       detailsFromAnswers(request.intakeAnswers ?? {}),
   );
-  const removeRequest = useMutation(api.procurementRequests.remove);
-  const restoreRequest = useMutation(api.procurementRequests.restore);
-  const [confirmDelete, setConfirmDelete] = useFollowedState(
-    `procurement:${request._id}:confirm-delete`,
-    false,
-  );
-  const [deleting, setDeleting] = useState(false);
   const updateRequest = useMutation(api.procurementRequests.update);
   const [title, setTitle] = useState(request.title);
   const [targetEffectiveDate, setTargetEffectiveDate] = useState(
@@ -998,7 +986,7 @@ function RequestEditor({
   const saved = useRef(values);
   const autoSave = useLocalFirstAutoSave({
     mutationName: "procurementRequests.update",
-    enabled: !deleting && !readOnly,
+    enabled: !readOnly,
     args: values,
     canSave: !!title.trim(),
     flush: async (next) => {
@@ -1081,7 +1069,6 @@ function RequestEditor({
     saveRef,
     () => ({
       save: autoSave.saveNow,
-      openDelete: () => setConfirmDelete(true),
       acceptUpdatedAt: (updatedAt: number) => {
         version.current.updatedAt = updatedAt;
       },
@@ -1190,89 +1177,7 @@ function RequestEditor({
         }
       }}
       title="Edit request"
-      footer={
-        !embedded ? (
-          <PillButton
-            variant="destructive"
-            disabled={deleting}
-            onClick={() => setConfirmDelete(true)}
-          >
-            Delete request
-          </PillButton>
-        ) : undefined
-      }
     >
-      <AlertDialog
-        open={confirmDelete}
-        onOpenChange={(open) => {
-          if (!deleting) setConfirmDelete(open);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete request?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes “{request.title}” from procurement and disables
-              access to its application and shared packets. Existing policies
-              and company files are kept.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <PillButton
-              variant="secondary"
-              disabled={deleting}
-              onClick={() => setConfirmDelete(false)}
-            >
-              Cancel
-            </PillButton>
-            <PillButton
-              variant="destructive"
-              disabled={deleting}
-              onClick={async () => {
-                setDeleting(true);
-                try {
-                  if (!inline && !(await autoSave.saveNow())) {
-                    setDeleting(false);
-                    return;
-                  }
-                  await removeRequest({ requestId: request._id });
-                  onClose();
-                  router.replace(
-                    `/operator/clients/${request.clientOrgId}/procurement`,
-                  );
-                  toast.success("Request deleted", {
-                    action: {
-                      label: "Undo",
-                      onClick: () => {
-                        void restoreRequest({ requestId: request._id })
-                          .then(() => toast.success("Request restored"))
-                          .catch((error) =>
-                            toast.error(
-                              getUserFacingErrorMessage(
-                                error,
-                                "Could not restore request",
-                              ),
-                            ),
-                          );
-                      },
-                    },
-                  });
-                } catch (error) {
-                  toast.error(
-                    getUserFacingErrorMessage(
-                      error,
-                      "Could not delete request",
-                    ),
-                  );
-                  setDeleting(false);
-                }
-              }}
-            >
-              {deleting ? "Deleting…" : "Delete request"}
-            </PillButton>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       <AutoSaveStatus status={autoSave.status} />
       {!embedded && requestCard}
       {inline ? (
@@ -2359,7 +2264,7 @@ export function ProcurementRequestWorkspace({
         `${basePath}/${requestId}?view=${informationFormId ? `information&form=${informationFormId}` : "email"}`,
         { scroll: false },
       );
-      setPanel({ kind: "client-composer", informationFormId });
+      setPanel({ kind: "composer", audience: "client", informationFormId });
     },
     [basePath, closePdf, requestId, router, setPanel],
   );
@@ -2502,17 +2407,35 @@ export function ProcurementRequestWorkspace({
       if (file?.url)
         node = <ImagePreview file={file} onClose={closeRightPanel} />;
     } else {
-      node = (
-        <ClientOutreachComposer
-          key={panel.informationFormId ?? requestId}
-          informationFormId={panel.informationFormId}
-          requestId={requestId}
-          requestTitle={composerDraft.current.title ?? requestTitle}
-          initialText={composerDraft.current.text}
-          onClose={closeRightPanel}
-          onSent={closeRightPanel}
+      const audienceTabs = (
+        <RequestEmailAudienceTabs
+          value={panel.audience}
+          onChange={(audience) => setPanel({ kind: "composer", audience })}
         />
       );
+      node =
+        panel.audience === "provider" ? (
+          details ? (
+            <NewEmailComposer
+              key="provider-composer"
+              request={{ requestId, clientOrgId, title: requestTitle }}
+              header={audienceTabs}
+              onClose={closeRightPanel}
+              onSent={closeRightPanel}
+            />
+          ) : null
+        ) : (
+          <ClientOutreachComposer
+            key={panel.informationFormId ?? requestId}
+            informationFormId={panel.informationFormId}
+            requestId={requestId}
+            requestTitle={composerDraft.current.title ?? requestTitle}
+            initialText={composerDraft.current.text}
+            header={audienceTabs}
+            onClose={closeRightPanel}
+            onSent={closeRightPanel}
+          />
+        );
     }
     if (!node) {
       // The record is gone (or another request loaded): drop its stale panel.
@@ -2579,7 +2502,6 @@ export function ProcurementRequestWorkspace({
     },
     [basePath, requestId, router, closeRightPanel],
   );
-  const forwardingAddress = details?.request.forwardingAddress;
   const sendAllCount = providerOutreach.sendAllCount;
   const providerOutreachBusy = providerOutreach.sending.size > 0;
   const canSendAll = providerOutreach.panel?.request.canLaunch ?? false;
@@ -2590,16 +2512,7 @@ export function ProcurementRequestWorkspace({
     }
 
     const actions =
-      view === "application" ? (
-        <PillButton
-          type="button"
-          size="default"
-          onClick={() => void openPacketLink()}
-        >
-          <Link className="size-3.5" />
-          Share link
-        </PillButton>
-      ) : view === "proposals" ? (
+      view === "proposals" ? (
         <>
           <PillButton
             type="button"
@@ -2627,7 +2540,7 @@ export function ProcurementRequestWorkspace({
         <>
           <PillButton type="button" onClick={() => void openClientComposer()}>
             <SquarePen className="size-3.5" />
-            Email client
+            New email
           </PillButton>
         </>
       ) : view === "information" ? (
@@ -2657,16 +2570,6 @@ export function ProcurementRequestWorkspace({
         >
           <StickyNote className="size-3.5" />
         </PillButton>
-        {view === "application" && (
-          <PillButton
-            variant="destructive"
-            size="default"
-            onClick={() => requestEditorRef.current?.openDelete()}
-          >
-            <Trash2 className="size-3.5" />
-            Delete request
-          </PillButton>
-        )}
         {actions}
       </>,
     );
@@ -2682,7 +2585,6 @@ export function ProcurementRequestWorkspace({
     sendAllCount,
     providerOutreachBusy,
     canSendAll,
-    openPacketLink,
     openNotes,
     openUpload,
     readOnly,
@@ -3000,6 +2902,31 @@ export function ProcurementRequestWorkspace({
           </>
         ) : null}
 
+        {view === "proposals" && !readOnly ? (
+          <OperationalPanel
+            as="div"
+            className="flex flex-wrap items-center gap-3 px-4 py-3"
+          >
+            <div className="min-w-0 flex-1">
+              <p className={typeStyle("body.medium")}>Provider share link</p>
+              <p
+                className={`text-muted-foreground ${typeStyle("caption.default")}`}
+              >
+                Providers open the shared application and released documents
+                from this link.
+              </p>
+            </div>
+            <PillButton
+              type="button"
+              variant="secondary"
+              onClick={() => void openPacketLink()}
+            >
+              <Link className="size-3.5" />
+              Share link
+            </PillButton>
+          </OperationalPanel>
+        ) : null}
+
         {view === "proposals" ? (
           <ProviderOutreachPanel
             controller={providerOutreach}
@@ -3177,7 +3104,6 @@ export function ProcurementRequestWorkspace({
                 ? threadParam
                 : resolvedThread.threadId
             }
-            fallbackForwardingAddress={forwardingAddress ?? null}
             onSelect={selectInboxThread}
             onOpenThread={(thread) => void openEmail(thread)}
           />

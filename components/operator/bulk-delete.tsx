@@ -18,12 +18,17 @@ import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { useFollowedState } from "@/hooks/use-followed-state";
 
 type OrgId = Id<"organizations">;
 type ApplicationId = Id<"procurementRequests">;
 
-export function useRowSelection<T extends string>(visibleIds: T[]) {
-  const [selected, setSelected] = useState<Set<T>>(new Set());
+/** Checked table rows, by id. Followers see the same selection, so `key` must be stable. */
+export function useRowSelection<T extends string>(key: string, visibleIds: T[]) {
+  const [selectedList, setSelectedList] = useFollowedState<T[]>(key, []);
+  const selected = new Set(selectedList);
+  const setSelected = (update: (prev: Set<T>) => Set<T>) =>
+    setSelectedList((prev) => [...update(new Set(prev))]);
   // Rows can disappear (filters, deletes); only count what is still visible.
   const selectedIds = visibleIds.filter((id) => selected.has(id));
   const allSelected =
@@ -42,9 +47,51 @@ export function useRowSelection<T extends string>(visibleIds: T[]) {
         return next;
       }),
     toggleAll: (checked: boolean) =>
-      setSelected(checked ? new Set(visibleIds) : new Set()),
-    clear: () => setSelected(new Set()),
+      setSelectedList(checked ? [...visibleIds] : []),
+    clear: () => setSelectedList([]),
   };
+}
+
+/** "N selected · Clear · Delete" for checked table rows; renders nothing when none are checked. */
+export function SelectionDeleteBar({
+  count,
+  disabled,
+  className,
+  onClear,
+  onDelete,
+}: {
+  count: number;
+  disabled?: boolean;
+  className?: string;
+  onClear: () => void;
+  onDelete: () => void;
+}) {
+  if (count === 0) return null;
+  return (
+    <div
+      className={`flex items-center gap-3 ${typeStyle("body.default")} ${className ?? ""}`}
+    >
+      <span className="text-muted-foreground">{count} selected</span>
+      <PillButton
+        type="button"
+        variant="secondary"
+        size="compact"
+        onClick={onClear}
+      >
+        Clear
+      </PillButton>
+      <PillButton
+        type="button"
+        variant="destructive"
+        size="compact"
+        disabled={disabled}
+        onClick={onDelete}
+      >
+        <Trash2 className="size-3.5" />
+        Delete
+      </PillButton>
+    </div>
+  );
 }
 
 export function BulkDeleteBar({
@@ -115,29 +162,13 @@ export function BulkDeleteBar({
   if (count === 0) return null;
   return (
     <>
-      <div
-        className={`flex items-center gap-3 ${typeStyle("body.default")} ${className ?? ""}`}
-      >
-        <span className="text-muted-foreground">{count} selected</span>
-        <PillButton
-          type="button"
-          variant="secondary"
-          size="compact"
-          onClick={onClear}
-        >
-          Clear
-        </PillButton>
-        <PillButton
-          type="button"
-          variant="destructive"
-          size="compact"
-          disabled={disabled}
-          onClick={() => setOpen(true)}
-        >
-          <Trash2 className="size-3.5" />
-          Delete
-        </PillButton>
-      </div>
+      <SelectionDeleteBar
+        count={count}
+        disabled={disabled}
+        className={className}
+        onClear={onClear}
+        onDelete={() => setOpen(true)}
+      />
       <Dialog
         open={open}
         onOpenChange={(next) => {

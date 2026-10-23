@@ -25,6 +25,7 @@ const composeArgs = {
   subject: v.string(),
   message: v.string(),
   clientOrgId: v.optional(v.id("organizations")),
+  requestId: v.optional(v.id("procurementRequests")),
 };
 
 /** The exact email that would be sent: From, To, Cc, Bcc, subject, signed body and its fingerprint. */

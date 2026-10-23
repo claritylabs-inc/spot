@@ -16,14 +16,13 @@ import dayjs from "dayjs";
 import {
   Archive,
   ArchiveRestore,
-  AtSign,
   Inbox,
   PenSquare,
   SlidersHorizontal,
 } from "lucide-react";
 
 import { PillButton } from "@/components/ui/pill-button";
-import { ListToolbar, SearchField } from "@/components/ui/list-toolbar";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { ChatAvatar } from "@/components/chat/chat-message";
@@ -42,7 +41,6 @@ import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-sele
 import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { PresenceAvatars } from "@/components/app-top-bar";
-import { useForwardingCopy } from "@/components/inbox/forwarding-address";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -368,7 +366,6 @@ export function TeamInbox({
   onSelect,
   onOpenThread,
   onCompose,
-  fallbackForwardingAddress = null,
 }: {
   scope: TeamInboxScope;
   selectedThreadId: string | null;
@@ -377,8 +374,6 @@ export function TeamInbox({
   onOpenThread?: (thread: InboxThread) => void;
   /** Starts a new email; the team inbox shows its button in the top bar. */
   onCompose?: () => void;
-  /** The request's own address, used only if team email is not configured here. */
-  fallbackForwardingAddress?: string | null;
 }) {
   const convex = useConvex();
   const requestId = scope.kind === "request" ? scope.requestId : undefined;
@@ -397,12 +392,15 @@ export function TeamInbox({
   const clients = useCachedOperatorClients();
   // Impersonating operators read mail; every write below is withheld.
   const readOnly = Boolean(useCachedOperatorCurrent()?.activeImpersonation);
-  const forward = useForwardingCopy(fallbackForwardingAddress, readOnly);
 
   const queryArgs = useMemo(
     () =>
       requestId
-        ? { requestId, ...(archivedView ? { archived: true } : {}) }
+        ? {
+            requestId,
+            ...(category !== ALL_CATEGORIES ? { category: category as Category } : {}),
+            ...(archivedView ? { archived: true } : {}),
+          }
         : {
             ...(filter === "mine" ? { mine: true } : {}),
             ...(filter === "unlinked" ? { unlinked: true } : {}),
@@ -566,11 +564,14 @@ export function TeamInbox({
       })),
     [clients],
   );
+  // Request mail has Inbox/Archived tabs, so only the category is a filter there.
   const filtered =
-    !!clientOrgId || category !== ALL_CATEGORIES || archivedView;
+    category !== ALL_CATEGORIES ||
+    (scope.kind === "team" && (!!clientOrgId || archivedView));
   const resetFilters = () => {
-    setClientOrgId("");
     setCategory(ALL_CATEGORIES);
+    if (scope.kind !== "team") return;
+    setClientOrgId("");
     setArchivedView(false);
   };
 
@@ -580,19 +581,6 @@ export function TeamInbox({
     label: "Search conversations",
     placeholder: "Search mail",
   };
-  const archivedToggle = (
-    <PillButton
-      type="button"
-      variant={archivedView ? "secondary" : "ghost"}
-      size="compact"
-      iconOnly
-      label={archivedView ? "Back to inbox" : "Archived"}
-      aria-pressed={archivedView}
-      onClick={() => setArchivedView((value) => !value)}
-    >
-      <Archive className="size-3.5" />
-    </PillButton>
-  );
   const filtersToggle = (
     <PillButton
       type="button"
@@ -748,114 +736,102 @@ export function TeamInbox({
     );
   }
 
-  if (scope.kind === "request")
-    return (
-      <section className="@container space-y-3">
-        <OperationalPanel className="flex items-center gap-2 px-2 py-1.5">
-          {archivedToggle}
-          <div className="min-w-0 flex-1">
-            <SearchField {...searchProps} className="border-transparent bg-transparent" />
-          </div>
-          <PillButton
-            type="button"
-            variant="ghost"
-            size="compact"
-            disabled={forward.loading || forward.busy}
-            title={
-              forward.address
-                ? `Forward mail to ${forward.address} to add it here. Click to copy.`
-                : "Copy your forwarding address"
-            }
-            onClick={() => void forward.copy()}
-          >
-            <AtSign className="size-3.5" />
-            <span className="hidden max-w-56 truncate @md:inline">
-              {forward.busy
-                ? "Setting up…"
-                : forward.address
-                  ? `Forward to ${forward.address}`
-                  : "Forwarding address"}
-            </span>
-          </PillButton>
-        </OperationalPanel>
-        {list}
-      </section>
+  const categorySelect = (
+    <Select
+      value={category}
+      items={CATEGORY_ITEMS}
+      onValueChange={(value) => value && setCategory(value)}
+    >
+      <SelectTrigger className="w-40" aria-label="Category">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {Object.entries(CATEGORY_ITEMS).map(([value, label]) => (
+          <SelectItem key={value} value={value}>
+            {label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+  const tabs =
+    scope.kind === "request" ? (
+      <Tabs
+        value={archivedView ? "archived" : "inbox"}
+        onValueChange={(value) => setArchivedView(value === "archived")}
+      >
+        <TabsList variant="pill" aria-label="Show">
+          <TabsTrigger value="inbox">Inbox</TabsTrigger>
+          <TabsTrigger value="archived">Archived</TabsTrigger>
+        </TabsList>
+      </Tabs>
+    ) : (
+      <Tabs
+        value={filter}
+        onValueChange={(value) => {
+          const next = value as TeamFilter;
+          setFilter(next);
+          // Unlinked mail has no client, so the two cannot combine.
+          if (next === "unlinked") setClientOrgId("");
+        }}
+      >
+        <TabsList variant="pill" aria-label="Show">
+          <TabsTrigger value="mine">Mine</TabsTrigger>
+          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
+        </TabsList>
+      </Tabs>
     );
 
   return (
-    <section className="space-y-3">
-      <AppShellPortal slot="actions">
-        <div className="flex items-center gap-2">
-          {onCompose && !readOnly ? (
-            <PillButton type="button" size="compact" onClick={onCompose}>
-              <PenSquare className="size-3.5" />
-              New email
-            </PillButton>
-          ) : null}
-        </div>
-      </AppShellPortal>
+    <section className="@container space-y-3">
+      {scope.kind === "team" ? (
+        <AppShellPortal slot="actions">
+          <div className="flex items-center gap-2">
+            {onCompose && !readOnly ? (
+              <PillButton type="button" size="compact" onClick={onCompose}>
+                <PenSquare className="size-3.5" />
+                New email
+              </PillButton>
+            ) : null}
+          </div>
+        </AppShellPortal>
+      ) : null}
       <ListToolbar
-        tabs={
-          <Tabs
-            value={filter}
-            onValueChange={(value) => {
-              const next = value as TeamFilter;
-              setFilter(next);
-              // Unlinked mail has no client, so the two cannot combine.
-              if (next === "unlinked") setClientOrgId("");
-            }}
-          >
-            <TabsList variant="pill" aria-label="Show">
-              <TabsTrigger value="mine">Mine</TabsTrigger>
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        }
+        tabs={tabs}
         search={searchProps}
         actions={filtersToggle}
       />
       {showFilters ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <PillButton
-            type="button"
-            variant={archivedView ? "secondary" : "ghost"}
-            size="compact"
-            aria-pressed={archivedView}
-            onClick={() => setArchivedView((value) => !value)}
-          >
-            <Archive className="size-3.5" />
-            Archived
-          </PillButton>
-          <div className="w-44">
-            <SearchableSelect
-              ariaLabel="Client"
-              typographyRole="control.menu"
-              value={clientOrgId}
-              options={clientOptions}
-              onChange={(value) => {
-                setClientOrgId(value);
-                if (filter === "unlinked") setFilter("all");
-              }}
-              placeholder="Any client"
-            />
-          </div>
-          <Select
-            value={category}
-            items={CATEGORY_ITEMS}
-            onValueChange={(value) => value && setCategory(value)}
-          >
-            <SelectTrigger className="w-40" aria-label="Category">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(CATEGORY_ITEMS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {scope.kind === "team" ? (
+            <>
+              <PillButton
+                type="button"
+                variant={archivedView ? "secondary" : "ghost"}
+                size="compact"
+                aria-pressed={archivedView}
+                onClick={() => setArchivedView((value) => !value)}
+              >
+                <Archive className="size-3.5" />
+                Archived
+              </PillButton>
+              <div className="w-44">
+                <SearchableSelect
+                  ariaLabel="Client"
+                  typographyRole="control.menu"
+                  value={clientOrgId}
+                  options={clientOptions}
+                  onChange={(value) => {
+                    setClientOrgId(value);
+                    if (filter === "unlinked") setFilter("all");
+                  }}
+                  placeholder="Any client"
+                />
+              </div>
+            </>
+          ) : null}
+          {categorySelect}
           {filtered ? (
             <PillButton type="button" variant="ghost" size="compact" onClick={resetFilters}>
               Clear filters

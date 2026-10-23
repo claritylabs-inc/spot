@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
+import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import {
   FollowUpCountSelect,
   IntervalSelect,
@@ -63,6 +64,31 @@ function HeaderRow({
   );
 }
 
+export type RequestEmailAudience = "client" | "provider";
+
+/** Switches a request's new email between the client and its providers. */
+export function RequestEmailAudienceTabs({
+  value,
+  onChange,
+}: {
+  value: RequestEmailAudience;
+  onChange: (audience: RequestEmailAudience) => void;
+}) {
+  return (
+    <div className="border-b border-border px-4 py-2">
+      <Tabs
+        value={value}
+        onValueChange={(next) => next && onChange(next as RequestEmailAudience)}
+      >
+        <TabsList variant="pill" aria-label="Email to">
+          <TabsTrigger value="client">Client</TabsTrigger>
+          <TabsTrigger value="provider">Provider</TabsTrigger>
+        </TabsList>
+      </Tabs>
+    </div>
+  );
+}
+
 function firstName(name: string | null | undefined) {
   return name?.trim().split(/\s+/)[0] || "there";
 }
@@ -79,6 +105,7 @@ export function ClientOutreachComposer({
   informationFormId,
   onClose,
   onSent,
+  header,
 }: {
   requestId: Id<"procurementRequests">;
   requestTitle: string;
@@ -86,6 +113,8 @@ export function ClientOutreachComposer({
   informationFormId?: Id<"procurementInformationForms">;
   onClose: () => void;
   onSent: () => void;
+  /** Shown above the header rows (the audience switch). */
+  header?: ReactNode;
 }) {
   const panel = useQuery(api.clientOutreach.getPanel, { requestId });
   const launch = useMutation(api.clientOutreach.launch);
@@ -198,7 +227,7 @@ export function ClientOutreachComposer({
   return (
     <SettingsDrawer
       open
-      title="New message"
+      title="New email"
       contentClassName="-mx-4 my-0 flex-1"
       onOpenChange={(open) => {
         if (!open && !sending) onClose();
@@ -295,6 +324,7 @@ export function ClientOutreachComposer({
         </div>
       }
     >
+      {header}
       {panel === null ? (
         <p className={`p-4 text-muted-foreground ${typeStyle("body.default")}`}>
           This request is not linked to a company yet.

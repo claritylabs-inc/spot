@@ -24,6 +24,7 @@ const BREADCRUMB_MAP: Record<string, { label: string; href?: string }> = {
   "/settings": { label: "Settings" },
   "/profile": { label: "Profile" },
   "/operator/clients": { label: "Clients", href: "/operator/clients" },
+  "/operator/procurement": { label: "Procurement" },
   "/operator/brokers": { label: "Insurance providers" },
   "/operator/channels": { label: "Channels" },
   "/operator/logs": { label: "Logs" },
