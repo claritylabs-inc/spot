@@ -181,7 +181,12 @@ export function OperatorFollow({
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) return;
-      if (event.key === "Escape" || !isControl(event)) stopFollowing();
+      if (event.key === "Escape") {
+        // This Escape only stops following; the adopted panels stay open.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        stopFollowing();
+      } else if (!isControl(event)) stopFollowing();
     };
     window.addEventListener("pointerdown", stop, { capture: true });
     window.addEventListener("wheel", stop, { capture: true, passive: true });
