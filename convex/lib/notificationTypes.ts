@@ -15,7 +15,7 @@ export const notificationActionPayloadValidator = v.union(
     clientOrgId: v.id("organizations"),
     requestId: v.id("procurementRequests"),
     view: v.optional(v.union(v.literal("email"), v.literal("proposals"))),
-    emailThreadId: v.optional(v.id("procurementEmailThreads")),
+    emailThreadId: v.optional(v.union(v.id("procurementEmailThreads"), v.id("teamEmailThreads"))),
   }),
   v.object({ policyId: v.id("policies"), tab: v.optional(v.string()) }),
   v.object({

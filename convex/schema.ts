@@ -351,6 +351,7 @@ const companyInformationProfileFactSourceValidator = v.object({
   sourceRef: v.string(),
   clientFileId: v.optional(v.id("clientFiles")),
   procurementEmailThreadId: v.optional(v.id("procurementEmailThreads")),
+  teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
   fieldPath: v.string(),
   fieldGroup: v.string(),
   displayValue: v.string(),
@@ -2855,6 +2856,7 @@ export default defineSchema({
     resendThreadId: v.optional(v.string()),
     lastOutboundEmailId: v.optional(v.string()),
     procurementEmailThreadId: v.optional(v.id("procurementEmailThreads")),
+  teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
     cadence: v.object({
       followUpCount: v.number(),
       intervalBusinessDays: v.number(),
@@ -2924,6 +2926,7 @@ export default defineSchema({
     generationStartedAt: v.optional(v.number()),
     draft: v.optional(
       v.object({
+        cc: v.optional(v.array(v.string())),
         subject: v.string(),
         text: v.string(),
         html: v.string(),
@@ -3372,6 +3375,12 @@ export default defineSchema({
     categorySource: v.union(v.literal("auto"), v.literal("operator")),
     categoryReason: v.optional(v.string()),
     participantEmails: v.array(v.string()),
+    latestDirection: v.optional(v.union(v.literal("inbound"), v.literal("outbound"))),
+    latestInboundAt: v.optional(v.number()),
+    preview: v.optional(v.string()),
+    latestFromName: v.optional(v.string()),
+    latestFromEmail: v.optional(v.string()),
+    latestSentByUserId: v.optional(v.id("users")),
     latestMessageAt: v.number(),
     messageCount: v.number(),
     archivedAt: v.optional(v.number()),
@@ -3381,6 +3390,12 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("by_archivedAt_and_latestMessageAt", ["archivedAt", "latestMessageAt"])
+    .index("by_ownerUserId_and_archivedAt_and_latestMessageAt", ["ownerUserId", "archivedAt", "latestMessageAt"])
+    .index("by_clientOrgId_and_archivedAt_and_latestMessageAt", ["clientOrgId", "archivedAt", "latestMessageAt"])
+    .index("by_requestId_and_archivedAt_and_latestMessageAt", ["requestId", "archivedAt", "latestMessageAt"])
+    .index("by_category_and_archivedAt_and_latestMessageAt", ["category", "archivedAt", "latestMessageAt"])
+    .index("by_archivedAt_and_latestInboundAt", ["archivedAt", "latestInboundAt"])
     .index("by_legacyThreadId", ["legacyThreadId"])
     .index("by_latestMessageAt", ["latestMessageAt"])
     .index("by_ownerUserId_and_latestMessageAt", ["ownerUserId", "latestMessageAt"])
@@ -3522,7 +3537,7 @@ export default defineSchema({
     clientOrgId: v.id("organizations"),
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     clientFileId: v.optional(v.id("clientFiles")),
-    sourceEmailMessageId: v.optional(v.id("procurementEmailMessages")),
+    sourceEmailMessageId: v.optional(v.union(v.id("procurementEmailMessages"), v.id("teamEmailMessages"))),
     // Deprecated: cleared by the removed simplifyProcurementFiles migration; no active writers.
     purpose: v.optional(
       v.union(
@@ -3571,6 +3586,7 @@ export default defineSchema({
     sourceRef: v.string(),
     clientFileId: v.optional(v.id("clientFiles")),
     procurementEmailThreadId: v.optional(v.id("procurementEmailThreads")),
+  teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
     requestId: v.optional(v.id("procurementRequests")),
     actorUserId: v.id("users"),
     sourceFingerprint: v.string(),
@@ -3596,7 +3612,8 @@ export default defineSchema({
     .index("source", ["sourceRef"])
     .index("organization", ["orgId", "updatedAt"])
     .index("file", ["clientFileId"])
-    .index("email", ["procurementEmailThreadId"]),
+    .index("email", ["procurementEmailThreadId"])
+    .index("team_email", ["teamEmailThreadId"]),
 
   policyVersions: defineTable({
     orgId: v.id("organizations"),
