@@ -28,6 +28,7 @@ export const MAX_EMAIL_ATTACHMENTS = 20;
 export const MAX_UNFILED_PER_THREAD = 50;
 const PREVIEW_CHARS = 240;
 const UNFILED_SCAN_LIMIT = 300;
+const MESSAGE_READ_BYTES = 6 * 1024 * 1024;
 /**
  * Messages copied per transaction. A message body can reach ~300 KB, and a
  * transaction reads the legacy row and writes its copy, so a page must stay far
@@ -181,9 +182,9 @@ async function unfiledUploadRoom(ctx: Ctx, threadId: Id<"teamEmailThreads">) {
   const messages = await ctx.db
     .query("teamEmailMessages")
     .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", threadId))
-    .take(UNFILED_SCAN_LIMIT + 1);
-  if (messages.length > UNFILED_SCAN_LIMIT) return 0;
-  const held = messages.reduce(
+    .paginate({ cursor: null, numItems: UNFILED_SCAN_LIMIT, maximumBytesRead: MESSAGE_READ_BYTES });
+  if (!messages.isDone) return 0;
+  const held = messages.page.reduce(
     (total, message) => total + (message.unfiledAttachments?.length ?? 0),
     0,
   );
@@ -1160,7 +1161,7 @@ export async function getTeamThreadDetails(
         .query("teamEmailMessages")
         .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
         .order("desc")
-        .take(MAX_THREAD_MESSAGES + 1),
+        .paginate({ cursor: null, numItems: MAX_THREAD_MESSAGES, maximumBytesRead: MESSAGE_READ_BYTES }),
       threadSequence(ctx, thread),
       args.viewerUserId ? readAtFor(ctx, args.viewerUserId, thread._id) : null,
       personFor(ctx, people, thread.ownerUserId),
@@ -1184,10 +1185,10 @@ export async function getTeamThreadDetails(
           .take(10)
       ).filter((step) => step.status === "scheduled" || step.status === "sending")
     : [];
-  const truncated = messages.length > MAX_THREAD_MESSAGES;
-  // Retain the newest 300 and present them oldest to newest.
+  const truncated = !messages.isDone;
+  // Bound both row count and bytes, retaining the newest messages in display order.
   const hydrated = await Promise.all(
-    messages.slice(0, MAX_THREAD_MESSAGES).reverse().map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
+    messages.page.reverse().map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
       ...message,
       sentBy: await personFor(ctx, people, message.sentByUserId),
       files: await Promise.all(
