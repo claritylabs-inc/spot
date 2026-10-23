@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useState,
   useSyncExternalStore,
@@ -102,4 +103,18 @@ export function useFollowedState<T>(
 export function useFollowedOpen(key: string, initial = false) {
   const [open, setOpen] = useFollowedState(key, initial);
   return { open, onOpenChange: (next: boolean) => setOpen(next) };
+}
+
+/** `useReducer` counterpart of `useFollowedState`; the state must be JSON-serializable. */
+export function useFollowedReducer<S, A>(
+  key: string,
+  reducer: (state: S, action: A) => S,
+  initial: S,
+): [S, (action: A) => void] {
+  const [state, setState] = useFollowedState(key, initial);
+  const dispatch = useCallback(
+    (action: A) => setState((current) => reducer(current, action)),
+    [reducer, setState],
+  );
+  return [state, dispatch];
 }
