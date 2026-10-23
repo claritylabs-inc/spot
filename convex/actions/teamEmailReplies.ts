@@ -84,7 +84,7 @@ export const send = action({
         return await settled(ctx, known.pendingEmailId);
       }
       const message = teamReplyErrorMessage(error);
-      if (message !== null) return { status: "not_sent", message };
+      if (known !== null && message !== null) return { status: "not_sent", message };
       throw error;
     }
     try {

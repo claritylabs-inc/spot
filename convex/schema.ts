@@ -2902,6 +2902,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_outreachId", ["outreachId"])
+    .index("by_teamEmailThreadId", ["teamEmailThreadId"])
+    .index("by_procurementEmailThreadId", ["procurementEmailThreadId"])
     .index("by_requestId_and_status", ["requestId", "status"])
     .index("by_resendThreadId", ["resendThreadId"])
     .index("by_status_and_updatedAt", ["status", "updatedAt"]),

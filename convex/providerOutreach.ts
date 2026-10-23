@@ -17,7 +17,7 @@ import {
 } from "./lib/brokerProfileValidation";
 import { requireCompanyRequest, type CompanyRequest } from "./lib/companyRequest";
 import { getEmailDeliveryMode } from "./lib/resend";
-import { requireOperator, writeOperatorAudit } from "./lib/operatorIdentity";
+import { requireOperator, resolveActiveOperatorEmail, writeOperatorAudit } from "./lib/operatorIdentity";
 import { normalizeProcurementEmail } from "./lib/procurement";
 import {
   assertOutreachIdentity,
@@ -793,17 +793,26 @@ export async function reapproveSequenceIdentityByOperator(
   if (!isLive(sequence.status)) throw new Error("These follow-ups are no longer running");
   const identity = await assertOutreachIdentity(ctx, args.operatorUserId, args.expectedFingerprint);
   const now = dayjs().valueOf();
-  await ctx.db.patch(sequence._id, { identityFingerprint: identity.fingerprint, updatedAt: now });
   const steps = await ctx.db
     .query("procurementOutreachSteps")
     .withIndex("by_sequenceId_and_index", (q) => q.eq("sequenceId", sequence._id))
     .take(MAX_STEPS_PER_SEQUENCE);
   const held = steps.find((step) => step.status === "scheduled" && step.identityDeferredAt !== undefined);
+  const changedDraft = held?.draft && held.identity?.fingerprint !== identity.fingerprint;
+  if (changedDraft && (held.attempts > 0 || held.resendDraftId)) {
+    throw new Error("This email was already prepared under the previous sender details. Restore those details before retrying; a new email cannot replace an uncertain delivery.");
+  }
+  await ctx.db.patch(sequence._id, { identityFingerprint: identity.fingerprint, updatedAt: now });
   if (held) {
     await ctx.db.patch(held._id, {
       dueAt: Math.min(held.dueAt, now),
       identityDeferredAt: undefined,
       error: undefined,
+      ...(changedDraft ? {
+        draft: undefined,
+        identity: undefined,
+        generationStartedAt: held.generationStartedAt ?? now,
+      } : {}),
       updatedAt: now,
     });
     await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.sendStep, { stepId: held._id });
@@ -2812,6 +2821,26 @@ async function knownInbox(ctx: Ctx, inboxId: string) {
     .first();
 }
 
+/** Exact pointers keep retired-inbox replies and manual takeover independent of request size. */
+async function sequencesForTeamThread(ctx: Ctx, thread: TeamThread): Promise<Sequence[]> {
+  const current = await ctx.db
+    .query("procurementOutreachSequences")
+    .withIndex("by_teamEmailThreadId", (q) => q.eq("teamEmailThreadId", thread._id))
+    .take(101);
+  const legacy = thread.legacyThreadId
+    ? await ctx.db
+        .query("procurementOutreachSequences")
+        .withIndex("by_procurementEmailThreadId", (q) =>
+          q.eq("procurementEmailThreadId", thread.legacyThreadId!),
+        )
+        .take(101)
+    : [];
+  if (current.length > 100 || legacy.length > 100)
+    throw new Error("Too many outreach sequences for this conversation; review before replying");
+  return [...new Map([...current, ...legacy].map((sequence) => [sequence._id, sequence])).values()]
+    .filter((sequence) => sequence.requestId === thread.requestId);
+}
+
 /**
  * The outreach sequence an inbox event belongs to. Either the sequence's own
  * inbox and thread, or, after the sender's inbox was retired and the sequence
@@ -2848,23 +2877,10 @@ async function sequenceForInboxEvent(
   const inbox = await knownInbox(ctx, event.inboxId);
   if (!thread || thread.deletedAt || thread.source !== "outreach" || !thread.requestId || !inbox?.userId)
     return null;
-  const requestId = thread.requestId;
-  for (const status of SEQUENCE_STATUSES) {
-    const candidates = await ctx.db
-      .query("procurementOutreachSequences")
-      .withIndex("by_requestId_and_status", (q) =>
-        q.eq("requestId", requestId).eq("status", status),
-      )
-      .take(25);
-    const owner = candidates.find(
-      (candidate) =>
-        candidate.senderUserId === inbox.userId &&
-        (candidate.teamEmailThreadId === thread._id ||
-          (thread.legacyThreadId !== undefined &&
-            candidate.procurementEmailThreadId === thread.legacyThreadId)),
-    );
-    if (owner) return { sequence: owner, step: null };
-  }
+  const owner = (await sequencesForTeamThread(ctx, thread)).find(
+    (candidate) => candidate.requestId === thread.requestId && candidate.senderUserId === inbox.userId,
+  );
+  if (owner) return { sequence: owner, step: null };
   return null;
 }
 
@@ -3494,6 +3510,20 @@ export const applyTeamInboxEmailInternal = internalMutation({
     }
     let notifyOwner = false;
     if (inbound && !mirrored.duplicate) {
+      await ctx.scheduler.runAfter(0, internal.actions.teamEmailForwarding.process, {
+        threadId: mirrored.threadId,
+        inboxId: event.inboxId,
+        emailId: event.emailId,
+      });
+    }
+    const senderAddress = normalizeProcurementEmail(args.email.fromEmail);
+    const operatorSender = inbound && (
+      (await resolveActiveOperatorEmail(ctx, senderAddress)) ||
+      (await ctx.db.query("operatorOutreachInboxes")
+        .withIndex("by_emailAddress", (q) => q.eq("emailAddress", senderAddress))
+        .first())
+    );
+    if (inbound && !mirrored.duplicate && !operatorSender) {
       const thread = (await ctx.db.get(mirrored.threadId))!;
       const ownerUserId = thread.ownerUserId ?? inbox.userId;
       if (ownerUserId) {
@@ -3786,167 +3816,20 @@ export const recoverInternal = internalMutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// Operator replies from the request Inbox
-// ---------------------------------------------------------------------------
-
-/**
- * Resolves the Resend thread behind an Inbox conversation and stops automated
- * follow-ups before an operator reply goes out, so a nudge cannot land after
- * a person has taken over. Only outreach conversations (provider or client)
- * can be answered; forwarded mail has no Spot-owned thread to reply on.
- */
-export const prepareOperatorReplyInternal = internalMutation({
-  args: {
-    operatorUserId: v.id("users"),
-    emailThreadId: v.id("teamEmailThreads"),
-    requestId: v.optional(v.id("procurementRequests")),
-  },
-  handler: async (ctx, args) => {
-    await requireDirectOperatorWrite(ctx, args.operatorUserId);
-    const thread = await ctx.db.get(args.emailThreadId);
-    if (!thread || thread.deletedAt) throw new Error("Conversation not found");
-    if (args.requestId && thread.requestId !== args.requestId)
-      throw new Error("Conversation belongs to another request");
-    if (!thread.resendThreadId || !thread.requestId)
-      throw new Error("Forwarded mail can only be answered from your own mailbox");
-    const resendThreadId = thread.resendThreadId;
-    const sequence = await ctx.db
-      .query("procurementOutreachSequences")
-      .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", resendThreadId))
-      .first();
-    if (!sequence?.inboxId || sequence.requestId !== thread.requestId)
-      throw new Error("This conversation has no outreach inbox to reply from");
-    await loadCompanyRequest(ctx, sequence.requestId);
-    const inbox = await ctx.db
-      .query("operatorOutreachInboxes")
-      .withIndex("by_inboxId", (q) => q.eq("inboxId", sequence.inboxId!))
-      .first();
-    const latest = await ctx.db
-      .query("teamEmailMessages")
-      .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
-      .order("desc")
-      .take(20);
-    const target = latest.find((message) => message.resendInboxEmailId);
-    if (!inbox) throw new Error("This conversation has no outreach inbox to reply from");
-    if (!target?.resendInboxEmailId) throw new Error("No message to reply to yet");
-    const now = dayjs().valueOf();
-    if (isLive(sequence.status))
-      await terminalizeSequence(ctx, sequence, { status: "stopped", reason: "operator_replied", now });
-    const inbound = target.direction === "inbound";
-    return {
-      sequenceId: sequence._id,
-      inboxId: sequence.inboxId,
-      resendThreadId,
-      replyToEmailId: target.resendInboxEmailId,
-      subject: target.subject,
-      fromEmail: inbox.emailAddress,
-      fromName: inbox.fromName,
-      to: inbound ? [target.fromEmail] : target.toAddresses,
-      messageId: target.messageId,
-      references: [...target.references, ...(target.messageId ? [target.messageId] : [])],
-    };
-  },
-});
-
-/**
- * Stops the automated follow-ups of the live outreach sequence behind a team
- * conversation, for an operator reply about to go out. Finds the sequence by
- * its team (or legacy) thread pointer among the request's live sequences, then
- * by the conversation's Resend thread ids (primary and linked), all by index.
- * Nothing to stop is a no-op. Called only by the accepted reply send, after its
- * final identity/approval/run recheck and before Resend is called.
- */
+/** Stops follow-ups immediately before an approved manual reply calls Resend. */
 export const stopFollowUpsForOperatorReplyInternal = internalMutation({
   args: { teamEmailThreadId: v.id("teamEmailThreads") },
   handler: async (ctx, args): Promise<{ stopped: number }> => {
     const thread = await ctx.db.get(args.teamEmailThreadId);
     if (!thread || thread.deletedAt) return { stopped: 0 };
-    const found = new Map<Id<"procurementOutreachSequences">, Sequence>();
-    if (thread.requestId) {
-      const requestId = thread.requestId;
-      for (const status of LIVE_SEQUENCE_STATUSES) {
-        const live = await ctx.db
-          .query("procurementOutreachSequences")
-          .withIndex("by_requestId_and_status", (q) =>
-            q.eq("requestId", requestId).eq("status", status),
-          )
-          .take(25);
-        for (const sequence of live)
-          if (
-            sequence.teamEmailThreadId === thread._id ||
-            (thread.legacyThreadId !== undefined &&
-              sequence.procurementEmailThreadId === thread.legacyThreadId)
-          )
-            found.set(sequence._id, sequence);
-      }
-    }
-    const links = await ctx.db
-      .query("teamEmailThreadLinks")
-      .withIndex("by_threadId", (q) => q.eq("threadId", thread._id))
-      .take(20);
-    const resendThreadIds = new Set(
-      [thread.resendThreadId, ...links.map((link) => link.resendThreadId)].filter(
-        (id): id is string => Boolean(id),
-      ),
-    );
-    for (const resendThreadId of resendThreadIds) {
-      const sequence = await ctx.db
-        .query("procurementOutreachSequences")
-        .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", resendThreadId))
-        .first();
-      // A thread id alone is not proof: the sequence must also be this conversation's request.
-      if (sequence && sequence.requestId === thread.requestId) found.set(sequence._id, sequence);
-    }
+    const sequences = await sequencesForTeamThread(ctx, thread);
     const now = dayjs().valueOf();
     let stopped = 0;
-    for (const sequence of found.values()) {
+    for (const sequence of sequences) {
       if (!isLive(sequence.status)) continue;
       await terminalizeSequence(ctx, sequence, { status: "stopped", reason: "operator_replied", now });
       stopped += 1;
     }
     return { stopped };
-  },
-});
-
-/** Mirrors a sent operator reply right away; the later `inbox.email.sent` event deduplicates on the email id. */
-export const recordOperatorReplyInternal = internalMutation({
-  args: {
-    operatorUserId: v.id("users"),
-    sequenceId: v.id("procurementOutreachSequences"),
-    resendThreadId: v.string(),
-    email: inboxEmailValidator,
-  },
-  handler: async (ctx, args) => {
-    const sequence = await ctx.db.get(args.sequenceId);
-    if (!sequence) throw new Error("Outreach sequence not found");
-    const now = dayjs().valueOf();
-    const request = await mirrorableRequest(ctx, sequence);
-    const mirrored = request
-      ? await mirrorInboxEmail(ctx, {
-          sequence,
-          request,
-          email: args.email,
-          attachments: [],
-          resendThreadId: args.resendThreadId,
-          inbound: false,
-          sentByUserId: args.operatorUserId,
-          now,
-        })
-      : null;
-    await writeOperatorAudit(ctx, {
-      operatorUserId: args.operatorUserId,
-      type: "setup_write",
-      targetOrgId: sequence.clientOrgId,
-      summary: `Replied to ${isClientSequence(sequence) ? "the client" : "a provider"} from the request Inbox`,
-      metadata: {
-        domain: "procurement",
-        operation: isClientSequence(sequence) ? "reply_client_outreach" : "reply_provider_outreach",
-        requestId: sequence.requestId,
-        outreachId: sequence.outreachId,
-        sequenceId: sequence._id,
-      },
-    });
-    return { threadId: mirrored?.threadId ?? null };
   },
 });
