@@ -96,6 +96,7 @@ import {
   requireOperatorForUser,
   writeOperatorAudit,
 } from "./lib/operatorIdentity";
+import { emitOperatorNotification } from "./lib/operatorNotify";
 import {
   createClientFileFromOperatorAttachment,
   updateClientFileByOperator,
@@ -6325,6 +6326,12 @@ export const requestToolConfirmationInternal = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+    if (!automatic)
+      await emitOperatorNotification(ctx, {
+        eventKey: `approval:${confirmationId}`,
+        category: "approval",
+        target: { kind: "approval", confirmationId },
+      });
     await ctx.db.insert("agentActionAuditEvents", {
       operatorThreadId: args.threadId,
       operatorMessageId: args.threadMessageId,
@@ -6873,6 +6880,12 @@ export const failRunInternal = internalMutation({
       updatedAt: now,
     });
     await ctx.db.patch(run.threadId, { lastMessageAt: now, updatedAt: now });
+    if (run.status !== "failed" && run.status !== "completed")
+      await emitOperatorNotification(ctx, {
+        eventKey: `operator_run_failed:${run._id}`,
+        category: "failure",
+        target: { kind: "operator_run", runId: run._id },
+      });
   },
 });
 
