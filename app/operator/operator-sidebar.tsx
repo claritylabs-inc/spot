@@ -4,6 +4,7 @@ import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { useAuthActions } from "@convex-dev/auth/react";
 import {
   Building2,
+  Inbox,
   LogOut,
   MessageSquare,
   ScrollText,
@@ -20,6 +21,7 @@ import {
 } from "@/components/app-sidebar/nav-item";
 import { commandShortcut } from "@/components/app-sidebar/nav-config";
 import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
+import { InboxUnreadBadge } from "@/components/inbox/inbox-unread-badge";
 import { useOptionalAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import type { OperatorNavSection } from "@/lib/app-shell-routes";
@@ -61,6 +63,14 @@ export function OperatorSidebar({
           ) : null}
           <SectionHeader label="Accounts" collapsed={collapsed} />
           <div className="flex flex-col gap-1">
+            <SidebarMenuItem
+              href="/operator/inbox"
+              label="Inbox"
+              icon={Inbox}
+              active={active === "inbox"}
+              collapsed={collapsed}
+              trailing={<InboxUnreadBadge collapsed={collapsed} />}
+            />
             <SidebarMenuItem
               href="/operator/clients"
               label="Clients"

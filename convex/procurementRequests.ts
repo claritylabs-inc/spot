@@ -2545,6 +2545,8 @@ async function fileLinkedThreadBatch(
     if (held.length) {
       const filed = await storeProcurementEmailAttachments(ctx, {
         clientOrgId: args.clientOrgId,
+        // Held files may still be referenced by an operator's sent draft.
+        preserveSourceStorage: true,
         attachments: held.map((file) => ({
           fileId: file.storageId,
           filename: file.name,

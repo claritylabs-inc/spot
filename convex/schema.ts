@@ -5228,6 +5228,12 @@ export default defineSchema({
   pendingEmails: defineTable({
     senderUserId: v.optional(v.id("users")),
     operatorAlwaysCcEmail: v.optional(v.string()),
+    directReplyKey: v.optional(v.string()),
+    directApproval: v.optional(v.object({
+      actorUserId: v.id("users"),
+      fingerprint: v.string(),
+      approvedAt: v.number(),
+    })),
     transport: v.optional(v.literal("operator_inbox")),
     procurementRequestId: v.optional(v.id("procurementRequests")),
     teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
@@ -5287,6 +5293,7 @@ export default defineSchema({
     .index("operator_thread", ["operatorThreadId"])
     .index("by_teamEmailThreadId", ["teamEmailThreadId"])
     .index("by_teamEmailThreadId_and_status", ["teamEmailThreadId", "status"])
+    .index("by_senderUserId_and_directReplyKey", ["senderUserId", "directReplyKey"])
     .index("status", ["status"]),
 
   emailDeliveryAttempts: defineTable({

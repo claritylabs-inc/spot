@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -13,6 +14,12 @@ import dayjs from "dayjs";
 import { FileInput, FolderInput, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
+import { PresenceAvatars } from "@/components/app-top-bar";
+import { ChatAvatar } from "@/components/chat/chat-message";
+import {
+  LinkSuggestionBar,
+  LinkThreadAction,
+} from "@/components/inbox/link-thread-action";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
@@ -33,6 +40,12 @@ import {
 } from "@claritylabs-inc/ui/components/status-tag";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+  groupEmailThreadPeople,
+  replyingOperators,
+  useActiveOperators,
+  useReportEmailThreadPresence,
+} from "@/hooks/use-operator-presence";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -304,7 +317,7 @@ function messageTime(value: number) {
 }
 
 type ProcurementEmailThreadData = NonNullable<
-  FunctionReturnType<typeof api.procurementRequests.getEmailThread>
+  FunctionReturnType<typeof api.teamInbox.getThread>
 >;
 export type ProcurementEmailMessageData =
   ProcurementEmailThreadData["messages"][number];
@@ -327,14 +340,26 @@ export function ProcurementEmailMessage({
 }) {
   const forwardedEmail = (message.forwarded as ForwardedEmail | undefined)
     ?.email;
-  const sender = message.fromName ?? message.fromEmail;
+  // Mail we sent is shown as the operator who sent it, not as the sender address.
+  const sender = fromSpot
+    ? (message.sentBy?.name ?? "Spot")
+    : (message.fromName ?? message.fromEmail);
   const files = message.files.flatMap((file) => (file?.url ? [file] : []));
+  const unfiledFiles = message.unfiledFiles.flatMap((file) =>
+    file.url ? [{ ...file, url: file.url }] : [],
+  );
   const body =
     message.currentText ||
     (forwardedEmail ? "" : "(No message text)");
   const header = (
     <div className="flex min-w-0 items-start gap-3">
-      {fromSpot ? (
+      {fromSpot && message.sentBy ? (
+        <ChatAvatar
+          name={message.sentBy.name}
+          imageUrl={message.sentBy.avatarUrl}
+          className="mt-0.5 size-8 shrink-0"
+        />
+      ) : fromSpot ? (
         <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
           <LogoIcon size={18} />
         </span>
@@ -345,9 +370,9 @@ export function ProcurementEmailMessage({
         <div className="flex items-baseline justify-between gap-3">
           <p className="min-w-0 truncate">
             <span className={`text-foreground ${typeStyle("body.medium")}`}>
-              {fromSpot ? "You" : sender}
+              {sender}
             </span>
-            {message.fromName && !collapsed ? (
+            {message.fromName && !collapsed && !fromSpot ? (
               <span
                 className={`ml-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
               >
@@ -443,6 +468,24 @@ export function ProcurementEmailMessage({
             ))}
           </div>
         ) : null}
+        {unfiledFiles.length ? (
+          <div className="space-y-1">
+            <div className="flex flex-wrap gap-2">
+              {unfiledFiles.map((file) => (
+                <FileDownloadButton
+                  key={file.storageId}
+                  href={file.url}
+                  fileName={file.name}
+                >
+                  {file.name}
+                </FileDownloadButton>
+              ))}
+            </div>
+            <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+              Not filed yet. Link this conversation to a client to file them.
+            </p>
+          </div>
+        ) : null}
       </div>
     </article>
   );
@@ -498,29 +541,102 @@ function FollowUpStatus({
   );
 }
 
+const MAX_SHOWN_DRAFTS = 3;
+
+/** Where the conversation is filed, who else has it open, and drafts being written. */
+function ConversationContext({
+  thread,
+  showFiledUnder,
+}: {
+  thread: ProcurementEmailThreadData;
+  /** The request Inbox already says which request this is. */
+  showFiledUnder: boolean;
+}) {
+  const threadId = thread.thread._id;
+  const viewers = groupEmailThreadPeople(useActiveOperators()).get(threadId) ?? [];
+  const replying = replyingOperators(viewers);
+  const drafts = thread.draftsInProgress.slice(0, MAX_SHOWN_DRAFTS);
+  // The server bounds the list too, so a full list may hide more than it counts.
+  const hiddenDrafts = thread.draftsInProgress.length - drafts.length;
+  const moreDrafts = thread.draftsLimited
+    ? `${hiddenDrafts > 0 ? `${hiddenDrafts}+` : "More"} drafts not shown`
+    : hiddenDrafts > 0
+      ? `+${hiddenDrafts} more draft${hiddenDrafts === 1 ? "" : "s"}`
+      : null;
+  const filedUnder = thread.client
+    ? [thread.client.name, thread.request?.title].filter(Boolean).join(" · ")
+    : "Unlinked";
+  if (!showFiledUnder && !viewers.length && !drafts.length && !moreDrafts) return null;
+  return (
+    <div className="space-y-1 bg-muted/30 px-4 py-2">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <p className={`min-w-0 truncate text-muted-foreground ${typeStyle("caption.default")}`}>
+          {showFiledUnder ? filedUnder : ""}
+        </p>
+        {viewers.length ? (
+          <span className="flex shrink-0 items-center gap-2">
+            {replying.length ? (
+              <span className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+                {replying.map((person) => person.name).join(", ")} replying
+              </span>
+            ) : null}
+            <PresenceAvatars users={viewers} max={3} size="sm" />
+          </span>
+        ) : null}
+      </div>
+      {drafts.map((draft) => (
+        <p
+          key={draft._id}
+          className={`truncate text-muted-foreground ${typeStyle("caption.default")}`}
+        >
+          {draft.sender?.name ?? "Someone"}{" "}
+          {draft.status === "pending" ? "is sending" : "is drafting"} “
+          {draft.subject.slice(0, 80) || "(no subject)"}”
+        </p>
+      ))}
+      {moreDrafts ? (
+        <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+          {moreDrafts}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /** Earlier messages start collapsed, as in a mail client; the newest stays open. */
 function EmailConversation({
   thread,
   readOnly,
+  requestScoped,
 }: {
   thread: ProcurementEmailThreadData;
   readOnly: boolean;
+  requestScoped: boolean;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const lastId = thread.messages.at(-1)?._id;
   return (
     <div className="-mx-4 -my-4 divide-y divide-border">
+      <ConversationContext thread={thread} showFiledUnder={!requestScoped} />
+      {thread.linkSuggestion && !thread.client && !readOnly ? (
+        <LinkSuggestionBar
+          threadId={thread.thread._id}
+          suggestion={thread.linkSuggestion}
+        />
+      ) : null}
       {thread.followUps ? (
         <FollowUpStatus followUps={thread.followUps} readOnly={readOnly} />
+      ) : null}
+      {thread.messagesTruncated ? (
+        <p className={`px-4 py-2 text-muted-foreground ${typeStyle("caption.default")}`}>
+          Long conversation: showing the latest messages.
+        </p>
       ) : null}
       {thread.messages.map((message) => (
         <ProcurementEmailMessage
           key={message._id}
           message={message}
-          fromSpot={
-            thread.outboundAddress !== null &&
-            message.fromEmail.toLowerCase() === thread.outboundAddress
-          }
+          fromSpot={message.direction === "outbound"}
           collapsed={message._id !== lastId && !expanded.has(message._id)}
           onExpand={() =>
             setExpanded((current) => new Set(current).add(message._id))
@@ -538,14 +654,23 @@ function ReplyComposer({
   emailThreadId,
   recipient,
   onSendingChange,
+  onReplyingChange,
 }: {
-  emailThreadId: Id<"procurementEmailThreads">;
+  emailThreadId: Id<"teamEmailThreads">;
   recipient: string | null;
   onSendingChange: (sending: boolean) => void;
+  /** True while the composer is focused with text, for presence. */
+  onReplyingChange: (replying: boolean) => void;
 }) {
   const reply = useAction(api.actions.providerOutreach.replyToThread);
   const [text, setText] = useState(() => replyDrafts.get(emailThreadId) ?? "");
   const [sending, setSending] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const hasText = text.trim().length > 0;
+  useEffect(() => {
+    onReplyingChange(focused && hasText);
+  }, [focused, hasText, onReplyingChange]);
+  useEffect(() => () => onReplyingChange(false), [onReplyingChange]);
   // One key per draft, so a retried send cannot deliver twice.
   const sendKey = useRef<string>(crypto.randomUUID());
 
@@ -588,6 +713,8 @@ function ReplyComposer({
         value={text}
         disabled={sending}
         onChange={(event) => update(event.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         onKeyDown={(event) => {
           if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
@@ -621,7 +748,7 @@ function FileQuoteAction({
   readOnly,
   onFilingChange,
 }: {
-  emailThreadId: Id<"procurementEmailThreads">;
+  emailThreadId: Id<"teamEmailThreads">;
   readOnly: boolean;
   onFilingChange: (filing: boolean) => void;
 }) {
@@ -796,7 +923,7 @@ function MoveThreadAction({
   requests,
   onMoved,
 }: {
-  emailThreadId: Id<"procurementEmailThreads">;
+  emailThreadId: Id<"teamEmailThreads">;
   requestId: Id<"procurementRequests">;
   requests: ProcurementRequestOption[];
   onMoved: () => void;
@@ -857,43 +984,69 @@ function MoveThreadAction({
 export type ProcurementEmailDrawerHandle = { save: () => Promise<boolean> };
 
 /**
- * The request Inbox reader in the shared right panel. Keep it mounted across
- * conversations (no `key`): only the conversation body is keyed, so switching
- * threads swaps content without replaying the panel's open animation.
+ * The Inbox reader in the shared right panel, for the team inbox or one
+ * request's. Keep it mounted across conversations (no `key`): only the
+ * conversation body is keyed, so switching threads swaps content without
+ * replaying the panel's open animation. Opening a conversation marks it read
+ * and reports it, and any reply in progress, to presence.
  */
 export function ProcurementEmailDrawer({
   ref,
   emailThreadId,
   requestId,
+  includeArchived,
   subject,
   replyable,
-  requests,
+  requests = [],
   readOnly,
   onClose,
 }: {
   ref?: Ref<ProcurementEmailDrawerHandle>;
-  emailThreadId: Id<"procurementEmailThreads">;
-  requestId: Id<"procurementRequests">;
+  emailThreadId: Id<"teamEmailThreads">;
+  /** Set when opened from a request's Inbox; the conversation must belong to it. */
+  requestId?: Id<"procurementRequests">;
+  /** Open an archived conversation of the request (its archive view). */
+  includeArchived?: boolean;
   /** List data shown while the conversation loads. */
   subject?: string;
   replyable?: boolean;
-  requests: ProcurementRequestOption[];
+  /** Same-client requests a forwarded conversation can move to (request Inbox only). */
+  requests?: ProcurementRequestOption[];
   readOnly: boolean;
   onClose: () => void;
 }) {
-  const result = useQuery(api.procurementRequests.getEmailThread, {
-    emailThreadId,
-    requestId,
+  const result = useQuery(api.teamInbox.getThread, {
+    threadId: emailThreadId,
+    ...(requestId ? { requestId } : {}),
+    ...(requestId && includeArchived ? { includeArchived: true } : {}),
   });
+  const markRead = useMutation(api.teamInbox.markRead);
   const busy = useRef(false);
   useImperativeHandle(ref, () => ({ save: async () => !busy.current }));
+  const [replying, setReplying] = useState(false);
+  useReportEmailThreadPresence(emailThreadId, replying ? "replying" : "viewing");
   const thread = result?.thread._id === emailThreadId ? result : undefined;
   const latestInbound = thread?.messages.findLast(
-    (message) => message.fromEmail.toLowerCase() !== thread.outboundAddress,
+    (message) => message.direction === "inbound",
   );
   const setBusy = (value: boolean) => {
     busy.current = value;
   };
+
+  // Reading moves only the read position, once per newest inbound message.
+  const latestInboundAt = thread?.thread.latestInboundAt;
+  const readAt = thread?.readAt ?? null;
+  const markedKey = useRef("");
+  useEffect(() => {
+    if (readOnly || latestInboundAt === undefined) return;
+    if (readAt !== null && readAt >= latestInboundAt) return;
+    const key = `${emailThreadId}:${latestInboundAt}`;
+    if (markedKey.current === key) return;
+    markedKey.current = key;
+    markRead({ threadId: emailThreadId }).catch(() => {
+      markedKey.current = "";
+    });
+  }, [emailThreadId, latestInboundAt, markRead, readAt, readOnly]);
 
   return (
     <SettingsDrawer
@@ -911,10 +1064,19 @@ export function ProcurementEmailDrawer({
               readOnly={readOnly}
               onFilingChange={setBusy}
             />
-            {!thread.thread.resendThreadId ? (
+            <LinkThreadAction
+              key={`link:${emailThreadId}`}
+              thread={{
+                _id: emailThreadId,
+                source: thread.thread.source,
+                client: thread.client,
+                request: thread.request ? { _id: thread.request.requestId } : null,
+              }}
+            />
+            {requestId && thread.request && thread.thread.source !== "outreach" ? (
               <MoveThreadAction
                 emailThreadId={emailThreadId}
-                requestId={thread.thread.requestId}
+                requestId={thread.request.requestId}
                 requests={requests}
                 onMoved={onClose}
               />
@@ -934,6 +1096,7 @@ export function ProcurementEmailDrawer({
               null
             }
             onSendingChange={setBusy}
+            onReplyingChange={setReplying}
           />
         ) : null
       }
@@ -947,6 +1110,7 @@ export function ProcurementEmailDrawer({
           key={emailThreadId}
           thread={thread}
           readOnly={readOnly}
+          requestScoped={Boolean(requestId)}
         />
       ) : null}
     </SettingsDrawer>
