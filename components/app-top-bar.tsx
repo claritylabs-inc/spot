@@ -69,26 +69,58 @@ export function PresenceAvatars({
   users,
   max = 4,
   size = "md",
+  selectedUserId,
+  onSelect,
+  selectLabel,
 }: {
   users: PresenceUser[];
   max?: number;
   size?: "sm" | "md";
+  /** Ringed, for example the person being followed. */
+  selectedUserId?: string | null;
+  /** Makes each avatar a button. */
+  onSelect?: (user: PresenceUser) => void;
+  /** Button tooltip, such as "Follow Ada". */
+  selectLabel?: (user: PresenceUser) => string;
 }) {
   if (users.length === 0) return null;
   const avatarSize = size === "sm" ? "size-5" : "size-7";
   return (
     <div className="flex shrink-0 items-center -space-x-1.5">
-      {users.slice(0, max).map((u) => (
-        <div key={u.userId} className="relative">
-          <ChatAvatar
-            name={u.name}
-            title={u.name}
-            imageUrl={u.avatarUrl}
-            className={cn(avatarSize, "border-2 border-background")}
-          />
-          <span className="absolute -right-px -bottom-px size-2 rounded-full border border-background bg-emerald-400" />
-        </div>
-      ))}
+      {users.slice(0, max).map((u) => {
+        const selected = u.userId === selectedUserId;
+        const avatar = (
+          <>
+            <ChatAvatar
+              name={u.name}
+              title={onSelect ? undefined : u.name}
+              imageUrl={u.avatarUrl}
+              className={cn(
+                avatarSize,
+                "border-2 border-background",
+                selected && "ring-2 ring-brand",
+              )}
+            />
+            <span className="absolute -right-px -bottom-px size-2 rounded-full border border-background bg-emerald-400" />
+          </>
+        );
+        return onSelect ? (
+          <button
+            key={u.userId}
+            type="button"
+            title={selectLabel?.(u) ?? u.name}
+            aria-pressed={selected}
+            onClick={() => onSelect(u)}
+            className="relative rounded-full transition-transform hover:z-10 hover:-translate-y-px focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {avatar}
+          </button>
+        ) : (
+          <div key={u.userId} className="relative">
+            {avatar}
+          </div>
+        );
+      })}
       {users.length > max && (
         <div
           title={users

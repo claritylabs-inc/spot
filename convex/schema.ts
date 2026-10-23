@@ -5526,8 +5526,28 @@ export default defineSchema({
     userId: v.id("users"),
     pathname: v.string(),
     threadId: v.optional(v.id("operatorAgentThreads")),
+    /** The operator whose cursor this one is following, if any. */
+    followingUserId: v.optional(v.id("users")),
     lastSeen: v.number(),
   })
     .index("by_userId", ["userId"])
     .index("by_lastSeen", ["lastSeen"]),
+
+  // Live cursor of an operator someone is following. Kept apart from
+  // operatorPresence because it changes many times a second; the row exists
+  // only while the operator has followers.
+  operatorCursors: defineTable({
+    userId: v.id("users"),
+    /** Leader's in-app URL: pathname plus search. */
+    href: v.string(),
+    /** CSS path to the element under the pointer; x and y are fractions of its box. */
+    anchor: v.optional(v.string()),
+    x: v.number(),
+    y: v.number(),
+    /** Pointer position as fractions of the leader's viewport; fallback and scroll target. */
+    viewportX: v.number(),
+    viewportY: v.number(),
+    visible: v.boolean(),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]),
 });

@@ -452,6 +452,7 @@ import type * as operator from "../operator.js";
 import type * as operatorAgent from "../operatorAgent.js";
 import type * as operatorAgentRunner from "../operatorAgentRunner.js";
 import type * as operatorAudit from "../operatorAudit.js";
+import type * as operatorCursors from "../operatorCursors.js";
 import type * as operatorEmail from "../operatorEmail.js";
 import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
 import type * as operatorEmailSettings from "../operatorEmailSettings.js";
@@ -513,7 +514,6 @@ import type * as threadActionConfirmations from "../threadActionConfirmations.js
 import type * as threads from "../threads.js";
 import type * as users from "../users.js";
 import type * as websiteTech from "../websiteTech.js";
-import type * as zzAuditProbe from "../zzAuditProbe.js";
 
 import type {
   ApiFromModules,
@@ -966,6 +966,7 @@ declare const fullApi: ApiFromModules<{
   operatorAgent: typeof operatorAgent;
   operatorAgentRunner: typeof operatorAgentRunner;
   operatorAudit: typeof operatorAudit;
+  operatorCursors: typeof operatorCursors;
   operatorEmail: typeof operatorEmail;
   operatorEmailDrafts: typeof operatorEmailDrafts;
   operatorEmailSettings: typeof operatorEmailSettings;
@@ -1027,7 +1028,6 @@ declare const fullApi: ApiFromModules<{
   threads: typeof threads;
   users: typeof users;
   websiteTech: typeof websiteTech;
-  zzAuditProbe: typeof zzAuditProbe;
 }>;
 
 /**

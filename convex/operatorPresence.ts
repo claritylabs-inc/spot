@@ -18,12 +18,17 @@ export const heartbeat = mutation({
     threadId: v.optional(v.id("operatorAgentThreads")),
     emailThreadId: v.optional(v.id("teamEmailThreads")),
     activity: v.optional(emailActivityValidator),
+    followingUserId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     const fields = {
       pathname: args.pathname.slice(0, 500),
       threadId: args.threadId,
+      followingUserId:
+        args.followingUserId === operator.userId
+          ? undefined
+          : args.followingUserId,
       // Activity only means something on an email thread; both clear together.
       emailThreadId: args.emailThreadId,
       activity: args.emailThreadId ? (args.activity ?? "viewing") : undefined,
@@ -48,6 +53,11 @@ export const leave = mutation({
       .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
       .unique();
     if (existing) await ctx.db.delete(existing._id);
+    const cursor = await ctx.db
+      .query("operatorCursors")
+      .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
+      .unique();
+    if (cursor) await ctx.db.delete(cursor._id);
     return null;
   },
 });
@@ -72,6 +82,7 @@ export const listActive = query({
       self: row.userId === operator.userId,
       pathname: row.pathname,
       threadId: row.threadId ?? null,
+      followingUserId: row.followingUserId ?? null,
       emailThreadId: row.emailThreadId ?? null,
       activity: row.emailThreadId ? (row.activity ?? "viewing") : null,
       lastSeen: row.lastSeen,
