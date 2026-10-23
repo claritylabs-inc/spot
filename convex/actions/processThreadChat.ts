@@ -1028,7 +1028,7 @@ export const run = internalAction({
 </td></tr>`,
           });
 
-          const notification = await sendResendEmail({
+          const notification = await sendResendEmail(ctx, null, {
             from: getNotificationFromAddress("Spot Notifications"),
             to: user.email,
             subject,

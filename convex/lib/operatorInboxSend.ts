@@ -353,7 +353,7 @@ export async function sendOperatorInboxDraft(
       : undefined;
     const created = await withBoundedRetry(
       () =>
-        createDraft({
+        createDraft(ctx, claim.senderUserId, {
           inboxId,
           to: pending.recipientEmail,
           ...(pending.ccAddresses?.length ? { cc: pending.ccAddresses } : {}),
@@ -401,7 +401,7 @@ export async function sendOperatorInboxDraft(
   try {
     const sent = await withBoundedRetry(
       () =>
-        sendDraft({
+        sendDraft(ctx, claim.senderUserId, {
           inboxId,
           draftId,
           idempotencyKey: `opsend:${keyId}`,

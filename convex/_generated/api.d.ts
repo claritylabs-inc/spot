@@ -509,6 +509,7 @@ import type * as teamEmailForwarding from "../teamEmailForwarding.js";
 import type * as teamEmailReplies from "../teamEmailReplies.js";
 import type * as teamInbox from "../teamInbox.js";
 import type * as teamInboxMigrations from "../teamInboxMigrations.js";
+import type * as testMode from "../testMode.js";
 import type * as threadActionConfirmations from "../threadActionConfirmations.js";
 import type * as threads from "../threads.js";
 import type * as users from "../users.js";
@@ -1023,6 +1024,7 @@ declare const fullApi: ApiFromModules<{
   teamEmailReplies: typeof teamEmailReplies;
   teamInbox: typeof teamInbox;
   teamInboxMigrations: typeof teamInboxMigrations;
+  testMode: typeof testMode;
   threadActionConfirmations: typeof threadActionConfirmations;
   threads: typeof threads;
   users: typeof users;
