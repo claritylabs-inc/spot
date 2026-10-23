@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
+import { isOperatorEmailDraft } from "../lib/actionConfirmationFingerprint";
 import { buildPendingEmailResendPayload } from "../lib/emailDelivery";
 
 type RenderFormat = "png" | "pdf";
@@ -191,7 +192,7 @@ export const run = internalAction({
         | Doc<"pendingEmails">
         | null;
 
-    if (!draft || draft.orgId !== args.orgId) {
+    if (!draft || draft.orgId !== args.orgId || isOperatorEmailDraft(draft)) {
       return {
         status: "not_found" as const,
         message: "No matching email draft was found for this thread.",

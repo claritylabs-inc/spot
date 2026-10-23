@@ -13,6 +13,7 @@ import {
 } from "./lib/actionConfirmationFingerprint";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { getEmailDeliveryMode } from "./lib/resend";
+import { replyContextProblem } from "./lib/teamEmailReply";
 import {
   SENDER_CHANGED_REASON,
   checkOperatorSendApproval,
@@ -248,6 +249,8 @@ export const claimOperatorInboxSendInternal = internalMutation({
     if (!approval.approved) {
       return { kind: "rejected", reason: approval.reason } as const;
     }
+    const context = await replyContextProblem(ctx, draft, args.confirmationId);
+    if (context) return { kind: "rejected", reason: context } as const;
     await assertNoOperatorImpersonation(ctx, senderUserId);
 
     const attemptId = await ctx.db.insert("emailDeliveryAttempts", {
@@ -327,6 +330,12 @@ export const beginOperatorInboxSendingInternal = internalMutation({
       pendingEmailId: draft._id,
     });
     if (!approval.approved) return refuse(approval.reason);
+    const context = await replyContextProblem(
+      ctx,
+      draft,
+      attempt.operatorConfirmationId,
+    );
+    if (context) return refuse(context);
     try {
       await assertNoOperatorImpersonation(ctx, attempt.senderUserId);
     } catch {

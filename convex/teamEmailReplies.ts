@@ -8,6 +8,7 @@ import {
   mutation,
   query,
   type MutationCtx,
+  type QueryCtx,
 } from "./_generated/server";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
@@ -32,7 +33,7 @@ const BROWSER_KEY = /^[A-Za-z0-9-]{8,80}$/;
 type StoredReply = { _id: Id<"pendingEmails"> };
 
 async function replyDraftByKey(
-  ctx: MutationCtx,
+  ctx: QueryCtx | MutationCtx,
   senderUserId: Id<"users">,
   directReplyKey: string,
 ): Promise<StoredReply | null> {
@@ -43,6 +44,30 @@ async function replyDraftByKey(
     )
     .first();
 }
+
+/**
+ * Where a browser reply stands, by its idempotency key and the signed-in
+ * operator only. For a UI whose send response was lost: only `absent` or
+ * `draft` (never claimed, or released after a known rejection) permits
+ * starting over with a new key; `pending` is locked and `sent` is done.
+ */
+export const status = query({
+  args: { idempotencyKey: v.string() },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    const draft = await ctx.db
+      .query("pendingEmails")
+      .withIndex("by_senderUserId_and_directReplyKey", (q) =>
+        q
+          .eq("senderUserId", operator.userId)
+          .eq("directReplyKey", `browser:${args.idempotencyKey}`),
+      )
+      .first();
+    return draft
+      ? ({ state: draft.status, pendingEmailId: draft._id } as const)
+      : ({ state: "absent" } as const);
+  },
+});
 
 /** The exact reply that would be sent: From, To, Cc, subject, signed body and its fingerprint. */
 export const preview = query({
@@ -116,6 +141,7 @@ export const prepareSend = mutation({
       status: "draft",
       scheduledSendTime: 0,
       directReplyKey,
+      directReplyMessage: composed.message,
       directApproval: {
         actorUserId: operator.userId,
         fingerprint: composed.preview.fingerprint,
