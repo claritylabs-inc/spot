@@ -165,6 +165,16 @@
   }
 }
 
+/* Portaled select popups (search field, options, empty text) use the same
+   compact operator size as the triggers that open them. */
+@media (min-width: 768px) {
+  body:has([data-app-surface="operator"]) [data-typography-role="control.input"],
+  body:has([data-app-surface="operator"]) [data-typography-role="control.input"] * {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+}
+
 /* Compact searchable selects retain their shared menu type through portals. */
 [data-typography-role="control.menu"] {
   font-size: var(--text-base) !important;
@@ -347,12 +357,13 @@
   opacity: 1;
 }
 @media (min-width: 640px) {
+  /* The card fits its label column to its longest label (see InlineFieldCard). */
   [data-operator-inline-fields] [data-inline-field-row] {
-    grid-template-columns: min(35%, 20rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, var(--inline-label-width, min(35%, 20rem))) minmax(0, 1fr);
   }
   /* Question rows read as sentences; split the row evenly with the answer. */
   [data-operator-inline-fields] [data-inline-field-row][data-row-layout="wide"] {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, var(--inline-label-width, 1fr)) minmax(0, 1fr);
   }
   [data-operator-inline-fields] [data-inline-field-row][data-row-layout="stacked"] {
     grid-template-columns: minmax(0, 1fr);
@@ -393,6 +404,10 @@
 [data-operator-inline-fields] [data-slot="website-input"] :is([data-slot="input-group-addon"], span, input) {
   font-size: inherit;
   line-height: inherit;
+}
+/* The https:// prefix starts where plain inputs start their text (px-3). */
+[data-operator-inline-fields] [data-inline-field-row] [data-slot="website-input"] > [data-slot="input-group-addon"] {
+  padding-left: 0.75rem;
 }
 
 /* Native numeric spinners follow the same focus-only affordance as intake counts. */

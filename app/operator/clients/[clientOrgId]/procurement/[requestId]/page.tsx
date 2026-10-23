@@ -87,6 +87,8 @@ export default function OperatorProcurementRequestPage() {
         </span>
       }
       rightPanel={rightPanel}
+      // The Email view's panel is the mail reader.
+      rightPanelWide={view === "email"}
     >
       <OperatorPageContextRegistration
         context={{

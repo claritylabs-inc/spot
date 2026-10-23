@@ -86,7 +86,11 @@ Browser replies store the exact message and context before sending and retain th
 idempotency key across reloads. A different message cannot reuse that key. An unbound
 sent mirror is never treated as a message in the primary Resend thread. Unknown write
 timeouts and server failures stay locked. Replying stops live automated follow-ups
-through indexed conversation pointers, including retired inboxes. Provider and client sequence behavior is
+through indexed conversation pointers, including retired inboxes. New emails composed in the
+Inbox follow the same protocol under a `compose:` key: `composeTeamEmail` builds the
+exact draft (one To, Cc/Bcc, optional client link, Always CC, signature) and its
+fingerprint, the approval accepts a compose draft only without a conversation, and the
+sent mirror creates the conversation. Spot system addresses are refused as recipients. Provider and client sequence behavior is
 described in [provider outreach](provider-outreach.md). Outreach launch reviews From
 and Always CC and binds a sender fingerprint. Identity changes hold the initial send;
 only its sender can approve a new identity. Drafts with an attempted send cannot be

@@ -174,6 +174,9 @@ function OperatorShellSidebar({
 }
 
 const SidebarRenderContext = createContext<SidebarRenderProps | null>(null);
+const RightPanelWideContext = createContext<
+  ((wide: boolean) => void) | null
+>(null);
 
 function ShellFrame({
   route,
@@ -208,6 +211,7 @@ function ShellFrame({
   const { filled: hasSecondaryNav, setTarget: setSecondaryNavTarget } =
     useAppShellSlot("secondaryNav");
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const [rightPanelWide, setRightPanelWide] = useState(false);
   const hasPdfPanel = isPdfOpen && !!fileUrl;
   const hasEntityPanel = !!entityPreview;
   const hasRightPanel = hasPageRightPanel;
@@ -258,7 +262,9 @@ function ShellFrame({
             <div className="relative min-w-0 flex-1">
               <main className="absolute inset-0 min-w-0 overflow-y-auto scrollbar-hide">
                 <SidebarRenderContext.Provider value={sidebarRenderProps}>
-                  <RouteContent>{children}</RouteContent>
+                  <RightPanelWideContext.Provider value={setRightPanelWide}>
+                    <RouteContent>{children}</RouteContent>
+                  </RightPanelWideContext.Provider>
                 </SidebarRenderContext.Provider>
               </main>
             </div>
@@ -279,6 +285,7 @@ function ShellFrame({
         ) : undefined
       }
       pdfPanel={hasPdfPanel ? <PdfPanel /> : undefined}
+      rightPanelWide={rightPanelWide}
       storageUserId={scope.userId}
     />
   );
@@ -497,16 +504,26 @@ export function AppShell({
   actions,
   breadcrumbDetail,
   rightPanel,
+  rightPanelWide = false,
   sidebar,
 }: {
   children: React.ReactNode;
   actions?: React.ReactNode;
   breadcrumbDetail?: React.ReactNode;
   rightPanel?: React.ReactNode;
+  /** Open the right panel at the wider reading width (mail). */
+  rightPanelWide?: boolean;
   /** Replaces the route's sidebar while this page is mounted. */
   sidebar?: (props: SidebarRenderProps) => React.ReactNode;
 }) {
-  if (!useOptionalAppShellSlots()) return <>{children}</>;
+  const slots = useOptionalAppShellSlots();
+  const setRightPanelWide = useContext(RightPanelWideContext);
+  useEffect(() => {
+    if (!setRightPanelWide || !rightPanelWide) return;
+    setRightPanelWide(true);
+    return () => setRightPanelWide(false);
+  }, [rightPanelWide, setRightPanelWide]);
+  if (!slots) return <>{children}</>;
   return (
     <>
       {children}

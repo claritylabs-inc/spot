@@ -59,12 +59,23 @@ export function useMcpSettings(disabled: boolean) {
             </PillButton>
           }
         />
-        <OperationalPanelBody>
-          {servers === undefined ? (
-            <p>Loading servers…</p>
-          ) : servers.length === 0 ? (
-            <p className="text-muted-foreground">No MCP servers connected.</p>
-          ) : (
+        {servers === undefined || servers.length === 0 ? (
+          <OperationalPanelBody className="px-5 py-8 text-center">
+            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              {servers === undefined
+                ? "Loading servers…"
+                : "No MCP servers connected"}
+            </p>
+            {servers?.length === 0 ? (
+              <p
+                className={`mt-1 text-muted-foreground/70 ${typeStyle("caption.default")}`}
+              >
+                Add a server to give the operator agent its tools.
+              </p>
+            ) : null}
+          </OperationalPanelBody>
+        ) : (
+          <OperationalPanelBody className="py-0">
             <div className="divide-y divide-border">
               {servers.map((server) => (
                 <button
@@ -95,8 +106,8 @@ export function useMcpSettings(disabled: boolean) {
                 </button>
               ))}
             </div>
-          )}
-        </OperationalPanelBody>
+          </OperationalPanelBody>
+        )}
       </OperationalPanel>
     ),
     drawer: selected ? (

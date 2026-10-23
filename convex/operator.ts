@@ -311,6 +311,30 @@ export const listClients = query({
   },
 });
 
+/** Everyone with operator access, owners first, for the Team settings page. */
+export const listOperators = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireOperator(ctx);
+    const profiles = await ctx.db.query("operatorProfiles").take(200);
+    const rows = await Promise.all(
+      profiles.map(async (profile) => ({
+        ...(await operatorPerson(ctx, profile.userId)),
+        email: profile.email,
+        role: profile.role,
+        status: profile.status,
+        createdAt: profile.createdAt,
+      })),
+    );
+    return rows.sort(
+      (a, b) =>
+        Number(a.status === "disabled") - Number(b.status === "disabled") ||
+        Number(b.role === "owner") - Number(a.role === "owner") ||
+        a.name.localeCompare(b.name),
+    );
+  },
+});
+
 /** Unsubmitted self-serve applications not yet tied to a client; listClients flags the rest. */
 export const listUnlinkedApplications = query({
   args: {},

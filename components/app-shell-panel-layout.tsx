@@ -13,6 +13,7 @@ export function AppShellPanelLayout({
   preserveAuxiliaryPixelWidths = false,
   rightPanel,
   rightPanelLabel = "Resize detail panel",
+  rightPanelWide = false,
   storageUserId,
 }: {
   entityPanel?: ReactNode;
@@ -21,6 +22,8 @@ export function AppShellPanelLayout({
   preserveAuxiliaryPixelWidths?: boolean;
   rightPanel?: ReactNode;
   rightPanelLabel?: string;
+  /** Reading surfaces (mail) open wider and keep their own saved width. */
+  rightPanelWide?: boolean;
   storageUserId?: string;
 }) {
   const hasEntityPanel = Boolean(entityPanel);
@@ -41,14 +44,25 @@ export function AppShellPanelLayout({
   }
 
   if (hasRightPanel) {
-    auxiliaryPanels.push({
-      content: rightPanel,
-      defaultWidth: 420,
-      id: "right",
-      label: rightPanelLabel,
-      maxWidth: 760,
-      minWidth: 320,
-    });
+    auxiliaryPanels.push(
+      rightPanelWide
+        ? {
+            content: rightPanel,
+            defaultWidth: 640,
+            id: "right-wide",
+            label: rightPanelLabel,
+            maxWidth: 960,
+            minWidth: 360,
+          }
+        : {
+            content: rightPanel,
+            defaultWidth: 420,
+            id: "right",
+            label: rightPanelLabel,
+            maxWidth: 760,
+            minWidth: 320,
+          },
+    );
   }
 
   if (hasPdfPanel) {
