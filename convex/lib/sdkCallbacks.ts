@@ -49,10 +49,7 @@ import {
   type ClRouterSettingsSnapshot,
   type ClRouterTraceMetadata,
 } from "./clRouterClient";
-import {
-  clRouterMessagesHaveVision,
-  mapSpotCallToClRouterPrimitive,
-} from "./clRouterPrimitive";
+import { mapSpotCallToClRouterPrimitive } from "./clRouterPrimitive";
 
 type ExtractionImage = {
   imageBase64: string;
@@ -608,15 +605,10 @@ export function makeGenerateText(
             const mapping = mapSpotCallToClRouterPrimitive({
               task: effectiveTask,
               taskKind,
-              hasStructuredOutput: false,
-              hasVision: clRouterMessagesHaveVision(input.messages),
             });
             const response = await clRouterGenerateMaybeManual(
               {
                 primitive: mapping.primitive,
-                ...(mapping.requirements
-                  ? { requirements: mapping.requirements }
-                  : {}),
                 orgId: routing?.orgId ? String(routing.orgId) : undefined,
                 system,
                 ...input,
@@ -777,15 +769,10 @@ export function makeGenerateObject(
             const mapping = mapSpotCallToClRouterPrimitive({
               task: effectiveTask,
               taskKind,
-              hasStructuredOutput: true,
-              hasVision: clRouterMessagesHaveVision(input.messages),
             });
             const response = await clRouterGenerateMaybeManual(
               {
                 primitive: mapping.primitive,
-                ...(mapping.requirements
-                  ? { requirements: mapping.requirements }
-                  : {}),
                 orgId: routing?.orgId ? String(routing.orgId) : undefined,
                 system,
                 ...input,

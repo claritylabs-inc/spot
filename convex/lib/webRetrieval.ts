@@ -6,7 +6,11 @@ import { isIP } from "node:net";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { clRouterRetrieve, type ClRouterTraceInput } from "./clRouterClient";
+import {
+  clRouterCapabilities,
+  clRouterRetrieve,
+  type ClRouterTraceInput,
+} from "./clRouterClient";
 import {
   WEB_RETRIEVAL_DEFAULT,
   isNativeWebRetrievalProvider,
@@ -54,7 +58,6 @@ type NormalizedInput = {
   allowedDomains: string[];
   maxResults: number;
 };
-type ResolvedWebRetrievalRoute = WebRetrievalRoute & { route?: ModelRoute };
 
 function normalizeRoute(
   config: WebRetrievalRoute | undefined,
@@ -141,16 +144,12 @@ function normalizeInput(input: WebRetrievalInput): NormalizedInput {
 export async function resolveWebRetrievalForOrg(
   ctx: ActionCtx,
   orgId: Id<"organizations">,
-): Promise<ResolvedWebRetrievalRoute> {
+): Promise<WebRetrievalRoute> {
   const settings = await ctx.runQuery(internal.modelSettings.resolveForOrg, {
     orgId,
   });
   const config = normalizeRoute(settings?.webRetrieval);
-  if (config.primary !== "model_default") return config;
-  const route = settings?.routes.chat;
-  return route && isNativeWebRetrievalProvider(route.provider)
-    ? { ...config, route }
-    : config;
+  return config;
 }
 
 export async function runWebRetrieval(
@@ -192,36 +191,57 @@ export async function runOperatorWebRetrieval(
     {},
   );
   const config = normalizeRoute(settings.webRetrieval);
-  const route =
-    config.primary === "model_default"
-      ? await ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {})
-      : undefined;
-  return runWebRetrievalWithConfig(ctx, { ...config, route }, rawInput);
+  return runWebRetrievalWithConfig(ctx, config, rawInput);
 }
 
 async function runWebRetrievalWithConfig(
   ctx: ActionCtx,
-  config: ResolvedWebRetrievalRoute,
+  config: WebRetrievalRoute,
   rawInput: WebRetrievalInput,
   orgId?: string,
 ): Promise<WebRetrievalResult> {
   const input = normalizeInput(rawInput);
+  // The retrieval contract requires an explicit model for model_default. Use
+  // the live registry rather than inheriting a generation pin or a static id.
+  let route: ModelRoute | undefined;
+  if (config.primary === "model_default") {
+    try {
+      const capabilities = await clRouterCapabilities();
+      const entry = capabilities.models?.find(
+        (model) =>
+          model.configured &&
+          isNativeWebRetrievalProvider(model.provider) &&
+          model.primitives.includes("text") &&
+          capabilities.webRetrieval.providers.some(
+            (provider) =>
+              provider.provider === model.provider && provider.configured,
+          ),
+      );
+      if (entry) route = { provider: entry.provider, model: entry.model };
+    } catch {
+      console.warn(
+        "[cl-router] Native retrieval catalog unavailable; using router retrieval defaults",
+      );
+    }
+  }
   return clRouterRetrieve(
     {
       ...(orgId ? { orgId } : {}),
       input,
       config: {
         primary: config.primary,
-        ...(config.route ? { route: config.route } : {}),
+        ...(route ? { route } : {}),
       },
     },
     // Choose local intake's synchronous transport before submission. Hosted
     // research stays durable; a failed/unknown call never triggers a replay.
-    process.env.SPOT_ENV === "local" && !orgId && /^intake-(company|cyber|vehicle):/.test(rawInput.trace?.traceId ?? "")
+    process.env.SPOT_ENV === "local" &&
+      !orgId &&
+      /^intake-(company|cyber|vehicle):/.test(rawInput.trace?.traceId ?? "")
       ? { telemetry: ctx }
       : durableRouterClientOptionsWithTrace(ctx, {
-      ...rawInput.trace,
-      taskKind: rawInput.taskKind ?? "web_research",
-    }),
+          ...rawInput.trace,
+          taskKind: rawInput.taskKind ?? "web_research",
+        }),
   );
 }

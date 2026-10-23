@@ -8,7 +8,7 @@ point for explicit cancellation.
 
 The caller supplies a stable invocation key for one model step. The first call
 freezes the request; resuming that key uses its original stored payload, including
-its selected route. Rebuilding a prompt or refreshing an asset signature does not
+any explicit route pin. Rebuilding a prompt or refreshing an asset signature does not
 replace an already dispatched request. Callers must allocate a new key for a
 new step. Operator and Convex section-extraction owners retain these identities across their
 own continuation boundaries. Other callers can poll within their existing action;
@@ -34,7 +34,7 @@ request bytes. The router validates this fingerprint when fetching the request.
 }
 ```
 
-Operations are `generate`, `embed`, `retrieve`, and `transcribe`. The router
+Operations are `generate`, `manual`, `embed`, `retrieve`, `transcribe`, and `browse`. The router
 returns a `jobId`. Repeating an identical submission after a lost acknowledgement
 retrieves the same job. Spot stores its router ID before subsequent status reads.
 `GET /v1/jobs/<jobId>` returns metadata; `POST /v1/jobs/<jobId>/cancel` requests
@@ -149,3 +149,94 @@ summaries. The chat shows a categorized explanation plus collapsed, copyable
 Error details independently of Show thinking. Diagnostics never include raw
 provider bodies, prompts, credentials or tool inputs/outputs. Legacy failed
 messages expose only an allowlisted code and their message reference.
+
+## Router-owned model selection
+
+Spot delegates model selection to cl-router. Generation sends `text` or
+`reasoning`; embeddings and transcription use their dedicated endpoints. Spot
+sends no capability requirements: the router infers them from images, files,
+tools, schemas and estimated input size.
+
+Contract reviewed against cl-router main at
+[`641027850b37b36fb00863a0f98eda5bdec46437`](https://github.com/claritylabs-inc/cl-router/blob/641027850b37b36fb00863a0f98eda5bdec46437/AGENTS.md#routing),
+including `packages/convex/worker/generation.ts` `inferredRequirements`.
+An authenticated, read-only `GET /v1/capabilities` confirmed the current model
+list on October 23, 2026.
+
+### Routing inventory
+
+| Call site / owner | Before | After |
+| --- | --- | --- |
+| `modelSettings.resolveOperatorAgentRoute`, operator runner and `models.getAgentLanguageModelForOperatorTask` | Required an explicit global `operator_agent` route; missing pin threw before generation | Optional pin; absent pin uses routed generation |
+| `clRouterLanguageModel` client/public/operator loops | Saved each response's model as a pin for later steps | Each step routes independently; only an explicit initial pin uses manual generation |
+| `models`, `sdkCallbacks`, section extraction | Explicit global task pins used manual generation without checking the live registry | Default remains routed; optional pins are checked against live capabilities and stale pins fall back |
+| `clRouterClient` inline JSON and SSE | Manual route rejection ended the request | Missing/unconfigured model routes automatically; unknown-route rejection can fall back only with `executionStarted: false` and before stream output |
+| `routerJobClient`, operator resume/cancellation | Durable `route` selected the manual operation; failed jobs stayed terminal | Explicit pins still use manual; safe fallback gets one stable `:routed` identity; reconnect and cancellation cover both jobs |
+| Global/broker settings | Explicit global pins applied; broker routes already ignored; cleanup preserved operator pin | Global pins remain optional; cleanup removes all global/broker pins including operator pin |
+| Native web retrieval | Inherited chat/operator generation pins; static native model defaults remained in catalog | Derives a configured native model from live capabilities; existing Parallel/Exa fallback remains |
+| `modelCatalog`, `modelSettings`, `routerCapabilities` | Static display-name model list and provider/task validation helpers; operator pin required vision | Removed static model IDs and local task capability validation; raw model IDs remain available for display and telemetry |
+| `clRouterPrimitive` and all generation serializers | Selected `multimodal` / `tool_use` and added vision/tools/structured-output requirements | Generation uses only `text` / `reasoning`, no explicit requirements or capability bookkeeping |
+| Operator tool selection | Forced `toolSelection: caller` after choosing authorized families | Router selects among the same authorized tools; family and execution authorization remain in Spot |
+| Extraction fixture and router contract examples | Encoded retired GPT-5.x, GLM and DeepSeek model IDs and capability-forcing requests | Extraction test uses an opaque fixture ID; contract examples reflect current models and inferred capabilities |
+
+### Budgets retained
+
+Generation and retrieval have no default elapsed deadline in Spot's shared
+client. Output-token limits remain task-specific: they bound response size and
+are clamped by the router, without selecting a model. The text-only local intake
+transport still limits output to 3,000 tokens.
+
+Explicit Jev decision budgets remain separate from generation routing:
+
+- Intake industry, coverage, follow-up inputs and vehicle-specification checks:
+  5 seconds, with a 6-second cancellation deadline and manual/uncertain fallback.
+- Client turn selection, operator family selection/planning, iMessage threading
+  and chat presentations: bounded interactive decisions, generally 10–15 seconds.
+- Research, evidence verification, proposal review, wiki extraction, outreach
+  and other batch decisions: existing 60–120 second budgets.
+- Website browsing: 6 minutes for the bounded browser workflow.
+- Durable job control requests: 5 seconds to submit/read/cancel; this does not
+  impose a deadline on inference or permit replay after an unknown response.
+
+No prompts, business tools, approval paths or authorization rules changed.
+
+### Cleanup after deployment
+
+The owner can remove all stored pins after the new code is deployed. This also
+removes intentionally configured pins and the stored web retrieval preference;
+retrieval then uses its existing Parallel default. The cleanup is bounded to
+50 broker settings rows per call and is safe to repeat. It does not run
+inference and is not scheduled automatically.
+
+Choose the intended Spot deployment explicitly:
+
+```bash
+env -u CONVEX_DEPLOY_KEY -u CONVEX_DEPLOYMENT_TOKEN npx convex run --deployment '<SPOT_DEPLOYMENT>' --codegen disable modelSettings:clearOperatorModelOverridesInternal '{}'
+```
+
+If `isDone` is false, repeat with that response's `continueCursor`:
+
+```bash
+env -u CONVEX_DEPLOY_KEY -u CONVEX_DEPLOYMENT_TOKEN npx convex run --deployment '<SPOT_DEPLOYMENT>' --codegen disable modelSettings:clearOperatorModelOverridesInternal '{"cursor":"<CONTINUE_CURSOR>"}'
+```
+
+Continue until `isDone` is true. `stripRetiredRoutesInternal` is unnecessary for
+this cleanup because all stored route fields are cleared. No cleanup command
+was run against any deployment during implementation.
+
+### Routing verification
+
+The existing `convex/routerJobs.test.ts` covers optional operator pins, live
+capabilities, explicit pins, stale-pin fallback, pre-execution rejection,
+partial-stream replay prevention, independent generation steps, durable
+fallback reconnection after pin removal, and unknown-outcome holds.
+
+Run the full repository checks with Node 24:
+
+```bash
+npm test
+npx tsc --noEmit
+env -u CONVEX_DEPLOY_KEY -u CONVEX_DEPLOYMENT_TOKEN npx convex typecheck
+npm run lint
+npm run check:cl-router-contract
+```

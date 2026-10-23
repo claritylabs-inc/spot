@@ -7,12 +7,10 @@
 import type {
   Difficulty,
   Primitive,
-  PrimitiveRequirements,
   QualityTier,
 } from "../../contracts/cl-router/policy";
 
 export type ClRouterPrimitive = Primitive;
-export type ClRouterRequirements = PrimitiveRequirements;
 export type ClRouterDifficulty = Difficulty;
 export type ClRouterQualityTier = QualityTier;
 export type ClRouterRoutingDecision = "routed" | "manual";
@@ -21,28 +19,11 @@ export type ClRouterRoutingSource = "jev" | "fallback" | "manual";
 export type SpotPrimitiveMappingInput = {
   task?: string;
   taskKind?: string;
-  hasTools?: boolean;
-  hasVision?: boolean;
-  hasStructuredOutput?: boolean;
 };
 
 export type SpotPrimitiveMapping = {
   primitive: ClRouterPrimitive;
-  requirements?: ClRouterRequirements;
 };
-
-const TEXT_TASKS = new Set([
-  "chat",
-  "email_draft",
-  "email_reply",
-  "summary",
-]);
-
-const TEXT_TASK_KINDS = new Set([
-  "inbound_email_reply",
-  "threadTitle",
-  "query_respond",
-]);
 
 const REASONING_TASKS = new Set([
   "analysis",
@@ -56,18 +37,6 @@ const REASONING_TASKS = new Set([
   "triage",
   "classification",
   "security",
-]);
-
-const AGENT_TOOL_TASKS = new Set(["mailbox_coordinator"]);
-
-const AGENT_TOOL_TASK_KINDS = new Set([
-  "email_draft_tool_loop",
-  "mailbox_coordinate",
-  "operator_agent",
-  "query_reason",
-  "query_plan",
-  "query_verify",
-  "query_attachment",
 ]);
 
 function isExtractionFamily(task?: string, taskKind?: string): boolean {
@@ -99,94 +68,14 @@ function isReasoningFamily(task?: string, taskKind?: string): boolean {
   );
 }
 
-function isAgentToolTurn(task?: string, taskKind?: string): boolean {
-  return (
-    (task !== undefined && AGENT_TOOL_TASKS.has(task)) ||
-    (taskKind !== undefined && AGENT_TOOL_TASK_KINDS.has(taskKind))
-  );
-}
-
-function compactRequirements(
-  flags: ClRouterRequirements,
-): ClRouterRequirements | undefined {
-  const requirements: ClRouterRequirements = {};
-  if (flags.vision) requirements.vision = true;
-  if (flags.tools) requirements.tools = true;
-  if (flags.structuredOutput) requirements.structuredOutput = true;
-  if (
-    flags.minInputTokens !== undefined &&
-    Number.isFinite(flags.minInputTokens)
-  ) {
-    requirements.minInputTokens = flags.minInputTokens;
-  }
-  return Object.keys(requirements).length > 0 ? requirements : undefined;
-}
-
-function mapped(
-  primitive: ClRouterPrimitive,
-  flags: ClRouterRequirements = {},
-): SpotPrimitiveMapping {
-  const requirements = compactRequirements(flags);
-  return requirements ? { primitive, requirements } : { primitive };
-}
-
-export function mapSpotCallToClRouterPrimitive(
-  input: SpotPrimitiveMappingInput,
-): SpotPrimitiveMapping {
-  const { task, taskKind, hasTools, hasVision, hasStructuredOutput } = input;
-  const structured = { structuredOutput: Boolean(hasStructuredOutput) };
-
-  if (task === "embeddings") return mapped("embedding");
-  if (task === "voice_transcription") return mapped("transcription");
-
-  if (hasVision && hasTools) {
-    return mapped("multimodal", { ...structured, tools: true });
-  }
-
-  if (hasVision) {
-    if (isExtractionFamily(task, taskKind) || task === "chat_vision") {
-      return mapped("multimodal", structured);
-    }
-    if (isReasoningFamily(task, taskKind)) {
-      return mapped("reasoning", { ...structured, vision: true });
-    }
-    return mapped("multimodal", structured);
-  }
-
-  if (hasTools && isAgentToolTurn(task, taskKind)) {
-    return mapped("tool_use", structured);
-  }
-
-  if (isReasoningFamily(task, taskKind) || isExtractionFamily(task, taskKind)) {
-    return mapped("reasoning", { ...structured, tools: Boolean(hasTools) });
-  }
-
-  if (
-    (task !== undefined && TEXT_TASKS.has(task)) ||
-    (taskKind !== undefined && TEXT_TASK_KINDS.has(taskKind))
-  ) {
-    return mapped("text", { ...structured, tools: Boolean(hasTools) });
-  }
-
-  if (hasTools) return mapped("tool_use", structured);
-  return mapped("text", structured);
-}
-
-export function clRouterContentHasVision(
-  content: unknown,
-): boolean {
-  if (!Array.isArray(content)) return false;
-  return content.some((part) => {
-    if (!part || typeof part !== "object") return false;
-    const type = (part as { type?: unknown }).type;
-    return type === "image" || type === "file";
-  });
-}
-
-export function clRouterMessagesHaveVision(
-  messages: Array<{ content?: unknown }> | undefined,
-): boolean {
-  return (messages ?? []).some((message) =>
-    clRouterContentHasVision(message.content),
-  );
+/** Capabilities and context size are inferred by cl-router from the payload. */
+export function mapSpotCallToClRouterPrimitive({
+  task,
+  taskKind,
+}: SpotPrimitiveMappingInput): SpotPrimitiveMapping {
+  if (task === "embeddings") return { primitive: "embedding" };
+  if (task === "voice_transcription") return { primitive: "transcription" };
+  return {
+    primitive: isReasoningFamily(task, taskKind) ? "reasoning" : "text",
+  };
 }

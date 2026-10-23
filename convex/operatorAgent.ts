@@ -1390,7 +1390,7 @@ export async function cancelActiveRunsForThread(
     const invocationKeys = [
       `operator:${String(run._id)}:${run.checkpoint?.iteration ?? 0}${retry}:0`,
       `operator:${String(run._id)}:plan${retry}:0`,
-    ];
+    ].flatMap((key) => [key, `${key}:routed`]);
     for (const invocationKey of invocationKeys) {
       await cancelRouterJobForInvocation(ctx, invocationKey);
       await ctx.scheduler.runAfter(0, internal.actions.routerJobs.cancel, {

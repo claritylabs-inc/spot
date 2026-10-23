@@ -1156,10 +1156,8 @@ export default defineSchema({
 
   globalModelSettings: defineTable({
     key: v.literal("default"),
-    // Deprecated: no write path remains (modelSettings.updateGlobalRoutes and
-    // the operator model-overrides UI are removed). Still read by
-    // modelSettings.resolveOperatorAgentRoute/resolvePublicModelDefaults;
-    // frozen until modelSettings.clearOperatorModelOverridesInternal runs.
+    // Optional explicit pins; unpinned generation delegates to cl-router.
+    // clearOperatorModelOverridesInternal removes legacy global/broker pins.
     explicitRouteOverrides: v.optional(v.array(v.string())),
     routes: v.optional(
       v.object({

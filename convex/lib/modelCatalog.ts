@@ -119,46 +119,6 @@ export const MODEL_PROVIDERS = [
 
 export const WEB_RETRIEVAL_DEFAULT: WebRetrievalRoute = { primary: "parallel" };
 
-export const WEB_RETRIEVAL_DEFAULT_ROUTES: Record<
-  NativeWebRetrievalProvider,
-  ModelRoute
-> = {
-  openai: { provider: "openai", model: "gpt-5.4-mini" },
-  google: { provider: "google", model: "gemini-2.5-flash" },
-  anthropic: { provider: "anthropic", model: "claude-sonnet-4.5" },
-  xai: { provider: "xai", model: "grok-4.20-non-reasoning" },
-};
-
-export const MODEL_DISPLAY_NAMES: Record<string, string> = {
-  "accounts/fireworks/models/deepseek-v4-pro": "DeepSeek V4 Pro",
-  "accounts/fireworks/models/deepseek-v4-flash-0731": "DeepSeek V4 Flash",
-  "accounts/fireworks/models/glm-5p2": "GLM 5.2",
-  "accounts/fireworks/models/qwen3p7-plus": "Qwen 3.7 Plus",
-  "accounts/fireworks/models/muse-glimmer-30b": "Muse Glimmer 30B",
-  "accounts/fireworks/models/inkling": "Inkling",
-  "accounts/fireworks/models/gpt-oss-safeguard-20b": "GPT-OSS Safeguard 20B",
-  "accounts/fireworks/models/qwen3-embedding-8b": "Qwen3 Embedding 8B",
-  "nomic-ai/nomic-embed-text-v1.5": "Nomic Embed Text v1.5",
-  "gpt-5.6": "GPT 5.6 Sol",
-  "gpt-5.6-sol": "GPT 5.6 Sol",
-  "gpt-5.6-terra": "GPT 5.6 Terra",
-  "gpt-5.6-luna": "GPT 5.6 Luna",
-  "gpt-5.5": "GPT 5.5",
-  "gpt-5.5-pro": "GPT 5.5 Pro",
-  "gpt-5.4": "GPT 5.4",
-  "gpt-5.4-mini": "GPT 5.4 Mini",
-  "gpt-5.4-nano": "GPT 5.4 Nano",
-  "gpt-4o-transcribe": "GPT-4o Transcribe",
-  "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe",
-  "text-embedding-3-small": "Text Embedding 3 Small",
-  "text-embedding-3-large": "Text Embedding 3 Large",
-  "claude-sonnet-4.5": "Claude Sonnet 4.5",
-  "claude-haiku-4.5": "Claude Haiku 4.5",
-  "gemini-2.5-flash": "Gemini 2.5 Flash",
-  "deepseek-v4-pro": "DeepSeek V4 Pro",
-  "deepseek-v4-flash": "DeepSeek V4 Flash",
-};
-
 /**
  * Model-independent cl-sdk output budgets. cl-sdk prefers these over its
  * built-in hint tokens; cl-router clamps each request to the selected model's
@@ -186,9 +146,3 @@ export const EXTRACTION_MODEL_CAPABILITIES = {
     pce_packet_generation: 8_192,
   },
 };
-
-export function isConfigurableModelProvider(
-  value: string,
-): value is DirectModelProvider {
-  return (DIRECT_MODEL_PROVIDERS as readonly string[]).includes(value);
-}
