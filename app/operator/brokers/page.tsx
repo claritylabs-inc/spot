@@ -2,6 +2,7 @@
 import {
   brokerAreaFit,
   brokerRegionCountry,
+  brokerWritingCountries,
   BROKER_REGION_CODES,
   CANADIAN_PROVINCES,
   USPS_STATE_NAMES,
@@ -11,9 +12,9 @@ import {
   PROVIDER_ACORD_LOB_CODES,
 } from "@/convex/lib/linesOfBusiness";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Loader2, MapPin, Plus, Shield } from "lucide-react";
+import { Globe, Loader2, MapPin, Plus, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -39,6 +40,8 @@ import {
   StatusLabel,
   StatusTag,
 } from "@claritylabs-inc/ui/components/status-tag";
+import { CountryFlag } from "@/components/ui/country-flag";
+import { RegionFlag } from "@/components/ui/region-flag";
 import { ListToolbar } from "@/components/ui/list-toolbar";
 import {
   Table,
@@ -61,10 +64,32 @@ import {
 } from "./broker-model";
 
 const countryNames = new Intl.DisplayNames(["en"], { type: "region" });
-const regionOptions = BROKER_REGION_CODES.map((value) => ({
-  value,
-  label: `${USPS_STATE_NAMES[value] ?? CANADIAN_PROVINCES[value as keyof typeof CANADIAN_PROVINCES]} (${value}) · ${brokerRegionCountry(value) === "CA" ? "Canada" : "United States"}`,
-})).sort((a, b) => a.label.localeCompare(b.label));
+function countryOption(code: string) {
+  const label = countryNames.of(code) ?? code;
+  return { value: code, label, icon: <CountryFlag code={code} label={label} /> };
+}
+// US first: most providers write there.
+const COUNTRY_ORDER = ["US", "CA"];
+function countryRank(code: string) {
+  const rank = COUNTRY_ORDER.indexOf(code);
+  return rank === -1 ? COUNTRY_ORDER.length : rank;
+}
+const regionOptions = BROKER_REGION_CODES.map((value) => {
+  const country = brokerRegionCountry(value);
+  const name =
+    USPS_STATE_NAMES[value] ??
+    CANADIAN_PROVINCES[value as keyof typeof CANADIAN_PROVINCES];
+  return {
+    value,
+    country,
+    label: `${name} (${value})`,
+    icon: <RegionFlag country={country} region={value} label={name} />,
+  };
+}).sort(
+  (a, b) =>
+    countryRank(a.country) - countryRank(b.country) ||
+    a.label.localeCompare(b.label),
+);
 const lineOptions = PROVIDER_ACORD_LOB_CODES.map((value) => ({
   value,
   label: `${ACORD_LOB_LABELS[value]} (${value})`,
@@ -113,6 +138,10 @@ const BROKER_SORT_COLUMNS = {
 
 export default function OperatorBrokersPage() {
   const [creating, setCreating] = useFollowedState("brokers:creating", false);
+  const [countries, setCountries] = useFollowedState<string[]>(
+    "brokers:countries",
+    [],
+  );
   const [regions, setRegions] = useFollowedState<string[]>(
     "brokers:regions",
     [],
@@ -123,6 +152,25 @@ export default function OperatorBrokersPage() {
     [],
   );
   const rows = useQuery(api.brokerProfiles.list, {});
+  const countryOptions = useMemo(
+    () =>
+      [
+        ...new Set([
+          "US",
+          "CA",
+          ...(rows ?? []).flatMap((row) =>
+            brokerWritingCountries(row.profile),
+          ),
+        ]),
+      ]
+        .map(countryOption)
+        .sort(
+          (a, b) =>
+            countryRank(a.value) - countryRank(b.value) ||
+            a.label.localeCompare(b.label),
+        ),
+    [rows],
+  );
   const filteredRows = rows?.filter((row) => {
     const profile = row.profile;
     return (
@@ -130,6 +178,10 @@ export default function OperatorBrokersPage() {
         statuses.includes(profile?.networkStatus ?? "prospect")) &&
       (lines.length === 0 ||
         lines.some((line) => profile?.lineOfBusinessCodes.includes(line))) &&
+      (countries.length === 0 ||
+        countries.some((country) =>
+          brokerWritingCountries(profile).includes(country),
+        )) &&
       (regions.length === 0 ||
         (profile &&
           regions.some(
@@ -149,7 +201,10 @@ export default function OperatorBrokersPage() {
     filteredRows?.map((row) => row.broker._id) ?? [],
   );
   const hasFilters =
-    regions.length > 0 || lines.length > 0 || statuses.length > 0;
+    countries.length > 0 ||
+    regions.length > 0 ||
+    lines.length > 0 ||
+    statuses.length > 0;
   // Changing filters drops a selection the rows may no longer show.
   const filterSetter =
     (set: (value: string[]) => void) => (value: string[]) => {
@@ -188,11 +243,33 @@ export default function OperatorBrokersPage() {
               onChange: filterSetter(setStatuses),
             },
             {
+              id: "country",
+              label: "Country",
+              icon: <Globe />,
+              multiple: true,
+              options: countryOptions,
+              value: countries,
+              onChange: (next) => {
+                filterSetter(setCountries)(next);
+                // Keep only states and provinces in the chosen countries.
+                if (next.length)
+                  setRegions((current) =>
+                    current.filter((region) =>
+                      next.includes(brokerRegionCountry(region)),
+                    ),
+                  );
+              },
+            },
+            {
               id: "region",
-              label: "State / province",
+              label: "State",
               icon: <MapPin />,
               multiple: true,
-              options: regionOptions,
+              options: countries.length
+                ? regionOptions.filter((option) =>
+                    countries.includes(option.country),
+                  )
+                : regionOptions,
               value: regions,
               onChange: filterSetter(setRegions),
             },
