@@ -41,4 +41,14 @@ Use local synthetic source records through existing mutation owners or a tempora
 
 Screenshots, local scripts and machine-readable observations belong in `.context/notifications/`. Record passed, failed, blocked and not-run cases in the final results below. Mock transport verification does not establish live Slack installation or provider delivery.
 
-Results: pending integration.
+Results (2026-10-23, local mock Slack):
+
+Passed in visible Chrome with normal seeded operator/client OTP login: four categories, channel selection while off, reload persistence, browser enable, independent per-category saves/toggles, desktop and 390px layouts, and unavailable-Slack notice with disabling still available. No horizontal overflow. All routes were left off; local Slack was restored to enabled.
+
+Passed against the running local backend: duplicate event keys, disabled suppression without replay, one-attempt mock delivery, identifier-only event payload, stale revisions, missing-channel rejection, cancellation after route change or source deletion, single successful claim, expired lease becoming terminal unknown with repeated recovery, five-attempt rejection limit, explicit disabled Applications route owning submission alerts and deduping the submission seam, anonymous/client settings denial, client write denial, and impersonated operator write denial.
+
+A temporary mock-only internal fixture created synthetic inbox/application sources and drove delivery transitions; it was removed after QA. This verifies the service and intake submission seam, not complete external email webhook/model/extraction workflows. Approval ordering, remaining producer seams, shared/archived/unjoined channel rejection and followed-state wiring were independently source-reviewed; those end-to-end workflows and live Slack delivery were not run. Full legacy intake progress/cutover draining remains covered by existing tests and source review, not a new browser replay.
+
+Artifacts: `.context/notifications/runtime-results.json`, `boundary-results.json`, `runtime-qa.mjs`, `boundary-qa.mjs`, `settings-final.png`, `settings-mobile.png`, `settings-offline.png`, and `service-review.md`. The scripts referencing the temporary fixture require recreating that local-only fixture to replay; the behavioral steps above remain the repeatable contract.
+
+Final checks passed: root TypeScript, Convex TypeScript, touched-file ESLint, `git diff --check`, and 17 existing tests across intake Slack delivery/context, operator identity and action confirmations. Local Convex accepted the final schema and API after the temporary fixture was removed. The final copy cleanup was checked again in visible Chrome; `settings-mobile-clean.png` replaces the earlier mobile screenshot.

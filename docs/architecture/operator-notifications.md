@@ -2,7 +2,7 @@
 
 ## Scope and contract
 
-Operators receive actionable alerts in Slack, configured by category in operator settings. The initial categories are incoming team email, pending manual approvals, submitted applications, and terminal agent or document processing failures. Each category has one optional host-workspace channel; different categories can use different channels. Missing configuration is disabled. Enabling a route does not replay historical events.
+Operators receive actionable alerts in Slack, configured by category in operator settings. The initial categories are incoming team email, pending manual approvals, submitted applications, and terminal operator-agent or policy extraction failures. Each category has one optional host-workspace channel; different categories can use different channels. Missing configuration is disabled. Enabling a route does not replay historical events.
 
 Operator and client flows remain separate: event catalogs, routing, authorization, settings, and message behavior have different owners. Shared Slack transport, credential handling, channel metadata validation, and delivery error utilities belong below those flows. Tenant `notifications`, preferences, and client Slack routing retain their contracts.
 
@@ -26,3 +26,7 @@ Intake retains its existing start/progress/summary thread. Before any intake rou
 Use local synthetic actors and Slack mock delivery, never Vercel previews or live sends. Exercise route selection, per-category enable/disable, reload persistence, stale revision rejection, tenant denial, impersonation denial, event dedupe, disabled suppression, route-change cancellation, stale approvals, terminal failures, and ambiguous-send recovery. Browser checks cover the actual settings flow and followed-state controls. Review source integration separately from transport verification and record limits in the workflow QA ledger.
 
 Out of scope: Slack commands or approval buttons, per-operator preferences/DM subscriptions, recurring escalation schedules, production rollout, and notification-history backfill.
+
+Initial producers cover incoming team/outreach replies, new manual approvals, submitted/resubmitted applications (including savings intake), failed operator runs, and failed policy extraction. Proposal failure and outreach-delivery-failure producers, reminders and escalation policies are follow-up scope.
+
+Recovery runs every minute in bounded batches. Route-change cleanup reads only pending events through the category/status index.
