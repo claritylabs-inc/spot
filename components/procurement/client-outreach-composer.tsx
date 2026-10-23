@@ -113,15 +113,23 @@ export function ClientOutreachComposer({
       )
     : null;
   const disabled = sending || !panel?.canLaunch;
+  // Launching approves the exact From and Always CC shown, by fingerprint.
+  const senderFingerprint = panel?.sender.fingerprint ?? null;
+  const senderProblem = panel
+    ? (panel.sender.problem ??
+      (senderFingerprint ? null : "Reload to review the From and CC before sending"))
+    : null;
   const canSend =
     !disabled &&
+    !!senderFingerprint &&
+    !senderProblem &&
     !!recipient &&
     !!draft.subject.trim() &&
     !!draft.text.trim() &&
     !!cadence;
 
   async function send() {
-    if (!canSend || !recipient || !cadence) return;
+    if (!canSend || !recipient || !cadence || !senderFingerprint) return;
     setSending(true);
     try {
       const result = await launch({
@@ -129,6 +137,7 @@ export function ClientOutreachComposer({
         recipientEmail: recipient.email,
         subject: draft.subject,
         text: draft.text,
+        expectedIdentityFingerprint: senderFingerprint,
         cadence: {
           followUpCount: cadence.followUpCount,
           intervalBusinessDays: cadence.intervalBusinessDays,
@@ -274,16 +283,28 @@ export function ClientOutreachComposer({
             </p>
           ) : null}
           <HeaderRow label="From">
-            <p className={`truncate ${typeStyle("body.default")}`}>
-              {panel.sender.fromName}
-              {panel.sender.email ? (
-                <span className="text-muted-foreground">
-                  {" "}
-                  &lt;{panel.sender.email}&gt;
-                </span>
-              ) : null}
-            </p>
+            {senderProblem ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                <p className={`min-w-0 flex-1 text-muted-foreground ${typeStyle("body.default")}`}>
+                  {senderProblem}
+                </p>
+                <PillButton href="/operator/profile" size="compact" variant="ghost">
+                  Open Profile
+                </PillButton>
+              </div>
+            ) : (
+              <p className={`truncate ${typeStyle("body.default")}`}>
+                {panel.sender.fromHeader}
+              </p>
+            )}
           </HeaderRow>
+          {panel.sender.alwaysCc && !senderProblem ? (
+            <HeaderRow label="Cc">
+              <p className={`truncate ${typeStyle("body.default")}`}>
+                {panel.sender.alwaysCc}
+              </p>
+            </HeaderRow>
+          ) : null}
           <HeaderRow label="To">
             {recipients.length ? (
               <Select
@@ -375,22 +396,17 @@ export function ClientOutreachComposer({
             />
             <div className={`mt-4 ${typeStyle("body.default")}`}>
               <p className="text-muted-foreground">Thanks,</p>
-              <div className="mt-3 flex items-start gap-2.5">
-                <LogoIcon size={32} className="size-8 shrink-0 rounded-lg" />
-                <div className={typeStyle("caption.default")}>
-                  <p className={`text-foreground ${typeStyle("body.medium")}`}>
-                    {panel.sender.name ?? "Spot"}
-                  </p>
-                  {panel.sender.name ? (
-                    <p className="text-muted-foreground">Spot</p>
-                  ) : null}
-                  {panel.sender.email ? (
-                    <p className="text-muted-foreground">
-                      {panel.sender.email}
+              {panel.sender.name ? (
+                <div className="mt-3 flex items-start gap-2.5">
+                  <LogoIcon size={32} className="size-8 shrink-0 rounded-lg" />
+                  <div className={typeStyle("caption.default")}>
+                    <p className={`text-foreground ${typeStyle("body.medium")}`}>
+                      {panel.sender.name}
                     </p>
-                  ) : null}
+                    <p className="text-muted-foreground">Spot</p>
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
           </div>
         </div>

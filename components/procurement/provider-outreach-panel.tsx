@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { PillButton } from "@/components/ui/pill-button";
 import { OutreachStatusTag } from "./procurement-shared";
+import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
   Tooltip,
@@ -169,7 +170,14 @@ export function SequenceState({ sequence }: { sequence: SequenceView }) {
     : null;
   const progress = `${sent} of ${total} emails sent`;
   const tag: TagPresentation & { label: string; details: string[] } =
-    sequence.status === "active"
+    sequence.status === "active" && sequence.identityHold
+      ? {
+          tone: "warning",
+          indicator: "waiting",
+          label: "Waiting for sender",
+          details: [sequence.identityHold.message, progress],
+        }
+      : sequence.status === "active"
       ? {
           tone: "info",
           indicator: "progress",
@@ -441,11 +449,23 @@ export function useProviderOutreach(
   );
   const sendAllCount = Math.min(eligible.length, MAX_LAUNCH_PROVIDERS);
 
+  // The From and Always CC this launch will use. Without a fingerprint to
+  // approve there is nothing to launch with, so the whole panel reads as blocked.
+  const sender = panel?.sender ?? null;
+  const senderBlock = sender
+    ? (sender.problem ??
+      (sender.fingerprint ? null : "Reload to review the From and CC before sending"))
+    : null;
+
   async function run(
     brokerOrgIds: Id<"organizations">[],
     matchedOnly: boolean,
   ) {
     if (!cadence || !panel?.request.canLaunch || busyRef.current) return;
+    if (!sender?.fingerprint || senderBlock) {
+      toast.error(senderBlock ?? "Reload to review the From and CC before sending");
+      return;
+    }
     busyRef.current = true;
     setSending(new Set(brokerOrgIds));
     setSendingAll(matchedOnly);
@@ -456,6 +476,7 @@ export function useProviderOutreach(
         cadence,
         cadenceSource,
         matchedOnly,
+        expectedIdentityFingerprint: sender.fingerprint,
         selectedContacts: brokerOrgIds.flatMap((brokerOrgId) =>
           selectedContacts[brokerOrgId]
             ? [{ brokerOrgId, contactId: selectedContacts[brokerOrgId] }]
@@ -488,7 +509,14 @@ export function useProviderOutreach(
   }
 
   return {
-    panel,
+    // Launch controls read `request.canLaunch`; a sender problem turns it off.
+    panel:
+      panel && senderBlock && panel.request.canLaunch
+        ? { ...panel, request: { ...panel.request, canLaunch: false } }
+        : panel,
+    sender,
+    senderBlock,
+    requestCanLaunch: panel?.request.canLaunch ?? false,
     cadence,
     fields,
     setCadenceField,
@@ -610,7 +638,8 @@ export function ProviderOutreachCadence({
 }) {
   const { panel, cadence, fields, setCadenceField } = controller;
   if (!panel || !cadence) return null;
-  const disabled = !panel.request.canLaunch;
+  // Cadence stays editable while only the sender profile blocks launching.
+  const disabled = !controller.requestCanLaunch;
   const preview = schedulePreview(cadence, panel.request.targetEffectiveDate);
   const label = (text: string, source: CadenceSource) => (
     <span className="flex flex-wrap items-center gap-2">
@@ -905,6 +934,137 @@ export function OutreachSequenceActions({
   );
 }
 
+type SenderPanel = NonNullable<ProviderOutreachController["sender"]>;
+
+function senderLine(sender: SenderPanel) {
+  return `${sender.fromHeader ?? ""}${sender.alwaysCc ? ` · Cc ${sender.alwaysCc}` : ""}`;
+}
+
+/** The From and Always CC every email in this launch is sent with, or the Profile fix needed first. */
+function SenderSummary({
+  sender,
+  block,
+}: {
+  sender: SenderPanel;
+  block: string | null;
+}) {
+  return (
+    <div
+      role="status"
+      className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border px-4 py-3 ${typeStyle("body.default")}`}
+    >
+      {block ? (
+        <>
+          <p className="min-w-0 flex-1 text-muted-foreground">{block}</p>
+          <PillButton href="/operator/profile" size="compact" variant="ghost">
+            Open Profile
+          </PillButton>
+        </>
+      ) : (
+        <p className="min-w-0 flex-1 break-words">
+          <span className="text-muted-foreground">Sends as </span>
+          {sender.fromHeader}
+          {sender.alwaysCc ? (
+            <span className="text-muted-foreground"> · Cc {sender.alwaysCc}</span>
+          ) : null}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Emails held because the sender's profile changed or needs fixing. Only the
+ * sequence's own sender can approve the current From and Always CC.
+ */
+function IdentityHolds({
+  sequences,
+  sender,
+  block,
+}: {
+  sequences: SequenceView[];
+  sender: SenderPanel;
+  block: string | null;
+}) {
+  const reapprove = useMutation(api.providerOutreach.reapproveIdentity);
+  const viewerId = useCachedOperatorCurrent()?.user._id;
+  const [approving, setApproving] = useState<string | null>(null);
+  const held = sequences.filter(
+    (sequence) => sequence.identityHold && isLiveSequence(sequence),
+  );
+  if (!held.length) return null;
+
+  async function approve(sequence: SequenceView) {
+    if (!sender.fingerprint) return;
+    setApproving(sequence.sequenceId);
+    try {
+      await reapprove({
+        sequenceId: sequence.sequenceId,
+        expectedFingerprint: sender.fingerprint,
+      });
+      toast.success("Sender approved");
+    } catch (error) {
+      toast.error(getUserFacingErrorMessage(error, "Could not approve the sender"));
+    } finally {
+      setApproving(null);
+    }
+  }
+
+  return (
+    <>
+      {held.map((sequence) => {
+        const owner = sequence.senderUserId === viewerId;
+        return (
+          <div
+            key={sequence.sequenceId}
+            role="status"
+            className={`space-y-2 rounded-lg border border-border px-4 py-3 ${typeStyle("body.default")}`}
+          >
+            <p>
+              <span className="text-muted-foreground">
+                {sequence.audience === "client" ? "Client email" : "Email"} to{" "}
+              </span>
+              {sequence.recipient.name ?? sequence.recipient.email}
+              <span className="text-muted-foreground">
+                {" "}
+                is on hold: {sequence.identityHold?.message}
+              </span>
+            </p>
+            {owner && !block ? (
+              <p className="break-words text-muted-foreground">
+                Current sender: {senderLine(sender)}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              {owner && block ? (
+                <>
+                  <span className="min-w-0 flex-1 text-muted-foreground">{block}</span>
+                  <PillButton href="/operator/profile" size="compact" variant="ghost">
+                    Open Profile
+                  </PillButton>
+                </>
+              ) : owner ? (
+                <PillButton
+                  size="compact"
+                  type="button"
+                  disabled={approving !== null}
+                  onClick={() => void approve(sequence)}
+                >
+                  {approving === sequence.sequenceId ? "Approving…" : "Approve updated sender"}
+                </PillButton>
+              ) : (
+                <span className="text-muted-foreground">
+                  Only the person who started this email can approve the sender.
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export function ProviderOutreachPanel({
   controller,
   submittedProviders = [],
@@ -918,7 +1078,8 @@ export function ProviderOutreachPanel({
   }[];
   readOnly?: boolean;
 }) {
-  const { panel, sending, send, selectedContacts, selectContact } = controller;
+  const { panel, sender, senderBlock, sending, send, selectedContacts, selectContact } =
+    controller;
   const [othersOpen, setOthersOpen] = useState<boolean | null>(null);
   if (!panel && !readOnly) return null;
   const submittedIds = new Set(
@@ -964,6 +1125,12 @@ export function ProviderOutreachPanel({
           {BANNER_COPY[banner] ?? humanize(banner)}
         </p>
       ))}
+      {!readOnly && panel && sender ? (
+        <SenderSummary sender={sender} block={senderBlock} />
+      ) : null}
+      {!readOnly && panel && sender ? (
+        <IdentityHolds sequences={panel.sequences} sender={sender} block={senderBlock} />
+      ) : null}
       {!readOnly && panel ? (
         <div className="sm:hidden">
           <PillButton
