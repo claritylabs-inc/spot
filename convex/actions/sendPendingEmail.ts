@@ -379,6 +379,7 @@ async function sendPendingEmailById(
       payload.attachments = await toResendAttachments(ctx, pending.attachments);
     }
     const result = await sendTrackedResendEmail(ctx, {
+      actorUserId: pending.senderUserId ?? null,
       source: "pending_email",
       orgId,
       pendingEmailId: id,

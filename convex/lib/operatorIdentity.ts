@@ -306,6 +306,11 @@ export async function getActiveOperatorProfile(
 export async function requireOperator(ctx: Ctx) {
   const operator = await getActiveOperatorProfile(ctx);
   if (!operator) throwUserFacingError(userFacingErrorCodes.operatorRequired);
+  await auditOperatorMutation(ctx, {
+    type: "console_write",
+    operatorUserId: operator.userId,
+    summary: "Operator console change",
+  });
   return operator;
 }
 
@@ -323,29 +328,132 @@ export async function requireOperatorOwner(ctx: Ctx) {
   return operator;
 }
 
+type OperatorAuditType =
+  | "employee_provisioned"
+  | "operator_bootstrap"
+  | "operator_invited"
+  | "broker_created"
+  | "broker_status_changed"
+  | "broker_launch_email_sent"
+  | "client_created"
+  | "client_status_changed"
+  | "client_launch_email_sent"
+  | "impersonation_started"
+  | "impersonation_stopped"
+  | "impersonation_chat_message"
+  | "demo_lead_deleted"
+  | "memory_cleared"
+  | "setup_write"
+  | "impersonated_write"
+  | "second_factor_enrolled"
+  | "second_factor_recovery_used"
+  | "second_factor_reset"
+  | "console_write";
+
+type AuditedWrite = NonNullable<Doc<"operatorAuditEvents">["writes"]>[number];
+
+const MAX_AUDITED_WRITES = 25;
+// High-frequency or side-effect-free mutations that would drown the audit log.
+const UNAUDITED_MUTATIONS = new Set([
+  "operatorPresence:heartbeat",
+  "operatorPresence:leave",
+  "operatorCursors:move",
+  "operatorCursors:clear",
+  "teamInbox:markRead",
+]);
+
+type MutationAudit = {
+  auditId: Id<"operatorAuditEvents">;
+  type: OperatorAuditType;
+  functionName: string;
+  writes: AuditedWrite[];
+};
+
+// Keyed by the per-invocation `ctx.db`, so each mutation gets one tracked event.
+const mutationAudits = new WeakMap<object, MutationAudit>();
+
+async function publicMutationName(ctx: Ctx) {
+  if (!("insert" in ctx.db) || !ctx.meta) return null;
+  const fn = await ctx.meta.getFunctionMetadata();
+  if (fn.type !== "mutation" || fn.visibility !== "public") return null;
+  const name = fn.name.replace(/\.js:/, ":");
+  if (UNAUDITED_MUTATIONS.has(name) || /:generate\w*UploadUrl$/.test(name)) {
+    return null;
+  }
+  return name;
+}
+
+/**
+ * Records one audit event for the current public mutation and appends every
+ * document it inserts, patches, replaces or deletes afterwards.
+ */
+async function auditOperatorMutation(
+  ctx: Ctx,
+  args: {
+    type: OperatorAuditType;
+    operatorUserId: Id<"users">;
+    summary: string;
+    targetOrgId?: Id<"organizations">;
+    metadata?: unknown;
+  },
+) {
+  if (mutationAudits.has(ctx.db)) return;
+  const functionName = await publicMutationName(ctx);
+  if (!functionName) return;
+  const db = (ctx as MutationCtx).db;
+  const auditId = await db.insert("operatorAuditEvents", {
+    ...args,
+    functionName,
+    writes: [],
+    createdAt: dayjs().valueOf(),
+  });
+  const audit: MutationAudit = {
+    auditId,
+    type: args.type,
+    functionName,
+    writes: [],
+  };
+  mutationAudits.set(ctx.db, audit);
+
+  const { insert, patch, replace } = db;
+  const remove = db.delete;
+  const record = async (write: AuditedWrite) => {
+    if (write.table === "operatorAuditEvents" || write.id === auditId) return;
+    if (audit.writes.length >= MAX_AUDITED_WRITES) return;
+    if (audit.writes.some((w) => w.id === write.id && w.op === write.op)) {
+      return;
+    }
+    audit.writes.push(write);
+    await patch.call(db, auditId, { writes: audit.writes });
+  };
+  // Writes accept either `(id, …)` or `(table, id, …)`.
+  const target = (args: unknown[], valueArgs: number) =>
+    args.length > valueArgs + 1
+      ? { table: args[0] as string, id: String(args[1]) }
+      : { id: String(args[0]) };
+  db.insert = (async (table: string, value: never) => {
+    const id = await insert.call(db, table as never, value);
+    await record({ op: "insert", table, id });
+    return id;
+  }) as typeof db.insert;
+  db.patch = (async (...args: unknown[]) => {
+    await (patch as (...a: unknown[]) => Promise<void>).apply(db, args);
+    await record({ op: "patch", ...target(args, 1) });
+  }) as typeof db.patch;
+  db.replace = (async (...args: unknown[]) => {
+    await (replace as (...a: unknown[]) => Promise<void>).apply(db, args);
+    await record({ op: "replace", ...target(args, 1) });
+  }) as typeof db.replace;
+  db.delete = (async (...args: unknown[]) => {
+    await (remove as (...a: unknown[]) => Promise<void>).apply(db, args);
+    await record({ op: "delete", ...target(args, 0) });
+  }) as typeof db.delete;
+}
+
 export async function writeOperatorAudit(
   ctx: MutationCtx,
   args: {
-    type:
-      | "employee_provisioned"
-      | "operator_bootstrap"
-      | "operator_invited"
-      | "broker_created"
-      | "broker_status_changed"
-      | "broker_launch_email_sent"
-      | "client_created"
-      | "client_status_changed"
-      | "client_launch_email_sent"
-      | "impersonation_started"
-      | "impersonation_stopped"
-      | "impersonation_chat_message"
-      | "demo_lead_deleted"
-      | "memory_cleared"
-      | "setup_write"
-      | "impersonated_write"
-      | "second_factor_enrolled"
-      | "second_factor_recovery_used"
-      | "second_factor_reset";
+    type: OperatorAuditType;
     targetOrgId?: Id<"organizations">;
     targetUserId?: Id<"users">;
     summary: string;
@@ -368,7 +476,7 @@ export async function writeOperatorAudit(
       ? (ctx.db.normalizeId("procurementRequests", metadata.requestId) ??
         undefined)
       : undefined;
-  return await ctx.db.insert("operatorAuditEvents", {
+  const event = {
     operatorUserId: args.operatorUserId,
     serviceActor: args.serviceActor,
     type: args.type,
@@ -377,6 +485,17 @@ export async function writeOperatorAudit(
     requestId,
     summary: args.summary,
     metadata: args.metadata,
+  };
+  // The first specific event replaces the mutation's generic console event.
+  const audit = mutationAudits.get(ctx.db);
+  if (audit?.type === "console_write") {
+    audit.type = args.type;
+    await ctx.db.patch(audit.auditId, event);
+    return audit.auditId;
+  }
+  return await ctx.db.insert("operatorAuditEvents", {
+    ...event,
+    functionName: audit?.functionName,
     createdAt: dayjs().valueOf(),
   });
 }
@@ -400,7 +519,7 @@ export async function getActiveOperatorImpersonation(ctx: Ctx) {
 export async function recordImpersonatedWrite(ctx: Ctx) {
   const active = await getActiveOperatorImpersonation(ctx);
   if (!active || !("insert" in ctx.db)) return;
-  await writeOperatorAudit(ctx as MutationCtx, {
+  await auditOperatorMutation(ctx, {
     type: "impersonated_write",
     operatorUserId: active.operator.userId,
     targetOrgId: active.targetOrg._id,

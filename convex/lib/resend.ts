@@ -1,3 +1,6 @@
+import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+import type { ActionCtx } from "../_generated/server";
 import { extractEmailAddress } from "./emailAddress";
 import {
   canonicalAgentDomain,
@@ -121,6 +124,32 @@ export type ResendResult =
   | { ok: false; error: string };
 
 export type EmailDeliveryMode = "live" | "restricted" | "capture";
+
+/** Every send reads operator test mode through this; there is no way to skip it. */
+export type EmailDeliveryCtx = Pick<ActionCtx, "runQuery">;
+
+/**
+ * The user whose action causes an email: test mode applies when they are an
+ * operator with test mode on. `null` for client-driven and system email,
+ * which test mode never touches.
+ */
+export type EmailActor = Id<"users"> | null;
+
+/**
+ * The acting operator's own address while their test mode is on, else null.
+ * Errors propagate: if test mode cannot be read, the email is not sent.
+ */
+export async function getTestModeRecipient(
+  ctx: EmailDeliveryCtx,
+  actorUserId: EmailActor,
+): Promise<string | null> {
+  if (!actorUserId) return null;
+  return await ctx.runQuery(internal.testMode.recipientInternal, {
+    userId: actorUserId,
+  });
+}
+
+const TEST_MODE_SUBJECT_PREFIX = "[TEST]";
 
 type RecipientField = "to" | "cc" | "bcc";
 
@@ -314,18 +343,22 @@ export type RecipientDeliveryPolicy =
 /**
  * Delivery policy for transports that cannot redirect recipients (Resend
  * Inboxes). `restricted` blocks any recipient outside the allowlist instead of
- * redirecting like `sendResendEmail` does.
+ * redirecting like `sendResendEmail` does; operator test mode blocks any
+ * recipient other than the operator.
  */
 export function evaluateRecipientDeliveryPolicy(
   recipients: Array<string | undefined>,
+  testModeRecipient: string | null,
 ): RecipientDeliveryPolicy {
   const mode = getEmailDeliveryMode();
   if (mode === "capture") return { action: "capture" };
-  if (mode === "live") return { action: "send" };
+  if (mode === "live" && !testModeRecipient) return { action: "send" };
   const normalized = uniqueStrings(
     recipients.map((r) => normalizeEmail(r ?? "") || (r ?? "").trim()),
   );
-  const disallowed = normalized.filter((email) => !recipientAllowed(email));
+  const disallowed = normalized.filter((email) =>
+    testModeRecipient ? email !== testModeRecipient : !recipientAllowed(email),
+  );
   return disallowed.length === 0 && normalized.length > 0
     ? { action: "send" }
     : { action: "blocked", disallowed };
@@ -353,13 +386,16 @@ function withOriginalRecipientHeaders(
   };
 }
 
-function preparePayloadForDelivery(payload: ResendPayload): {
+function preparePayloadForDelivery(
+  payload: ResendPayload,
+  testModeRecipient: string | null,
+): {
   payload?: ResendPayload;
   captured?: boolean;
   error?: string;
 } {
   const mode = getEmailDeliveryMode();
-  if (mode === "live") return { payload };
+  if (mode === "live" && !testModeRecipient) return { payload };
 
   const recipients = {
     to: normalizeRecipients(payload.to),
@@ -378,6 +414,22 @@ function preparePayloadForDelivery(payload: ResendPayload): {
       });
     }
     return { captured: true };
+  }
+
+  // Operator test mode reroutes every email, allowlisted or not, to the operator.
+  if (testModeRecipient) {
+    const subject = payload.subject.startsWith(TEST_MODE_SUBJECT_PREFIX)
+      ? payload.subject
+      : `${TEST_MODE_SUBJECT_PREFIX} ${payload.subject}`;
+    const {
+      cc: _cc,
+      bcc: _bcc,
+      ...rerouted
+    } = withOriginalRecipientHeaders(
+      { ...payload, to: testModeRecipient, subject },
+      recipients,
+    );
+    return { payload: rerouted };
   }
 
   const disallowed = allRecipients.filter((email) => !recipientAllowed(email));
@@ -418,10 +470,35 @@ function preparePayloadForDelivery(payload: ResendPayload): {
 }
 
 export async function sendResendEmail(
+  ctx: EmailDeliveryCtx,
+  actorUserId: EmailActor,
   payload: ResendPayload,
   opts: { retries?: number; idempotencyKey?: string } = {},
 ): Promise<ResendResult> {
-  const prepared = preparePayloadForDelivery(payload);
+  return await deliver(
+    payload,
+    await getTestModeRecipient(ctx, actorUserId),
+    opts,
+  );
+}
+
+/**
+ * Sign-in and email-change codes only: they go to the person who asked for
+ * them, so test mode must not reroute them or nobody could sign in.
+ */
+export async function sendAuthCodeEmail(
+  payload: ResendPayload,
+  opts: { retries?: number } = {},
+): Promise<ResendResult> {
+  return await deliver(payload, null, opts);
+}
+
+async function deliver(
+  payload: ResendPayload,
+  testModeRecipient: string | null,
+  opts: { retries?: number; idempotencyKey?: string },
+): Promise<ResendResult> {
+  const prepared = preparePayloadForDelivery(payload, testModeRecipient);
   if (prepared.captured) return { ok: true, id: "captured" };
   if (prepared.error) return { ok: false, error: prepared.error };
   if (!prepared.payload)

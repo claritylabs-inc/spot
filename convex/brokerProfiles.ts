@@ -237,6 +237,7 @@ export async function updateBrokerProfileByOperator(
     operatorUserId: Id<"users">;
     brokerOrgId: Id<"organizations">;
     networkStatus?: "prospect" | "active" | "inactive" | "blacklisted";
+    isTest?: boolean;
     officeAddress?: Doc<"brokerProfiles">["officeAddress"];
     writingCountries?: string[];
     nationwideCountries?: string[];
@@ -263,6 +264,7 @@ export async function updateBrokerProfileByOperator(
     .unique();
   const profilePatch = {
     networkStatus: args.networkStatus ?? existing?.networkStatus ?? "prospect",
+    isTest: args.isTest ?? existing?.isTest,
     officeAddress: args.officeAddress ?? existing?.officeAddress,
     ...resolveBrokerAppetite(args, existing),
     lineOfBusinessCodes: args.lineOfBusinessCodes
@@ -340,6 +342,7 @@ export const upsert = mutation({
     website: v.optional(v.union(v.string(), v.null())),
     iconStorageId: v.optional(v.union(v.id("_storage"), v.null())),
     networkStatus: v.optional(statusValidator),
+    isTest: v.optional(v.boolean()),
     officeAddress: v.optional(addressValidator),
     writingCountries: v.optional(v.array(v.string())),
     nationwideCountries: v.optional(v.array(v.string())),
@@ -396,7 +399,14 @@ export const upsert = mutation({
       args.networkStatus !== (existing?.networkStatus ?? "prospect")
     )
       throw new Error("Only operators can change provider network status");
+    if (
+      access.accessType !== "operator" &&
+      args.isTest !== undefined &&
+      args.isTest !== (existing?.isTest ?? false)
+    )
+      throw new Error("Only operators can mark a provider as a test provider");
     const patch = {
+      isTest: args.isTest ?? existing?.isTest,
       networkStatus:
         args.networkStatus ?? existing?.networkStatus ?? "prospect",
       officeAddress:

@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { operatorInTestMode } from "./testMode";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
@@ -200,12 +201,19 @@ async function evaluateProvider(
   ctx: Ctx,
   org: Doc<"organizations">,
   match: RequestMatchContext,
+  /** The acting operator is in test mode: only test providers are eligible. */
+  testMode: boolean,
   outreach: Doc<"procurementBrokerOutreaches"> | null,
   withContacts: boolean,
   selectedContact?: Doc<"brokerContacts">,
 ): Promise<ProviderEvaluation> {
   const profile = await loadProfile(ctx, org._id);
-  const fit = classifyProvider(profile, match.geography, match.needs);
+  const fit = classifyProvider(
+    profile,
+    match.geography,
+    match.needs,
+    testMode,
+  );
   if (!withContacts || fit.verdict === "excluded")
     return { org, profile, fit, recipient: null, skipReason: null, contacts: [] };
   const contacts = await ctx.db
@@ -486,6 +494,7 @@ export type ProviderOutreachPanel = {
 export async function getProviderOutreachPanel(
   ctx: Ctx,
   requestId: Id<"procurementRequests">,
+  operatorUserId: Id<"users">,
 ): Promise<ProviderOutreachPanel | null> {
   let loaded: Awaited<ReturnType<typeof loadCompanyRequest>>;
   try {
@@ -495,6 +504,7 @@ export async function getProviderOutreachPanel(
   }
   const { request, client } = loaded;
   const match = matchFor(request, client);
+  const testMode = await operatorInTestMode(ctx, operatorUserId);
   const [orgs, outreaches, cadenceRow, sequences] = await Promise.all([
     ctx.db
       .query("organizations")
@@ -545,7 +555,7 @@ export async function getProviderOutreachPanel(
   for (const org of orgs.slice(0, MAX_PANEL_PROVIDERS)) {
     if (!eligibleProviderOrg(org)) continue;
     const outreach = outreachByBroker.get(org._id) ?? null;
-    const evaluation = await evaluateProvider(ctx, org, match, outreach, true);
+    const evaluation = await evaluateProvider(ctx, org, match, testMode, outreach, true);
     const sequence = outreach ? (latestByOutreach.get(outreach._id) ?? null) : null;
     candidates.push({
       brokerOrgId: org._id,
@@ -641,7 +651,7 @@ export const getPanel = query({
     { requestId },
   ): Promise<(ProviderOutreachPanel & { sender: OutreachSenderPanel }) | null> => {
     const operator = await requireOperator(ctx);
-    const panel = await getProviderOutreachPanel(ctx, requestId);
+    const panel = await getProviderOutreachPanel(ctx, requestId, operator.userId);
     // The From and Always CC this launch will be sent with, and the fingerprint to approve.
     return panel ? { ...panel, sender: await outreachSenderPanel(ctx, operator.userId) } : null;
   },
@@ -1123,6 +1133,7 @@ export async function launchProviderOutreachByOperator(
   const closed = closedReason(request);
   if (closed) throw new Error("Procurement request is closed");
   const match = matchFor(request, client);
+  const testMode = await operatorInTestMode(ctx, args.operatorUserId);
   const now = dayjs().valueOf();
   const result: ProviderOutreachLaunchResult = { launched: [], skipped: [] };
   const seen = new Set<Id<"organizations">>();
@@ -1174,7 +1185,15 @@ export async function launchProviderOutreachByOperator(
           .take(1)
       )[0] ?? null;
     const sequences = outreach ? await sequencesForOutreach(ctx, outreach._id) : [];
-    const evaluation = await evaluateProvider(ctx, org, match, outreach, true, selectedContacts.get(org._id));
+    const evaluation = await evaluateProvider(
+      ctx,
+      org,
+      match,
+      testMode,
+      outreach,
+      true,
+      selectedContacts.get(org._id),
+    );
     const blocked = launchBlock({
       evaluation,
       outreach,
@@ -1421,7 +1440,8 @@ export const getCadenceInputInternal = internalMutation({
     let matchedCount = 0;
     for (const org of orgs) {
       if (!eligibleProviderOrg(org)) continue;
-      const evaluation = await evaluateProvider(ctx, org, match, null, false);
+      // Cadence inference counts the market for any operator: no test mode.
+      const evaluation = await evaluateProvider(ctx, org, match, false, null, false);
       if (evaluation.fit.verdict === "matched") matchedCount += 1;
     }
     const packet = await previewBrokerPacket(ctx, { requestId: request._id });
@@ -1547,6 +1567,8 @@ async function checkProviderWorld(
     return { kind: "stop", reason: "provider_unavailable" };
   const profile = await loadProfile(ctx, broker._id);
   if (profile?.networkStatus === "blacklisted" || profile?.networkStatus === "inactive")
+    return { kind: "stop", reason: "provider_ineligible" };
+  if (!profile?.isTest && (await operatorInTestMode(ctx, sequence.senderUserId)))
     return { kind: "stop", reason: "provider_ineligible" };
   try {
     assertExternalBrokerIdentity({ ...broker, email: sequence.recipient.email });

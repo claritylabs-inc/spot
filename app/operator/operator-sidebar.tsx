@@ -4,6 +4,7 @@ import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { useAuthActions } from "@convex-dev/auth/react";
 import {
   Building2,
+  History,
   Inbox,
   LogOut,
   MessageSquare,
@@ -24,6 +25,7 @@ import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
 import { InboxUnreadBadge } from "@/components/inbox/inbox-unread-badge";
 import { useOptionalAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import { LogoIcon } from "@/components/ui/logo-icon";
+import { OperatorTestModeAction } from "@/components/operator-test-mode-action";
 import type { OperatorNavSection } from "@/lib/app-shell-routes";
 
 export function OperatorSidebar({
@@ -111,10 +113,20 @@ export function OperatorSidebar({
               active={active === "logs"}
               collapsed={collapsed}
             />
+            <SidebarMenuItem
+              href="/operator/audit"
+              label="Audit log"
+              icon={History}
+              active={active === "audit"}
+              collapsed={collapsed}
+            />
           </div>
         </div>
       </ScrollArea>
       <div className="space-y-0.5 border-t border-border px-2 py-2">
+        <div className="pb-1.5">
+          <OperatorTestModeAction collapsed={collapsed} />
+        </div>
         <SidebarMenuItem
           href="/operator/settings"
           label="Settings"

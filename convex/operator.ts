@@ -828,6 +828,8 @@ export const launchSoloClient = action({
     const html = buildEmailShell({ title: subject, bodyHtml, siteUrl });
     const text = `Your Spot workspace for ${launch.name} is ready.\n\nOpen Spot:\n${loginUrl}\n\nSign in with ${launch.adminEmail}.`;
     const result = await sendResendEmail(
+      ctx,
+      userId,
       {
         from: getAuthFromAddress("Spot"),
         to: launch.adminName

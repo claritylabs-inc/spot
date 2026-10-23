@@ -683,7 +683,7 @@ export const processInbound = internalAction({
         return;
       }
       const agentAddress = `${handle}@${getAgentDomain()}`;
-      const result = await sendResendEmail({
+      const result = await sendResendEmail(ctx, null, {
         from: `Spot <${agentAddress}>`,
         to: fromEmail,
         subject: data.subject
@@ -950,7 +950,9 @@ export const processInbound = internalAction({
         };
 
         const sendResult = await sendResendEmail(
-          emailPayload as Parameters<typeof sendResendEmail>[0],
+          ctx,
+          null,
+          emailPayload as Parameters<typeof sendResendEmail>[2],
         );
         if (!sendResult.ok) {
           throw new Error(`Failed to send notification: ${sendResult.error}`);
@@ -1685,7 +1687,9 @@ IMPORTANT GROUPING RULE: A real-world policy commonly arrives as multiple PDFs i
       }
 
       const sendResult = await sendResendEmail(
-        emailPayload as Parameters<typeof sendResendEmail>[0],
+        ctx,
+        null,
+        emailPayload as Parameters<typeof sendResendEmail>[2],
       );
       if (!sendResult.ok) {
         throw new Error(`Failed to send reply: ${sendResult.error}`);
@@ -1784,7 +1788,9 @@ IMPORTANT GROUPING RULE: A real-world policy commonly arrives as multiple PDFs i
           };
         }
         const sendResult = await sendResendEmail(
-          failurePayload as Parameters<typeof sendResendEmail>[0],
+          ctx,
+          null,
+          failurePayload as Parameters<typeof sendResendEmail>[2],
         );
         const sentMessageId = sendResult.ok ? sendResult.id : undefined;
         if (!sendResult.ok) {

@@ -1479,6 +1479,7 @@ export async function enqueueOperatorMessage(
     requireUploadIntent?: boolean;
     /** Operator asked for a plan before acting (plan mode). */
     planRequested?: boolean;
+    mcpClientId?: string;
   },
 ) {
   const thread = await requireOperatorThread(
@@ -1668,6 +1669,7 @@ export async function enqueueOperatorMessage(
     agentMessageId,
     executionKind: "goal",
     objective: content,
+    mcpClientId: args.mcpClientId,
     ...(args.channel === "email" && args.emailReadOnly ? { emailReadOnly: true } : {}),
     status: "queued",
     ...(args.planRequested ? { planRequested: true } : {}),
@@ -2932,6 +2934,7 @@ async function executeToolDomain(
     return await getProviderOutreachPanel(
       ctx,
       normalizeProcurementRequestId(ctx, input.procurementRequestId),
+      args.operatorUserId,
     );
   }
 
@@ -5308,6 +5311,7 @@ export const enqueueMessageInternal = internalMutation({
     operatorUserId: v.id("users"),
     threadId: v.id("operatorAgentThreads"),
     channel: operatorChannelValidator,
+    mcpClientId: v.optional(v.string()),
     content: v.string(),
     dedupeKey: v.string(),
     slackThreadContext: v.optional(slackThreadContextSnapshotValidator),
@@ -5471,6 +5475,7 @@ export const prepareDirectToolInvocationInternal = internalMutation({
     threadId: v.optional(v.id("operatorAgentThreads")),
     conversationKey: v.optional(v.string()),
     channel: operatorChannelValidator,
+    mcpClientId: v.optional(v.string()),
     toolName: v.string(),
     summary: v.string(),
     input: v.any(),
@@ -5576,6 +5581,7 @@ export const prepareDirectToolInvocationInternal = internalMutation({
       agentMessageId,
       executionKind: "direct_tool",
       objective: summary,
+      mcpClientId: args.mcpClientId,
       status: "running",
       checkpoint: { iteration: 0, executionCount: 0 },
       startedAt: now,
@@ -5804,6 +5810,7 @@ export const invokeRegisteredToolInternal = internalAction({
     threadId: v.optional(v.id("operatorAgentThreads")),
     conversationKey: v.optional(v.string()),
     channel: operatorChannelValidator,
+    mcpClientId: v.optional(v.string()),
     toolName: v.string(),
     input: v.any(),
     idempotencyKey: v.string(),
@@ -5827,6 +5834,7 @@ export const invokeRegisteredToolInternal = internalAction({
         threadId: args.threadId,
         conversationKey: args.conversationKey,
         channel: args.channel,
+        mcpClientId: args.mcpClientId,
         toolName: args.toolName,
         summary,
         input,

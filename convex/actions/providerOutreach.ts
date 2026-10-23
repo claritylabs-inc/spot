@@ -646,7 +646,7 @@ export const sendStep = internalAction({
         if (!(await checkpoint())) return { status: "held" as const };
         resendDraftId = claim.step.resendDraftId ?? undefined;
         if (!resendDraftId) {
-          const created = await createDraft({
+          const created = await createDraft(ctx, claim.sender.userId, {
             inboxId,
             to: claim.sequence.recipient.email,
             ...(sendCc.length ? { cc: sendCc } : {}),
@@ -670,7 +670,7 @@ export const sendStep = internalAction({
           if (!(await checkpoint())) return { status: "held" as const };
         }
         deliveryAttempted = true;
-        const sent = await sendDraft({
+        const sent = await sendDraft(ctx, claim.sender.userId, {
           inboxId,
           draftId: resendDraftId,
           idempotencyKey: `outreach-send:${stepId}`,
@@ -680,7 +680,7 @@ export const sendStep = internalAction({
       } else {
         if (!(await checkpoint())) return { status: "held" as const };
         deliveryAttempted = true;
-        const reply = await replyToThreadEmail({
+        const reply = await replyToThreadEmail(ctx, claim.sender.userId, {
           inboxId,
           threadId: threadId ?? capturedResourceId("thread", String(stepId)),
           emailId:
