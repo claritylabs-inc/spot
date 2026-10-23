@@ -284,6 +284,10 @@ function uniqueAttachments(
   return result;
 }
 
+/** A trailing "On <date> UTC, <sender> wrote:" block of "> " lines, as written by the team-thread quote. */
+const QUOTED_HISTORY_PATTERN =
+  /\n*On [^\n]+ UTC, [^\n]+ wrote:\n\n(?:>[^\n]*(?:\n|$))*$/;
+
 const draftFields = {
   to: z.string().optional(),
   cc: z.array(z.string()).optional(),
@@ -495,7 +499,8 @@ export function buildEmailToolExecutors(
     });
     if (
       !draft ||
-      draft.orgId !== orgId ||
+      // An operator revision may add a client to a draft that has none.
+      (draft.orgId !== orgId && !(operator && draft.orgId === undefined)) ||
       (activeThreadId && draft.threadId !== activeThreadId) ||
       draft.operatorThreadId !== operator?.threadId
     )
@@ -603,13 +608,17 @@ export function buildEmailToolExecutors(
     return reasons;
   }
 
-  /** A cross-operator reply carries the thread's latest message so the new "Re:" keeps history. */
-  function withQuotedHistory(body: string, isNewBody: boolean): string {
+  /**
+   * A reply that is not threaded in the sender's inbox is a new "Re:" and
+   * carries the thread's latest message. Any earlier quote is replaced, so
+   * re-signing another operator's draft (even without a new body) gets the
+   * history that fits this sender.
+   */
+  function withQuotedHistory(body: string): string {
     const thread = operator?.teamThread;
-    if (!isNewBody || !thread?.crossReply || !thread.quote || !thread.quoteHeader) {
-      return body;
-    }
-    return body.includes(thread.quoteHeader) ? body : `${body}\n\n${thread.quote}`;
+    if (!thread) return body;
+    const bare = body.replace(QUOTED_HISTORY_PATTERN, "").trimEnd();
+    return thread.crossReply && thread.quote ? `${bare}\n\n${thread.quote}` : bare;
   }
 
   function normalizeContent(
@@ -671,7 +680,6 @@ export function buildEmailToolExecutors(
       ).trim(),
       body: withQuotedHistory(
         cleanAgentMarkdownForTransport(input.body ?? existing?.emailBody ?? ""),
-        input.body !== undefined,
       ),
       attachments: [],
       referencedPolicyIds: context.referencedPolicyIds,
@@ -747,6 +755,7 @@ export function buildEmailToolExecutors(
         ...(operator
           ? {
               senderUserId: operator.senderUserId,
+              operatorAlwaysCcEmail: operator.alwaysCc?.toLowerCase(),
               transport: "operator_inbox" as const,
               procurementRequestId: operator.procurementRequestId,
               teamEmailThreadId: operator.teamThread?.id,
@@ -761,7 +770,14 @@ export function buildEmailToolExecutors(
         ...fields,
         // A revision is re-signed as the operator making it.
         ...(operator
-          ? { senderUserId: operator.senderUserId, transport: "operator_inbox" as const }
+          ? {
+              senderUserId: operator.senderUserId,
+              operatorAlwaysCcEmail: operator.alwaysCc?.toLowerCase(),
+              transport: "operator_inbox" as const,
+              orgId,
+              procurementRequestId: operator.procurementRequestId,
+              teamEmailThreadId: operator.teamThread?.id,
+            }
           : {}),
       });
     const messageFields = {

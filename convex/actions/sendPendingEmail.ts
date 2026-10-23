@@ -15,7 +15,11 @@ import {
   isOperatorEmailDraft,
   pendingEmailDraftFingerprint,
 } from "../lib/actionConfirmationFingerprint";
-import { sendOperatorInboxDraft } from "../lib/operatorInboxSend";
+import {
+  finalizeOperatorAttempt,
+  reconcileOperatorAttempt,
+  sendOperatorInboxDraft,
+} from "../lib/operatorInboxSend";
 import { sendOutboundImessage } from "../lib/imessageOutbound";
 import {
   formatEmailDraftBlockers,
@@ -484,6 +488,24 @@ async function sendPendingEmailById(
     throw err;
   }
 }
+
+/** Read-only settlement of an operator send whose action may have died or whose outcome is unknown. */
+export const reconcileOperatorSend = internalAction({
+  args: { attemptId: v.id("emailDeliveryAttempts"), round: v.number() },
+  handler: async (ctx, args): Promise<null> => {
+    await reconcileOperatorAttempt(ctx, args);
+    return null;
+  },
+});
+
+/** Finishes the team-inbox record of an email that already left. Never sends. */
+export const finalizeOperatorSend = internalAction({
+  args: { attemptId: v.id("emailDeliveryAttempts"), round: v.number() },
+  handler: async (ctx, args): Promise<null> => {
+    await finalizeOperatorAttempt(ctx, args);
+    return null;
+  },
+});
 
 export const sendPending = internalAction({
   args: { id: v.id("pendingEmails") },

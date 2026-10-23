@@ -195,7 +195,7 @@ export type ResendThreadEmail = {
   receivedAt: string;
 };
 
-type ResendInboxDraft = {
+export type ResendInboxDraft = {
   id: string;
   type: "reply" | "standalone";
   to: string[];
@@ -1020,8 +1020,8 @@ export async function createDraft(
   return { status: "ok", data, replayed };
 }
 
-/** `GET /inboxes/{id}/drafts/{draftId}`. */
-function getDraft(
+/** `GET /inboxes/{id}/drafts/{draftId}`: read-only; `emailId` is non-null once the draft was sent. */
+export function getDraft(
   inboxId: string,
   draftId: string,
 ): Promise<ResendInboxResult<ResendInboxDraft>> {

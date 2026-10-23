@@ -201,10 +201,38 @@ export async function operatorSenderIdentity(
   }
 }
 
+/** The operator's active inbox row; a row with no `status` is a pre-cutover active inbox. */
+async function activeSenderInbox(ctx: Ctx, userId: Id<"users">) {
+  const [explicit, legacy] = await Promise.all([
+    ctx.db
+      .query("operatorOutreachInboxes")
+      .withIndex("by_userId_and_status", (q) =>
+        q.eq("userId", userId).eq("status", "active"),
+      )
+      .order("desc")
+      .first(),
+    ctx.db
+      .query("operatorOutreachInboxes")
+      .withIndex("by_userId_and_status", (q) =>
+        q.eq("userId", userId).eq("status", undefined),
+      )
+      .order("desc")
+      .first(),
+  ]);
+  return (
+    [explicit, legacy]
+      .filter((row) => row !== null && row.kind !== "agent")
+      .sort((a, b) => (b?._creationTime ?? 0) - (a?._creationTime ?? 0))[0] ??
+    null
+  );
+}
+
 /**
- * Whether the sender's inbox holds the thread's Resend conversation, and if
- * so which conversation and message a reply threads under. Otherwise the reply
- * is a new "Re:" message that copies the owner.
+ * Whether the sender's active inbox holds a Resend conversation of this team
+ * thread, and if so which one and which message a reply threads under. The
+ * only evidence is a `teamEmailThreadLinks` row for that exact inbox: thread
+ * ownership says nothing about it, because an owner's inbox can rotate. With no
+ * mapping the reply is a new quoted "Re:" (copying the owner).
  */
 export async function teamThreadReplyPlan(
   ctx: Ctx,
@@ -212,28 +240,21 @@ export async function teamThreadReplyPlan(
   senderUserId: Id<"users">,
 ) {
   const [inbox, links, messages] = await Promise.all([
-    ctx.db
-      .query("operatorOutreachInboxes")
-      .withIndex("by_userId_and_status", (q) =>
-        q.eq("userId", senderUserId).eq("status", "active"),
-      )
-      .order("desc")
-      .first(),
+    activeSenderInbox(ctx, senderUserId),
     ctx.db
       .query("teamEmailThreadLinks")
       .withIndex("by_threadId", (q) => q.eq("threadId", thread._id))
-      .take(20),
+      .take(50),
     ctx.db
       .query("teamEmailMessages")
       .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
       .order("desc")
       .take(50),
   ]);
-  const ownThread = thread.ownerUserId === senderUserId;
   const link = inbox
     ? links.find((candidate) => candidate.inboxId === inbox.inboxId)
     : undefined;
-  const resendThreadId = ownThread ? thread.resendThreadId : link?.resendThreadId;
+  const resendThreadId = link?.resendThreadId;
   const replyToEmailId = resendThreadId
     ? messages.find(
         (message) =>
@@ -243,7 +264,8 @@ export async function teamThreadReplyPlan(
     : undefined;
   const latestInbound = messages.find((m) => m.direction === "inbound");
   return {
-    owns: ownThread || Boolean(link),
+    owns: Boolean(link),
+    inboxId: inbox?.inboxId,
     resendThreadId,
     replyToEmailId,
     latest: messages[0],
@@ -257,13 +279,7 @@ async function teamThreadOwnerAddress(
   ownerUserId: Id<"users"> | undefined,
 ): Promise<string | undefined> {
   if (!ownerUserId) return undefined;
-  const inbox = await ctx.db
-    .query("operatorOutreachInboxes")
-    .withIndex("by_userId_and_status", (q) =>
-      q.eq("userId", ownerUserId).eq("status", "active"),
-    )
-    .order("desc")
-    .first();
+  const inbox = await activeSenderInbox(ctx, ownerUserId);
   if (inbox) return inbox.emailAddress.toLowerCase();
   try {
     return (await operatorSenderIdentity(ctx, ownerUserId)).teamAddress;
@@ -367,10 +383,10 @@ export const resolveSenderInternal = internalQuery({
         );
       }
     }
-    const target = draft ? linked : named;
-    let orgId = target.orgId;
-    let requestId = target.requestId;
-    const teamThreadId = target.teamThreadId;
+    // Named targets may add a link a draft does not have yet; the update persists them.
+    let orgId = linked.orgId ?? named.orgId;
+    let requestId = linked.requestId ?? named.requestId;
+    const teamThreadId = linked.teamThreadId ?? named.teamThreadId;
 
     let thread: Doc<"teamEmailThreads"> | null = null;
     if (teamThreadId) {
@@ -435,9 +451,10 @@ export const resolveSenderInternal = internalQuery({
     let teamThread: TeamThreadDraftContext | undefined;
     if (thread) {
       const plan = await teamThreadReplyPlan(ctx, thread, args.operatorUserId);
-      const ownerAddress = plan.owns
-        ? undefined
-        : await teamThreadOwnerAddress(ctx, thread.ownerUserId);
+      const ownerAddress =
+        plan.owns || thread.ownerUserId === args.operatorUserId
+          ? undefined
+          : await teamThreadOwnerAddress(ctx, thread.ownerUserId);
       const quote =
         !plan.owns && plan.latest ? quotedHistory(plan.latest) : undefined;
       teamThread = {
@@ -471,13 +488,14 @@ export const getReplyTargetInternal = internalQuery({
     const thread = await ctx.db.get(draft.teamEmailThreadId);
     if (!thread || thread.deletedAt !== undefined) return null;
     const plan = await teamThreadReplyPlan(ctx, thread, draft.senderUserId);
-    const inbox = await ctx.db
-      .query("operatorOutreachInboxes")
-      .withIndex("by_inboxId", (q) => q.eq("inboxId", args.inboxId))
-      .first();
-    // The plan was computed from the sender's active inbox row: it only applies to that inbox.
-    if (!plan.resendThreadId || !plan.replyToEmailId) return null;
-    if (!inbox || inbox.userId !== draft.senderUserId) return null;
+    // The mapping is for the sender's active inbox: it only applies to that inbox.
+    if (
+      !plan.resendThreadId ||
+      !plan.replyToEmailId ||
+      plan.inboxId !== args.inboxId
+    ) {
+      return null;
+    }
     return {
       resendThreadId: plan.resendThreadId,
       replyToEmailId: plan.replyToEmailId,
@@ -505,9 +523,10 @@ export const listForThreadInternal = internalQuery({
 });
 
 /**
- * Why an operator draft cannot be sent as it stands, or null. A draft whose
- * sender identity, Always CC or required thread-owner copy no longer matches
- * must be updated (re-signed) rather than sent with recipients nobody approved.
+ * Why an operator draft cannot be sent as it stands, or null. The signing
+ * identity, Always CC snapshot, link targets and any required thread-owner copy
+ * must still match what was approved; otherwise the draft is updated (re-signed)
+ * rather than sent with recipients or a sender nobody approved.
  */
 export async function operatorDraftBlocker(
   ctx: Ctx,
@@ -526,16 +545,44 @@ export async function operatorDraftBlocker(
       address.trim().toLowerCase(),
     ),
   );
+  // The snapshot must equal the current setting: clearing or changing Always CC
+  // invalidates the draft, not only a missing copy.
+  if ((draft.operatorAlwaysCcEmail ?? null) !== identity.alwaysCc) {
+    return "Always CC changed — update draft to re-sign.";
+  }
   if (identity.alwaysCc && !copied.has(identity.alwaysCc)) {
     return "Always CC changed — update draft to re-sign.";
+  }
+  if (draft.orgId) {
+    const organization = await ctx.db.get(draft.orgId);
+    if (
+      !organization ||
+      organization.deletedAt !== undefined ||
+      organization.type !== "client"
+    ) {
+      return "The linked client is no longer available.";
+    }
+  }
+  if (draft.procurementRequestId) {
+    const request = await ctx.db.get(draft.procurementRequestId);
+    if (
+      !request ||
+      request.deletedAt !== undefined ||
+      (request.clientOrgId && request.clientOrgId !== draft.orgId)
+    ) {
+      return "The linked procurement request is no longer available.";
+    }
   }
   if (draft.teamEmailThreadId) {
     const thread = await ctx.db.get(draft.teamEmailThreadId);
     if (!thread || thread.deletedAt !== undefined) {
       return "The team email thread is no longer available.";
     }
+    if (thread.clientOrgId && thread.clientOrgId !== draft.orgId) {
+      return "The team email thread is linked to a different client.";
+    }
     const plan = await teamThreadReplyPlan(ctx, thread, draft.senderUserId);
-    if (!plan.owns) {
+    if (!plan.owns && thread.ownerUserId !== draft.senderUserId) {
       const ownerAddress = await teamThreadOwnerAddress(ctx, thread.ownerUserId);
       if (ownerAddress && !copied.has(ownerAddress)) {
         return "The thread owner changed — update the draft to copy them.";

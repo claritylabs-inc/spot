@@ -161,11 +161,22 @@ export async function toResendAttachments(
   return result;
 }
 
-/** Stored files as base64 inbox draft attachments, bounded by Resend's per-draft limit. */
+/**
+ * Stored files as base64 inbox draft attachments, bounded by Resend's per-draft
+ * limit. Declared sizes are summed and each blob's real size is checked before
+ * its bytes are read, so an oversized file is never loaded into memory.
+ */
 export async function toInboxDraftAttachments(
   ctx: ActionCtx,
   attachments: EmailAttachmentMeta[],
 ): Promise<DraftAttachment[]> {
+  const tooLarge = () => new Error("Attachments are too large to send in one email.");
+  if (
+    attachments.reduce((total, att) => total + att.size, 0) >
+    MAX_DRAFT_ATTACHMENT_BYTES
+  ) {
+    throw tooLarge();
+  }
   let total = 0;
   const result: DraftAttachment[] = [];
   for (const att of attachments) {
@@ -173,11 +184,9 @@ export async function toInboxDraftAttachments(
     if (!blob) {
       throw new Error(`Attachment "${att.filename}" is no longer available.`);
     }
+    total += blob.size;
+    if (total > MAX_DRAFT_ATTACHMENT_BYTES) throw tooLarge();
     const buffer = Buffer.from(await blob.arrayBuffer());
-    total += buffer.byteLength;
-    if (total > MAX_DRAFT_ATTACHMENT_BYTES) {
-      throw new Error("Attachments are too large to send in one email.");
-    }
     result.push({
       filename: att.filename,
       content: buffer.toString("base64"),
