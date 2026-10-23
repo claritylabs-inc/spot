@@ -14,7 +14,9 @@ addresses. The shared command address is `agent@<TEAM_EMAIL_DOMAIN>`.
 | Provisioning and active/retired inbox records | `convex/lib/operatorInbox.ts`, `convex/operatorInboxes.ts` |
 | Profile settings | `convex/operatorEmailSettings.ts` |
 | Resend transport and delivery-mode enforcement | `convex/lib/resendInbox.ts` |
-| Shared conversations, mirroring, reads and attachments | `convex/lib/teamEmailStore.ts`, `convex/teamInbox.ts` |
+| Shared conversations, mirroring and attachments | `convex/lib/teamEmailStore.ts` |
+| Inbox reads and projection | `convex/lib/teamInboxProjection.ts`, `convex/teamInbox.ts` |
+| Sender identity and reply context | `convex/lib/outreachIdentity.ts`, `convex/lib/teamThreadReply.ts` |
 | Client/request links and request files | `convex/procurementRequests.ts` |
 | Operator drafts and exact send authorization | `convex/operatorEmailDrafts.ts`, `convex/lib/operatorEmailTools.ts`, `convex/lib/emailTools.ts` |
 | Direct reply preview, approval and context | `convex/teamEmailReplies.ts`, `convex/actions/teamEmailReplies.ts`, `convex/lib/teamEmailReply.ts` |
@@ -22,7 +24,7 @@ addresses. The shared command address is `agent@<TEAM_EMAIL_DOMAIN>`.
 | Command ingress, DKIM, private command threads and responses | `convex/operatorEmail.ts`, `convex/actions/handleInboundOperatorEmail.ts`, `convex/lib/operatorEmailAuthentication.ts` |
 | Receiving raw MIME and attachments | `convex/lib/receivingEmail.ts` |
 | Authenticated forward matching and suggestions | `convex/teamEmailForwarding.ts`, `convex/actions/teamEmailForwarding.ts` |
-| Legacy copy and reference migration | `convex/teamInboxMigrations.ts` |
+| Legacy copy and reference migration | `convex/lib/teamEmailLegacy.ts`, `convex/teamInboxMigrations.ts` |
 
 The transport contains no operator naming policy. Profile changes reserve an
 address before provisioning, and activation rechecks the reservation. A changed

@@ -176,13 +176,6 @@ export async function copyLegacyMessage(
   });
 }
 
-/**
- * Copy-on-resolve for live writers: adopts an existing mapped team thread, or
- * copies the legacy thread and its messages (bounded) before anything new is
- * written to it. Never creates a second team thread for one legacy thread.
- * `complete` is false only when the legacy thread has more messages than fit
- * inline; the migration finishes the copy.
- */
 /** Copies one bounded page of a legacy thread's messages (oldest first). */
 export async function copyLegacyMessagesPage(
   ctx: MutationCtx,
@@ -285,4 +278,3 @@ export async function adoptTeamThreadId(
   if (!legacyId) return null;
   return (await adoptLegacyThread(ctx, legacyId))?.thread._id ?? null;
 }
-
