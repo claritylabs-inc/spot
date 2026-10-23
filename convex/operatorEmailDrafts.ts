@@ -482,10 +482,29 @@ export const resolveSenderInternal = internalQuery({
 
 /** Send-time facts the inbox transport needs: where a team-thread reply threads. */
 export const getReplyTargetInternal = internalQuery({
-  args: { pendingEmailId: v.id("pendingEmails"), inboxId: v.string() },
+  args: {
+    pendingEmailId: v.id("pendingEmails"),
+    inboxId: v.string(),
+    /** Capture mode: `inboxId` is a placeholder and cannot be compared. */
+    captured: v.boolean(),
+  },
   handler: async (ctx, args) => {
     const draft = await ctx.db.get(args.pendingEmailId);
     if (!draft?.senderUserId || !draft.teamEmailThreadId) return null;
+    // A reply was approved for one exact target: use it, never a fresh guess.
+    const approved = draft.directReplyContext;
+    if (approved) {
+      if (approved.mode !== "thread") return null;
+      if (!args.captured && approved.inboxId !== args.inboxId) {
+        throw new Error("The approved reply target no longer matches your inbox.");
+      }
+      return approved.resendThreadId && approved.replyToEmailId
+        ? {
+            resendThreadId: approved.resendThreadId,
+            replyToEmailId: approved.replyToEmailId,
+          }
+        : null;
+    }
     const thread = await ctx.db.get(draft.teamEmailThreadId);
     if (!thread || thread.deletedAt !== undefined) return null;
     const plan = await teamThreadReplyPlan(ctx, thread, draft.senderUserId);

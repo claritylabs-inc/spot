@@ -7,6 +7,8 @@ import type { ActionCtx } from "../_generated/server";
 import { toInboxDraftAttachments } from "./emailDelivery";
 import { extractEmailAddress } from "./emailAddress";
 import { ensureOperatorInbox } from "./operatorInbox";
+import { isTeamEmailError } from "./teamEmail";
+import { teamReplyError, teamReplyErrorMessage } from "./teamEmailReply";
 import {
   capturedResourceId,
   createDraft,
@@ -69,6 +71,20 @@ async function withBoundedRetry<T>(
   }
 }
 
+/** What the person sees: only text written for them, never a provider body or internal message. */
+function userMessage(error: unknown): string {
+  if (isResendInboxError(error)) {
+    return error.outcome === "blocked"
+      ? "Restricted email delivery blocked a recipient of this email."
+      : "Delivery failed. Review the reply and try again.";
+  }
+  return (
+    teamReplyErrorMessage(error) ??
+    (isTeamEmailError(error) ? error.message : "The reply could not be sent.")
+  );
+}
+
+/** The audit text stored on the attempt. */
 function describeFailure(error: unknown): string {
   if (isResendInboxError(error)) {
     return error.outcome === "blocked"
@@ -123,7 +139,7 @@ async function recordSent(
     internal.actions.sendPendingEmail.finalizeOperatorSend,
     { attemptId: args.attemptId, round: 1 },
   );
-  throw new Error(
+  throw teamReplyError(
     "The email was sent. Recording it in the team inbox failed and is being retried automatically; it will not be sent again.",
   );
 }
@@ -262,26 +278,26 @@ export async function sendOperatorInboxDraft(
   const pending = await ctx.runQuery(internal.pendingEmails.getInternal, {
     id: args.pendingEmailId,
   });
-  if (!pending) throw new Error("Draft not found.");
+  if (!pending) throw teamReplyError("Draft not found.");
   const result = { recipientEmail: pending.recipientEmail };
 
   switch (claim.kind) {
     case "rejected":
-      throw new Error(claim.reason);
+      throw teamReplyError(claim.reason);
     case "unknown": {
       const outcome = await reconcileOperatorAttempt(ctx, {
         attemptId: claim.attemptId,
         round: 0,
       });
       if (outcome === "sent") return result;
-      throw new Error(
+      throw teamReplyError(
         outcome === "released"
           ? "The earlier attempt never reached Resend and the draft is editable again. Ask to send it again for a fresh approval."
           : claim.reason,
       );
     }
     case "in_progress":
-      throw new Error("This email is already being sent.");
+      throw teamReplyError("This email is already being sent.");
     case "sent":
       return result;
     case "finalize":
@@ -314,7 +330,7 @@ export async function sendOperatorInboxDraft(
       error: describeFailure(error),
       blocked: isResendInboxError(error) && error.outcome === "blocked",
     });
-    throw new Error(describeFailure(error));
+    throw teamReplyError(userMessage(error));
   };
 
   let inboxId: string;
@@ -325,12 +341,12 @@ export async function sendOperatorInboxDraft(
       extractEmailAddress(pending.fromHeader) !==
       ensured.inbox.emailAddress.toLowerCase()
     ) {
-      throw new Error("Sender changed — update draft to re-sign.");
+      throw teamReplyError("Sender changed — update draft to re-sign.");
     }
     inboxId = ensured.inbox.inboxId;
     const reply = await ctx.runQuery(
       internal.operatorEmailDrafts.getReplyTargetInternal,
-      { pendingEmailId: args.pendingEmailId, inboxId },
+      { pendingEmailId: args.pendingEmailId, inboxId, captured: ensured.captured },
     );
     const attachments = pending.attachments?.length
       ? await toInboxDraftAttachments(ctx, pending.attachments)
@@ -369,7 +385,7 @@ export async function sendOperatorInboxDraft(
     internal.emailDeliveryAttempts.beginOperatorInboxSendingInternal,
     { attemptId },
   );
-  if (!begun.ok) return await fail(new Error(begun.reason));
+  if (!begun.ok) return await fail(teamReplyError(begun.reason));
   if (pending.directReplyKey && pending.teamEmailThreadId) {
     // A person is answering: automated follow-ups on this conversation stop now.
     try {
@@ -408,7 +424,7 @@ export async function sendOperatorInboxDraft(
     }
     // No response or a server error on the send itself: it may have gone out.
     await advance({ stage: "unknown", error: describeFailure(error) });
-    throw new Error(
+    throw teamReplyError(
       "Delivery outcome unknown. The draft stays locked while Spot checks Resend for evidence it was sent, and it will not be sent again.",
     );
   }
@@ -420,7 +436,7 @@ export async function sendOperatorInboxDraft(
     await advance({ stage: "unknown", error: "Sent, but the stage was not saved." }).catch(
       () => null,
     );
-    throw new Error(
+    throw teamReplyError(
       "The email was sent, but its delivery could not be recorded. Spot is verifying it and will not send it again.",
     );
   }

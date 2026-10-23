@@ -163,6 +163,10 @@ export const updateDraftInternal = internalMutation({
     if (!existing || existing.status !== "draft") {
       throw new Error("Only draft emails can be updated");
     }
+    // A reply is approved for one exact target and message; it is previewed again, not edited.
+    if (existing.directReplyKey) {
+      throw new Error("A team inbox reply cannot be edited.");
+    }
     if (
       (orgId && existing.orgId && existing.orgId !== orgId) ||
       (procurementRequestId &&
