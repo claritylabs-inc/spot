@@ -39,8 +39,9 @@ created. The bounded Sync inbox action catches up recent linked mail.
 
 `convex/actions/procurementInformation.ts` makes one bounded structured CL-router
 generation call for the message. Provider requests become individual questions
-with exact source quotes. A batched set of atomic Jev Nouls verifies explicit
-requests and any proposed semantic reuse; deterministic scope checks still apply.
+with exact source quotes. Atomic Jev Nouls (requested, conditions, and any
+proposed semantic reuse) run in parallel and must all clear the threshold via
+`jevAtomicConjunction`; deterministic scope checks still apply.
 Clear, supported requirements populate the tracker automatically. Unknown scopes,
 uncertain decisions, invalid definitions and failures remain available for manual
 review through From email. A matching provider/fact already tracked resolves its
@@ -48,7 +49,8 @@ review indicator even when it was recognized from a later message.
 
 For client replies, only unresolved request questions are offered as targets.
 Generation returns the explicitly stated answer and an exact quote. Jev uses the
-existing prefill confidence band to confirm responsiveness and scope. Final code
+prefill band on three atomic Nouls (stated, target/scope, quote support),
+combined with `jevAtomicConjunction`. Final code
 rechecks the sender/target, quote, primitive, literal value and current answer
 revision. Numeric grouping commas may be removed; units/multipliers and currency
 conversions are not inferred. Prerequisites are processed first and must apply.

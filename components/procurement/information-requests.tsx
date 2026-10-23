@@ -1,5 +1,6 @@
 "use client";
-import { useState, useRef, useEffect, useId, type ReactNode } from "react";
+import { useState, useRef, useEffect, useId } from "react";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
@@ -190,7 +191,7 @@ async function attempt(work: () => Promise<unknown>) {
     );
   }
 }
-type DrawerTarget = {
+export type InformationDrawerTarget = {
   kind: "add";
   questionId?: Question["_id"];
   mode?: "email";
@@ -203,25 +204,16 @@ type Actions = {
     questions: string[],
     title?: string,
   ) => void;
-  onRightPanel: (panel: ReactNode) => void;
+  onOpenDrawer: (target: InformationDrawerTarget) => void;
   inboxHref: string;
   selectedForm?: string | null;
 };
 
 export function InformationRequestActions(props: Actions) {
-  const { requestId, readOnly, onRightPanel } = props;
+  const { requestId, readOnly, onOpenDrawer: open } = props;
   const panel = useQuery(api.procurementInformation.panel, { requestId });
   const syncInbox = useMutation(api.procurementInformation.syncInbox);
   const [syncing, setSyncing] = useState(false);
-  const open = (target: DrawerTarget) =>
-    onRightPanel(
-      <InformationDrawer
-        key={JSON.stringify(target)}
-        {...props}
-        target={target}
-        onClose={() => onRightPanel(null)}
-      />,
-    );
   if (readOnly || !panel) return null;
   if (props.selectedForm) {
     const form = panel.forms.find((form) => form._id === props.selectedForm);
@@ -266,20 +258,17 @@ export function InformationRequestActions(props: Actions) {
 }
 
 export function InformationRequests(props: Actions) {
-  const { requestId, readOnly, onRightPanel } = props;
+  const { requestId, readOnly, onOpenDrawer: open } = props;
   const panel = useQuery(api.procurementInformation.panel, { requestId });
   const archive = useMutation(api.procurementInformation.archiveQuestion);
-  const [search, setSearch] = useState("");
-  const [view, setView] = useState("draft");
-  const open = (target: DrawerTarget) =>
-    onRightPanel(
-      <InformationDrawer
-        key={JSON.stringify(target)}
-        {...props}
-        target={target}
-        onClose={() => onRightPanel(null)}
-      />,
-    );
+  const [search, setSearch] = useFollowedState(
+    `procurement:${requestId}:information:search`,
+    "",
+  );
+  const [view, setView] = useFollowedState(
+    `procurement:${requestId}:information:tab`,
+    "draft",
+  );
   if (!panel)
     return (
       <OperationalPanel>
@@ -756,11 +745,15 @@ export function InformationFormWorkspace(
   );
 }
 
-function InformationDrawer({
+export function InformationDrawer({
   target,
   onClose,
   ...props
-}: Actions & { target: DrawerTarget; onClose: () => void }) {
+}: {
+  requestId: Id<"procurementRequests">;
+  target: InformationDrawerTarget;
+  onClose: () => void;
+}) {
   const panel = useQuery(api.procurementInformation.panel, {
     requestId: props.requestId,
   });
@@ -1014,8 +1007,9 @@ function PublishForm({
     });
   };
   const candidates = available.filter((q) => eligible(q));
-  const [selected, setSelected] = useState<string[]>(() =>
-    candidates.map((q) => q._id),
+  const [selected, setSelected] = useFollowedState<string[]>(
+    `procurement:${requestId}:information:new-form:selected`,
+    () => candidates.map((q) => q._id),
   );
   const selectedIds = new Set(selected);
   const addParents = (q: Question) => {
@@ -1061,7 +1055,7 @@ function PublishForm({
       <EmptyStateCard
         icon={<FileQuestion className="size-6" />}
         title="No questions ready for a new form"
-        description="Add questions in Information Needed, or finish an open batch before creating another form for those questions."
+        description="Add questions or finish the open form first."
       />
     );
 
@@ -1157,13 +1151,20 @@ function RequirementComposer({
   const [parentId, setParentId] = useState("");
   const [parentAnswer, setParentAnswer] = useState("Yes");
   const [carrier, setCarrier] = useState("");
-  const [threadId, setThreadId] = useState("");
-  const [messageId, setMessageId] = useState("");
+  const followKey = `procurement:${requestId}:information:composer:${initialQuestionId ?? mode ?? "new"}`;
+  const [threadId, setThreadId] = useFollowedState(`${followKey}:thread`, "");
+  const [messageId, setMessageId] = useFollowedState(`${followKey}:message`, "");
   const [quote, setQuote] = useState("");
   const [existing, setExisting] = useState<string | null>(null);
-  const [manualEntry, setManualEntry] = useState(false);
+  const [manualEntry, setManualEntry] = useFollowedState(
+    `${followKey}:manual`,
+    false,
+  );
   const [extractionId, setExtractionId] =
-    useState<Id<"procurementInformationExtractions"> | null>(null);
+    useFollowedState<Id<"procurementInformationExtractions"> | null>(
+      `${followKey}:extraction`,
+      null,
+    );
   const extraction = useQuery(
     api.procurementInformation.extraction,
     extractionId ? { extractionId } : "skip",

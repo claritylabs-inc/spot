@@ -33,6 +33,11 @@ import {
 } from "@/lib/procurement-information";
 import { ArrowRight, ChevronLeft, Paperclip } from "lucide-react";
 import { toast } from "sonner";
+import {
+  useFollowedState,
+  useIsFollowing,
+  useLeaderOnly,
+} from "@/hooks/use-followed-state";
 
 type Form = FunctionReturnType<typeof api.procurementInformation.clientForm>;
 export function InformationForm({
@@ -42,6 +47,7 @@ export function InformationForm({
 }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const router = useRouter();
+  const following = useIsFollowing();
   const viewer = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
   const needsLogin = !isLoading && (!isAuthenticated || viewer === null);
   const form = useQuery(
@@ -62,7 +68,7 @@ export function InformationForm({
     );
   return (
     <FormEditor
-      key={`${form.id}:${form.editDraft ? "editing" : form.status}`}
+      key={`${form.id}:${form.editDraft ? "editing" : form.status}:${following ? "following" : "own"}`}
       form={form}
     />
   );
@@ -70,18 +76,24 @@ export function InformationForm({
 
 function FormEditor({ form }: { form: Form }) {
   const router = useRouter();
-  const [started, setStarted] = useState(!!form.editDraft);
-  const edit = useMutation(api.procurementInformation.editForm);
-  const save = useMutation(api.procurementInformation.saveForm);
+  const [started, setStarted] = useFollowedState(
+    `information-form:${form.id}:started`,
+    !!form.editDraft,
+  );
+  const edit = useLeaderOnly(useMutation(api.procurementInformation.editForm));
+  const save = useLeaderOnly(useMutation(api.procurementInformation.saveForm));
   const [responses, setResponses] = useState(
     form.editDraft?.responses ?? form.responses,
   );
-  const [showFiles, setShowFiles] = useState(false);
+  const [showFiles, setShowFiles] = useFollowedState(
+    `information-form:${form.id}:files-open`,
+    false,
+  );
   const { tasks } = useBackgroundTasks();
   const uploading =
     tasks.get(`information-file:${form.id}`)?.status === "running";
   const revision = useRef(form.revision);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useFollowedState(`information-form:${form.id}:step`, 0);
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");

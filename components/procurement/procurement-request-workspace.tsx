@@ -1,5 +1,5 @@
 "use client";
-import { InformationFormWorkspace, InformationRequestActions, InformationRequests } from "./information-requests";
+import { InformationDrawer, InformationFormWorkspace, InformationRequestActions, InformationRequests, type InformationDrawerTarget } from "./information-requests";
 import { RemoveButton } from "@/components/ui/remove-button";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
@@ -242,7 +242,11 @@ type RequestPanel =
     }
   | { kind: "file"; fileItemId: string }
   | { kind: "image"; fileItemId: string }
-  | { kind: "client-composer"; informationFormId?: string };
+  | {
+      kind: "client-composer";
+      informationFormId?: Id<"procurementInformationForms">;
+    }
+  | { kind: "information"; target: InformationDrawerTarget };
 
 type RequestDetails = {
   request: RequestSummary;
@@ -2445,6 +2449,15 @@ export function ProcurementRequestWorkspace({
             onClose={closeRightPanel}
           />
         );
+    } else if (panel.kind === "information") {
+      node = (
+        <InformationDrawer
+          key={JSON.stringify(panel.target)}
+          requestId={requestId}
+          target={panel.target}
+          onClose={closeRightPanel}
+        />
+      );
     } else if (panel.kind === "image") {
       const file = details?.files.find(
         (row) => row._id === panel.fileItemId,
@@ -2455,7 +2468,7 @@ export function ProcurementRequestWorkspace({
       node = (
         <ClientOutreachComposer
           key={panel.informationFormId ?? requestId}
-          informationFormId={panel.informationFormId as Id<"procurementInformationForms"> | undefined}
+          informationFormId={panel.informationFormId}
           requestId={requestId}
           requestTitle={composerDraft.current.title ?? requestTitle}
           initialText={composerDraft.current.text}
@@ -2491,6 +2504,14 @@ export function ProcurementRequestWorkspace({
     setPanel,
     showPanel,
   ]);
+
+  const openInformationDrawer = useCallback(
+    (target: InformationDrawerTarget) => {
+      closePdf();
+      setPanel({ kind: "information", target });
+    },
+    [closePdf, setPanel],
+  );
 
   const askClientForInformation = useCallback(
     (formId: Id<"procurementInformationForms">, questions: string[], title?: string) => {
@@ -2572,7 +2593,7 @@ export function ProcurementRequestWorkspace({
         <InformationRequestActions
           requestId={requestId}
           readOnly={readOnly}
-          onRightPanel={onRightPanel}
+          onOpenDrawer={openInformationDrawer}
           inboxHref={`${basePath}/${requestId}?view=email`}
           onAskClient={askClientForInformation}
           selectedForm={selectedInformationForm}
@@ -2615,6 +2636,7 @@ export function ProcurementRequestWorkspace({
     basePath,
     onRightPanel,
     askClientForInformation,
+    openInformationDrawer,
     selectedInformationForm,
     sendAllCount,
     providerOutreachBusy,
@@ -3060,8 +3082,8 @@ export function ProcurementRequestWorkspace({
         ) : null}
 
         {view === "information" && (selectedInformationForm ?
-          <InformationFormWorkspace key={selectedInformationForm} requestId={requestId} readOnly={readOnly} onRightPanel={onRightPanel} inboxHref={`${basePath}/${requestId}?view=email`} onAskClient={askClientForInformation} selectedForm={selectedInformationForm} /> :
-          <InformationRequests requestId={requestId} readOnly={readOnly} onRightPanel={onRightPanel} inboxHref={`${basePath}/${requestId}?view=email`} onAskClient={askClientForInformation} />)}
+          <InformationFormWorkspace key={selectedInformationForm} requestId={requestId} readOnly={readOnly} onOpenDrawer={openInformationDrawer} inboxHref={`${basePath}/${requestId}?view=email`} onAskClient={askClientForInformation} selectedForm={selectedInformationForm} /> :
+          <InformationRequests requestId={requestId} readOnly={readOnly} onOpenDrawer={openInformationDrawer} inboxHref={`${basePath}/${requestId}?view=email`} onAskClient={askClientForInformation} />)}
         {view === "cadence" && !readOnly ? (
           <ProviderOutreachCadence controller={providerOutreach} />
         ) : null}
