@@ -877,6 +877,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("user", ["userId"])
+    .index("by_teamEmailLocalpart", ["teamEmailLocalpart"])
     .index("email", ["email"])
     .index("slack_user", ["slackTeamId", "slackUserId"])
     .index("status", ["status"]),
