@@ -10,6 +10,7 @@ import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useFollowedOpen } from "@/hooks/use-followed-state";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
@@ -93,6 +94,7 @@ export function ClientOutreachComposer({
       },
   );
   const [sending, setSending] = useState(false);
+  const followUpsPopover = useFollowedOpen(`procurement:${requestId}:client-email:follow-ups-open`);
   const update = (patch: Partial<Draft>) =>
     setDraftState((current) => {
       const next = { ...current, ...patch };
@@ -194,7 +196,7 @@ export function ClientOutreachComposer({
             Send
           </PillButton>
           {cadence ? (
-            <Popover>
+            <Popover {...followUpsPopover}>
               <PopoverTrigger
                 render={
                   <PillButton

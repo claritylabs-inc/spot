@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useSettingsActions } from "@/components/settings/settings-actions-context";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { FormSection } from "@claritylabs-inc/ui/components/form-section";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
@@ -247,7 +248,10 @@ export function NotificationPreferencesSection({
   const [localPrefs, setLocalPrefs] = useState<Record<string, boolean>>({});
   const [savingDefault, setSavingDefault] =
     useState<NotificationChannel | null>(null);
-  const [selectedType, setSelectedType] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useFollowedState<string | null>(
+    `settings:notifications:${orgId}:selected-type`,
+    null,
+  );
   const visibleRows = getNotificationSettingsRows(orgType);
   const groups = Array.from(new Set(visibleRows.map((row) => row.group)));
   const storedPrefs = prefs ?? [];
@@ -410,6 +414,7 @@ export function NotificationPreferencesSection({
     selectedText,
     selectedUsesDefaults,
     setRightPanel,
+    setSelectedType,
   ]);
 
   return (

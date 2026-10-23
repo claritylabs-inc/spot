@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
@@ -46,8 +47,9 @@ export default function OperatorLogsPage() {
     ]),
   ) as LogFilters;
   const selected = params.get("call") as Id<"modelRoutingEvents"> | null;
-  const [filtersOpen, setFiltersOpen] = useState(true);
-  const [live, setLive] = useState(true);
+  const [filtersOpen, setFiltersOpen] =
+    useFollowedState("operator-logs:filters-open", true);
+  const [live, setLive] = useFollowedState("operator-logs:live", true);
   const [now, setNow] = useState(() => dayjs().valueOf());
   const [exporting, setExporting] = useState(false);
   const hours = [0.5, 24, 168, 720].includes(Number(filters.hours))

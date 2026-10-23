@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAction, useMutation } from "convex/react";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { BadgeCheck } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -80,8 +81,14 @@ export function OperatorCertificatesWorkspace({
   const archiveCertificateMutation = useMutation(api.certificateLifecycle.archive);
   const unarchiveCertificateMutation = useMutation(api.certificateLifecycle.unarchive);
   const [selectedCertificateId, setSelectedCertificateId] =
-    useState<Id<"policyCertificates"> | null>(null);
-  const [generateOpen, setGenerateOpen] = useState(false);
+    useFollowedState<Id<"policyCertificates"> | null>(
+      `clients:${orgId}:certificates:selected`,
+      null,
+    );
+  const [generateOpen, setGenerateOpen] = useFollowedState(
+    `clients:${orgId}:certificates:generate-open`,
+    false,
+  );
   const [reissuingCertificateId, setReissuingCertificateId] =
     useState<Id<"policyCertificates"> | null>(null);
   const [savingCertificateId, setSavingCertificateId] =
@@ -197,7 +204,7 @@ export function OperatorCertificatesWorkspace({
       </PillButton>
     ));
     return () => onActions(null);
-  }, [onActions, readOnly]);
+  }, [onActions, readOnly, setGenerateOpen, setSelectedCertificateId]);
 
   useEffect(() => {
     if (generateOpen && !readOnly) {
@@ -242,6 +249,8 @@ export function OperatorCertificatesWorkspace({
     reissuingCertificateId,
     savingCertificateId,
     selectedCertificate,
+    setGenerateOpen,
+    setSelectedCertificateId,
     unarchiveCertificate,
     unarchivingCertificateId,
   ]);

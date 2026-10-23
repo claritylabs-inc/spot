@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 import { useCurrentOrg } from "@/hooks/use-current-org";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { PasswordSettings } from "@/components/profile/password-settings";
@@ -107,13 +108,16 @@ export default function ProfilePage() {
   const [title, setTitle] = useState("");
   const [phone, setPhone] = useState("");
   const [debouncedPhone, setDebouncedPhone] = useState("");
-  const [emailDrawerOpen, setEmailDrawerOpen] = useState(false);
+  const [emailDrawerOpen, setEmailDrawerOpen] = useFollowedState(
+    "profile:change-email-drawer",
+    false,
+  );
   const [pendingProactiveChoice, setPendingProactiveChoice] =
     useState<ProactiveChannelChoice | null>(null);
   const [savingProactiveChannels, setSavingProactiveChannels] = useState(false);
-  const [profileSection, setProfileSection] = useState<"profile" | "privacy">(
-    "profile",
-  );
+  const [profileSection, setProfileSection] = useFollowedState<
+    "profile" | "privacy"
+  >("profile:section", "profile");
   const [persistedValues, setPersistedValues] = useState<ProfileValues | null>(
     null,
   );

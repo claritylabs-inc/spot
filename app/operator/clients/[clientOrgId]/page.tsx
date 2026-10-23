@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import Link from "next/link";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -80,8 +81,14 @@ function ClientWorkspace({
   const { patchClientSettings, patchClientStatus } =
     useOperatorClientCacheActions();
   const activeTab = parseTab(searchParams.get("tab"));
-  const [settingsTab, setSettingsTab] = useState("channels");
-  const [teamInviteOpen, setTeamInviteOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useFollowedState(
+    `clients:${clientOrgId}:settings:tab`,
+    "channels",
+  );
+  const [teamInviteOpen, setTeamInviteOpen] = useFollowedState(
+    `clients:${clientOrgId}:team:invite-open`,
+    false,
+  );
   const handleOperatorActivationSent = useCallback(
     () =>
       patchClientStatus(clientOrgId, "active"),
@@ -126,7 +133,7 @@ function ClientWorkspace({
     return () => {
       setShellActions(null);
     };
-  }, [activeTab, setShellActions]);
+  }, [activeTab, setShellActions, setTeamInviteOpen]);
 
   return (
     <>

@@ -14,6 +14,7 @@ import {
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useFollowedOpen } from "@/hooks/use-followed-state";
 import { useCachedOperatorClients } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -46,7 +47,7 @@ export function LinkThreadAction({
 }) {
   const linkThread = useMutation(api.teamInbox.linkThread);
   const clients = useCachedOperatorClients();
-  const [open, setOpen] = useState(false);
+  const { open, onOpenChange } = useFollowedOpen(`inbox:link-thread:${thread._id}:open`);
   const [clientChoice, setClientChoice] = useState("");
   const [requestChoice, setRequestChoice] = useState(CLIENT_ONLY);
   const [linking, setLinking] = useState(false);
@@ -86,7 +87,7 @@ export function LinkThreadAction({
           : {}),
       });
       toast.success("Conversation linked");
-      setOpen(false);
+      onOpenChange(false);
       onLinked?.();
     } catch (error) {
       toast.error(getUserFacingErrorMessage(error, "Could not link conversation"));
@@ -96,7 +97,7 @@ export function LinkThreadAction({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger
         render={
           <PillButton

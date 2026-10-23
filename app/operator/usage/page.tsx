@@ -37,7 +37,8 @@ import {
   tokens,
   type ModelCall,
 } from "../logs/log-utils";
-import { summarizeCalls, type UsageRow } from "./usage-summary";
+import { useFollowedState } from "@/hooks/use-followed-state";
+import { summarizeCalls } from "./usage-summary";
 
 export default function OperatorUsagePage() {
   const convex = useConvex();
@@ -46,14 +47,20 @@ export default function OperatorUsagePage() {
   const [calls, setCalls] = useState<ModelCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [group, setGroup] = useState<"model" | "task" | "channel">("model");
-  const [selected, setSelected] = useState<UsageRow | null>(null);
+  const [group, setGroup] = useFollowedState<"model" | "task" | "channel">(
+    "operator-usage:group",
+    "model",
+  );
+  const [selectedLabel, setSelectedLabel] = useFollowedState<string | null>(
+    "operator-usage:selected-row",
+    null,
+  );
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       setError(null);
-      setSelected(null);
+      setSelectedLabel(null);
       try {
         let cursor: string | null = null;
         const all: ModelCall[] = [];
@@ -84,8 +91,10 @@ export default function OperatorUsagePage() {
     return () => {
       cancelled = true;
     };
-  }, [convex, from, to]);
+  }, [convex, from, setSelectedLabel, to]);
   const summary = useMemo(() => summarizeCalls(calls, group), [calls, group]);
+  const selected =
+    summary.rows.find((row) => row.label === selectedLabel) ?? null;
   const max = Math.max(...summary.days.map((row) => row.cost), 0.000001);
   const matching = selected
     ? new URLSearchParams({
@@ -136,7 +145,7 @@ export default function OperatorUsagePage() {
           <SettingsDrawer
             open
             onOpenChange={(open) => {
-              if (!open) setSelected(null);
+              if (!open) setSelectedLabel(null);
             }}
             title={displayTask(selected.label)}
             footer={
@@ -272,7 +281,7 @@ export default function OperatorUsagePage() {
                   value === "channel"
                 ) {
                   setGroup(value);
-                  setSelected(null);
+                  setSelectedLabel(null);
                 }
               }}
             >
@@ -311,11 +320,11 @@ export default function OperatorUsagePage() {
                       data-state={
                         selected?.label === row.label ? "selected" : undefined
                       }
-                      onClick={() => setSelected(row)}
+                      onClick={() => setSelectedLabel(row.label)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
-                          setSelected(row);
+                          setSelectedLabel(row.label);
                         }
                       }}
                     >

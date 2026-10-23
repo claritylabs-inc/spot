@@ -49,6 +49,7 @@ import {
   TableRow,
   TableNameLink,
 } from "@/components/ui/table";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
   NETWORK_STATUS_LABELS,
@@ -81,10 +82,10 @@ const statusOptions = [
 ];
 
 export default function OperatorBrokersPage() {
-  const [creating, setCreating] = useState(false);
-  const [region, setRegion] = useState(ALL);
-  const [line, setLine] = useState(ALL);
-  const [status, setStatus] = useState(ALL);
+  const [creating, setCreating] = useFollowedState("brokers:creating", false);
+  const [region, setRegion] = useFollowedState("brokers:region", ALL);
+  const [line, setLine] = useFollowedState("brokers:line", ALL);
+  const [status, setStatus] = useFollowedState("brokers:status", ALL);
   const rows = useQuery(api.brokerProfiles.list, {});
   const filteredRows = rows?.filter((row) => {
     const profile = row.profile;

@@ -58,6 +58,11 @@ export const leave = mutation({
       .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
       .unique();
     if (cursor) await ctx.db.delete(cursor._id);
+    const ui = await ctx.db
+      .query("operatorUiStates")
+      .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
+      .unique();
+    if (ui) await ctx.db.delete(ui._id);
     return null;
   },
 });

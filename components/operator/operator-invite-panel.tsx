@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useAction, useQuery } from "convex/react";
 import { toast } from "sonner";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { api } from "@/convex/_generated/api";
 import { ChatAvatar } from "@/components/chat/chat-message";
 import { PillButton } from "@/components/ui/pill-button";
@@ -28,7 +29,7 @@ export function useOperatorInvite(disabled: boolean) {
   const inviteOperator = useAction(api.operatorInvitations.inviteOperator);
   const operators = useQuery(api.operator.listOperators);
   const viewerUserId = useCachedOperatorCurrent()?.user._id;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useFollowedState("operator:invite:drawer-open", false);
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
 

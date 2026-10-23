@@ -46,6 +46,7 @@ import {
   useActiveOperators,
   useReportEmailThreadPresence,
 } from "@/hooks/use-operator-presence";
+import { useFollowedOpen, useFollowedState } from "@/hooks/use-followed-state";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -621,7 +622,11 @@ function EmailConversation({
   requestScoped: boolean;
 }) {
   // Messages flipped from their default: the newest opens, earlier ones start collapsed.
-  const [toggled, setToggled] = useState<Set<string>>(() => new Set());
+  const [toggledIds, setToggledIds] = useFollowedState<string[]>(
+    `procurement:email:${thread.thread._id}:toggled`,
+    [],
+  );
+  const toggled = useMemo(() => new Set(toggledIds), [toggledIds]);
   const lastId = thread.messages.at(-1)?._id;
   return (
     <div className="-mx-4 -my-4 divide-y divide-border">
@@ -647,11 +652,11 @@ function EmailConversation({
           fromSpot={message.direction === "outbound"}
           collapsed={(message._id === lastId) === toggled.has(message._id)}
           onToggle={() =>
-            setToggled((current) => {
-              const next = new Set(current);
-              if (!next.delete(message._id)) next.add(message._id);
-              return next;
-            })
+            setToggledIds((current) =>
+              current.includes(message._id)
+                ? current.filter((id) => id !== message._id)
+                : [...current, message._id],
+            )
           }
         />
       ))}
@@ -678,7 +683,9 @@ function FileQuoteAction({
   // Signature images and logos can be excluded; everything else files.
   const [excludedFileIds, setExcludedFileIds] = useState<string[]>([]);
   const [filing, setFiling] = useState(false);
-  const [open, setOpen] = useState(false);
+  const { open, onOpenChange: setOpen } = useFollowedOpen(
+    `procurement:email:${emailThreadId}:file-quote-open`,
+  );
   const outreachOptions = useMemo(
     () =>
       (inference?.outreaches ?? []).map((outreach) => ({
@@ -845,7 +852,9 @@ function MoveThreadAction({
   onMoved: () => void;
 }) {
   const updateThread = useMutation(api.procurementRequests.updateEmailThread);
-  const [open, setOpen] = useState(false);
+  const { open, onOpenChange: setOpen } = useFollowedOpen(
+    `procurement:email:${emailThreadId}:move-open`,
+  );
   const options = useMemo(
     () =>
       requests

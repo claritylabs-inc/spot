@@ -33,6 +33,7 @@ import {
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { useCachedOperatorExtractionRuns } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { SourceEvidenceButton } from "./source-provenance";
 
 const RUN_STATUS: Record<
@@ -251,9 +252,9 @@ function RunDetail({
   fileUrl?: string | null;
 }) {
   const pdf = usePdf();
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
-    null,
-  );
+  const [selectedSectionId, setSelectedSectionId] = useFollowedState<
+    string | null
+  >(`policy:run:${run.runId}:section`, null);
   const selectedSection = run.sections?.find(
     (section) => section.sectionId === selectedSectionId,
   );

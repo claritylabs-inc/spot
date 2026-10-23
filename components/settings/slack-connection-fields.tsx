@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { useFollowedOpen } from "@/hooks/use-followed-state";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -77,6 +78,9 @@ export function SlackConnectionFields({
   );
   const [selectedChannelId, setSelectedChannelId] = useState(
     currentChannelId ?? "",
+  );
+  const channelMenu = useFollowedOpen(
+    `settings:slack:${clientOrgId}:channel-menu`,
   );
   const [loading, setLoading] = useState(canEdit);
   const [loadError, setLoadError] = useState(false);
@@ -182,7 +186,7 @@ export function SlackConnectionFields({
           >
             Channels
           </label>
-          <DropdownMenu>
+          <DropdownMenu {...channelMenu}>
             <DropdownMenuTrigger
               disabled={loading || changingChannelId !== null}
               render={

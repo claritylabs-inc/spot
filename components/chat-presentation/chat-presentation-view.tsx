@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { defineRegistry, JSONUIProvider, Renderer } from "@json-render/react";
 import { chatPresentationCatalog } from "@/lib/chat-presentation-catalog";
 import {
@@ -143,24 +144,41 @@ export function ChatPresentationView({
     () => parseChatPresentation(presentation),
     [presentation],
   );
-  const [selected, setSelected] = useState<
-    | { kind: "record"; reference: PresentationReference; detail?: string }
+  const stateKey = `presentation:${parsed?.sourceRevision ?? "none"}`;
+  const [opened, setOpened] = useFollowedState<
+    | { kind: "record"; referenceId: string; detail?: string }
     | { kind: "evidence"; evidence: EvidenceInspection }
     | null
-  >(null);
+  >(`${stateKey}:selected`, null);
+  const openedReference =
+    opened?.kind === "record"
+      ? parsed?.references.find(
+          (reference) => reference.id === opened.referenceId,
+        )
+      : undefined;
+  const selected =
+    opened?.kind === "evidence"
+      ? opened
+      : openedReference && opened?.kind === "record"
+        ? {
+            kind: "record" as const,
+            reference: openedReference,
+            detail: opened.detail,
+          }
+        : null;
   const openRecord = useCallback(
     (reference: PresentationReference, detail?: string) => {
       if (onOpenReference?.(reference)) return;
-      setSelected({ kind: "record", reference, detail });
+      setOpened({ kind: "record", referenceId: reference.id, detail });
     },
-    [onOpenReference],
+    [onOpenReference, setOpened],
   );
   const openEvidence = useCallback(
     (evidence: EvidenceInspection) =>
-      setSelected({ kind: "evidence", evidence }),
-    [],
+      setOpened({ kind: "evidence", evidence }),
+    [setOpened],
   );
-  const closeRecord = useCallback(() => setSelected(null), []);
+  const closeRecord = useCallback(() => setOpened(null), [setOpened]);
   const inFlight = useRef(false);
   const [sending, setSending] = useState(false);
   const followUp = useCallback(
@@ -180,6 +198,7 @@ export function ChatPresentationView({
   );
   const context = useMemo(
     () => ({
+      stateKey,
       references: new Map(
         parsed?.references.map((reference) => [reference.id, reference]),
       ),
@@ -193,6 +212,7 @@ export function ChatPresentationView({
       closeRecord,
     }),
     [
+      stateKey,
       parsed,
       disabled,
       sending,

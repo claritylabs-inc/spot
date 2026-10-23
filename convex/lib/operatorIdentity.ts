@@ -359,6 +359,7 @@ const UNAUDITED_MUTATIONS = new Set([
   "operatorPresence:leave",
   "operatorCursors:move",
   "operatorCursors:clear",
+  "operatorCursors:publishUi",
   "teamInbox:markRead",
 ]);
 

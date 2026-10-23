@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Upload } from "lucide-react";
@@ -13,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePolicyUpload } from "@/hooks/use-policy-upload";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import {
   useCachedPolicyList,
   useCachedViewerOrg,
@@ -64,7 +65,10 @@ export default function PoliciesPage() {
   const viewerOrg = useCachedViewerOrg();
   const orgId = viewerOrg?.org?._id;
   const createClientUpload = useMutation(api.policies.createClientUpload);
-  const [uploaderOpen, setUploaderOpen] = useState(false);
+  const [uploaderOpen, setUploaderOpen] = useFollowedState(
+    "policy:list:uploader-open",
+    false,
+  );
   const { upload, uploading } = usePolicyUpload({
     orgId,
     registerUpload: useCallback(

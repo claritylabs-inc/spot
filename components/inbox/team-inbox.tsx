@@ -51,6 +51,7 @@ import {
   replyingOperators,
   useActiveOperators,
 } from "@/hooks/use-operator-presence";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import {
   useCachedOperatorClients,
@@ -382,12 +383,16 @@ export function TeamInbox({
   const convex = useConvex();
   const requestId = scope.kind === "request" ? scope.requestId : undefined;
   // The team inbox opens on the operator's own mail.
-  const [filter, setFilter] = useState<TeamFilter>(scope.kind === "team" ? "mine" : "all");
-  const [clientOrgId, setClientOrgId] = useState("");
-  const [category, setCategory] = useState(ALL_CATEGORIES);
-  const [archivedView, setArchivedView] = useState(false);
-  const [search, setSearch] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
+  const uiKey = requestId ? `inbox:request:${requestId}` : "inbox:team";
+  const [filter, setFilter] = useFollowedState<TeamFilter>(
+    `${uiKey}:filter`,
+    scope.kind === "team" ? "mine" : "all",
+  );
+  const [clientOrgId, setClientOrgId] = useFollowedState(`${uiKey}:client`, "");
+  const [category, setCategory] = useFollowedState(`${uiKey}:category`, ALL_CATEGORIES);
+  const [archivedView, setArchivedView] = useFollowedState(`${uiKey}:archived`, false);
+  const [search, setSearch] = useFollowedState(`${uiKey}:search`, "");
+  const [showFilters, setShowFilters] = useFollowedState(`${uiKey}:show-filters`, false);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const clients = useCachedOperatorClients();
   // Impersonating operators read mail; every write below is withheld.

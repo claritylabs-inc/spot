@@ -7,6 +7,7 @@ import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { X } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { setMirroredUi } from "@/hooks/use-followed-state";
 import type { Id } from "@/convex/_generated/dataModel";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
@@ -118,6 +119,12 @@ export function OperatorFollow({
     pendingScrollRef.current = true;
   }, [cursor]);
 
+  // Show the leader's panels, tabs and filters; keep them when following stops.
+  const ui = useQuery(api.operatorCursors.ui, { userId });
+  // No row means every value is at its default.
+  useEffect(() => setMirroredUi(ui === undefined ? null : (ui ?? "{}")), [ui]);
+  useEffect(() => () => setMirroredUi(null), []);
+
   // Position from the latest cursor every frame so layout shifts, loading
   // content and window resizes keep the pointer on its element.
   useEffect(() => {
@@ -174,7 +181,12 @@ export function OperatorFollow({
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) return;
-      if (event.key === "Escape" || !isControl(event)) stopFollowing();
+      if (event.key === "Escape") {
+        // This Escape only stops following; the adopted panels stay open.
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        stopFollowing();
+      } else if (!isControl(event)) stopFollowing();
     };
     window.addEventListener("pointerdown", stop, { capture: true });
     window.addEventListener("wheel", stop, { capture: true, passive: true });
