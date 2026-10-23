@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
+import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { FormSection } from "@claritylabs-inc/ui/components/form-section";
@@ -186,11 +187,12 @@ function ContactEditor({ contact }: { contact: Doc<"brokerContacts"> }) {
         />
       </InlineFieldRow>
       <InlineFieldRow label="Phone">
-        <Input
+        <PhoneInput
           aria-label="Contact phone"
-          type="tel"
-          value={values.phone}
-          onChange={(e) => set("phone", e.target.value)}
+          value={values.phone || undefined}
+          defaultCountry="US"
+          autoComplete="tel"
+          onChange={(phone) => set("phone", phone ?? "")}
           onBlur={() => void autoSave.saveNow()}
         />
       </InlineFieldRow>

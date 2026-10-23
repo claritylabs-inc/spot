@@ -1,4 +1,5 @@
 "use client";
+import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import type { IntakeFollowupAnswer } from "@/lib/intake-followups";
 import {
@@ -14,10 +15,14 @@ import {
   TabsContent,
 } from "@claritylabs-inc/ui/components/tabs";
 
+import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
+import { INDUSTRIES } from "@/lib/insurance-intake-industries";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { MapboxPlaceSelect } from "@/components/ui/mapbox-place-select";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import {
+  CURRENT_INSURANCE_CHOICES,
+  ENTITY_TYPES,
   INTAKE_FIELDS,
   type IntakeAnswers,
   type IntakeField,
@@ -192,7 +197,7 @@ export function IntakeApplicationFields({
       </InlineFieldRow>
     </div>
   );
-  const businessName = answers.legalName || answers.dba;
+  const businessName = answers.dba || answers.legalName;
   const followupRows = (rows: IntakeFollowupAnswer[]) => (
     <IntakeFollowupRows
       rows={rows}
@@ -202,6 +207,21 @@ export function IntakeApplicationFields({
       onChange={onDetailsChange}
     />
   );
+  const enumChoices = (key: IntakeField): string[] | null => {
+    if (key === "entityType") return [...ENTITY_TYPES];
+    if (key === "currentInsurance") return [...CURRENT_INSURANCE_CHOICES];
+    if (key === "industry")
+      return [...INDUSTRIES.map((industry) => industry.label), "I'm not sure"];
+    if (key === "industryVertical") {
+      const verticals = INDUSTRIES.find(
+        (industry) => industry.label === answers.industry,
+      )?.verticals;
+      return verticals?.length
+        ? [...verticals.map((vertical) => vertical.label), "I'm not sure"]
+        : null;
+    }
+    return null;
+  };
   const text = (key: IntakeField, multiline = false) => (
     <InlineFieldRow key={key} label={INTAKE_FIELDS[key]}>
       {key === "website" ? (
@@ -209,6 +229,31 @@ export function IntakeApplicationFields({
           aria-label={INTAKE_FIELDS[key]}
           value={answers[key] ?? ""}
           onChange={(website) => onAnswersChange({ ...answers, website })}
+        />
+      ) : enumChoices(key) ? (
+        <SearchableSelect
+          ariaLabel={INTAKE_FIELDS[key]}
+          value={answers[key] ?? ""}
+          options={enumChoices(key)!.map((choice) => ({
+            value: choice,
+            label: choice,
+          }))}
+          placeholder="Not provided"
+          onChange={(value) =>
+            onAnswersChange({
+              ...answers,
+              [key]: value,
+              ...(key === "industry" ? { industryVertical: "" } : {}),
+            })
+          }
+        />
+      ) : key === "phone" ? (
+        <PhoneInput
+          aria-label={INTAKE_FIELDS[key]}
+          value={answers[key] || undefined}
+          defaultCountry="US"
+          autoComplete="tel"
+          onChange={(phone) => onAnswersChange({ ...answers, phone: phone ?? "" })}
         />
       ) : multiline ? (
         <Textarea
@@ -222,7 +267,7 @@ export function IntakeApplicationFields({
       ) : (
         <Input
           aria-label={INTAKE_FIELDS[key]}
-          type={key === "email" ? "email" : key === "phone" ? "tel" : "text"}
+          type={key === "email" ? "email" : "text"}
           value={answers[key] ?? ""}
           placeholder="Not provided"
           onChange={(event) =>
@@ -378,9 +423,9 @@ export function IntakeApplicationFields({
           <InlineFieldCard>
             {(
               [
+                "dba",
                 "legalName",
                 "website",
-                "dba",
                 "entityType",
                 "formation",
                 ...(/^(?:united states(?: of america)?|u\.?s\.?a?\.?|us)$/i.test(

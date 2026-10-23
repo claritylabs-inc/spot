@@ -221,9 +221,9 @@ export function IntakeCompanyReview({
           title="Business details"
           hideHeading={hideHeading}
           rows={fields([
+            "dba",
             "legalName",
             "website",
-            "dba",
             "entityType",
             "formation",
             ...(country === "United States"
@@ -547,7 +547,7 @@ export function IntakeSavedBusinessSummary({
   return (
     <IntakeReviewRows
       rows={[
-        { label: "Company legal name", value: answers.legalName },
+        { label: "Legal name", value: answers.legalName },
         ...(answers.website
           ? [{ label: "Website", value: answers.website }]
           : []),

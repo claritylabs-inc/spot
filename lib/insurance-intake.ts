@@ -71,6 +71,21 @@ export const INTAKE_STEPS = [
   ...AUTO_QUOTE_QUESTIONS,
   "We suggest",
 ] as const;
+export const ENTITY_TYPES = [
+  "LLC",
+  "Corporation",
+  "S corporation",
+  "Partnership",
+  "Sole proprietor",
+  "Nonprofit",
+  "Trust / estate",
+  "Government",
+  "Other",
+  "Not sure",
+] as const;
+
+export const CURRENT_INSURANCE_CHOICES = ["Yes", "No", "Not sure"] as const;
+
 export const INTAKE_FIELDS = {
   intakeGoal: "What would you like help with?",
   name: "Full name",
@@ -86,9 +101,9 @@ export const INTAKE_FIELDS = {
   limits: "Desired limits and deductibles",
   separateQuotes: "Additional coverages requested",
   coverageScope: "What you are looking to get insured",
-  legalName: "Company legal name",
+  legalName: "Legal name",
   website: "Website",
-  dba: "DBA / trading name",
+  dba: "Company name",
   entityType: "Entity type",
   formation: "State / country of formation",
   fein: "FEIN / tax ID",

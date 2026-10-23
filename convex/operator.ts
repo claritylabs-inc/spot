@@ -280,7 +280,10 @@ async function listOperatorClientRows(ctx: QueryCtx) {
       return {
         _id: client._id,
         name: client.name,
-        dba: client.profileFacts?.dba?.value.trim() || undefined,
+        dba:
+          client.profileFacts?.dba?.value.trim() ||
+          client.intakeBusinessProfile?.answers?.dba?.trim() ||
+          undefined,
         ...(await orgBrandFields(ctx, client)),
         agentHandle: client.agentHandle,
         clientAccessStatus: clientAccessStatus(client),
