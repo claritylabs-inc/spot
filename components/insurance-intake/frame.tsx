@@ -16,6 +16,7 @@ export function IntakeFrame({
   showSteps = true,
   compact = false,
   introduction = false,
+  steps,
 }: {
   children: ReactNode;
   footer?: ReactNode;
@@ -26,7 +27,14 @@ export function IntakeFrame({
   showSteps?: boolean;
   compact?: boolean;
   introduction?: boolean;
+  steps?: { label: string; id: number; step: number; disabled?: boolean }[];
 }) {
+  const navigationSteps: readonly {
+    label: string;
+    id: number;
+    step: number;
+    disabled?: boolean;
+  }[] = steps ?? INTAKE_VISIBLE_SECTIONS;
   const footerRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const footer = footerRef.current;
@@ -50,24 +58,28 @@ export function IntakeFrame({
       data-intake-form
       className={`${introduction ? "flex min-h-dvh flex-col" : "min-h-screen"} bg-background text-foreground [&_textarea]:field-sizing-content! [&_textarea]:h-auto! [&_textarea]:max-h-none! [&_textarea]:overflow-y-hidden! [&_textarea]:resize-none!`}
     >
-      <header className="grid grid-cols-3 items-center border-b bg-background px-6 py-3 md:sticky md:top-0 md:z-20 sm:px-10">
+      <header
+        className={`grid ${steps ? "grid-cols-[auto_minmax(0,1fr)_auto] gap-4" : "grid-cols-3"} items-center border-b bg-background px-6 py-3 md:sticky md:top-0 md:z-20 sm:px-10`}
+      >
         <IntakeProviderBrand />
         {showSteps ? (
           <nav
             aria-label="Application sections"
-            className="flex items-center justify-center gap-1.5 sm:gap-2"
+            className={`flex min-w-0 items-center justify-center ${steps ? "w-full max-w-md justify-self-center" : ""} ${steps && steps.length > 12 ? "gap-0.5 sm:gap-1" : "gap-1.5 sm:gap-2"}`}
           >
-            {INTAKE_VISIBLE_SECTIONS.map(({ label, id, step }, index) => (
-              <Button
-                variant="ghost"
-                key={label}
-                aria-label={label}
-                aria-current={section === id ? "step" : undefined}
-                disabled={disabled || !onSection}
-                onClick={() => onSection?.(step)}
-                className={`h-1.5 w-3 rounded-full p-0 disabled:opacity-100 sm:w-10 ${INTAKE_VISIBLE_SECTIONS.findIndex(item => item.id === section) >= index ? "bg-foreground" : "bg-foreground/15"}`}
-              />
-            ))}
+            {navigationSteps.map(
+              ({ label, id, step, disabled: stepDisabled }, index) => (
+                <Button
+                  variant="ghost"
+                  key={id}
+                  aria-label={label}
+                  aria-current={section === id ? "step" : undefined}
+                  disabled={disabled || !onSection || stepDisabled}
+                  onClick={() => onSection?.(step)}
+                  className={`h-1.5 rounded-full p-0 disabled:opacity-100 ${steps ? "min-w-0 flex-1 max-w-10" : "w-3 sm:w-10"} ${navigationSteps.findIndex((item) => item.id === section) >= index ? "bg-foreground" : "bg-foreground/15"}`}
+                />
+              ),
+            )}
           </nav>
         ) : (
           <span aria-hidden="true" />

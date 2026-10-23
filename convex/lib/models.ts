@@ -1395,7 +1395,7 @@ export async function generateObjectForPublicTask<T>(
     ((callContext?.taskKind === "profile_research_intake_fields" && callContext?.trace?.traceId?.startsWith("intake-company:")) ||
       (callContext?.taskKind === "intake_cyber_fact_extraction" && callContext?.trace?.traceId?.startsWith("intake-cyber:")) ||
       (callContext?.taskKind === "intake_monthly_premium_estimate" && callContext?.trace?.traceId?.startsWith("intake-premium:")));
-  const localIntakeTask = localIntakeResearch || (task === "analysis" && callContext?.taskKind === "intake_vehicle_specifications" && !!callContext.trace?.traceId?.startsWith("intake-vehicle:")) || (task === "analysis" && callContext?.taskKind === "intake_additional_questions") || (task === "requirement_extraction" && callContext?.taskKind === "intake_requirement_prefill");
+  const localIntakeTask = localIntakeResearch || (task === "analysis" && callContext?.taskKind === "intake_vehicle_specifications" && !!callContext.trace?.traceId?.startsWith("intake-vehicle:")) || (task === "analysis" && ["intake_additional_questions", "procurement_information_extract"].includes(callContext?.taskKind ?? "")) || (task === "requirement_extraction" && callContext?.taskKind === "intake_requirement_prefill");
   if (execution === "local-inline" && (
     process.env.SPOT_ENV !== "local" || !localIntakeTask ||
     typeof textOptions.prompt !== "string" || textOptions.prompt.length > 100000 || textOptions.messages !== undefined ||

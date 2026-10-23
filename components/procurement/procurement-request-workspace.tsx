@@ -1,4 +1,11 @@
 "use client";
+import { InformationDrawer } from "./information/information-drawer";
+import { InformationFormWorkspace } from "./information/form-workspace";
+import {
+  InformationRequestActions,
+  InformationRequests,
+} from "./information/information-requests";
+import type { InformationDrawerTarget } from "./information/shared";
 import { RemoveButton } from "@/components/ui/remove-button";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
@@ -71,6 +78,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   FileText,
+  ListChecks,
   Loader2,
   StickyNote,
   Plus,
@@ -236,7 +244,12 @@ type RequestPanel =
     }
   | { kind: "file"; fileItemId: string }
   | { kind: "image"; fileItemId: string }
-  | { kind: "composer"; audience: RequestEmailAudience };
+  | {
+      kind: "composer";
+      audience: RequestEmailAudience;
+      informationFormId?: Id<"procurementInformationForms">;
+    }
+  | { kind: "information"; target: InformationDrawerTarget };
 
 type RequestDetails = {
   request: RequestSummary;
@@ -1926,7 +1939,14 @@ export function ProcurementRequestWorkspace({
   clientOrgId: Id<"organizations">;
   requestId: Id<"procurementRequests">;
   basePath: string;
-  view: "application" | "edit" | "proposals" | "cadence" | "files" | "email";
+  view:
+    | "application"
+    | "edit"
+    | "proposals"
+    | "cadence"
+    | "files"
+    | "email"
+    | "information";
   readOnly: boolean;
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
@@ -1935,6 +1955,8 @@ export function ProcurementRequestWorkspace({
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedProposalId = searchParams.get("proposal");
+  const selectedInformationForm =
+    view === "information" ? searchParams.get("form") : null;
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const handledProposalLink = useRef<string | null>(null);
   // The email in the right panel, and the one being opened. Any other panel
@@ -1946,6 +1968,7 @@ export function ProcurementRequestWorkspace({
     null,
   );
   const shownPanel = useRef<RequestPanel | null>(null);
+  const composerDraft = useRef<{ text?: string; title?: string }>({});
   const showPanel = useCallback(
     (node: ReactNode) => {
       openedEmailId.current = null;
@@ -1981,6 +2004,9 @@ export function ProcurementRequestWorkspace({
   });
   const brokers = useCachedOperatorBrokers() as BrokerOption[] | undefined;
   const proposals = useQuery(api.procurementProposals.list, { requestId });
+  const informationForms = useQuery(api.procurementInformation.operatorForms, {
+    requestId,
+  });
   const providerOutreach = useProviderOutreach(requestId, readOnly);
   // The header actions depend on primitives only; handlers read the latest controller.
   const providerOutreachRef = useRef(providerOutreach);
@@ -2019,7 +2045,11 @@ export function ProcurementRequestWorkspace({
     },
     [removeFileItem],
   );
-  const changeView = async (nextView: string, threadId?: string) => {
+  const changeView = async (
+    nextView: string,
+    threadId?: string,
+    informationFormId?: string,
+  ) => {
     const change = ++latestTabChange.current;
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
@@ -2035,7 +2065,7 @@ export function ProcurementRequestWorkspace({
     if (change !== latestTabChange.current) return;
     closeRightPanel();
     router.push(
-      `${basePath}/${requestId}?view=${nextView}${threadId ? `&thread=${threadId}` : ""}`,
+      `${basePath}/${requestId}?view=${nextView}${threadId ? `&thread=${threadId}` : ""}${informationFormId ? `&form=${encodeURIComponent(informationFormId)}` : ""}`,
     );
   };
   const { openWithUrl, closePdf } = usePdf();
@@ -2196,7 +2226,10 @@ export function ProcurementRequestWorkspace({
   const handledThread = useRef<string | null>(null);
   useEffect(() => {
     if (resolvedThread.status === "none") handledThread.current = null;
-    if (resolvedThread.status === "unavailable" && handledThread.current !== threadParam) {
+    if (
+      resolvedThread.status === "unavailable" &&
+      handledThread.current !== threadParam
+    ) {
       handledThread.current = threadParam;
       toast.error("That conversation is not available");
       router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
@@ -2213,12 +2246,28 @@ export function ProcurementRequestWorkspace({
   }, [resolvedThread, threadParam, openEmail, router, basePath, requestId]);
 
   const requestTitle = details?.request.title ?? "";
-  const openComposer = useCallback(async () => {
-    if (emailDrawerRef.current && !(await emailDrawerRef.current.save())) return;
-    closePdf();
-    router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
-    setPanel({ kind: "composer", audience: "client" });
-  }, [basePath, closePdf, requestId, router, setPanel]);
+  const openClientComposer = useCallback(
+    async (
+      initialText?: string,
+      informationFormId?: Id<"procurementInformationForms">,
+      informationFormTitle?: string,
+    ) => {
+      if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
+        return;
+      closePdf();
+      // The prefilled draft stays with the leader; followers only see which form is open.
+      composerDraft.current = {
+        text: initialText,
+        title: informationFormTitle,
+      };
+      router.replace(
+        `${basePath}/${requestId}?view=${informationFormId ? `information&form=${informationFormId}` : "email"}`,
+        { scroll: false },
+      );
+      setPanel({ kind: "composer", audience: "client", informationFormId });
+    },
+    [basePath, closePdf, requestId, router, setPanel],
+  );
 
   useEffect(() => {
     if (!panel) {
@@ -2342,6 +2391,15 @@ export function ProcurementRequestWorkspace({
             onClose={closeRightPanel}
           />
         );
+    } else if (panel.kind === "information") {
+      node = (
+        <InformationDrawer
+          key={JSON.stringify(panel.target)}
+          requestId={requestId}
+          target={panel.target}
+          onClose={closeRightPanel}
+        />
+      );
     } else if (panel.kind === "image") {
       const file = details?.files.find(
         (row) => row._id === panel.fileItemId,
@@ -2368,9 +2426,11 @@ export function ProcurementRequestWorkspace({
           ) : null
         ) : (
           <ClientOutreachComposer
-            key="client-composer"
+            key={panel.informationFormId ?? requestId}
+            informationFormId={panel.informationFormId}
             requestId={requestId}
-            requestTitle={requestTitle}
+            requestTitle={composerDraft.current.title ?? requestTitle}
+            initialText={composerDraft.current.text}
             header={audienceTabs}
             onClose={closeRightPanel}
             onSent={closeRightPanel}
@@ -2404,6 +2464,32 @@ export function ProcurementRequestWorkspace({
     setPanel,
     showPanel,
   ]);
+
+  const openInformationDrawer = useCallback(
+    (target: InformationDrawerTarget) => {
+      closePdf();
+      setPanel({ kind: "information", target });
+    },
+    [closePdf, setPanel],
+  );
+
+  const askClientForInformation = useCallback(
+    (
+      formId: Id<"procurementInformationForms">,
+      questions: string[],
+      title?: string,
+    ) => {
+      const questionList = questions
+        .map((question, index) => `${index + 1}. ${question}`)
+        .join("\n\n");
+      void openClientComposer(
+        `We need a few more details to continue obtaining your insurance quotes. You can reply to this email with your answers or complete the short form below.\n\n${questionList.length <= 6500 ? `${questionList}\n\n` : ""}Complete the form: ${window.location.origin}/intake/information/${formId}`,
+        formId,
+        title,
+      );
+    },
+    [openClientComposer],
+  );
 
   // The Inbox keeps its selection in the URL so a thread can be deep-linked.
   // The reader opens before navigation, so the panel never closes in between.
@@ -2452,11 +2538,20 @@ export function ProcurementRequestWorkspace({
         </>
       ) : view === "email" ? (
         <>
-          <PillButton type="button" onClick={() => void openComposer()}>
+          <PillButton type="button" onClick={() => void openClientComposer()}>
             <SquarePen className="size-3.5" />
             New email
           </PillButton>
         </>
+      ) : view === "information" ? (
+        <InformationRequestActions
+          requestId={requestId}
+          readOnly={readOnly}
+          onOpenDrawer={openInformationDrawer}
+          inboxHref={`${basePath}/${requestId}?view=email`}
+          onAskClient={askClientForInformation}
+          selectedForm={selectedInformationForm}
+        />
       ) : view === "files" ? (
         <PillButton type="button" onClick={() => openUpload()}>
           <Upload className="size-3.5" />
@@ -2481,6 +2576,12 @@ export function ProcurementRequestWorkspace({
     return () => onActions?.(null);
   }, [
     onActions,
+    requestId,
+    basePath,
+    onRightPanel,
+    askClientForInformation,
+    openInformationDrawer,
+    selectedInformationForm,
     sendAllCount,
     providerOutreachBusy,
     canSendAll,
@@ -2489,7 +2590,7 @@ export function ProcurementRequestWorkspace({
     readOnly,
     view,
     openOutreachEditor,
-    openComposer,
+    openClientComposer,
   ]);
 
   if (
@@ -2600,6 +2701,29 @@ export function ProcurementRequestWorkspace({
         : group,
     ),
     {
+      label: "Information needed",
+      items: [
+        { key: "information", label: "All Questions", icon: ListChecks },
+        ...(informationForms ?? []).map((form) => ({
+          key: `information-form:${form.id}`,
+          label: form.title,
+          icon: FileText,
+          count: form.questionCount,
+          attention: form.status === "open",
+        })),
+        ...(!readOnly
+          ? [
+              {
+                key: "information-form:new",
+                label: "Add form",
+                icon: Plus,
+                subtle: true,
+              },
+            ]
+          : []),
+      ],
+    },
+    {
       label: "Outreach",
       items: [
         {
@@ -2634,13 +2758,17 @@ export function ProcurementRequestWorkspace({
       ? applicationSection
       : "Contact details";
   const activeMenuKey =
-    view === "proposals"
-      ? "providers"
-      : view === "cadence"
-        ? "cadence"
-        : view === "email"
-          ? "email"
-          : activeApplicationSection;
+    view === "information"
+      ? selectedInformationForm
+        ? `information-form:${selectedInformationForm}`
+        : "information"
+      : view === "proposals"
+        ? "providers"
+        : view === "cadence"
+          ? "cadence"
+          : view === "email"
+            ? "email"
+            : activeApplicationSection;
   const selectMenu = async (key: string) => {
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
@@ -2651,7 +2779,20 @@ export function ProcurementRequestWorkspace({
       !(await submissionNotesRef.current.save())
     )
       return;
-    if (key === "providers" || key === "cadence" || key === "email") {
+    if (key.startsWith("information-form:")) {
+      void changeView(
+        "information",
+        undefined,
+        key.slice("information-form:".length),
+      );
+      return;
+    }
+    if (
+      key === "providers" ||
+      key === "cadence" ||
+      key === "email" ||
+      key === "information"
+    ) {
       closeRightPanel();
       void changeView(key === "providers" ? "proposals" : key);
       return;
@@ -2850,7 +2991,9 @@ export function ProcurementRequestWorkspace({
                     <TableCell>
                       <div className="flex flex-col items-start gap-2">
                         <OutreachStatusTag status={outreach.status} />
-                        {sequence ? <SequenceState sequence={sequence} /> : null}
+                        {sequence ? (
+                          <SequenceState sequence={sequence} />
+                        ) : null}
                         {proposal && proposalExtractionState(proposal) ? (
                           <ProposalExtractionStatus
                             proposal={proposal}
@@ -2928,6 +3071,26 @@ export function ProcurementRequestWorkspace({
           />
         ) : null}
 
+        {view === "information" &&
+          (selectedInformationForm ? (
+            <InformationFormWorkspace
+              key={selectedInformationForm}
+              requestId={requestId}
+              readOnly={readOnly}
+              onOpenDrawer={openInformationDrawer}
+              inboxHref={`${basePath}/${requestId}?view=email`}
+              onAskClient={askClientForInformation}
+              selectedForm={selectedInformationForm}
+            />
+          ) : (
+            <InformationRequests
+              requestId={requestId}
+              readOnly={readOnly}
+              onOpenDrawer={openInformationDrawer}
+              inboxHref={`${basePath}/${requestId}?view=email`}
+              onAskClient={askClientForInformation}
+            />
+          ))}
         {view === "cadence" && !readOnly ? (
           <ProviderOutreachCadence controller={providerOutreach} />
         ) : null}
@@ -2937,7 +3100,9 @@ export function ProcurementRequestWorkspace({
             key={requestId}
             scope={{ kind: "request", requestId }}
             selectedThreadId={
-              resolvedThread.status === "loading" ? threadParam : resolvedThread.threadId
+              resolvedThread.status === "loading"
+                ? threadParam
+                : resolvedThread.threadId
             }
             onSelect={selectInboxThread}
             onOpenThread={(thread) => void openEmail(thread)}

@@ -1,3 +1,12 @@
+import {
+  informationScopeValidator,
+  informationRequirementStatus,
+  informationResponseValidator,
+  informationFormQuestionValidator,
+  informationExtractionQuestionValidator,
+  informationEmailAnswerValidator,
+} from "./lib/procurementInformationSchema";
+import { followupQuestionValidator } from "./lib/intakeFollowupSchema";
 import { brokerContactFields } from "./lib/brokerContactFields";
 import {
   operatorPlanningAssessmentValidator,
@@ -2728,6 +2737,134 @@ export default defineSchema({
     .index("operator_expiration", ["operatorUserId", "expiresAt"])
     .index("storage", ["fileId"]),
 
+  procurementInformationExtractions: defineTable({
+    requestId: v.id("procurementRequests"),
+    messageId: v.id("teamEmailMessages"),
+    operatorUserId: v.id("users"),
+    automatic: v.optional(v.boolean()),
+    audience: v.optional(v.union(v.literal("provider"), v.literal("client"))),
+    outreachId: v.optional(v.id("procurementBrokerOutreaches")),
+    answerTargets: v.optional(
+      v.array(
+        v.object({
+          questionId: v.id("procurementInformationQuestions"),
+          answerId: v.optional(v.id("procurementInformationAnswers")),
+        }),
+      ),
+    ),
+    emailAnswers: v.optional(v.array(informationEmailAnswerValidator)),
+    unappliedCount: v.optional(v.number()),
+    reviewReasons: v.optional(v.array(v.string())),
+    startedAt: v.number(),
+    finishedAt: v.optional(v.number()),
+    status: v.union(
+      v.literal("running"),
+      v.literal("complete"),
+      v.literal("failed"),
+    ),
+    questions: v.array(informationExtractionQuestionValidator),
+  })
+    .index("by_requestId_and_messageId", ["requestId", "messageId"])
+    .index("by_requestId", ["requestId"]),
+  procurementInformationQuestions: defineTable({
+    requestId: v.id("procurementRequests"),
+    question: followupQuestionValidator,
+    archivedAt: v.optional(v.number()),
+    scope: informationScopeValidator,
+    // Deprecated: inert compatibility storage; future-intake reuse has been removed.
+    libraryId: v.optional(v.id("procurementQuestionLibrary")),
+    answerId: v.optional(v.id("procurementInformationAnswers")),
+    createdByUserId: v.id("users"),
+    createdAt: v.number(),
+  }).index("by_requestId", ["requestId"]),
+  procurementInformationRequirements: defineTable({
+    requestId: v.id("procurementRequests"),
+    questionId: v.id("procurementInformationQuestions"),
+    outreachId: v.id("procurementBrokerOutreaches"),
+    carrier: v.optional(v.string()),
+    sourceMessageId: v.optional(v.id("teamEmailMessages")),
+    sourceQuote: v.optional(v.string()),
+    status: informationRequirementStatus,
+    revision: v.number(),
+    resolutionNote: v.optional(v.string()),
+    acceptedAnswerId: v.optional(v.id("procurementInformationAnswers")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_requestId", ["requestId"])
+    .index("by_questionId", ["questionId"]),
+  procurementInformationForms: defineTable({
+    requestId: v.id("procurementRequests"),
+    title: v.string(),
+    outreachSequenceId: v.optional(v.id("procurementOutreachSequences")),
+    questions: v.array(informationFormQuestionValidator),
+    prerequisites: v.optional(
+      v.array(
+        v.object({
+          questionId: v.id("procurementInformationQuestions"),
+          answerId: v.id("procurementInformationAnswers"),
+        }),
+      ),
+    ),
+    responses: v.array(informationResponseValidator),
+    editDraft: v.optional(v.object({
+      responses: v.array(informationResponseValidator),
+      answerVersions: v.array(v.object({
+        questionId: v.id("procurementInformationQuestions"),
+        answerId: v.optional(v.id("procurementInformationAnswers")),
+      })),
+    })),
+    revision: v.number(),
+    status: v.union(
+      v.literal("open"),
+      v.literal("submitted"),
+      v.literal("cancelled"),
+    ),
+    createdByUserId: v.id("users"),
+    createdAt: v.number(),
+    submittedAt: v.optional(v.number()),
+    submittedByUserId: v.optional(v.id("users")),
+  }).index("by_requestId", ["requestId"]),
+  procurementInformationAnswers: defineTable({
+    requestId: v.id("procurementRequests"),
+    questionId: v.id("procurementInformationQuestions"),
+    formId: v.optional(v.id("procurementInformationForms")),
+    answer: v.string(),
+    unsure: v.boolean(),
+    fileItemIds: v.array(v.id("procurementFileItems")),
+    suppliedByUserId: v.optional(v.id("users")),
+    provenance: v.string(),
+    sourceMessageId: v.optional(v.id("teamEmailMessages")),
+    sourceQuote: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_questionId", ["questionId"]),
+  procurementInformationDeliveries: defineTable({
+    requestId: v.id("procurementRequests"),
+    requirementId: v.id("procurementInformationRequirements"),
+    answerId: v.id("procurementInformationAnswers"),
+    messageId: v.id("teamEmailMessages"),
+    recordedByUserId: v.id("users"),
+    createdAt: v.number(),
+  }).index("by_requestId", ["requestId"]),
+  // Deprecated: retained for existing records, without readers or writers.
+  procurementQuestionLibrary: defineTable({
+    question: followupQuestionValidator,
+    scope: informationScopeValidator,
+    state: v.union(
+      v.literal("observed"),
+      v.literal("active"),
+      v.literal("retired"),
+    ),
+    coverage: v.string(),
+    industry: v.string(),
+    jurisdiction: v.string(),
+    applicability: v.string(),
+    sourceRequirementId: v.id("procurementInformationRequirements"),
+    reviewedByUserId: v.optional(v.id("users")),
+    reviewedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index("by_state_and_coverage", ["state", "coverage"]),
+
   procurementRequests: defineTable({
     deletedAt: v.optional(v.number()),
     deletedByUserId: v.optional(v.id("users")),
@@ -2864,6 +3001,7 @@ export default defineSchema({
   // client for information and carry the operator's own first message.
   procurementOutreachSequences: defineTable({
     requestId: v.id("procurementRequests"),
+    informationFormId: v.optional(v.id("procurementInformationForms")),
     clientOrgId: v.id("organizations"),
     audience: v.optional(v.union(v.literal("provider"), v.literal("client"))),
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
@@ -3545,6 +3683,7 @@ export default defineSchema({
   })
     .index("request", ["requestId", "updatedAt"])
     .index("file", ["clientFileId", "updatedAt"])
+    .index("by_requestId_and_clientFileId", ["requestId", "clientFileId"])
     .index("email", ["sourceEmailMessageId"])
     .index("release", ["requestId", "brokerRelease", "updatedAt"]),
 

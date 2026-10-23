@@ -60,6 +60,7 @@ node_modules/
 !/docs/procurement/acord-intake/
 !/docs/architecture/
 /docs/architecture/*
+!/docs/architecture/procurement-information.md
 !/docs/architecture/quote-provider-branding.md
 !/docs/architecture/reviewer-account.md
 !/docs/architecture/backend-simplification.md
@@ -75,6 +76,7 @@ node_modules/
 !/docs/reference/acord-pcs-2.11.0-lines.json
 !/docs/testing/
 /docs/testing/*
+!/docs/testing/procurement-information-workflow.md
 !/docs/testing/README.md
 !/docs/testing/workflow-qa.md
 !/docs/testing/workspace-scan.md

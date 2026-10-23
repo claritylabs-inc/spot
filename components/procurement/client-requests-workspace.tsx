@@ -1,4 +1,5 @@
 "use client";
+import { ClientInformationForms } from "@/components/insurance-intake/information-form";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
 
@@ -396,6 +397,7 @@ export function ClientRequestDetail({
   const request = details;
   return (
     <div className="space-y-5">
+      <ClientInformationForms requestId={requestId} />
       <OperationalLabelValueList>
         <OperationalLabelValueRow
           label="Status"

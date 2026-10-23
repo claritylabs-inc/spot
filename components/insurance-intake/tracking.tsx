@@ -5,6 +5,7 @@ import { hasCommercialAuto } from "@/lib/intake-drivers";
 import { followupQuestionVisible } from "@/lib/intake-followups";
 import { IntakeFollowupReview } from "./followup-review";
 import { IntakePremiumEstimate } from "./premium-estimate";
+import { ReviewSection } from "./review-section";
 import { ChevronDown } from "lucide-react";
 import {
   OperationalLabelValueList,
@@ -35,52 +36,6 @@ const sections = [
   { title: "Coverage", step: 6, index: 1 },
   { title: "Insurance history", step: 20, index: 3 },
 ];
-/** Match the review disclosures while keeping Edit separate from toggling. */
-function ReviewSection({
-  title,
-  step,
-  onEdit,
-  children,
-  complete,
-}: {
-  title: string;
-  step: number;
-  onEdit?: (step: number) => void;
-  children: ReactNode;
-  complete?: boolean;
-}) {
-  return (
-    <details className="group">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        <h2 className={typeStyle("heading.item")}>{title}</h2>
-        <div className="flex items-center gap-3">
-          {complete !== undefined && (
-            <StatusTag className={typeStyle("body.large")} tone={complete ? "success" : "neutral"} indicator={complete ? "complete" : "progress"}>
-              {complete ? "Complete" : "In Progress"}
-            </StatusTag>
-          )}
-          {onEdit && (
-            <PillButton
-              variant="ghost"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onEdit(step);
-              }}
-            >
-              Edit
-            </PillButton>
-          )}
-          <ChevronDown
-            aria-hidden="true"
-            className="size-4 transition-transform group-open:rotate-180"
-          />
-        </div>
-      </summary>
-      <div className="space-y-4 pb-3 pt-1">{children}</div>
-    </details>
-  );
-}
 export function IntakeTracking({
   data,
   banner,
