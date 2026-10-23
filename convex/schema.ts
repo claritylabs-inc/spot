@@ -2852,6 +2852,7 @@ export default defineSchema({
     }),
     message: v.optional(v.object({ subject: v.string(), text: v.string() })),
     senderUserId: v.id("users"),
+    identityFingerprint: v.optional(v.string()),
     inboxId: v.optional(v.string()),
     packetLinkId: v.optional(v.id("procurementPacketLinks")),
     resendThreadId: v.optional(v.string()),
@@ -2924,6 +2925,8 @@ export default defineSchema({
     leaseUntil: v.optional(v.number()),
     firstAttemptAt: v.optional(v.number()),
     impersonationDeferredAt: v.optional(v.number()),
+    identityDeferredAt: v.optional(v.number()),
+    identity: v.optional(v.object({ fingerprint: v.string(), inboxId: v.string() })),
     generationStartedAt: v.optional(v.number()),
     draft: v.optional(
       v.object({
@@ -5229,6 +5232,14 @@ export default defineSchema({
     senderUserId: v.optional(v.id("users")),
     operatorAlwaysCcEmail: v.optional(v.string()),
     directReplyKey: v.optional(v.string()),
+    directReplyMessage: v.optional(v.string()),
+    directReplyContext: v.optional(v.object({
+      latestMessageId: v.id("teamEmailMessages"),
+      mode: v.union(v.literal("thread"), v.literal("standalone")),
+      inboxId: v.optional(v.string()),
+      resendThreadId: v.optional(v.string()),
+      replyToEmailId: v.optional(v.string()),
+    })),
     directApproval: v.optional(v.object({
       actorUserId: v.id("users"),
       fingerprint: v.string(),
