@@ -4,7 +4,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { ClRouterTraceInput } from "./clRouterClient";
 import { generateObjectForOrg } from "./models";
-import { buildOutreachSignature } from "./outreachSignature";
+import { buildOperatorSignature } from "./teamEmail";
 import type { OutreachStyle } from "./providerOutreachSchedule";
 
 /**
@@ -47,7 +47,8 @@ export type OutreachEmailInput = {
   isFinal: boolean;
   providerName: string;
   recipientName?: string;
-  operator: { name: string; email?: string };
+  /** The sender's full name, as signed. */
+  operator: { name: string };
   /** Explicit client summary. Never pass `private.md`, notes or raw files. */
   client: {
     name: string;
@@ -373,7 +374,7 @@ export function composeOutreachEmail(
   const greeting = `Hi ${firstName(input.recipientName) ?? "there"},`;
   const link = assertHttpsUrl(packetUrl);
   const linkIntro = "Secure submission packet:";
-  const signature = buildOutreachSignature(input.operator);
+  const signature = buildOperatorSignature(input.operator);
 
   const text = [
     greeting,

@@ -35,24 +35,23 @@ import {
   OUTREACH_STYLES,
 } from "../lib/providerOutreachSchedule";
 import { getEmailDeliveryMode } from "../lib/resend";
+import { ensureOperatorInbox, validateAlwaysCcEmail } from "../lib/operatorInbox";
+import { operatorEmailAliases } from "../lib/operatorIdentity";
+import { isTeamEmailError } from "../lib/teamEmail";
 import {
   OUTREACH_INBOX_LABEL_NAMES,
   addThreadLabels,
   capturedResourceId,
   createDraft,
-  ensureInbox,
   ensureOutreachInboxLabels,
   getThreadEmail,
   isBounceSender,
   isCapturedResourceId,
   isResendInboxError,
   listReceivedEmailAttachments,
-  operatorInboxAddress,
-  operatorInboxFromName,
   parseInboxWebhookEvent,
   replyToThreadEmail,
   sendDraft,
-  ResendInboxError,
   type ResendThreadEmail,
 } from "../lib/resendInbox";
 import {
@@ -329,76 +328,6 @@ export const suggestCadence = internalAction({
 });
 
 // ---------------------------------------------------------------------------
-// Operator inbox
-// ---------------------------------------------------------------------------
-
-/**
- * Creates (or adopts, on a 409) the operator's Resend inbox and its labels.
- * Throws `ResendInboxError`; never returns a captured placeholder, because
- * callers skip provisioning entirely in capture mode.
- */
-async function provisionOperatorInbox(sender: {
-  name: string | null;
-  email: string | null;
-}): Promise<InboxRecord> {
-  if (!sender.email) {
-    throw new ResendInboxError(
-      "permanent",
-      "ensureInbox",
-      "operator has no email",
-      {
-        code: "validation_error",
-      },
-    );
-  }
-  const emailAddress = operatorInboxAddress(sender.email);
-  const fromName = operatorInboxFromName(sender.name ?? undefined);
-  const ensured = await ensureInbox({
-    emailAddress,
-    fromName,
-    name: emailAddress,
-  });
-  if (ensured.status !== "ok" || isCapturedResourceId(ensured.data.id)) {
-    throw new ResendInboxError(
-      "permanent",
-      "ensureInbox",
-      "inbox provisioning unavailable",
-      {
-        code: "captured_resource_id",
-      },
-    );
-  }
-  // An adopted inbox must be the exact address derived for this operator.
-  if (ensured.data.emailAddress.toLowerCase() !== emailAddress.toLowerCase()) {
-    throw new ResendInboxError(
-      "permanent",
-      "ensureInbox",
-      "inbox address mismatch",
-      {
-        code: "inbox_address_mismatch",
-      },
-    );
-  }
-  const labels = await ensureOutreachInboxLabels(ensured.data.id);
-  if (labels.status !== "ok") {
-    throw new ResendInboxError(
-      "permanent",
-      "ensureLabels",
-      "label provisioning unavailable",
-      {
-        code: "captured_resource_id",
-      },
-    );
-  }
-  return {
-    inboxId: ensured.data.id,
-    emailAddress: ensured.data.emailAddress,
-    fromName: ensured.data.fromName ?? fromName,
-    labelIds: labels.data,
-  };
-}
-
-// ---------------------------------------------------------------------------
 // sendStep
 // ---------------------------------------------------------------------------
 
@@ -416,7 +345,7 @@ function emailInputFor(
   claim: Claimed,
   broker: NonNullable<Claimed["broker"]>,
   packet: NonNullable<Claimed["packet"]>,
-  operator: { name: string; email?: string },
+  operator: { name: string },
 ): OutreachEmailInput {
   const { step, request, sequence } = claim;
   const initialSubject =
@@ -441,18 +370,47 @@ function emailInputFor(
   };
 }
 
+/** The earlier email, quoted when a follow-up continues from a new inbox when a follow-up continues from a new inbox. */
+function withQuotedHistory(
+  composed: { text: string; html: string },
+  quote: { sentAt: number; text: string; senderName: string },
+) {
+  const heading = `On ${dayjs(quote.sentAt).format("MMM D, YYYY")}, ${quote.senderName} wrote:`;
+  const quoted = quote.text
+    .trim()
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
+  return {
+    text: `${composed.text}\n\n${heading}\n${quoted}`,
+    html: `${composed.html}<p style="margin:16px 0 4px;color:#6b6b6b">${escapeHtml(heading)}</p><blockquote style="margin:0 0 0 4px;padding-left:12px;border-left:2px solid #d4d4d4;color:#6b6b6b">${escapeHtml(quote.text.trim()).replace(/\n/g, "<br>")}</blockquote>`,
+  };
+}
+
+type SenderIdentity = {
+  /** Full name, as signed. */
+  name: string;
+  /** Exactly the CC list this step sends. */
+  cc: string[];
+  /** Set when this follow-up continues from a new inbox: the earlier email is quoted. */
+  quote: { sentAt: number; text: string; senderName: string } | null;
+};
+
 /**
  * Persisted draft, or one generation attempt. `prepareDraftInternal` is a
  * mutation that marks inference started before the router is called and returns
- * `generate` at most once per step.
+ * `generate` at most once per step. A newly composed draft is saved with the
+ * sender's identity of that moment (signed name and the exact CC list); a saved
+ * draft is never recomposed, so a retry sends the same payload.
  */
 async function resolveDraft(
   ctx: ActionCtx,
   claim: Claimed,
   leaseToken: string,
-  operator: { name: string; email?: string },
+  identity: SenderIdentity,
 ): Promise<StepDraft | null> {
   const { stepId } = claim.step;
+  const operator = { name: identity.name };
   const prepared = await ctx.runMutation(
     internal.providerOutreach.prepareDraftInternal,
     {
@@ -463,22 +421,39 @@ async function resolveDraft(
   if (prepared.mode === "stale") return null;
   if (prepared.mode === "saved") return prepared.draft;
 
-  // Client information requests: the operator's own words, then deterministic nudges.
-  if (claim.sequence.audience === "client") {
-    if (!claim.sequence.message) return null;
-    const composed = composeClientOutreachEmail({
-      kind: claim.step.kind,
-      isFinal: claim.step.isFinal,
-      recipientName: claim.sequence.recipient.name,
-      operator,
-      message: claim.sequence.message,
-    });
+  const save = async (composed: {
+    subject: string;
+    text: string;
+    html: string;
+    source: StepDraft["source"];
+  }) => {
+    const body = identity.quote ? withQuotedHistory(composed, identity.quote) : composed;
     const saved = await ctx.runMutation(internal.providerOutreach.saveDraftInternal, {
       stepId,
       leaseToken,
-      draft: composed,
+      draft: {
+        cc: identity.cc,
+        subject: composed.subject,
+        text: body.text,
+        html: body.html,
+        source: composed.source,
+      },
     });
     return saved.stored ? saved.draft : null;
+  };
+
+  // Client information requests: the operator's own words, then deterministic nudges.
+  if (claim.sequence.audience === "client") {
+    if (!claim.sequence.message) return null;
+    return await save(
+      composeClientOutreachEmail({
+        kind: claim.step.kind,
+        isFinal: claim.step.isFinal,
+        recipientName: claim.sequence.recipient.name,
+        operator,
+        message: claim.sequence.message,
+      }),
+    );
   }
   if (!claim.broker || !claim.packet) return null;
   const input = emailInputFor(claim, claim.broker, claim.packet, operator);
@@ -497,21 +472,7 @@ async function resolveDraft(
         new Error(attempt.reason),
       );
   }
-  const composed = composeOutreachEmail(input, claim.packet.url, generated);
-  const saved = await ctx.runMutation(
-    internal.providerOutreach.saveDraftInternal,
-    {
-      stepId,
-      leaseToken,
-      draft: {
-        subject: composed.subject,
-        text: composed.text,
-        html: composed.html,
-        source: composed.source,
-      },
-    },
-  );
-  return saved.stored ? saved.draft : null;
+  return await save(composeOutreachEmail(input, claim.packet.url, generated));
 }
 
 export const sendStep = internalAction({
@@ -569,38 +530,72 @@ export const sendStep = internalAction({
         return { status: "awaiting_thread" as const };
       }
 
-      // Inbox: none is provisioned or persisted in capture mode.
-      let inbox: InboxRecord | null = null;
-      if (!capture) {
-        const candidate =
-          claim.inbox ?? (await provisionOperatorInbox(claim.sender));
-        if (isCapturedResourceId(candidate.inboxId))
-          return await fail(
-            permanentFailure("Operator inbox record is a capture placeholder"),
-          );
-        // The stored record wins; the candidate is never used directly.
+      // The sender's current team identity. In capture mode the inbox is a
+      // placeholder that is neither provisioned nor persisted.
+      let ensured: Awaited<ReturnType<typeof ensureOperatorInbox>>;
+      try {
+        ensured = await ensureOperatorInbox(ctx, claim.sender.userId);
+      } catch (error) {
+        // Identity problems (no name, bad address) are the operator's to fix in Profile.
+        if (isTeamEmailError(error)) return await fail(permanentFailure(error.message));
+        throw error;
+      }
+      const inbox = ensured.inbox;
+      let rotated = false;
+      if (!ensured.captured) {
         const recorded = await ctx.runMutation(
           internal.providerOutreach.recordInboxInternal,
-          {
-            stepId,
-            leaseToken,
-            inbox: candidate,
-          },
+          { stepId, leaseToken, inboxId: inbox.inboxId },
         );
-        if (!recorded.stored || !recorded.inbox)
-          return await fail(permanentFailure("Operator inbox is unavailable"));
-        inbox = recorded.inbox;
+        if (!recorded.stored)
+          return await fail(
+            permanentFailure(
+              recorded.reason === "inbox_changed_after_draft"
+                ? "Your team address changed after this email was prepared; it was not sent from the retired address"
+                : "Operator inbox is unavailable",
+            ),
+          );
+        rotated = recorded.rotated;
       }
-      const inboxId =
-        inbox?.inboxId ??
-        capturedResourceId("inbox", String(claim.sender.userId));
+      const inboxId = inbox.inboxId;
 
-      const operator = {
-        name: claim.sender.name?.trim() || "Spot",
-        ...(inbox?.emailAddress ? { email: inbox.emailAddress } : {}),
+      // The exact CC list: the saved Always CC, validated now, never the recipient itself.
+      let cc: string[] = [];
+      if (ensured.alwaysCcEmail) {
+        try {
+          const own = [
+            inbox.emailAddress,
+            ...(claim.sender.email ? [claim.sender.email, ...operatorEmailAliases(claim.sender.email)] : []),
+          ];
+          const address = validateAlwaysCcEmail(ensured.alwaysCcEmail, own);
+          if (address !== claim.sequence.recipient.email.trim().toLowerCase()) cc = [address];
+        } catch (error) {
+          if (isTeamEmailError(error))
+            return await fail(
+              permanentFailure(`Always CC cannot be used: ${error.message}. Fix it in Profile.`),
+            );
+          throw error;
+        }
+      }
+      const senderName = claim.sender.name?.trim() ?? "";
+      const identity: SenderIdentity = {
+        name: senderName,
+        cc,
+        quote:
+          rotated && claim.lastSent
+            ? { ...claim.lastSent, senderName }
+            : null,
       };
-      const draft = await resolveDraft(ctx, claim, leaseToken, operator);
+      let draft: StepDraft | null;
+      try {
+        draft = await resolveDraft(ctx, claim, leaseToken, identity);
+      } catch (error) {
+        if (isTeamEmailError(error)) return await fail(permanentFailure(error.message));
+        throw error;
+      }
       if (!draft) return { status: "stale" as const };
+      // A retry sends exactly the saved list; a draft saved before CC snapshots has none.
+      const sendCc = draft.cc ?? [];
 
       const checkpoint = async () =>
         (
@@ -620,13 +615,16 @@ export const sendStep = internalAction({
 
       let resendEmailId: string;
       let resendDraftId: string | undefined;
-      if (!isFollowUp) {
+      // The first email, and a follow-up continuing from a new inbox, are new
+      // messages created as a draft; a follow-up in its own inbox replies in the thread.
+      if (!isFollowUp || rotated) {
         if (!(await checkpoint())) return { status: "held" as const };
         resendDraftId = claim.step.resendDraftId ?? undefined;
         if (!resendDraftId) {
           const created = await createDraft({
             inboxId,
             to: claim.sequence.recipient.email,
+            ...(sendCc.length ? { cc: sendCc } : {}),
             subject: draft.subject,
             text: draft.text,
             html: draft.html,
@@ -664,6 +662,7 @@ export const sendStep = internalAction({
             replyToEmailId ?? capturedResourceId("email", String(stepId)),
           text: draft.text,
           html: draft.html,
+          ...(sendCc.length ? { cc: sendCc } : {}),
           idempotencyKey: `outreach-send:${stepId}`,
         });
         if (reply.status === "captured") return await finishCaptured();
@@ -678,14 +677,15 @@ export const sendStep = internalAction({
           outcome: {
             kind: "sent",
             resendEmailId,
-            ...(threadId ? { resendThreadId: threadId } : {}),
+            ...(threadId && !rotated ? { resendThreadId: threadId } : {}),
             ...(resendDraftId ? { resendDraftId } : {}),
+            ...(ensured.captured ? {} : { inboxId }),
           },
         },
       );
       // Delivery is recorded. Labeling the known thread is best effort; the
       // first email's thread is labeled when its `inbox.email.sent` event maps.
-      if (finished.applied && threadId && inbox)
+      if (finished.applied && threadId && !rotated && !ensured.captured)
         await labelThread(inbox, threadId, "automated");
       return { status: "sent" as const };
     } catch (error) {

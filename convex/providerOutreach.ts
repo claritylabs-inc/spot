@@ -1,4 +1,3 @@
-import { isCapturedResourceId, operatorInboxAddress } from "./lib/resendInbox";
 import dayjs from "dayjs";
 import { v } from "convex/values";
 
@@ -53,7 +52,6 @@ import {
   inboxAttachmentValidator,
   inboxEmailValidator,
   inboxEventTypeValidator,
-  inboxRecordValidator,
   outreachCadenceSourceValidator,
   outreachCadenceValidator,
   replyClassificationValidator,
@@ -107,6 +105,7 @@ const SEQUENCE_STATUSES: readonly SequenceStatus[] = [
   "failed",
 ];
 const MAX_STEPS_PER_SEQUENCE = 10;
+const QUOTED_HISTORY_CHARS = 3000;
 const SHORT_TEXT = 500;
 /** Longest a step may wait for an impersonating sender before the sequence stops. */
 const IMPERSONATION_MAX_DEFER_MS = 24 * 60 * 60 * 1000;
@@ -1514,21 +1513,6 @@ async function checkStepWorld(
   };
 }
 
-async function inboxForUser(ctx: Ctx, userId: Id<"users">): Promise<InboxRecord | null> {
-  const row = await ctx.db
-    .query("operatorOutreachInboxes")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .first();
-  return row
-    ? {
-        inboxId: row.inboxId,
-        emailAddress: row.emailAddress,
-        fromName: row.fromName,
-        labelIds: row.labelIds,
-      }
-    : null;
-}
-
 export type ClaimStepResult =
   | {
       status: "claimed";
@@ -1567,9 +1551,12 @@ export type ClaimStepResult =
         cadence: Sequence["cadence"];
         resendThreadId: string | null;
         lastOutboundEmailId: string | null;
+        /** The inbox the conversation lives in; null before the first email. */
+        inboxId: string | null;
       };
       sender: { userId: Id<"users">; name: string | null; email: string | null };
-      inbox: InboxRecord | null;
+      /** The last email already sent on this sequence, for the history quoted when a follow-up moves to a new inbox. */
+      lastSent: { sentAt: number; text: string } | null;
       request: {
         clientOrgId: Id<"organizations">;
         coverageLines: string[];
@@ -1746,13 +1733,21 @@ export const claimStepInternal = internalMutation({
         cadence: sequence.cadence,
         resendThreadId: sequence.resendThreadId ?? null,
         lastOutboundEmailId: sequence.lastOutboundEmailId ?? null,
+        inboxId: sequence.inboxId ?? null,
       },
       sender: {
         userId: sequence.senderUserId,
         name: world.sender?.name ?? null,
         email: world.sender?.email ?? null,
       },
-      inbox: await inboxForUser(ctx, sequence.senderUserId),
+      lastSent: (() => {
+        const sent = earlier
+          .filter((row) => row.index < step.index && row.status === "sent" && row.draft?.text)
+          .sort((a, b) => b.index - a.index)[0];
+        return sent?.draft && sent.sentAt
+          ? { sentAt: sent.sentAt, text: sent.draft.text.slice(0, QUOTED_HISTORY_CHARS) }
+          : null;
+      })(),
       request: {
         clientOrgId: sequence.clientOrgId,
         coverageLines: matchFor(world.request, world.client).needs.needs.map((need) => need.label),
@@ -1886,6 +1881,17 @@ export const prepareDraftInternal = internalMutation({
     const now = dayjs().valueOf();
     const step = await fencedStep(ctx, args.stepId, args.leaseToken, now);
     if (!step) return { mode: "stale" as const };
+    // A draft saved before CC snapshots existed, with nothing created at Resend
+    // and no earlier attempt, is recomposed from the template with the sender's
+    // current identity. Once an attempt may have reached Resend it stays as saved.
+    if (step.draft && step.draft.cc === undefined && !step.resendDraftId && step.attempts <= 1) {
+      await ctx.db.patch(step._id, {
+        draft: undefined,
+        generationStartedAt: step.generationStartedAt ?? now,
+        updatedAt: now,
+      });
+      return { mode: "template_only" as const };
+    }
     if (step.draft) return { mode: "saved" as const, draft: step.draft };
     if (step.generationStartedAt !== undefined) return { mode: "template_only" as const };
     await ctx.db.patch(step._id, { generationStartedAt: now, updatedAt: now });
@@ -1928,52 +1934,54 @@ export const recordDraftIdInternal = internalMutation({
   },
 });
 
-/** Records the operator's inbox (idempotent per user) and attaches it to the sequence. */
+/**
+ * Binds the sequence to the sender's ACTIVE inbox (which `ensureOperatorInbox`
+ * has already persisted). Only the sender's own active operator inbox is
+ * accepted. A sequence already in a different inbox (the old one was retired)
+ * moves only while nothing has been prepared at Resend: an initial step with no
+ * draft id re-binds, a follow-up reports `rotated` so it can continue from the
+ * active inbox as a new message that quotes the history (the sequence moves once
+ * that send is recorded). An initial step whose draft already lives in the old
+ * inbox is refused: it may already be on its way and is never re-sent elsewhere.
+ */
 export const recordInboxInternal = internalMutation({
   args: {
     stepId: v.id("procurementOutreachSteps"),
     leaseToken: v.string(),
-    inbox: inboxRecordValidator,
+    inboxId: v.string(),
   },
-  handler: async (ctx, args): Promise<{ stored: boolean; inbox: InboxRecord | null }> => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ stored: boolean; rotated: boolean; reason?: string }> => {
     const now = dayjs().valueOf();
     const step = await fencedStep(ctx, args.stepId, args.leaseToken, now);
-    if (!step) return { stored: false, inbox: null };
+    if (!step) return { stored: false, rotated: false, reason: "stale_lease" };
     const sequence = await ctx.db.get(step.sequenceId);
-    if (!sequence) return { stored: false, inbox: null };
-    const existing = await ctx.db
+    if (!sequence) return { stored: false, rotated: false, reason: "sequence_missing" };
+    const row = await ctx.db
       .query("operatorOutreachInboxes")
-      .withIndex("by_userId", (q) => q.eq("userId", sequence.senderUserId))
+      .withIndex("by_inboxId", (q) => q.eq("inboxId", args.inboxId))
       .first();
-    if (!existing) {
-    const sender = await ctx.db.get(sequence.senderUserId);
-    if (!sender?.email || isCapturedResourceId(args.inbox.inboxId) ||
-        args.inbox.emailAddress.toLowerCase() !== operatorInboxAddress(sender.email).toLowerCase())
-      return { stored: false, inbox: null };
-
-
-      const taken = await ctx.db
-        .query("operatorOutreachInboxes")
-        .withIndex("by_inboxId", (q) => q.eq("inboxId", args.inbox.inboxId))
-        .first();
-      if (taken) return { stored: false, inbox: null };
-      await ctx.db.insert("operatorOutreachInboxes", {
-        userId: sequence.senderUserId,
-        ...args.inbox,
-        createdAt: now,
-      });
+    if (
+      !row ||
+      row.kind === "agent" ||
+      row.userId !== sequence.senderUserId ||
+      (row.status ?? "active") !== "active"
+    )
+      return { stored: false, rotated: false, reason: "inbox_not_active_for_sender" };
+    if (sequence.inboxId === args.inboxId) return { stored: true, rotated: false };
+    if (sequence.inboxId === undefined) {
+      await ctx.db.patch(sequence._id, { inboxId: args.inboxId, updatedAt: now });
+      return { stored: true, rotated: false };
     }
-    const stored = existing
-      ? {
-          inboxId: existing.inboxId,
-          emailAddress: existing.emailAddress,
-          fromName: existing.fromName,
-          labelIds: existing.labelIds,
-        }
-      : args.inbox;
-    if (sequence.inboxId === undefined)
-      await ctx.db.patch(sequence._id, { inboxId: stored.inboxId, updatedAt: now });
-    return { stored: true, inbox: stored };
+    if (step.kind === "initial") {
+      if (step.resendDraftId)
+        return { stored: false, rotated: false, reason: "inbox_changed_after_draft" };
+      await ctx.db.patch(sequence._id, { inboxId: args.inboxId, updatedAt: now });
+      return { stored: true, rotated: false };
+    }
+    return { stored: true, rotated: true };
   },
 });
 
@@ -2050,11 +2058,29 @@ async function recordSentFacts(
   },
 ) {
   const { sequence, step, outcome, now } = args;
+  // A follow-up sent from the active inbox after the old one was retired starts a
+  // new Resend thread there. The conversation moves with it; the new thread id
+  // is learned from that email's `inbox.email.sent` event and bound to the same
+  // team conversation.
+  const targetInbox = outcome.inboxId
+    ? await ctx.db
+        .query("operatorOutreachInboxes")
+        .withIndex("by_inboxId", (q) => q.eq("inboxId", outcome.inboxId!))
+        .first()
+    : null;
+  const moved =
+    outcome.inboxId !== undefined &&
+    sequence.inboxId !== undefined &&
+    sequence.inboxId !== outcome.inboxId &&
+    targetInbox?.userId === sequence.senderUserId &&
+    targetInbox.kind !== "agent";
   await ctx.db.patch(sequence._id, {
     lastOutboundEmailId: outcome.resendEmailId,
-    ...(outcome.resendThreadId && !sequence.resendThreadId
-      ? { resendThreadId: outcome.resendThreadId }
-      : {}),
+    ...(moved
+      ? { inboxId: outcome.inboxId, resendThreadId: undefined }
+      : outcome.resendThreadId && !sequence.resendThreadId
+        ? { resendThreadId: outcome.resendThreadId }
+        : {}),
     updatedAt: now,
   });
   await recordDeliveryAttempt(ctx, {
@@ -3469,6 +3495,66 @@ export const prepareOperatorReplyInternal = internalMutation({
       messageId: target.messageId,
       references: [...target.references, ...(target.messageId ? [target.messageId] : [])],
     };
+  },
+});
+
+/**
+ * Stops the automated follow-ups of the live outreach sequence behind a team
+ * conversation, for an operator reply about to go out. Finds the sequence by
+ * its team (or legacy) thread pointer among the request's live sequences, then
+ * by the conversation's Resend thread ids (primary and linked), all by index.
+ * Nothing to stop is a no-op. Called only by the accepted reply send, after its
+ * final identity/approval/run recheck and before Resend is called.
+ */
+export const stopFollowUpsForOperatorReplyInternal = internalMutation({
+  args: { teamEmailThreadId: v.id("teamEmailThreads") },
+  handler: async (ctx, args): Promise<{ stopped: number }> => {
+    const thread = await ctx.db.get(args.teamEmailThreadId);
+    if (!thread || thread.deletedAt) return { stopped: 0 };
+    const found = new Map<Id<"procurementOutreachSequences">, Sequence>();
+    if (thread.requestId) {
+      const requestId = thread.requestId;
+      for (const status of LIVE_SEQUENCE_STATUSES) {
+        const live = await ctx.db
+          .query("procurementOutreachSequences")
+          .withIndex("by_requestId_and_status", (q) =>
+            q.eq("requestId", requestId).eq("status", status),
+          )
+          .take(25);
+        for (const sequence of live)
+          if (
+            sequence.teamEmailThreadId === thread._id ||
+            (thread.legacyThreadId !== undefined &&
+              sequence.procurementEmailThreadId === thread.legacyThreadId)
+          )
+            found.set(sequence._id, sequence);
+      }
+    }
+    const links = await ctx.db
+      .query("teamEmailThreadLinks")
+      .withIndex("by_threadId", (q) => q.eq("threadId", thread._id))
+      .take(20);
+    const resendThreadIds = new Set(
+      [thread.resendThreadId, ...links.map((link) => link.resendThreadId)].filter(
+        (id): id is string => Boolean(id),
+      ),
+    );
+    for (const resendThreadId of resendThreadIds) {
+      const sequence = await ctx.db
+        .query("procurementOutreachSequences")
+        .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", resendThreadId))
+        .first();
+      // A thread id alone is not proof: the sequence must also be this conversation's request.
+      if (sequence && sequence.requestId === thread.requestId) found.set(sequence._id, sequence);
+    }
+    const now = dayjs().valueOf();
+    let stopped = 0;
+    for (const sequence of found.values()) {
+      if (!isLive(sequence.status)) continue;
+      await terminalizeSequence(ctx, sequence, { status: "stopped", reason: "operator_replied", now });
+      stopped += 1;
+    }
+    return { stopped };
   },
 });
 
