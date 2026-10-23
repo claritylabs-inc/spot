@@ -49,6 +49,7 @@ export default function OperatorProcurementRequestPage() {
     normalizedView === "proposals" ||
     normalizedView === "cadence" ||
     normalizedView === "files" ||
+    normalizedView === "information" ||
     normalizedView === "email"
       ? normalizedView
       : "application";

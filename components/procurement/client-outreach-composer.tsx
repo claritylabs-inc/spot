@@ -36,9 +36,10 @@ type Draft = {
   subject: string;
   text: string;
   cadence: Cadence | null;
+  generatedInvitation?: string;
 };
 
-// Unsent drafts survive closing the composer within the session, per request.
+// Unsent drafts survive closing the composer within the session, per request/form.
 const drafts = new Map<string, Draft>();
 
 /** A mail-client header row: muted inline label, borderless value. */
@@ -73,30 +74,50 @@ function firstName(name: string | null | undefined) {
 export function ClientOutreachComposer({
   requestId,
   requestTitle,
+  initialText,
+  informationFormId,
   onClose,
   onSent,
 }: {
   requestId: Id<"procurementRequests">;
   requestTitle: string;
+  initialText?: string;
+  informationFormId?: Id<"procurementInformationForms">;
   onClose: () => void;
   onSent: () => void;
 }) {
   const panel = useQuery(api.clientOutreach.getPanel, { requestId });
   const launch = useMutation(api.clientOutreach.launch);
-  const [draft, setDraftState] = useState<Draft>(
-    () =>
-      drafts.get(requestId) ?? {
-        recipientEmail: null,
-        subject: `Information needed: ${requestTitle}`.slice(0, 200),
-        text: "",
-        cadence: null,
-      },
-  );
+  const draftKey = informationFormId
+    ? `${requestId}:${informationFormId}`
+    : requestId;
+  const [draft, setDraftState] = useState<Draft>(() => {
+    const previous = drafts.get(draftKey);
+    const text =
+      initialText &&
+      previous?.generatedInvitation &&
+      previous.text.includes(previous.generatedInvitation)
+        ? previous.text.replace(previous.generatedInvitation, initialText)
+        : initialText && !previous?.text.includes(initialText)
+          ? [previous?.text, initialText].filter(Boolean).join("\n\n")
+          : (previous?.text ?? "");
+    const next: Draft = {
+      recipientEmail: previous?.recipientEmail ?? null,
+      subject:
+        previous?.subject ??
+        `Information needed: ${requestTitle}`.slice(0, 200),
+      text,
+      cadence: previous?.cadence ?? null,
+      generatedInvitation: initialText ?? previous?.generatedInvitation,
+    };
+    drafts.set(draftKey, next);
+    return next;
+  });
   const [sending, setSending] = useState(false);
   const update = (patch: Partial<Draft>) =>
     setDraftState((current) => {
       const next = { ...current, ...patch };
-      drafts.set(requestId, next);
+      drafts.set(draftKey, next);
       return next;
     });
 
@@ -117,7 +138,9 @@ export function ClientOutreachComposer({
   const senderFingerprint = panel?.sender.fingerprint ?? null;
   const senderProblem = panel
     ? (panel.sender.problem ??
-      (senderFingerprint ? null : "Reload to review the From and CC before sending"))
+      (senderFingerprint
+        ? null
+        : "Reload to review the From and CC before sending"))
     : null;
   const canSend =
     !disabled &&
@@ -134,6 +157,7 @@ export function ClientOutreachComposer({
     try {
       const result = await launch({
         requestId,
+        informationFormId,
         recipientEmail: recipient.email,
         subject: draft.subject,
         text: draft.text,
@@ -144,7 +168,7 @@ export function ClientOutreachComposer({
           style: "brief_nudge",
         },
       });
-      drafts.delete(requestId);
+      drafts.delete(draftKey);
       toast.success(
         result.stepCount > 1
           ? `Email queued with ${result.stepCount - 1} follow-up${result.stepCount === 2 ? "" : "s"}`
@@ -159,7 +183,7 @@ export function ClientOutreachComposer({
   }
 
   function discard() {
-    drafts.delete(requestId);
+    drafts.delete(draftKey);
     onClose();
   }
 
@@ -285,10 +309,16 @@ export function ClientOutreachComposer({
           <HeaderRow label="From">
             {senderProblem ? (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-                <p className={`min-w-0 flex-1 text-muted-foreground ${typeStyle("body.default")}`}>
+                <p
+                  className={`min-w-0 flex-1 text-muted-foreground ${typeStyle("body.default")}`}
+                >
                   {senderProblem}
                 </p>
-                <PillButton href="/operator/profile" size="compact" variant="ghost">
+                <PillButton
+                  href="/operator/profile"
+                  size="compact"
+                  variant="ghost"
+                >
                   Open Profile
                 </PillButton>
               </div>
@@ -400,7 +430,9 @@ export function ClientOutreachComposer({
                 <div className="mt-3 flex items-start gap-2.5">
                   <LogoIcon size={32} className="size-8 shrink-0 rounded-lg" />
                   <div className={typeStyle("caption.default")}>
-                    <p className={`text-foreground ${typeStyle("body.medium")}`}>
+                    <p
+                      className={`text-foreground ${typeStyle("body.medium")}`}
+                    >
                       {panel.sender.name}
                     </p>
                     <p className="text-muted-foreground">Spot</p>

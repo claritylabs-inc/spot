@@ -1,4 +1,5 @@
 "use client";
+import { ClientInformationForms } from "./information-form";
 import { INTAKE_TERMS_VERSION } from "@/lib/intake-terms";
 import { isIntakePercentageQuestion } from "@/lib/intake-percentages";
 import { vehicleRelevanceKey, filterVehicleRelevantQuestions } from "@/lib/intake-vehicle-relevance";
@@ -2516,7 +2517,9 @@ function Application({
           ) : undefined
         }
         banner={
-          data.submitted && !data.verified ? (
+          <>
+          {data.submitted && <ClientInformationForms requestId={requestId} />}
+          {data.submitted && !data.verified ? (
             <Card
               className="mb-6 border border-border ring-0"
               aria-label="Confirm your email"
@@ -2610,7 +2613,8 @@ function Application({
                 </ul>
               </CardContent>
             </Card>
-          ) : undefined
+          ) : undefined}
+          </>
         }
         footer={
           isSavings && data.submitted ? (

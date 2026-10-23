@@ -199,8 +199,9 @@ export function SectionMenu({
     ...groups.map((group) => ({
       key: group.label,
       label: group.label,
-      // AppSidebarNav keys items by label; labels are unique within the menu.
+      // Stable identities allow separate forms to share a display title.
       items: group.items.map((entry) => ({
+        key: entry.key,
         label: entry.label,
         icon: entry.icon,
         active: entry.key === active,
