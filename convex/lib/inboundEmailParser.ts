@@ -47,13 +47,23 @@ export function receivedEmailHeader(
 ): string | undefined {
   const lower = name.toLowerCase();
   if (Array.isArray(rawHeaders)) {
-    return (rawHeaders as Array<{ name?: string; value?: string }>).find(
-      (header) => header.name?.toLowerCase() === lower,
-    )?.value;
+    for (const header of rawHeaders) {
+      if (
+        header &&
+        typeof header === "object" &&
+        typeof header.name === "string" &&
+        typeof header.value === "string" &&
+        header.name.toLowerCase() === lower
+      ) {
+        return header.value;
+      }
+    }
+    return undefined;
   }
   if (rawHeaders && typeof rawHeaders === "object") {
-    const record = rawHeaders as Record<string, string>;
-    return record[lower] ?? record[name];
+    for (const [key, value] of Object.entries(rawHeaders)) {
+      if (key.toLowerCase() === lower && typeof value === "string") return value;
+    }
   }
   return undefined;
 }

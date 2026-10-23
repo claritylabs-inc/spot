@@ -34,7 +34,6 @@ import {
   createDraft,
   getThreadEmail,
   isResendInboxError,
-  replyToThreadEmail,
   sendDraft,
 } from "../lib/resendInbox";
 import { ensureAgentInbox } from "../lib/operatorInbox";
@@ -233,6 +232,7 @@ export type InboxCommandIgnoredReason =
   | "unauthorized_sender"
   | "thread_unavailable"
   | "ambiguous_thread"
+  | "thread_busy"
   | "attachment_limits";
 
 export type InboxCommandResult =
@@ -379,10 +379,9 @@ export const processInboxCommand = internalAction({
           : null;
         if (!from || !identity) return ignored("unauthorized_sender", context);
         sender = from;
-        const reportedMessageId = bareMessageId(email.messageId);
-        messageId = reportedMessageId
-          ? `<${reportedMessageId}>`
-          : `<resend-inbox-${emailId}@${OPERATOR_EMAIL_DOMAIN}>`;
+        // The unauthenticated Message-ID header is attacker-chosen, so it must
+        // never feed receipt dedupe: key it to the provider email id instead.
+        messageId = `<resend-inbox-${emailId}@${OPERATOR_EMAIL_DOMAIN}>`;
         emailReadOnly = true;
         const attachments = await fetchReceivedEmailAttachments(
           emailId,
@@ -404,7 +403,7 @@ export const processInboxCommand = internalAction({
           notice: attachments.omitted.length
             ? `[Attachments not imported: ${attachments.omitted
                 .map(({ filename, reason }) => `${filename.slice(0, 100)} (${reason})`)
-                .join("; ")}]`
+                .join("; ")}${attachments.omittedMore ? `; and ${attachments.omittedMore} more` : ""}]`
             : undefined,
         });
       }
@@ -468,13 +467,15 @@ const READ_ONLY_NOTICE =
   "This email could not be authenticated, so I ran it read-only: I can read and answer, but I did not save, send, or change anything. To make changes, send it again from your operator mailbox or use operator chat.";
 
 /**
- * Replies from the agent inbox, inside the Resend thread the command arrived
- * on, and only ever to `to` (the resolved operator's own login address). A
- * direct thread reply is used only when its derived recipient is exactly `to`;
- * otherwise (a Reply-To pointing elsewhere, or an alias From) a reply draft
- * with an explicit To is created and sent. Reply-all and the message's CC are
- * never used. Idempotency keys are stable per delivery, so an unknown outcome
- * replays rather than duplicating the send.
+ * Replies from the agent inbox inside the Resend thread the command arrived
+ * on, always as a reply draft with an explicit To (`to`, the resolved
+ * operator's own login address). Reply-To, reply-all and the message's CC are
+ * never used, and there is a single strategy, so a retry cannot take a
+ * different endpoint. Keys are stable per delivery: a replay of a request
+ * that already succeeded returns the original draft or send. The one case a
+ * replay differs is `to` changing between attempts (the operator's login
+ * email changed); Resend then rejects the reused key as a payload mismatch
+ * and the delivery fails closed instead of sending a second copy.
  */
 async function sendCommandReply(args: {
   inbox: { inboxId: string };
@@ -485,27 +486,6 @@ async function sendCommandReply(args: {
   text: string;
   key: string;
 }) {
-  const original = await getThreadEmail(
-    args.inbox.inboxId,
-    args.threadId,
-    args.emailId,
-  );
-  const derived =
-    original.status === "ok" && original.data.direction === "inbound"
-      ? original.data.replyTo.length
-        ? original.data.replyTo
-        : [original.data.from]
-      : [];
-  if (derived.length === 1 && extractEmailAddress(derived[0]) === args.to) {
-    await replyToThreadEmail({
-      inboxId: args.inbox.inboxId,
-      threadId: args.threadId,
-      emailId: args.emailId,
-      text: args.text,
-      idempotencyKey: `${args.key}:reply`,
-    });
-    return;
-  }
   const draft = await createDraft({
     inboxId: args.inbox.inboxId,
     to: args.to,

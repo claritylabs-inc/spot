@@ -226,7 +226,8 @@ export type InboxCommandRejection =
   | "inbox_retired"
   | "unauthorized_sender"
   | "thread_unavailable"
-  | "ambiguous_thread";
+  | "ambiguous_thread"
+  | "thread_busy";
 
 /**
  * The recorded command inbox for an inbound message, with whether its Resend
@@ -304,6 +305,21 @@ export const acceptInboxCommand = internalMutation({
         mapped.ownerUserId !== operator.userId
       ) {
         return { status: "rejected", reason: "thread_unavailable" };
+      }
+      if (args.emailReadOnly) {
+        // A read-only message would supersede a privileged run's pending
+        // approval or work; refuse it permanently instead of queueing.
+        for (const status of ["queued", "running", "waiting_confirmation"] as const) {
+          const active = await ctx.db
+            .query("operatorAgentRuns")
+            .withIndex("thread_status", (q) =>
+              q.eq("threadId", mapped._id).eq("status", status),
+            )
+            .take(10);
+          if (active.some((run) => run.emailReadOnly !== true)) {
+            return { status: "rejected", reason: "thread_busy" };
+          }
+        }
       }
       threadId = mapped._id;
     } else {
