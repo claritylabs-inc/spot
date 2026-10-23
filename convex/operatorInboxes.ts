@@ -69,7 +69,7 @@ async function rowsForAddress(ctx: Ctx, emailAddress: string) {
   return await ctx.db
     .query("operatorOutreachInboxes")
     .withIndex("by_emailAddress", (q) => q.eq("emailAddress", emailAddress))
-    .take(10);
+    .take(11);
 }
 
 /** Requires an active, valid operator; anything else throws. */
@@ -94,8 +94,9 @@ export const getAgentInboxInternal = internalQuery({
     const rows = await ctx.db
       .query("operatorOutreachInboxes")
       .withIndex("by_kind", (q) => q.eq("kind", "agent"))
+      .filter((q) => q.neq(q.field("status"), "retired"))
       .order("desc")
-      .take(20);
+      .take(2);
     const row = rows.find(isActive);
     return row ? toRecord(row) : null;
   },
@@ -147,6 +148,7 @@ export const addressOwnershipInternal = internalQuery({
       return "conflict";
     }
     const rows = await rowsForAddress(ctx, emailAddress);
+    if (rows.length > 10) return "conflict";
     if (rows.length === 0) return "free";
     const userId = args.userId;
     const mine = (row: InboxRow) =>
@@ -181,6 +183,9 @@ export const recordOperatorInboxInternal = internalMutation({
       return { status: "stale" };
     }
     if (intended !== emailAddress) return { status: "stale" };
+    if (await reservedByOtherProfile(ctx, emailAddress, args.userId)) {
+      return { status: "conflict" };
+    }
 
     const [byInbox, byAddress] = await Promise.all([
       ctx.db
@@ -191,6 +196,7 @@ export const recordOperatorInboxInternal = internalMutation({
     ]);
     if (
       (byInbox && !ownedByOperator(byInbox, args.userId)) ||
+      byAddress.length > 10 ||
       byAddress.some((row) => !ownedByOperator(row, args.userId))
     ) {
       return { status: "conflict" };
@@ -219,10 +225,13 @@ export const recordOperatorInboxInternal = internalMutation({
       });
     }
 
-    const others = await ctx.db
-      .query("operatorOutreachInboxes")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .take(50);
+    const others = (await Promise.all(
+      (["active", undefined] as const).map((status) => ctx.db
+        .query("operatorOutreachInboxes")
+        .withIndex("by_userId_and_status", (q) => q.eq("userId", args.userId).eq("status", status))
+        .take(51)),
+    )).flat();
+    if (others.length > 50) throw new Error("Too many active inboxes to reconcile");
     for (const row of others) {
       if (row._id === storedId || row.kind === "agent" || !isActive(row)) continue;
       await ctx.db.patch(row._id, { status: "retired", retiredAt: now });
@@ -237,6 +246,9 @@ export const recordAgentInboxInternal = internalMutation({
   handler: async (ctx, args): Promise<RecordInboxResult> => {
     const emailAddress = args.inbox.emailAddress.toLowerCase();
     if (emailAddress !== agentInboxAddress()) return { status: "stale" };
+    if (await reservedByOtherProfile(ctx, emailAddress, undefined)) {
+      return { status: "conflict" };
+    }
 
     const [byInbox, byAddress] = await Promise.all([
       ctx.db
@@ -247,6 +259,7 @@ export const recordAgentInboxInternal = internalMutation({
     ]);
     if (
       (byInbox && !ownedByAgent(byInbox)) ||
+      byAddress.length > 10 ||
       byAddress.some((row) => !ownedByAgent(row))
     ) {
       return { status: "conflict" };
@@ -275,7 +288,9 @@ export const recordAgentInboxInternal = internalMutation({
     const agents = await ctx.db
       .query("operatorOutreachInboxes")
       .withIndex("by_kind", (q) => q.eq("kind", "agent"))
-      .take(20);
+      .filter((q) => q.neq(q.field("status"), "retired"))
+      .take(21);
+    if (agents.length > 20) throw new Error("Too many active agent inboxes to reconcile");
     for (const row of agents) {
       if (row._id === storedId || !isActive(row)) continue;
       await ctx.db.patch(row._id, { status: "retired", retiredAt: now });
