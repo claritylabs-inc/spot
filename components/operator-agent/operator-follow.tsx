@@ -342,9 +342,11 @@ function FieldMirror({
       box.style.clipPath = `inset(${Math.max(0, bounds.top - rect.top)}px ${Math.max(0, rect.right - bounds.right)}px ${Math.max(0, rect.bottom - bounds.bottom)}px ${Math.max(0, bounds.left - rect.left)}px)`;
       if (pendingRevealRef.current) {
         pendingRevealRef.current = false;
-        if (rect.top < bounds.top || rect.bottom > bounds.bottom) {
-          target.scrollIntoView({ block: "nearest" });
-        }
+        // Fields taller than the visible area reveal the caret instead.
+        const outside =
+          (rect.top < bounds.top || rect.bottom > bounds.bottom) &&
+          rect.height <= bounds.bottom - bounds.top;
+        if (outside) target.scrollIntoView({ block: "nearest" });
         // Keep the caret inside the box, as the real field would.
         const caret = caretRef.current;
         if (caret) {
@@ -354,6 +356,16 @@ function FieldMirror({
           const boxRect = box.getBoundingClientRect();
           box.scrollTop = Math.max(0, caretRect.bottom - boxRect.bottom + 8);
           box.scrollLeft = Math.max(0, caretRect.right - boxRect.right + 8);
+          // A field taller than its pane, such as notes, needs the caret
+          // itself scrolled into view. Rects are stale after scrollIntoView,
+          // so that case waits for the next update.
+          const shown = caret.getBoundingClientRect();
+          const scroller = outside ? null : scrollParent(target);
+          if (scroller && shown.bottom > bounds.bottom) {
+            scroller.scrollTop += shown.bottom - bounds.bottom + 8;
+          } else if (scroller && shown.top < bounds.top) {
+            scroller.scrollTop -= bounds.top - shown.top + 8;
+          }
         }
       }
       const caretRect = caretRef.current?.getBoundingClientRect();
