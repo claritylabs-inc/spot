@@ -93,7 +93,7 @@ export const markFailed = internalMutation({
 const OPERATOR_CLAIM_LEASE_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS_PER_FINGERPRINT = 100;
 const UNKNOWN_OUTCOME_REASON =
-  "Delivery outcome unknown — this email stays locked while Spot verifies with Resend, and is never sent again unless it is replaced by an edited email.";
+  "Delivery outcome unknown — this email stays locked while Spot checks Resend for delivery evidence. It will not be sent again.";
 
 type OperatorStage = NonNullable<Doc<"emailDeliveryAttempts">["operatorStage"]>;
 

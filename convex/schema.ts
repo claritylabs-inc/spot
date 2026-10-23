@@ -3397,6 +3397,7 @@ export default defineSchema({
     .index("by_requestId_and_archivedAt_and_latestMessageAt", ["requestId", "archivedAt", "latestMessageAt"])
     .index("by_category_and_archivedAt_and_latestMessageAt", ["category", "archivedAt", "latestMessageAt"])
     .index("by_archivedAt_and_latestInboundAt", ["archivedAt", "latestInboundAt"])
+    .index("by_suggestedRequestId_and_latestMessageAt", ["linkSuggestion.requestId", "latestMessageAt"])
     .index("by_legacyThreadId", ["legacyThreadId"])
     .index("by_latestMessageAt", ["latestMessageAt"])
     .index("by_ownerUserId_and_latestMessageAt", ["ownerUserId", "latestMessageAt"])
@@ -5278,6 +5279,7 @@ export default defineSchema({
     .index("thread", ["threadId"])
     .index("operator_thread", ["operatorThreadId"])
     .index("by_teamEmailThreadId", ["teamEmailThreadId"])
+    .index("by_teamEmailThreadId_and_status", ["teamEmailThreadId", "status"])
     .index("status", ["status"]),
 
   emailDeliveryAttempts: defineTable({
