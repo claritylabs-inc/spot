@@ -3,6 +3,7 @@ import { INTAKE_TERMS_VERSION } from "@/lib/intake-terms";
 import { isIntakePercentageQuestion } from "@/lib/intake-percentages";
 import { vehicleRelevanceKey, filterVehicleRelevantQuestions } from "@/lib/intake-vehicle-relevance";
 import { isWorkforceProviderSource, workforceProviderComplete } from "@/lib/intake-workforce-provider";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { workJurisdictionsComplete } from "@/lib/intake-jurisdictions";
 import { payrollAnswerComplete, payrollPages, payrollPageTitle, payrollPageValue, parsePayrollAnswer } from "@/lib/intake-payroll";
 import { cyberDocumentQuestions, cyberDocumentUrlValid, intakeCyberResearchKey, withCyberDocumentQuestions } from "@/lib/intake-cyber-research";
@@ -491,9 +492,9 @@ function Application({
     queueMicrotask(()=>{setAnswers(data.answers);setDetails(data.details);});
   },[data]);
 
-  const [showRequirementsPaste, setShowRequirementsPaste] = useState<
+  const [showRequirementsPaste, setShowRequirementsPaste] = useFollowedState<
     boolean | null
-  >(null);
+  >(`intake:${requestId}:requirements-paste`, null);
   const [ready, setReady] = useState(false);
   useEffect(() => {
     if (!ready || ![29, 30].includes(step) || (!data?.submitted && followupBatch?.status !== "ready") || !textQuestionIds) return;

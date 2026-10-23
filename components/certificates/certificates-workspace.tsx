@@ -34,6 +34,7 @@ import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs
 import { useCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { usePageContext } from "@/hooks/use-page-context";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { usePdf } from "@/components/pdf-context";
 import { typeStyle } from "@/lib/typography";
 import { CertificateGeneratePanel } from "@/components/certificates/certificate-generate-panel";
@@ -178,14 +179,15 @@ export function CertificatesWorkspace({
   const archiveCertificateMutation = useMutation(api.certificateLifecycle.archive);
   const unarchiveCertificateMutation = useMutation(api.certificateLifecycle.unarchive);
   const { openWithUrl } = usePdf();
-  const [tab, setTab] = useState<CertificateWorkspaceTab>("active");
-  const [generateOpen, setGenerateOpen] = useState(false);
-  const [selectedCertificateId, setSelectedCertificateId] = useState<Id<"policyCertificates"> | null>(null);
+  const uiKey = `certificates:${orgIdOverride ?? "own"}`;
+  const [tab, setTab] = useFollowedState<CertificateWorkspaceTab>(`${uiKey}:tab`, "active");
+  const [generateOpen, setGenerateOpen] = useFollowedState(`${uiKey}:generate-open`, false);
+  const [selectedCertificateId, setSelectedCertificateId] = useFollowedState<Id<"policyCertificates"> | null>(`${uiKey}:selected`, null);
   const [reissuingCertificateId, setReissuingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
   const [savingCertificateId, setSavingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
   const [archivingCertificateId, setArchivingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
   const [unarchivingCertificateId, setUnarchivingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
-  const [policyFilter, setPolicyFilter] = useState<CertificatePolicyFilter>("all");
+  const [policyFilter, setPolicyFilter] = useFollowedState<CertificatePolicyFilter>(`${uiKey}:policy-filter`, "all");
   const viewerOrg = useCachedViewerOrg();
   const orgId =
     orgIdOverride ??
@@ -262,7 +264,7 @@ export function CertificatesWorkspace({
     } finally {
       setArchivingCertificateId(null);
     }
-  }, [archiveCertificateMutation]);
+  }, [archiveCertificateMutation, setTab]);
 
   const unarchiveCertificate = useCallback(async (row: PolicyCertificateRecord) => {
     setUnarchivingCertificateId(row._id);
@@ -277,7 +279,7 @@ export function CertificatesWorkspace({
     } finally {
       setUnarchivingCertificateId(null);
     }
-  }, [unarchiveCertificateMutation]);
+  }, [unarchiveCertificateMutation, setTab]);
 
   const reissueCertificate = useCallback(async (row: PolicyCertificateRecord) => {
     const holder = row.holder;
@@ -370,6 +372,7 @@ export function CertificatesWorkspace({
       reissuingCertificateId,
       savingCertificateId,
       selectedCertificate,
+      setSelectedCertificateId,
       unarchiveCertificate,
       unarchivingCertificateId,
     ]);
@@ -379,7 +382,7 @@ export function CertificatesWorkspace({
         onOpenChange={setGenerateOpen}
         orgId={orgId}
       />
-    ) : null, [generateOpen, orgId]);
+    ) : null, [generateOpen, orgId, setGenerateOpen]);
   const rightPanel = generateOpen ? generatePanel : certificateDetailPanel;
   const actions = useMemo(() => !readOnly && orgId ? (
       <PillButton
@@ -394,7 +397,7 @@ export function CertificatesWorkspace({
         <BadgeCheck className="size-3.5" />
         Generate certificate
       </PillButton>
-    ) : null, [orgId, readOnly]);
+    ) : null, [orgId, readOnly, setGenerateOpen, setSelectedCertificateId]);
   const toolbar = visibleTabs.length > 1 ? (
     <Select
       value={visibleTab}
