@@ -314,6 +314,7 @@ import type * as lib_operatorEmailAddress from "../lib/operatorEmailAddress.js";
 import type * as lib_operatorEmailAuthentication from "../lib/operatorEmailAuthentication.js";
 import type * as lib_operatorEmailTools from "../lib/operatorEmailTools.js";
 import type * as lib_operatorIdentity from "../lib/operatorIdentity.js";
+import type * as lib_operatorInbox from "../lib/operatorInbox.js";
 import type * as lib_operatorMcpAttachments from "../lib/operatorMcpAttachments.js";
 import type * as lib_operatorMcpClient from "../lib/operatorMcpClient.js";
 import type * as lib_operatorMcpOAuth from "../lib/operatorMcpOAuth.js";
@@ -402,6 +403,7 @@ import type * as lib_spectrumWebhookSignature from "../lib/spectrumWebhookSignat
 import type * as lib_spreadsheetText from "../lib/spreadsheetText.js";
 import type * as lib_storedAgentFile from "../lib/storedAgentFile.js";
 import type * as lib_supplementaryExtraction from "../lib/supplementaryExtraction.js";
+import type * as lib_teamEmail from "../lib/teamEmail.js";
 import type * as lib_tenantMcpToolCatalog from "../lib/tenantMcpToolCatalog.js";
 import type * as lib_textChannelControls from "../lib/textChannelControls.js";
 import type * as lib_threadAccess from "../lib/threadAccess.js";
@@ -442,6 +444,7 @@ import type * as operatorEmail from "../operatorEmail.js";
 import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
 import type * as operatorGoogleWorkspace from "../operatorGoogleWorkspace.js";
 import type * as operatorImessage from "../operatorImessage.js";
+import type * as operatorInboxes from "../operatorInboxes.js";
 import type * as operatorInvitations from "../operatorInvitations.js";
 import type * as operatorMcpOAuth from "../operatorMcpOAuth.js";
 import type * as operatorMcpServers from "../operatorMcpServers.js";
@@ -807,6 +810,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorEmailAuthentication": typeof lib_operatorEmailAuthentication;
   "lib/operatorEmailTools": typeof lib_operatorEmailTools;
   "lib/operatorIdentity": typeof lib_operatorIdentity;
+  "lib/operatorInbox": typeof lib_operatorInbox;
   "lib/operatorMcpAttachments": typeof lib_operatorMcpAttachments;
   "lib/operatorMcpClient": typeof lib_operatorMcpClient;
   "lib/operatorMcpOAuth": typeof lib_operatorMcpOAuth;
@@ -895,6 +899,7 @@ declare const fullApi: ApiFromModules<{
   "lib/spreadsheetText": typeof lib_spreadsheetText;
   "lib/storedAgentFile": typeof lib_storedAgentFile;
   "lib/supplementaryExtraction": typeof lib_supplementaryExtraction;
+  "lib/teamEmail": typeof lib_teamEmail;
   "lib/tenantMcpToolCatalog": typeof lib_tenantMcpToolCatalog;
   "lib/textChannelControls": typeof lib_textChannelControls;
   "lib/threadAccess": typeof lib_threadAccess;
@@ -935,6 +940,7 @@ declare const fullApi: ApiFromModules<{
   operatorEmailDrafts: typeof operatorEmailDrafts;
   operatorGoogleWorkspace: typeof operatorGoogleWorkspace;
   operatorImessage: typeof operatorImessage;
+  operatorInboxes: typeof operatorInboxes;
   operatorInvitations: typeof operatorInvitations;
   operatorMcpOAuth: typeof operatorMcpOAuth;
   operatorMcpServers: typeof operatorMcpServers;

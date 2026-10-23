@@ -351,6 +351,7 @@ const companyInformationProfileFactSourceValidator = v.object({
   sourceRef: v.string(),
   clientFileId: v.optional(v.id("clientFiles")),
   procurementEmailThreadId: v.optional(v.id("procurementEmailThreads")),
+  teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
   fieldPath: v.string(),
   fieldGroup: v.string(),
   displayValue: v.string(),
@@ -864,6 +865,8 @@ export default defineSchema({
 
   operatorProfiles: defineTable({
     userId: v.id("users"),
+    teamEmailLocalpart: v.optional(v.string()),
+    alwaysCcEmail: v.optional(v.string()),
     email: v.string(),
     role: v.union(v.literal("operator"), v.literal("owner")),
     status: v.union(v.literal("active"), v.literal("disabled")),
@@ -2814,7 +2817,11 @@ export default defineSchema({
     .index("storage", ["fileId"]),
 
   operatorOutreachInboxes: defineTable({
-    userId: v.id("users"),
+    userId: v.optional(v.id("users")),
+    kind: v.optional(v.union(v.literal("operator"), v.literal("agent"))),
+    // Missing status is an active pre-cutover inbox until backfilled.
+    status: v.optional(v.union(v.literal("active"), v.literal("retired"))),
+    retiredAt: v.optional(v.number()),
     inboxId: v.string(),
     emailAddress: v.string(),
     fromName: v.string(),
@@ -2822,7 +2829,10 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_inboxId", ["inboxId"]),
+    .index("by_inboxId", ["inboxId"])
+    .index("by_emailAddress", ["emailAddress"])
+    .index("by_userId_and_status", ["userId", "status"])
+    .index("by_kind", ["kind"]),
 
   // Durable outreach sequences. `audience` absent means provider outreach
   // (outreach, provider and packet link set); `client` sequences ask the
@@ -2846,6 +2856,7 @@ export default defineSchema({
     resendThreadId: v.optional(v.string()),
     lastOutboundEmailId: v.optional(v.string()),
     procurementEmailThreadId: v.optional(v.id("procurementEmailThreads")),
+  teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
     cadence: v.object({
       followUpCount: v.number(),
       intervalBusinessDays: v.number(),
@@ -2915,6 +2926,7 @@ export default defineSchema({
     generationStartedAt: v.optional(v.number()),
     draft: v.optional(
       v.object({
+        cc: v.optional(v.array(v.string())),
         subject: v.string(),
         text: v.string(),
         html: v.string(),
@@ -3334,6 +3346,122 @@ export default defineSchema({
     .index("document", ["proposalDocumentId", "createdAt"])
     .index("document_parent", ["proposalDocumentId", "parentNodeId"]),
 
+  teamEmailThreads: defineTable({
+    legacyThreadId: v.optional(v.id("procurementEmailThreads")),
+    ownerUserId: v.optional(v.id("users")),
+    source: v.union(v.literal("forward"), v.literal("outreach"), v.literal("team")),
+    linkedAt: v.optional(v.number()),
+    linkedByUserId: v.optional(v.id("users")),
+    linkSuggestion: v.optional(v.object({
+      requestId: v.id("procurementRequests"),
+      clientOrgId: v.id("organizations"),
+      confidence: v.number(),
+      reason: v.string(),
+    })),
+    outreachId: v.optional(v.id("procurementBrokerOutreaches")),
+    resendThreadId: v.optional(v.string()),
+    clientOrgId: v.optional(v.id("organizations")),
+    addressedRequestId: v.optional(v.id("procurementRequests")),
+    requestId: v.optional(v.id("procurementRequests")),
+    normalizedSubject: v.string(),
+    subject: v.string(),
+    category: v.union(
+      v.literal("broker"),
+      v.literal("client"),
+      v.literal("internal"),
+      v.literal("mixed"),
+      v.literal("other"),
+    ),
+    categorySource: v.union(v.literal("auto"), v.literal("operator")),
+    categoryReason: v.optional(v.string()),
+    participantEmails: v.array(v.string()),
+    latestDirection: v.optional(v.union(v.literal("inbound"), v.literal("outbound"))),
+    latestInboundAt: v.optional(v.number()),
+    preview: v.optional(v.string()),
+    latestFromName: v.optional(v.string()),
+    latestFromEmail: v.optional(v.string()),
+    latestSentByUserId: v.optional(v.id("users")),
+    latestMessageAt: v.number(),
+    messageCount: v.number(),
+    archivedAt: v.optional(v.number()),
+    archivedByUserId: v.optional(v.id("users")),
+    deletedAt: v.optional(v.number()),
+    deletedByUserId: v.optional(v.id("users")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_archivedAt_and_latestMessageAt", ["archivedAt", "latestMessageAt"])
+    .index("by_ownerUserId_and_archivedAt_and_latestMessageAt", ["ownerUserId", "archivedAt", "latestMessageAt"])
+    .index("by_clientOrgId_and_archivedAt_and_latestMessageAt", ["clientOrgId", "archivedAt", "latestMessageAt"])
+    .index("by_requestId_and_archivedAt_and_latestMessageAt", ["requestId", "archivedAt", "latestMessageAt"])
+    .index("by_category_and_archivedAt_and_latestMessageAt", ["category", "archivedAt", "latestMessageAt"])
+    .index("by_archivedAt_and_latestInboundAt", ["archivedAt", "latestInboundAt"])
+    .index("by_legacyThreadId", ["legacyThreadId"])
+    .index("by_latestMessageAt", ["latestMessageAt"])
+    .index("by_ownerUserId_and_latestMessageAt", ["ownerUserId", "latestMessageAt"])
+    .index("by_clientOrgId_and_latestMessageAt", ["clientOrgId", "latestMessageAt"])
+    .index("by_requestId_and_latestMessageAt", ["requestId", "latestMessageAt"])
+    .index("by_addressedRequestId_and_latestMessageAt", ["addressedRequestId", "latestMessageAt"])
+    .index("subject", ["clientOrgId", "normalizedSubject", "latestMessageAt"])
+    .index("by_resendThreadId", ["resendThreadId"]),
+
+  teamEmailMessages: defineTable({
+    legacyMessageId: v.optional(v.id("procurementEmailMessages")),
+    direction: v.union(v.literal("inbound"), v.literal("outbound")),
+    sentByUserId: v.optional(v.id("users")),
+    pendingEmailId: v.optional(v.id("pendingEmails")),
+    resendThreadId: v.optional(v.string()),
+    unfiledAttachments: v.optional(v.array(v.object({
+      storageId: v.id("_storage"),
+      name: v.string(),
+      contentType: v.string(),
+      size: v.number(),
+    }))),
+    resendInboxEmailId: v.optional(v.string()),
+    threadId: v.id("teamEmailThreads"),
+    clientOrgId: v.optional(v.id("organizations")),
+    addressedRequestId: v.optional(v.id("procurementRequests")),
+    resendEmailId: v.optional(v.string()),
+    messageId: v.optional(v.string()),
+    inReplyTo: v.optional(v.string()),
+    references: v.array(v.string()),
+    subject: v.string(),
+    fromName: v.optional(v.string()),
+    fromEmail: v.string(),
+    toAddresses: v.array(v.string()),
+    ccAddresses: v.array(v.string()),
+    bccAddresses: v.array(v.string()),
+    currentText: v.string(),
+    bodyHtml: v.optional(v.string()),
+    forwarded: v.optional(v.any()),
+    clientFileIds: v.array(v.id("clientFiles")),
+    receivedAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_legacyMessageId", ["legacyMessageId"])
+    .index("by_threadId_and_receivedAt", ["threadId", "receivedAt"])
+    .index("by_resendEmailId", ["resendEmailId"])
+    .index("by_messageId", ["messageId"])
+    .index("by_resendInboxEmailId", ["resendInboxEmailId"])
+    .index("request", ["addressedRequestId", "receivedAt"]),
+
+  teamEmailThreadLinks: defineTable({
+    threadId: v.id("teamEmailThreads"),
+    inboxId: v.string(),
+    resendThreadId: v.string(),
+  })
+    .index("by_threadId", ["threadId"])
+    .index("by_inboxId_and_resendThreadId", ["inboxId", "resendThreadId"])
+    .index("by_resendThreadId", ["resendThreadId"]),
+
+  teamInboxReads: defineTable({
+    userId: v.id("users"),
+    threadId: v.id("teamEmailThreads"),
+    readAt: v.number(),
+  })
+    .index("by_userId_and_threadId", ["userId", "threadId"])
+    .index("by_threadId", ["threadId"]),
+
   procurementEmailThreads: defineTable({
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     resendThreadId: v.optional(v.string()),
@@ -3409,7 +3537,7 @@ export default defineSchema({
     clientOrgId: v.id("organizations"),
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     clientFileId: v.optional(v.id("clientFiles")),
-    sourceEmailMessageId: v.optional(v.id("procurementEmailMessages")),
+    sourceEmailMessageId: v.optional(v.union(v.id("procurementEmailMessages"), v.id("teamEmailMessages"))),
     // Deprecated: cleared by the removed simplifyProcurementFiles migration; no active writers.
     purpose: v.optional(
       v.union(
@@ -3458,6 +3586,7 @@ export default defineSchema({
     sourceRef: v.string(),
     clientFileId: v.optional(v.id("clientFiles")),
     procurementEmailThreadId: v.optional(v.id("procurementEmailThreads")),
+  teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
     requestId: v.optional(v.id("procurementRequests")),
     actorUserId: v.id("users"),
     sourceFingerprint: v.string(),
@@ -3483,7 +3612,8 @@ export default defineSchema({
     .index("source", ["sourceRef"])
     .index("organization", ["orgId", "updatedAt"])
     .index("file", ["clientFileId"])
-    .index("email", ["procurementEmailThreadId"]),
+    .index("email", ["procurementEmailThreadId"])
+    .index("team_email", ["teamEmailThreadId"]),
 
   policyVersions: defineTable({
     orgId: v.id("organizations"),
@@ -4587,6 +4717,7 @@ export default defineSchema({
   }).index("receipt_phase", ["receiptId", "phase"]),
 
   operatorAgentThreads: defineTable({
+    resendThreadId: v.optional(v.string()),
     ownerUserId: v.id("users"),
     visibility: v.union(v.literal("private"), v.literal("shared")),
     channel: v.union(
@@ -4623,6 +4754,7 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
+    .index("by_resendThreadId", ["resendThreadId"])
     .index("owner_archive", ["ownerUserId", "archiveState", "lastMessageAt"])
     .index("visibility_archive", [
       "visibility",
@@ -5080,6 +5212,11 @@ export default defineSchema({
   // ── Pending Emails (send delay queue) ──
 
   pendingEmails: defineTable({
+    senderUserId: v.optional(v.id("users")),
+    transport: v.optional(v.literal("operator_inbox")),
+    procurementRequestId: v.optional(v.id("procurementRequests")),
+    teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
+    resendInboxEmailId: v.optional(v.string()),
     orgId: v.id("organizations"),
     threadId: v.optional(v.id("threads")),
     // Drafts written by the operator agent belong to an operator thread, not a
@@ -5133,6 +5270,7 @@ export default defineSchema({
   })
     .index("thread", ["threadId"])
     .index("operator_thread", ["operatorThreadId"])
+    .index("by_teamEmailThreadId", ["teamEmailThreadId"])
     .index("status", ["status"]),
 
   emailDeliveryAttempts: defineTable({
@@ -5311,6 +5449,8 @@ export default defineSchema({
 
   // One row per operator; heartbeats keep it fresh while the portal is open.
   operatorPresence: defineTable({
+    emailThreadId: v.optional(v.id("teamEmailThreads")),
+    activity: v.optional(v.union(v.literal("viewing"), v.literal("replying"))),
     userId: v.id("users"),
     pathname: v.string(),
     threadId: v.optional(v.id("operatorAgentThreads")),

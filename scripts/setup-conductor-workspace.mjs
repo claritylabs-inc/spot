@@ -333,6 +333,7 @@ try {
     MAPBOX_ACCESS_TOKEN: resolveConductorMapboxAccessToken(initialRootEnv),
     ALLOW_DEV_CLEAR: "true",
     EMAIL_DELIVERY_MODE: "capture",
+    TEAM_EMAIL_DOMAIN: "team.dev.spot.insure",
     IMESSAGE_ENABLED: "false",
     IMESSAGE_TERMINAL_ENABLED: "true",
     IMESSAGE_TERMINAL_BROKER_PHONE: terminalPhone,
