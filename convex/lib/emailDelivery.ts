@@ -55,7 +55,7 @@ export function buildEmailPayload(params: {
   references?: string;
   replyTo?: string;
 }): ResendPayload {
-  const plainText = stripMarkdown(params.body) + params.signature.text;
+  const plainText = `${stripMarkdown(params.body).trimEnd()}\n\n${params.signature.text.trimStart()}`;
   const html = buildAgentEmailHtmlBody(params.body, {
     html: params.signature.html,
   });

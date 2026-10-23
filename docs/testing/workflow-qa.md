@@ -1,5 +1,36 @@
 # Platform workflow QA
 
+## Operator team email — October 23, 2026
+
+The repeatable local run is [team-email-workflows.md](team-email-workflows.md).
+Evidence is kept in `.context/qa/team-inbox/`; integration spike evidence is in
+`.context/team-email/`. No Vercel previews are used.
+
+| Workflow | Status | Evidence / remaining check |
+| --- | --- | --- |
+| Resend receiving API raw MIME and attachments | Passed | Isolated development inbox returned raw MIME with aligned full-body DKIM and exact 45-byte attachment; synthetic Gmail-style forward preserved. |
+| Actual Gmail forwarding | Not run | Synthetic forwarded text does not establish Gmail UI behavior. |
+| Profile identity and Always CC | Passed locally | Terry/Amy browser autosave, reload, reserved localpart and malformed/Spot-owned CC rejection. `*-profile-results.json`; live address rotation remains a release check. |
+| Shared inbox navigation and linking | Passed locally | All/Mine/Unlinked/search, per-person read marker, deep links, archive/Undo, archived reader, suggested request link. `inbox-results.json`. |
+| Ad hoc draft and exact send | Passed locally | Real OAuth MCP draft without a client, visible shared draft card/panel, revised body invalidates old approval, full signed preview, browser confirmation, captured sent Inbox link. `mcp-revise-results.json`, `ad-hoc-browser-results.json`. |
+| MCP operator identity and scopes | Passed locally | Terry/Amy own From/Always CC; read token excludes draft and rejects direct invocation; another operator cannot approve the signer’s draft. `mcp-results.json`, `mcp-approval-results.json`. Tenant checks recorded separately below. |
+| Client request composer | Passed locally | Browser From/CC/signature, narrow layout, exact identity fingerprint, initial step captured; provider panel shows sender summary. `outreach-browser-results.json`. Live sequence delivery and reply webhook remain release checks. |
+| Two-operator cross-reply and presence | Passed locally | Amy preview copies Terry and original CC, one captured outbound message, attribution/reload, replying presence and blur cleanup. `reply-results.json`, `presence-observed.json`. Actual hidden-tab behavior was inconclusive in cloud Chrome. |
+| Forward matching and filing backing APIs | Passed locally (worker) | Known inbox/owner/message fencing, duplicate claim, one/multiple/none/incomplete candidates, stale finish, client/request attachment filing, suggestion; browser manual acceptance passed. Real raw-auth/model-choice action not exercised end to end. |
+| Command read-only backing APIs | Passed locally (worker) | Inbox/actor/thread binding, duplicate ingress, read-only selector/executor gates, privileged-run preservation and restricted reply rejection. Live authenticated command generation/delivery remains a release check. |
+| Migration counts and reference readback | Passed locally | Independent fixture: 1,620 messages/5 threads, dry-run identity, actual/rerun, provenance, stale approvals, legacy draft blocking, corruption detection; 700-message adoption and 3,020-message final readback. Integrated `integrated-readback.json` complete, zero unresolved. Legacy tables retained. |
+| Independent send protocol review | Accepted | Six findings corrected in `9916cd16`; reviewer accepted exact grants/context, cross-inbox targets, key mismatch, CC validation and unknown writes. Static review complements runtime cases above. |
+| Convex CLI guard | Passed | Before-fix probes reproduced mixed-command bypass; after-fix bare/mixed calls blocked, independently prefixed calls pass; `bash -n` passes. Probes were defined before the change in `.context/team-email/guard-probe.py`. |
+
+Worker runtime evidence is retained in manager transcripts under `.context/team-email/`
+(`identity-messages.jsonl`, `command-messages.jsonl`). Worker migration setup used
+compile-only temporary adapters for a preceding integration baseline; the final
+integrated backend separately compiled and completed readback without those adapters.
+No unit tests were added. Unknown real delivery, actual Gmail forwarding, provider
+account inbox overage, and hosted cutover are not claimed as locally verified.
+
+
+
 ## Intake latency follow-up — October 22, 2026
 
 Scope: speculative additional-question preparation, compact generation context,

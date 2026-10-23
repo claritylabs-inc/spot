@@ -41,28 +41,19 @@ Steps are scheduled, leased for sending, and then sent, captured, failed or canc
 
 Cadence suggestions use one Jev call with independent choices for count, business-day interval and style. Each field independently passes the shared confidence threshold or falls back to two follow-ups, three business days, brief nudge. Operator overrides remain explicit. Schedules skip weekends, respect effective-date/deadline cutoffs and a 30-day maximum, and derive subsequent due times from observed send time.
 
-## Inboxes and ingress
+## Team inbox and request mail
 
-One inbox belongs to each operator, named from the operator's email localpart on `PROVIDER_OUTREACH_EMAIL_DOMAIN`, with a first-name-at-Spot display name. Threads carry Spot automated and Needs reply labels. The dedicated `/resend-inbox-webhook` verifies Svix signatures with `RESEND_INBOX_WEBHOOK_SECRET`; inbox events never enter ordinary agent inbound routing. Email IDs deduplicate mirroring into procurement threads/messages. View thread opens the conversation in the request Inbox; the request is the mailbox boundary in Spot. The documented Inboxes API lists attachment IDs, filenames and sizes but no bytes or MIME headers; inbound files are fetched best effort through the Receiving API (see Request mailbox), otherwise a metadata notice points operators to Resend. Bounce detection uses documented sender metadata; multipart/report detection is unavailable without MIME headers.
+Operator identities, transport, shared conversations, forwarding, attachments, command email and migration are documented in [Operator team email](team-email.md). Outreach uses the same person's team address as ad hoc mail, signs with their full name and Spot, and snapshots Always CC into the stored step draft. Current identity and recipient checks still run before sending.
+
+`teamEmailThreads` and `teamEmailMessages` are the canonical mail records. The request Email tab renders the shared inbox component with a request scope; `/operator/inbox` also includes unlinked and client-only conversations. Both surfaces open the same reader and files. Conversations created by outreach remain locked to their originating request because their sequences and packet links are request-bound. Other linked conversations may move only within the same client through the canonical audited writer.
+
+A reply sends from the replying operator's own inbox. Replies from another operator copy the conversation owner and preserve one team conversation through `teamEmailThreadLinks`. Explicit replies stop live follow-ups. The navbar forwarding action uses the current operator's team address; legacy request forwarding addresses remain an inbound fallback.
 
 ## Setup and validation
 
-1. Verify a dedicated Resend subdomain, including DKIM, SPF and receiving MX. Do not reuse the ordinary agent or research inbox domains.
-2. Configure `AUTH_RESEND_KEY`, `PROVIDER_OUTREACH_EMAIL_DOMAIN` and `RESEND_INBOX_WEBHOOK_SECRET` on the intended deployment. Register the dedicated webhook for inbox.email.received and inbox.email.sent.
-3. Verify the two outreach environment checks at `/agent-health`.
-4. Run local capture workflows first. Capture makes no Resend calls and must not report real sent timestamps.
-5. For authorized real inbox QA, use restricted delivery mode with an explicit test address/domain allowlist. Verify same-thread replies, signatures, attachments, manual dashboard sends and idempotent recovery before enabling unrestricted delivery.
+Configure `AUTH_RESEND_KEY`, `TEAM_EMAIL_DOMAIN` and `RESEND_INBOX_WEBHOOK_SECRET` for the intended environment. `PROVIDER_OUTREACH_EMAIL_DOMAIN` is a compatibility fallback. Use separate verified development and production team domains and register the dedicated inbox received/sent webhook only after its matching secret and route are ready. Unknown inboxes are rejected before routing.
 
-The repeatable cases and observed results live in [provider outreach workflow QA](../testing/provider-outreach-workflow.md). A successful build does not establish live inbox delivery or Jev classification accuracy. No production deployment or external domain provisioning is part of local validation.
-
-## Request mailbox
-
-The always-visible Inbox at `?view=email` is the single mail home for a procurement request. Forwarded imports and Resend outreach share `procurementEmailThreads` / `procurementEmailMessages`, the request-bound `getInbox` query, and `getEmailThread` reader. The inbox pages latest-first conversations as single mail rows; search covers loaded mail, with older conversations available through pagination. An optional `thread` URL selects a conversation only within that request. The reader stays mounted in the standard app-shell right panel while switching conversations, and rows prewarm the thread query on hover/focus so it opens without a loading state. Messages render like a mail client (sender, recipients, collapsed earlier messages, forwarded history, files). The forwarding address is a copy action in the page navbar. Header actions file unfiled attachments as a quote and move forwarded conversations to another request; both use their canonical writers.
-
-Resend conversations stay with their originating request because their sequence and packet link are request-bound; both direct writes and agent preflight enforce this. Forwarded conversations can still move within the same company. Mirrored forwards preserve the existing parsed forwarded-content shape. The list, reader, and reply notifications use the same request destination. The forwarding address receives imports; outgoing transport remains the operator Resend inbox, not a newly provisioned account per request. Provider outreach conversations have a reply composer. `actions/providerOutreach.replyToThread` (direct operators only) stops any live follow-up sequence first (`operator_replied`), replies on the Resend thread from the sequence's operator inbox with a client idempotency key, and mirrors the sent message immediately; the later `inbox.email.sent` event deduplicates on the email id. Capture mode sends and mirrors nothing. Forwarded conversations have no Spot-owned thread and cannot be answered from Spot.
-
-
-Inbound inbox attachments are imported best effort through Resend's Receiving API (`GET /emails/receiving/{id}/attachments`, up to 10 files of 25 MB). The Inboxes API documents metadata only and it is unverified that inbox email ids resolve there; any failure keeps the metadata notice.
+Run local capture workflows first, then authorized restricted delivery with an explicit recipient allowlist. Capture makes no Resend calls. The isolated development spike verified Receiving raw MIME, aligned DKIM and attachment bytes for a real inbox email; actual Gmail forwarding remains a separate workflow. See [team email workflows](../testing/team-email-workflows.md) and the [coverage ledger](../testing/workflow-qa.md) for observed results. Production deployment and migration are separate release steps.
 
 ## Client information requests
 
