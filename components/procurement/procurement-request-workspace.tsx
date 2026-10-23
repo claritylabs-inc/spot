@@ -2604,16 +2604,20 @@ export function ProcurementRequestWorkspace({
         editable: !readOnly,
       })
     : [];
+  const notesItem = {
+    key: SUBMISSION_NOTES_SECTION,
+    label: SUBMISSION_NOTES_SECTION,
+    icon: PROVIDER_ICONS.notes,
+  };
   const menuGroups = [
-    ...applicationGroups,
+    ...applicationGroups.map((group) =>
+      group.label === "Application"
+        ? { ...group, items: [...group.items, notesItem] }
+        : group,
+    ),
     {
       label: "Outreach",
       items: [
-        {
-          key: SUBMISSION_NOTES_SECTION,
-          label: SUBMISSION_NOTES_SECTION,
-          icon: PROVIDER_ICONS.notes,
-        },
         {
           key: "providers",
           label: "Providers",
