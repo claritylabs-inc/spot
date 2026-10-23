@@ -56,7 +56,7 @@ function deliveryText(delivery: NonNullable<Route["latestDelivery"]>) {
     case "suppressed":
       return `Last alert not sent ${when}: this category was off or had no channel.`;
     case "cancelled":
-      return `Last alert cancelled ${when} because the channel changed.`;
+      return `Last alert cancelled ${when} because it was no longer needed or routing changed.`;
     case "failed":
       return `Last alert could not be delivered ${when}. Check that Spot is still in the channel.`;
     default:
@@ -69,14 +69,18 @@ function RouteRow({
   label,
   description,
   channels,
+  available,
   channelsReady,
+  loadError,
   readOnly,
 }: {
   route: Route;
   label: string;
   description: string;
   channels: SlackChannel[];
+  available: boolean;
   channelsReady: boolean;
+  loadError: boolean;
   readOnly: boolean;
 }) {
   const setRoute = useLeaderOnly(useAction(api.actions.operatorNotifications.setRoute));
@@ -87,10 +91,11 @@ function RouteRow({
   const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
 
   const shownChannelId = pendingChannelId ?? route.channelId ?? "";
+  const choices = channelsReady ? channels : [];
   const options =
-    route.channelId && !channels.some((channel) => channel.id === route.channelId)
-      ? [{ id: route.channelId, name: route.channelName ?? route.channelId }, ...channels]
-      : channels;
+    route.channelId && !choices.some((channel) => channel.id === route.channelId)
+      ? [{ id: route.channelId, name: route.channelName ?? route.channelId }, ...choices]
+      : choices;
   const shown = options.find((channel) => channel.id === shownChannelId);
 
   async function save(next: { enabled: boolean; channelId?: string }, failure: string) {
@@ -123,7 +128,11 @@ function RouteRow({
         <SettingsSwitch
           label={`${label} alerts`}
           checked={route.enabled}
-          disabled={disabled || !route.channelId}
+          disabled={
+            disabled ||
+            !route.channelId ||
+            (!route.enabled && !(available && channelsReady))
+          }
           onCheckedChange={() =>
             void save(
               { enabled: !route.enabled, channelId: route.channelId },
@@ -143,11 +152,19 @@ function RouteRow({
             "Slack channel could not be saved.",
           );
         }}
-        disabled={disabled || !channelsReady}
+        disabled={disabled || !available || !channelsReady}
       >
         <SelectTrigger aria-label={`${label} Slack channel`} className="w-full">
           <SelectValue>
-            {shown ? `#${shown.name}` : channelsReady ? "Select a channel" : "Loading channels…"}
+            {shown
+              ? `#${shown.name}`
+              : !available
+                ? "Unavailable"
+                : channelsReady
+                  ? "Select a channel"
+                  : loadError
+                    ? "Channels unavailable"
+                    : "Loading channels…"}
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
@@ -184,10 +201,12 @@ export function OperatorNotificationRoutes({
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(false);
+    setChannelsReady(false);
     try {
       setChannels(await listChannels({}));
       setChannelsReady(true);
     } catch {
+      setChannels([]);
       setLoadError(true);
     } finally {
       setLoading(false);
@@ -195,7 +214,10 @@ export function OperatorNotificationRoutes({
   }, [listChannels]);
 
   useEffect(() => {
-    if (!available) return;
+    if (!available) {
+      const reset = window.setTimeout(() => setChannelsReady(false), 0);
+      return () => window.clearTimeout(reset);
+    }
     const timeout = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timeout);
   }, [available, load]);
@@ -214,37 +236,43 @@ export function OperatorNotificationRoutes({
           <div className="flex h-24 items-center justify-center">
             <Loader2 className="size-5 animate-spin text-muted-foreground motion-reduce:animate-none" />
           </div>
-        ) : !data.available ? (
-          <div
-            className={`rounded-lg border border-dashed border-border-emphasized px-3 py-4 text-muted-foreground ${typeStyle("body.default")}`}
-          >
-            {data.unavailableReason ??
-              "Operator Slack alerts are not configured for this environment."}
-          </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <p
-                className={`${loadError ? "text-destructive" : "text-muted-foreground"} ${typeStyle("caption.default")}`}
+            {!data.available ? (
+              <div
+                className={`rounded-lg border border-dashed border-border-emphasized px-3 py-4 text-muted-foreground ${typeStyle("body.default")}`}
               >
-                {loadError
-                  ? "Channels could not be loaded. Refresh and try again."
-                  : "Only channels Spot has joined are listed."}
-              </p>
-              <PillButton
-                variant="secondary"
-                size="small"
-                disabled={loading}
-                onClick={() => void load()}
-              >
-                {loading ? (
-                  <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
-                ) : (
-                  <RefreshCw className="size-3.5" />
-                )}
-                Refresh channels
-              </PillButton>
-            </div>
+                {data.unavailableReason ??
+                  "Operator Slack alerts are not configured for this environment."}{" "}
+                You can still turn alerts off. Turning on alerts and choosing
+                channels needs Slack to be available.
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <p
+                  className={`${loadError ? "text-destructive" : "text-muted-foreground"} ${typeStyle("caption.default")}`}
+                >
+                  {loadError
+                    ? "Channels could not be loaded. Refresh and try again."
+                    : channelsReady && channels.length === 0
+                      ? "No eligible channels. Add Spot to an internal channel in Slack, then refresh."
+                      : "Only channels Spot has joined are listed."}
+                </p>
+                <PillButton
+                  variant="secondary"
+                  size="small"
+                  disabled={loading}
+                  onClick={() => void load()}
+                >
+                  {loading ? (
+                    <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                  Refresh channels
+                </PillButton>
+              </div>
+            )}
             <div className="divide-y divide-border">
               {OPERATOR_NOTIFICATION_CATEGORIES.map((entry) => {
                 const route = data.routes.find(
@@ -257,7 +285,9 @@ export function OperatorNotificationRoutes({
                     label={entry.label}
                     description={entry.description}
                     channels={channels}
+                    available={available}
                     channelsReady={channelsReady}
+                    loadError={loadError}
                     readOnly={disabled || following}
                   />
                 );
