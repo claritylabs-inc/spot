@@ -175,6 +175,8 @@ export const accept = internalMutation({
     emailContent: v.optional(operatorEmailContentValidator),
     threadToken: v.optional(v.string()),
     attachments: attachmentsValidator,
+    // Required, never defaulted: false asserts the caller authenticated the raw MIME.
+    emailReadOnly: v.boolean(),
   },
   handler: async (ctx, args) => {
     const operator = await resolveActiveOperatorEmail(ctx, args.sender);
@@ -213,7 +215,7 @@ export const accept = internalMutation({
         Boolean(args.threadToken),
         args.emailContent,
       ),
-      emailReadOnly: false,
+      emailReadOnly: args.emailReadOnly,
     });
     return { duplicate: false, receiptId };
   },
