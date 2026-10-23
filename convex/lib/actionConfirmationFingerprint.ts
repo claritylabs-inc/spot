@@ -42,6 +42,7 @@ type FingerprintedDraft = Pick<
   | "orgId"
   | "senderUserId"
   | "operatorAlwaysCcEmail"
+  | "directReplyContext"
   | "fromHeader"
   | "transport"
   | "procurementRequestId"
@@ -79,6 +80,8 @@ export async function pendingEmailDraftFingerprint(
             senderUserId: draft.senderUserId ? String(draft.senderUserId) : null,
             fromHeader: draft.fromHeader ?? null,
             alwaysCc: draft.operatorAlwaysCcEmail?.toLowerCase() ?? null,
+            // A reply's exact target: the message answered, the threading mode and the inbox thread.
+            replyContext: draft.directReplyContext ?? null,
             transport: draft.transport ?? null,
             orgId: draft.orgId ? String(draft.orgId) : null,
             procurementRequestId: draft.procurementRequestId

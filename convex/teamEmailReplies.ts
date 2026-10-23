@@ -12,7 +12,12 @@ import {
 } from "./_generated/server";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
-import { composeTeamReply, previewTeamEmailReply } from "./lib/teamEmailReply";
+import {
+  composeTeamReply,
+  normalizeReplyMessage,
+  previewTeamEmailReply,
+  teamReplyError,
+} from "./lib/teamEmailReply";
 import { resolveTeamThreadId } from "./lib/teamEmailStore";
 import { REPLY_TOOL_NAMES, agentReplyKey } from "./operatorEmailDrafts";
 
@@ -113,7 +118,9 @@ export const prepareSend = mutation({
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     await assertNoOperatorImpersonation(ctx, operator.userId);
-    if (!BROWSER_KEY.test(args.idempotencyKey)) throw new Error("Invalid reply key");
+    if (!BROWSER_KEY.test(args.idempotencyKey)) {
+      throw teamReplyError("This reply could not be started. Try again.");
+    }
     const directReplyKey = `browser:${args.idempotencyKey}`;
 
     const composed = await composeTeamReply(ctx, {
@@ -124,17 +131,19 @@ export const prepareSend = mutation({
     const existing = await replyDraftByKey(ctx, operator.userId, directReplyKey);
     if (existing) {
       const stored = await ctx.db.get(existing._id);
+      // The same key is the same reply only: thread, typed message and approval alike.
       if (
         stored?.teamEmailThreadId !== args.threadId ||
+        stored.directReplyMessage !== normalizeReplyMessage(args.message) ||
         stored.directApproval?.fingerprint !== args.expectedFingerprint
       ) {
-        throw new Error("This reply key was already used for a different reply.");
+        throw teamReplyError("This reply key was already used for a different reply.");
       }
       return { pendingEmailId: existing._id };
     }
-    if (!composed.ok) throw new Error(composed.reason);
+    if (!composed.ok) throw teamReplyError(composed.reason);
     if (composed.preview.fingerprint !== args.expectedFingerprint) {
-      throw new Error("The reply changed since it was previewed. Review it again.");
+      throw teamReplyError("The reply changed since it was previewed. Review it again.");
     }
     const pendingEmailId = await ctx.db.insert("pendingEmails", {
       ...composed.fields,
@@ -209,6 +218,7 @@ export const prepareAgentReplyInternal = internalMutation({
       status: "draft",
       scheduledSendTime: 0,
       directReplyKey,
+      directReplyMessage: composed.message,
       operatorThreadId: confirmation.threadId,
     });
     return { pendingEmailId };

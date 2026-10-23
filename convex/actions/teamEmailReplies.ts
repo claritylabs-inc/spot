@@ -6,6 +6,7 @@ import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { sendOperatorInboxDraft } from "../lib/operatorInboxSend";
+import { teamReplyErrorMessage } from "../lib/teamEmailReply";
 import { getEmailDeliveryMode } from "../lib/resend";
 
 export type TeamReplySent = {
@@ -43,8 +44,9 @@ async function finish(
   };
 }
 
-const errorText = (error: unknown) =>
-  error instanceof Error && error.message ? error.message : "The reply was not sent.";
+/** Text written for the person; anything else thrown is replaced by a stable line. */
+const SAFE_FALLBACK = "The reply was not sent. Review it and try again.";
+const userText = (error: unknown) => teamReplyErrorMessage(error) ?? SAFE_FALLBACK;
 
 /**
  * Sends the previewed reply as the signed-in operator. The caller's session
@@ -52,6 +54,12 @@ const errorText = (error: unknown) =>
  * draft; the send below reads that approval from the draft and takes no
  * operator id, so no other route can send it. A repeat with the same key
  * resumes the same draft and can never create a second one.
+ *
+ * `not_sent` is returned only when it is certain nothing left: a deliberate
+ * rejection by the reply mutation (which writes nothing) while this key has no
+ * sent or locked email, or a send whose draft is stored unclaimed. A failure
+ * with no such certainty (a lost response from the mutation, an unexpected
+ * error) is thrown, never reported as not sent; the UI then asks `status`.
  */
 export const send = action({
   args: {
@@ -68,30 +76,50 @@ export const send = action({
         args,
       ));
     } catch (error) {
-      return { status: "not_sent", message: errorText(error) };
+      // This key may already belong to a sent or locked email, whatever this call said.
+      const known = await ctx
+        .runQuery(api.teamEmailReplies.status, { idempotencyKey: args.idempotencyKey })
+        .catch(() => null);
+      if (known?.state === "sent" || known?.state === "pending") {
+        return await settled(ctx, known.pendingEmailId);
+      }
+      const message = teamReplyErrorMessage(error);
+      if (message !== null) return { status: "not_sent", message };
+      throw error;
     }
     try {
       const { recipientEmail } = await sendOperatorInboxDraft(ctx, { pendingEmailId });
       return await finish(ctx, pendingEmailId, recipientEmail);
     } catch (error) {
-      const draft = await ctx.runQuery(internal.pendingEmails.getInternal, {
-        id: pendingEmailId,
-      });
-      if (draft?.status === "sent") {
-        return await finish(ctx, pendingEmailId, draft.recipientEmail);
-      }
-      if (draft?.status === "pending") {
-        return {
-          status: "pending",
-          pendingEmailId,
-          message:
-            "Delivery is being confirmed. This reply is locked and will not be sent again.",
-        };
-      }
-      return { status: "not_sent", pendingEmailId, message: errorText(error) };
+      const result = await settled(ctx, pendingEmailId);
+      return result.status === "not_sent"
+        ? { ...result, message: userText(error) }
+        : result;
     }
   },
 });
+
+/** The outcome as the draft's stored state says it is. */
+async function settled(
+  ctx: ActionCtx,
+  pendingEmailId: Id<"pendingEmails">,
+): Promise<TeamReplySendResult> {
+  const draft = await ctx.runQuery(internal.pendingEmails.getInternal, {
+    id: pendingEmailId,
+  });
+  if (draft?.status === "sent") {
+    return await finish(ctx, pendingEmailId, draft.recipientEmail);
+  }
+  if (draft?.status === "pending") {
+    return {
+      status: "pending",
+      pendingEmailId,
+      message:
+        "Delivery is being confirmed. This reply is locked and will not be sent again.",
+    };
+  }
+  return { status: "not_sent", pendingEmailId, message: SAFE_FALLBACK };
+}
 
 /** Operator-agent and MCP replies; the completed exact confirmation is the grant. */
 export const sendAgentReplyInternal = internalAction({

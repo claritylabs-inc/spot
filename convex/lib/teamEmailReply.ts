@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
@@ -17,6 +18,32 @@ import { mappedTeamThread, teamTargetProblem } from "./teamEmailStore";
 
 type Ctx = QueryCtx | MutationCtx;
 
+/**
+ * Errors whose message is written for the person using the reply UI. Anything
+ * else thrown on the way (provider bodies, internals) is never shown.
+ */
+export const TEAM_REPLY_ERROR = "team_reply";
+class TeamReplyError extends ConvexError<{ code: "team_reply"; message: string }> {
+  constructor(message: string) {
+    super({ code: TEAM_REPLY_ERROR, message });
+    // Read as plain text where only `message` is shown (agent tool results).
+    this.message = message;
+    this.name = "TeamReplyError";
+  }
+}
+export const teamReplyError = (message: string) => new TeamReplyError(message);
+export function teamReplyErrorMessage(error: unknown): string | null {
+  if (!(error instanceof ConvexError)) return null;
+  const data = error.data as { code?: unknown; message?: unknown } | null;
+  return data?.code === TEAM_REPLY_ERROR && typeof data.message === "string"
+    ? data.message
+    : null;
+}
+
+/** The typed reply as every composition, fingerprint and comparison reads it. */
+export const normalizeReplyMessage = (message: string) =>
+  message.replace(/\r\n/g, "\n").trim();
+
 export const MAX_TEAM_REPLY_CHARS = 20_000;
 
 /** Every field of the pending draft a reply becomes; the fingerprint is computed over these. */
@@ -34,6 +61,21 @@ export type TeamReplyDraftFields = {
   orgId?: Id<"organizations">;
   procurementRequestId?: Id<"procurementRequests">;
   teamEmailThreadId: Id<"teamEmailThreads">;
+  directReplyContext: TeamReplyContext;
+};
+
+/**
+ * The target a reply was approved for, bound by the fingerprint. "thread"
+ * names the sender's inbox and the exact Resend thread and message answered;
+ * "standalone" is a new quoted "Re:" and records only the message quoted.
+ * Standalone leaves the inbox out on purpose: a first send creates it.
+ */
+export type TeamReplyContext = {
+  latestMessageId: Id<"teamEmailMessages">;
+  mode: "thread" | "standalone";
+  inboxId?: string;
+  resendThreadId?: string;
+  replyToEmailId?: string;
 };
 
 /** Exactly what the operator approves: shown by the UI and bound by the fingerprint. */
@@ -165,7 +207,7 @@ export async function composeTeamReply(
     message: string;
   },
 ): Promise<TeamReplyComposition> {
-  const message = args.message.replace(/\r\n/g, "\n").trim();
+  const message = normalizeReplyMessage(args.message);
   if (!message) return { ok: false, reason: "Write a reply first." };
   if (message.length > MAX_TEAM_REPLY_CHARS) {
     return { ok: false, reason: "The reply is too long." };
@@ -221,11 +263,22 @@ export async function composeTeamReply(
   ];
 
   // Threaded only when the sender's inbox maps this conversation and holds a message to answer.
-  const threaded = plan.owns && Boolean(plan.replyToEmailId);
+  const threaded =
+    plan.owns && Boolean(plan.replyToEmailId && plan.inboxId && plan.resendThreadId);
   const quote = threaded ? undefined : quotedHistory(latest);
   const signature = buildOperatorSignature({ name: identity.name });
   const renderedText = `${message}\n\n${signature.text}${quote ? `\n\n${quote.block}` : ""}`;
   const renderedHtml = `${paragraphsHtml(message)}${signature.html}${quote ? quoteHtml(quote.header, quote.block) : ""}`;
+  const directReplyContext: TeamReplyContext =
+    threaded && plan.inboxId && plan.resendThreadId && plan.replyToEmailId
+      ? {
+          latestMessageId: latest._id,
+          mode: "thread",
+          inboxId: plan.inboxId,
+          resendThreadId: plan.resendThreadId,
+          replyToEmailId: plan.replyToEmailId,
+        }
+      : { latestMessageId: latest._id, mode: "standalone" };
   const fields: TeamReplyDraftFields = {
     recipientEmail,
     ...(cc.length ? { ccAddresses: cc } : {}),
@@ -240,6 +293,7 @@ export async function composeTeamReply(
     ...(thread.clientOrgId ? { orgId: thread.clientOrgId } : {}),
     ...(requestId ? { procurementRequestId: requestId } : {}),
     teamEmailThreadId: thread._id,
+    directReplyContext,
   };
   const fingerprint = await pendingEmailDraftFingerprint(fields);
   return {
@@ -255,7 +309,7 @@ export async function composeTeamReply(
       subject: fields.subject,
       text: renderedText,
       html: renderedHtml,
-      mode: threaded ? "thread" : "standalone",
+      mode: directReplyContext.mode,
       ...(ownerAddress ? { copiesOwner: ownerAddress } : {}),
       stopsFollowUps: thread.source === "outreach",
       fingerprint,
