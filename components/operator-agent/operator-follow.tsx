@@ -120,8 +120,9 @@ export function OperatorFollow({
   }, [cursor]);
 
   // Show the leader's panels, tabs and filters; keep them when following stops.
-  const ui = cursor ? (cursor.ui ?? "{}") : null;
-  useEffect(() => setMirroredUi(ui), [ui]);
+  const ui = useQuery(api.operatorCursors.ui, { userId });
+  // No row means every value is at its default.
+  useEffect(() => setMirroredUi(ui === undefined ? null : (ui ?? "{}")), [ui]);
   useEffect(() => () => setMirroredUi(null), []);
 
   // Position from the latest cursor every frame so layout shifts, loading

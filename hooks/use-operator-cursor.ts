@@ -153,13 +153,9 @@ function focusedField() {
   return anchor ? { anchor, ...value } : undefined;
 }
 
-/** Matches the server cap; an oversized map is dropped rather than failing the update. */
+/** Matches the server cap; an oversized map is skipped rather than failing. */
 const UI_STATE_LIMIT = 50_000;
-
-function followedUi() {
-  const json = publishedUiJson();
-  return json.length > UI_STATE_LIMIT ? undefined : json;
-}
+const UI_PUBLISH_DELAY_MS = 50;
 
 function currentHref() {
   return `${window.location.pathname}${window.location.search}`;
@@ -169,6 +165,30 @@ function currentHref() {
 export function usePublishOperatorCursor(enabled: boolean) {
   const move = useMutation(api.operatorCursors.move);
   const clear = useMutation(api.operatorCursors.clear);
+  const publishUi = useMutation(api.operatorCursors.publishUi);
+
+  // Followed UI state goes on its own row, sent only when it changes.
+  useEffect(() => {
+    if (!enabled) return;
+    let sent: string | null = null;
+    let timer: number | null = null;
+    const send = () => {
+      timer = null;
+      const ui = publishedUiJson();
+      if (ui === sent || ui.length > UI_STATE_LIMIT) return;
+      sent = ui;
+      void publishUi({ ui }).catch(() => {});
+    };
+    const schedule = () => {
+      timer ??= window.setTimeout(send, UI_PUBLISH_DELAY_MS);
+    };
+    send();
+    const unsubscribe = subscribePublishedUi(schedule);
+    return () => {
+      unsubscribe();
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [enabled, publishUi]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -196,7 +216,6 @@ export function usePublishOperatorCursor(enabled: boolean) {
         viewportY: at.y / innerHeight,
         visible: visible && pointer !== null,
         field: focusedField(),
-        ui: followedUi(),
       }).catch(() => {});
     };
     const schedule = () => {
@@ -231,8 +250,6 @@ export function usePublishOperatorCursor(enabled: boolean) {
     window.addEventListener("input", schedule, { capture: true });
     window.addEventListener("focusin", schedule, { capture: true });
     window.addEventListener("focusout", schedule, { capture: true });
-    // Panels, tabs and other followed state change without the pointer too.
-    const unsubscribeUi = subscribePublishedUi(schedule);
     // Client navigation has no event; catch route and tab changes by polling.
     const hrefWatch = window.setInterval(() => {
       if (currentHref() !== lastHref) schedule();
@@ -240,7 +257,6 @@ export function usePublishOperatorCursor(enabled: boolean) {
     return () => {
       if (timer !== null) window.clearTimeout(timer);
       window.clearInterval(hrefWatch);
-      unsubscribeUi();
       window.removeEventListener("pointermove", onPointerMove);
       document.removeEventListener("pointerout", onPointerOut);
       window.removeEventListener("scroll", schedule, { capture: true });

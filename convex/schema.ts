@@ -5494,8 +5494,15 @@ export default defineSchema({
         selectionEnd: v.number(),
       }),
     ),
-    /** JSON map of the leader's followed UI state (open panels, tabs, filters). */
-    ui: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_userId", ["userId"]),
+
+  // The leader's followed UI state (open panels, tabs, filters) as a JSON map
+  // of non-default values. Apart from operatorCursors so pointer moves never
+  // resend it; written only when it changes, and only while followed.
+  operatorUiStates: defineTable({
+    userId: v.id("users"),
+    ui: v.string(),
     updatedAt: v.number(),
   }).index("by_userId", ["userId"]),
 });
