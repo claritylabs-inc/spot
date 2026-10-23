@@ -101,6 +101,8 @@ export async function storeProcurementEmailAttachments(
   args: {
     clientOrgId: Id<"organizations">;
     attachments: ProcurementEmailAttachment[];
+    /** Owned draft storage must survive content deduplication. */
+    preserveSourceStorage?: boolean;
     /** Subject of the carrying email; bounds the file-naming hint. */
     subject: string;
   },
@@ -113,6 +115,7 @@ export async function storeProcurementEmailAttachments(
         originalName: attachment.filename,
         contentType: attachment.contentType,
         size: attachment.size,
+        preserveSourceStorage: args.preserveSourceStorage,
       }),
     ),
   );
