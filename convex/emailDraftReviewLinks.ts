@@ -108,7 +108,7 @@ export const createInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const draft = await ctx.db.get(args.pendingEmailId);
-    if (!draft || draft.status !== "draft" || !draft.threadId) {
+    if (!draft || draft.status !== "draft" || !draft.threadId || !draft.orgId || draft.operatorThreadId || draft.transport === "operator_inbox") {
       throw new Error("A current thread email draft is required.");
     }
     const fingerprint = await pendingEmailDraftFingerprint(draft);

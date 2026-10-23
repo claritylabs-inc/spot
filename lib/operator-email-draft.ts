@@ -18,7 +18,10 @@ export type OperatorEmailDraftView = {
   html?: string;
   text: string;
   attachments: Array<{ filename: string }>;
+  /** Absent when the draft is not linked to a client. */
   organizationName?: string;
+  /** Set once the sent message is in the team inbox. */
+  teamEmailThreadId?: string;
   sendBlockedReason?: string;
   updatedAt: number;
 };

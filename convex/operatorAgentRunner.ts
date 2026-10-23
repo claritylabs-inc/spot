@@ -274,11 +274,13 @@ export async function selectOperatorToolFamilies(
   return { families: result.families, source: result.source };
 }
 
-function buildOperatorIdentityBlock(name?: string, email?: string) {
+function buildOperatorIdentityBlock(name?: string, email?: string, teamAddress?: string) {
   const identity = [name?.trim(), email?.trim() ? `<${email.trim()}>` : ""]
     .filter(Boolean)
     .join(" ");
-  return identity ? `\n\nOPERATOR: ${identity}` : "";
+  return identity
+    ? `\n\nOPERATOR: ${identity}${teamAddress ? `\nTEAM EMAIL: ${teamAddress}` : ""}\nWrite outbound email in first person as this operator, signed with their full name. Never sign as \"the Spot team\" or a client agent. The email tools supply the sender and signature.`
+    : "";
 }
 
 function buildPageContextBlock(
@@ -426,6 +428,7 @@ export const run = internalAction({
         toolNames: OperatorAgentToolName[];
         operatorName?: string;
         operatorEmail?: string;
+        operatorTeamAddress?: string;
       } | null = await ctx.runQuery(
         internal.operatorAgent.getRunContextInternal,
         { runId: args.runId },
@@ -988,7 +991,11 @@ export const run = internalAction({
             buildOperatorIdentityBlock(
               context.operatorName,
               context.operatorEmail,
+              context.operatorTeamAddress,
             ) +
+            (run.emailReadOnly
+              ? "\n\nREAD-ONLY EMAIL: The raw message could not be authenticated. You may read and answer, including drafting wording in your reply, but cannot save changes, create saved drafts, call external MCP servers, approve actions, or send email. Explain the restriction and direct changes to authenticated operator chat."
+              : "") +
             // A continuation already carries the structured tool calls and
             // results; the text checkpoint would duplicate them.
             (!continuation && run.checkpoint?.summary

@@ -1,6 +1,7 @@
 import { getProviderOutreachPanel, launchProviderOutreachByOperator, stopProviderOutreachByOperator } from "./providerOutreach";
 import { getClientOutreachPanel, launchClientOutreachByOperator } from "./clientOutreach";
 import { NoWriteInputError } from "./lib/noWriteInputError";
+import { operatorTeamAddressFor } from "./lib/teamEmail";
 import {
   operatorPlanningAssessmentValidator,
   operatorExecutionPlanValidator,
@@ -71,6 +72,7 @@ import {
   OPERATOR_AGENT_TOOL_REGISTRY,
   getOperatorAgentToolSpec,
   availableOperatorAgentToolNames,
+  assertOperatorEmailToolAccess,
   operatorToolRoleAllowed,
   isOperatorAgentToolName,
   parseOperatorAgentToolInput,
@@ -1393,6 +1395,7 @@ export async function enqueueOperatorMessage(
     content: string;
     emailContent?: Infer<typeof operatorEmailContentValidator>;
     preservePendingEmailConfirmation?: boolean;
+    emailReadOnly?: boolean;
     dedupeKey?: string;
     attachments?: OperatorAttachment[];
     pageContext?: {
@@ -1485,7 +1488,7 @@ export async function enqueueOperatorMessage(
   }
 
   const continuedRun =
-    args.channel === "email" && args.preservePendingEmailConfirmation
+    args.channel === "email" && !args.emailReadOnly && args.preservePendingEmailConfirmation
       ? await ctx.db
           .query("operatorAgentRuns")
           .withIndex("thread_status", (index) =>
@@ -1576,6 +1579,7 @@ export async function enqueueOperatorMessage(
     agentMessageId,
     executionKind: "goal",
     objective: content,
+    ...(args.channel === "email" && args.emailReadOnly ? { emailReadOnly: true } : {}),
     status: "queued",
     ...(args.planRequested ? { planRequested: true } : {}),
     checkpoint: { iteration: 0, executionCount: 0 },
@@ -3423,6 +3427,7 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
     anyOperator: true,
   });
   const spec = getOperatorAgentToolSpec(args.toolName);
+  assertOperatorEmailToolAccess(run, spec);
   if (spec.execution !== "mutation") {
     throw new Error(`Operator tool ${args.toolName} requires action execution`);
   }
@@ -4583,6 +4588,7 @@ export const validateConfirmedActionToolExecutionInternal = internalMutation({
     }
     const payload = confirmation.payload;
     const spec = getOperatorAgentToolSpec(payload.toolName);
+    assertOperatorEmailToolAccess(run, spec);
     if (spec.execution !== "action" || spec.confirmation !== "exact") {
       throw new Error("Confirmed operator tool is not action-backed");
     }
@@ -5434,6 +5440,7 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
       anyOperator: true,
     });
     const spec = getOperatorAgentToolSpec(args.toolName);
+    assertOperatorEmailToolAccess(run, spec);
     assertOperatorRole(operator.profile.role, spec.requiredRole);
     if (
       spec.execution !== "action" ||
@@ -5772,6 +5779,7 @@ export const getRunContextInternal = internalQuery({
     const toolNames = availableOperatorAgentToolNames({
       role: operator.profile.role,
       impersonating: Boolean(impersonation),
+      emailReadOnly: run.emailReadOnly,
       integrations: {
         google_workspace: Boolean(
           workspace?.enabled &&
@@ -5792,6 +5800,15 @@ export const getRunContextInternal = internalQuery({
         ),
       },
     });
+    let operatorTeamAddress: string | undefined;
+    try {
+      operatorTeamAddress = operatorTeamAddressFor({
+        email: operator.user.email ?? null,
+        teamEmailLocalpart: operator.profile.teamEmailLocalpart ?? null,
+      });
+    } catch {
+      // Profile remains available when email identity is not configured yet.
+    }
     return {
       run,
       thread,
@@ -5799,6 +5816,7 @@ export const getRunContextInternal = internalQuery({
       toolNames,
       operatorName: operator.user.name,
       operatorEmail: operator.user.email,
+      operatorTeamAddress,
     };
   },
 });
@@ -5970,6 +5988,7 @@ export const requestToolConfirmationInternal = internalMutation({
     if (spec.confirmation !== "exact" || spec.effect === "read") {
       throw new Error("This tool does not use exact confirmation");
     }
+    assertOperatorEmailToolAccess(run, spec);
     const input = parseOperatorAgentToolInput(args.toolName, args.input);
     const expectedHash = await actionConfirmationFingerprint({
       toolName: args.toolName,

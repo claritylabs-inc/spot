@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { useMutation } from "convex/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -47,6 +47,227 @@ function OperatorProfileShell({
     >
       {children}
     </AppShell>
+  );
+}
+
+type TeamEmailSettingsData = Extract<
+  NonNullable<FunctionReturnType<typeof api.operatorEmailSettings.get>>,
+  { configured: true }
+>;
+
+function TeamEmailSettings() {
+  const settings = useQuery(api.operatorEmailSettings.get, {});
+  if (settings === undefined) return null;
+  if (!settings.configured) {
+    return (
+      <div className="mt-4">
+        <InlineFieldCard title="Team email">
+          <InlineFieldRow label="Team address">
+            <span className="text-muted-foreground">
+              Team email is not configured for this environment
+            </span>
+          </InlineFieldRow>
+        </InlineFieldCard>
+      </div>
+    );
+  }
+  return <TeamEmailFields settings={settings} />;
+}
+
+function TeamEmailFields({ settings }: { settings: TeamEmailSettingsData }) {
+  const saveTeamAddress = useMutation(api.operatorEmailSettings.saveTeamAddress);
+  const saveAlwaysCc = useMutation(api.operatorEmailSettings.saveAlwaysCc);
+  const ensureInbox = useAction(api.operatorEmailSettings.ensureInbox);
+  // A blank address field means "use the default".
+  const [localpart, setLocalpart] = useState(
+    settings.customLocalpart ? settings.localpart : "",
+  );
+  const [alwaysCc, setAlwaysCc] = useState(settings.alwaysCcEmail ?? "");
+  const [localpartError, setLocalpartError] = useState<string | null>(null);
+  const [alwaysCcError, setAlwaysCcError] = useState<string | null>(null);
+  const [setup, setSetup] = useState<{
+    state: "idle" | "running" | "failed";
+    message?: string;
+  }>({ state: "idle" });
+  // Only the newest attempt reports, so a late failure never hides a newer save.
+  const latestSetup = useRef(0);
+
+  const runSetup = useCallback(async () => {
+    const attempt = ++latestSetup.current;
+    setSetup({ state: "running" });
+    try {
+      const result = await ensureInbox({});
+      if (attempt !== latestSetup.current) return;
+      setSetup(
+        result.status === "failed"
+          ? { state: "failed", message: result.message }
+          : { state: "idle" },
+      );
+    } catch (error) {
+      if (attempt !== latestSetup.current) return;
+      setSetup({
+        state: "failed",
+        message: getUserFacingErrorMessage(
+          error,
+          "Your team inbox could not be set up.",
+        ),
+      });
+    }
+  }, [ensureInbox]);
+
+  // A default address must work for forwarding before any edit or send. A
+  // failure shows Retry and is never retried automatically.
+  const needsSetup = settings.status === "needs_setup" && !!settings.address;
+  const autoSetupStarted = useRef(false);
+  useEffect(() => {
+    if (!needsSetup || autoSetupStarted.current) return;
+    autoSetupStarted.current = true;
+    void runSetup();
+  }, [needsSetup, runSetup]);
+
+  const nextLocalpart = localpart.trim().toLowerCase();
+  const addressAutoSave = useLocalFirstAutoSave({
+    mutationName: "operator.teamEmail.address",
+    args: { localpart: nextLocalpart },
+    valueKey: nextLocalpart,
+    autoSave: false,
+    flush: async ({ localpart: value }) => {
+      const result = await saveTeamAddress({ localpart: value });
+      if (!result.ok) throw new Error(result.message);
+      return result;
+    },
+    onFlushed: (result) => {
+      setLocalpartError(null);
+      if (result?.changed) void runSetup();
+    },
+    onError: (error) =>
+      setLocalpartError(
+        getUserFacingErrorMessage(error, "Your team address could not be saved."),
+      ),
+  });
+  const alwaysCcAutoSave = useLocalFirstAutoSave({
+    mutationName: "operator.teamEmail.alwaysCc",
+    args: { value: alwaysCc.trim() },
+    valueKey: alwaysCc.trim(),
+    autoSave: false,
+    flush: async ({ value }) => {
+      const result = await saveAlwaysCc({ value });
+      if (!result.ok) throw new Error(result.message);
+      return result;
+    },
+    onFlushed: () => setAlwaysCcError(null),
+    onError: (error) =>
+      setAlwaysCcError(
+        getUserFacingErrorMessage(error, "Always CC could not be saved."),
+      ),
+  });
+
+  const statusText =
+    setup.state === "running"
+      ? "Setting up your inbox…"
+      : setup.state === "failed"
+        ? (setup.message ?? "Your team inbox could not be set up.")
+        : !settings.address
+          ? "Enter a team address"
+          : settings.status === "ready"
+            ? "Ready"
+            : settings.status === "captured"
+              ? "Local capture mode: no inbox is created"
+              : settings.status === "needs_name"
+                ? "Add your full name above to set up your inbox"
+                : "Inbox not set up yet";
+  const canRetry =
+    !!settings.address &&
+    (setup.state === "failed" ||
+      (setup.state === "idle" && settings.status === "needs_setup"));
+  const saveOnEnter = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") event.currentTarget.blur();
+  };
+
+  return (
+    <div className="mt-4">
+      <InlineFieldCard title="Team email">
+        <InlineFieldRow label="Team address">
+          <div className="space-y-1">
+            <div className="flex min-w-0 items-center gap-1">
+              <Input
+                aria-label="Team address"
+                aria-invalid={localpartError ? true : undefined}
+                value={localpart}
+                onChange={(event) => {
+                  setLocalpart(event.target.value);
+                  setLocalpartError(null);
+                }}
+                onBlur={() => void addressAutoSave.saveNow()}
+                onKeyDown={saveOnEnter}
+                placeholder={settings.defaultLocalpart ?? "your-name"}
+                autoComplete="off"
+                spellCheck={false}
+                className="min-w-0 flex-1"
+              />
+              <span className="shrink-0 text-muted-foreground">
+                @{settings.domain}
+              </span>
+            </div>
+            {localpartError ? (
+              <p role="alert" className="text-destructive">
+                {localpartError}
+              </p>
+            ) : (
+              <p className="flex flex-wrap items-center gap-x-3 text-muted-foreground">
+                {statusText}
+                {canRetry ? (
+                  <PillButton
+                    type="button"
+                    variant="ghost"
+                    size="compact"
+                    onClick={() => void runSetup()}
+                  >
+                    {setup.state === "failed" ? "Retry" : "Set up"}
+                  </PillButton>
+                ) : null}
+                {settings.previousAddress ? (
+                  <span className="w-full">
+                    Mail to {settings.previousAddress} still arrives
+                  </span>
+                ) : null}
+              </p>
+            )}
+          </div>
+        </InlineFieldRow>
+        <InlineFieldRow label="Always CC">
+          <div className="space-y-1">
+            <Input
+              aria-label="Always CC"
+              aria-invalid={alwaysCcError ? true : undefined}
+              type="email"
+              value={alwaysCc}
+              onChange={(event) => {
+                setAlwaysCc(event.target.value);
+                setAlwaysCcError(null);
+              }}
+              onBlur={() => void alwaysCcAutoSave.saveNow()}
+              onKeyDown={saveOnEnter}
+              placeholder="Optional: copied on every email you send"
+              autoComplete="off"
+            />
+            {alwaysCcError ? (
+              <p role="alert" className="text-destructive">
+                {alwaysCcError}
+              </p>
+            ) : null}
+          </div>
+        </InlineFieldRow>
+        <InlineFieldRow label="Command email">
+          <span
+            className="break-all"
+            title="Email this address to run the operator agent"
+          >
+            {settings.commandAddress}
+          </span>
+        </InlineFieldRow>
+      </InlineFieldCard>
+    </div>
   );
 }
 
@@ -212,6 +433,7 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
               </InlineFieldRow>
             </InlineFieldCard>
           </form>
+          <TeamEmailSettings />
         </FadeIn>
 
         <FadeIn when={true} staggerIndex={2} duration={0.4}>

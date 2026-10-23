@@ -20,6 +20,9 @@ import {
   type EmailAttachmentMeta,
 } from "./emailDelivery";
 import { buildEmailSignature, getEmailAgentFromName } from "./emailIdentity";
+import { NoWriteInputError } from "./noWriteInputError";
+import { buildOperatorSignature } from "./teamEmail";
+import type { TeamThreadDraftContext } from "../operatorEmailDrafts";
 import { EMAIL_FAMILY_GUIDANCE } from "./channelStyle";
 import {
   MULTIPLE_COI_SINGLE_RECIPIENT_WARNING,
@@ -62,6 +65,8 @@ export type EmailToolResult = {
   subject?: string;
   emailBody?: string;
   responseMessageId?: string;
+  responseFrom?: string;
+  teamEmailThreadId?: Id<"teamEmailThreads">;
   pendingEmailId?: Id<"pendingEmails">;
   attachments?: EmailAttachmentMeta[];
   workflowOutcome?: WorkflowOutcome<"email_delivery">;
@@ -165,8 +170,7 @@ function withEmailWorkflowOutcome(result: EmailToolResult): EmailToolResult {
   return { ...result, workflowOutcome };
 }
 
-export type EmailToolContext = {
-  orgId: Id<"organizations">;
+type EmailToolContextBase = {
   userId?: Id<"users">;
   threadId?: Id<"threads">;
   sourceUserMessageId?: Id<"threadMessages">;
@@ -174,7 +178,6 @@ export type EmailToolContext = {
   routingParentId?: string;
   channel: "web" | "email" | "imessage" | "slack" | "mcp";
   fromHeader: string;
-  agentAddress: string;
   replyTo?: string;
   senderEmail?: string;
   defaultTo?: string;
@@ -202,15 +205,39 @@ export type EmailToolContext = {
         confirmationId: Id<"operatorAgentConfirmations">;
       }
     | { kind: "mcp_explicit_action" };
-  // Operator-agent drafts are not client threads: they link to the operator
-  // thread and agent message, are signed by the operator, and may only be
-  // read or changed from that operator thread.
-  operator?: {
-    threadId: Id<"operatorAgentThreads">;
-    messageId?: Id<"operatorAgentMessages">;
-    senderName?: string;
-  };
   onResult?: (result: EmailToolResult) => void;
+};
+
+/** Client agent email: always one exact organization, sent as that client's agent address. */
+export type EmailToolContext = EmailToolContextBase & {
+  orgId: Id<"organizations">;
+  agentAddress: string;
+  operator?: undefined;
+};
+
+/**
+ * Operator-agent drafts are not client threads. They are signed by the
+ * operator, sent from that operator's team inbox, optionally linked to a
+ * client, request or team thread, and can only be read or changed from the
+ * operator thread that owns them.
+ */
+export type OperatorEmailSender = {
+  threadId: Id<"operatorAgentThreads">;
+  messageId?: Id<"operatorAgentMessages">;
+  senderUserId: Id<"users">;
+  senderName: string;
+  teamAddress: string;
+  /** The operator's permanent Always CC, stored on every draft. */
+  alwaysCc?: string;
+  procurementRequestId?: Id<"procurementRequests">;
+  teamThread?: TeamThreadDraftContext;
+};
+
+export type OperatorEmailToolContext = EmailToolContextBase & {
+  /** Absent for unlinked ad hoc email. */
+  orgId?: Id<"organizations">;
+  agentAddress?: undefined;
+  operator: OperatorEmailSender;
 };
 
 function formatDraft(params: {
@@ -256,6 +283,10 @@ function uniqueAttachments(
   }
   return result;
 }
+
+/** A trailing "On <date> UTC, <sender> wrote:" block of "> " lines, as written by the team-thread quote. */
+const QUOTED_HISTORY_PATTERN =
+  /\n*On [^\n]+ UTC, [^\n]+ wrote:\n\n(?:>[^\n]*(?:\n|$))*$/;
 
 const draftFields = {
   to: z.string().optional(),
@@ -331,6 +362,10 @@ export function serializeEmailDraft(draft: Draft) {
   return {
     id: draft._id,
     status: draft.status,
+    from: draft.fromHeader,
+    orgId: draft.orgId,
+    procurementRequestId: draft.procurementRequestId,
+    teamEmailThreadId: draft.teamEmailThreadId,
     threadId: draft.threadId,
     threadMessageId: draft.threadMessageId,
     recipientEmail: draft.recipientEmail,
@@ -360,9 +395,17 @@ function draftContent(draft: Draft): DraftContent {
 
 export function buildEmailToolExecutors(
   ctx: ActionCtx,
-  context: EmailToolContext,
+  context: EmailToolContext | OperatorEmailToolContext,
 ) {
+  const operator = context.operator;
+  const orgId = context.orgId;
   let activeThreadId = context.threadId;
+
+  /** The exact client; operator drafts without one cannot use client files or policies. */
+  function requireOrg(): Id<"organizations"> {
+    if (!orgId) throw new NoWriteInputError("client_required", "Link a client first");
+    return orgId;
+  }
   let pendingExecution = Promise.resolve();
 
   function serialized<Input, Result>(
@@ -410,19 +453,32 @@ export function buildEmailToolExecutors(
         if (key.startsWith(`${draftId}:`)) keys.delete(key);
     }
   }
-  const scope: AgentScope = context.scope ?? {
-    mode: "client",
-    surface: context.channel,
-    primaryOrgId: context.orgId,
-    readOrgIds: [context.orgId],
-    writableOrgIds: [context.orgId],
-    orgs: [],
-    brokerInternal: false,
-  };
+  const scope: AgentScope | undefined =
+    context.scope ??
+    (orgId
+      ? {
+          mode: "client",
+          surface: context.channel,
+          primaryOrgId: orgId,
+          readOrgIds: [orgId],
+          writableOrgIds: [orgId],
+          orgs: [],
+          brokerInternal: false,
+        }
+      : undefined);
+
+  /** Client-file and policy tools run against one exact client's scope. */
+  function requireClientScope(): { orgId: Id<"organizations">; scope: AgentScope } {
+    const exactOrgId = requireOrg();
+    if (!scope) throw new NoWriteInputError("client_required", "Link a client first");
+    return { orgId: exactOrgId, scope };
+  }
 
   function assertScope(write: boolean) {
+    // Operator drafts without a client have no tenant scope to check.
+    if (!orgId || !scope) return;
     const orgs = write ? scope.writableOrgIds : scope.readOrgIds;
-    if (!orgs.includes(context.orgId))
+    if (!orgs.includes(orgId))
       throw new Error("Email access is not available for this organization.");
   }
 
@@ -432,7 +488,7 @@ export function buildEmailToolExecutors(
     const thread = await ctx.runQuery(internal.threads.getInternal, {
       id: threadId,
     });
-    if (!thread || thread.orgId !== context.orgId)
+    if (!thread || thread.orgId !== orgId)
       throw new Error("Thread not found");
   }
 
@@ -443,9 +499,10 @@ export function buildEmailToolExecutors(
     });
     if (
       !draft ||
-      draft.orgId !== context.orgId ||
+      // An operator revision may add a client to a draft that has none.
+      (draft.orgId !== orgId && !(operator && draft.orgId === undefined)) ||
       (activeThreadId && draft.threadId !== activeThreadId) ||
-      draft.operatorThreadId !== context.operator?.threadId
+      draft.operatorThreadId !== operator?.threadId
     )
       throw new Error("Draft not found");
     if (draft.threadId) await assertThread(draft.threadId);
@@ -471,6 +528,7 @@ export function buildEmailToolExecutors(
     const content = draftContent(draft);
     return emit({
       status: reason ? "needs_confirmation" : "draft",
+      responseFrom: draft.fromHeader,
       responseBody: responseBody ?? formatDraft({ ...content, reason }),
       confirmationReason: reason ?? "Ready to send?",
       responseTo: content.to || undefined,
@@ -490,12 +548,13 @@ export function buildEmailToolExecutors(
         })
       : null;
     const authorization =
+      orgId &&
       context.userId &&
       activeThreadId &&
       context.sourceUserMessageId &&
       isActorBoundExplicitEmailSendSource({
         message,
-        orgId: context.orgId,
+        orgId,
         threadId: activeThreadId,
         actorUserId: context.userId,
         actorEmail: context.senderEmail,
@@ -549,6 +608,19 @@ export function buildEmailToolExecutors(
     return reasons;
   }
 
+  /**
+   * A reply that is not threaded in the sender's inbox is a new "Re:" and
+   * carries the thread's latest message. Any earlier quote is replaced, so
+   * re-signing another operator's draft (even without a new body) gets the
+   * history that fits this sender.
+   */
+  function withQuotedHistory(body: string): string {
+    const thread = operator?.teamThread;
+    if (!thread) return body;
+    const bare = body.replace(QUOTED_HISTORY_PATTERN, "").trimEnd();
+    return thread.crossReply && thread.quote ? `${bare}\n\n${thread.quote}` : bare;
+  }
+
   function normalizeContent(
     input: DraftFields,
     existing?: Draft,
@@ -558,12 +630,26 @@ export function buildEmailToolExecutors(
         ? (context.defaultTo ?? context.senderEmail)
         : (input.to ??
           (input.recipientDirection === "explicit"
-            ? undefined
+            ? operator?.teamThread?.defaultTo
             : (existing?.recipientEmail ?? context.defaultTo)));
     const to = extractEmailAddress(recipient) ?? "";
     const blocked = new Set(
       (context.blockedCopyEmails ?? []).map(normalizeEmailAddress),
     );
+    if (operator) {
+      // The signer is never copied on their own email.
+      blocked.add(operator.teamAddress.toLowerCase());
+      // A standing Always CC belongs to whoever signed it: once the setting
+      // differs (another signer, or it was changed), the old copy is replaced.
+      const stale = existing?.operatorAlwaysCcEmail?.toLowerCase();
+      if (
+        stale &&
+        stale !== operator.alwaysCc?.toLowerCase() &&
+        stale !== operator.teamThread?.ownerAddress?.toLowerCase()
+      ) {
+        blocked.add(stale);
+      }
+    }
     const normalizeCopies = (addresses: string[]) => [
       ...new Set(
         addresses
@@ -576,9 +662,17 @@ export function buildEmailToolExecutors(
           ),
       ),
     ];
+    // Always CC and the thread owner (on a cross-operator reply) are stored on
+    // the draft, so the approval shows them and send never adds recipients.
+    const requiredCopies = operator
+      ? [operator.alwaysCc, operator.teamThread?.ownerAddress].filter(
+          (address): address is string => Boolean(address),
+        )
+      : [];
     const cc = normalizeCopies([
       ...(input.cc ?? []),
       ...(context.defaultCc ?? []),
+      ...requiredCopies,
     ]);
     const bcc = normalizeCopies([
       ...(input.bcc ?? []),
@@ -592,10 +686,12 @@ export function buildEmailToolExecutors(
         input.subject ??
         existing?.subject ??
         context.subjectHint ??
-        ""
+        (operator?.teamThread
+          ? `Re: ${operator.teamThread.subject.replace(/^re:\s*/i, "")}`
+          : "")
       ).trim(),
-      body: cleanAgentMarkdownForTransport(
-        input.body ?? existing?.emailBody ?? "",
+      body: withQuotedHistory(
+        cleanAgentMarkdownForTransport(input.body ?? existing?.emailBody ?? ""),
       ),
       attachments: [],
       referencedPolicyIds: context.referencedPolicyIds,
@@ -610,13 +706,13 @@ export function buildEmailToolExecutors(
     assertScope(true);
     if (existing) assertEditable(existing);
     if (activeThreadId) await assertThread(activeThreadId);
-    if (!context.operator && !activeThreadId && !existing?.threadId) {
+    if (!operator && !activeThreadId && !existing?.threadId) {
       if (!context.userId)
         throw new Error(
           "An authenticated user is required to create an email thread.",
         );
       activeThreadId = await ctx.runMutation(internal.threads.createInternal, {
-        orgId: context.orgId,
+        orgId: requireOrg(),
         userId: context.userId,
         title: content.subject || "Email Draft",
       });
@@ -633,10 +729,9 @@ export function buildEmailToolExecutors(
       bcc: content.bcc,
       subject: content.subject,
       body: content.body,
-      signature: buildEmailSignature(
-        context.agentAddress,
-        context.operator?.senderName,
-      ),
+      signature: operator
+        ? buildOperatorSignature({ name: operator.senderName })
+        : buildEmailSignature(context.agentAddress),
       replyTo: context.replyTo,
       inReplyTo: context.inReplyTo,
       references: context.references,
@@ -666,9 +761,18 @@ export function buildEmailToolExecutors(
       existing?._id ??
       (await ctx.runMutation(internal.pendingEmails.create, {
         ...fields,
-        orgId: context.orgId,
+        orgId,
         threadId,
-        operatorThreadId: context.operator?.threadId,
+        operatorThreadId: operator?.threadId,
+        ...(operator
+          ? {
+              senderUserId: operator.senderUserId,
+              operatorAlwaysCcEmail: operator.alwaysCc?.toLowerCase(),
+              transport: "operator_inbox" as const,
+              procurementRequestId: operator.procurementRequestId,
+              teamEmailThreadId: operator.teamThread?.id,
+            }
+          : {}),
         status: "draft",
         scheduledSendTime: 0,
       }));
@@ -676,6 +780,17 @@ export function buildEmailToolExecutors(
       await ctx.runMutation(internal.pendingEmails.updateDraftInternal, {
         id,
         ...fields,
+        // A revision is re-signed as the operator making it.
+        ...(operator
+          ? {
+              senderUserId: operator.senderUserId,
+              operatorAlwaysCcEmail: operator.alwaysCc?.toLowerCase(),
+              transport: "operator_inbox" as const,
+              orgId,
+              procurementRequestId: operator.procurementRequestId,
+              teamEmailThreadId: operator.teamThread?.id,
+            }
+          : {}),
       });
     const messageFields = {
       content: content.body,
@@ -692,12 +807,12 @@ export function buildEmailToolExecutors(
         id: existing.threadMessageId,
         ...messageFields,
       });
-    } else if (threadId) {
+    } else if (threadId && context.agentAddress) {
       const threadMessageId = await ctx.runMutation(
         internal.threads.insertEmailMessage,
         {
           threadId,
-          orgId: context.orgId,
+          orgId: requireOrg(),
           role: "agent",
           fromEmail: context.agentAddress,
           fromName: getEmailAgentFromName(),
@@ -709,10 +824,10 @@ export function buildEmailToolExecutors(
         threadMessageId,
       });
     }
-    if (context.operator?.messageId)
+    if (operator?.messageId)
       await ctx.runMutation(
         internal.operatorEmailDrafts.attachDraftToOperatorMessageInternal,
-        { messageId: context.operator.messageId, pendingEmailId: id },
+        { messageId: operator.messageId, pendingEmailId: id },
       );
     else if (context.chatMessageId)
       await ctx.runMutation(internal.threads.attachPendingEmailToAgentMessage, {
@@ -791,17 +906,18 @@ export function buildEmailToolExecutors(
     attachments: EmailAttachmentMeta[],
     policyIds: Set<Id<"policies">>,
   ) {
+    const client = requireClientScope();
     return buildAgentToolExecutors(ctx, {
       surface: context.channel,
-      orgId: context.orgId,
+      orgId: client.orgId,
       userId: context.userId!,
       scope: {
-        ...scope,
-        primaryOrgId: context.orgId,
-        focusedOrgId: context.orgId,
-        readOrgIds: [context.orgId],
-        writableOrgIds: [context.orgId],
-        orgs: scope.orgs.filter((org) => org.orgId === context.orgId),
+        ...client.scope,
+        primaryOrgId: client.orgId,
+        focusedOrgId: client.orgId,
+        readOrgIds: [client.orgId],
+        writableOrgIds: [client.orgId],
+        orgs: client.scope.orgs.filter((org) => org.orgId === client.orgId),
       },
       onPolicyReferenced: (policyId) => {
         policyIds.add(policyId);
@@ -872,7 +988,8 @@ export function buildEmailToolExecutors(
               ? await ctx.runQuery(
                   internal.pendingEmails.findDraftByOperatorThreadAndRecipient,
                   {
-                    orgId: context.orgId,
+                    orgId,
+                    teamEmailThreadId: operator?.teamThread?.id,
                     operatorThreadId,
                     recipientEmail: content.to,
                   },
@@ -883,9 +1000,17 @@ export function buildEmailToolExecutors(
                     { threadId: activeThreadId, recipientEmail: content.to },
                   )
                 : null;
-          if (existing && existing.orgId !== context.orgId)
+          if (existing && existing.orgId !== orgId)
             throw new Error("Draft not found");
-          const draft = await persist(content, existing ?? undefined, true);
+          // Another operator's draft is theirs to send: write a new one beside it.
+          const reusable =
+            existing &&
+            (!operator ||
+              !existing.senderUserId ||
+              existing.senderUserId === operator.senderUserId)
+              ? existing
+              : undefined;
+          const draft = await persist(content, reusable, true);
           return resultForDraft(draft, draft.sendBlockedReason);
         },
       ),
@@ -937,6 +1062,7 @@ export function buildEmailToolExecutors(
         async (
           input: z.infer<typeof policySchema>,
         ): Promise<EmailToolResult> => {
+          requireOrg();
           const draft = await getDraft(input.draftId);
           assertEditable(draft);
           const requested = resolveRequestedCoiAttachmentsForRecipient({
@@ -979,6 +1105,7 @@ export function buildEmailToolExecutors(
       inputSchema: fileSchema,
       execute: serialized(
         async (input: z.infer<typeof fileSchema>): Promise<EmailToolResult> => {
+          requireOrg();
           const draft = await getDraft(input.draftId);
           assertEditable(draft);
           if (isAttached(draft, input.fileId))
@@ -992,7 +1119,7 @@ export function buildEmailToolExecutors(
                 internal.threads.listThreadAttachmentsInternal,
                 {
                   threadId: draft.threadId,
-                  orgId: context.orgId,
+                  orgId: requireOrg(),
                   excludeEmailArtifacts: true,
                 },
               )
@@ -1020,12 +1147,13 @@ export function buildEmailToolExecutors(
         async (
           input: z.infer<typeof clientFileSchema>,
         ): Promise<EmailToolResult> => {
+          const exactOrgId = requireOrg();
           const draft = await getDraft(input.draftId);
           assertEditable(draft);
           const key = `client_file:${input.clientFileId}`;
           const file = await ctx.runQuery(
             internal.clientFiles.getForEmailAttachmentInternal,
-            { orgId: context.orgId, clientFileId: input.clientFileId },
+            { orgId: exactOrgId, clientFileId: input.clientFileId },
           );
           if (!file)
             return failedAttachment(
@@ -1049,6 +1177,7 @@ export function buildEmailToolExecutors(
       inputSchema: coiSchema,
       execute: serialized(
         async (input: z.infer<typeof coiSchema>): Promise<EmailToolResult> => {
+          requireOrg();
           const draft = await getDraft(input.draftId);
           assertEditable(draft);
           const { draftId, ...request } = input;
@@ -1154,7 +1283,7 @@ export function buildEmailToolExecutors(
           if (threadId) await assertThread(threadId);
           const drafts = await ctx.runQuery(
             internal.pendingEmails.listDraftsInternal,
-            { orgId: context.orgId, threadId },
+            { orgId: requireOrg(), threadId },
           );
           return {
             drafts: drafts.map((draft) => ({
@@ -1172,7 +1301,12 @@ export function buildEmailToolExecutors(
       execute: serialized(
         async ({ draftId }: { draftId: string }): Promise<EmailToolResult> => {
           const draft = await getDraft(draftId);
-          if (draft.status === "sent" || draft.status === "pending")
+          // A claimed operator send is resumed, never reported as done: the
+          // transport finishes its record or refuses a duplicate.
+          if (
+            draft.status === "sent" ||
+            (draft.status === "pending" && !operator)
+          )
             return emit({
               status: draft.status,
               responseBody:
@@ -1181,10 +1315,12 @@ export function buildEmailToolExecutors(
                   : `Sending email to ${draft.recipientEmail}...`,
               pendingEmailId: draft._id,
               responseMessageId: draft.sentMessageId,
+              responseFrom: draft.fromHeader,
+              teamEmailThreadId: draft.teamEmailThreadId,
               responseTo: draft.recipientEmail,
               attachments: draft.attachments,
             });
-          assertEditable(draft);
+          if (!(operator && draft.status === "pending")) assertEditable(draft);
           const { authorization: source } = await sourceAuthorization();
           const authorization = context.sendAuthorization ?? source;
           const reasons = await blockers(draftContent(draft));
@@ -1255,6 +1391,8 @@ export function buildEmailToolExecutors(
             responseBody: `Email sent to ${sent.recipientEmail}${sent.ccAddresses?.length ? ` (CC: ${sent.ccAddresses.join(", ")})` : ""}.`,
             pendingEmailId: sent._id,
             responseMessageId: sent.sentMessageId,
+            responseFrom: sent.fromHeader,
+            teamEmailThreadId: sent.teamEmailThreadId,
             responseTo: sent.recipientEmail,
             responseCc: sent.ccAddresses,
             responseBcc: sent.bccAddresses,

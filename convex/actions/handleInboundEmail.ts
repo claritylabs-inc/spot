@@ -76,9 +76,11 @@ import {
   extractPendingEmailIdsFromHeaders,
   hasEmailParticipantEvidence,
   parseInboundEmail,
+  receivedEmailHeader,
   resolveForwardReplyAddress,
   storedInboundEmailContent,
 } from "../lib/inboundEmailParser";
+import { forwardedParticipantAddresses } from "../lib/teamEmailForwards";
 import { decideForwardReplyDirection } from "../lib/forwardReplyDirection";
 import { executeEmailCommand } from "../lib/emailCommandExecutor";
 import { isContextualConfirmation } from "../lib/textChannelControls";
@@ -493,7 +495,13 @@ export const processInbound = internalAction({
       ...parseAddressList(data.cc),
       ...parseAddressList(data.bcc),
     ];
+    // Legacy operator aliases span every agent domain, so the verified-webhook
+    // and production-only rules apply to them as well as to the default domain.
+    const operatorRecipients = routingRecipients.filter((address) =>
+      isOperatorEmailRecipient(address, getAgentDomains()),
+    );
     if (
+      operatorRecipients.length > 0 ||
       routingRecipients.some((address) =>
         address.toLowerCase().endsWith(`@${DEFAULT_AGENT_DOMAIN}`),
       )
@@ -518,9 +526,6 @@ export const processInbound = internalAction({
         });
       return;
     }
-    const operatorRecipients = routingRecipients.filter(
-      isOperatorEmailRecipient,
-    );
     if (operatorRecipients.length > 0) {
       await ctx.runAction(
         internal.actions.handleInboundOperatorEmail.processInbound,
@@ -591,36 +596,18 @@ export const processInbound = internalAction({
         text: emailContent.text,
         html: emailContent.html,
       });
-      const rawHeaders = emailContent.headers;
-      const header = (name: string) => {
-        const lower = name.toLowerCase();
-        if (Array.isArray(rawHeaders)) {
-          return (rawHeaders as Array<{ name?: string; value?: string }>).find(
-            (item) => item.name?.toLowerCase() === lower,
-          )?.value;
-        }
-        if (rawHeaders && typeof rawHeaders === "object") {
-          return (
-            (rawHeaders as Record<string, string>)[lower] ??
-            (rawHeaders as Record<string, string>)[name]
-          );
-        }
-        return undefined;
-      };
-      const inReplyTo = header("In-Reply-To");
+      const inReplyTo = receivedEmailHeader(
+        emailContent.headers,
+        "In-Reply-To",
+      );
       const references =
-        header("References")?.trim().split(/\s+/).filter(Boolean) ?? [];
-      const forwardedParticipants = parsedInboundEmail.forwarded
-        ? [
-            parsedInboundEmail.forwarded.email.from?.address,
-            ...parsedInboundEmail.forwarded.email.to.map(
-              (mailbox) => mailbox.address,
-            ),
-            ...parsedInboundEmail.forwarded.email.cc.map(
-              (mailbox) => mailbox.address,
-            ),
-          ].filter((address): address is string => Boolean(address))
-        : [];
+        receivedEmailHeader(emailContent.headers, "References")
+          ?.trim()
+          .split(/\s+/)
+          .filter(Boolean) ?? [];
+      const forwardedParticipants = forwardedParticipantAddresses(
+        parsedInboundEmail.forwarded,
+      );
       const participantEmails = uniqueProcurementEmails(
         forwardedParticipants.length > 0
           ? forwardedParticipants
@@ -814,25 +801,9 @@ export const processInbound = internalAction({
 
     // Threading
     const messageId = data.message_id;
-    const rawHeaders = emailContent.headers;
 
-    function getHeader(name: string): string | undefined {
-      const lower = name.toLowerCase();
-      if (Array.isArray(rawHeaders)) {
-        return (rawHeaders as Array<{ name?: string; value?: string }>).find(
-          (h) => h.name?.toLowerCase() === lower,
-        )?.value;
-      } else if (rawHeaders && typeof rawHeaders === "object") {
-        return (
-          (rawHeaders as Record<string, string>)[lower] ??
-          (rawHeaders as Record<string, string>)[name]
-        );
-      }
-      return undefined;
-    }
-
-    const inReplyTo = getHeader("In-Reply-To");
-    const references = getHeader("References");
+    const inReplyTo = receivedEmailHeader(emailContent.headers, "In-Reply-To");
+    const references = receivedEmailHeader(emailContent.headers, "References");
     const subject = data.subject ?? "(no subject)";
 
     const {

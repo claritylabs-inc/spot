@@ -2,6 +2,13 @@ import dayjs from "dayjs";
 import { z } from "zod";
 import { extractEmailAddress } from "./emailAddress";
 import {
+  deriveOperatorLocalpart,
+  getTeamEmailDomain,
+  isTeamEmailError,
+  operatorFromName,
+  operatorTeamAddress,
+} from "./teamEmail";
+import {
   evaluateRecipientDeliveryPolicy,
   getEmailDeliveryMode,
   logLocalEmailCapture,
@@ -90,6 +97,7 @@ export function isResendInboxError(error: unknown): error is ResendInboxError {
 export type ResendInboxOperation =
   | "createInbox"
   | "getInbox"
+  | "updateInbox"
   | "ensureInbox"
   | "listLabels"
   | "createLabel"
@@ -187,7 +195,7 @@ export type ResendThreadEmail = {
   receivedAt: string;
 };
 
-type ResendInboxDraft = {
+export type ResendInboxDraft = {
   id: string;
   type: "reply" | "standalone";
   to: string[];
@@ -342,7 +350,7 @@ const draftWireSchema = z
 
 type RequestOptions = {
   operation: ResendInboxOperation;
-  method: "GET" | "POST" | "PUT";
+  method: "GET" | "POST" | "PUT" | "PATCH";
   path: string;
   body?: unknown;
   query?: Record<string, string | number | undefined>;
@@ -655,6 +663,57 @@ export async function getInbox(
   );
 }
 
+const FROM_NAME_MAX_LENGTH = 78;
+const INBOX_NAME_MAX_LENGTH = 64;
+
+export type UpdateInboxParams = {
+  /** Inbox id or address (not the receiving address). */
+  inboxId: string;
+  /** An empty string removes it. */
+  fromName?: string;
+  /** Internal name; recipients never see it. */
+  name?: string;
+};
+
+/** `PATCH /inboxes/{id}`. Setup, not a send: runs in `restricted` mode, captured in `capture` mode. */
+export function updateInbox(
+  params: UpdateInboxParams,
+): Promise<ResendInboxResult<{ id: string }>> {
+  const operation = "updateInbox";
+  requireNonEmpty(operation, "inboxId", params.inboxId);
+  assertRealResourceIds(operation, params.inboxId);
+  if (params.fromName === undefined && params.name === undefined) {
+    throw invalid(operation, "fromName or name is required");
+  }
+  if (params.fromName !== undefined) {
+    if (params.fromName.length > FROM_NAME_MAX_LENGTH) {
+      throw invalid(operation, `fromName must be at most ${FROM_NAME_MAX_LENGTH} characters`);
+    }
+    if (/[:<>\r\n]/.test(params.fromName)) {
+      throw invalid(operation, "fromName cannot contain a colon, <, > or line breaks");
+    }
+  }
+  if (
+    params.name !== undefined &&
+    (!params.name.trim() || params.name.trim().length > INBOX_NAME_MAX_LENGTH)
+  ) {
+    throw invalid(operation, `name must be 1-${INBOX_NAME_MAX_LENGTH} characters`);
+  }
+  return call(
+    {
+      operation,
+      method: "PATCH",
+      path: `/inboxes/${seg(params.inboxId)}`,
+      body: {
+        ...(params.fromName !== undefined ? { from_name: params.fromName } : {}),
+        ...(params.name !== undefined ? { name: params.name.trim() } : {}),
+      },
+    },
+    idWireSchema,
+    `${params.inboxId}:${params.fromName ?? ""}:${params.name ?? ""}`,
+  );
+}
+
 export type EnsuredInbox = {
   id: string;
   emailAddress: string;
@@ -810,6 +869,51 @@ export async function ensureOutreachInboxLabels(
 
 // --- Drafts and sends -------------------------------------------------------
 
+/**
+ * Resend documents "25 MB" of attachment content per draft without defining
+ * the unit, so the stricter decimal value is enforced.
+ */
+export const MAX_DRAFT_ATTACHMENT_BYTES = 25_000_000;
+
+export type DraftAttachment = {
+  filename: string;
+  /** Base64 content; drafts accept neither `path` nor `content_id`. */
+  content: string;
+  contentType: string;
+};
+
+const BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
+
+function base64DecodedBytes(content: string): number {
+  const padding = content.endsWith("==") ? 2 : content.endsWith("=") ? 1 : 0;
+  return Math.floor((content.length * 3) / 4) - padding;
+}
+
+function validateDraftAttachments(
+  operation: ResendInboxOperation,
+  attachments: DraftAttachment[],
+): void {
+  let total = 0;
+  for (const attachment of attachments) {
+    requireNonEmpty(operation, "attachment filename", attachment.filename);
+    requireNonEmpty(operation, "attachment contentType", attachment.contentType);
+    if (
+      !attachment.content ||
+      attachment.content.length % 4 !== 0 ||
+      !BASE64_PATTERN.test(attachment.content)
+    ) {
+      throw invalid(
+        operation,
+        `attachment ${attachment.filename} must be non-empty base64`,
+      );
+    }
+    total += base64DecodedBytes(attachment.content);
+  }
+  if (total > MAX_DRAFT_ATTACHMENT_BYTES) {
+    throw invalid(operation, "attachments exceed 25 MB in total");
+  }
+}
+
 export type CreateDraftParams = {
   inboxId: string;
   to: string | string[];
@@ -821,6 +925,8 @@ export type CreateDraftParams = {
   /** Reply draft: both `threadId` and `replyToEmailId` are required together. */
   threadId?: string;
   replyToEmailId?: string;
+  /** At most `MAX_DRAFT_ATTACHMENT_BYTES` combined. */
+  attachments?: DraftAttachment[];
   idempotencyKey: string;
 };
 
@@ -847,6 +953,9 @@ export async function createDraft(
       "threadId and replyToEmailId must be provided together",
     );
   }
+  if (params.attachments?.length) {
+    validateDraftAttachments(operation, params.attachments);
+  }
 
   const recipients = [
     ...asList(params.to),
@@ -866,6 +975,12 @@ export async function createDraft(
       subject: params.subject,
       text: params.text,
       html: params.html,
+      // Metadata only: file content is never logged.
+      attachments: params.attachments?.map((a) => ({
+        filename: a.filename,
+        contentType: a.contentType,
+        size: base64DecodedBytes(a.content),
+      })),
     });
     return captured(operation, idempotencyKey);
   }
@@ -883,6 +998,15 @@ export async function createDraft(
         ...(params.subject ? { subject: params.subject } : {}),
         ...(params.text ? { text: params.text } : {}),
         ...(params.html ? { html: params.html } : {}),
+        ...(params.attachments?.length
+          ? {
+              attachments: params.attachments.map((a) => ({
+                filename: a.filename,
+                content: a.content,
+                content_type: a.contentType,
+              })),
+            }
+          : {}),
         ...(params.threadId
           ? {
               thread_id: params.threadId,
@@ -896,8 +1020,8 @@ export async function createDraft(
   return { status: "ok", data, replayed };
 }
 
-/** `GET /inboxes/{id}/drafts/{draftId}`. */
-function getDraft(
+/** `GET /inboxes/{id}/drafts/{draftId}`: read-only; `emailId` is non-null once the draft was sent. */
+export function getDraft(
   inboxId: string,
   draftId: string,
 ): Promise<ResendInboxResult<ResendInboxDraft>> {
@@ -975,16 +1099,18 @@ export type ReplyToThreadEmailParams = {
   subject?: string;
   cc?: string | string[];
   bcc?: string | string[];
+  /** Sent as the documented boolean body field `reply_all`. */
+  replyAll?: boolean;
   idempotencyKey: string;
   headers?: Record<string, string>;
 };
 
 /**
  * `POST /inboxes/{id}/threads/{threadId}/emails/{emailId}/reply`. Resend
- * addresses the reply (original `to` for an outbound message, otherwise
- * Reply-To / sender), so under `restricted` the target message is fetched and
- * the derived recipients plus cc/bcc are checked first. Reply-all is not
- * exposed: its parameter name is not documented.
+ * derives the recipients (the original `to` for an outbound message, otherwise
+ * Reply-To or sender; `replyAll` adds the message's other recipients), so under
+ * `restricted` the target is fetched and a superset of them plus cc/bcc is
+ * checked first.
  */
 export async function replyToThreadEmail(
   params: ReplyToThreadEmailParams,
@@ -1028,8 +1154,28 @@ export async function replyToThreadEmail(
         : target.data.replyTo.length
           ? target.data.replyTo
           : [target.data.from];
+    let derived = replyTargets;
+    if (params.replyAll) {
+      // The inbox's own address is not a reply-all recipient.
+      const own = (
+        await request(
+          {
+            operation: "getInbox",
+            method: "GET",
+            path: `/inboxes/${seg(params.inboxId)}`,
+          },
+          inboxWireSchema,
+        )
+      ).data.emailAddress.toLowerCase();
+      derived = [
+        ...replyTargets,
+        ...target.data.replyTo,
+        ...target.data.to,
+        ...target.data.cc,
+      ].filter((address) => (extractEmailAddress(address) ?? address.trim().toLowerCase()) !== own);
+    }
     const policy = evaluateRecipientDeliveryPolicy([
-      ...replyTargets,
+      ...derived,
       ...asList(params.cc),
       ...asList(params.bcc),
     ]);
@@ -1049,6 +1195,7 @@ export async function replyToThreadEmail(
         ...(params.subject ? { subject: params.subject } : {}),
         ...(params.cc ? { cc: params.cc } : {}),
         ...(params.bcc ? { bcc: params.bcc } : {}),
+        ...(params.replyAll ? { reply_all: true } : {}),
         ...(params.headers ? { headers: params.headers } : {}),
       },
     },
@@ -1207,57 +1354,51 @@ export function setThreadLabels(
   );
 }
 
-// --- Operator inbox naming --------------------------------------------------
+// Deprecated aliases; naming lives in `teamEmail.ts`.
 
-export function getProviderOutreachEmailDomain(): string {
-  const domain = process.env.PROVIDER_OUTREACH_EMAIL_DOMAIN?.trim()
-    .toLowerCase()
-    .replace(/^@/, "");
-  if (!domain) {
-    throw new ResendInboxError(
-      "permanent",
-      "ensureInbox",
-      "PROVIDER_OUTREACH_EMAIL_DOMAIN not set",
-      { code: "not_configured" },
-    );
-  }
-  return domain;
+
+function asInboxNamingError(error: unknown): unknown {
+  return isTeamEmailError(error)
+    ? new ResendInboxError("permanent", "ensureInbox", error.message, {
+        code: error.code === "not_configured" ? "not_configured" : "validation_error",
+      })
+    : error;
 }
 
-/**
- * The operator's email localpart on the outreach subdomain. Resend allows only
- * letters, numbers and `. _ % -` (max 64, no leading/trailing/double dots);
- * `+` tags are dropped and `%` is avoided so the address is safe in paths.
- */
+/** @deprecated Use `getTeamEmailDomain` from `teamEmail.ts`. */
+export function getProviderOutreachEmailDomain(): string {
+  try {
+    return getTeamEmailDomain();
+  } catch (error) {
+    throw asInboxNamingError(error);
+  }
+}
+
+/** @deprecated Ignores a saved `teamEmailLocalpart`; use `ensureOperatorInbox`. */
 export function operatorInboxAddress(
   operatorEmail: string,
-  domain: string = getProviderOutreachEmailDomain(),
+  domain?: string,
 ): string {
-  const full =
-    extractEmailAddress(operatorEmail) ?? operatorEmail.trim().toLowerCase();
-  const raw = full.split("@")[0]?.split("+")[0] ?? "";
-  const local = raw
-    .replace(/[^a-z0-9._-]/g, "")
-    .replace(/\.{2,}/g, ".")
-    .replace(/^\.+|\.+$/g, "")
-    .slice(0, 64)
-    .replace(/\.+$/g, "");
-  if (!local) {
-    throw invalid("ensureInbox", "operator email has no usable localpart");
+  try {
+    return operatorTeamAddress(
+      deriveOperatorLocalpart(operatorEmail),
+      domain ?? getTeamEmailDomain(),
+    );
+  } catch (error) {
+    throw asInboxNamingError(error);
   }
-  return `${local}@${domain}`;
 }
 
-/** "{First} at Spot", without characters Resend rejects in `from_name`. */
+/** @deprecated Display only: "Spot" when the name is unset, so read paths never throw. Send paths use `operatorFromName`. */
 export function operatorInboxFromName(
   operatorName: string | undefined,
 ): string {
-  const first =
-    (operatorName ?? "")
-      .replace(/[:<>\r\n]/g, " ")
-      .trim()
-      .split(/\s+/)[0] ?? "";
-  return (first ? `${first} at Spot` : "Spot").slice(0, 78);
+  try {
+    return operatorFromName(operatorName);
+  } catch (error) {
+    if (isTeamEmailError(error) && error.code === "name_required") return "Spot";
+    throw asInboxNamingError(error);
+  }
 }
 
 // --- Webhooks ---------------------------------------------------------------

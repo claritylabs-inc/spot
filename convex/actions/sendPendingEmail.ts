@@ -12,8 +12,14 @@ import {
 import { countCoiAttachments } from "../lib/coiAttachmentGuards";
 import {
   buildPendingEmailConfirmation,
+  isOperatorEmailDraft,
   pendingEmailDraftFingerprint,
 } from "../lib/actionConfirmationFingerprint";
+import {
+  finalizeOperatorAttempt,
+  reconcileOperatorAttempt,
+  sendOperatorInboxDraft,
+} from "../lib/operatorInboxSend";
 import { sendOutboundImessage } from "../lib/imessageOutbound";
 import {
   formatEmailDraftBlockers,
@@ -77,7 +83,7 @@ async function authorizeExplicitCoiBatches(
   for (const draft of drafts) {
     const confirmation = await buildPendingEmailConfirmation(draft);
     if (confirmation.payload.kind !== "coi_batch_delivery") continue;
-    if (!draft.threadId) {
+    if (!draft.threadId || !draft.orgId) {
       throw new Error("COI batch confirmation requires a thread.");
     }
     const batchPromptMessageId = await ctx.runMutation(
@@ -152,6 +158,10 @@ async function assertDraftSendAuthorization(
   pending: Doc<"pendingEmails">,
   authorization: DraftSendAuthorization,
 ) {
+  // Operator drafts are handled by `sendOperatorDraft`; every other path refuses them.
+  if (isOperatorEmailDraft(pending) || authorization.kind === "operator_confirmed_action") {
+    throw new Error("Operator drafts send only through the operator's approved send action.");
+  }
   if (authorization.kind === "scheduled") {
     if (pending.status !== "pending" || !pending.scheduledSendTime) {
       throw new Error(
@@ -175,24 +185,6 @@ async function assertDraftSendAuthorization(
       authorization,
       "draft",
     );
-    return;
-  }
-  if (authorization.kind === "operator_confirmed_action") {
-    if (pending.status !== "draft") {
-      throw new Error("Explicit send requires a current draft.");
-    }
-    const confirmed = await ctx.runQuery(
-      internal.operatorEmailDrafts.isSendConfirmedInternal,
-      {
-        confirmationId: authorization.confirmationId,
-        pendingEmailId: pending._id,
-      },
-    );
-    if (!confirmed) {
-      throw new Error(
-        "A completed operator approval for this exact draft is required.",
-      );
-    }
     return;
   }
   if (
@@ -306,6 +298,30 @@ function outboundMessageIdForPending(id: Id<"pendingEmails">) {
   return `<spot-pending-${String(id)}@${getAgentDomain()}>`;
 }
 
+/**
+ * Operator drafts leave only from the signing operator's own inbox, under that
+ * operator's completed exact approval. The delivery claim rechecks the
+ * approval, the approver being the signer and the draft fingerprint.
+ */
+async function sendOperatorDraft(
+  ctx: ActionCtx,
+  pending: Doc<"pendingEmails">,
+  authorization: DraftSendAuthorization,
+): Promise<SendEmailResult> {
+  if (authorization.kind !== "operator_confirmed_action") {
+    throw new Error(
+      "Operator drafts can be sent only after the operator approves the exact email.",
+    );
+  }
+  if (pending.status !== "draft" && pending.status !== "pending") {
+    return null;
+  }
+  return await sendOperatorInboxDraft(ctx, {
+    pendingEmailId: pending._id,
+    confirmationId: authorization.confirmationId,
+  });
+}
+
 async function sendPendingEmailById(
   ctx: ActionCtx,
   id: Id<"pendingEmails">,
@@ -319,9 +335,14 @@ async function sendPendingEmailById(
   const pending = await ctx.runQuery(internal.pendingEmails.getInternal, {
     id,
   });
+  if (pending && isOperatorEmailDraft(pending)) {
+    return await sendOperatorDraft(ctx, pending, options.authorization);
+  }
   if (!pending || !options.allowedStatuses.includes(pending.status)) {
     return null;
   }
+  const orgId = pending.orgId;
+  if (!orgId) throw new Error("Draft has no client organization.");
   await assertDraftSendAuthorization(ctx, pending, options.authorization);
   const sendability = getEmailDraftSendability(pending, {
     allowedStatuses: options.allowedStatuses,
@@ -359,7 +380,7 @@ async function sendPendingEmailById(
     }
     const result = await sendTrackedResendEmail(ctx, {
       source: "pending_email",
-      orgId: pending.orgId,
+      orgId,
       pendingEmailId: id,
       threadId: pending.threadId,
       threadMessageId: pending.threadMessageId,
@@ -407,7 +428,7 @@ async function sendPendingEmailById(
       } else {
         await ctx.runMutation(internal.threads.insertEmailMessage, {
           threadId: pending.threadId,
-          orgId: pending.orgId,
+          orgId,
           role: "agent",
           content: pending.emailBody,
           toAddresses: [pending.recipientEmail],
@@ -437,7 +458,7 @@ async function sendPendingEmailById(
         if (sent) {
           await ctx.runMutation(internal.threads.insertImessageMessage, {
             threadId: pending.threadId,
-            orgId: pending.orgId,
+            orgId,
             role: "agent",
             content: confirmation,
             responseMessageId: `${id}:sent-confirmation`,
@@ -467,6 +488,24 @@ async function sendPendingEmailById(
     throw err;
   }
 }
+
+/** Read-only settlement of an operator send whose action may have died or whose outcome is unknown. */
+export const reconcileOperatorSend = internalAction({
+  args: { attemptId: v.id("emailDeliveryAttempts"), round: v.number() },
+  handler: async (ctx, args): Promise<null> => {
+    await reconcileOperatorAttempt(ctx, args);
+    return null;
+  },
+});
+
+/** Finishes the team-inbox record of an email that already left. Never sends. */
+export const finalizeOperatorSend = internalAction({
+  args: { attemptId: v.id("emailDeliveryAttempts"), round: v.number() },
+  handler: async (ctx, args): Promise<null> => {
+    await finalizeOperatorAttempt(ctx, args);
+    return null;
+  },
+});
 
 export const sendPending = internalAction({
   args: { id: v.id("pendingEmails") },
@@ -505,7 +544,11 @@ export const sendDraftNow = action({
     const pending = await ctx.runQuery(internal.pendingEmails.getInternal, {
       id: args.id,
     });
-    if (!pending || pending.orgId !== orgData.membership.orgId) {
+    if (
+      !pending ||
+      pending.orgId !== orgData.membership.orgId ||
+      isOperatorEmailDraft(pending)
+    ) {
       throw new Error("Not found");
     }
     await authorizeExplicitCoiBatches(ctx, [pending], orgData.membership.userId);
@@ -538,7 +581,11 @@ export const sendDraftsNow = action({
       const pending = await ctx.runQuery(internal.pendingEmails.getInternal, {
         id,
       });
-      if (!pending || pending.orgId !== orgData.membership.orgId) {
+      if (
+        !pending ||
+        pending.orgId !== orgData.membership.orgId ||
+        isOperatorEmailDraft(pending)
+      ) {
         throw new Error("Not found");
       }
       if (pending.status !== "draft") {

@@ -28,27 +28,73 @@ export async function actionConfirmationFingerprint(
     .join("");
 }
 
-export async function pendingEmailDraftFingerprint(
+type FingerprintedDraft = Pick<
+  Doc<"pendingEmails">,
+  | "recipientEmail"
+  | "ccAddresses"
+  | "bccAddresses"
+  | "subject"
+  | "emailBody"
+  | "attachments"
+  | "referencedPolicyIds"
+  | "operatorThreadId"
+  | "replyTo"
+  | "orgId"
+  | "senderUserId"
+  | "operatorAlwaysCcEmail"
+  | "fromHeader"
+  | "transport"
+  | "procurementRequestId"
+  | "teamEmailThreadId"
+  | "inReplyTo"
+  | "references"
+  | "renderedText"
+  | "renderedHtml"
+>;
+
+/** Operator-agent drafts send only from the operator's own inbox, never as a client agent. */
+export function isOperatorEmailDraft(
   draft: Pick<
     Doc<"pendingEmails">,
-    | "recipientEmail"
-    | "ccAddresses"
-    | "bccAddresses"
-    | "subject"
-    | "emailBody"
-    | "attachments"
-    | "referencedPolicyIds"
-    | "operatorThreadId"
-    | "replyTo"
+    "operatorThreadId" | "senderUserId" | "transport"
   >,
+): boolean {
+  return Boolean(
+    draft.operatorThreadId || draft.senderUserId || draft.transport,
+  );
+}
+
+/**
+ * Binds an approval to the exact draft. Operator drafts also bind the signing
+ * operator, From header, Always CC snapshot, transport, link targets, threading headers and the
+ * rendered payload; client fingerprints are unchanged.
+ */
+export async function pendingEmailDraftFingerprint(
+  draft: FingerprintedDraft,
 ): Promise<string> {
   return actionConfirmationFingerprint({
-    // Operator approvals cover where replies go; client fingerprints are unchanged.
-    ...(draft.operatorThreadId
+    ...(isOperatorEmailDraft(draft)
       ? {
-          replyTo: parseReplyToAddresses(draft.replyTo).map((a) =>
-            a.toLowerCase(),
-          ),
+          operator: {
+            senderUserId: draft.senderUserId ? String(draft.senderUserId) : null,
+            fromHeader: draft.fromHeader ?? null,
+            alwaysCc: draft.operatorAlwaysCcEmail?.toLowerCase() ?? null,
+            transport: draft.transport ?? null,
+            orgId: draft.orgId ? String(draft.orgId) : null,
+            procurementRequestId: draft.procurementRequestId
+              ? String(draft.procurementRequestId)
+              : null,
+            teamEmailThreadId: draft.teamEmailThreadId
+              ? String(draft.teamEmailThreadId)
+              : null,
+            replyTo: parseReplyToAddresses(draft.replyTo).map((a) =>
+              a.toLowerCase(),
+            ),
+            inReplyTo: draft.inReplyTo ?? null,
+            references: draft.references ?? null,
+            renderedText: draft.renderedText ?? null,
+            renderedHtml: draft.renderedHtml ?? null,
+          },
         }
       : {}),
     recipientEmail: draft.recipientEmail.trim().toLowerCase(),
