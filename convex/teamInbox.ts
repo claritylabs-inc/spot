@@ -8,6 +8,8 @@ import {
   getTeamThreadDetails,
   listSuggestedTeamThreads,
   listTeamInbox,
+  resolveTeamThreadId,
+  teamTargetProblem,
   teamInboxUnreadCount,
 } from "./lib/teamEmailStore";
 import {
@@ -109,6 +111,20 @@ export const getThread = query({
     const operator = await requireOperator(ctx);
     if (args.requestId) await requireRequest(ctx, args.requestId);
     return await getTeamThreadDetails(ctx, { ...args, viewerUserId: operator.userId });
+  },
+});
+
+/** Resolve saved links across the migration without writing on navigation. */
+export const resolveThreadId = query({
+  args: { threadId: v.string(), requestId: v.optional(v.id("procurementRequests")) },
+  handler: async (ctx, args) => {
+    await requireOperator(ctx);
+    const id = await resolveTeamThreadId(ctx, args.threadId);
+    const thread = id ? await ctx.db.get(id) : null;
+    if (!thread || thread.deletedAt ||
+      (args.requestId && thread.requestId !== args.requestId) ||
+      (await teamTargetProblem(ctx, thread))) return null;
+    return thread._id;
   },
 });
 
