@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
 import dayjs from "dayjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -10,7 +10,72 @@ const HEARTBEAT_INTERVAL_MS = 15_000;
 /** Three missed heartbeats mark an operator as gone. */
 const ACTIVE_WINDOW_MS = 45_000;
 
-/** Reports this operator's page and open dock thread while the tab is visible. */
+export type EmailThreadActivity = "viewing" | "replying";
+
+type EmailThreadPresence = {
+  token: string;
+  emailThreadId: Id<"teamEmailThreads">;
+  activity: EmailThreadActivity;
+};
+
+// The open email thread rides on the single shell heartbeat below. A reader
+// reports into this store instead of running its own heartbeat.
+let emailThreadPresence: EmailThreadPresence | null = null;
+const emailThreadListeners = new Set<() => void>();
+
+function setEmailThreadPresence(next: EmailThreadPresence | null) {
+  emailThreadPresence = next;
+  emailThreadListeners.forEach((listener) => listener());
+}
+
+function subscribeEmailThreadPresence(listener: () => void) {
+  emailThreadListeners.add(listener);
+  return () => void emailThreadListeners.delete(listener);
+}
+
+function getEmailThreadPresence() {
+  return emailThreadPresence;
+}
+
+/**
+ * Reports the email thread this operator has open. `activity: "replying"` is
+ * downgraded to viewing while the window is blurred or the tab hidden, and
+ * everything clears on unmount or when `emailThreadId` is null. Works for any
+ * route: the team inbox and the request Email tab both pass the thread id
+ * explicitly, so the pathname does not need to carry it.
+ */
+export function useReportEmailThreadPresence(
+  emailThreadId: Id<"teamEmailThreads"> | null,
+  activity: EmailThreadActivity = "viewing",
+) {
+  const token = useId();
+  const [engaged, setEngaged] = useState(true);
+
+  useEffect(() => {
+    const update = () =>
+      setEngaged(document.visibilityState === "visible" && document.hasFocus());
+    update();
+    window.addEventListener("focus", update);
+    window.addEventListener("blur", update);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      window.removeEventListener("focus", update);
+      window.removeEventListener("blur", update);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, []);
+
+  const effective: EmailThreadActivity = engaged ? activity : "viewing";
+  useEffect(() => {
+    if (!emailThreadId) return;
+    setEmailThreadPresence({ token, emailThreadId, activity: effective });
+    return () => {
+      if (emailThreadPresence?.token === token) setEmailThreadPresence(null);
+    };
+  }, [token, emailThreadId, effective]);
+}
+
+/** Reports this operator's page, open dock thread and open email thread while the tab is visible. */
 export function useOperatorPresenceHeartbeat({
   pathname,
   threadId,
@@ -20,6 +85,13 @@ export function useOperatorPresenceHeartbeat({
 }) {
   const heartbeat = useMutation(api.operatorPresence.heartbeat);
   const leave = useMutation(api.operatorPresence.leave);
+  const email = useSyncExternalStore(
+    subscribeEmailThreadPresence,
+    getEmailThreadPresence,
+    () => null,
+  );
+  const emailThreadId = email?.emailThreadId;
+  const activity = email?.activity;
 
   useEffect(() => {
     const beat = () => {
@@ -29,6 +101,8 @@ export function useOperatorPresenceHeartbeat({
         threadId: (threadId ?? undefined) as
           | Id<"operatorAgentThreads">
           | undefined,
+        emailThreadId,
+        activity,
       }).catch(() => {});
     };
     beat();
@@ -38,7 +112,7 @@ export function useOperatorPresenceHeartbeat({
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", beat);
     };
-  }, [heartbeat, pathname, threadId]);
+  }, [heartbeat, pathname, threadId, emailThreadId, activity]);
 
   useEffect(() => {
     const onPageHide = () => void leave().catch(() => {});
@@ -62,4 +136,27 @@ export function useActiveOperators() {
     () => (rows ?? []).filter((row) => row.lastSeen > now - ACTIVE_WINDOW_MS),
     [now, rows],
   );
+}
+
+export type ActiveOperator = ReturnType<typeof useActiveOperators>[number];
+
+/**
+ * Other operators on each email thread, from one `useActiveOperators()` result.
+ * Call once per list and look rows up by id; do not subscribe per row.
+ */
+export function groupEmailThreadPeople(operators: ActiveOperator[]) {
+  const byThread = new Map<string, ActiveOperator[]>();
+  for (const operator of operators) {
+    if (operator.self || !operator.emailThreadId) continue;
+    byThread.set(operator.emailThreadId, [
+      ...(byThread.get(operator.emailThreadId) ?? []),
+      operator,
+    ]);
+  }
+  return byThread;
+}
+
+/** Whether anyone in `people` is mid-reply on their thread. */
+export function replyingOperators(people: ActiveOperator[] | undefined) {
+  return (people ?? []).filter((operator) => operator.activity === "replying");
 }
