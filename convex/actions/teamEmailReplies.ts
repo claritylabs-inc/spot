@@ -6,7 +6,7 @@ import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { sendOperatorInboxDraft } from "../lib/operatorInboxSend";
-import { teamReplyErrorMessage } from "../lib/teamEmailReply";
+import { isReplyKeyMismatch, teamReplyErrorMessage } from "../lib/teamEmailReply";
 import { getEmailDeliveryMode } from "../lib/resend";
 
 export type TeamReplySent = {
@@ -76,6 +76,8 @@ export const send = action({
         args,
       ));
     } catch (error) {
+      // A different message under an old key was never prepared or sent by this call.
+      if (isReplyKeyMismatch(error)) return { status: "not_sent", message: userText(error) };
       // This key may already belong to a sent or locked email, whatever this call said.
       const known = await ctx
         .runQuery(api.teamEmailReplies.status, { idempotencyKey: args.idempotencyKey })

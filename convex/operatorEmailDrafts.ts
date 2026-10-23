@@ -15,11 +15,13 @@ import {
   isOperatorEmailDraft,
   pendingEmailDraftFingerprint,
 } from "./lib/actionConfirmationFingerprint";
+import { validateAlwaysCcEmail } from "./lib/operatorInbox";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { extractEmailAddress, parseReplyToAddresses } from "./lib/emailAddress";
 import {
   requireOperator,
   requireOperatorForUser,
+  operatorEmailAliases,
 } from "./lib/operatorIdentity";
 import {
   isTeamEmailError,
@@ -183,11 +185,12 @@ export async function operatorSenderIdentity(
       email: user.email ?? null,
       teamEmailLocalpart: profile.teamEmailLocalpart ?? null,
     });
-    const alwaysCc =
-      extractEmailAddress(profile.alwaysCcEmail) &&
-      extractEmailAddress(profile.alwaysCcEmail) !== teamAddress
-        ? extractEmailAddress(profile.alwaysCcEmail)
-        : null;
+    const alwaysCc = profile.alwaysCcEmail
+      ? validateAlwaysCcEmail(profile.alwaysCcEmail, [
+          teamAddress,
+          ...(user.email ? [user.email, ...operatorEmailAliases(user.email)] : []),
+        ])
+      : null;
     return {
       senderUserId: operatorUserId,
       name,
@@ -259,12 +262,15 @@ export async function teamThreadReplyPlan(
     ? messages.find(
         (message) =>
           message.resendInboxEmailId &&
-          (message.resendThreadId ?? thread.resendThreadId) === resendThreadId,
+          message.resendThreadId === resendThreadId,
       )?.resendInboxEmailId
     : undefined;
   const latestInbound = messages.find((m) => m.direction === "inbound");
   return {
-    owns: Boolean(link),
+    threaded: Boolean(
+      link && replyToEmailId && inbox &&
+      messages[0]?.resendThreadId === resendThreadId,
+    ),
     inboxId: inbox?.inboxId,
     resendThreadId,
     replyToEmailId,
@@ -453,16 +459,16 @@ export const resolveSenderInternal = internalQuery({
     if (thread) {
       const plan = await teamThreadReplyPlan(ctx, thread, args.operatorUserId);
       const ownerAddress =
-        plan.owns || thread.ownerUserId === args.operatorUserId
+        plan.threaded || thread.ownerUserId === args.operatorUserId
           ? undefined
           : await teamThreadOwnerAddress(ctx, thread.ownerUserId);
       const quote =
-        !plan.owns && plan.latest ? quotedHistory(plan.latest) : undefined;
+        !plan.threaded && plan.latest ? quotedHistory(plan.latest) : undefined;
       teamThread = {
         id: thread._id,
         subject: thread.subject,
         ownerUserId: thread.ownerUserId,
-        crossReply: !plan.owns,
+        crossReply: !plan.threaded,
         ownerAddress,
         defaultTo: plan.defaultTo,
         quoteHeader: quote?.header,
@@ -510,6 +516,7 @@ export const getReplyTargetInternal = internalQuery({
     const plan = await teamThreadReplyPlan(ctx, thread, draft.senderUserId);
     // The mapping is for the sender's active inbox: it only applies to that inbox.
     if (
+      !plan.threaded ||
       !plan.resendThreadId ||
       !plan.replyToEmailId ||
       plan.inboxId !== args.inboxId
@@ -618,7 +625,7 @@ export async function operatorDraftBlocker(
       );
     }
     const plan = await teamThreadReplyPlan(ctx, thread, draft.senderUserId);
-    if (!plan.owns && thread.ownerUserId !== draft.senderUserId) {
+    if (!plan.threaded && thread.ownerUserId !== draft.senderUserId) {
       const ownerAddress = await teamThreadOwnerAddress(ctx, thread.ownerUserId);
       if (ownerAddress && !copied.has(ownerAddress)) {
         return redo("The thread owner changed — update the draft to copy them.");
@@ -815,8 +822,7 @@ export async function requireSendableOperatorEmailDraft(
 
 /**
  * The email as shown in the exact-approval prompt: sender, recipients, scope
- * and body. The signature is rendered from the signer's name and is covered by
- * the draft fingerprint, not repeated here.
+ * and the complete signed body, all covered by the draft fingerprint.
  */
 function operatorEmailSendSummary(
   draft: Doc<"pendingEmails">,
@@ -845,7 +851,7 @@ function operatorEmailSendSummary(
       ? `Attachments: ${draft.attachments.map(({ filename }) => filename).join(", ")}`
       : null,
     "",
-    draft.emailBody,
+    draft.renderedText ?? draft.emailBody,
   ]
     .filter((line) => line !== null)
     .join("\n");

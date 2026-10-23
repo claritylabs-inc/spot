@@ -414,9 +414,9 @@ function classifyHttpError(
       retryAfterMs: retryAfterMs ?? 2_000,
     });
   }
-  if (status === 408 || status === 425 || status === 503) {
+  if (status === 408 || status === 425) {
     return new ResendInboxError(
-      "transient",
+      status === 408 && isWrite ? "unknown" : "transient",
       options.operation,
       message,
       details,
