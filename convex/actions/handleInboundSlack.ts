@@ -9,8 +9,9 @@ import {
   buildOperatorSlackConfirmationResolvedBlocks,
   operatorSlackConfirmationText,
   type OperatorSlackConfirmationResolution,
-  formatSlackAnswerText,
-} from "../lib/slackBlocks";
+} from "../lib/operatorSlackBlocks";
+import { formatSlackAnswerText } from "../lib/slackBlocks";
+import { assertSlackAttachmentsDelivered } from "../lib/slackDelivery";
 import {
   handleOperatorChannelConfirmation,
   waitForOperatorAgentRun,
@@ -129,13 +130,7 @@ export async function sendOperatorSlackResponse(
       : undefined,
     attachments,
   });
-  if (result.attachmentFailures.length) {
-    throw new Error(
-      result.attachmentFailures
-        .map(({ filename, error }) => `${filename}: ${error}`)
-        .join("; "),
-    );
-  }
+  assertSlackAttachmentsDelivered(result);
   return result.messageId;
 }
 

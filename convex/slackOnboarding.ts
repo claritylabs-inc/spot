@@ -249,12 +249,10 @@ export const selectAutomaticChannel = action({
       connectionId: connection._id,
       channels,
     });
-    const channel = channels.find(
-      (candidate) => candidate.id === args.channelId && candidate.isMember,
-    );
-    if (!channel) {
-      throw new Error("Select a Slack channel that Spot has joined");
-    }
+    const channel = await slackWebApi(ctx).assertJoinedChannel({
+      teamId: connection.teamId,
+      channelId: args.channelId,
+    });
     await ctx.runMutation(
       internalApi.agentChannels.selectAutomaticSlackChannelInternal,
       {
