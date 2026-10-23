@@ -128,7 +128,7 @@ export const get = query({
  * Saves the intended team address (an empty value restores the default derived
  * from the login email). Validates the localpart and that no other owner, active
  * or retired, holds the address, before anything external changes. The caller
- * then runs `provision`; the old inbox keeps receiving until the new one is
+ * then runs `ensureInbox`; the old inbox keeps receiving until the new one is
  * recorded.
  */
 export const saveTeamAddress = mutation({
@@ -210,7 +210,7 @@ export const saveAlwaysCc = mutation({
   },
 });
 
-/** Authorizes `provision`: an active operator who is not impersonating. */
+/** Authorizes `ensureInbox`: an active operator who is not impersonating. */
 export const requireOwnProvisioningInternal = internalQuery({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
@@ -220,21 +220,21 @@ export const requireOwnProvisioningInternal = internalQuery({
   },
 });
 
-export type ProvisionResult =
+export type EnsureInboxResult =
   | { status: "ready"; address: string }
   | { status: "captured"; address: string }
   | { status: "failed"; message: string };
 
 /**
- * Brings the caller's inbox to the address their profile currently intends,
+ * Self-only: brings the caller's inbox to the address their profile currently intends,
  * recording it and retiring the previous one. The target is read at run time,
  * so a newer save is never rolled back by an older request; a result for a
  * superseded address reports a retryable failure. Capture mode makes no
  * network call and records nothing.
  */
-export const provision = action({
+export const ensureInbox = action({
   args: {},
-  handler: async (ctx): Promise<ProvisionResult> => {
+  handler: async (ctx): Promise<EnsureInboxResult> => {
     const userId = await getSessionUserId(ctx);
     if (!userId) throw new Error("Authentication required");
     const operatorUserId = userId as Id<"users">;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Loader2 } from "lucide-react";
@@ -55,7 +55,7 @@ function TeamEmailSettings() {
   const settings = useQuery(api.operatorEmailSettings.get, {});
   const saveTeamAddress = useMutation(api.operatorEmailSettings.saveTeamAddress);
   const saveAlwaysCc = useMutation(api.operatorEmailSettings.saveAlwaysCc);
-  const provision = useAction(api.operatorEmailSettings.provision);
+  const ensureInbox = useAction(api.operatorEmailSettings.ensureInbox);
   const [localpartDraft, setLocalpartDraft] = useState<string | null>(null);
   const [localpartError, setLocalpartError] = useState<string | null>(null);
   const [ccDraft, setCcDraft] = useState<string | null>(null);
@@ -72,7 +72,7 @@ function TeamEmailSettings() {
     const attempt = ++latestSetup.current;
     setSetup({ state: "running" });
     try {
-      const result = await provision({});
+      const result = await ensureInbox({});
       if (attempt !== latestSetup.current) return;
       setSetup(
         result.status === "failed"
@@ -89,7 +89,21 @@ function TeamEmailSettings() {
         ),
       });
     }
-  }, [provision]);
+  }, [ensureInbox]);
+
+  // A default derived address must work for forwarding before any send or
+  // edit, so set the inbox up once when Profile first shows it. A failure
+  // shows Retry; it is never retried automatically.
+  const needsSetup =
+    settings?.configured === true &&
+    settings.status === "needs_setup" &&
+    Boolean(settings.address);
+  const autoSetupStarted = useRef(false);
+  useEffect(() => {
+    if (!needsSetup || autoSetupStarted.current) return;
+    autoSetupStarted.current = true;
+    void runSetup();
+  }, [needsSetup, runSetup]);
 
   if (settings === undefined) return null;
   if (!settings.configured) {
