@@ -35,7 +35,12 @@ const CARD_RADIUS = 12;
 /** In full screen, this much of the app card stays visible at the top. */
 const CARD_LIP = 20;
 
-const SPRING: Transition = { type: "spring", stiffness: 380, damping: 40, mass: 0.9 };
+const SPRING: Transition = {
+  type: "spring",
+  stiffness: 380,
+  damping: 40,
+  mass: 0.9,
+};
 
 let viewportSnapshot = { width: 1440, height: 900 };
 function readViewport() {
@@ -54,7 +59,11 @@ function subscribeViewport(listener: () => void) {
 const SERVER_VIEWPORT = { width: 1440, height: 900 };
 
 function useViewport() {
-  return useSyncExternalStore(subscribeViewport, readViewport, () => SERVER_VIEWPORT);
+  return useSyncExternalStore(
+    subscribeViewport,
+    readViewport,
+    () => SERVER_VIEWPORT,
+  );
 }
 
 /**
@@ -81,7 +90,8 @@ function ResizeHandle({
     Math.min(maxHeight, Math.max(minHeight, viewportHeight - clientY));
   const release = (heightPx: number) => {
     const fraction = heightPx / viewportHeight;
-    const collapseBelow = (AGENT_DOCK_MIN_HEIGHT + minHeight / viewportHeight) / 2;
+    const collapseBelow =
+      (AGENT_DOCK_MIN_HEIGHT + minHeight / viewportHeight) / 2;
     const fullAbove = (AGENT_DOCK_MAX_HEIGHT + maxHeight / viewportHeight) / 2;
     if (fraction < collapseBelow) dock.setMode("collapsed");
     else if (fraction > fullAbove) dock.setMode("full");
@@ -118,7 +128,8 @@ function ResizeHandle({
         event.preventDefault();
         const up = event.key === "ArrowUp";
         if (up && dock.height >= AGENT_DOCK_MAX_HEIGHT) dock.setMode("full");
-        else if (!up && dock.height <= AGENT_DOCK_MIN_HEIGHT) dock.setMode("collapsed");
+        else if (!up && dock.height <= AGENT_DOCK_MIN_HEIGHT)
+          dock.setMode("collapsed");
         else dock.setHeight(dock.height + (up ? 0.05 : -0.05));
       }}
     >
@@ -148,7 +159,7 @@ export function DockBody({
   adapter,
   mode,
   onActions,
-  artifactPanelRef,
+  artifactPanelRef: artifactTarget,
   artifactPlacement = "overlay",
   artifactOpen = false,
 }: {
@@ -166,7 +177,20 @@ export function DockBody({
   const artifactPanel = usePanelRef();
   const [artifactWidth] = useState(readArtifactWidth);
   const [animating, setAnimating] = useState(false);
-  const sideArtifacts = Boolean(artifactPanelRef) && artifactPlacement === "side";
+  const [prevOpen, setPrevOpen] = useState(artifactOpen);
+  const sideArtifacts =
+    artifactTarget !== undefined && artifactPlacement === "side";
+
+  // Animate only the open/close, never a drag.
+  if (prevOpen !== artifactOpen) {
+    setPrevOpen(artifactOpen);
+    setAnimating(true);
+  }
+  useEffect(() => {
+    if (!animating) return;
+    const timer = window.setTimeout(() => setAnimating(false), 250);
+    return () => window.clearTimeout(timer);
+  }, [animating]);
 
   // The artifact panel stays mounted so an artifact can portal in before the
   // card opens; opening expands it and shifts the chat left.
@@ -174,12 +198,8 @@ export function DockBody({
     if (!sideArtifacts) return;
     const panel = artifactPanel.current;
     if (!panel) return;
-    // Animate only the open/close, never a drag.
-    setAnimating(true);
-    const timer = window.setTimeout(() => setAnimating(false), 250);
     if (artifactOpen && panel.isCollapsed()) panel.expand();
     else if (!artifactOpen && !panel.isCollapsed()) panel.collapse();
-    return () => window.clearTimeout(timer);
   }, [artifactOpen, artifactPanel, sideArtifacts]);
 
   const chat = (
@@ -235,7 +255,8 @@ export function DockBody({
           minSize="320px"
           className={cn(
             "flex h-full min-w-0 flex-col",
-            animating && "transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none",
+            animating &&
+              "transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none",
           )}
         >
           {chat}
@@ -267,13 +288,14 @@ export function DockBody({
           groupResizeBehavior="preserve-pixel-size"
           className={cn(
             "h-full overflow-hidden",
-            animating && "transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none",
+            animating &&
+              "transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none",
           )}
           inert={!artifactOpen}
         >
           <div className="h-full py-2 pr-2">
             <div
-              ref={artifactPanelRef}
+              ref={artifactTarget}
               className="flex h-full w-full overflow-hidden rounded-xl border border-border bg-background shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_-14px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_24px_-14px_rgba(0,0,0,0.6)]"
             />
           </div>
@@ -285,9 +307,9 @@ export function DockBody({
   return (
     <div className="relative flex min-h-0 flex-1">
       {chat}
-      {artifactPanelRef ? (
+      {artifactTarget ? (
         <div
-          ref={artifactPanelRef}
+          ref={artifactTarget}
           className="absolute inset-0 z-20 flex bg-background empty:hidden"
         />
       ) : null}
@@ -375,10 +397,16 @@ export function AgentDockLayout({
     if (opened && dock.mode === "full" && !mobile) setMode("expanded");
   }, [detailPanelOpen, dock.mode, mobile, setMode]);
 
-  const transition = reduceMotion || dragHeight !== null ? { duration: 0 } : SPRING;
+  const transition =
+    reduceMotion || dragHeight !== null ? { duration: 0 } : SPRING;
 
   return (
-    <div className={cn("relative h-dvh w-full overflow-hidden", AGENT_CHAT_SURFACE)}>
+    <div
+      className={cn(
+        "relative h-dvh w-full overflow-hidden",
+        AGENT_CHAT_SURFACE,
+      )}
+    >
       {adapter ? (
         <motion.section
           data-agent-dock
