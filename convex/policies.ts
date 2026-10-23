@@ -30,7 +30,8 @@ import {
   requireOperatorForUser,
   writeOperatorAudit,
 } from "./lib/operatorIdentity";
-import type { Id as DataModelId } from "./_generated/dataModel";
+import type { Doc, Id as DataModelId } from "./_generated/dataModel";
+import { emitOperatorNotification } from "./lib/operatorNotify";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import {
@@ -640,6 +641,40 @@ function policyPipelineStatusPatch(
   };
 }
 
+/**
+ * Alerts operators once per transition into a terminal extraction error. The
+ * key binds the run and its pre-transition write, so a repeated writer or a
+ * later retry's failure is never confused with this one. Cancellations and
+ * errors that keep an already bound policy complete are not failures.
+ */
+async function emitPolicyExtractionFailure(
+  ctx: MutationCtx,
+  policyId: DataModelId<"policies">,
+  previous: {
+    run: Doc<"policyExtractionRuns"> | null;
+    policy: Doc<"policies"> | null;
+  },
+  next: { pipelineStatus: string; pipelineError?: string },
+) {
+  if (!previous.policy) return;
+  if (
+    next.pipelineStatus !== "error" ||
+    next.pipelineError === "Cancelled by user"
+  )
+    return;
+  const previousStatus =
+    previous.run?.pipelineStatus ?? previous.policy.pipelineStatus;
+  if (previousStatus === "error") return;
+  const transitionId = previous.run
+    ? `${previous.run._id}:${previous.run.updatedAt}`
+    : `legacy:${previous.policy._creationTime}`;
+  await emitOperatorNotification(ctx, {
+    eventKey: `policy_failed:${policyId}:${transitionId}`,
+    category: "failure",
+    target: { kind: "policy", policyId },
+  });
+}
+
 async function setPolicyPipelineStatus(
   ctx: any,
   policyId: DataModelId<"policies">,
@@ -662,6 +697,12 @@ async function setPolicyPipelineStatus(
   await ctx.db.patch(
     policyId,
     policyPipelineStatusPatch(policy, run?.pipelineCheckpoint, status, error),
+  );
+  await emitPolicyExtractionFailure(
+    ctx,
+    policyId,
+    { run, policy },
+    canonicalStatus,
   );
 }
 
@@ -3350,6 +3391,12 @@ export const pipelineSetStatus = internalMutation({
         ),
         ...(status === "complete" ? { extractionPreviewError: undefined } : {}),
       });
+      await emitPolicyExtractionFailure(
+        ctx,
+        policyId,
+        { run, policy },
+        canonicalStatus,
+      );
       return;
     }
     await setPolicyPipelineStatus(ctx, policyId, status, error);
@@ -3793,18 +3840,19 @@ export const pipelineCompleteLease = internalMutation({
     if ("checkpoint" in args) {
       patch.pipelineCheckpoint = args.checkpoint ?? undefined;
     }
+    let terminalStatus:
+      | ReturnType<typeof canonicalPipelineStatusPatch>
+      | undefined;
     if (args.status) {
       const terminalCheckpoint =
         "checkpoint" in args ? args.checkpoint : checkpoint;
-      Object.assign(
-        patch,
-        canonicalPipelineStatusPatch(
-          policy,
-          terminalCheckpoint,
-          args.status,
-          args.error,
-        ),
+      terminalStatus = canonicalPipelineStatusPatch(
+        policy,
+        terminalCheckpoint,
+        args.status,
+        args.error,
       );
+      Object.assign(patch, terminalStatus);
       if (
         args.status === "complete" ||
         (args.status === "error" && args.error === "Cancelled by user")
@@ -3827,6 +3875,13 @@ export const pipelineCompleteLease = internalMutation({
         policyPipelineStatusPatch(policy, checkpoint, args.status, args.error),
       );
     }
+    if (terminalStatus)
+      await emitPolicyExtractionFailure(
+        ctx,
+        policyId,
+        { run, policy },
+        terminalStatus,
+      );
     if (args.status === "complete" && policy?.orgId)
       await ctx.scheduler.runAfter(0, computeComplianceJudgmentsRef, {
         policyId,

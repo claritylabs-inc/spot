@@ -2674,3 +2674,13 @@ correction therefore remains unverified through inference; this is not a passing
 end-to-end replay. Evidence: `local-command.json`, `local-command-retry.json`,
 `typecheck-root.log`, `typecheck-convex.log`, `lint.log`, and `tests.log` in the
 same evidence directory. No production code deployment or manual table purge ran.
+
+## Operator Slack notifications — 2026-10-23
+
+Local mock Slack validation covered settings in visible Chrome, normal operator/client login, category routing and persistence, desktop/mobile layouts, offline disabling, tenant/anonymous/impersonation denial, revision conflicts, dedupe, suppressed-event non-replay, route/source cancellation, lease recovery, and bounded retries. Eighteen runtime checks passed. The intake submission seam also confirmed that an explicit disabled Applications route owns alerts and suppresses legacy submission delivery. All routes were left off; Slack mock availability was restored.
+
+The temporary internal QA fixture was removed. External email receipt, real model approvals, policy extraction and live Slack delivery were source-reviewed rather than replayed end to end. See [operator notification workflows](operator-notifications-workflow.md) for scope and evidence. User-requested copy cleanup removed explanatory paragraphs and redundant row descriptions; the final 390px screenshot shows all four categories without horizontal overflow.
+
+Artifacts: `.context/notifications/{runtime-results.json,boundary-results.json,settings-final.png,settings-mobile-clean.png,settings-offline.png,service-review.md}`. Existing Slack/intake/operator identity/confirmation tests passed (17 tests in four files). No new unit tests, Vercel previews, or production deployment.
+
+Final root and Convex TypeScript checks, touched-file ESLint and `git diff --check` passed. Local Convex accepted the generated API and schema after fixture removal.

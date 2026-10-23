@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
+import { assertSlackAttachmentsDelivered } from "../lib/slackDelivery";
 import { formatSlackAnswerText } from "../lib/slackBlocks";
 import { slackWebApi, SlackProviderError } from "../lib/slackWebApi";
 
@@ -89,13 +90,7 @@ async function performSend(
     blocks: args.blocks,
     attachments,
   });
-  if (result.attachmentFailures.length) {
-    throw new Error(
-      result.attachmentFailures
-        .map((failure) => `${failure.filename}: ${failure.error}`)
-        .join("; "),
-    );
-  }
+  assertSlackAttachmentsDelivered(result);
   await ctx.runMutation(internalApi.slackOutbound.markSent, {
     id: args.ledgerId,
     providerMessageId: result.messageId,

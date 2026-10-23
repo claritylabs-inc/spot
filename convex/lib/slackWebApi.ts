@@ -19,7 +19,10 @@ const MAX_THREAD_CONTEXT_MESSAGES = 100;
 const MAX_THREAD_CONTEXT_MESSAGE_CHARS = 4_000;
 const MOCK_BOT_USER_ID = "U-SPOT";
 
-export type SlackBlock = Record<string, unknown>;
+import { DEFINITIVE_SLACK_ERRORS, SlackProviderError } from "./slackErrors";
+export { SlackProviderError } from "./slackErrors";
+import type { SlackBlock } from "./slackMessage";
+export type { SlackBlock } from "./slackMessage";
 
 export type SlackOutboundAttachment = {
   fileId: Id<"_storage">;
@@ -101,31 +104,6 @@ type SlackThreadMessage = {
   bot_profile?: { name?: string };
   files?: SlackFile[];
 };
-
-const DEFINITIVE_SLACK_ERRORS = new Set([
-  "account_inactive",
-  "channel_not_found",
-  "invalid_auth",
-  "is_archived",
-  "missing_scope",
-  "not_allowed_token_type",
-  "not_authed",
-  "org_login_required",
-  "not_in_channel",
-  "token_expired",
-  "token_revoked",
-]);
-
-export class SlackProviderError extends Error {
-  constructor(
-    message: string,
-    readonly code: string,
-    readonly retryable: boolean,
-  ) {
-    super(message);
-    this.name = "SlackProviderError";
-  }
-}
 
 // Sender names are resolved through users.info and reused briefly for thread
 // context; the cache never holds credentials.
@@ -930,6 +908,33 @@ function createSlackWebApi(ctx: ActionCtx) {
     },
 
     listChannels,
+
+    async assertJoinedChannel(input: {
+      teamId: string;
+      channelId: string;
+      allowShared?: boolean;
+    }): Promise<SlackChannel> {
+      if (!input.teamId.trim() || !input.channelId.trim()) {
+        throw new Error("teamId and channelId are required");
+      }
+      let channel: SlackChannel | undefined;
+      if (mock) {
+        channel = (await listChannels(input)).find(candidate => candidate.id === input.channelId);
+      } else {
+        const { botToken } = await installation(input.teamId);
+        const result = await slackFormApi<SlackResponse & { channel?: SlackChannelPayload }>(
+          "conversations.info", botToken, { channel: input.channelId, include_num_members: false },
+        );
+        if (result.channel && !result.channel.is_archived) channel = normalizeChannel(result.channel);
+      }
+      if (!channel || channel.id !== input.channelId || !channel.isMember) {
+        throw new SlackProviderError("Select a Slack channel that Spot has joined", "not_in_channel", false);
+      }
+      if (input.allowShared === false && channel.isShared) {
+        throw new SlackProviderError("Select an internal Slack channel", "shared_channel_not_allowed", false);
+      }
+      return channel;
+    },
 
     /** Creates or reuses the private Clarity-host Slack Connect support channel. */
     async createConnectChannel(input: {

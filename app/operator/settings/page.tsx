@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app-shell";
+import { OperatorNotificationRoutes } from "@/components/settings/operator-notification-routes";
 import { McpEventSubscriptions } from "@/components/settings/mcp-event-subscriptions";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import {
@@ -25,7 +26,7 @@ export default function OperatorSettingsPage() {
   const current = useCachedOperatorCurrent();
   const invitations = useOperatorInvite(!current || Boolean(current.activeImpersonation));
   const sectionParam = useSearchParams().get("section");
-  const section = sectionParam === "team" ? sectionParam : "general";
+  const section = sectionParam === "team" || sectionParam === "notifications" ? sectionParam : "general";
   const settings = useQuery(api.operator.getAgentSettings);
   const setApproveAll = useMutation(api.operator.setApproveAll);
   const [saving, setSaving] = useState(false);
@@ -37,6 +38,16 @@ export default function OperatorSettingsPage() {
     >
       {section === "team" ? (
         invitations.panel
+      ) : section === "notifications" ? (
+        current ? (
+          <OperatorNotificationRoutes
+            disabled={Boolean(current.activeImpersonation)}
+          />
+        ) : (
+          <div className="flex h-64 items-center justify-center">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        )
       ) : !settings || !current ? (
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />

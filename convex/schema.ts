@@ -1,4 +1,9 @@
 import {
+  operatorNotificationCategoryValidator,
+  operatorNotificationTargetValidator,
+  operatorNotificationStatusValidator,
+} from "./lib/operatorNotificationTypes";
+import {
   informationScopeValidator,
   informationRequirementStatus,
   informationResponseValidator,
@@ -3971,6 +3976,43 @@ export default defineSchema({
     .index("policy", ["policyId"])
     .index("source", ["requirementSourceDocumentId"])
     .index("status", ["status"]),
+
+  // ── Operator notifications (separate from tenant notifications) ──
+
+  operatorNotificationRoutes: defineTable({
+    category: operatorNotificationCategoryValidator,
+    enabled: v.boolean(),
+    teamId: v.optional(v.string()),
+    channelId: v.optional(v.string()),
+    channelName: v.optional(v.string()),
+    revision: v.number(),
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  }).index("by_category", ["category"]),
+
+  operatorNotificationEvents: defineTable({
+    eventKey: v.string(),
+    category: operatorNotificationCategoryValidator,
+    target: operatorNotificationTargetValidator,
+    status: operatorNotificationStatusValidator,
+    teamId: v.optional(v.string()),
+    channelId: v.optional(v.string()),
+    routeRevision: v.optional(v.number()),
+    attempts: v.number(),
+    nextAttemptAt: v.optional(v.number()),
+    leaseToken: v.optional(v.string()),
+    leaseUntil: v.optional(v.number()),
+    providerMessageId: v.optional(v.string()),
+    errorCode: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    sentAt: v.optional(v.number()),
+  })
+    .index("by_eventKey", ["eventKey"])
+    .index("by_status_and_nextAttemptAt", ["status", "nextAttemptAt"])
+    .index("by_status_and_leaseUntil", ["status", "leaseUntil"])
+    .index("by_category_and_createdAt", ["category", "createdAt"])
+    .index("by_category_and_status", ["category", "status"]),
 
   // ── Notifications ──
 

@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getClientPortalUrl } from "./lib/domains";
+import { emitOperatorNotification } from "./lib/operatorNotify";
 import {
   buildIntakeSlackContext,
   buildIntakeSlackChanges,
@@ -21,6 +22,17 @@ async function savedContext(ctx: MutationCtx, request: Doc<"procurementRequests"
   });
 }
 
+const SUPERSEDED_SUBMISSION_ERROR = "Superseded by operator notification routing";
+
+// Any saved intake route, enabled or not, moves submission alerts to operator notifications.
+async function hasExplicitIntakeRoute(ctx: MutationCtx) {
+  const route = await ctx.db
+    .query("operatorNotificationRoutes")
+    .withIndex("by_category", (q) => q.eq("category", "intake"))
+    .first();
+  return route !== null;
+}
+
 async function threadSummary(ctx: MutationCtx, request: Doc<"procurementRequests">) {
   return `**Insurance application — current saved details**\nApplication ID: ${request._id}\n${await savedContext(ctx, request)}`;
 }
@@ -32,6 +44,12 @@ export async function queueIntakeSlack(
   progress: string,
   submitted = false,
 ) {
+  if (submitted)
+    await emitOperatorNotification(ctx, {
+      eventKey: `intake:${requestId}:${eventKey}`,
+      category: "intake",
+      target: { kind: "intake", requestId },
+    });
   const teamId = process.env.SLACK_CLARITY_TEAM_ID?.trim();
   const channelId = process.env.INTAKE_SLACK_CHANNEL_ID?.trim();
   if (!teamId || !channelId) return;
@@ -72,7 +90,11 @@ export async function queueIntakeSlack(
   // Summary-only autosaves must not advance this baseline: the next reply
   // includes every answer changed since the previous queued progress message.
   let baseline = started ? snapshot : request.intakeSlackProgressSnapshot;
-  if (eventKey !== "started" && !eventKey.startsWith("summary:")) {
+  if (submitted && (await hasExplicitIntakeRoute(ctx))) {
+    // The submission reply belongs to operator notifications; the thread
+    // keeps its started/progress/summary messages and the new baseline.
+    baseline = snapshot;
+  } else if (eventKey !== "started" && !eventKey.startsWith("summary:")) {
     const changes = buildIntakeSlackChanges(baseline ?? {}, snapshot);
     const added = await add(
       // Revisiting the same question can carry new answers at a new revision.
@@ -100,6 +122,21 @@ export const claim = internalMutation({
         q.eq("requestId", requestId).eq("status", "pending"),
       )
       .first();
+    if (
+      event?.eventKey.startsWith("submitted:") &&
+      (await hasExplicitIntakeRoute(ctx))
+    ) {
+      // Queued before the route was saved; drain the next pending row. A send
+      // already claimed by an earlier attempt cannot be recalled.
+      await ctx.db.patch(event._id, {
+        status: "failed",
+        error: SUPERSEDED_SUBMISSION_ERROR,
+      });
+      await ctx.scheduler.runAfter(0, internal.actions.intakeSlack.deliver, {
+        requestId,
+      });
+      return null;
+    }
     if (
       !event ||
       (!request.intakeSlackThreadTs && event.eventKey !== "started")

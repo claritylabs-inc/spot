@@ -89,6 +89,7 @@ import {
   requireDirectOperatorWrite,
 } from "./procurementRequests";
 import { mirrorTeamEmail, type NewTeamThread, type TeamThread } from "./lib/teamEmailStore";
+import { emitOperatorNotification } from "./lib/operatorNotify";
 import { mintPacketLinkForOperator, previewBrokerPacket } from "./procurementPacket";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -3382,6 +3383,20 @@ export const applyInboundInboxEmailInternal = internalMutation({
         classifyScheduled: false,
       };
     }
+    if (mirrored && args.classification === "reply") {
+      const senderAddress = normalizeProcurementEmail(args.email.fromEmail);
+      const operatorSender =
+        (await resolveActiveOperatorEmail(ctx, senderAddress)) ||
+        (await ctx.db.query("operatorOutreachInboxes")
+          .withIndex("by_emailAddress", (q) => q.eq("emailAddress", senderAddress))
+          .first());
+      if (!operatorSender)
+        await emitOperatorNotification(ctx, {
+          eventKey: `inbox:team_mail:${mirrored.messageId}`,
+          category: "inbox",
+          target: { kind: "inbox", threadId: mirrored.threadId },
+        });
+    }
     const emailId = args.email.resendInboxEmailId;
     let status: SequenceStatus = sequence.status;
     let classifyScheduled = false;
@@ -3542,6 +3557,11 @@ export const applyTeamInboxEmailInternal = internalMutation({
         .first())
     );
     if (inbound && !mirrored.duplicate && !operatorSender) {
+      await emitOperatorNotification(ctx, {
+        eventKey: `inbox:team_mail:${mirrored.messageId}`,
+        category: "inbox",
+        target: { kind: "inbox", threadId: mirrored.threadId },
+      });
       const thread = (await ctx.db.get(mirrored.threadId))!;
       const ownerUserId = thread.ownerUserId ?? inbox.userId;
       if (ownerUserId) {
