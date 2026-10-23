@@ -24,8 +24,11 @@ import {
   submittedIntakeApplication,
 } from "../lib/intake-application";
 import {
+  fillRequestFromClientProfile,
+  hashIntakeToken,
   readIntakeBusinessProfile,
   saveIntakeBusinessProfile,
+  submissionContent,
 } from "./lib/intakeApplication";
 import { queueIntakeSlack } from "./intakeSlack";
 import { intakeDetailsValidator } from "./lib/intakeDetailsSchema";
@@ -69,59 +72,6 @@ import { publicResearchUrl } from "./lib/companyResearch";
 import { scheduleCompanyResearch } from "./companyResearch";
 import { scheduleWebsiteTechScan } from "./websiteTech";
 
-export async function hashIntakeToken(token: string) {
-  const hash = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(token),
-  );
-  return Array.from(new Uint8Array(hash), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join("");
-}
-export function submissionContent(
-  answers: IntakeAnswers,
-  details: IntakeDetails,
-  fileIds: string[],
-) {
-  const uiKeys = new Set([
-    "companyConfirmed",
-    "prefilled",
-    "coverageIndex",
-    "revenueStep",
-    "mailingAddressStep",
-    "dateInput",
-    "dateParts",
-    "companyResearchSource",
-    "prefillSourceIds",
-    "declinedRequirementCoverages",
-    "operatingLocationPrefilled",
-    "activitiesPrefilled",
-    "followupProgress",
-    "payrollPage",
-    "sectionIntroductions",
-    "subsectionIntroductions",
-    "driverIndex",
-    "autoVehicleIndex",
-    "collectSensitiveDriverDetails",
-  ]);
-  const normalize = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(normalize);
-    if (value && typeof value === "object")
-      return Object.fromEntries(
-        Object.entries(value)
-          .filter(
-            ([key, item]) =>
-              !uiKeys.has(key) && item !== undefined && item !== "",
-          )
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([key, item]) => [key, normalize(item)]),
-      );
-    return value;
-  };
-  return JSON.stringify(
-    normalize({ answers, details: activeIntakeDetails(details,answers.intakeGoal), files: [...fileIds].sort() }),
-  );
-}
 function validateContact(name: string, email: string, phone: string, validatePhone = true) {
   const contact = {
     name: name.trim(),
@@ -1542,6 +1492,7 @@ export const submit = mutation({
 
           updatedAt: dayjs().valueOf(),
         });
+        await fillRequestFromClientProfile(ctx, (await ctx.db.get(request._id))!);
         await ctx.scheduler.runAfter(0, internal.requestIntake.preparePremiumEstimateInternal, { requestId: request._id });
         if (request.clientOrgId)
           await saveIntakeBusinessProfile(
@@ -1623,6 +1574,7 @@ export const submit = mutation({
 
       updatedAt: now,
     });
+    await fillRequestFromClientProfile(ctx, (await ctx.db.get(request._id))!);
     if (savings) {
       if (writeCompanyProfile)
         await saveIntakeBusinessProfile(

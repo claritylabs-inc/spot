@@ -10,7 +10,10 @@ import {
   detailsFromAnswers,
 } from "../lib/insurance-intake-details";
 import { companyApplicationProfile } from "../lib/intake-application";
-import { readIntakeBusinessProfile } from "./lib/intakeApplication";
+import {
+  readIntakeBusinessProfile,
+  writeIntakeBusinessProfile,
+} from "./lib/intakeApplication";
 import { v } from "convex/values";
 import {
   internalMutation,
@@ -556,14 +559,12 @@ export async function updateBusinessProfileByOperator(
       name: args.name,
       website: args.website,
     });
-  await ctx.db.patch(args.orgId, {
-    clientAccessStatus: args.status,
-    intakeBusinessProfile: {
-      ...profile,
-      ...(existing?.sourceRequestId
-        ? { sourceRequestId: existing.sourceRequestId }
-        : {}),
-    },
+  await ctx.db.patch(args.orgId, { clientAccessStatus: args.status });
+  await writeIntakeBusinessProfile(ctx, args.orgId, {
+    ...profile,
+    ...(existing?.sourceRequestId
+      ? { sourceRequestId: existing.sourceRequestId }
+      : {}),
   });
   await writeOperatorAudit(ctx, {
     operatorUserId: operatorUserId,

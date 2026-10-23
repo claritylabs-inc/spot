@@ -1,9 +1,3 @@
-import {
-  procurementBrokerCriteria,
-  procurementBrokerMatch,
-  procurementMatchAreaLabels,
-} from "./lib/procurementBrokerMatching";
-import { operatorInTestMode } from "./testMode";
 import { procurementApplicationInputSchema } from "./lib/procurementApplicationInput";
 import { detailsFromAnswers } from "../lib/insurance-intake-details";
 import { intakeAnswersValidator } from "./lib/insuranceIntakeSchema";
@@ -13,11 +7,13 @@ import {
   validCoverageLimit,
   validateIntakeDetails,
 } from "../lib/insurance-intake-details";
+import { refreshPremiumEstimateByOperator } from "./requestIntake";
 import {
   hashIntakeToken,
-  refreshPremiumEstimateByOperator,
+  readIntakeBusinessProfile,
   submissionContent,
-} from "./requestIntake";
+  writeIntakeBusinessProfile,
+} from "./lib/intakeApplication";
 import { saveMarkdownDocument } from "./markdownDocuments";
 import { readPacketDocument } from "./lib/packetDocuments";
 import {
@@ -28,6 +24,7 @@ import {
   companyApplicationProfile,
   applicationMarkdownBlock,
   submittedIntakeApplication,
+  withCompanyProfileFacts,
 } from "../lib/intake-application";
 import { requireCompanyRequest } from "./lib/companyRequest";
 import { requestPacketText } from "./lib/procurementNarrative";
@@ -977,7 +974,7 @@ export async function updateApplicationByOperator(
     if (value && value.length > 8000)
       throw new Error("Keep each answer within 8,000 characters");
   const effectiveDate = optionalDate(args.targetEffectiveDate);
-  const details = {
+  const entered = {
     ...args.details,
     dateParts: effectiveDate
       ? {
@@ -987,13 +984,17 @@ export async function updateApplicationByOperator(
         }
       : { year: "", month: "", day: "" },
   };
-  const answers = {
+  const edited = {
     ...args.answers,
-    ...detailsAnswers(details),
+    ...detailsAnswers(entered),
     effectiveDate: effectiveDate ?? "",
   };
-  if (answers.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email))
+  if (edited.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(edited.email))
     throw new Error("Enter a valid contact email");
+  const { answers, details } = withCompanyProfileFacts(
+    { answers: edited, details: entered },
+    (await readIntakeBusinessProfile(ctx, request.clientOrgId))?.details,
+  );
   const accepted = submittedIntakeApplication(request);
   const uploads = await ctx.db
     .query("requestIntakeFiles")
@@ -1053,11 +1054,9 @@ export async function updateApplicationByOperator(
   }
   const org = await ctx.db.get(request.clientOrgId);
   if (org?.intakeBusinessProfile?.sourceRequestId === request._id)
-    await ctx.db.patch(org._id, {
-      intakeBusinessProfile: {
-        ...companyApplicationProfile(application),
-        sourceRequestId: request._id,
-      },
+    await writeIntakeBusinessProfile(ctx, org._id, {
+      ...companyApplicationProfile(application),
+      sourceRequestId: request._id,
     });
   await writeOperatorAudit(ctx, {
     operatorUserId: operatorUserId,
@@ -1298,129 +1297,6 @@ export const createOutreach = mutation({
       ...args,
       source: "operator",
     });
-  },
-});
-
-/** Manual matching only: add tracking rows, never send or release a packet. */
-export const autoAddBrokers = mutation({
-  args: { requestId: v.id("procurementRequests") },
-  handler: async (ctx, args) => {
-    const operator = await requireOperator(ctx);
-    await requireDirectOperatorWrite(ctx, operator.userId);
-    const request = await requireRequest(ctx, args.requestId);
-    const testMode = await operatorInTestMode(ctx, operator.userId);
-    const criteria = procurementBrokerCriteria(
-      submittedIntakeApplication(request),
-    );
-    // Scan the complete directory: a result limit must not hide eligible markets.
-    const profiles = await ctx.db.query("brokerProfiles").collect();
-    const outreaches = await ctx.db
-      .query("procurementBrokerOutreaches")
-      .withIndex("request", (q) => q.eq("requestId", request._id))
-      .collect();
-    const addedIds = new Set(
-      outreaches.flatMap((row) => (row.brokerOrgId ? [row.brokerOrgId] : [])),
-    );
-    let added = 0;
-    let alreadyAdded = 0;
-    let coverageMismatch = 0;
-    let outsideArea = 0;
-    let unavailable = 0;
-    const needsVerification: {
-      brokerOrgId: Id<"organizations">;
-      name: string;
-      reason: string;
-      matchingCodes: string[];
-    }[] = [];
-    for (const profile of profiles) {
-      if (
-        profile.networkStatus === "blacklisted" ||
-        profile.networkStatus === "inactive" ||
-        (testMode && !profile.isTest)
-      ) {
-        unavailable++;
-        continue;
-      }
-      const broker = await ctx.db.get(profile.brokerOrgId);
-      if (
-        !broker ||
-        broker.deletedAt ||
-        broker.type !== "broker" ||
-        isSpotOwnedBrokerIdentity(broker)
-      )
-        continue;
-      // Existing rows are counted first even if appetite has since changed.
-      const existing =
-        addedIds.has(broker._id) ||
-        outreaches.some(
-          (row) =>
-            !row.brokerOrgId &&
-            row.brokerName.trim().toLowerCase() ===
-              broker.name.trim().toLowerCase(),
-        );
-      if (existing) {
-        alreadyAdded++;
-        continue;
-      }
-      const match = procurementBrokerMatch(profile, criteria);
-      if (match.status === "coverage_mismatch") {
-        coverageMismatch++;
-        continue;
-      }
-      if (match.status === "outside_area") {
-        outsideArea++;
-        continue;
-      }
-      if (match.status === "needs_verification") {
-        needsVerification.push({
-          brokerOrgId: broker._id,
-          name: broker.name,
-          reason: match.reason,
-          matchingCodes: match.matchingCodes,
-        });
-        continue;
-      }
-      await createProcurementOutreachByOperator(ctx, {
-        operatorUserId: operator.userId,
-        requestId: request._id,
-        brokerOrgId: broker._id,
-        status: "observed",
-        source: "operator",
-      });
-      addedIds.add(broker._id);
-      added++;
-    }
-    await writeOperatorAudit(ctx, {
-      operatorUserId: operator.userId,
-      type: "setup_write",
-      targetOrgId: request.clientOrgId,
-      summary: `Auto added ${added} matching brokers to procurement request ${request.title}`,
-      metadata: {
-        domain: "procurement",
-        operation: "auto_add_brokers",
-        requestId: request._id,
-        coverageCodes: criteria.codes,
-        areas: criteria.areas,
-        added,
-        alreadyAdded,
-        needsVerification: needsVerification.length,
-        coverageMismatch,
-        outsideArea,
-      },
-    });
-    return {
-      added,
-      alreadyAdded,
-      needsVerification: needsVerification.sort((a, b) =>
-        a.name.localeCompare(b.name),
-      ),
-      coverageMismatch,
-      outsideArea,
-      unavailable,
-      coverageLabels: criteria.coverageLabels,
-      areaLabels: procurementMatchAreaLabels(criteria),
-      unmappedCoverages: criteria.unmappedCoverages,
-    };
   },
 });
 
