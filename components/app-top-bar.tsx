@@ -124,7 +124,13 @@ export function AppTopBar({
   mobileMenuOpen?: boolean;
 }) {
   const pathname = usePathname();
-  const { label, href } = resolveAppBreadcrumb(pathname);
+  const resolved = resolveAppBreadcrumb(pathname);
+  // Deep client records (a request, a policy) lead with the client name from
+  // their own detail; a "Clients" root would crowd it out.
+  const { label, href } =
+    breadcrumbDetail && /^\/operator\/clients\/[^/]+\/[^/]+\/[^/]+/.test(pathname)
+      ? { label: null, href: resolved.href }
+      : resolved;
   return (
     <SharedAppTopBar
       breadcrumb={label}

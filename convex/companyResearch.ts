@@ -13,6 +13,7 @@ import {
   samePublicResearchUrl,
 } from "./lib/companyResearch";
 import {
+  brokerRegionCountry,
   isSpotOwnedBrokerIdentity,
   normalizeBrokerWritingStates,
   normalizeBrokerLineOfBusinessCodes,
@@ -115,7 +116,9 @@ export async function scheduleCompanyResearch(
     if (profile) {
       const owned = new Set(org.companyResearch.appliedBrokerFields);
       await ctx.db.patch(profile._id, {
-        ...(owned.has("writingStates") ? { writingStates: [] } : {}),
+        ...(owned.has("writingStates")
+          ? { writingStates: [], writingCountries: [] }
+          : {}),
         ...(owned.has("lineOfBusinessCodes")
           ? { lineOfBusinessCodes: [] }
           : {}),
@@ -469,7 +472,14 @@ export const complete = internalMutation({
         if (writeLines) appliedBrokerFields.add("lineOfBusinessCodes");
         if (writeOffice) appliedBrokerFields.add("officeAddress");
         await ctx.db.patch(profile._id, {
-          ...(writeStates ? { writingStates } : {}),
+          ...(writeStates
+            ? {
+                writingStates,
+                writingCountries: [
+                  ...new Set(writingStates.map(brokerRegionCountry)),
+                ].sort(),
+              }
+            : {}),
           ...(writeLines ? { lineOfBusinessCodes } : {}),
           ...(writeOffice
             ? { officeAddress: brokerFindings.officeAddress }

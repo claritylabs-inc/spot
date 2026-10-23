@@ -1,6 +1,7 @@
 "use client";
-import { useState, type KeyboardEvent, type MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import {
+  ArrowLeft,
   Briefcase,
   Building2,
   CircleHelp,
@@ -12,8 +13,6 @@ import {
   Mail,
   MessageSquareMore,
   NotebookText,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   Shield,
   Truck,
@@ -38,13 +37,10 @@ import {
 } from "@claritylabs-inc/ui/components/app-shell/app-sidebar";
 import {
   MENU_ITEM_INACTIVE_SUBTLE,
-  SidebarNavItem,
   SidebarTooltipProvider,
 } from "@claritylabs-inc/ui/components/app-shell/app-sidebar/nav-item";
-import {
-  AppShellPortal,
-  useOptionalAppShellSlots,
-} from "@/components/app-shell-slots";
+import { AppShell } from "@/components/app-shell";
+import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
 import type { IntakeAnswers } from "@/lib/insurance-intake";
 import {
   coverageRequestLabel,
@@ -164,116 +160,105 @@ export const PROVIDER_ICONS = {
   email: Mail,
 } as const;
 
-const COLLAPSED_KEY = "spot:section-menu-collapsed";
-
 /**
- * Page-level menu in the shell's secondary column, built from the app sidebar
- * primitives so icons, spacing and collapse match; narrow screens get a
- * grouped select above the content.
+ * Page-level menu that replaces the shell's sidebar while mounted, built from
+ * the app sidebar primitives so header, back link, items and footer match the
+ * menu it replaces; narrow screens get a grouped select above the content.
  */
 export function SectionMenu({
   label,
+  brand,
+  back,
   groups,
   active,
   onChange,
   onRemove,
+  footer,
 }: {
   label: string;
+  brand: { name: string; icon: ReactNode };
+  /** Leading back entry, like the primary menu's "Clients" link. */
+  back: { label: string; href: string };
   groups: SectionMenuGroup[];
   active: string;
   onChange: (key: string) => void;
   onRemove?: (key: string) => void;
+  footer?: (collapsed: boolean) => ReactNode;
 }) {
-  const inShell = useOptionalAppShellSlots();
-  // The menu only renders client-side through the shell portal.
-  const [collapsed, setCollapsed] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      localStorage.getItem(COLLAPSED_KEY) === "1",
-  );
-  const toggle = () =>
-    setCollapsed((value) => {
-      localStorage.setItem(COLLAPSED_KEY, value ? "0" : "1");
-      return !value;
-    });
   const remove = (key: string) => (event: MouseEvent | KeyboardEvent) => {
     if ("key" in event && event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     event.stopPropagation();
     onRemove?.(key);
   };
-  const sections: AppSidebarSection[] = groups.map((group) => ({
-    key: group.label,
-    label: group.label,
-    // AppSidebarNav keys items by label; labels are unique within the menu.
-    items: group.items.map((entry) => ({
-      label: entry.label,
-      icon: entry.icon,
-      active: entry.key === active,
-      onClick: () => onChange(entry.key),
-      className: cn("group", entry.subtle && MENU_ITEM_INACTIVE_SUBTLE),
-      trailing: collapsed ? undefined : (
-        <>
-          {entry.count !== undefined && (
-            <span className="text-muted-foreground/60">{entry.count}</span>
-          )}
-          {entry.attention && (
-            <span
-              aria-label="Has unanswered questions"
-              className="size-1.5 shrink-0 rounded-full bg-amber-500"
-            />
-          )}
-          {entry.removable && onRemove && (
-            // Same affordance as the former thread archive action.
-            <span
-              role="button"
-              tabIndex={0}
-              aria-label={`Remove ${entry.label}`}
-              onClick={remove(entry.key)}
-              onKeyDown={remove(entry.key)}
-              className="-mr-1 flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/30 opacity-0 transition-[background-color,color,opacity] duration-100 group-hover:opacity-100 hover:bg-foreground/6 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
-            >
-              <X className="size-3" />
-            </span>
-          )}
-        </>
-      ),
+  const sectionsFor = (collapsed: boolean): AppSidebarSection[] => [
+    {
+      key: "back",
+      items: [{ label: back.label, icon: ArrowLeft, href: back.href }],
+    },
+    ...groups.map((group) => ({
+      key: group.label,
+      label: group.label,
+      // AppSidebarNav keys items by label; labels are unique within the menu.
+      items: group.items.map((entry) => ({
+        label: entry.label,
+        icon: entry.icon,
+        active: entry.key === active,
+        onClick: () => onChange(entry.key),
+        className: cn("group", entry.subtle && MENU_ITEM_INACTIVE_SUBTLE),
+        trailing: collapsed ? undefined : (
+          <>
+            {entry.count !== undefined && (
+              <span className="text-muted-foreground/60">{entry.count}</span>
+            )}
+            {entry.attention && (
+              <span
+                aria-label="Has unanswered questions"
+                className="size-1.5 shrink-0 rounded-full bg-amber-500"
+              />
+            )}
+            {entry.removable && onRemove && (
+              // Same affordance as the former thread archive action.
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={`Remove ${entry.label}`}
+                onClick={remove(entry.key)}
+                onKeyDown={remove(entry.key)}
+                className="-mr-1 flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/30 opacity-0 transition-[background-color,color,opacity] duration-100 group-hover:opacity-100 hover:bg-foreground/6 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
+              >
+                <X className="size-3" />
+              </span>
+            )}
+          </>
+        ),
+      })),
     })),
-  }));
+  ];
   const current = groups
     .flatMap((group) => group.items)
     .find((entry) => entry.key === active);
-  const menu = (
-    <div
-      className={cn(
-        "flex h-full min-h-0 flex-col transition-[width] duration-150 ease-out",
-        collapsed ? "w-14" : "w-64",
+  return (
+    <AppShell
+      sidebar={({ collapsed, onToggleCollapse }) => (
+        <SidebarTooltipProvider>
+          <div aria-label={label} className="flex h-full min-h-0 flex-col">
+            <SidebarHeader
+              collapsed={collapsed}
+              initials=""
+              headerOrgName={brand.name}
+              icon={brand.icon}
+              onToggleCollapse={onToggleCollapse}
+            />
+            <AppSidebarContent
+              collapsed={collapsed}
+              sections={sectionsFor(collapsed)}
+              footer={footer?.(collapsed)}
+            />
+          </div>
+        </SidebarTooltipProvider>
       )}
     >
-      <SidebarTooltipProvider>
-        <div aria-label={label} className="flex min-h-0 flex-1 flex-col">
-          <AppSidebarContent
-            collapsed={collapsed}
-            sections={sections}
-            footer={
-              <SidebarNavItem
-                label={collapsed ? "Expand menu" : "Collapse menu"}
-                icon={collapsed ? PanelLeftOpen : PanelLeftClose}
-                collapsed={collapsed}
-                className={MENU_ITEM_INACTIVE_SUBTLE}
-                onClick={toggle}
-              />
-            }
-          />
-        </div>
-      </SidebarTooltipProvider>
-    </div>
-  );
-  return (
-    <>
-      {inShell ? (
-        <AppShellPortal slot="secondaryNav">{menu}</AppShellPortal>
-      ) : null}
       <div className="mb-5 lg:hidden">
         <Select
           value={active}
@@ -299,6 +284,6 @@ export function SectionMenu({
           </SelectContent>
         </Select>
       </div>
-    </>
+    </AppShell>
   );
 }

@@ -1180,8 +1180,13 @@ function addProviders(builder: Candidates, name: string, output: unknown) {
         sourceIds: [referenceId],
       },
       {
-        label: "States serviced",
-        value: strings(profile.writingStates, 60).join(", ") || "Not provided",
+        label: "Countries serviced",
+        value: strings(profile.writingCountries, 250).join(", ") || "Not provided",
+        sourceIds: [referenceId],
+      },
+      {
+        label: "States / provinces serviced",
+        value: strings(profile.writingStates, 64).join(", ") || "Not provided",
         sourceIds: [referenceId],
       },
       {

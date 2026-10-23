@@ -3,6 +3,7 @@ import { readPacketProjection } from "./lib/packetDocuments";
 import { publishMcpEvent } from "./mcpEvents";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
+import { stopOutreachSequences } from "./lib/providerOutreachLifecycle";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
@@ -783,6 +784,13 @@ export async function fileProcurementProposalByOperator(
       updatedByUserId: args.operatorUserId,
       updatedAt: now,
     });
+  // A filed proposal means the provider answered: stop automated follow-ups
+  // whether or not the outreach status moved.
+  await stopOutreachSequences(ctx, {
+    outreachId: outreach._id,
+    reason: "proposal_filed",
+    now,
+  });
 
   const extraction =
     target.status === "draft" || target.status === "extracting"

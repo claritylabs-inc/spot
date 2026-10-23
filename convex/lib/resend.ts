@@ -118,7 +118,7 @@ export type ResendResult =
   | { ok: true; id?: string }
   | { ok: false; error: string };
 
-type EmailDeliveryMode = "live" | "restricted" | "capture";
+export type EmailDeliveryMode = "live" | "restricted" | "capture";
 
 type RecipientField = "to" | "cc" | "bcc";
 
@@ -290,7 +290,7 @@ export function getEmailDeliveryMode(): EmailDeliveryMode {
   return "live";
 }
 
-function recipientAllowed(email: string): boolean {
+export function recipientAllowed(email: string): boolean {
   const allowedEmails = new Set(
     splitCsv(process.env.EMAIL_ALLOWED_RECIPIENTS).map((item) =>
       normalizeEmail(item),
@@ -302,6 +302,31 @@ function recipientAllowed(email: string): boolean {
   if (allowedEmails.has(email)) return true;
   const domain = email.split("@").pop();
   return Boolean(domain && allowedDomains.has(normalizeDomain(domain)));
+}
+
+export type RecipientDeliveryPolicy =
+  | { action: "send" }
+  | { action: "capture" }
+  | { action: "blocked"; disallowed: string[] };
+
+/**
+ * Delivery policy for transports that cannot redirect recipients (Resend
+ * Inboxes). `restricted` blocks any recipient outside the allowlist instead of
+ * redirecting like `sendResendEmail` does.
+ */
+export function evaluateRecipientDeliveryPolicy(
+  recipients: Array<string | undefined>,
+): RecipientDeliveryPolicy {
+  const mode = getEmailDeliveryMode();
+  if (mode === "capture") return { action: "capture" };
+  if (mode === "live") return { action: "send" };
+  const normalized = uniqueStrings(
+    recipients.map((r) => normalizeEmail(r ?? "") || (r ?? "").trim()),
+  );
+  const disallowed = normalized.filter((email) => !recipientAllowed(email));
+  return disallowed.length === 0 && normalized.length > 0
+    ? { action: "send" }
+    : { action: "blocked", disallowed };
 }
 
 function withOriginalRecipientHeaders(

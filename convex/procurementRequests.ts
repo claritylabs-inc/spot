@@ -1,3 +1,8 @@
+import {
+  procurementBrokerCriteria,
+  procurementBrokerMatch,
+  procurementMatchAreaLabels,
+} from "./lib/procurementBrokerMatching";
 import { procurementApplicationInputSchema } from "./lib/procurementApplicationInput";
 import { detailsFromAnswers } from "../lib/insurance-intake-details";
 import { intakeAnswersValidator } from "./lib/insuranceIntakeSchema";
@@ -38,6 +43,7 @@ import {
   isSpotOwnedDomain,
 } from "./lib/brokerProfileValidation";
 import { v } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -68,6 +74,11 @@ import {
   type ProcurementEmailCategory,
 } from "./lib/procurement";
 import { seedRequestIntake } from "./lib/procurementNarrative";
+import {
+  outreachLeavesRequestSent,
+  requestStatusStopsOutreach,
+  stopOutreachSequences,
+} from "./lib/providerOutreachLifecycle";
 import { getAgentDomain } from "./lib/resend";
 import {
   throwUserFacingError,
@@ -823,6 +834,15 @@ export async function updateProcurementRequestByOperator(
   );
   if (changedFields.length === 0) throw new Error("No request fields changed");
   await ctx.db.patch(request._id, patch);
+  // Every status writer (update, application edit, operator tools, resulting policy,
+  // completion outcome) funnels through here, so one hook covers cancel and complete.
+  const stopReason = requestStatusStopsOutreach(patch.status);
+  if (stopReason)
+    await stopOutreachSequences(ctx, {
+      requestId: request._id,
+      reason: stopReason,
+      now: patch.updatedAt,
+    });
   const auditEventId = await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -1109,6 +1129,11 @@ export const remove = mutation({
       deletedByUserId: operator.userId,
       updatedAt: now,
     });
+    await stopOutreachSequences(ctx, {
+      requestId,
+      reason: "request_deleted",
+      now,
+    });
     await writeOperatorAudit(ctx, {
       operatorUserId: operator.userId,
       type: "setup_write",
@@ -1176,6 +1201,12 @@ export async function createProcurementOutreachByOperator(
     contactEmail?: string;
     contactPhone?: string;
     status?: OutreachStatus;
+    /**
+     * Internal only (not exposed by any public mutation or tool): create the
+     * tracking record without claiming it was sent. The outreach sender sets
+     * `sentAt` once the first email actually leaves.
+     */
+    deferSentAt?: boolean;
     source: "operator" | "agent" | "workspace_scan";
   },
 ) {
@@ -1198,6 +1229,7 @@ export async function createProcurementOutreachByOperator(
   }
   const now = dayjs().valueOf();
   const sent =
+    !args.deferSentAt &&
     args.source !== "workspace_scan" &&
     (args.status ?? "request_sent") === "request_sent";
   const outreachId = await ctx.db.insert("procurementBrokerOutreaches", {
@@ -1253,6 +1285,127 @@ export const createOutreach = mutation({
   },
 });
 
+/** Manual matching only: add tracking rows, never send or release a packet. */
+export const autoAddBrokers = mutation({
+  args: { requestId: v.id("procurementRequests") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await requireDirectOperatorWrite(ctx, operator.userId);
+    const request = await requireRequest(ctx, args.requestId);
+    const criteria = procurementBrokerCriteria(
+      submittedIntakeApplication(request),
+    );
+    // Scan the complete directory: a result limit must not hide eligible markets.
+    const profiles = await ctx.db.query("brokerProfiles").collect();
+    const outreaches = await ctx.db
+      .query("procurementBrokerOutreaches")
+      .withIndex("request", (q) => q.eq("requestId", request._id))
+      .collect();
+    const addedIds = new Set(
+      outreaches.flatMap((row) => (row.brokerOrgId ? [row.brokerOrgId] : [])),
+    );
+    let added = 0;
+    let alreadyAdded = 0;
+    let coverageMismatch = 0;
+    let outsideArea = 0;
+    let unavailable = 0;
+    const needsVerification: {
+      brokerOrgId: Id<"organizations">;
+      name: string;
+      reason: string;
+      matchingCodes: string[];
+    }[] = [];
+    for (const profile of profiles) {
+      if (
+        profile.networkStatus === "blacklisted" ||
+        profile.networkStatus === "inactive"
+      ) {
+        unavailable++;
+        continue;
+      }
+      const broker = await ctx.db.get(profile.brokerOrgId);
+      if (
+        !broker ||
+        broker.deletedAt ||
+        broker.type !== "broker" ||
+        isSpotOwnedBrokerIdentity(broker)
+      )
+        continue;
+      // Existing rows are counted first even if appetite has since changed.
+      const existing =
+        addedIds.has(broker._id) ||
+        outreaches.some(
+          (row) =>
+            !row.brokerOrgId &&
+            row.brokerName.trim().toLowerCase() ===
+              broker.name.trim().toLowerCase(),
+        );
+      if (existing) {
+        alreadyAdded++;
+        continue;
+      }
+      const match = procurementBrokerMatch(profile, criteria);
+      if (match.status === "coverage_mismatch") {
+        coverageMismatch++;
+        continue;
+      }
+      if (match.status === "outside_area") {
+        outsideArea++;
+        continue;
+      }
+      if (match.status === "needs_verification") {
+        needsVerification.push({
+          brokerOrgId: broker._id,
+          name: broker.name,
+          reason: match.reason,
+          matchingCodes: match.matchingCodes,
+        });
+        continue;
+      }
+      await createProcurementOutreachByOperator(ctx, {
+        operatorUserId: operator.userId,
+        requestId: request._id,
+        brokerOrgId: broker._id,
+        status: "observed",
+        source: "operator",
+      });
+      addedIds.add(broker._id);
+      added++;
+    }
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "setup_write",
+      targetOrgId: request.clientOrgId,
+      summary: `Auto added ${added} matching brokers to procurement request ${request.title}`,
+      metadata: {
+        domain: "procurement",
+        operation: "auto_add_brokers",
+        requestId: request._id,
+        coverageCodes: criteria.codes,
+        areas: criteria.areas,
+        added,
+        alreadyAdded,
+        needsVerification: needsVerification.length,
+        coverageMismatch,
+        outsideArea,
+      },
+    });
+    return {
+      added,
+      alreadyAdded,
+      needsVerification: needsVerification.sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+      coverageMismatch,
+      outsideArea,
+      unavailable,
+      coverageLabels: criteria.coverageLabels,
+      areaLabels: procurementMatchAreaLabels(criteria),
+      unmappedCoverages: criteria.unmappedCoverages,
+    };
+  },
+});
+
 export async function updateProcurementOutreachByOperator(
   ctx: MutationCtx,
   args: {
@@ -1303,7 +1456,8 @@ export async function updateProcurementOutreachByOperator(
   });
   if (args.contactUserId !== undefined) {
     if (args.contactUserId) {
-      if (!nextBrokerOrgId) throw new Error("Select a provider before a contact");
+      if (!nextBrokerOrgId)
+        throw new Error("Select a provider before a contact");
       const membership = await ctx.db
         .query("orgMemberships")
         .withIndex("organization_user", (q) =>
@@ -1311,7 +1465,9 @@ export async function updateProcurementOutreachByOperator(
         )
         .unique();
       if (!membership)
-        throw new Error("Provider contact must belong to the selected provider");
+        throw new Error(
+          "Provider contact must belong to the selected provider",
+        );
       const contact = await ctx.db.get(args.contactUserId);
       assertExternalBrokerIdentity({ email: contact?.email });
     }
@@ -1334,6 +1490,17 @@ export async function updateProcurementOutreachByOperator(
   );
   if (fields.length === 0) throw new Error("No outreach fields changed");
   await ctx.db.patch(outreach._id, patch);
+  const stopReason = outreachLeavesRequestSent(outreach.status, patch.status)
+    ? "outreach_status_changed"
+    : patch.brokerOrgId && patch.brokerOrgId !== outreach.brokerOrgId
+      ? "provider_changed"
+      : undefined;
+  if (stopReason)
+    await stopOutreachSequences(ctx, {
+      outreachId: outreach._id,
+      reason: stopReason,
+      now: patch.updatedAt,
+    });
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -1658,9 +1825,15 @@ export async function listProcurementEmailThreads(
 export async function getProcurementEmailThreadDetails(
   ctx: Ctx,
   emailThreadId: Id<"procurementEmailThreads">,
+  expectedRequestId?: Id<"procurementRequests">,
 ) {
   const thread = await ctx.db.get(emailThreadId);
-  if (!thread || thread.deletedAt) return null;
+  if (
+    !thread ||
+    thread.deletedAt ||
+    (expectedRequestId &&
+      (thread.requestId !== expectedRequestId || thread.archivedAt))
+  ) return null;
   const [request, addressedRequest, messages] = await Promise.all([
     requireRequest(ctx, thread.requestId),
     requireRequest(ctx, thread.addressedRequestId),
@@ -1669,8 +1842,30 @@ export async function getProcurementEmailThreadDetails(
       .withIndex("thread", (index) => index.eq("threadId", thread._id))
       .collect(),
   ]);
+  // The outreach inbox address marks which messages Spot sent.
+  const sequence = thread.resendThreadId
+    ? await ctx.db
+        .query("procurementOutreachSequences")
+        .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", thread.resendThreadId))
+        .first()
+    : null;
+  const outreachInbox = sequence?.inboxId
+    ? await ctx.db
+        .query("operatorOutreachInboxes")
+        .withIndex("by_inboxId", (q) => q.eq("inboxId", sequence.inboxId!))
+        .first()
+    : null;
+  const ownSequence = sequence?.requestId === thread.requestId ? sequence : null;
+  const pendingSteps = ownSequence
+    ? (
+        await ctx.db
+          .query("procurementOutreachSteps")
+          .withIndex("by_sequenceId_and_index", (q) => q.eq("sequenceId", ownSequence._id))
+          .take(10)
+      ).filter((step) => step.status === "scheduled" || step.status === "sending")
+    : [];
   const hydratedMessages = await Promise.all(
-    messages.map(async (message) => ({
+    messages.map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
       ...message,
       files: await Promise.all(
         message.clientFileIds.map(async (clientFileId) => {
@@ -1697,6 +1892,21 @@ export async function getProcurementEmailThreadDetails(
       forwardingAddress: requestForwardingAddress(addressedRequest),
     },
     messages: hydratedMessages,
+    outboundAddress: outreachInbox
+      ? normalizeProcurementEmail(outreachInbox.emailAddress)
+      : null,
+    canReply: Boolean(outreachInbox && ownSequence),
+    followUps: ownSequence
+      ? {
+          sequenceId: ownSequence._id,
+          audience: ownSequence.audience ?? ("provider" as const),
+          status: ownSequence.status,
+          stopReason: ownSequence.stopReason ?? null,
+          recipient: ownSequence.recipient.name ?? ownSequence.recipient.email,
+          remaining: pendingSteps.length,
+          nextDueAt: pendingSteps[0]?.dueAt ?? null,
+        }
+      : null,
   };
 }
 
@@ -1777,7 +1987,8 @@ export async function previewProcurementEmailReconciliation(
   ).filter(
     (outreach): outreach is NonNullable<typeof outreach> => outreach !== null,
   );
-  const matchingOutreaches = eligibleOutreaches.filter(
+  const linkedOutreach = eligibleOutreaches.find((outreach) => outreach._id === thread.outreachId);
+  const matchingOutreaches = linkedOutreach ? [linkedOutreach] : eligibleOutreaches.filter(
     (outreach) =>
       outreach.contactEmail &&
       participantEmails.has(normalizeProcurementEmail(outreach.contactEmail)),
@@ -1869,11 +2080,76 @@ export async function previewProcurementEmailReconciliation(
   };
 }
 
+/** Request-bound inbox projection; never reads the operator's other conversations. */
+export const getInbox = query({
+  args: { requestId: v.id("procurementRequests"), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { requestId, paginationOpts }) => {
+    await requireOperator(ctx);
+    await requireRequest(ctx, requestId);
+    const result = await ctx.db
+      .query("procurementEmailThreads")
+      .withIndex("request", (q) => q.eq("requestId", requestId))
+      .order("desc")
+      .paginate({ ...paginationOpts, numItems: Math.max(1, Math.min(40, paginationOpts.numItems)) });
+    const threads = await Promise.all(
+      result.page.filter(activeEmailThread).map(async (thread) => {
+        const [latest, candidateSequence] = await Promise.all([
+          ctx.db.query("procurementEmailMessages")
+            .withIndex("thread", (q) => q.eq("threadId", thread._id))
+            .order("desc").first(),
+          thread.resendThreadId
+            ? ctx.db.query("procurementOutreachSequences")
+                .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", thread.resendThreadId))
+                .order("desc").first()
+            : null,
+        ]);
+        const sequence = candidateSequence?.requestId === requestId &&
+          candidateSequence.procurementEmailThreadId === thread._id
+          ? candidateSequence : null;
+        const inbox = sequence?.inboxId
+          ? await ctx.db.query("operatorOutreachInboxes")
+              .withIndex("by_inboxId", (q) => q.eq("inboxId", sequence.inboxId!))
+              .first()
+          : null;
+        const latestDirection = latest && inbox
+          ? normalizeProcurementEmail(latest.fromEmail) === normalizeProcurementEmail(inbox.emailAddress)
+            ? "outbound" as const : "inbound" as const
+          : "unknown" as const;
+        return {
+          _id: thread._id,
+          subject: thread.subject,
+          category: thread.category,
+          participantEmails: thread.participantEmails,
+          latestMessageAt: thread.latestMessageAt,
+          messageCount: thread.messageCount,
+          source: thread.resendThreadId ? "resend" as const : "forwarded" as const,
+          latestDirection,
+          needsReply: latestDirection === "inbound" && sequence !== null &&
+            ["responded", "stopped", "failed"].includes(sequence.status) && sequence.stopReason !== "bounced",
+          sequenceStatus: sequence?.status ?? null,
+          preview: latest?.currentText.replace(/\s+/g, " ").trim().slice(0, 240) ?? "",
+          fromName: latest?.fromName ?? null,
+          fromEmail: latest?.fromEmail ?? null,
+          // Mail we sent last is listed by who it went to, as in a sent folder.
+          counterpart: latestDirection === "outbound" && sequence
+            ? `To ${sequence.recipient.name ?? sequence.recipient.email}`
+            : null,
+        };
+      }),
+    );
+    return { ...result, page: threads };
+  },
+});
+
 export const getEmailThread = query({
-  args: { emailThreadId: v.id("procurementEmailThreads") },
+  args: {
+    emailThreadId: v.id("procurementEmailThreads"),
+    requestId: v.optional(v.id("procurementRequests")),
+  },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
-    return await getProcurementEmailThreadDetails(ctx, args.emailThreadId);
+    if (args.requestId) await requireRequest(ctx, args.requestId);
+    return await getProcurementEmailThreadDetails(ctx, args.emailThreadId, args.requestId);
   },
 });
 
@@ -1917,6 +2193,9 @@ export async function updateProcurementEmailThreadByOperator(
     patch.categoryReason = `Set manually through ${args.source}`;
   }
   if (args.requestId !== undefined && args.requestId !== thread.requestId) {
+    if (thread.resendThreadId) {
+      throw new Error("Provider outreach conversations stay with their originating request");
+    }
     const nextRequest = await requireRequest(ctx, args.requestId);
     if (nextRequest.clientOrgId !== thread.clientOrgId) {
       throw new Error("Email thread can move only within the same client");
@@ -1973,6 +2252,50 @@ export async function updateProcurementEmailThreadByOperator(
   return { emailThreadId: thread._id, fields };
 }
 
+/** Inbox bulk archive/unarchive. A later inbound message unarchives a conversation. */
+export const setEmailThreadsArchived = mutation({
+  args: {
+    requestId: v.id("procurementRequests"),
+    emailThreadIds: v.array(v.id("procurementEmailThreads")),
+    archived: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await requireDirectOperatorWrite(ctx, operator.userId);
+    const request = await requireRequest(ctx, args.requestId);
+    if (!args.emailThreadIds.length || args.emailThreadIds.length > 100)
+      throw new Error("Select 1 to 100 conversations");
+    const now = dayjs().valueOf();
+    let changed = 0;
+    for (const emailThreadId of new Set(args.emailThreadIds)) {
+      const thread = await ctx.db.get(emailThreadId);
+      if (!thread || thread.deletedAt || thread.requestId !== request._id)
+        throw new Error("Conversation not found on this request");
+      if (Boolean(thread.archivedAt) === args.archived) continue;
+      await ctx.db.patch(thread._id, {
+        archivedAt: args.archived ? now : undefined,
+        archivedByUserId: args.archived ? operator.userId : undefined,
+        updatedAt: now,
+      });
+      changed += 1;
+    }
+    if (changed)
+      await writeOperatorAudit(ctx, {
+        operatorUserId: operator.userId,
+        type: "setup_write",
+        targetOrgId: request.clientOrgId,
+        summary: `${args.archived ? "Archived" : "Restored"} ${changed} conversation${changed === 1 ? "" : "s"} on ${request.title}`,
+        metadata: {
+          domain: "procurement",
+          operation: args.archived ? "archive_email_threads" : "unarchive_email_threads",
+          requestId: request._id,
+          emailThreadIds: args.emailThreadIds,
+        },
+      });
+    return { changed };
+  },
+});
+
 export const updateEmailThread = mutation({
   args: {
     emailThreadId: v.id("procurementEmailThreads"),
@@ -2026,6 +2349,86 @@ const inboundAttachmentValidator = v.object({
   contentType: v.string(),
   size: v.number(),
 });
+
+export type ProcurementEmailAttachment = {
+  fileId: Id<"_storage">;
+  filename: string;
+  contentType: string;
+  size: number;
+};
+
+const MAX_EMAIL_ATTACHMENTS = 20;
+
+/**
+ * Stores uploaded email attachments as org-owned client files (reusing identical
+ * content), schedules naming and company-information extraction for new files,
+ * and returns the client file ids in attachment order, at most 20.
+ *
+ * Authorization is the caller's: resolve the request with `requireRequest` (company
+ * request, live client) and pass that request's `clientOrgId`. Call
+ * `insertProcurementEmailFileItems` with the resulting ids once the message row exists.
+ */
+export async function storeProcurementEmailAttachments(
+  ctx: MutationCtx,
+  args: {
+    clientOrgId: Id<"organizations">;
+    attachments: ProcurementEmailAttachment[];
+    /** Subject of the carrying email; bounds the file-naming hint. */
+    subject: string;
+  },
+): Promise<Id<"clientFiles">[]> {
+  const storedClientFiles = await Promise.all(
+    args.attachments.slice(0, MAX_EMAIL_ATTACHMENTS).map((attachment) =>
+      createClientFileFromProcurementEmail(ctx, {
+        orgId: args.clientOrgId,
+        fileId: attachment.fileId,
+        originalName: attachment.filename,
+        contentType: attachment.contentType,
+        size: attachment.size,
+      }),
+    ),
+  );
+  for (const stored of storedClientFiles) {
+    if (!stored.created) continue;
+    await ctx.scheduler.runAfter(0, internal.actions.clientFileNaming.infer, {
+      clientFileId: stored.clientFileId,
+      expectedUpdatedAt: stored.expectedUpdatedAt,
+      hint: boundedClientFileHint(args.subject),
+    });
+    await scheduleClientFileCompanyInformation(ctx, stored.clientFileId);
+  }
+  return storedClientFiles.map((stored) => stored.clientFileId);
+}
+
+/**
+ * Lists stored email attachments as request file items tied to their source message.
+ * Same caller-owned authorization as `storeProcurementEmailAttachments`;
+ * `requestId` must belong to `clientOrgId`.
+ */
+export async function insertProcurementEmailFileItems(
+  ctx: MutationCtx,
+  args: {
+    requestId: Id<"procurementRequests">;
+    clientOrgId: Id<"organizations">;
+    emailMessageId: Id<"procurementEmailMessages">;
+    clientFileIds: Id<"clientFiles">[];
+    now: number;
+  },
+) {
+  for (const clientFileId of args.clientFileIds) {
+    const file = await ctx.db.get(clientFileId);
+    if (!file) continue;
+    await ctx.db.insert("procurementFileItems", {
+      requestId: args.requestId,
+      clientOrgId: args.clientOrgId,
+      clientFileId,
+      sourceEmailMessageId: args.emailMessageId,
+      label: file.name,
+      createdAt: args.now,
+      updatedAt: args.now,
+    });
+  }
+}
 
 export const ingestEmailInternal = internalMutation({
   args: {
@@ -2099,7 +2502,8 @@ export const ingestEmailInternal = internalMutation({
       const candidate = await ctx.db.get(parent.threadId);
       if (
         candidate?.clientOrgId === addressedRequest.clientOrgId &&
-        !candidate.deletedAt
+        !candidate.deletedAt &&
+        (!candidate.resendThreadId || candidate.requestId === addressedRequest._id)
       ) {
         thread = candidate;
         break;
@@ -2209,29 +2613,11 @@ export const ingestEmailInternal = internalMutation({
       });
     }
 
-    const storedClientFiles = await Promise.all(
-      args.attachments.slice(0, 20).map((attachment) =>
-        createClientFileFromProcurementEmail(ctx, {
-          orgId: addressedRequest.clientOrgId,
-          fileId: attachment.fileId,
-          originalName: attachment.filename,
-          contentType: attachment.contentType,
-          size: attachment.size,
-        }),
-      ),
-    );
-    for (const stored of storedClientFiles) {
-      if (!stored.created) continue;
-      await ctx.scheduler.runAfter(0, internal.actions.clientFileNaming.infer, {
-        clientFileId: stored.clientFileId,
-        expectedUpdatedAt: stored.expectedUpdatedAt,
-        hint: boundedClientFileHint(args.subject),
-      });
-      await scheduleClientFileCompanyInformation(ctx, stored.clientFileId);
-    }
-    const clientFileIds: Id<"clientFiles">[] = storedClientFiles.map(
-      (stored) => stored.clientFileId,
-    );
+    const clientFileIds = await storeProcurementEmailAttachments(ctx, {
+      clientOrgId: addressedRequest.clientOrgId,
+      attachments: args.attachments,
+      subject: args.subject,
+    });
     const emailMessageId = await ctx.db.insert("procurementEmailMessages", {
       threadId,
       clientOrgId: addressedRequest.clientOrgId,
@@ -2255,19 +2641,13 @@ export const ingestEmailInternal = internalMutation({
       receivedAt: args.receivedAt,
       createdAt: now,
     });
-    for (const clientFileId of clientFileIds) {
-      const file = await ctx.db.get(clientFileId);
-      if (!file) continue;
-      await ctx.db.insert("procurementFileItems", {
-        requestId,
-        clientOrgId: addressedRequest.clientOrgId,
-        clientFileId,
-        sourceEmailMessageId: emailMessageId,
-        label: file.name,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
+    await insertProcurementEmailFileItems(ctx, {
+      requestId,
+      clientOrgId: addressedRequest.clientOrgId,
+      emailMessageId,
+      clientFileIds,
+      now,
+    });
     await scheduleEmailThreadCompanyInformation(ctx, threadId);
     for (const clientFileId of restoredClientFileIds) {
       await scheduleClientFileCompanyInformation(ctx, clientFileId);

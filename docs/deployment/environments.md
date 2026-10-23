@@ -23,6 +23,18 @@ The root `.npmrc` routes `@claritylabs-inc` to GitHub Packages and reads
 Repository configuration alone does not verify hosted secret values or prove
 that a hosted build can read the package; the consuming build must pass.
 
+## Local operator authenticator setup
+
+The Convex backend needs `EMAIL_CONNECTIONS_ENCRYPTION_KEY` before an operator
+can enroll an authenticator. The existing credential-encryption helper uses it
+to encrypt TOTP secrets as well as connected-mailbox credentials. Setting a
+Next.js environment variable alone does not configure the Convex backend.
+Configure the intended local deployment with `convex env set`, keeping the
+secret in a private, ignored file or stdin. Preserve an existing key when
+encrypted credentials already exist; changing it makes those values unreadable.
+For an empty local credential store, generate a separate development key.
+Enrollment and two-factor verification remain ordinary user actions.
+
 ## Company detail removal
 
 The company detail forms and runtime fields are retired. After deploying this

@@ -325,58 +325,55 @@ index 0000000..1444bb4
 +export { DateField, parseDateText }
 +export type { DateFieldProps }
 diff --git a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx b/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
-index 0a23de6..2447339 100644
+index 0a23de6..ff6a6f8 100644
 --- a/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
 +++ b/node_modules/@claritylabs-inc/ui/src/components/searchable-select.tsx
-@@ -11,6 +11,7 @@
-   value: string
-   label: string
+@@ -13,2 +13,3 @@
    icon?: ReactNode
 +  separatorBefore?: boolean
  }
- 
- interface SearchableSelectProps {
-@@ -115,7 +116,7 @@
-     >
+@@ -22,2 +23,3 @@
+   ariaLabel?: string
++  typographyRole?: "control.input" | "control.menu"
+   renderOption?: (option: SearchableSelectOption) => ReactNode
+@@ -65,2 +67,3 @@
+     ariaLabel,
++    typographyRole = "control.input",
+   } = props
+@@ -116,4 +119,5 @@
        <Combobox.Trigger
++        data-typography-role={typographyRole}
          aria-label={ariaLabel}
 -        className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-popover px-3 text-left transition-colors hover:border-border-hover hover:bg-foreground/1.5 focus:border-border-focus focus:ring-1 focus:ring-input focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-input disabled:hover:bg-popover ${typeStyle("control.menu")}`}
-+        className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-popover px-3 text-left transition-colors hover:border-border-hover hover:bg-foreground/1.5 focus:border-border-focus focus:ring-1 focus:ring-input focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-input disabled:hover:bg-popover ${typeStyle("control.input")}`}
++        className={`flex h-9 w-full min-w-0 items-center justify-between gap-2 overflow-hidden rounded-lg border border-input bg-popover px-3 text-left transition-colors hover:border-border-hover hover:bg-foreground/1.5 focus:border-border-focus focus:ring-1 focus:ring-input focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-input disabled:hover:bg-popover ${typeStyle(typographyRole)}`}
        >
-         {selected?.icon ? (
-           <span aria-hidden="true" className="shrink-0">
-@@ -139,7 +140,7 @@
-         >
+@@ -140,4 +144,5 @@
            <Combobox.Popup
++            data-typography-role={typographyRole}
              data-blink={blinkClose.blink}
 -            className={`z-50 w-max max-w-(--available-width) min-w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-border-emphasized outline-hidden duration-75 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 ${typeStyle("control.menu")}`}
-+            className={`z-50 w-max max-w-(--available-width) min-w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-border-emphasized outline-hidden duration-75 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 ${typeStyle("control.input")}`}
++            className={`z-50 w-max max-w-(--available-width) min-w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-border-emphasized outline-hidden duration-75 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 ${typeStyle(typographyRole)}`}
            >
-             <div className="border-b border-border p-1.5">
-               <div className="relative">
-@@ -151,11 +152,11 @@
-               </div>
-             </div>
+@@ -148,3 +153,3 @@
+                   placeholder="Search..."
+-                  className={`w-full rounded-md bg-foreground/3 py-1.5 pr-2 pl-6.5 placeholder:text-muted-foreground/40 focus:outline-none ${typeStyle("control.input")}`}
++                  className={`w-full rounded-md bg-foreground/3 py-1.5 pr-2 pl-6.5 placeholder:text-muted-foreground/40 focus:outline-none ${typeStyle(typographyRole)}`}
+                 />
+@@ -153,3 +158,3 @@
              <Combobox.Empty
 -              className={`px-3 py-2 text-muted-foreground/50 ${typeStyle("control.menu")}`}
-+              className={`px-3 py-2 empty:p-0 text-muted-foreground/50 ${typeStyle("control.input")}`}
++              className={`px-3 py-2 empty:p-0 text-muted-foreground/50 ${typeStyle(typographyRole)}`}
              >
-               No results
+@@ -157,3 +162,3 @@
              </Combobox.Empty>
 -            <Combobox.List className="max-h-dropdown overflow-y-auto py-1">
-+            <Combobox.List className="max-h-dropdown overflow-y-auto">
++            <Combobox.List data-typography-role={typographyRole} className="max-h-dropdown overflow-y-auto">
                {(option: SearchableSelectOption) => (
-                 <Combobox.Item
-                   key={option.value}
-@@ -167,7 +168,7 @@
-                     props.value.length >= props.maxSelected &&
-                     !props.value.includes(option.value)
+@@ -169,3 +174,3 @@
                    }
 -                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 in-data-[blink=off]:bg-transparent! data-disabled:opacity-40 ${typeStyle("control.menu")}`}
-+                  className={`${option.separatorBefore ? "mt-2 border-t border-border pt-3!" : ""} flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 in-data-[blink=off]:bg-transparent! data-disabled:opacity-40 ${typeStyle("control.input")}`}
++                  className={`${option.separatorBefore ? "mt-2 border-t border-border pt-3!" : ""} flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 in-data-[blink=off]:bg-transparent! data-disabled:opacity-40 ${typeStyle(typographyRole)}`}
                  >
-                   {option.icon ? (
-                     <span aria-hidden="true" className="shrink-0">
 diff --git a/node_modules/@claritylabs-inc/ui/src/components/input-group.tsx b/node_modules/@claritylabs-inc/ui/src/components/input-group.tsx
 index 8eeed9a..890dfc3 100644
 --- a/node_modules/@claritylabs-inc/ui/src/components/input-group.tsx

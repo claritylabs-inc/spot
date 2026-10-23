@@ -1,0 +1,590 @@
+{
+  "checkedAt": "2026-10-22",
+  "target": "local dev",
+  "providersReviewed": 129,
+  "providersPreviouslyMissingEmail": 47,
+  "contactsAdded": 51,
+  "providersWithEmail": 129,
+  "contacts": [
+    {
+      "provider": "Amelia Risk",
+      "name": "Danielle Holyoake",
+      "role": "general",
+      "email": "danielle@ameliarisk.com",
+      "notes": "Co-founder. Official blog explicitly invites new insurance inquiries to this address; also listed on the current team page.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://ameliarisk.com/blog/who-is-amelia/"
+      ]
+    },
+    {
+      "provider": "Lockton",
+      "name": "General inquiries \u2014 Lockton Affinity",
+      "role": "general",
+      "email": "info@locktonaffinity.com",
+      "notes": "Published Lockton Affinity team mailbox in Overland Park, Kansas. Contact is specific to the Affinity business.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://locktonaffinity.com/contact-us/"
+      ]
+    },
+    {
+      "provider": "Nationwide",
+      "name": "Risk management & client services",
+      "role": "general",
+      "email": "rmcs@nationwide.com",
+      "notes": "Published Risk Management and Client Services contact; not a general new-business submissions inbox.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.nationwide.com/business/risk-management/about-us/contact-us/"
+      ]
+    },
+    {
+      "provider": "StartupInsurance.ai",
+      "name": "General inquiries \u2014 ContractorNerd",
+      "role": "general",
+      "email": "hello@contractornerd.com",
+      "notes": "StartupInsurance.ai identifies ContractorNerd Insurance Services LLC as its operating agency. This is the agency\u2019s published contact; no separate StartupInsurance mailbox was verified.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.contractornerd.com/disclaimer/"
+      ]
+    },
+    {
+      "provider": "Resilience",
+      "name": "Gavin Reed",
+      "role": "underwriting",
+      "email": "gavinreed@cyberresilience.com",
+      "notes": "US underwriting lead for cyber insurance and technology E&O; published revenue appetite $75M\u2013$10B+.",
+      "lineOfBusinessCodes": [
+        "EO",
+        "CYBER"
+      ],
+      "sources": [
+        "https://cyberresilience.com/products/cyber-insurance/"
+      ]
+    },
+    {
+      "provider": "Resilience",
+      "name": "Miki Ho",
+      "role": "underwriting",
+      "email": "mikiho@cyberresilience.com",
+      "notes": "Canada underwriting lead for cyber insurance and technology E&O; published revenue appetite $25M\u2013$10B.",
+      "lineOfBusinessCodes": [
+        "EO",
+        "CYBER"
+      ],
+      "sources": [
+        "https://cyberresilience.com/products/cyber-insurance/"
+      ]
+    },
+    {
+      "provider": "Travelers",
+      "name": "Janet Cain",
+      "role": "underwriting",
+      "email": "jcain2@travelers.com",
+      "notes": "Technology managing director for the South Central region: Louisiana, Texas, Arkansas and Oklahoma.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.travelers.com/business-insurance/technology/contact-us"
+      ]
+    },
+    {
+      "provider": "AIG",
+      "name": "Broker services",
+      "role": "general",
+      "email": "toserve@aig.com",
+      "notes": "Published US commercial broker-services mailbox; licensed broker assistance.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.aig.com/content/dam/aig/america-canada/us/documents/business/management-liability/executive-edge-application-mainform-application.pdf"
+      ]
+    },
+    {
+      "provider": "Gallagher",
+      "name": "Property & casualty client service",
+      "role": "general",
+      "email": "selectclientservice@ajg.com",
+      "notes": "Gallagher small-business property and casualty client-service team.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.gallaghersmallbusiness.com/client-contact/"
+      ]
+    },
+    {
+      "provider": "HUB International",
+      "name": "General inquiries \u2014 HUB Technology",
+      "role": "general",
+      "email": "myinsurance@hubinternational.com",
+      "notes": "HUB Technology office inbox in Burnaby, BC. Ontario assignment is not confirmed.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://hubtechnology.ca/"
+      ]
+    },
+    {
+      "provider": "HUB International",
+      "name": "Derek May",
+      "role": "general",
+      "email": "derek.may@hubinternational.com",
+      "notes": "BC-based technology and cyber insurance specialist; Ontario assignment is not confirmed. Also listed for claims questions.",
+      "lineOfBusinessCodes": [
+        "EO",
+        "CYBER"
+      ],
+      "sources": [
+        "https://hubtechnology.ca/"
+      ]
+    },
+    {
+      "provider": "Liberty Mutual",
+      "name": "Small commercial digital support",
+      "role": "general",
+      "email": "smallcommercialdigitalsupport@libertymutual.com",
+      "notes": "Published assistance inbox for Liberty Mutual small-commercial online customers.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.mybusinessonline.libertymutual.com/"
+      ]
+    },
+    {
+      "provider": "The Baldwin Group",
+      "name": "Client support",
+      "role": "general",
+      "email": "help@baldwin.com",
+      "notes": "Published on the official office directory; office-specific routing may apply.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://baldwin.com/locations/"
+      ]
+    },
+    {
+      "provider": "Markel",
+      "name": "Agency appointments",
+      "role": "general",
+      "email": "agencyappointment@markel.com",
+      "notes": "Agent and broker appointment inquiries; a valid producer license is required.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.markel.com/us/for-agents-and-brokers/request-appointment-with-markel"
+      ]
+    },
+    {
+      "provider": "Zurich U.S.",
+      "name": "Customer inquiry center",
+      "role": "general",
+      "email": "info.source@zurichna.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.pissedconsumer.com/company/zurich-north-america/customer-service.html"
+      ]
+    },
+    {
+      "provider": "The Hartford",
+      "name": "Financial lines submissions",
+      "role": "submissions",
+      "email": "globalspecialtyflsubs@thehartford.com",
+      "notes": "Published CyberChoice First Response submission inbox. Global Specialty financial lines.",
+      "lineOfBusinessCodes": [
+        "CYBER"
+      ],
+      "sources": [
+        "https://assets.thehartford.com/image/upload/cyber_choice_first_response_product.pdf"
+      ]
+    },
+    {
+      "provider": "Marsh",
+      "name": "Cyber risk inquiries \u2014 Canada",
+      "role": "general",
+      "email": "cyber.risk@marsh.com",
+      "notes": "Published Canadian cyber-risk team mailbox; coverage-specific contact.",
+      "lineOfBusinessCodes": [
+        "CYBER"
+      ],
+      "sources": [
+        "https://www.marsh.com/content/dam/marsh/Documents/PDF/canada/ca-en/setting-the-record-straight-on-cyber-insurance-en-ca.pdf"
+      ]
+    },
+    {
+      "provider": "Alliance Risk",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "support@joinalliancerisk.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://joinalliancerisk.com/terms-conditions/"
+      ]
+    },
+    {
+      "provider": "At-Bay",
+      "name": "General submissions",
+      "role": "submissions",
+      "email": "underwriting@at-bay.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.at-bay.com/brokers/resources/"
+      ]
+    },
+    {
+      "provider": "Aon",
+      "name": "Business inquiries \u2014 Canada",
+      "role": "general",
+      "email": "sme.leads@aon.ca",
+      "notes": "Canadian small-business insurance inquiries.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.aon.com/canada/personalinsurance/contact"
+      ]
+    },
+    {
+      "provider": "Armilla",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "hello@armilla.ai",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.armilla.ai/cookies-settings"
+      ]
+    },
+    {
+      "provider": "CNA",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "cna_help@cna.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.cna.com/contact"
+      ]
+    },
+    {
+      "provider": "Chubb",
+      "name": "Small business support",
+      "role": "general",
+      "email": "smallbizhelpdesk@chubb.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.chubb.com/us-en/contact.html"
+      ]
+    },
+    {
+      "provider": "Berkshire Hathaway Specialty Insurance",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "info@bhspecialty.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.bhspecialty.com/wp-content/uploads/marketing/Transactional-Liability-Overview-Europe.pdf"
+      ]
+    },
+    {
+      "provider": "biBerk",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "customerservice@biberk.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.biberk.com/terms"
+      ]
+    },
+    {
+      "provider": "Beazley",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "info@beazley.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.beazley.com/en-us/contact-us/"
+      ]
+    },
+    {
+      "provider": "CFC",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "enquiries@cfc.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.cfc.com/en-gb/knowledge/news/2016/07/fast-track-your-submissions/"
+      ]
+    },
+    {
+      "provider": "Coterie Insurance",
+      "name": "Agent support",
+      "role": "general",
+      "email": "producers@coterieinsurance.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://coterieinsurance.com/support/"
+      ]
+    },
+    {
+      "provider": "Cowbell",
+      "name": "Agency inquiries",
+      "role": "general",
+      "email": "agencies@cowbellcyber.ai",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://cowbell.insure/news-events/pr/instant-api-quoting-for-cyber/"
+      ]
+    },
+    {
+      "provider": "Counterpart",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "support@yourcounterpart.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://yourcounterpart.com/terms"
+      ]
+    },
+    {
+      "provider": "Coalition",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "help@coalitioninc.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.coalitioninc.com/enterprise"
+      ]
+    },
+    {
+      "provider": "Coalition",
+      "name": "General submissions",
+      "role": "submissions",
+      "email": "submissions@coalitioninc.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.coalitioninc.com/announcements/coalition-launches-new-active-cyber-policy"
+      ]
+    },
+    {
+      "provider": "Coverdash",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "support@coverdash.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.trustpilot.com/review/coverdash.com"
+      ]
+    },
+    {
+      "provider": "Foxquilt",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "info@foxquilt.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.foxquilt.com/"
+      ]
+    },
+    {
+      "provider": "ERGO NEXT Insurance",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "support@nextinsurance.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.nextinsurance.com/terms-of-service/"
+      ]
+    },
+    {
+      "provider": "Layr",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "hello@layrins.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://withlayr.com/"
+      ]
+    },
+    {
+      "provider": "Kinro",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "contact@kinro.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://kinro.com/contact"
+      ]
+    },
+    {
+      "provider": "Mylo",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "yourchoice@choosemylo.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://choosemylo.com/"
+      ]
+    },
+    {
+      "provider": "Pie Insurance",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "service@pieinsurance.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.pieinsurance.com/about/contact"
+      ]
+    },
+    {
+      "provider": "Pie Insurance",
+      "name": "Agency support",
+      "role": "general",
+      "email": "agencyservice@pieinsurance.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.pieinsurance.com/agency/partner-resources/agency-contacts"
+      ]
+    },
+    {
+      "provider": "RiskCube",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "info@riskcube.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://riskcubeai.com/"
+      ]
+    },
+    {
+      "provider": "Relm",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "connect@relminsurance.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://relminsurance.com/industry/artificial-intelligence-insurance/"
+      ]
+    },
+    {
+      "provider": "Simply Business",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "service@simplybusiness.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.simplybusiness.com/help-center/"
+      ]
+    },
+    {
+      "provider": "TechInsurance",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "reception@techinsurance.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.techinsurance.com/contact-us"
+      ]
+    },
+    {
+      "provider": "Risklytics",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "hello@risklytics.ai",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.risklytics.ai/about/"
+      ]
+    },
+    {
+      "provider": "THREE",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "service@threeinsurance.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://threeinsurance.com/terms-conditions"
+      ]
+    },
+    {
+      "provider": "USI Insurance Services",
+      "name": "Property & casualty inquiries",
+      "role": "general",
+      "email": "pcinquiries@usi.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.usi.com/property-casualty/business-services/"
+      ]
+    },
+    {
+      "provider": "WithCoverage",
+      "name": "General inquiries",
+      "role": "general",
+      "email": "contact@withcoverage.com",
+      "notes": "Published business contact. Coverage-specific and geographic routing preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.withcoverage.com/legal/privacy"
+      ]
+    },
+    {
+      "provider": "WTW",
+      "name": "Group services inquiries \u2014 Canada",
+      "role": "general",
+      "email": "wctinsurance@willistowerswatson.com",
+      "notes": "Published WTW Canadian Group Services team mailbox. The group-programs page includes commercial insurance programs for professional associations; this is not a general global submissions inbox.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.wtwco.com/en-ca/solutions/services/group-programs"
+      ]
+    },
+    {
+      "provider": "Marsh McLennan Agency",
+      "name": "Jake Jeatran",
+      "role": "general",
+      "email": "jake.jeatran@marshmma.com",
+      "phone": "+16515876367",
+      "notes": "Risk Management Consultant & Business Insurance. Published by MMA's business partner Allied Executives. This is an individual contact; geographic assignment and specific coverage preferences are not stated.",
+      "lineOfBusinessCodes": [],
+      "sources": [
+        "https://www.alliedexecutives.com/marsh-mclennan-agency-team-members"
+      ]
+    },
+    {
+      "provider": "Hiscox",
+      "name": "Ryan Kuhlman",
+      "role": "underwriting",
+      "email": "ryan.kuhlman@hiscox.com",
+      "phone": "+16465609300",
+      "notes": "Hiscox national broker-contact page lists him for Miscellaneous Professional Liability, Technology and Cyber. The public work-email directory supplies the unmasked address; mailbox delivery was not tested.",
+      "lineOfBusinessCodes": [
+        "EO",
+        "CYBER"
+      ],
+      "sources": [
+        "https://www.hiscox.com/brokers/contacts",
+        "https://contactout.com/ryan-kuhlman-27280"
+      ]
+    }
+  ]
+}

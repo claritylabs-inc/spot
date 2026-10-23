@@ -1,3 +1,4 @@
+import { readBoundedRequestBody } from "./lib/httpBody";
 import { httpRouter } from "convex/server";
 import {
   requestHttp as routerJobRequest,
@@ -488,6 +489,8 @@ http.route({
         process.env.RESEND_WEBHOOK_SECRET,
       ),
       emailOutboundConfigured: Boolean(process.env.AUTH_RESEND_KEY),
+      providerOutreachDomainConfigured: Boolean(process.env.PROVIDER_OUTREACH_EMAIL_DOMAIN),
+      providerOutreachWebhookSecretConfigured: Boolean(process.env.RESEND_INBOX_WEBHOOK_SECRET),
       connectedEmailEncryptionConfigured: Boolean(
         process.env.EMAIL_CONNECTIONS_ENCRYPTION_KEY,
       ),
@@ -578,6 +581,27 @@ http.route({
       svixSignature,
     });
     return new Response("OK", { status: 200 });
+  }),
+});
+
+http.route({
+  path: "/resend-inbox-webhook",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    let payload: string | null;
+    try {
+      payload = await readBoundedRequestBody(request, 256 * 1024);
+    } catch {
+      return new Response("Invalid body", { status: 400 });
+    }
+    if (payload === null) return new Response("Body too large", { status: 413 });
+    const result = await ctx.runAction(internal.actions.providerOutreach.handleInboxWebhook, {
+      payload,
+      svixId: request.headers.get("svix-id") ?? "",
+      svixTimestamp: request.headers.get("svix-timestamp") ?? "",
+      svixSignature: request.headers.get("svix-signature") ?? "",
+    });
+    return new Response(result.ok ? "OK" : "Webhook rejected", { status: result.status });
   }),
 });
 

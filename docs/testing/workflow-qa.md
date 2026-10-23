@@ -2152,3 +2152,179 @@ The existing authorization-test fixture was updated with user approval to accept
 the terms through the normal owner-scoped save path; all 133 existing tests passed.
 No new tests were added. Root and Convex typechecks and repository lint were rerun
 against current main’s locked dependencies before publishing the PR.
+
+## Provider appetite and ACORD catalog — October 22, 2026
+
+Local Chrome at `localhost:3207` passed provider Appetite review: geography and
+ACORD lines render in separate row cards, saved lines show readable names and
+exact codes, and searches for `CYBER` and `Management` return the corresponding
+catalog options. No appetite selections were changed during browser checks.
+All 82 local provider records were audited against the extracted PCS 2.11.0
+`LOBCd` list: 65 have valid, sorted, unique recorded lines; 17 remain unknown.
+The source has 107 codes; the provider selector excludes `UN` and `BLANK`.
+
+Country, state/province and ACORD selectors use the shared `control.menu` role.
+Browser computed styles confirmed identical **13.6px font / 20.4px line height**
+for selected values, popup search inputs and options in all three dropdowns.
+The shared package patch adds explicit typography selection and carries the role
+through portals; app CSS prevents the older operator form overrides from
+changing that role. Other callers retain the default input typography.
+The patch was verified against clean package source using patch-package’s own
+parser and application engine.
+Root TypeScript, touched-file lint and whitespace checks passed. No tests added.
+
+Evidence: `.context/qa/provider-acord/coverage-lines.png`,
+`dropdown-typography.png`, `provider-audit.json` and `providers-after.json`.
+The model extraction and source boundaries are documented in
+`docs/architecture/acord-provider-appetite.md`.
+
+## Provider relationship contacts — October 22, 2026
+
+Local Chrome at `localhost:3207` passed Contacts tab create, name/notes autosave,
+ACORD `EO` selection, reload persistence, removal and Undo. The synthetic contact
+was removed again after verification. Reviewed the populated Polaris cards with
+its distinct property and lawyers' professional liability contacts.
+Root TypeScript, touched-file ESLint and whitespace checks passed. No tests or
+database migrations were written. The additive contact table/functions were
+pushed only to the existing local Convex instance at port 3220.
+
+Researched all 82 existing external provider records using public provider
+websites and official team/contact pages, with web-search follow-up for crawler
+gaps and redirected agent identity. Added 159 contacts, including 66 entries
+with named people/titles. All 159 retain sources and evidence. Four contacts have
+explicitly evidenced ACORD specialties; other coverage preferences remain blank.
+Memberships and portal access were not changed; production was not written.
+The bounded operator detail output now includes `networkContacts`; directory
+reads omit contact bodies.
+
+Evidence: `.context/provider-contacts/reviewed.json`, `import-results.json`,
+`verification.json`, cached public pages, `typecheck.log`, `lint.log`, and
+`contacts.png`. [Research coverage](../research/provider-contacts-2026-10-22.md)
+records the reviewed source for each provider. The local contact data is not a
+committed fixture or production backfill.
+
+
+October 22 contact follow-up: Contacts uses shared `FormSection` for an unboxed
+title/action row. Contact cards expose only Name, Email, Phone, Best for and Notes;
+role, title, contact page and provenance remain persisted but hidden. Browser
+review of Vouch confirmed the five fields and unboxed header. Root/Convex
+TypeScript, touched-file ESLint and whitespace checks passed. No tests or
+database migrations added. Creation now deduplicates email plus name, allowing a
+named person and general team to share a mailbox without collapsing entries.
+
+Local data audit: 228 active contacts across 82 providers, all with emails and
+a general email route, 120 named entries across 52 providers, 20 claims contacts.
+Solutions Specialty's address is explicitly marked HIGH_PROBABILITY/unconfirmed;
+shared office addresses are distinguished from direct work email in Notes.
+Evidence: `.context/provider-contacts/final-verification.json`, public crawl and
+directory lookup artifacts, `followup-typecheck.log`, `followup-convex-typecheck.log`,
+`followup-lint.log`, and `simplified-contacts.png`. Production was not changed.
+
+## Manual procurement provider matching — October 22, 2026
+
+Local Chrome, ordinary operator, existing synthetic Intake Followups QA LLC
+request (`zh7fhb3xvawj0qqk0gzc2h1s258gmprm`), saved CGL request in Austin, TX:
+
+1. Open Client → Procurement → Request → Providers → Outreach. **Auto add providers** appears
+   beside **Add provider**, using the existing PillButton and app-shell action slot.
+2. Click Auto add providers. The directory match added Germani Insurance Services,
+   Nadler Insurance and Embroker. All three appeared as **Observed**. The toast
+   reported three additions and 77 profiles with missing appetite data.
+3. Click again. The toast reported no new matches and three already on the
+   request; the table retained exactly three rows.
+4. Open the existing synthetic request without a saved application
+   (`zh70xm4a3vk0cyrg9q4x2jj43x8gmdp8`). Click the button. The visible error says
+   to save the request application; the table stays empty.
+5. Read back both requests' outreach rows. The valid request has exactly those
+   three brokers, `status: observed`, no `sentAt`, and no `packetRevisionAtIssue`;
+   the incomplete request has no rows.
+
+Evidence: `.context/qa/provider-matching/auto-added-brokers.png` and
+`verification.json`. Root/Convex TypeScript and touched-file ESLint passed.
+No tests or migrations were written. Source review covered the all-location
+predicate, incomplete geography, partial coverage matching, status exclusions,
+operator authorization and transactional deduplication; these branches were not
+all separately exercised through the browser. Production was not deployed.
+
+After integrating the concurrent branch updates, repeated the browser check in
+the new Providers → Outreach layout: both actions rendered beside each other,
+three Observed rows remained, and clicking Auto add providers reported three
+already present with no additions. The integrated schema contained a misplaced
+inbox index on `threadMessages` referencing a nonexistent field; removed that
+invalid index while retaining the intended procurement-email inbox index.
+
+## Provider geography and matching feedback — October 22, 2026
+
+In local Chrome, ran the existing synthetic Texas CGL procurement request after
+sourced provider appetite updates. Auto add providers added 11 more markets;
+the table increased from three to 14 Observed rows. The results drawer showed
+Texas and General liability, 11 added, three already present, and 41 named
+verification candidates with reasons. A repeat added zero and showed 14 already
+present. Server readback confirmed 14 unique providers, no sent timestamps and
+no issued packet revisions. The old generic 77-provider success toast is gone.
+
+Visual inspection found that a long provider name squeezed the drawer table's
+reason column; replaced that table with wrapping InlineFieldRow primitives and
+Review actions, then verified the updated drawer. Hiscox's Appetite showed
+United States nationwide, Alaska excluded, and the nationwide explanation; the
+exception selector has its own accessible name. Both geography editors use the
+shared controls. Read-only availability reporting over the existing Ontario
+E&O/cyber request found nine confirmed provider matches using the production
+matcher, without modifying that client's outreach.
+
+Evidence: `.context/provider-geography/{matching-results,nationwide-exception}.png`,
+`final-readback.json` and `request-availability.json`. Root/Convex TypeScript,
+touched-file ESLint, whitespace checks and local deployment passed. No unit tests
+or migrations were written. Browser checks did not separately exercise every
+country-removal combination or the broker-member editor; those paths were
+source-reviewed and share the validated normalization owner. Production unchanged.
+
+Integrated concurrent request-geography prompting and shared coverage mappings.
+The new nationwide/exception predicate is shared by both manual matching and
+outreach fit classification. Corrected unsupported row-layout props without
+changing the primitive; the inspected wrapping layout is preserved.
+
+Final integrated root/Convex TypeScript, touched-file lint, whitespace checks
+and local deployment passed after the parallel outreach implementation landed.
+A refreshed browser repeat showed 14 already present, zero added, 41 verification
+candidates, 22 coverage mismatches and 51 recorded-area mismatches. Shared package
+mappings changed two exclusion categories without changing confirmed additions.
+The latest screenshot retains the simple wrapping rows and provider Review links.
+
+## Automated provider outreach — October 22, 2026
+
+Local capture QA passed geography correction and retry, reactive partial/unknown matching, cadence provenance and overrides, individual and matched-only bulk launch, Stop/reload, and mobile/dark presentation. Readback confirmed captured steps without sent timestamps, no external inbox provisioning, and captured-step replay skipped. Signature/body boundary probes and unauthenticated operator mutations behaved as expected. See [the provider outreach evidence ledger](provider-outreach-workflow.md) for artifacts and explicit partial/not-run cases. Live inbox delivery, replies and unknown-outcome recovery still require a configured restricted test target. No Vercel previews, unit tests or production changes were used.
+
+
+## Provider contact table — October 22, 2026
+
+Local Helium at localhost:3207: verified the bordered shared Table, header outside the border, provider logos, Coverage-only column, and removal of the fit sentence, partial-line sentence and Partial fit badge. The Ontario professional-liability/cyber view retains nine matching providers, all with recipient emails. The Contact column uses the shared Select; HUB exposes its general office and named specialist with email, coverage preferences and regional context. Keyboard selection changed the displayed recipient from Derek May to the office inbox. No Send action was invoked; there remain zero outreach sequences on the reviewed request. All 129 development providers have contact emails after 51 sourced additions across 47 previously empty providers. No tests or dev migrations were written. Final root TypeScript, Convex deployment typecheck, touched-file lint and whitespace validation passed.
+
+Evidence: `.context/provider-email-completion/{provider-table,contact-selector}.png`, `panel-verification.json`, `after.json`, `reviewed-plan.json`, plus deployment/typecheck/lint logs. Public contact provenance is in `docs/research/provider-contact-completion-2026-10-22.{md,json}`. Server launch revalidates selected contacts before writes; inbox delivery was not exercised in this read-only browser review.
+
+
+### Provider navigation simplification — October 22, 2026
+
+Helium at localhost:3207 verified Providers immediately renders the nine matching providers, with no Add provider/Auto add controls, Unknown/Excluded tabs, cadence card, or duplicate empty-outreach card. The shared left menu places Follow-up cadence directly beneath Providers, and opens `?view=cadence` with only the existing cadence controls. Changing the composed follow-up count from two to three, navigating to Providers and back retained three; restoring two and navigating back retained the selected HUB contact. No Send action or auto-add mutation was invoked. Root TypeScript, touched-file ESLint and whitespace checks passed; no tests or migrations were written. Evidence: `.context/provider-email-completion/{providers-automatic,follow-up-cadence-page}.png` and `types-navigation.log` / `lint-navigation.log`.
+
+### Combined provider submission status — October 22, 2026
+
+Helium at localhost:3207 verified a single bordered shared Table contains HUB's existing Request sent outreach and eight uncontacted matches, with nine providers in navigation and eight eligible in Send-all. HUB appears once with the saved Derek May recipient, current sequence status/captured-step count, Stop control and View details. View details opens the existing provider/proposal drawer; closing returns to the same table. No Send or Stop action was invoked, and no outreach data was created or changed during this review. TypeScript, touched-file ESLint and whitespace validation passed. Evidence: `.context/provider-email-completion/providers-unified-status.png` and `types-unified-table.log`. No tests or migrations were written.
+
+### Centralized request Inbox — October 22, 2026
+
+Local Chrome verified forwarded and synthetic Resend conversations in one request Inbox using the standard app-shell right panel. Search, filters, keyboard selection, close/reopen, deep links, pagination, mobile/dark presentation, forwarding-address popover and forwarded reassignment passed. Request isolation and Resend reassignment guards passed authenticated backend probes. See [provider outreach workflow QA](provider-outreach-workflow.md) for repeatable cases and artifacts. Live inbox delivery remains unverified; no external sends or Vercel previews were used.
+
+### Provider status presentation — October 22, 2026
+
+Helium verified the table begins directly below the navbar without a Providers heading. HUB's Status cell shows only Request sent; the Active/next-date and sent/captured/total summaries are absent. Stop and View details remain in the actions cell. Eight other matches retain Not contacted and their contact selectors. No send/stop or data mutation was invoked. TypeScript and touched-file lint passed.
+
+### Stop follow-ups in provider details — October 22, 2026
+
+Helium at localhost:3207 verified the submitted HUB row has View details without Stop, and its open details sidebar shows Stop follow-ups in the footer. The sidebar uses a live panel subscription and the existing stop mutation; inactive sequences and read-only views omit the action. No stop/send action was invoked during QA. Touched-file ESLint passed. Evidence: `.context/provider-email-completion/stop-follow-ups-sidebar.png`.
+
+### Provider directory filters and alignment — October 22, 2026
+
+Helium at localhost:3207 verified shared searchable state/province, ACORD coverage-line and status filters. Restricted returned only BLIS; adding Ontario showed the empty state and disabled Select all. Ontario + Prospect + CYBER returned 27 providers, including recorded nationwide providers. Selecting KBD and clearing filters cleared the bulk selection and restored all three defaults. An empty Create provider row placed its name and status under the correct headers; Escape dismissed it without creating a provider. The status trigger's extra left padding is removed. Service-area text includes countries and explicit nationwide exceptions; the filter reuses `brokerAreaFit`, so exclusions override nationwide service. Shared Table, Select/SearchableSelect, OperationalPanel and PillButton primitives are retained.
+
+Root TypeScript, touched-file ESLint and whitespace checks passed. No tests or database migrations were written. Evidence: `.context/provider-expansion/provider-filters.png`, `provider-draft-alignment.png`, `provider-filters-ontario-cyber-prospect.txt`, and `types-provider-filters.log`. No outreach was sent or stopped during this review.

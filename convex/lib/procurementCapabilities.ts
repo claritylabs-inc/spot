@@ -24,6 +24,21 @@ type CapabilityException = {
 
 export const PROCUREMENT_CAPABILITIES = [
   {
+    id: "provider.automated_outreach",
+    browserSurface: "request Providers matching and sequence panel",
+    agentTools: ["list_procurement_provider_matches", "launch_procurement_provider_outreach", "stop_procurement_provider_outreach"],
+  },
+  {
+    id: "client.information_request",
+    browserSurface: "request Inbox Email client composer and reader follow-up controls",
+    agentTools: ["list_procurement_client_outreach", "send_procurement_client_email", "stop_procurement_provider_outreach"],
+  },
+  {
+    id: "correspondence.reply",
+    browserSurface: "request Inbox reply composer",
+    agentTools: ["reply_procurement_email_thread"],
+  },
+  {
     id: "client.create",
     browserSurface: "operator client create drawer",
     agentTools: ["create_client_organization"],

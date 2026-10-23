@@ -69,6 +69,10 @@ node_modules/
 !/docs/architecture/product-analytics.md
 !/docs/architecture/browser-extension.md
 !/docs/architecture/webmcp.md
+!/docs/architecture/acord-provider-appetite.md
+!/docs/reference/
+/docs/reference/*
+!/docs/reference/acord-pcs-2.11.0-lines.json
 !/docs/testing/
 /docs/testing/*
 !/docs/testing/README.md

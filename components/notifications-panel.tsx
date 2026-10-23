@@ -46,6 +46,8 @@ interface NotificationsPanelProps {
 function notificationActionLabel(notification: Notification) {
   if (!notification.actionType) return undefined;
   switch (notification.actionType) {
+    case "view_operator_procurement":
+      return "Open request";
     case "view_policy":
       return "Open policy";
     case "view_thread":

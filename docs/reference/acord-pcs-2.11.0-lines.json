@@ -1,0 +1,438 @@
+{
+  "model": "ACORD PCS",
+  "version": "2.11.0",
+  "element": "LOBCd",
+  "codeList": "LineOfBusiness",
+  "source": "https://modelviewers.pilotfishtechnology.com/modelviewers/ACORD-PCS/model/LOBCd.html",
+  "retrievedAt": "2026-10-22T15:30:31.401Z",
+  "values": [
+    {
+      "code": "ACHE",
+      "label": "Accident and Health"
+    },
+    {
+      "code": "ACCT",
+      "label": "Accountants Professional"
+    },
+    {
+      "code": "AGOP",
+      "label": "Agricultural Output Program (Used primarily for statistical reporting)"
+    },
+    {
+      "code": "AGLIA",
+      "label": "Agriculture Liability"
+    },
+    {
+      "code": "APKGE",
+      "label": "Agriculture Package"
+    },
+    {
+      "code": "AGPR",
+      "label": "Agriculture Property"
+    },
+    {
+      "code": "AGPP",
+      "label": "Agriculture Scheduled and Unscheduled Personal Property"
+    },
+    {
+      "code": "AIRC",
+      "label": "Aircraft"
+    },
+    {
+      "code": "APROD",
+      "label": "Aircraft Products Liability"
+    },
+    {
+      "code": "AIRPFB",
+      "label": "Airport & Fixed Base Operator"
+    },
+    {
+      "code": "ARCH",
+      "label": "Architects Professional"
+    },
+    {
+      "code": "ART",
+      "label": "Artisans"
+    },
+    {
+      "code": "AUTO",
+      "label": "Automobile"
+    },
+    {
+      "code": "AUTOB",
+      "label": "Automobile - Business"
+    },
+    {
+      "code": "AUTOP",
+      "label": "Automobile - Personal"
+    },
+    {
+      "code": "AVPKG",
+      "label": "Aviation Package"
+    },
+    {
+      "code": "BANDM",
+      "label": "Boiler and Machinery"
+    },
+    {
+      "code": "BOP",
+      "label": "Business Owners Policy"
+    },
+    {
+      "code": "BOPGL",
+      "label": "Business Owners Policy Liability"
+    },
+    {
+      "code": "BOPPR",
+      "label": "Business Owners Policy Property"
+    },
+    {
+      "code": "CARGO",
+      "label": "Cargo"
+    },
+    {
+      "code": "CAVN",
+      "label": "Commercial Aviation"
+    },
+    {
+      "code": "CYBER",
+      "label": "Commercial Cyber and Privacy Liability"
+    },
+    {
+      "code": "CFIRE",
+      "label": "Commercial Fire"
+    },
+    {
+      "code": "CPMP",
+      "label": "Commercial Multi Peril"
+    },
+    {
+      "code": "COP",
+      "label": "Commercial Output Program (Used primarily for statistical reporting)"
+    },
+    {
+      "code": "CPKGE",
+      "label": "Commercial Package"
+    },
+    {
+      "code": "PROP",
+      "label": "Commercial Property"
+    },
+    {
+      "code": "CNTGC",
+      "label": "Contingency"
+    },
+    {
+      "code": "CONTR",
+      "label": "Contract"
+    },
+    {
+      "code": "CRIM",
+      "label": "Crime"
+    },
+    {
+      "code": "CRIME",
+      "label": "Crime (includes \"Burglary\")"
+    },
+    {
+      "code": "DO",
+      "label": "Directors And Officers"
+    },
+    {
+      "code": "DISAB",
+      "label": "Disability"
+    },
+    {
+      "code": "DFIRE",
+      "label": "Dwelling Fire"
+    },
+    {
+      "code": "EQ",
+      "label": "Earthquake"
+    },
+    {
+      "code": "EL",
+      "label": "Employers Liability"
+    },
+    {
+      "code": "EPLI",
+      "label": "Employment Practices Liability Insurance"
+    },
+    {
+      "code": "EQLIA",
+      "label": "Equine Liability"
+    },
+    {
+      "code": "EO",
+      "label": "Errors and Omissions"
+    },
+    {
+      "code": "EXLIA",
+      "label": "Excess Liability"
+    },
+    {
+      "code": "EMGLI",
+      "label": "Excess Management Liability"
+    },
+    {
+      "code": "XWARR",
+      "label": "Extended Warranty"
+    },
+    {
+      "code": "CFRM",
+      "label": "Farm Owners"
+    },
+    {
+      "code": "FIDTY",
+      "label": "Fidelity"
+    },
+    {
+      "code": "FIDUC",
+      "label": "Fiduciary"
+    },
+    {
+      "code": "FIIBO",
+      "label": "Financial Institution Bonds"
+    },
+    {
+      "code": "FLOOD",
+      "label": "Flood"
+    },
+    {
+      "code": "GARAG",
+      "label": "Garage and Dealers"
+    },
+    {
+      "code": "CGL",
+      "label": "General Liability"
+    },
+    {
+      "code": "HLTH",
+      "label": "Health"
+    },
+    {
+      "code": "HBB",
+      "label": "Home Based Business"
+    },
+    {
+      "code": "HOME",
+      "label": "Homeowners"
+    },
+    {
+      "code": "INMAR",
+      "label": "Inland Marine"
+    },
+    {
+      "code": "INMRC",
+      "label": "Inland Marine (commercial)"
+    },
+    {
+      "code": "INMRP",
+      "label": "Inland Marine (personal lines)"
+    },
+    {
+      "code": "AGENT",
+      "label": "Insurance Agents"
+    },
+    {
+      "code": "JUDCL",
+      "label": "Judicial"
+    },
+    {
+      "code": "KIDRA",
+      "label": "Kidnap and Ransom"
+    },
+    {
+      "code": "LAW",
+      "label": "Lawyers Professional"
+    },
+    {
+      "code": "LGLEX",
+      "label": "Legal Expenses"
+    },
+    {
+      "code": "LICPT",
+      "label": "License and Permit"
+    },
+    {
+      "code": "LL",
+      "label": "Liquor Liability"
+    },
+    {
+      "code": "LVSTK",
+      "label": "Livestock"
+    },
+    {
+      "code": "LMORT",
+      "label": "Livestock Mortality"
+    },
+    {
+      "code": "LSTIN",
+      "label": "Lost Instrument"
+    },
+    {
+      "code": "MGMLI",
+      "label": "Management Liability"
+    },
+    {
+      "code": "MEDIA",
+      "label": "Media Professional"
+    },
+    {
+      "code": "MMAL",
+      "label": "Medical Malpractice"
+    },
+    {
+      "code": "MPL",
+      "label": "Medical Professional Liability"
+    },
+    {
+      "code": "BMISC",
+      "label": "Miscellaneous Bond"
+    },
+    {
+      "code": "PLMSC",
+      "label": "Miscellaneous Professional Liability"
+    },
+    {
+      "code": "MHOME",
+      "label": "Mobile Homeowners"
+    },
+    {
+      "code": "MTRCR",
+      "label": "Motor Carrier"
+    },
+    {
+      "code": "Motorcycle",
+      "label": "Motorcycle"
+    },
+    {
+      "code": "NWFGR",
+      "label": "New Financial Guarantee"
+    },
+    {
+      "code": "BLANK",
+      "label": "Not Applicable (Blank)"
+    },
+    {
+      "code": "COMR",
+      "label": "Ocean Marine"
+    },
+    {
+      "code": "OLIB",
+      "label": "Other Liability"
+    },
+    {
+      "code": "PKG",
+      "label": "Package"
+    },
+    {
+      "code": "PPL",
+      "label": "Personal and Premises Liability"
+    },
+    {
+      "code": "PRSL",
+      "label": "Personal Liability"
+    },
+    {
+      "code": "PPKGE",
+      "label": "Personal Package"
+    },
+    {
+      "code": "PHYS",
+      "label": "Physicians and Surgeons"
+    },
+    {
+      "code": "HANG",
+      "label": "Private Hangar"
+    },
+    {
+      "code": "PL",
+      "label": "Professional Liability"
+    },
+    {
+      "code": "PUBOF",
+      "label": "Public Official"
+    },
+    {
+      "code": "RRPRL",
+      "label": "Railroad Protective Liability"
+    },
+    {
+      "code": "RECV",
+      "label": "Recreational Vehicles"
+    },
+    {
+      "code": "SCAP",
+      "label": "Small Commercial Package"
+    },
+    {
+      "code": "SFRNC",
+      "label": "Small Farm/Ranch"
+    },
+    {
+      "code": "SMP",
+      "label": "Special Multi-Peril"
+    },
+    {
+      "code": "SURE",
+      "label": "Surety"
+    },
+    {
+      "code": "TECH",
+      "label": "Technology"
+    },
+    {
+      "code": "TRVL",
+      "label": "Travel"
+    },
+    {
+      "code": "TRUCK",
+      "label": "Truckers"
+    },
+    {
+      "code": "UMBRL",
+      "label": "Umbrella"
+    },
+    {
+      "code": "UMBRC",
+      "label": "Umbrella - Commercial"
+    },
+    {
+      "code": "UMBRP",
+      "label": "Umbrella - Personal (excess indemnity)"
+    },
+    {
+      "code": "UN",
+      "label": "Unknown"
+    },
+    {
+      "code": "BOAT",
+      "label": "Watercraft (small boat)"
+    },
+    {
+      "code": "WIND",
+      "label": "Wind Policy"
+    },
+    {
+      "code": "WORK",
+      "label": "Worker's Compensation"
+    },
+    {
+      "code": "WORKP",
+      "label": "Workers Compensation Participating"
+    },
+    {
+      "code": "WCMA",
+      "label": "Workers Comp Marine"
+    },
+    {
+      "code": "WORKV",
+      "label": "Workplace Violence"
+    },
+    {
+      "code": "YACHT",
+      "label": "Yacht"
+    }
+  ]
+}

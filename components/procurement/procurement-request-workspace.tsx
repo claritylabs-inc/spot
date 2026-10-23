@@ -1,5 +1,6 @@
 "use client";
 import { RemoveButton } from "@/components/ui/remove-button";
+import { LogoIcon } from "@/components/ui/logo-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { IntakeApplicationFields } from "@/components/insurance-intake/application-fields";
@@ -36,6 +37,18 @@ import {
 import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
+import { RequestInbox, type InboxThread } from "./request-inbox";
+import { ClientOutreachComposer } from "./client-outreach-composer";
+import {
+  FitChips,
+  OutreachSequenceActions,
+  isLiveSequence,
+  ProviderOutreachPanel,
+  ProviderOutreachCadence,
+  SequenceState,
+  sequenceForOutreach,
+  useProviderOutreach,
+} from "./provider-outreach-panel";
 
 import {
   useCallback,
@@ -44,22 +57,21 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
-  Copy,
   FileText,
   Loader2,
-  Mail,
   StickyNote,
   Trash2,
   Plus,
   Link,
   Upload,
   ChevronRight,
+  Clock3,
+  SquarePen,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -72,7 +84,6 @@ import {
   PacketWorkspace,
 } from "@/components/procurement/packet-workspace";
 import {
-  EmailCategoryBadge,
   OUTREACH_STATUS_OPTIONS,
   OutreachStatusTag,
   ProcurementEmailDrawer,
@@ -95,15 +106,12 @@ import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
-import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
 import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalItem,
-  OperationalLabelValueList,
-  OperationalLabelValueRow,
   OperationalPanel,
   OperationalPanelBody,
   OperationalPanelHeader,
@@ -122,14 +130,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableRow } from "@/components/ui/table";
 import {
   Tabs,
   TabsList,
@@ -137,23 +138,12 @@ import {
 } from "@claritylabs-inc/ui/components/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
 import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const NONE = "__none__";
 const SUBMISSION_NOTES_SECTION = "Submission notes";
-
-function openRowOnKeyboard(
-  event: KeyboardEvent<HTMLTableRowElement>,
-  open: () => void,
-) {
-  if (event.key === "Enter" || event.key === " ") {
-    event.preventDefault();
-    open();
-  }
-}
 
 type PolicyOption = {
   policyId: Id<"policies">;
@@ -704,9 +694,15 @@ function CoveragePicker({
               onClick={() => onPick(option.id)}
               className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-foreground/4 focus-visible:bg-foreground/4 focus-visible:outline-none ${typeStyle("body.default")}`}
             >
-              <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+              <Icon
+                aria-hidden="true"
+                className="size-4 shrink-0 text-muted-foreground"
+              />
               <span className="flex-1">{option.label}</span>
-              <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground/60" />
+              <ChevronRight
+                aria-hidden="true"
+                className="size-4 text-muted-foreground/60"
+              />
             </button>
           );
         })}
@@ -776,12 +772,21 @@ function OperatorPremiumEstimate({
     !estimate.provisional &&
     estimate.contentHash === request.intakeSubmittedContentHash;
   const amount =
-    estimate?.status === "completed" ? formatPremiumEstimate(estimate) : undefined;
+    estimate?.status === "completed"
+      ? formatPremiumEstimate(estimate)
+      : undefined;
   const running =
     current && (estimate.status === "pending" || estimate.status === "running");
-  const action = readOnly || running ? null : current ? (
-    estimate.status === "failed" ? "Retry estimate" : null
-  ) : estimate ? "Refresh estimate" : "Estimate premium";
+  const action =
+    readOnly || running
+      ? null
+      : current
+        ? estimate.status === "failed"
+          ? "Retry estimate"
+          : null
+        : estimate
+          ? "Refresh estimate"
+          : "Estimate premium";
   return (
     <div className="flex min-h-9 flex-wrap items-center justify-between gap-3 px-3 py-1">
       <span className={current && amount ? "" : "text-muted-foreground"}>
@@ -889,7 +894,10 @@ function RequestEditor({
   embedded?: boolean;
   activeSection?: string;
   extraRows?: { label: string; value?: ReactNode }[];
-  onDraftChange?: (draft: { answers: IntakeAnswers; details: IntakeDetails }) => void;
+  onDraftChange?: (draft: {
+    answers: IntakeAnswers;
+    details: IntakeDetails;
+  }) => void;
   onSectionChange?: (section: string) => void;
   onRightPanel?: (node: ReactNode) => void;
   saveRef?: React.Ref<RequestEditorHandle>;
@@ -1023,20 +1031,20 @@ function RequestEditor({
     onDraftChange?.({ answers, details: intakeDetails });
   }, [answers, intakeDetails, onDraftChange]);
   const removeCoverage = (section: string) => {
-        const line = intakeDetails.coverages.find(
-          (row) => coverageSectionKey(row.coverage) === section,
-        );
-        if (!line) return;
-        const previous = intakeDetails;
-        setIntakeDetails({
-          ...intakeDetails,
-          coverages: intakeDetails.coverages.filter((row) => row !== line),
-        });
-        if (section === activeSection) onSectionChange?.("Request details");
-        toast.success(`${coverageRequestLabel(line)} removed`, {
-          action: { label: "Undo", onClick: () => setIntakeDetails(previous) },
-        });
-      };
+    const line = intakeDetails.coverages.find(
+      (row) => coverageSectionKey(row.coverage) === section,
+    );
+    if (!line) return;
+    const previous = intakeDetails;
+    setIntakeDetails({
+      ...intakeDetails,
+      coverages: intakeDetails.coverages.filter((row) => row !== line),
+    });
+    if (section === activeSection) onSectionChange?.("Request details");
+    toast.success(`${coverageRequestLabel(line)} removed`, {
+      action: { label: "Undo", onClick: () => setIntakeDetails(previous) },
+    });
+  };
   useImperativeHandle(
     saveRef,
     () => ({
@@ -1066,69 +1074,69 @@ function RequestEditor({
     [autoSave.saveNow, intakeDetails, activeSection, onSectionChange],
   );
   const requestCard = (
-        <InlineFieldCard>
-          <InlineFieldRow label="Title">
-            <Input
-              aria-label="Title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Target effective date">
-            <Input
-              aria-label="Target effective date"
-              type="date"
-              value={targetEffectiveDate}
-              onChange={(event) => setTargetEffectiveDate(event.target.value)}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Status">
-            <Select
-              value={status}
-              onValueChange={(value) =>
-                setStatus(value as ProcurementRequestStatus)
-              }
-            >
-              <SelectTrigger aria-label="Status" className="w-full">
-                <SelectValue>
-                  <RequestStatusLabel status={status} />
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {REQUEST_STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    <RequestStatusLabel status={option.value} />
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineFieldRow>
-          <InlineFieldRow label="Policy being replaced">
-            <SearchableSelect
-              ariaLabel="Policy being replaced"
-              value={replacingPolicyId}
-              options={policyOptions}
-              onChange={setReplacingPolicyId}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Resulting policy">
-            <SearchableSelect
-              ariaLabel="Resulting policy"
-              value={resultingPolicyId}
-              options={policyOptions}
-              onChange={setResultingPolicyId}
-            />
-          </InlineFieldRow>
-          <InlineFieldRow label="Client visibility">
-            <div className="flex h-9 items-center px-3">
-              <SettingsSwitch
-                label="Client visibility"
-                checked={clientVisible}
-                onCheckedChange={() => setClientVisible(!clientVisible)}
-              />
-            </div>
-          </InlineFieldRow>
-        </InlineFieldCard>
+    <InlineFieldCard>
+      <InlineFieldRow label="Title">
+        <Input
+          aria-label="Title"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Target effective date">
+        <Input
+          aria-label="Target effective date"
+          type="date"
+          value={targetEffectiveDate}
+          onChange={(event) => setTargetEffectiveDate(event.target.value)}
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Status">
+        <Select
+          value={status}
+          onValueChange={(value) =>
+            setStatus(value as ProcurementRequestStatus)
+          }
+        >
+          <SelectTrigger aria-label="Status" className="w-full">
+            <SelectValue>
+              <RequestStatusLabel status={status} />
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {REQUEST_STATUS_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                <RequestStatusLabel status={option.value} />
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </InlineFieldRow>
+      <InlineFieldRow label="Policy being replaced">
+        <SearchableSelect
+          ariaLabel="Policy being replaced"
+          value={replacingPolicyId}
+          options={policyOptions}
+          onChange={setReplacingPolicyId}
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Resulting policy">
+        <SearchableSelect
+          ariaLabel="Resulting policy"
+          value={resultingPolicyId}
+          options={policyOptions}
+          onChange={setResultingPolicyId}
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Client visibility">
+        <div className="flex h-9 items-center px-3">
+          <SettingsSwitch
+            label="Client visibility"
+            checked={clientVisible}
+            onCheckedChange={() => setClientVisible(!clientVisible)}
+          />
+        </div>
+      </InlineFieldRow>
+    </InlineFieldCard>
   );
   return (
     <RequestEditorFrame
@@ -1284,6 +1292,11 @@ function OutreachEditor({
   const cancelExtraction = useMutation(
     api.procurementProposals.cancelExtraction,
   );
+  const stopFollowUps = useMutation(api.providerOutreach.stop);
+  const outreachPanel = useQuery(
+    api.providerOutreach.getPanel,
+    parentReadOnly ? "skip" : { requestId },
+  );
   const [outreachId, setOutreachId] = useState(outreach?._id);
   const currentRequest = useQuery(
     api.procurementRequests.get,
@@ -1293,6 +1306,9 @@ function OutreachEditor({
     api.procurementProposals.list,
     outreachId ? { requestId } : "skip",
   );
+  const outreachSequence = outreachId
+    ? sequenceForOutreach(outreachPanel?.sequences, outreachId)
+    : null;
   const currentOutreach =
     currentRequest?.outreaches.find((row) => row._id === outreachId) ??
     outreach;
@@ -1474,6 +1490,25 @@ function OutreachEditor({
         <>
           {!readOnly ? (
             <>
+              {outreachSequence && isLiveSequence(outreachSequence) ? (
+                <PillButton
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(
+                      () =>
+                        stopFollowUps({
+                          sequenceId: outreachSequence.sequenceId,
+                        }),
+                      "Stopping follow-ups…",
+                      "Follow-ups stopped",
+                    )
+                  }
+                >
+                  {working ? "Stopping…" : "Stop follow-ups"}
+                </PillButton>
+              ) : null}
               {proposal && proposal.status !== "selected" ? (
                 <PillButton
                   variant="destructive"
@@ -1958,14 +1993,16 @@ export function ProcurementRequestWorkspace({
   readOnly,
   onActions,
   onRightPanel: setRightPanel,
+  sidebarFooter,
 }: {
   clientOrgId: Id<"organizations">;
   requestId: Id<"procurementRequests">;
   basePath: string;
-  view: "application" | "edit" | "proposals" | "files" | "email";
+  view: "application" | "edit" | "proposals" | "cadence" | "files" | "email";
   readOnly: boolean;
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
+  sidebarFooter?: (collapsed: boolean) => ReactNode;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1995,6 +2032,12 @@ export function ProcurementRequestWorkspace({
   });
   const brokers = useCachedOperatorBrokers() as BrokerOption[] | undefined;
   const proposals = useQuery(api.procurementProposals.list, { requestId });
+  const providerOutreach = useProviderOutreach(requestId, readOnly);
+  // The header actions depend on primitives only; handlers read the latest controller.
+  const providerOutreachRef = useRef(providerOutreach);
+  useEffect(() => {
+    providerOutreachRef.current = providerOutreach;
+  });
   const createFileItem = useMutation(api.procurementRequests.createFileItem);
   const packetEditorRef = useRef<PacketEditorHandle>(null);
   const submissionNotesRef = useRef<PacketEditorHandle>(null);
@@ -2027,11 +2070,13 @@ export function ProcurementRequestWorkspace({
     },
     [removeFileItem],
   );
-  const changeView = async (nextView: string) => {
+  const changeView = async (nextView: string, threadId?: string) => {
     const change = ++latestTabChange.current;
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
+      return;
+    if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
       return;
     if (
       submissionNotesRef.current &&
@@ -2039,7 +2084,10 @@ export function ProcurementRequestWorkspace({
     )
       return;
     if (change !== latestTabChange.current) return;
-    router.push(`${basePath}/${requestId}?view=${nextView}`);
+    closeRightPanel();
+    router.push(
+      `${basePath}/${requestId}?view=${nextView}${threadId ? `&thread=${threadId}` : ""}`,
+    );
   };
   const { openWithUrl, closePdf } = usePdf();
 
@@ -2262,25 +2310,61 @@ export function ProcurementRequestWorkspace({
   );
 
   const emailDrawerRef = useRef<ProcurementEmailDrawerHandle>(null);
+  const closeEmail = useCallback(() => {
+    closeRightPanel();
+    router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
+  }, [closeRightPanel, router, basePath, requestId]);
   const openEmail = useCallback(
-    async (emailThreadId: Id<"procurementEmailThreads">) => {
+    async (thread: InboxThread) => {
       if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
         return;
       closePdf();
       onRightPanel(
         <ProcurementEmailDrawer
-          key={emailThreadId}
           ref={emailDrawerRef}
-          emailThreadId={emailThreadId}
+          emailThreadId={thread._id}
+          subject={thread.subject}
+          replyable={thread.source === "resend"}
+          requestId={requestId}
           requests={requestOptions}
           readOnly={readOnly}
-          onClose={closeRightPanel}
+          onClose={closeEmail}
         />,
       );
     },
-    [closePdf, closeRightPanel, onRightPanel, readOnly, requestOptions],
+    [closePdf, closeEmail, onRightPanel, readOnly, requestOptions, requestId],
   );
 
+  const requestTitle = details?.request.title ?? "";
+  const openClientComposer = useCallback(async () => {
+    if (emailDrawerRef.current && !(await emailDrawerRef.current.save())) return;
+    closePdf();
+    router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
+    onRightPanel(
+      <ClientOutreachComposer
+        requestId={requestId}
+        requestTitle={requestTitle}
+        onClose={closeRightPanel}
+        onSent={closeRightPanel}
+      />,
+    );
+  }, [basePath, closePdf, closeRightPanel, onRightPanel, requestId, requestTitle, router]);
+
+  // The Inbox keeps its selection in the URL so a thread can be deep-linked.
+  // The reader opens before navigation, so the panel never closes in between.
+  const selectInboxThread = useCallback(
+    (thread: InboxThread | null, options?: { replace?: boolean }) => {
+      if (!thread) closeRightPanel();
+      const href = `${basePath}/${requestId}?view=email${thread ? `&thread=${thread._id}` : ""}`;
+      if (options?.replace) router.replace(href, { scroll: false });
+      else router.push(href, { scroll: false });
+    },
+    [basePath, requestId, router, closeRightPanel],
+  );
+  const forwardingAddress = details?.request.forwardingAddress;
+  const sendAllCount = providerOutreach.sendAllCount;
+  const providerOutreachBusy = providerOutreach.sending.size > 0;
+  const canSendAll = providerOutreach.panel?.request.canLaunch ?? false;
   useEffect(() => {
     if (readOnly) {
       onActions?.(null);
@@ -2298,10 +2382,36 @@ export function ProcurementRequestWorkspace({
           Share link
         </PillButton>
       ) : view === "proposals" ? (
-        <PillButton type="button" onClick={() => openOutreachEditor()}>
-          <Plus className="size-3.5" />
-          Add provider
-        </PillButton>
+        <>
+          <PillButton
+            type="button"
+            variant="secondary"
+            onClick={() => openOutreachEditor()}
+          >
+            <Plus className="size-3.5" />
+            Add provider
+          </PillButton>
+          <span className="hidden sm:contents">
+            <PillButton
+              type="button"
+              disabled={
+                sendAllCount === 0 || providerOutreachBusy || !canSendAll
+              }
+              onClick={() => void providerOutreachRef.current.sendAll()}
+            >
+              {providerOutreachBusy
+                ? "Sending…"
+                : `Send to all matched (${sendAllCount})`}
+            </PillButton>
+          </span>
+        </>
+      ) : view === "email" ? (
+        <>
+          <PillButton type="button" onClick={() => void openClientComposer()}>
+            <SquarePen className="size-3.5" />
+            Email client
+          </PillButton>
+        </>
       ) : view === "files" ? (
         <PillButton type="button" onClick={() => openUpload()}>
           <Upload className="size-3.5" />
@@ -2336,19 +2446,17 @@ export function ProcurementRequestWorkspace({
     return () => onActions?.(null);
   }, [
     onActions,
-    openOutreachEditor,
+    sendAllCount,
+    providerOutreachBusy,
+    canSendAll,
     openPacketLink,
     openNotes,
     openUpload,
     readOnly,
     view,
+    openOutreachEditor,
+    openClientComposer,
   ]);
-
-  async function copyAddress() {
-    if (!details) return;
-    await navigator.clipboard.writeText(details.request.forwardingAddress);
-    toast.success("Forwarding address copied");
-  }
 
   if (
     result === undefined ||
@@ -2449,7 +2557,7 @@ export function ProcurementRequestWorkspace({
   const menuGroups = [
     ...applicationGroups,
     {
-      label: "Providers",
+      label: "Outreach",
       items: [
         {
           key: SUBMISSION_NOTES_SECTION,
@@ -2458,20 +2566,25 @@ export function ProcurementRequestWorkspace({
         },
         {
           key: "providers",
-          label: "Outreach",
+          label: "Providers",
           icon: PROVIDER_ICONS.providers,
-          count: details.outreaches.length,
+          count:
+            details.outreaches.length +
+            (providerOutreach.panel?.candidates.matched.filter(
+              (candidate) =>
+                !details.outreaches.some(
+                  (outreach) => outreach.brokerOrgId === candidate.brokerOrgId,
+                ),
+            ).length ?? 0),
         },
-        ...(details.emailThreads.length > 0 || view === "email"
-          ? [
-              {
-                key: "email",
-                label: "Imported email",
-                icon: PROVIDER_ICONS.email,
-                count: details.emailThreads.length,
-              },
-            ]
+        ...(!readOnly
+          ? [{ key: "cadence", label: "Follow-up cadence", icon: Clock3 }]
           : []),
+        {
+          key: "email",
+          label: "Inbox",
+          icon: PROVIDER_ICONS.email,
+        },
       ],
     },
   ];
@@ -2480,14 +2593,16 @@ export function ProcurementRequestWorkspace({
     applicationGroups.some((group) =>
       group.items.some((item) => item.key === applicationSection),
     )
-    ? applicationSection
-    : "Contact details";
+      ? applicationSection
+      : "Contact details";
   const activeMenuKey =
     view === "proposals"
       ? "providers"
-      : view === "email"
-        ? "email"
-        : activeApplicationSection;
+      : view === "cadence"
+        ? "cadence"
+        : view === "email"
+          ? "email"
+          : activeApplicationSection;
   const selectMenu = async (key: string) => {
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
@@ -2498,9 +2613,9 @@ export function ProcurementRequestWorkspace({
       !(await submissionNotesRef.current.save())
     )
       return;
-    if (key === "providers" || key === "email") {
+    if (key === "providers" || key === "cadence" || key === "email") {
       closeRightPanel();
-      void changeView(key === "providers" ? "proposals" : "email");
+      void changeView(key === "providers" ? "proposals" : key);
       return;
     }
     setApplicationSection(key);
@@ -2551,6 +2666,9 @@ export function ProcurementRequestWorkspace({
       <div className="space-y-5">
         <SectionMenu
           label="Request sections"
+          brand={{ name: "Operator", icon: <LogoIcon size={15} /> }}
+          back={{ label: "Procurement", href: basePath }}
+          footer={sidebarFooter}
           groups={menuGroups}
           active={activeMenuKey}
           onChange={(key) => void selectMenu(key)}
@@ -2606,238 +2724,160 @@ export function ProcurementRequestWorkspace({
         ) : null}
 
         {view === "proposals" ? (
-          details.outreaches.length === 0 ? (
-            <EmptyStateCard
-              title="No providers contacted yet"
-              description="Add a provider to track outreach and proposals."
-            />
-          ) : (
-            <OperationalPanel as="section">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Provider</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Premium</TableHead>
-                    <TableHead>Review</TableHead>
-                    <TableHead>Documents</TableHead>
-                    <TableHead>Updated</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {details.outreaches.map((outreach) => {
-                    const proposal = activeProposals.find(
-                      (row) => row.outreachId === outreach._id,
-                    );
-                    const contact = [
-                      outreach.contactName,
-                      outreach.contactEmail,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ");
-                    const offer = (proposal?.extractedOffer ?? {}) as {
-                      premium?: string;
-                      premiumAmount?: number;
-                    };
-                    const review = proposal?.reviews[0];
-                    const conclusion = review?.stale
-                      ? undefined
-                      : (review?.staffConclusion ?? review?.modelConclusion);
-                    return (
-                      <TableRow
-                        key={outreach._id}
-                        tabIndex={0}
-                        onClick={() => openOutreachEditor(outreach)}
-                        onKeyDown={(event) =>
-                          openRowOnKeyboard(event, () =>
-                            openOutreachEditor(outreach),
-                          )
-                        }
-                        className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                      >
-                        <TableCell className="min-w-52 max-w-96 whitespace-normal">
-                          <p
-                            className={`text-foreground ${typeStyle("body.medium")}`}
+          <ProviderOutreachPanel
+            controller={providerOutreach}
+            readOnly={readOnly}
+            submittedProviders={details.outreaches.map((outreach) => {
+              const proposal = activeProposals.find(
+                (row) => row.outreachId === outreach._id,
+              );
+              const candidate = providerOutreach.panel
+                ? [
+                    ...providerOutreach.panel.candidates.matched,
+                    ...providerOutreach.panel.candidates.unknown,
+                    ...providerOutreach.panel.candidates.excluded,
+                  ].find((row) => row.brokerOrgId === outreach.brokerOrgId)
+                : undefined;
+              const broker = brokers?.find(
+                (row) => row._id === outreach.brokerOrgId,
+              );
+              const sequence = sequenceForOutreach(
+                providerOutreach.panel?.sequences,
+                outreach._id,
+              );
+              return {
+                key: outreach._id,
+                brokerOrgId: outreach.brokerOrgId,
+                row: (
+                  <TableRow
+                    key={outreach._id}
+                    className="cursor-pointer"
+                    onClick={() => openOutreachEditor(outreach, proposal?._id)}
+                  >
+                    <TableCell className="whitespace-normal">
+                      <div className="flex items-center gap-3">
+                        <OrgBrandIcon
+                          name={outreach.brokerName}
+                          iconUrl={candidate?.iconUrl ?? broker?.iconUrl}
+                          website={candidate?.website ?? broker?.website}
+                          size="md"
+                        />
+                        <span className={typeStyle("body.medium")}>
+                          {outreach.brokerName}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="min-w-64 whitespace-normal">
+                      <span className="break-all">
+                        {sequence?.recipient.email ??
+                          outreach.contactEmail ??
+                          "—"}
+                      </span>
+                      {outreach.contactName ? (
+                        <p
+                          className={`text-muted-foreground ${typeStyle("caption.default")}`}
+                        >
+                          {outreach.contactName}
+                        </p>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="whitespace-normal">
+                      {candidate ? <FitChips candidate={candidate} /> : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-2">
+                        <OutreachStatusTag status={outreach.status} />
+                        {sequence ? <SequenceState sequence={sequence} /> : null}
+                        {proposal && proposalExtractionState(proposal) ? (
+                          <ProposalExtractionStatus
+                            proposal={proposal}
+                            readOnly={readOnly}
+                          />
+                        ) : proposal ? (
+                          <StatusTag
+                            indicator={
+                              proposal.status === "draft"
+                                ? "draft"
+                                : proposal.status === "selected"
+                                  ? "complete"
+                                  : proposal.status === "withdrawn"
+                                    ? "cancelled"
+                                    : proposal.status === "archived"
+                                      ? "inactive"
+                                      : "progress"
+                            }
+                            progress={
+                              proposal.status === "reviewed" ? 0.75 : 0.4
+                            }
+                            tone={
+                              proposal.status === "selected"
+                                ? "success"
+                                : proposal.status === "reviewed"
+                                  ? "info"
+                                  : "neutral"
+                            }
                           >
-                            {outreach.brokerName}
-                          </p>
-                          {contact ? (
-                            <p
-                              className={`mt-1 break-words text-muted-foreground ${typeStyle("caption.default")}`}
-                            >
-                              {contact}
-                            </p>
-                          ) : null}
-                        </TableCell>
-                        <TableCell>
-                          {proposal && proposalExtractionState(proposal) ? (
-                            <ProposalExtractionStatus
-                              proposal={proposal}
-                              readOnly={readOnly}
-                            />
-                          ) : proposal ? (
-                            <StatusTag
-                              indicator={
-                                proposal.status === "draft"
-                                  ? "draft"
-                                  : proposal.status === "selected"
-                                    ? "complete"
-                                    : proposal.status === "withdrawn"
-                                      ? "cancelled"
-                                      : proposal.status === "archived"
-                                        ? "inactive"
-                                        : "progress"
-                              }
-                              progress={
-                                proposal.status === "reviewed" ? 0.75 : 0.4
-                              }
-                              tone={
-                                proposal.status === "selected"
-                                  ? "success"
-                                  : proposal.status === "reviewed"
-                                    ? "info"
-                                    : "neutral"
-                              }
-                            >
-                              {proposal.status.charAt(0).toUpperCase() +
-                                proposal.status.slice(1).replaceAll("_", " ")}
-                            </StatusTag>
-                          ) : (
-                            <OutreachStatusTag status={outreach.status} />
-                          )}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {offer.premium ?? offer.premiumAmount ?? "—"}
-                        </TableCell>
-                        <TableCell>
-                          {review?.stale ? (
-                            <StatusTag tone="warning">Stale</StatusTag>
-                          ) : conclusion ? (
-                            <StatusTag
-                              tone={
-                                conclusion === "meets_requirements"
-                                  ? "success"
-                                  : "warning"
-                              }
-                            >
-                              {REVIEW_CONCLUSION_LABELS[conclusion]}
-                            </StatusTag>
-                          ) : proposal ? (
-                            <StatusTag indicator="pending">
-                              Not reviewed
-                            </StatusTag>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-muted-foreground">
-                            {proposal?.documents.length ?? "—"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatDisplayDate(
-                            Math.max(
-                              outreach.updatedAt,
-                              proposal?.updatedAt ?? 0,
-                            ),
-                            "—",
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </OperationalPanel>
-          )
+                            {proposal.status.charAt(0).toUpperCase() +
+                              proposal.status.slice(1).replaceAll("_", " ")}
+                          </StatusTag>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div
+                        className="flex flex-wrap items-center justify-end gap-2"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {!readOnly && sequence ? (
+                          <OutreachSequenceActions
+                            sequence={sequence}
+                            onOpenThread={(threadId) =>
+                              void changeView("email", threadId)
+                            }
+                          />
+                        ) : null}
+                        {!readOnly &&
+                        candidate &&
+                        !candidate.launchBlock &&
+                        providerOutreach.panel?.request.canLaunch ? (
+                          <PillButton
+                            type="button"
+                            size="compact"
+                            disabled={
+                              providerOutreach.sending.size > 0 ||
+                              providerOutreach.sendingAll
+                            }
+                            onClick={() =>
+                              void providerOutreach.send(candidate.brokerOrgId)
+                            }
+                          >
+                            {providerOutreach.sending.has(candidate.brokerOrgId)
+                              ? "Sending…"
+                              : "Send"}
+                          </PillButton>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ),
+              };
+            })}
+          />
+        ) : null}
+
+        {view === "cadence" && !readOnly ? (
+          <ProviderOutreachCadence controller={providerOutreach} />
         ) : null}
 
         {view === "email" ? (
-          <div className="space-y-4">
-            <OperationalLabelValueList>
-              <OperationalLabelValueRow
-                label="Forward email to"
-                verticalAlign="center"
-                value={
-                  <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <span
-                      className={`min-w-0 break-all ${typeStyle("technical.codeCompact")}`}
-                    >
-                      {details.request.forwardingAddress}
-                    </span>
-                    <PillButton
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void copyAddress()}
-                    >
-                      <Copy className="size-3.5" />
-                      Copy address
-                    </PillButton>
-                  </div>
-                }
-              />
-            </OperationalLabelValueList>
-            {details.emailThreads.length === 0 ? (
-              <EmptyStateCard
-                title="No email imported for this request"
-                description="Forward a thread to this request’s address."
-                icon={<Mail className="size-6" />}
-              />
-            ) : (
-              <OperationalPanel as="section">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Subject</TableHead>
-                      <TableHead>Participant</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Last activity</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {details.emailThreads.map((email) => (
-                      <TableRow
-                        key={email._id}
-                        tabIndex={0}
-                        className="cursor-pointer"
-                        onClick={() => openEmail(email._id)}
-                        onKeyDown={(event) =>
-                          openRowOnKeyboard(
-                            event,
-                            () => void openEmail(email._id),
-                          )
-                        }
-                      >
-                        <TableCell className="min-w-64 whitespace-normal">
-                          <p
-                            className={`text-foreground ${typeStyle("body.medium")}`}
-                          >
-                            {email.subject}
-                          </p>
-                          <p
-                            className={`mt-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                          >
-                            {email.messageCount}{" "}
-                            {email.messageCount === 1 ? "message" : "messages"}
-                          </p>
-                        </TableCell>
-                        <TableCell className="max-w-64 truncate text-muted-foreground">
-                          {email.participantEmails[0] ?? "Unknown"}
-                        </TableCell>
-                        <TableCell>
-                          <EmailCategoryBadge category={email.category} />
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatDisplayDateTime(email.latestMessageAt, "—")}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </OperationalPanel>
-            )}
-          </div>
+          <RequestInbox
+            key={requestId}
+            requestId={requestId}
+            selectedThreadId={searchParams.get("thread")}
+            forwardingAddress={forwardingAddress ?? null}
+            onSelect={selectInboxThread}
+            onOpenThread={(thread) => void openEmail(thread)}
+          />
         ) : null}
       </div>
     </IntakeReviewCompact.Provider>

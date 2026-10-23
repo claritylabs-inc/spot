@@ -12,8 +12,18 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
 import { AppShellPortal } from "@/components/app-shell-slots";
+import { ProviderContacts } from "@/components/broker-network/provider-contacts";
 import { BrokerActivity } from "@/components/broker-network/broker-activity";
-import { TokenListField } from "@/components/broker-network/token-list-field";
+import {
+  AppetiteCountriesField,
+  AppetiteNationwideField,
+  AppetiteRegionsField,
+} from "@/components/broker-network/appetite-geography-fields";
+import {
+  brokerWritingCountries,
+  brokerRegionCountry,
+} from "@/convex/lib/brokerProfileValidation";
+import { AcordLinesField } from "@/components/broker-network/acord-lines-field";
 import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -94,7 +104,10 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
     city: office?.city ?? "",
     state: office?.state ?? "",
     postalCode: office?.postalCode ?? "",
+    countries: brokerWritingCountries(row.profile),
     states: row.profile?.writingStates ?? [],
+    nationwide: row.profile?.nationwideCountries ?? [],
+    excluded: row.profile?.excludedStates ?? [],
     lines: row.profile?.lineOfBusinessCodes ?? [],
   });
   const set = <K extends keyof typeof values>(
@@ -109,10 +122,21 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
     flush: async (next) => {
       const previous = savedValues.current;
       const changed = (key: keyof typeof values) => next[key] !== previous[key];
-      const trimmed = (key: Exclude<keyof typeof values, "states" | "lines">) =>
-        changed(key) ? next[key].trim() : undefined;
+      const trimmed = (
+        key: Exclude<
+          keyof typeof values,
+          "countries" | "states" | "lines" | "nationwide" | "excluded"
+        >,
+      ) => (changed(key) ? next[key].trim() : undefined);
       const officeChanged = (
-        ["address", "address2", "country", "city", "state", "postalCode"] as const
+        [
+          "address",
+          "address2",
+          "country",
+          "city",
+          "state",
+          "postalCode",
+        ] as const
       ).some(changed);
       await update({
         brokerOrgId: row.broker._id,
@@ -131,7 +155,12 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
               postalCode: trimmed("postalCode"),
             }
           : undefined,
+        writingCountries: changed("countries") ? next.countries : undefined,
         writingStates: changed("states") ? next.states : undefined,
+        nationwideCountries: changed("nationwide")
+          ? next.nationwide
+          : undefined,
+        excludedStates: changed("excluded") ? next.excluded : undefined,
         lineOfBusinessCodes: changed("lines") ? next.lines : undefined,
       });
       savedValues.current = next;
@@ -160,6 +189,7 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
         <TabsList variant="pill" aria-label="Provider">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="appetite">Appetite</TabsTrigger>
+          <TabsTrigger value="contacts">Contacts</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
         <TabsContent value="profile" className="space-y-5">
@@ -195,7 +225,9 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
               >
                 <SelectTrigger className="w-full" aria-label="Network status">
                   <SelectValue>
-                    <StatusLabel {...NETWORK_STATUS_PRESENTATION[values.status]}>
+                    <StatusLabel
+                      {...NETWORK_STATUS_PRESENTATION[values.status]}
+                    >
                       {NETWORK_STATUS_LABELS[values.status]}
                     </StatusLabel>
                   </SelectValue>
@@ -282,25 +314,80 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
             </InlineFieldRow>
           </InlineFieldCard>
         </TabsContent>
-        <TabsContent value="appetite">
+        <TabsContent value="appetite" className="space-y-5">
           <InlineFieldCard>
-            <InlineFieldRow label="States serviced">
-              <TokenListField
-                value={values.states}
-                onChange={(states) => set("states", states)}
-                placeholder="CA, NV, OR"
-                ariaLabel="Add writing state"
+            <InlineFieldRow label="Countries serviced">
+              <AppetiteCountriesField
+                value={values.countries}
+                onChange={(countries) =>
+                  setValues((current) => ({
+                    ...current,
+                    countries,
+                    nationwide: current.nationwide.filter((code) =>
+                      countries.includes(code),
+                    ),
+                    excluded: current.excluded.filter((code) =>
+                      countries.includes(brokerRegionCountry(code)),
+                    ),
+                    states: current.states.filter((code) =>
+                      countries.includes(brokerRegionCountry(code)),
+                    ),
+                  }))
+                }
               />
             </InlineFieldRow>
+            <InlineFieldRow label="Nationwide service">
+              <AppetiteNationwideField
+                countries={values.countries}
+                value={values.nationwide}
+                onChange={(nationwide) =>
+                  setValues((current) => ({
+                    ...current,
+                    nationwide,
+                    excluded: current.excluded.filter((code) =>
+                      nationwide.includes(brokerRegionCountry(code)),
+                    ),
+                  }))
+                }
+              />
+            </InlineFieldRow>
+            <InlineFieldRow label="States / provinces serviced">
+              <AppetiteRegionsField
+                countries={values.countries}
+                value={values.states}
+                onChange={(states) => set("states", states)}
+              />
+            </InlineFieldRow>
+            {!!values.nationwide.length && (
+              <InlineFieldRow label="Excluded states / provinces">
+                <AppetiteRegionsField
+                  countries={values.nationwide}
+                  ariaLabel="Excluded states / provinces"
+                  value={values.excluded}
+                  onChange={(excluded) =>
+                    setValues((current) => ({
+                      ...current,
+                      excluded,
+                      states: current.states.filter(
+                        (code) => !excluded.includes(code),
+                      ),
+                    }))
+                  }
+                />
+              </InlineFieldRow>
+            )}
+          </InlineFieldCard>
+          <InlineFieldCard>
             <InlineFieldRow label="ACORD lines">
-              <TokenListField
+              <AcordLinesField
                 value={values.lines}
                 onChange={(lines) => set("lines", lines)}
-                placeholder="CGL, PROP, UMBRC"
-                ariaLabel="Add ACORD line"
               />
             </InlineFieldRow>
           </InlineFieldCard>
+        </TabsContent>
+        <TabsContent value="contacts">
+          <ProviderContacts brokerOrgId={row.broker._id} />
         </TabsContent>
         <TabsContent value="activity">
           <BrokerActivity brokerOrgId={row.broker._id} />
@@ -363,7 +450,11 @@ function BrokerLogoField({ row }: { row: BrokerRow }) {
         onClick={() => fileInput.current?.click()}
         title="PNG, JPG, or SVG · Up to 5 MB"
       >
-        {busy ? "Uploading…" : row.broker.iconUrl ? "Change logo" : "Upload logo"}
+        {busy
+          ? "Uploading…"
+          : row.broker.iconUrl
+            ? "Change logo"
+            : "Upload logo"}
       </PillButton>
       <input
         ref={fileInput}

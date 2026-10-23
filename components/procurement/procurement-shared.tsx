@@ -7,30 +7,26 @@ import {
   useState,
   type Ref,
 } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { Loader2, Mail } from "lucide-react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
+import dayjs from "dayjs";
+import { FileInput, FolderInput, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
-import { AutoSaveStatus } from "@/components/ui/auto-save-status";
-import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
+import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import {
-  OperationalPanel,
-  OperationalPanelBody,
-  OperationalPanelHeader,
-} from "@claritylabs-inc/ui/components/operational-panel";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@claritylabs-inc/ui/components/popover";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { PillButton } from "@/components/ui/pill-button";
+import { LogoIcon } from "@/components/ui/logo-icon";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@claritylabs-inc/ui/components/select";
 import {
   StatusLabel,
   StatusTag,
@@ -300,59 +296,346 @@ function mailboxList(mailboxes: ForwardedMailbox[] | undefined) {
     .join(", ");
 }
 
-export type ProcurementEmailDrawerHandle = { save: () => Promise<boolean> };
+function messageTime(value: number) {
+  const date = dayjs(value);
+  if (date.isSame(dayjs(), "day")) return date.format("h:mm A");
+  if (date.isSame(dayjs(), "year")) return date.format("MMM D, h:mm A");
+  return date.format("MMM D, YYYY");
+}
 
-export function ProcurementEmailDrawer({
-  ref,
-  emailThreadId,
-  requests,
-  readOnly,
-  onClose,
+type ProcurementEmailThreadData = NonNullable<
+  FunctionReturnType<typeof api.procurementRequests.getEmailThread>
+>;
+export type ProcurementEmailMessageData =
+  ProcurementEmailThreadData["messages"][number];
+
+/**
+ * One stored message, laid out like a mail client: sender, recipients and
+ * date in the header, then the body, forwarded history and files. Collapsed
+ * messages show a single line until opened.
+ */
+export function ProcurementEmailMessage({
+  message,
+  fromSpot,
+  collapsed,
+  onExpand,
 }: {
-  ref?: Ref<ProcurementEmailDrawerHandle>;
-  emailThreadId: Id<"procurementEmailThreads">;
-  requests: ProcurementRequestOption[];
+  message: ProcurementEmailMessageData;
+  fromSpot: boolean;
+  collapsed: boolean;
+  onExpand: () => void;
+}) {
+  const forwardedEmail = (message.forwarded as ForwardedEmail | undefined)
+    ?.email;
+  const sender = message.fromName ?? message.fromEmail;
+  const files = message.files.flatMap((file) => (file?.url ? [file] : []));
+  const body =
+    message.currentText ||
+    (forwardedEmail ? "" : "(No message text)");
+  const header = (
+    <div className="flex min-w-0 items-start gap-3">
+      {fromSpot ? (
+        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
+          <LogoIcon size={18} />
+        </span>
+      ) : (
+        <OrgBrandIcon name={sender} size="lg" className="mt-0.5 shrink-0" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="min-w-0 truncate">
+            <span className={`text-foreground ${typeStyle("body.medium")}`}>
+              {fromSpot ? "You" : sender}
+            </span>
+            {message.fromName && !collapsed ? (
+              <span
+                className={`ml-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
+              >
+                {message.fromEmail}
+              </span>
+            ) : null}
+          </p>
+          <time
+            dateTime={dayjs(message.receivedAt).toISOString()}
+            title={formatDisplayDateTime(message.receivedAt, "—")}
+            className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
+          >
+            {messageTime(message.receivedAt)}
+          </time>
+        </div>
+        <p
+          className={`truncate text-muted-foreground ${typeStyle("caption.default")}`}
+        >
+          {collapsed
+            ? body.replace(/\s+/g, " ") ||
+              forwardedEmail?.subject ||
+              "Forwarded message"
+            : `to ${message.toAddresses.join(", ") || "—"}${
+                message.ccAddresses.length
+                  ? ` · cc ${message.ccAddresses.join(", ")}`
+                  : ""
+              }`}
+        </p>
+      </div>
+    </div>
+  );
+
+  if (collapsed)
+    return (
+      <button
+        type="button"
+        onClick={onExpand}
+        className="block w-full px-4 py-3 text-left outline-none hover:bg-muted/50 focus-visible:bg-muted"
+      >
+        {header}
+      </button>
+    );
+
+  return (
+    <article className="space-y-3 px-4 py-4">
+      {header}
+      <div className="space-y-3 pl-11">
+        {body ? (
+          <p
+            className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
+          >
+            {body}
+          </p>
+        ) : null}
+        {forwardedEmail ? (
+          <blockquote className="space-y-2 border-l-2 border-border pl-3">
+            <div
+              className={`text-muted-foreground ${typeStyle("caption.default")}`}
+            >
+              <p>Forwarded message</p>
+              {mailboxLabel(forwardedEmail.from) ? (
+                <p>From: {mailboxLabel(forwardedEmail.from)}</p>
+              ) : null}
+              {mailboxList(forwardedEmail.to) ? (
+                <p>To: {mailboxList(forwardedEmail.to)}</p>
+              ) : null}
+              {mailboxList(forwardedEmail.cc) ? (
+                <p>Cc: {mailboxList(forwardedEmail.cc)}</p>
+              ) : null}
+              {forwardedEmail.subject ? (
+                <p>Subject: {forwardedEmail.subject}</p>
+              ) : null}
+            </div>
+            {forwardedEmail.body ? (
+              <p
+                className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
+              >
+                {forwardedEmail.body}
+              </p>
+            ) : null}
+          </blockquote>
+        ) : null}
+        {files.length ? (
+          <div className="flex flex-wrap gap-2">
+            {files.map((file) => (
+              <FileDownloadButton
+                key={file.clientFileId}
+                href={file.url!}
+                fileName={file.name}
+              >
+                {file.name}
+              </FileDownloadButton>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+/** Live automated follow-ups on this conversation, with the shared stop action. */
+function FollowUpStatus({
+  followUps,
+  readOnly,
+}: {
+  followUps: NonNullable<ProcurementEmailThreadData["followUps"]>;
   readOnly: boolean;
-  onClose: () => void;
+}) {
+  const stop = useMutation(api.providerOutreach.stop);
+  const [stopping, setStopping] = useState(false);
+  const live = followUps.status === "active" || followUps.status === "reply_check";
+  if (!live) return null;
+  const text =
+    followUps.status === "reply_check"
+      ? "Reply received; checking it before any follow-up"
+      : followUps.remaining && followUps.nextDueAt
+        ? `Follow-ups to ${followUps.recipient}: ${followUps.remaining} left · next ${dayjs(followUps.nextDueAt).format("MMM D, h:mm A")}`
+        : `Follow-ups to ${followUps.recipient} running`;
+  return (
+    <div className="flex items-center justify-between gap-3 bg-muted/40 px-4 py-2">
+      <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+        {text}
+      </p>
+      {!readOnly ? (
+        <PillButton
+          type="button"
+          size="compact"
+          variant="ghost"
+          disabled={stopping}
+          onClick={async () => {
+            setStopping(true);
+            try {
+              await stop({ sequenceId: followUps.sequenceId });
+              toast.success("Follow-ups stopped");
+            } catch (error) {
+              toast.error(
+                getUserFacingErrorMessage(error, "Could not stop follow-ups"),
+              );
+            } finally {
+              setStopping(false);
+            }
+          }}
+        >
+          {stopping ? "Stopping…" : "Stop follow-ups"}
+        </PillButton>
+      ) : null}
+    </div>
+  );
+}
+
+/** Earlier messages start collapsed, as in a mail client; the newest stays open. */
+function EmailConversation({
+  thread,
+  readOnly,
+}: {
+  thread: ProcurementEmailThreadData;
+  readOnly: boolean;
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const lastId = thread.messages.at(-1)?._id;
+  return (
+    <div className="-mx-4 -my-4 divide-y divide-border">
+      {thread.followUps ? (
+        <FollowUpStatus followUps={thread.followUps} readOnly={readOnly} />
+      ) : null}
+      {thread.messages.map((message) => (
+        <ProcurementEmailMessage
+          key={message._id}
+          message={message}
+          fromSpot={
+            thread.outboundAddress !== null &&
+            message.fromEmail.toLowerCase() === thread.outboundAddress
+          }
+          collapsed={message._id !== lastId && !expanded.has(message._id)}
+          onExpand={() =>
+            setExpanded((current) => new Set(current).add(message._id))
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+// Unsent replies survive switching conversations within the session.
+const replyDrafts = new Map<string, string>();
+
+function ReplyComposer({
+  emailThreadId,
+  recipient,
+  onSendingChange,
+}: {
+  emailThreadId: Id<"procurementEmailThreads">;
+  recipient: string | null;
+  onSendingChange: (sending: boolean) => void;
+}) {
+  const reply = useAction(api.actions.providerOutreach.replyToThread);
+  const [text, setText] = useState(() => replyDrafts.get(emailThreadId) ?? "");
+  const [sending, setSending] = useState(false);
+  // One key per draft, so a retried send cannot deliver twice.
+  const sendKey = useRef<string>(crypto.randomUUID());
+
+  function update(value: string) {
+    setText(value);
+    if (value) replyDrafts.set(emailThreadId, value);
+    else replyDrafts.delete(emailThreadId);
+  }
+
+  async function send() {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    onSendingChange(true);
+    try {
+      const result = await reply({
+        emailThreadId,
+        text,
+        idempotencyKey: sendKey.current,
+      });
+      update("");
+      sendKey.current = crypto.randomUUID();
+      toast.success(
+        result.status === "captured"
+          ? "Reply captured locally; nothing was sent"
+          : "Reply sent",
+      );
+    } catch (error) {
+      toast.error(getUserFacingErrorMessage(error, "Could not send reply"));
+    } finally {
+      setSending(false);
+      onSendingChange(false);
+    }
+  }
+
+  return (
+    <div className="w-full space-y-2">
+      <Textarea
+        aria-label="Reply"
+        placeholder={recipient ? `Reply to ${recipient}` : "Write a reply"}
+        value={text}
+        disabled={sending}
+        onChange={(event) => update(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            void send();
+          }
+        }}
+        className="max-h-60 min-h-20 resize-none field-sizing-content"
+      />
+      <div className="flex justify-end">
+        <PillButton
+            size="compact"
+          type="button"
+          title="Send (Ctrl or ⌘ + Enter)"
+          disabled={!text.trim() || sending}
+          onClick={() => void send()}
+        >
+          {sending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Send className="size-3.5" />
+          )}
+          Send
+        </PillButton>
+      </div>
+    </div>
+  );
+}
+
+function FileQuoteAction({
+  emailThreadId,
+  readOnly,
+  onFilingChange,
+}: {
+  emailThreadId: Id<"procurementEmailThreads">;
+  readOnly: boolean;
+  onFilingChange: (filing: boolean) => void;
 }) {
   const brokers = useCachedOperatorBrokers();
-  const result = useQuery(api.procurementRequests.getEmailThread, {
-    emailThreadId,
-  });
+  const fileEmailQuote = useMutation(api.procurementProposals.fileEmailQuote);
   const inference = useQuery(
     api.procurementRequests.previewEmailReconciliation,
     { emailThreadId },
   );
-  const updateThread = useMutation(api.procurementRequests.updateEmailThread);
-  const fileEmailQuote = useMutation(api.procurementProposals.fileEmailQuote);
-  const [draft, setDraft] = useState<{
-    emailThreadId: Id<"procurementEmailThreads">;
-    revision: number;
-    category?: { value: ProcurementEmailCategory; revision: number };
-    requestId?: { value: string; revision: number };
-  } | null>(null);
-  const acknowledged = useRef({ category: 0, requestId: 0 });
-  const [filing, setFiling] = useState(false);
-  const [outreachSelection, setOutreachSelection] = useState<{
-    emailThreadId: Id<"procurementEmailThreads">;
-    outreachId: string;
-  } | null>(null);
-  // Attachments the operator excluded from filing, so signature images and
-  // logos do not become proposal documents. Everything else files by default.
+  const [outreachChoice, setOutreachChoice] = useState<string | null>(null);
+  // Signature images and logos can be excluded; everything else files.
   const [excludedFileIds, setExcludedFileIds] = useState<string[]>([]);
-  const activeDraft = draft?.emailThreadId === emailThreadId ? draft : null;
-  const category =
-    activeDraft?.category?.value ?? result?.thread.category ?? "";
-  const requestId =
-    activeDraft?.requestId?.value ?? result?.thread.requestId ?? "";
-
-  const requestOptions = useMemo(
-    () =>
-      requests.map((request) => ({ value: request._id, label: request.title })),
-    [requests],
-  );
-  // Outreaches follow the thread's current request. Reading them from the
-  // preview keeps the picker correct after the thread moves to another request.
+  const [filing, setFiling] = useState(false);
+  const [open, setOpen] = useState(false);
   const outreachOptions = useMemo(
     () =>
       (inference?.outreaches ?? []).map((outreach) => ({
@@ -372,14 +655,9 @@ export function ProcurementEmailDrawer({
   );
   const inferredOutreachId =
     inference?.outreachInference.status === "exact"
-      ? inference.outreachInference.candidates[0]?.outreachId
-      : undefined;
-  const pendingOutreachId =
-    outreachSelection?.emailThreadId === emailThreadId
-      ? outreachSelection.outreachId
-      : (inferredOutreachId ?? "");
-  // A selection made before the thread moved names an outreach on the old
-  // request; sending it back would make the preview query throw during render.
+      ? String(inference.outreachInference.candidates[0]?.outreachId ?? "")
+      : "";
+  const pendingOutreachId = outreachChoice ?? inferredOutreachId;
   const selectedOutreachId = outreachOptions.some(
     (option) => option.value === pendingOutreachId,
   )
@@ -394,15 +672,9 @@ export function ProcurementEmailDrawer({
         }
       : { emailThreadId },
   );
-  const selectedFiles = (reconciliation?.unfiledFiles ?? []).filter(
-    (file) => !excludedFileIds.includes(String(file.clientFileId)),
-  );
-
   const proposals = useQuery(
     api.procurementProposals.list,
-    result && selectedOutreachId
-      ? { requestId: result.thread.requestId }
-      : "skip",
+    open && inference ? { requestId: inference.requestId } : "skip",
   );
   const currentProposal = proposals?.find(
     (proposal) =>
@@ -411,68 +683,16 @@ export function ProcurementEmailDrawer({
       proposal.status !== "withdrawn",
   );
   const isRevision = !!currentProposal && currentProposal.status !== "draft";
-
-  const autoSave = useLocalFirstAutoSave({
-    mutationName: `procurement.updateEmailThread.${emailThreadId}`,
-    args: {
-      emailThreadId,
-      category: activeDraft?.category,
-      requestId: activeDraft?.requestId,
-    },
-    valueKey: String(activeDraft?.revision ?? 0),
-    resetKey: emailThreadId,
-    enabled: !readOnly && !!result,
-    canSave: !!category && !!requestId,
-    flush: async (args) => {
-      const categoryEdit =
-        args.category && args.category.revision > acknowledged.current.category
-          ? args.category
-          : undefined;
-      const requestEdit =
-        args.requestId &&
-        args.requestId.revision > acknowledged.current.requestId
-          ? args.requestId
-          : undefined;
-      if (!categoryEdit && !requestEdit) return;
-      await updateThread({
-        emailThreadId: args.emailThreadId,
-        category: categoryEdit?.value,
-        requestId: requestEdit?.value as Id<"procurementRequests"> | undefined,
-      });
-      if (categoryEdit) acknowledged.current.category = categoryEdit.revision;
-      if (requestEdit) acknowledged.current.requestId = requestEdit.revision;
-      setDraft((current) =>
-        current?.emailThreadId === args.emailThreadId
-          ? {
-              ...current,
-              category:
-                current.category?.revision === categoryEdit?.revision
-                  ? undefined
-                  : current.category,
-              requestId:
-                current.requestId?.revision === requestEdit?.revision
-                  ? undefined
-                  : current.requestId,
-            }
-          : current,
-      );
-    },
-    errorMessage: (error) =>
-      getUserFacingErrorMessage(error, "Failed to update email thread"),
-  });
-
-  const save = async () =>
-    !filing && (readOnly || !result || (await autoSave.saveNow()));
-  useImperativeHandle(ref, () => ({ save }));
+  const unfiled = reconciliation?.unfiledFiles ?? [];
+  const selectedFiles = unfiled.filter(
+    (file) => !excludedFileIds.includes(String(file.clientFileId)),
+  );
+  if (readOnly || !reconciliation?.filable || !unfiled.length) return null;
 
   async function fileQuote() {
-    if (
-      !selectedOutreachId ||
-      !selectedFiles.length ||
-      !(await autoSave.saveNow())
-    )
-      return;
+    if (!selectedOutreachId || !selectedFiles.length) return;
     setFiling(true);
+    onFilingChange(true);
     try {
       const filed = await fileEmailQuote({
         emailThreadId,
@@ -485,354 +705,250 @@ export function ProcurementEmailDrawer({
           ? "Email attachments were already filed"
           : "Email quote filed",
       );
+      setOpen(false);
     } catch (error) {
       toast.error(
         getUserFacingErrorMessage(error, "Failed to file email quote"),
       );
     } finally {
       setFiling(false);
+      onFilingChange(false);
     }
   }
 
   return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger render={<PillButton
+            size="compact" type="button" variant="secondary" />}>
+        <FileInput className="size-3.5" />
+        File quote
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 space-y-3 p-3">
+        <SearchableSelect
+          ariaLabel="Provider"
+          typographyRole="control.menu"
+          value={selectedOutreachId}
+          options={outreachOptions}
+          onChange={setOutreachChoice}
+          disabled={filing}
+          placeholder="Choose provider"
+        />
+        <div className="space-y-1">
+          {unfiled.map((file) => (
+            <label
+              key={String(file.clientFileId)}
+              className="flex items-center gap-2.5 rounded-md px-1.5 py-1 hover:bg-muted/50"
+            >
+              <Checkbox
+                checked={!excludedFileIds.includes(String(file.clientFileId))}
+                disabled={filing}
+                onCheckedChange={(checked) =>
+                  setExcludedFileIds((current) =>
+                    checked
+                      ? current.filter(
+                          (id) => id !== String(file.clientFileId),
+                        )
+                      : [...current, String(file.clientFileId)],
+                  )
+                }
+              />
+              <span
+                className={`min-w-0 truncate text-foreground ${typeStyle("body.default")}`}
+              >
+                {file.name}
+              </span>
+            </label>
+          ))}
+        </div>
+        {currentProposal?.status === "selected" ? (
+          <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+            The selected proposal cannot be replaced.
+          </p>
+        ) : isRevision ? (
+          <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+            Replaces the current proposal; the previous one stays in history.
+          </p>
+        ) : null}
+        <PillButton
+            size="compact"
+          type="button"
+          className="w-full"
+          onClick={() => void fileQuote()}
+          disabled={
+            filing ||
+            proposals === undefined ||
+            currentProposal?.status === "selected" ||
+            !selectedOutreachId ||
+            !selectedFiles.length
+          }
+        >
+          {filing ? <Loader2 className="size-3.5 animate-spin" /> : null}
+          {isRevision ? "File revision" : "File quote"}
+        </PillButton>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function MoveThreadAction({
+  emailThreadId,
+  requestId,
+  requests,
+  onMoved,
+}: {
+  emailThreadId: Id<"procurementEmailThreads">;
+  requestId: Id<"procurementRequests">;
+  requests: ProcurementRequestOption[];
+  onMoved: () => void;
+}) {
+  const updateThread = useMutation(api.procurementRequests.updateEmailThread);
+  const [open, setOpen] = useState(false);
+  const options = useMemo(
+    () =>
+      requests
+        .filter((request) => request._id !== requestId)
+        .map((request) => ({ value: request._id, label: request.title })),
+    [requests, requestId],
+  );
+  if (!options.length) return null;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <PillButton
+            size="compact"
+            type="button"
+            variant="ghost"
+            label="Move to request"
+            aria-label="Move to request"
+          />
+        }
+      >
+        <FolderInput className="size-3.5" />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 p-3">
+        <SearchableSelect
+          ariaLabel="Move to request"
+          typographyRole="control.menu"
+          value=""
+          options={options}
+          onChange={async (value) => {
+            try {
+              await updateThread({
+                emailThreadId,
+                requestId: value as Id<"procurementRequests">,
+              });
+              setOpen(false);
+              toast.success("Conversation moved");
+              onMoved();
+            } catch (error) {
+              toast.error(
+                getUserFacingErrorMessage(error, "Could not move conversation"),
+              );
+            }
+          }}
+          placeholder="Move to request"
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+export type ProcurementEmailDrawerHandle = { save: () => Promise<boolean> };
+
+/**
+ * The request Inbox reader in the shared right panel. Keep it mounted across
+ * conversations (no `key`): only the conversation body is keyed, so switching
+ * threads swaps content without replaying the panel's open animation.
+ */
+export function ProcurementEmailDrawer({
+  ref,
+  emailThreadId,
+  requestId,
+  subject,
+  replyable,
+  requests,
+  readOnly,
+  onClose,
+}: {
+  ref?: Ref<ProcurementEmailDrawerHandle>;
+  emailThreadId: Id<"procurementEmailThreads">;
+  requestId: Id<"procurementRequests">;
+  /** List data shown while the conversation loads. */
+  subject?: string;
+  replyable?: boolean;
+  requests: ProcurementRequestOption[];
+  readOnly: boolean;
+  onClose: () => void;
+}) {
+  const result = useQuery(api.procurementRequests.getEmailThread, {
+    emailThreadId,
+    requestId,
+  });
+  const busy = useRef(false);
+  useImperativeHandle(ref, () => ({ save: async () => !busy.current }));
+  const thread = result?.thread._id === emailThreadId ? result : undefined;
+  const latestInbound = thread?.messages.findLast(
+    (message) => message.fromEmail.toLowerCase() !== thread.outboundAddress,
+  );
+  const setBusy = (value: boolean) => {
+    busy.current = value;
+  };
+
+  return (
     <SettingsDrawer
       open
-      onOpenChange={async (open) => {
-        if (!open && (await save())) onClose();
+      onOpenChange={(open) => {
+        if (!open && !busy.current) onClose();
       }}
-      title={result?.thread.subject ?? "Imported email"}
+      title={thread?.thread.subject ?? subject ?? ""}
+      actions={
+        thread && !readOnly ? (
+          <div className="flex items-center gap-1">
+            <FileQuoteAction
+              key={emailThreadId}
+              emailThreadId={emailThreadId}
+              readOnly={readOnly}
+              onFilingChange={setBusy}
+            />
+            {!thread.thread.resendThreadId ? (
+              <MoveThreadAction
+                emailThreadId={emailThreadId}
+                requestId={thread.thread.requestId}
+                requests={requests}
+                onMoved={onClose}
+              />
+            ) : null}
+          </div>
+        ) : null
+      }
       footer={
-        !readOnly &&
-        reconciliation?.filable &&
-        reconciliation.unfiledFiles.length > 0 ? (
-          <PillButton
-            type="button"
-            onClick={fileQuote}
-            disabled={
-              filing ||
-              autoSave.status !== "saved" ||
-              proposals === undefined ||
-              currentProposal?.status === "selected" ||
-              result?.thread.requestId !== requestId ||
-              !selectedOutreachId ||
-              !selectedFiles.length
+        (thread ? thread.canReply : replyable) && !readOnly ? (
+          <ReplyComposer
+            key={emailThreadId}
+            emailThreadId={emailThreadId}
+            recipient={
+              latestInbound?.fromName ??
+              latestInbound?.fromEmail ??
+              thread?.followUps?.recipient ??
+              null
             }
-          >
-            {filing ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            {isRevision ? "File revision" : "File quote"}
-          </PillButton>
+            onSendingChange={setBusy}
+          />
         ) : null
       }
     >
-      {result === undefined ? (
-        <div className="flex h-40 items-center justify-center text-muted-foreground">
-          <Loader2 className="size-5 animate-spin" />
-        </div>
-      ) : result === null ? (
+      {result === null ? (
         <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-          This imported email is no longer available.
+          This email is no longer available.
         </p>
-      ) : (
-        <div className="space-y-5">
-          <AutoSaveStatus status={autoSave.status} />
-          <OperationalPanel as="div">
-            <OperationalPanelBody className="space-y-4">
-              <label className="block space-y-1.5">
-                <span
-                  className={`text-muted-foreground ${typeStyle("caption.default")}`}
-                >
-                  Participant category
-                </span>
-                <Select
-                  value={category}
-                  onValueChange={(value) =>
-                    value &&
-                    setDraft({
-                      ...activeDraft,
-                      emailThreadId,
-                      revision: (activeDraft?.revision ?? 0) + 1,
-                      category: {
-                        value: value as ProcurementEmailCategory,
-                        revision: (activeDraft?.revision ?? 0) + 1,
-                      },
-                    })
-                  }
-                  disabled={readOnly}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue>
-                      {category
-                        ? procurementEmailCategoryLabel(category)
-                        : "Choose category"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EMAIL_CATEGORY_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label className="block space-y-1.5">
-                <span
-                  className={`text-muted-foreground ${typeStyle("caption.default")}`}
-                >
-                  Assigned request
-                </span>
-                <SearchableSelect
-                  value={requestId}
-                  options={requestOptions}
-                  onChange={(value) =>
-                    setDraft({
-                      ...activeDraft,
-                      emailThreadId,
-                      revision: (activeDraft?.revision ?? 0) + 1,
-                      requestId: {
-                        value,
-                        revision: (activeDraft?.revision ?? 0) + 1,
-                      },
-                    })
-                  }
-                  disabled={readOnly}
-                  placeholder="Choose request"
-                />
-              </label>
-              <div className="border-t border-border pt-3">
-                <p
-                  className={`text-muted-foreground ${typeStyle("caption.default")}`}
-                >
-                  Originally addressed to
-                </p>
-                <p
-                  className={`mt-1 text-foreground ${typeStyle("body.default")}`}
-                >
-                  {result.addressedRequest.title}
-                </p>
-                <p
-                  className={`mt-0.5 break-all text-muted-foreground ${typeStyle("caption.default")}`}
-                >
-                  {result.addressedRequest.forwardingAddress}
-                </p>
-              </div>
-            </OperationalPanelBody>
-          </OperationalPanel>
-
-          <OperationalPanel as="div">
-            <OperationalPanelBody className="space-y-4">
-              {reconciliation === undefined ? (
-                <Loader2 className="size-4 animate-spin text-muted-foreground" />
-              ) : (
-                <>
-                  {!reconciliation.filable ||
-                  reconciliation.files.length === 0 ||
-                  reconciliation.unfiledFiles.length === 0 ? (
-                    <p
-                      className={`text-muted-foreground ${typeStyle("body.default")}`}
-                    >
-                      {!reconciliation.filable
-                        ? "This email is archived; restore it to file a quote"
-                        : reconciliation.files.length === 0
-                          ? "This email has no active attachments"
-                          : "Every active attachment is already filed in a proposal"}
-                    </p>
-                  ) : null}
-                  {currentProposal?.status === "selected" ? (
-                    <p
-                      className={`text-muted-foreground ${typeStyle("body.default")}`}
-                    >
-                      The selected proposal cannot be replaced.
-                    </p>
-                  ) : isRevision ? (
-                    <p
-                      className={`text-muted-foreground ${typeStyle("body.default")}`}
-                    >
-                      These attachments will replace the current proposal.
-                      Include all documents for the new revision; the previous
-                      proposal stays in history.
-                    </p>
-                  ) : null}
-                  <div>
-                    <p
-                      className={`text-muted-foreground ${typeStyle("caption.default")}`}
-                    >
-                      Unfiled attachments
-                    </p>
-                    {reconciliation.unfiledFiles.length ? (
-                      <div className="mt-1.5 space-y-1.5">
-                        {reconciliation.unfiledFiles.map((file) => (
-                          <label
-                            key={String(file.clientFileId)}
-                            className="flex items-center gap-3 rounded-md border border-border px-3 py-2"
-                          >
-                            <input
-                              type="checkbox"
-                              className="size-4"
-                              checked={
-                                !excludedFileIds.includes(
-                                  String(file.clientFileId),
-                                )
-                              }
-                              disabled={readOnly || filing}
-                              onChange={(event) =>
-                                setExcludedFileIds((current) =>
-                                  event.target.checked
-                                    ? current.filter(
-                                        (id) =>
-                                          id !== String(file.clientFileId),
-                                      )
-                                    : [...current, String(file.clientFileId)],
-                                )
-                              }
-                            />
-                            <span
-                              className={`min-w-0 truncate text-foreground ${typeStyle("body.default")}`}
-                            >
-                              {file.name}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    ) : (
-                      <p
-                        className={`mt-1 text-foreground ${typeStyle("body.default")}`}
-                      >
-                        None
-                      </p>
-                    )}
-                  </div>
-                  {reconciliation.filable &&
-                  reconciliation.unfiledFiles.length > 0 ? (
-                    <>
-                      <label className="block space-y-1.5">
-                        <span
-                          className={`text-muted-foreground ${typeStyle("caption.default")}`}
-                        >
-                          Provider outreach
-                        </span>
-                        <SearchableSelect
-                          value={selectedOutreachId}
-                          options={outreachOptions}
-                          onChange={(value) =>
-                            setOutreachSelection({
-                              emailThreadId,
-                              outreachId: value,
-                            })
-                          }
-                          disabled={readOnly || filing}
-                          placeholder="Choose outreach"
-                        />
-                      </label>
-                    </>
-                  ) : null}
-                </>
-              )}
-            </OperationalPanelBody>
-          </OperationalPanel>
-
-          <div className="space-y-3">
-            {result.messages.map((message) => {
-              const forwarded = message.forwarded as ForwardedEmail | undefined;
-              const forwardedEmail = forwarded?.email;
-              return (
-                <OperationalPanel key={message._id} as="div">
-                  <OperationalPanelHeader
-                    title={message.fromName ?? message.fromEmail}
-                    description={formatDisplayDateTime(message.receivedAt, "—")}
-                    action={<Mail className="size-4 text-muted-foreground" />}
-                  />
-                  <OperationalPanelBody className="space-y-4">
-                    <div
-                      className={`space-y-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                    >
-                      <p>
-                        <span className="text-foreground">From:</span>{" "}
-                        {message.fromEmail}
-                      </p>
-                      <p>
-                        <span className="text-foreground">To:</span>{" "}
-                        {message.toAddresses.join(", ") || "—"}
-                      </p>
-                      {message.ccAddresses.length > 0 ? (
-                        <p>
-                          <span className="text-foreground">Cc:</span>{" "}
-                          {message.ccAddresses.join(", ")}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    {forwardedEmail ? (
-                      <div className="space-y-1 border-y border-border py-3">
-                        <p
-                          className={`text-foreground ${typeStyle("body.medium")}`}
-                        >
-                          Forwarded conversation
-                        </p>
-                        <div
-                          className={`space-y-1 text-muted-foreground ${typeStyle("caption.default")}`}
-                        >
-                          {mailboxLabel(forwardedEmail.from) ? (
-                            <p>From: {mailboxLabel(forwardedEmail.from)}</p>
-                          ) : null}
-                          {mailboxList(forwardedEmail.to) ? (
-                            <p>To: {mailboxList(forwardedEmail.to)}</p>
-                          ) : null}
-                          {mailboxList(forwardedEmail.cc) ? (
-                            <p>Cc: {mailboxList(forwardedEmail.cc)}</p>
-                          ) : null}
-                          {forwardedEmail.subject ? (
-                            <p>Subject: {forwardedEmail.subject}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <p
-                      className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
-                    >
-                      {message.currentText || "(No forwarder note)"}
-                    </p>
-
-                    {forwardedEmail?.body ? (
-                      <div className="border-t border-border pt-3">
-                        <p
-                          className={`mb-2 text-muted-foreground ${typeStyle("caption.default")}`}
-                        >
-                          Forwarded message
-                        </p>
-                        <p
-                          className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
-                        >
-                          {forwardedEmail.body}
-                        </p>
-                      </div>
-                    ) : null}
-
-                    {message.files.filter(Boolean).length > 0 ? (
-                      <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                        {message.files.flatMap((file) =>
-                          file?.url ? (
-                            <FileDownloadButton
-                              key={file.clientFileId}
-                              href={file.url}
-                              fileName={file.name}
-                            >
-                              {file.name}
-                            </FileDownloadButton>
-                          ) : (
-                            []
-                          ),
-                        )}
-                      </div>
-                    ) : null}
-                  </OperationalPanelBody>
-                </OperationalPanel>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      ) : thread ? (
+        <EmailConversation
+          key={emailThreadId}
+          thread={thread}
+          readOnly={readOnly}
+        />
+      ) : null}
     </SettingsDrawer>
   );
 }

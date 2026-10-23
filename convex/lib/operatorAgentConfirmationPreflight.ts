@@ -2,6 +2,7 @@ import { prepareApplicationToolUpdate } from "../procurementRequests";
 import { prepareBusinessProfileToolUpdate } from "../orgWiki";
 import { getMarkdownDocument } from "../markdownDocuments";
 import { requireCompanyRequest } from "./companyRequest";
+import { clientRecipientOptions } from "./clientOutreach";
 import { parseMarkdownDocument } from "./markdownDocument";
 import { clientIdentity, clientIdentityMatches } from "./clientProfile";
 import dayjs from "dayjs";
@@ -17,6 +18,8 @@ import {
   assertExternalBrokerIdentity,
   normalizeBrokerLineOfBusinessCodes,
   normalizeBrokerWritingStates,
+  normalizeBrokerWritingCountries,
+  resolveBrokerAppetite,
 } from "./brokerProfileValidation";
 import { assertNoOperatorImpersonation } from "./clientFiles";
 import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
@@ -37,6 +40,10 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "update_procurement_request",
   "update_procurement_application",
   "create_procurement_broker_outreach",
+  "launch_procurement_provider_outreach",
+  "stop_procurement_provider_outreach",
+  "send_procurement_client_email",
+  "reply_procurement_email_thread",
   "update_procurement_broker_outreach",
   "file_procurement_proposal",
   "file_procurement_email_quote",
@@ -246,6 +253,33 @@ function validateBrokerProfileFields(input: Record<string, unknown>) {
     name: typeof input.name === "string" ? input.name : undefined,
     website: typeof input.website === "string" ? input.website : undefined,
   });
+  if (Array.isArray(input.writingCountries)) {
+    const writingCountries = normalizeBrokerWritingCountries(
+      input.writingCountries.filter(
+        (value): value is string => typeof value === "string",
+      ),
+    );
+    resolveBrokerAppetite({
+      writingCountries,
+      writingStates: Array.isArray(input.writingStates)
+        ? input.writingStates.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : undefined,
+    });
+  }
+  if (Array.isArray(input.nationwideCountries))
+    normalizeBrokerWritingCountries(
+      input.nationwideCountries.filter(
+        (value): value is string => typeof value === "string",
+      ),
+    );
+  if (Array.isArray(input.excludedStates))
+    normalizeBrokerWritingStates(
+      input.excludedStates.filter(
+        (value): value is string => typeof value === "string",
+      ),
+    );
   if (Array.isArray(input.writingStates)) {
     normalizeBrokerWritingStates(
       input.writingStates.filter(
@@ -934,6 +968,88 @@ export async function preflightOperatorToolConfirmation(
     case "update_procurement_request":
       await preflightProcurementRequestUpdate(ctx, args.input);
       return;
+    case "launch_procurement_provider_outreach": {
+      const request = await requireProcurementRequest(
+        ctx,
+        args.input.procurementRequestId,
+      );
+      requireCompanyRequest(request);
+      if (
+        request.deletedAt ||
+        request.status === "completed" ||
+        request.status === "cancelled"
+      )
+        throw new Error("Procurement request is closed");
+      await requireClientOrganization(ctx, request.clientOrgId);
+      if (
+        !Array.isArray(args.input.brokerOrgIds) ||
+        !args.input.brokerOrgIds.length ||
+        args.input.brokerOrgIds.length > 50
+      )
+        throw new Error("Select one to 50 providers");
+      for (const brokerOrgId of args.input.brokerOrgIds) {
+        const broker = await requireBrokerOrganization(ctx, brokerOrgId);
+        if (!broker || broker.deletedAt) throw new Error("Provider not found");
+      }
+      return;
+    }
+    case "send_procurement_client_email": {
+      const request = await requireProcurementRequest(
+        ctx,
+        args.input.procurementRequestId,
+      );
+      requireCompanyRequest(request);
+      if (
+        request.deletedAt ||
+        request.status === "completed" ||
+        request.status === "cancelled"
+      )
+        throw new Error("Procurement request is closed");
+      const client = await requireClientOrganization(ctx, request.clientOrgId);
+      const email =
+        typeof args.input.recipientEmail === "string"
+          ? args.input.recipientEmail.trim().toLowerCase()
+          : "";
+      const recipients = await clientRecipientOptions(ctx, request, client._id);
+      if (!recipients.some((option) => option.email === email))
+        throw new Error("Recipient is not a current client contact");
+      return;
+    }
+    case "reply_procurement_email_thread": {
+      const request = await requireProcurementRequest(
+        ctx,
+        args.input.procurementRequestId,
+      );
+      requireCompanyRequest(request);
+      const thread = await requireDocument(
+        ctx,
+        "procurementEmailThreads",
+        args.input.procurementEmailThreadId,
+        "Email thread",
+      );
+      if (thread.requestId !== request._id || thread.deletedAt)
+        throw new Error("Email thread does not belong to the request");
+      if (!thread.resendThreadId)
+        throw new Error("Forwarded mail can only be answered from your own mailbox");
+      return;
+    }
+    case "stop_procurement_provider_outreach": {
+      const request = await requireProcurementRequest(
+        ctx,
+        args.input.procurementRequestId,
+      );
+      requireCompanyRequest(request);
+      await requireClientOrganization(ctx, request.clientOrgId);
+      const sequence = await requireDocument(
+        ctx,
+        "procurementOutreachSequences",
+        args.input.sequenceId,
+        "Outreach sequence",
+      );
+      if (sequence.requestId !== request._id)
+        throw new Error("Sequence does not belong to the request");
+      return;
+    }
     case "create_procurement_broker_outreach":
       await preflightOutreachCreate(ctx, args.input);
       return;
@@ -1001,6 +1117,9 @@ export async function preflightOperatorToolConfirmation(
         );
         if (request.clientOrgId !== thread.clientOrgId) {
           throw new Error("Email thread can move only within the same client");
+        }
+        if (thread.resendThreadId && request._id !== thread.requestId) {
+          throw new Error("Provider outreach conversations stay with their originating request");
         }
         if (request._id === thread.requestId && args.input.category == null) {
           throw new Error("No email thread fields changed");

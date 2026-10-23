@@ -1,3 +1,5 @@
+import { getProviderOutreachPanel, launchProviderOutreachByOperator, stopProviderOutreachByOperator } from "./providerOutreach";
+import { getClientOutreachPanel, launchClientOutreachByOperator } from "./clientOutreach";
 import { NoWriteInputError } from "./lib/noWriteInputError";
 import {
   operatorPlanningAssessmentValidator,
@@ -66,6 +68,7 @@ import {
   setFeatureFlagPatch,
 } from "./lib/featureFlags";
 import {
+  OPERATOR_AGENT_TOOL_REGISTRY,
   getOperatorAgentToolSpec,
   availableOperatorAgentToolNames,
   operatorToolRoleAllowed,
@@ -2779,6 +2782,9 @@ async function executeToolDomain(
         input.officeAddress && typeof input.officeAddress === "object"
           ? input.officeAddress
           : undefined,
+      writingCountries: stringList(input.writingCountries),
+      nationwideCountries: stringList(input.nationwideCountries),
+      excludedStates: stringList(input.excludedStates),
       writingStates: stringList(input.writingStates),
       lineOfBusinessCodes: stringList(input.lineOfBusinessCodes),
       source: "agent",
@@ -2794,11 +2800,63 @@ async function executeToolDomain(
         input.officeAddress && typeof input.officeAddress === "object"
           ? input.officeAddress
           : undefined,
+      writingCountries: stringList(input.writingCountries),
+      nationwideCountries: stringList(input.nationwideCountries),
+      excludedStates: stringList(input.excludedStates),
       writingStates: stringList(input.writingStates),
       lineOfBusinessCodes: stringList(input.lineOfBusinessCodes),
       name: normalizedOptionalText(input.name),
       website:
         input.website === null ? null : normalizedOptionalText(input.website),
+    });
+  }
+
+  if (toolName === "list_procurement_provider_matches") {
+    return await getProviderOutreachPanel(
+      ctx,
+      normalizeProcurementRequestId(ctx, input.procurementRequestId),
+    );
+  }
+
+  if (toolName === "launch_procurement_provider_outreach") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.launch_procurement_provider_outreach.inputSchema.parse(input);
+    return await launchProviderOutreachByOperator(ctx, {
+      operatorUserId: args.operatorUserId,
+      requestId: normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
+      brokerOrgIds: parsed.brokerOrgIds.map((id) => normalizeOrganizationId(ctx, id)),
+      cadence: parsed.cadence,
+      cadenceSource: { followUpCount: "operator", intervalBusinessDays: "operator", style: "operator" },
+    });
+  }
+
+  if (toolName === "list_procurement_client_outreach") {
+    return await getClientOutreachPanel(
+      ctx,
+      normalizeProcurementRequestId(ctx, input.procurementRequestId),
+    );
+  }
+
+  if (toolName === "send_procurement_client_email") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.send_procurement_client_email.inputSchema.parse(input);
+    return await launchClientOutreachByOperator(ctx, {
+      operatorUserId: args.operatorUserId,
+      requestId: normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
+      recipientEmail: parsed.recipientEmail,
+      subject: parsed.subject,
+      text: parsed.message,
+      cadence: { ...parsed.cadence, style: "brief_nudge" },
+    });
+  }
+
+  if (toolName === "stop_procurement_provider_outreach") {
+    const sequenceId = typeof input.sequenceId === "string"
+      ? ctx.db.normalizeId("procurementOutreachSequences", input.sequenceId)
+      : null;
+    if (!sequenceId) throw new NoWriteInputError("invalid_identifier", "Invalid outreach sequence ID");
+    return await stopProviderOutreachByOperator(ctx, {
+      operatorUserId: args.operatorUserId,
+      requestId: normalizeProcurementRequestId(ctx, input.procurementRequestId),
+      sequenceId,
     });
   }
 
@@ -3278,6 +3336,29 @@ async function executeToolActionDomain(
           proposalId: String(
             args.input.procurementProposalId,
           ) as Id<"procurementProposals">,
+        },
+      ),
+    };
+  }
+
+  if (args.toolName === "reply_procurement_email_thread") {
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.reply_procurement_email_thread.inputSchema.parse(
+        args.input,
+      );
+    // One delivery per exact approval: the confirmation keys the Resend send.
+    const key = args.confirmationId ?? args.idempotencyKey;
+    if (!key) throw new Error("Email replies require exact confirmation");
+    return {
+      result: await ctx.runAction(
+        internal.actions.providerOutreach.replyToThreadInternal,
+        {
+          operatorUserId: args.operatorUserId,
+          requestId: parsed.procurementRequestId as Id<"procurementRequests">,
+          emailThreadId:
+            parsed.procurementEmailThreadId as Id<"procurementEmailThreads">,
+          text: parsed.message,
+          idempotencyKey: String(key).replace(/[^A-Za-z0-9-]/g, "-").slice(0, 80),
         },
       ),
     };

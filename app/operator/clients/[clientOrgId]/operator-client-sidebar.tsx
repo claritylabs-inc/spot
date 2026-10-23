@@ -191,7 +191,7 @@ function OperatorClientSidebar({
           </nav>
         </ScrollArea>
 
-        <div className="flex shrink-0 justify-center border-t border-border px-2 py-2">
+        <div className="shrink-0 border-t border-border p-2">
           <OperatorClientImpersonationAction
             clientOrgId={clientOrgId}
             activeImpersonation={activeImpersonation}

@@ -76,7 +76,7 @@ requirements findings sources source evidence results items records comparisons 
 coverageBreakdown limits amount limit deductible premium currency name title label value values
 type kind status scope number policyNumber insured insuredName carrier effective expiration
 effectiveDate expirationDate targetEffectiveDate linesOfBusiness lineOfBusinessCodes
-lineOfBusiness writingStates states networkStatus extractionStatus dataStage extractionDataStage
+lineOfBusiness writingCountries writingStates states networkStatus extractionStatus dataStage extractionDataStage
 pipelineStatus provisional archived clientVisible deletedAt archivedAt fileName filename
 originalName contentType size client summary description text detail requirementText
 evidenceText met satisfied missing uncertain bounded total count sourceIds page pageStart

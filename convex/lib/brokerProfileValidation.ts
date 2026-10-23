@@ -1,8 +1,9 @@
 import {
   ACORD_LOB_CODES,
-  isLobCode,
+  ProviderAcordLobCodeSchema,
   type AcordLobCode,
 } from "./linesOfBusiness";
+import { getCountries } from "libphonenumber-js";
 import { NoWriteInputError } from "./noWriteInputError";
 
 const SPOT_OWNED_DOMAINS = [
@@ -21,11 +22,7 @@ function normalizedBrandName(name: string) {
 }
 
 const SPOT_OWNED_NAMES = new Set(
-  [
-    "Spot",
-    "Clarity Labs",
-    "Tools for Enlightenment",
-  ].map(normalizedBrandName),
+  ["Spot", "Clarity Labs", "Tools for Enlightenment"].map(normalizedBrandName),
 );
 
 // Classification only. Never use this allowlist to authorize a user or mailbox.
@@ -192,17 +189,149 @@ export const USPS_STATE_NAMES: Readonly<Record<string, string>> =
       ][index],
     ]),
   );
-const USPS_STATES = new Set<string>(USPS_STATE_CODES);
+export const CANADIAN_PROVINCES = {
+  AB: "Alberta",
+  BC: "British Columbia",
+  MB: "Manitoba",
+  NB: "New Brunswick",
+  NL: "Newfoundland and Labrador",
+  NT: "Northwest Territories",
+  NS: "Nova Scotia",
+  NU: "Nunavut",
+  ON: "Ontario",
+  PE: "Prince Edward Island",
+  QC: "Quebec",
+  SK: "Saskatchewan",
+  YT: "Yukon",
+} as const;
+export const BROKER_REGION_CODES = [
+  ...USPS_STATE_CODES,
+  ...Object.keys(CANADIAN_PROVINCES),
+] as [string, ...string[]];
+export const BROKER_COUNTRY_CODES = getCountries();
+const countryCodes = new Set<string>(BROKER_COUNTRY_CODES);
+const regionCodes = new Set<string>(BROKER_REGION_CODES);
+
+export function brokerRegionCountry(code: string) {
+  return Object.hasOwn(CANADIAN_PROVINCES, code) ? "CA" : "US";
+}
+
+export function brokerWritingCountries(
+  profile?: { writingCountries?: string[]; writingStates: string[] } | null,
+) {
+  return (
+    profile?.writingCountries ??
+    [...new Set((profile?.writingStates ?? []).map(brokerRegionCountry))].sort()
+  );
+}
+
+export function normalizeBrokerWritingCountries(values: readonly string[]) {
+  const countries = [
+    ...new Set(
+      values.map((value) => value.trim().toUpperCase()).filter(Boolean),
+    ),
+  ].sort();
+  if (countries.some((code) => !countryCodes.has(code)))
+    throw new NoWriteInputError(
+      "invalid_writing_country",
+      "Use exact ISO two-letter country codes for countries serviced.",
+    );
+  return countries;
+}
+
+// Country changes remove regions outside the selected countries. Region-only
+// edits add their countries, preserving compatibility with existing callers.
+export function resolveBrokerAppetite(
+  args: {
+    writingCountries?: string[];
+    writingStates?: string[];
+    nationwideCountries?: string[];
+    excludedStates?: string[];
+  },
+  existing?: {
+    writingCountries?: string[];
+    writingStates: string[];
+    nationwideCountries?: string[];
+    excludedStates?: string[];
+  } | null,
+) {
+  let writingStates = normalizeBrokerWritingStates(
+    args.writingStates ?? existing?.writingStates ?? [],
+  );
+  const writingCountries =
+    args.writingCountries === undefined
+      ? [
+          ...new Set([
+            ...brokerWritingCountries(existing),
+            ...writingStates.map(brokerRegionCountry),
+            ...normalizeBrokerWritingCountries(
+              args.nationwideCountries ?? existing?.nationwideCountries ?? [],
+            ),
+          ]),
+        ].sort()
+      : normalizeBrokerWritingCountries(args.writingCountries);
+  if (args.writingCountries !== undefined) {
+    if (
+      args.writingStates !== undefined &&
+      writingStates.some(
+        (code) => !writingCountries.includes(brokerRegionCountry(code)),
+      )
+    )
+      throw new NoWriteInputError(
+        "invalid_writing_region_country",
+        "Select the country for every serviced state or province.",
+      );
+    writingStates = writingStates.filter((code) =>
+      writingCountries.includes(brokerRegionCountry(code)),
+    );
+  }
+  const nationwideCountries = normalizeBrokerWritingCountries(
+    args.nationwideCountries ?? existing?.nationwideCountries ?? [],
+  ).filter((code) => writingCountries.includes(code));
+  if (
+    args.nationwideCountries?.some(
+      (code) => !writingCountries.includes(code.trim().toUpperCase()),
+    )
+  )
+    throw new NoWriteInputError(
+      "invalid_nationwide_country",
+      "Select each country before marking it nationwide.",
+    );
+  const excludedStates = normalizeBrokerWritingStates(
+    args.excludedStates ?? existing?.excludedStates ?? [],
+  ).filter((code) => nationwideCountries.includes(brokerRegionCountry(code)));
+  if (
+    args.excludedStates?.some(
+      (code) =>
+        !nationwideCountries.includes(
+          brokerRegionCountry(code.trim().toUpperCase()),
+        ),
+    )
+  )
+    throw new NoWriteInputError(
+      "invalid_excluded_region",
+      "State/province exclusions require nationwide service in that country.",
+    );
+  writingStates = writingStates.filter(
+    (code) => !excludedStates.includes(code),
+  );
+  return {
+    writingCountries,
+    writingStates,
+    nationwideCountries,
+    excludedStates,
+  };
+}
 
 export function normalizeBrokerWritingStates(values: readonly string[]) {
   const states = Array.from(
     new Set(values.map((value) => value.trim().toUpperCase()).filter(Boolean)),
   );
-  const invalid = states.filter((state) => !USPS_STATES.has(state));
+  const invalid = states.filter((state) => !regionCodes.has(state));
   if (invalid.length > 0) {
     throw new NoWriteInputError(
       "invalid_writing_state",
-      `Invalid writing state ${invalid.join(", ")}. Use exact two-letter USPS state codes.`,
+      `Invalid writing state ${invalid.join(", ")}. Use exact two-letter US state or Canadian province/territory codes.`,
     );
   }
   return states.sort();
@@ -224,12 +353,40 @@ export function normalizeBrokerLineOfBusinessCodes(
         .filter(Boolean),
     ),
   );
-  const invalid = lines.filter((line) => !isLobCode(line));
+  const invalid = lines.filter(
+    (line) => !ProviderAcordLobCodeSchema.safeParse(line).success,
+  );
   if (invalid.length > 0) {
     throw new NoWriteInputError(
       "invalid_acord_lob",
-      `Invalid ACORD LOBCd ${invalid.join(", ")}. Use exact catalog codes; common commercial codes include CGL (General Liability), PROP (Commercial Property), and AUTOB (Business Automobile).`,
+      `Invalid ACORD LOBCd ${invalid.join(", ")}. Use exact coverage-line codes; leave the list empty when unknown. Common commercial codes include CGL (General Liability), PROP (Commercial Property), and AUTOB (Business Automobile).`,
     );
   }
   return lines.sort() as AcordLobCode[];
+}
+
+/** Positive regional evidence and explicit nationwide scope share one meaning on every surface. */
+export function brokerAreaFit(
+  profile: {
+    writingCountries?: string[];
+    writingStates: string[];
+    nationwideCountries?: string[];
+    excludedStates?: string[];
+  },
+  country: string,
+  region?: string,
+): "match" | "unknown" | "excluded" {
+  if (region && profile.excludedStates?.includes(region)) return "excluded";
+  const countries = brokerWritingCountries(profile);
+  if (!countries.length) return "unknown";
+  if (!countries.includes(country)) return "excluded";
+  // A missing region cannot bypass country-wide exceptions.
+  if ((country === "US" || country === "CA") && !region) return "unknown";
+  if (profile.nationwideCountries?.includes(country)) return "match";
+  if (!region || profile.writingStates.includes(region)) return "match";
+  return profile.writingStates.some(
+    (code) => brokerRegionCountry(code) === country,
+  )
+    ? "excluded"
+    : "unknown";
 }
