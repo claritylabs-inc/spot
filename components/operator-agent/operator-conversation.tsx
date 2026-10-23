@@ -366,6 +366,22 @@ function OperatorMessageRow({
   );
 }
 
+/** Drafts attached to a direct tool request or its response, each once. */
+function directToolDrafts(
+  draftsByMessage: ReturnType<typeof useOperatorEmailDrafts>,
+  request: OperatorAgentMessage,
+  response: OperatorAgentMessage | undefined,
+) {
+  const seen = new Set<string>();
+  return [request, ...(response ? [response] : [])].flatMap((item) =>
+    (draftsByMessage?.[item.id] ?? []).filter((draft) => {
+      if (seen.has(draft.id)) return false;
+      seen.add(draft.id);
+      return true;
+    }),
+  );
+}
+
 export function OperatorConversation({
   activeThreadId,
   loading,
@@ -529,6 +545,16 @@ export function OperatorConversation({
                       />
                     ) : null,
                   )}
+                  <OperatorEmailDraftCards
+                    drafts={directToolDrafts(
+                      emailDraftsByMessage,
+                      message,
+                      response,
+                    )}
+                    threadId={threadId}
+                    openDraftId={openEmailDraftId}
+                    onOpen={(draft) => setOpenEmailDraftId(draft.id)}
+                  />
                 </>
               ) : (
                 <OperatorMessageRow
