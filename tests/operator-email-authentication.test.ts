@@ -168,7 +168,7 @@ describe("operator email authentication", () => {
     ]))).rejects.toThrow("ambiguous");
   });
 
-  it.each(["operator@spot.insure", "operator@agents.spot.insure"])(
+  it.each(["operator@spot.insure.example", "operator@agents.spot.insure"])(
     "rejects signed mail addressed to %s instead of the operator inbox",
     async (recipient) => {
       const raw = message().replace("operator@agent.spot.insure", recipient);

@@ -109,6 +109,15 @@ const ORG_ROOTS: Node[] = [
     undefined,
     requestChildren,
   ),
+  child("teamEmailThreads", "by_clientOrgId_and_latestMessageAt", "clientOrgId", undefined, [
+    child("teamEmailMessages", "by_threadId_and_receivedAt", "threadId"),
+    child("teamEmailThreadLinks", "by_threadId", "threadId"),
+    child("teamInboxReads", "by_threadId", "threadId"),
+    child("pendingEmails", "by_teamEmailThreadId", "teamEmailThreadId", undefined, [
+      child("emailDraftReviewLinks", "draft_channel", "pendingEmailId"),
+    ]),
+  ]),
+  // Legacy copies stay until the tables are dropped after the cutover readback.
   child("procurementEmailThreads", "organization", "clientOrgId", undefined, [
     child("procurementEmailMessages", "thread", "threadId"),
   ]),
@@ -234,6 +243,11 @@ async function deleteTree(
     const storageId = doc[field];
     if (typeof storageId === "string")
       await ctx.storage.delete(storageId as Id<"_storage">).catch(() => {});
+  }
+  // Uploads an unlinked team message was still holding for a client.
+  if (node.table === "teamEmailMessages" && Array.isArray(doc.unfiledAttachments)) {
+    for (const file of doc.unfiledAttachments as { storageId: Id<"_storage"> }[])
+      await ctx.storage.delete(file.storageId).catch(() => {});
   }
   await ctx.db.delete(doc._id);
   budget.ops += 1;

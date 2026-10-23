@@ -3,6 +3,7 @@
 import { PacketLinkDrawer } from "./packet-workspace";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
+import { useForwardingCopy } from "@/components/inbox/forwarding-address";
 
 import {
   useCallback,
@@ -133,6 +134,7 @@ function ProcurementRequestPreview({
 
   const [view, setView] = useState<"summary" | "links">("summary");
   const back = () => setView("summary");
+  const forward = useForwardingCopy(null, readOnly);
 
   if (view === "links" && !readOnly) {
     return (
@@ -143,9 +145,9 @@ function ProcurementRequestPreview({
       />
     );
   }
-  async function copyAddress() {
+  async function copyRequestAddress() {
     await navigator.clipboard.writeText(currentRequest.forwardingAddress);
-    toast.success("Forwarding address copied");
+    toast.success("Request address copied");
   }
 
   return (
@@ -299,7 +301,28 @@ function ProcurementRequestPreview({
 
         <OperationalLabelValueList title="Forwarding email">
           <OperationalLabelValueRow
-            label="Address"
+            label="Forward to"
+            layout="stacked"
+            value={
+              <span className="flex min-w-0 items-start gap-2">
+                <span className="min-w-0 flex-1 break-all">
+                  {forward.address ?? "Set your team address in Profile"}
+                </span>
+                <PillButton
+                  type="button"
+                  variant="icon"
+                  iconOnly
+                  disabled={forward.loading || forward.busy}
+                  label="Copy your forwarding address"
+                  onClick={() => void forward.copy()}
+                >
+                  <Copy className="size-3.5" />
+                </PillButton>
+              </span>
+            }
+          />
+          <OperationalLabelValueRow
+            label="Request address (fallback)"
             layout="stacked"
             value={
               <span className="flex min-w-0 items-start gap-2">
@@ -310,8 +333,8 @@ function ProcurementRequestPreview({
                   type="button"
                   variant="icon"
                   iconOnly
-                  label={`Copy forwarding address for ${currentRequest.title}`}
-                  onClick={() => void copyAddress()}
+                  label={`Copy request address for ${currentRequest.title}`}
+                  onClick={() => void copyRequestAddress()}
                 >
                   <Copy className="size-3.5" />
                 </PillButton>

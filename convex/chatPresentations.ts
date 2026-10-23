@@ -689,7 +689,7 @@ async function authorizeReference(
     if (
       !draft ||
       draft.status !== "draft" ||
-      !(await orgAllowed(draft.orgId)) ||
+      ((!operator || draft.orgId !== undefined) && !(await orgAllowed(draft.orgId))) ||
       (operator
         ? draft.operatorThreadId !== threadId
         : draft.operatorThreadId !== undefined || draft.threadId !== threadId)

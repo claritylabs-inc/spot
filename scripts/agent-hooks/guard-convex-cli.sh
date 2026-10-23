@@ -8,11 +8,19 @@ set -euo pipefail
 command=$(jq -r '.tool_input.command // ""')
 # Convex CLI entrypoints: npx/bunx/pnpm/npm exec/yarn convex, node_modules/.bin/convex.
 cli='(^|[;&|(` ]|^ *)((npx|bunx|pnpm|yarn)( +(exec|dlx|--?[[:alnum:]-]+))* +convex|npm +exec( +--?[[:alnum:]-]+)* +convex|(\./)?node_modules/\.bin/convex|(^|[;&|(` ] *)convex)( |$)'
-grep -Eq "$cli" <<<"$command" || exit 0
-unsets() { grep -Eq "env( [^;&|]*)? (-u *|--unset[= ])$1( |$)" <<<"$command"; }
-for name in CONVEX_DEPLOY_KEY CONVEX_DEPLOYMENT_TOKEN CONVEX_SELF_HOSTED_ADMIN_KEY; do
-  if [ -n "${!name:-}" ] && ! unsets "$name"; then blocked=1; fi
-done
+# Each shell command needs its own prefix. An unset in a later command must
+# never authorize an earlier bare CLI call. Splitting quoted separators too is
+# conservative: complex wrappers can use separate, explicitly prefixed calls.
+unsets() {
+  grep -Eq '^[[:space:]]*env[[:space:]]' <<<"$segment" &&
+    grep -Eq "env( [^;&|]*)? (-u *|--unset[= ])$1( |$)" <<<"$segment"
+}
+while IFS= read -r segment; do
+  grep -Eq "$cli" <<<"$segment" || continue
+  for name in CONVEX_DEPLOY_KEY CONVEX_DEPLOYMENT_TOKEN CONVEX_SELF_HOSTED_ADMIN_KEY; do
+    if [ -n "${!name:-}" ] && ! unsets "$name"; then blocked=1; fi
+  done
+done < <(printf '%s\n' "$command" | tr ';&|' '\n')
 [ -n "${blocked:-}" ] || exit 0
 cat >&2 <<'MSG'
 Blocked: a Convex deploy credential is in this environment, so the Convex CLI would target a hosted (possibly production) deployment instead of the local backend.

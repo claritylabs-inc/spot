@@ -877,6 +877,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("user", ["userId"])
+    .index("by_teamEmailLocalpart", ["teamEmailLocalpart"])
     .index("email", ["email"])
     .index("slack_user", ["slackTeamId", "slackUserId"])
     .index("status", ["status"]),
@@ -2851,6 +2852,7 @@ export default defineSchema({
     }),
     message: v.optional(v.object({ subject: v.string(), text: v.string() })),
     senderUserId: v.id("users"),
+    identityFingerprint: v.optional(v.string()),
     inboxId: v.optional(v.string()),
     packetLinkId: v.optional(v.id("procurementPacketLinks")),
     resendThreadId: v.optional(v.string()),
@@ -2900,6 +2902,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_outreachId", ["outreachId"])
+    .index("by_teamEmailThreadId", ["teamEmailThreadId"])
+    .index("by_procurementEmailThreadId", ["procurementEmailThreadId"])
     .index("by_requestId_and_status", ["requestId", "status"])
     .index("by_resendThreadId", ["resendThreadId"])
     .index("by_status_and_updatedAt", ["status", "updatedAt"]),
@@ -2923,6 +2927,8 @@ export default defineSchema({
     leaseUntil: v.optional(v.number()),
     firstAttemptAt: v.optional(v.number()),
     impersonationDeferredAt: v.optional(v.number()),
+    identityDeferredAt: v.optional(v.number()),
+    identity: v.optional(v.object({ fingerprint: v.string(), inboxId: v.string() })),
     generationStartedAt: v.optional(v.number()),
     draft: v.optional(
       v.object({
@@ -3358,6 +3364,13 @@ export default defineSchema({
       confidence: v.number(),
       reason: v.string(),
     })),
+    forwardLinkAttempt: v.optional(v.object({
+      messageId: v.id("teamEmailMessages"),
+      status: v.union(v.literal("claimed"), v.literal("completed"), v.literal("failed")),
+      startedAt: v.number(),
+      finishedAt: v.optional(v.number()),
+      reason: v.optional(v.string()),
+    })),
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     resendThreadId: v.optional(v.string()),
     clientOrgId: v.optional(v.id("organizations")),
@@ -3396,6 +3409,7 @@ export default defineSchema({
     .index("by_requestId_and_archivedAt_and_latestMessageAt", ["requestId", "archivedAt", "latestMessageAt"])
     .index("by_category_and_archivedAt_and_latestMessageAt", ["category", "archivedAt", "latestMessageAt"])
     .index("by_archivedAt_and_latestInboundAt", ["archivedAt", "latestInboundAt"])
+    .index("by_suggestedRequestId_and_latestMessageAt", ["linkSuggestion.requestId", "latestMessageAt"])
     .index("by_legacyThreadId", ["legacyThreadId"])
     .index("by_latestMessageAt", ["latestMessageAt"])
     .index("by_ownerUserId_and_latestMessageAt", ["ownerUserId", "latestMessageAt"])
@@ -4689,6 +4703,10 @@ export default defineSchema({
 
   operatorEmailReceipts: defineTable({
     providerId: v.string(),
+    inboxId: v.optional(v.string()),
+    resendThreadId: v.optional(v.string()),
+    resendInboxEmailId: v.optional(v.string()),
+    emailReadOnly: v.optional(v.boolean()),
     messageId: v.string(),
     operatorUserId: v.id("users"),
     sender: v.string(),
@@ -5014,6 +5032,7 @@ export default defineSchema({
 
   operatorAgentRuns: defineTable({
     threadId: v.id("operatorAgentThreads"),
+    emailReadOnly: v.optional(v.boolean()),
     operatorUserId: v.id("users"),
     userMessageId: v.id("operatorAgentMessages"),
     agentMessageId: v.id("operatorAgentMessages"),
@@ -5213,11 +5232,26 @@ export default defineSchema({
 
   pendingEmails: defineTable({
     senderUserId: v.optional(v.id("users")),
+    operatorAlwaysCcEmail: v.optional(v.string()),
+    directReplyKey: v.optional(v.string()),
+    directReplyMessage: v.optional(v.string()),
+    directReplyContext: v.optional(v.object({
+      latestMessageId: v.id("teamEmailMessages"),
+      mode: v.union(v.literal("thread"), v.literal("standalone")),
+      inboxId: v.optional(v.string()),
+      resendThreadId: v.optional(v.string()),
+      replyToEmailId: v.optional(v.string()),
+    })),
+    directApproval: v.optional(v.object({
+      actorUserId: v.id("users"),
+      fingerprint: v.string(),
+      approvedAt: v.number(),
+    })),
     transport: v.optional(v.literal("operator_inbox")),
     procurementRequestId: v.optional(v.id("procurementRequests")),
     teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
     resendInboxEmailId: v.optional(v.string()),
-    orgId: v.id("organizations"),
+    orgId: v.optional(v.id("organizations")),
     threadId: v.optional(v.id("threads")),
     // Drafts written by the operator agent belong to an operator thread, not a
     // client thread, and are only reachable from that operator thread.
@@ -5271,10 +5305,25 @@ export default defineSchema({
     .index("thread", ["threadId"])
     .index("operator_thread", ["operatorThreadId"])
     .index("by_teamEmailThreadId", ["teamEmailThreadId"])
+    .index("by_teamEmailThreadId_and_status", ["teamEmailThreadId", "status"])
+    .index("by_senderUserId_and_directReplyKey", ["senderUserId", "directReplyKey"])
     .index("status", ["status"]),
 
   emailDeliveryAttempts: defineTable({
-    orgId: v.id("organizations"),
+    orgId: v.optional(v.id("organizations")),
+    senderUserId: v.optional(v.id("users")),
+    draftFingerprint: v.optional(v.string()),
+    operatorConfirmationId: v.optional(v.id("operatorAgentConfirmations")),
+    inboxId: v.optional(v.string()),
+    draftId: v.optional(v.string()),
+    operatorStage: v.optional(v.union(
+      v.literal("claimed"),
+      v.literal("draft_created"),
+      v.literal("sending"),
+      v.literal("sent"),
+      v.literal("unknown"),
+      v.literal("failed"),
+    )),
     pendingEmailId: v.optional(v.id("pendingEmails")),
     threadId: v.optional(v.id("threads")),
     threadMessageId: v.optional(v.id("threadMessages")),
@@ -5285,6 +5334,7 @@ export default defineSchema({
       v.literal("inbound_email"),
       v.literal("procurement_packet"),
       v.literal("procurement_outreach"),
+      v.literal("operator_inbox"),
     ),
     provider: v.literal("resend"),
     deliveryMode: v.optional(v.string()),
@@ -5305,6 +5355,7 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
   })
     .index("pending", ["pendingEmailId"])
+    .index("by_pendingEmailId_and_draftFingerprint", ["pendingEmailId", "draftFingerprint"])
     .index("organization", ["orgId"])
     .index("thread", ["threadId"])
     .index("message", ["threadMessageId"])

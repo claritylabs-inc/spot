@@ -1,6 +1,23 @@
 import dayjs from "dayjs";
 import { v } from "convex/values";
-import { internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
+import {
+  internalMutation,
+  internalQuery,
+  type MutationCtx,
+} from "./_generated/server";
+import {
+  isOperatorEmailDraft,
+  pendingEmailDraftFingerprint,
+} from "./lib/actionConfirmationFingerprint";
+import { assertNoOperatorImpersonation } from "./lib/clientFiles";
+import { getEmailDeliveryMode } from "./lib/resend";
+import { replyContextProblem } from "./lib/teamEmailReply";
+import {
+  SENDER_CHANGED_REASON,
+  checkOperatorSendApproval,
+} from "./operatorEmailDrafts";
 
 const sourceValidator = v.union(
   v.literal("pending_email"),
@@ -61,5 +78,374 @@ export const markFailed = internalMutation({
       error: args.error,
       completedAt: dayjs().valueOf(),
     });
+  },
+});
+
+// --- Operator inbox sends ----------------------------------------------------
+//
+// An operator send is claimed in one transaction against the exact approval
+// and draft fingerprint, which also locks the draft (`status: "pending"`).
+// Stages only move forward. Once `sending` begins the outcome is never
+// replayed: an interrupted or unanswered send becomes `unknown` and the draft
+// stays locked. A read-only check of the stored Resend draft can only end the
+// lock with positive evidence that it was sent (then it is recorded); absence
+// is never proof, because a timed-out send can still complete.
+
+const OPERATOR_CLAIM_LEASE_MS = 15 * 60 * 1000;
+const MAX_ATTEMPTS_PER_FINGERPRINT = 100;
+const UNKNOWN_OUTCOME_REASON =
+  "Delivery outcome unknown — this email stays locked while Spot checks Resend for delivery evidence. It will not be sent again.";
+
+type OperatorStage = NonNullable<Doc<"emailDeliveryAttempts">["operatorStage"]>;
+
+const OPERATOR_STAGE_FROM: Record<OperatorStage, OperatorStage[]> = {
+  claimed: [],
+  draft_created: ["claimed"],
+  sending: ["claimed", "draft_created"],
+  sent: ["sending", "unknown"],
+  unknown: ["sending"],
+  // No source proves a timed-out send will not complete, so `unknown` never fails.
+  failed: ["claimed", "draft_created", "sending"],
+};
+
+type OperatorAttempt = Doc<"emailDeliveryAttempts">;
+
+/** The delivery is known not to have left: return the draft to editable. */
+async function releaseDraft(ctx: MutationCtx, attempt: OperatorAttempt) {
+  if (!attempt.pendingEmailId) return;
+  const draft = await ctx.db.get(attempt.pendingEmailId);
+  if (draft?.status === "pending") {
+    await ctx.db.patch(draft._id, {
+      status: "draft",
+      sendBlockedReason: undefined,
+    });
+  }
+}
+
+/** The outcome is not known: keep the draft locked and verify read-only soon. */
+async function lockUnknown(
+  ctx: MutationCtx,
+  attempt: OperatorAttempt,
+  error: string,
+) {
+  await ctx.db.patch(attempt._id, {
+    operatorStage: "unknown",
+    error,
+    completedAt: dayjs().valueOf(),
+  });
+  if (attempt.pendingEmailId) {
+    const draft = await ctx.db.get(attempt.pendingEmailId);
+    if (draft?.status === "pending") {
+      await ctx.db.patch(draft._id, { sendBlockedReason: UNKNOWN_OUTCOME_REASON });
+    }
+  }
+  await ctx.scheduler.runAfter(
+    0,
+    internal.actions.sendPendingEmail.reconcileOperatorSend,
+    { attemptId: attempt._id, round: 0 },
+  );
+}
+
+export const getOperatorAttemptInternal = internalQuery({
+  args: { attemptId: v.id("emailDeliveryAttempts") },
+  handler: async (ctx, args) => {
+    const attempt = await ctx.db.get(args.attemptId);
+    return attempt?.source === "operator_inbox" ? attempt : null;
+  },
+});
+
+/** Without `confirmationId` the draft's own browser-reply approval is the grant. */
+export const claimOperatorInboxSendInternal = internalMutation({
+  args: {
+    pendingEmailId: v.id("pendingEmails"),
+    confirmationId: v.optional(v.id("operatorAgentConfirmations")),
+  },
+  handler: async (ctx, args) => {
+    const draft = await ctx.db.get(args.pendingEmailId);
+    if (!draft || !isOperatorEmailDraft(draft)) {
+      return { kind: "rejected", reason: "This is not an operator draft." } as const;
+    }
+    if (draft.transport !== "operator_inbox" || !draft.senderUserId) {
+      return { kind: "rejected", reason: SENDER_CHANGED_REASON } as const;
+    }
+    const senderUserId = draft.senderUserId;
+    const fingerprint = await pendingEmailDraftFingerprint(draft);
+    const now = dayjs().valueOf();
+    const attempts = await ctx.db
+      .query("emailDeliveryAttempts")
+      .withIndex("by_pendingEmailId_and_draftFingerprint", (q) =>
+        q.eq("pendingEmailId", draft._id).eq("draftFingerprint", fingerprint),
+      )
+      .order("desc")
+      .take(MAX_ATTEMPTS_PER_FINGERPRINT + 1);
+    // Past the cap an earlier sent or unknown attempt could be out of view.
+    if (attempts.length > MAX_ATTEMPTS_PER_FINGERPRINT) {
+      return {
+        kind: "rejected",
+        reason:
+          "This exact email has too many delivery attempts. Edit it to make it a new email.",
+      } as const;
+    }
+
+    let status = draft.status;
+    for (const attempt of attempts) {
+      if (attempt.source !== "operator_inbox") continue;
+      const stage = attempt.operatorStage;
+      if (stage === "sent" && attempt.resendEmailId) {
+        return status === "sent"
+          ? ({
+              kind: "sent",
+              emailId: attempt.resendEmailId,
+              teamEmailThreadId: draft.teamEmailThreadId,
+            } as const)
+          : ({
+              kind: "finalize",
+              attemptId: attempt._id,
+              emailId: attempt.resendEmailId,
+            } as const);
+      }
+      if (stage === "unknown") {
+        return {
+          kind: "unknown",
+          attemptId: attempt._id,
+          reason:
+            "A previous send of this exact email has an unknown outcome. It stays locked and is only resolved when Resend shows it was sent.",
+        } as const;
+      }
+      if (stage === "sending" || stage === "claimed" || stage === "draft_created") {
+        if (now - attempt.startedAt < OPERATOR_CLAIM_LEASE_MS) {
+          return { kind: "in_progress" } as const;
+        }
+        if (stage === "sending") {
+          await lockUnknown(ctx, attempt, "Send did not finish; outcome unknown.");
+          return {
+            kind: "unknown",
+            attemptId: attempt._id,
+            reason:
+              "A previous send of this exact email did not finish and its outcome is unknown. It stays locked and is only resolved when Resend shows it was sent.",
+          } as const;
+        }
+        // Expired before any send began: nothing left, so reclaim it.
+        await ctx.db.patch(attempt._id, {
+          operatorStage: "failed",
+          status: "failed",
+          error: "Claim expired before sending.",
+          completedAt: now,
+        });
+        if (status === "pending") {
+          await ctx.db.patch(draft._id, {
+            status: "draft",
+            sendBlockedReason: undefined,
+          });
+          status = "draft";
+        }
+      }
+    }
+
+    if (status !== "draft") {
+      return { kind: "rejected", reason: "Only a current draft can be sent." } as const;
+    }
+    const approval = await checkOperatorSendApproval(ctx, args);
+    if (!approval.approved) {
+      return { kind: "rejected", reason: approval.reason } as const;
+    }
+    const context = await replyContextProblem(ctx, draft, args.confirmationId);
+    if (context) return { kind: "rejected", reason: context } as const;
+    await assertNoOperatorImpersonation(ctx, senderUserId);
+
+    const attemptId = await ctx.db.insert("emailDeliveryAttempts", {
+      orgId: draft.orgId,
+      senderUserId,
+      draftFingerprint: fingerprint,
+      operatorConfirmationId: args.confirmationId,
+      pendingEmailId: draft._id,
+      source: "operator_inbox",
+      provider: "resend",
+      deliveryMode: getEmailDeliveryMode(),
+      status: "attempting",
+      operatorStage: "claimed",
+      recipientEmail: draft.recipientEmail,
+      ccAddresses: draft.ccAddresses,
+      bccAddresses: draft.bccAddresses,
+      subject: draft.subject,
+      startedAt: now,
+    });
+    await ctx.db.patch(draft._id, {
+      status: "pending",
+      sendBlockedReason: undefined,
+    });
+    // Safety net: settle the attempt if this action dies before finishing.
+    await ctx.scheduler.runAfter(
+      OPERATOR_CLAIM_LEASE_MS + 60_000,
+      internal.actions.sendPendingEmail.reconcileOperatorSend,
+      { attemptId, round: 0 },
+    );
+    return {
+      kind: "claimed",
+      attemptId,
+      senderUserId,
+      // The full fingerprint keeps a key from ever matching an earlier, different email.
+      keyId: `${draft._id}:${fingerprint}`,
+    } as const;
+  },
+});
+
+/**
+ * The last gate before Resend is asked to send. Claim-time checks are stale
+ * after inbox, attachment and draft I/O, so everything is checked again in the
+ * same transaction that advances the attempt to `sending`: the signer is still
+ * an active operator not impersonating, the confirming run is still theirs and
+ * live, the exact approval and fingerprint still hold, and the sender
+ * identity, Always CC snapshot and link targets are unchanged.
+ */
+export const beginOperatorInboxSendingInternal = internalMutation({
+  args: { attemptId: v.id("emailDeliveryAttempts") },
+  handler: async (ctx, args) => {
+    const attempt = await ctx.db.get(args.attemptId);
+    const refuse = (reason: string) => ({ ok: false, reason }) as const;
+    if (
+      !attempt ||
+      attempt.source !== "operator_inbox" ||
+      !attempt.pendingEmailId ||
+      !attempt.senderUserId ||
+      (attempt.operatorStage !== "claimed" &&
+        attempt.operatorStage !== "draft_created")
+    ) {
+      return refuse("The send is no longer current.");
+    }
+    if (dayjs().valueOf() - attempt.startedAt >= OPERATOR_CLAIM_LEASE_MS) {
+      return refuse("The send took too long to prepare; try again.");
+    }
+    const draft = await ctx.db.get(attempt.pendingEmailId);
+    if (
+      !draft ||
+      draft.status !== "pending" ||
+      draft.senderUserId !== attempt.senderUserId ||
+      (await pendingEmailDraftFingerprint(draft)) !== attempt.draftFingerprint
+    ) {
+      return refuse("The draft changed while sending was being prepared.");
+    }
+    const approval = await checkOperatorSendApproval(ctx, {
+      confirmationId: attempt.operatorConfirmationId,
+      pendingEmailId: draft._id,
+    });
+    if (!approval.approved) return refuse(approval.reason);
+    const context = await replyContextProblem(
+      ctx,
+      draft,
+      attempt.operatorConfirmationId,
+    );
+    if (context) return refuse(context);
+    try {
+      await assertNoOperatorImpersonation(ctx, attempt.senderUserId);
+    } catch {
+      return refuse("Email cannot be sent while impersonating a client.");
+    }
+    // A browser reply has no run; an agent send needs its live, writable run.
+    if (attempt.operatorConfirmationId) {
+      const confirmation = await ctx.db.get(attempt.operatorConfirmationId);
+      const run =
+        confirmation?.payload.kind === "operator_tool_action"
+          ? await ctx.db.get(confirmation.payload.runId)
+          : null;
+      if (
+        !run ||
+        run.operatorUserId !== attempt.senderUserId ||
+        run.status !== "running" ||
+        run.cancellationRequestedAt
+      ) {
+        return refuse("The approving operator run is no longer active.");
+      }
+      if (run.emailReadOnly) {
+        return refuse("Email sends are disabled for this run.");
+      }
+    }
+    await ctx.db.patch(attempt._id, { operatorStage: "sending" });
+    return { ok: true } as const;
+  },
+});
+
+/**
+ * Settles an attempt whose action may have died: an expired pre-send claim is
+ * released; an expired `sending` becomes `unknown` (locked, verified read-only).
+ */
+export const settleOperatorAttemptInternal = internalMutation({
+  args: { attemptId: v.id("emailDeliveryAttempts") },
+  handler: async (ctx, args) => {
+    const attempt = await ctx.db.get(args.attemptId);
+    if (!attempt || attempt.source !== "operator_inbox" || !attempt.operatorStage) {
+      return "final" as const;
+    }
+    const stage = attempt.operatorStage;
+    if (stage === "sent" || stage === "unknown" || stage === "failed") {
+      return stage;
+    }
+    if (dayjs().valueOf() - attempt.startedAt < OPERATOR_CLAIM_LEASE_MS) {
+      return "active" as const;
+    }
+    if (stage === "sending") {
+      await lockUnknown(ctx, attempt, "Send did not finish; outcome unknown.");
+      return "unknown" as const;
+    }
+    await ctx.db.patch(attempt._id, {
+      operatorStage: "failed",
+      status: "failed",
+      error: "Claim expired before sending.",
+      completedAt: dayjs().valueOf(),
+    });
+    await releaseDraft(ctx, attempt);
+    return "failed" as const;
+  },
+});
+
+/** Moves a claimed attempt forward; a failed one returns its draft to editable, an unknown one stays locked. */
+export const advanceOperatorInboxAttemptInternal = internalMutation({
+  args: {
+    attemptId: v.id("emailDeliveryAttempts"),
+    stage: v.union(
+      v.literal("draft_created"),
+      v.literal("sent"),
+      v.literal("unknown"),
+      v.literal("failed"),
+    ),
+    inboxId: v.optional(v.string()),
+    draftId: v.optional(v.string()),
+    resendEmailId: v.optional(v.string()),
+    error: v.optional(v.string()),
+    blocked: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const attempt = await ctx.db.get(args.attemptId);
+    if (
+      !attempt ||
+      attempt.source !== "operator_inbox" ||
+      !attempt.operatorStage ||
+      !OPERATOR_STAGE_FROM[args.stage].includes(attempt.operatorStage)
+    ) {
+      throw new Error("Operator send attempt cannot move to that stage.");
+    }
+    if (args.stage === "unknown") {
+      await lockUnknown(ctx, attempt, args.error ?? "Outcome unknown.");
+      return null;
+    }
+    await ctx.db.patch(attempt._id, {
+      operatorStage: args.stage,
+      ...(args.inboxId ? { inboxId: args.inboxId } : {}),
+      ...(args.draftId ? { draftId: args.draftId } : {}),
+      ...(args.resendEmailId ? { resendEmailId: args.resendEmailId } : {}),
+      ...(args.stage === "sent"
+        ? { status: "sent" as const, error: undefined }
+        : args.stage === "failed"
+          ? {
+              status: args.blocked ? ("blocked" as const) : ("failed" as const),
+              error: args.error,
+            }
+          : {}),
+      ...(args.stage === "sent" || args.stage === "failed"
+        ? { completedAt: dayjs().valueOf() }
+        : {}),
+    });
+    if (args.stage === "failed") await releaseDraft(ctx, attempt);
+    return null;
   },
 });

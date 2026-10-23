@@ -62,7 +62,7 @@ export const OPERATOR_TOOL_FAMILIES = {
   company_email:
     "searching and reading the connected company Google Workspace mailboxes and email attachments (read-only; it cannot send or draft)",
   outbound_email:
-    "drafting, previewing, revising and sending an outbound email from Spot to a client contact (for example the applicant on a procurement request) or a provider or other external recipient, including requests like draft, write, compose, or send an email, asking someone for missing information, or following up by email",
+    "the shared team email inbox, reading and linking email threads, drafting, previewing, revising and sending email from the operator's team address to a client contact, provider or other external recipient",
   threads:
     "older messages and attachments in this thread and other operator conversations",
   client_files:
@@ -81,8 +81,8 @@ export type OperatorToolFamily = keyof typeof OPERATOR_TOOL_FAMILIES;
 const OUTBOUND_EMAIL_GUIDANCE = `${EMAIL_FAMILY_GUIDANCE}
 
 OPERATOR OUTBOUND EMAIL:
-These tools draft and send email as Spot for one exact client organization. The email goes from that client's Spot agent address and is signed with your name; replies go to the operator's own email and, when you pass procurementRequestId, to that request's forwarding address (which imports the reply into the request without invoking the client's Spot agent). There is no requester recipient here: always pass the recipient's exact address in "to".
-When the email concerns a procurement request, always pass its procurementRequestId (with the same orgId) to draft_email so replies are filed on that request; update_email_draft keeps the draft's reply routing unless you pass a new procurementRequestId.
+These tools draft and send from your personal team address, signed with your full name and Spot. Write in first person as the operator. Your saved Always CC is included in the displayed draft and exact approval. Replies return to the shared team inbox. Always pass the recipient's exact address in "to".
+Ad hoc email needs no client organization. When it concerns a known client or request, pass its exact orgId or procurementRequestId so it is filed correctly. For a reply, pass teamEmailThreadId. Revisions re-sign as the current operator and invalidate earlier approval. Read an existing thread before replying, and use only its verified recipients.
 Attachments: attach_policy_pdf_to_draft for an explicitly requested original policy PDF, and attach_client_file_to_draft for an exact stored client file (list_client_files). To send a certificate of insurance, first call generate_coi (it needs the operator's exact approval); its result gives each certificate's clientFileId, then attach that file with attach_client_file_to_draft. Do not describe a certificate or file as attached until the tool returns.
 Resolve recipients and the target organization from records, never from memory. For the applicant on a procurement request use applicantContact (name, email, phone) from get_procurement_request; for a provider use its recorded contact. Pass the request's client organization ID as orgId. If no address is on record, ask the operator for it. Never invent an address, and never leave placeholders such as [Contact Name], [Your Name] or bracketed fields in a draft; use the real name from the record or leave the greeting generic.
 When asked to request missing information, read the request and application first, then ask only for what is actually missing, short and prioritized (the few items that unblock the work most, grouped and in plain words). Do not restate what we already have.
@@ -155,6 +155,7 @@ const procurementEmailThreadId = z
   .string()
   .min(1)
   .describe("Exact procurement email thread ID");
+const teamEmailThreadId = z.string().min(1).describe("Exact shared team email thread ID");
 const procurementProposalId = z
   .string()
   .min(1)
@@ -289,6 +290,30 @@ function summarizeUpdate(
     });
   return `${title}\n${changes.join("\n")}`;
 }
+
+const replyEmailThreadSpec = defineOperatorTool({
+  family: "outbound_email",
+  version: 2,
+  description:
+    "Reply to a shared team email thread from your own team address, signed with your name. Replies on another operator's thread CC that owner and keep the shared conversation together. Automated follow-ups stop first. Read the thread and review the exact reply before sending.",
+  inputSchema: z.object({
+    teamEmailThreadId: omittable(teamEmailThreadId),
+    procurementEmailThreadId: omittable(procurementEmailThreadId),
+    procurementRequestId: omittable(procurementRequestId),
+    message: z.string().trim().min(1).max(20_000).describe("Complete plain-text reply"),
+  }).refine(
+    (input) => Boolean(input.teamEmailThreadId ?? input.procurementEmailThreadId) &&
+      (!input.teamEmailThreadId || !input.procurementEmailThreadId || input.teamEmailThreadId === input.procurementEmailThreadId),
+    "Provide one exact teamEmailThreadId (procurementEmailThreadId is the compatibility alias)",
+  ),
+  capability: "operator.email.write",
+  effect: "external_send",
+  requiredRole: "operator",
+  confirmation: "exact",
+  execution: "action",
+  target: (input) => ({ kind: "team_email_thread", id: input.teamEmailThreadId ?? input.procurementEmailThreadId }),
+  summarize: (input) => `Reply on email thread ${input.teamEmailThreadId ?? input.procurementEmailThreadId}`,
+});
 
 export const OPERATOR_AGENT_TOOL_REGISTRY = {
   list_mcp_tools: defineOperatorTool({
@@ -1007,20 +1032,21 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   get_procurement_forwarding_address: defineOperatorTool({
     family: "procurement",
-    version: 1,
+    version: 2,
     description:
-      "Get the unique forwarding address for one exact procurement request. Email forwarded to this address imports into that request without invoking the client email agent.",
+      "Get your team email address for forwarding mail, with the requested procurement request's legacy address as a fallback. Forward to your own team address, then confirm that the shared inbox linked the conversation to the intended request.",
     inputSchema: z.object({ procurementRequestId }),
-    capability: "operator.procurement.read",
-    effect: "read",
+    capability: "operator.email.write",
+    effect: "reversible_write",
     requiredRole: "operator",
     confirmation: "none",
+    execution: "action",
     target: (input) => ({
       kind: "procurement_request",
       id: input.procurementRequestId,
     }),
     summarize: (input) =>
-      `Read the forwarding address for procurement request ${input.procurementRequestId}`,
+      `Get your team forwarding address for procurement request ${input.procurementRequestId}`,
   }),
   list_procurement_email_threads: defineOperatorTool({
     family: "procurement",
@@ -1058,6 +1084,55 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     }),
     summarize: (input) =>
       `Read procurement email thread ${input.procurementEmailThreadId}`,
+  }),
+  list_team_inbox_threads: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description: "Read a paginated page of shared team email threads. Filters combine: mine, unlinked, exact client/request, category, archived. Follow the returned cursor; a bounded or filtered page cannot prove no matching mail exists.",
+    inputSchema: z.object({
+      cursor: omittable(z.string()),
+      limit: omittable(z.number().int().min(1).max(100)),
+      mine: omittable(z.boolean()),
+      unlinked: omittable(z.boolean()),
+      clientOrgId: omittable(organizationId),
+      procurementRequestId: omittable(procurementRequestId),
+      category: omittable(procurementEmailCategory),
+      archived: omittable(z.boolean()),
+    }),
+    capability: "operator.email.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: () => ({ kind: "platform", id: "team-inbox" }),
+    summarize: () => "Read the shared team inbox",
+  }),
+  get_team_inbox_thread: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description: "Read one shared team email thread with bounded message bodies, recipients, owner, person attribution, attachments, link status and in-progress drafts. May be unlinked to any client or request.",
+    inputSchema: z.object({ teamEmailThreadId }),
+    capability: "operator.email.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) => ({ kind: "team_email_thread", id: input.teamEmailThreadId }),
+    summarize: (input) => `Read email thread ${input.teamEmailThreadId}`,
+  }),
+  link_team_inbox_thread: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description: "Link a shared team email thread and its attachments to an exact client and optionally a procurement request. A request determines its client; conflicting targets are rejected. Outreach threads remain locked to their request. Requires exact approval.",
+    inputSchema: z.object({
+      teamEmailThreadId,
+      clientOrgId: omittable(organizationId),
+      procurementRequestId: omittable(procurementRequestId),
+    }).refine((input) => Boolean(input.clientOrgId || input.procurementRequestId), "Provide a client or procurement request"),
+    capability: "operator.email.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) => ({ kind: "team_email_thread", id: input.teamEmailThreadId }),
+    summarize: (input) => `Link email thread ${input.teamEmailThreadId} to ${input.procurementRequestId ?? input.clientOrgId}`,
   }),
   preview_procurement_email_reconciliation: defineOperatorTool({
     family: "procurement",
@@ -1197,16 +1272,16 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   draft_email: defineOperatorTool({
     family: "outbound_email",
-    version: 1,
+    version: 2,
     description:
-      "Create a saved outbound email draft for one exact client organization. This never sends. Use real recipient addresses from records and a complete, placeholder-free body in plain text or light markdown; the platform adds the signature. Drafting a second email to the same recipient in this conversation replaces the earlier draft. The draft is shown to the operator under your reply.",
+      "Create a saved email draft from your team address, signed with your full name. A client is optional for ad hoc mail. This never sends. Use real recipient addresses and a complete, placeholder-free body; the platform adds your signature and Always CC. A second draft to the same recipient in this conversation replaces the earlier draft. The draft appears under your reply.",
     inputSchema: z.object({
-      orgId: organizationId.describe(
-        "Exact client organization ID the email is sent on behalf of, from search_organizations or get_procurement_request",
-      ),
+      orgId: omittable(organizationId.describe("Optional exact client organization ID")),
+      clientOrgId: omittable(organizationId.describe("Alias for orgId; when both are supplied they must match")),
+      teamEmailThreadId: omittable(teamEmailThreadId),
       procurementRequestId: omittable(
         procurementRequestId.describe(
-          "Exact procurement request ID of this client when the email concerns that request; replies are then also routed to the request's forwarding address",
+          "Exact procurement request to associate with this email; its client must match any supplied organization",
         ),
       ),
       to: operatorEmailAddress.describe("Exact recipient email address"),
@@ -1225,14 +1300,17 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   update_email_draft: defineOperatorTool({
     family: "outbound_email",
-    version: 1,
+    version: 2,
     description:
-      "Replace the content of one unsent draft from this conversation. Omitted cc, bcc and attachments are cleared; pass attachmentFileIds to keep existing attachments. Any edit invalidates a previous approval to send.",
+      "Revise one unsent draft from this conversation and re-sign it as you, from your team address. Omitted cc, bcc and attachments are cleared except your saved Always CC; pass attachmentFileIds to keep existing attachments. Every edit invalidates earlier send approval, including a sender change.",
     inputSchema: z.object({
       draftId: z.string().min(1).describe("Exact draft ID"),
+      orgId: omittable(organizationId),
+      clientOrgId: omittable(organizationId.describe("Alias for orgId; when both are supplied they must match")),
+      teamEmailThreadId: omittable(teamEmailThreadId),
       procurementRequestId: omittable(
         procurementRequestId.describe(
-          "Exact procurement request ID to route replies to; omit to keep the draft's current reply routing",
+          "Exact procurement request to associate with the draft; omit to keep its existing request",
         ),
       ),
       to: omittable(operatorEmailAddress),
@@ -1932,9 +2010,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   launch_procurement_provider_outreach: defineOperatorTool({
     family: "procurement",
-    version: 1,
+    version: 2,
     description:
-      "Send provider outreach immediately and schedule the exact approved follow-up cadence. First list matches and explicitly name at most 50 providers. Unknown-fit providers require individual selection; excluded providers cannot receive outreach. Existing active or responded sequences are skipped. The email shares the provider-scoped packet link.",
+      "Send from your team address with your full-name signature and Always CC. Exact approval binds the current sender identity; changed identity holds unsent mail. Send provider outreach immediately and schedule the exact approved follow-up cadence. First list matches and explicitly name at most 50 providers. Unknown-fit providers require individual selection; excluded providers cannot receive outreach. Existing active or responded sequences are skipped. The email shares the provider-scoped packet link.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgIds: z.array(organizationId).min(1).max(50),
@@ -1979,9 +2057,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   send_procurement_client_email: defineOperatorTool({
     family: "procurement",
-    version: 1,
+    version: 2,
     description:
-      "Email a client contact to request information for a procurement request, then send automated nudges on the same thread until the client replies. First list client outreach and use an exact listed recipient email. The first email is exactly the subject and message given (greeting and operator signature are added); replies and attachments land in the request Inbox. Stops when the request closes, the recipient stops being a client contact, or follow-ups are stopped.",
+      "Send from your team address with your full-name signature and Always CC. Exact approval includes the signed email and sender identity; changed identity holds unsent mail. Email a client contact to request information for a procurement request, then send automated nudges on the same thread until the client replies. First list client outreach and use an exact listed recipient email. The first email is exactly the subject and message given (greeting and operator signature are added); replies and attachments land in the request Inbox. Stops when the request closes, the recipient stops being a client contact, or follow-ups are stopped.",
     inputSchema: z.object({
       procurementRequestId,
       recipientEmail: emailAddress.describe(
@@ -2015,33 +2093,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `Email ${input.recipientEmail} "${input.subject}" for ${input.procurementRequestId}, with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days`,
   }),
-  reply_procurement_email_thread: defineOperatorTool({
-    family: "procurement",
-    version: 1,
-    description:
-      "Reply on a provider-outreach or client-email conversation in the request Inbox from the sending operator's outreach inbox. Automated follow-ups on that conversation stop first. Forwarded conversations cannot be answered from Spot.",
-    inputSchema: z.object({
-      procurementRequestId,
-      procurementEmailThreadId,
-      message: z
-        .string()
-        .trim()
-        .min(1)
-        .max(20_000)
-        .describe("Complete plain-text reply"),
-    }),
-    capability: "operator.procurement.write",
-    effect: "external_send",
-    requiredRole: "operator",
-    confirmation: "exact",
-    execution: "action",
-    target: (input) => ({
-      kind: "procurement_email_thread",
-      id: input.procurementEmailThreadId,
-    }),
-    summarize: (input) =>
-      `Reply on procurement email thread ${input.procurementEmailThreadId}`,
-  }),
+  reply_procurement_email_thread: replyEmailThreadSpec,
+  reply_email_thread: replyEmailThreadSpec,
   stop_procurement_provider_outreach: defineOperatorTool({
     family: "procurement",
     version: 2,
@@ -2430,6 +2483,7 @@ export function operatorToolRoleAllowed(
 export function availableOperatorAgentToolNames(access: {
   role: OperatorToolRole;
   impersonating: boolean;
+  emailReadOnly?: boolean;
   integrations: Record<OperatorToolIntegration, boolean>;
 }): OperatorAgentToolName[] {
   return (
@@ -2438,6 +2492,7 @@ export function availableOperatorAgentToolNames(access: {
     const spec = OPERATOR_AGENT_TOOL_REGISTRY[name];
     return (
       operatorToolRoleAllowed(access.role, spec.requiredRole) &&
+      (!access.emailReadOnly || operatorToolAllowsReadOnlyEmail(spec)) &&
       (!access.impersonating ||
         (spec.effect === "read" && spec.integration !== "mcp")) &&
       (!spec.integration || access.integrations[spec.integration])
@@ -2507,9 +2562,28 @@ export type ResolvedOperatorToolSpec = {
   requiredRole: OperatorToolRole;
   confirmation: "none" | "exact";
   execution: OperatorToolExecution;
+  integration?: OperatorToolIntegration;
   target: (input: Record<string, unknown>) => OperatorToolTarget;
   summarize: (input: Record<string, unknown>) => string;
 };
+
+function operatorToolAllowsReadOnlyEmail(spec: {
+  effect: OperatorToolEffect;
+  integration?: OperatorToolIntegration;
+}) {
+  return spec.effect === "read" && spec.integration !== "mcp";
+}
+
+export function assertOperatorEmailToolAccess(
+  run: { emailReadOnly?: boolean },
+  spec: ResolvedOperatorToolSpec,
+) {
+  if (run.emailReadOnly && !operatorToolAllowsReadOnlyEmail(spec)) {
+    throw new Error(
+      "Permission denied: this email could not be authenticated. Only read tools are available; use operator chat for changes or sending.",
+    );
+  }
+}
 
 export function isOperatorAgentToolName(
   value: string,

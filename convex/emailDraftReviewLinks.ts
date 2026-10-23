@@ -8,7 +8,10 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { pendingEmailDraftFingerprint } from "./lib/actionConfirmationFingerprint";
+import {
+  isOperatorEmailDraft,
+  pendingEmailDraftFingerprint,
+} from "./lib/actionConfirmationFingerprint";
 import { getClientPortalUrl } from "./lib/domains";
 import {
   createMagicLinkToken,
@@ -108,7 +111,7 @@ export const createInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const draft = await ctx.db.get(args.pendingEmailId);
-    if (!draft || draft.status !== "draft" || !draft.threadId) {
+    if (!draft || draft.status !== "draft" || !draft.threadId || !draft.orgId || isOperatorEmailDraft(draft)) {
       throw new Error("A current thread email draft is required.");
     }
     const fingerprint = await pendingEmailDraftFingerprint(draft);

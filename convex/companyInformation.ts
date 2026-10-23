@@ -15,6 +15,8 @@ import {
   type CompanyInformationExtraction,
 } from "./lib/companyInformationExtraction";
 import { reconcileExtractedCompanyFacts } from "./orgWiki";
+import { adoptTeamThreadId } from "./lib/teamEmailLegacy";
+import { teamThreadSourceId, type TeamMessage } from "./lib/teamEmailStore";
 
 const EXTRACTION_LEASE_MS = 2 * 60 * 1_000;
 const MAX_EXTRACTION_ATTEMPTS = 3;
@@ -25,7 +27,7 @@ const extractClientFileRef = makeFunctionReference<
 >("actions/companyInformationExtraction:extractClientFile");
 const extractEmailThreadRef = makeFunctionReference<
   "action",
-  { emailThreadId: Id<"procurementEmailThreads"> }
+  { emailThreadId: Id<"teamEmailThreads"> }
 >("actions/companyInformationExtraction:extractProcurementEmailThread");
 
 type ResolvedSourceBase = {
@@ -46,7 +48,7 @@ type ResolvedSource = ResolvedSourceBase &
       }
     | {
         sourceKind: "procurement_email_thread";
-        emailThreadId: Id<"procurementEmailThreads">;
+        emailThreadId: Id<"teamEmailThreads">;
       }
   );
 
@@ -60,6 +62,21 @@ async function fallbackOperatorUserId(ctx: QueryCtx | MutationCtx) {
     .filter((q) => q.eq(q.field("status"), "active"))
     .first();
   return profile?.userId;
+}
+
+/** A file item's source message of either generation (legacy ids until repointed). */
+async function resolveEmailMessage(
+  ctx: QueryCtx | MutationCtx,
+  id: Id<"procurementEmailMessages"> | Id<"teamEmailMessages">,
+): Promise<TeamMessage | null> {
+  const current = ctx.db.normalizeId("teamEmailMessages", id);
+  if (current) return await ctx.db.get(current);
+  const legacyId = ctx.db.normalizeId("procurementEmailMessages", id);
+  if (!legacyId) return null;
+  return await ctx.db
+    .query("teamEmailMessages")
+    .withIndex("by_legacyMessageId", (q) => q.eq("legacyMessageId", legacyId))
+    .first();
 }
 
 async function resolveClientFileSource(
@@ -87,9 +104,9 @@ async function resolveClientFileSource(
   let observedAt = file.createdAt;
   if (file.uploadedBySide === "procurement_email") {
     if (!emailFileItem?.sourceEmailMessageId) return null;
-    const message = await ctx.db.get(emailFileItem.sourceEmailMessageId);
+    const message = await resolveEmailMessage(ctx, emailFileItem.sourceEmailMessageId);
     const thread = message ? await ctx.db.get(message.threadId) : null;
-    if (!message || !thread || !thread.requestId || !isActiveSource(thread)) return null;
+    if (!message || !thread || !isActiveSource(thread) || !thread.requestId) return null;
     const request = await ctx.db.get(thread.requestId);
     if (!request || request.clientOrgId !== file.orgId) return null;
     requestId = request._id;
@@ -120,16 +137,17 @@ async function resolveClientFileSource(
 
 async function resolveEmailThreadSource(
   ctx: QueryCtx | MutationCtx,
-  emailThreadId: Id<"procurementEmailThreads">,
+  emailThreadId: Id<"teamEmailThreads">,
 ) {
   const thread = await ctx.db.get(emailThreadId);
-  if (!thread || !isActiveSource(thread)) return null;
+  if (!thread || !isActiveSource(thread) || !thread.clientOrgId || !thread.requestId)
+    return null;
   const [organization, request, messagesDescending] = await Promise.all([
     ctx.db.get(thread.clientOrgId),
     ctx.db.get(thread.requestId),
     ctx.db
-      .query("procurementEmailMessages")
-      .withIndex("thread", (index) => index.eq("threadId", thread._id))
+      .query("teamEmailMessages")
+      .withIndex("by_threadId_and_receivedAt", (index) => index.eq("threadId", thread._id))
       .order("desc")
       .take(50),
   ]);
@@ -143,13 +161,16 @@ async function resolveEmailThreadSource(
     return null;
   }
   const messages = messagesDescending.reverse();
+  // Migrated threads keep their legacy id in the ref and fingerprint, so stored
+  // facts and applied fingerprints survive the cutover.
+  const sourceId = teamThreadSourceId(thread);
   return {
     orgId: thread.clientOrgId,
     organizationName: organization.name,
     sourceKind: "procurement_email_thread" as const,
     emailThreadId: thread._id,
-    sourceRef: `procurement-email-thread:${thread._id}`,
-    sourceFingerprint: `${COMPANY_INFORMATION_EXTRACTION_VERSION}:procurement-email-thread:${thread._id}:${thread.requestId}:${thread.messageCount}:${thread.updatedAt}`,
+    sourceRef: `procurement-email-thread:${sourceId}`,
+    sourceFingerprint: `${COMPANY_INFORMATION_EXTRACTION_VERSION}:procurement-email-thread:${sourceId}:${thread.requestId}:${thread.messageCount}:${thread.updatedAt}`,
     actorUserId: request.updatedByUserId ?? request.createdByUserId,
     requestId: request._id,
     observedAt: thread.latestMessageAt,
@@ -252,7 +273,10 @@ async function claimSource(ctx: MutationCtx, source: ResolvedSource) {
     sourceRef: source.sourceRef,
     clientFileId:
       source.sourceKind === "client_file" ? source.clientFileId : undefined,
-    procurementEmailThreadId:
+    // Rows claimed before the cutover carry the legacy pointer; it is cleared as
+    // the team pointer is written.
+    procurementEmailThreadId: undefined,
+    teamEmailThreadId:
       source.sourceKind === "procurement_email_thread"
         ? source.emailThreadId
         : undefined,
@@ -297,17 +321,19 @@ export const claimClientFileInternal = internalMutation({
   },
 });
 
+const emailThreadIdValidator = v.union(
+  v.id("teamEmailThreads"),
+  v.id("procurementEmailThreads"),
+);
+
 export const claimEmailThreadInternal = internalMutation({
-  args: { emailThreadId: v.id("procurementEmailThreads") },
+  // Jobs scheduled before the cutover still carry a legacy id.
+  args: { emailThreadId: emailThreadIdValidator },
   handler: async (ctx, args) => {
-    const source = await resolveEmailThreadSource(ctx, args.emailThreadId);
+    const teamThreadId = await adoptTeamThreadId(ctx, args.emailThreadId);
+    const source = teamThreadId ? await resolveEmailThreadSource(ctx, teamThreadId) : null;
     if (!source) {
-      const extraction = await ctx.db
-        .query("companyInformationExtractions")
-        .withIndex("email", (index) =>
-          index.eq("procurementEmailThreadId", args.emailThreadId),
-        )
-        .unique();
+      const extraction = teamThreadId ? await extractionForTeamThread(ctx, teamThreadId) : null;
       await removeExtraction(ctx, extraction);
       return { status: "inactive" as const };
     }
@@ -315,6 +341,22 @@ export const claimEmailThreadInternal = internalMutation({
     return claim.status === "claimed" ? { ...claim, source } : claim;
   },
 });
+
+/** The extraction row for a thread: by team pointer, else by its (legacy-keyed) source ref. */
+async function extractionForTeamThread(
+  ctx: QueryCtx | MutationCtx,
+  teamThreadId: Id<"teamEmailThreads">,
+) {
+  const byPointer = await ctx.db
+    .query("companyInformationExtractions")
+    .withIndex("team_email", (index) => index.eq("teamEmailThreadId", teamThreadId))
+    .unique();
+  if (byPointer) return byPointer;
+  const thread = await ctx.db.get(teamThreadId);
+  return thread
+    ? await extractionBySource(ctx, `procurement-email-thread:${teamThreadSourceId(thread)}`)
+    : null;
+}
 
 async function completeSource(
   ctx: MutationCtx,
@@ -327,7 +369,7 @@ async function completeSource(
       }
     | {
         sourceKind: "procurement_email_thread";
-        emailThreadId: Id<"procurementEmailThreads">;
+        emailThreadId: Id<"teamEmailThreads">;
         sourceFingerprint: string;
         extraction: CompanyInformationExtraction;
       },
@@ -388,19 +430,22 @@ export const completeClientFileInternal = internalMutation({
 
 export const completeEmailThreadInternal = internalMutation({
   args: {
-    emailThreadId: v.id("procurementEmailThreads"),
+    emailThreadId: emailThreadIdValidator,
     sourceFingerprint: v.string(),
     organizationFacts: v.array(companyInformationOrganizationFactValidator),
   },
-  handler: async (ctx, args) =>
-    await completeSource(ctx, {
+  handler: async (ctx, args) => {
+    const emailThreadId = await adoptTeamThreadId(ctx, args.emailThreadId);
+    if (!emailThreadId) return { status: "stale" as const };
+    return await completeSource(ctx, {
       sourceKind: "procurement_email_thread",
-      emailThreadId: args.emailThreadId,
+      emailThreadId,
       sourceFingerprint: args.sourceFingerprint,
       extraction: {
         organizationFacts: args.organizationFacts,
       },
-    }),
+    });
+  },
 });
 
 async function failSource(
@@ -449,24 +494,21 @@ export async function removeClientFileCompanyInformation(
 
 export async function removeEmailThreadCompanyInformation(
   ctx: MutationCtx,
-  emailThreadId: Id<"procurementEmailThreads">,
+  emailThreadId: Id<"teamEmailThreads">,
 ) {
   const thread = await ctx.db.get(emailThreadId);
-  const extraction = await ctx.db
-    .query("companyInformationExtractions")
-    .withIndex("email", (index) =>
-      index.eq("procurementEmailThreadId", emailThreadId),
-    )
-    .unique();
+  const extraction = await extractionForTeamThread(ctx, emailThreadId);
   if (extraction) await ctx.db.delete(extraction._id);
 
-  const messages = await ctx.db
-    .query("procurementEmailMessages")
-    .withIndex("thread", (index) => index.eq("threadId", emailThreadId))
-    .collect();
-  for (const clientFileId of new Set(
-    messages.flatMap((message) => message.clientFileIds),
-  )) {
+  const clientFileIds = new Set<Id<"clientFiles">>();
+  let hasMessages = false;
+  for await (const message of ctx.db
+    .query("teamEmailMessages")
+    .withIndex("by_threadId_and_receivedAt", (index) => index.eq("threadId", emailThreadId))) {
+    hasMessages = true;
+    for (const clientFileId of message.clientFileIds) clientFileIds.add(clientFileId);
+  }
+  for (const clientFileId of clientFileIds) {
     const fileExtraction = await ctx.db
       .query("companyInformationExtractions")
       .withIndex("file", (index) => index.eq("clientFileId", clientFileId))
@@ -475,12 +517,12 @@ export async function removeEmailThreadCompanyInformation(
   }
   const orgId = extraction?.orgId ?? thread?.clientOrgId;
   if (orgId) await reconcileCompanyInformation(ctx, orgId);
-  return Boolean(extraction || messages.length > 0);
+  return Boolean(extraction || hasMessages);
 }
 
 export async function scheduleEmailThreadCompanyInformation(
   ctx: MutationCtx,
-  emailThreadId: Id<"procurementEmailThreads">,
+  emailThreadId: Id<"teamEmailThreads">,
 ) {
   await ctx.scheduler.runAfter(0, extractEmailThreadRef, { emailThreadId });
 }

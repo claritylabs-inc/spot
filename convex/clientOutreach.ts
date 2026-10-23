@@ -11,7 +11,7 @@ import {
 } from "./lib/clientOutreach";
 import { requireOperator, writeOperatorAudit } from "./lib/operatorIdentity";
 import { normalizeProcurementEmail } from "./lib/procurement";
-import { operatorInboxAddress, operatorInboxFromName } from "./lib/resendInbox";
+import { outreachSenderPanel, type OutreachSenderPanel } from "./lib/outreachIdentity";
 import { outreachCadenceValidator, type OutreachCadenceInput } from "./lib/providerOutreachValidators";
 import { MAX_OUTREACH_FOLLOW_UPS, OUTREACH_DEFAULT_CADENCE } from "./lib/providerOutreachSchedule";
 import { requireDirectOperatorWrite } from "./procurementRequests";
@@ -85,34 +85,19 @@ export const getPanel = query({
   handler: async (
     ctx,
     { requestId },
-  ): Promise<(ClientOutreachPanel & { sender: { fromName: string; name: string | null; email: string | null } }) | null> => {
+  ): Promise<
+    | (ClientOutreachPanel & {
+        sender: OutreachSenderPanel & { email: string | null };
+      })
+    | null
+  > => {
     const operator = await requireOperator(ctx);
     const panel = await getClientOutreachPanel(ctx, requestId);
     if (!panel) return null;
-    // The From line: the operator's outreach inbox, or the address it will get.
-    const [user, inbox] = await Promise.all([
-      ctx.db.get(operator.userId),
-      ctx.db
-        .query("operatorOutreachInboxes")
-        .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
-        .first(),
-    ]);
-    let email = inbox?.emailAddress ?? null;
-    if (!email && user?.email) {
-      try {
-        email = operatorInboxAddress(user.email);
-      } catch {
-        email = null;
-      }
-    }
-    return {
-      ...panel,
-      sender: {
-        fromName: inbox?.fromName ?? operatorInboxFromName(user?.name),
-        name: user?.name?.trim() || null,
-        email,
-      },
-    };
+    // The From line is the operator's current full name and personal team address,
+    // with the Always CC and the fingerprint to approve. Nothing is provisioned here.
+    const sender = await outreachSenderPanel(ctx, operator.userId);
+    return { ...panel, sender: { ...sender, email: sender.address } };
   },
 });
 
@@ -125,6 +110,8 @@ export async function launchClientOutreachByOperator(
     subject: string;
     text: string;
     cadence: OutreachCadenceInput;
+    /** From the reviewed preview (`sender.fingerprint`); a mismatch refuses the launch. */
+    expectedIdentityFingerprint?: string;
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
@@ -177,6 +164,7 @@ export async function launchClientOutreachByOperator(
     },
     staggerMs: 0,
     now,
+    expectedIdentityFingerprint: args.expectedIdentityFingerprint,
   });
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
@@ -208,9 +196,13 @@ export const launch = mutation({
     subject: v.string(),
     text: v.string(),
     cadence: outreachCadenceValidator,
+    /** The sender fingerprint of the From and CC the operator reviewed. */
+    expectedIdentityFingerprint: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
+    if (!args.expectedIdentityFingerprint)
+      throw new Error("Reload to review the From and CC before sending");
     return await launchClientOutreachByOperator(ctx, {
       operatorUserId: operator.userId,
       ...args,

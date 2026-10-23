@@ -1,0 +1,310 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useAction, useQuery } from "convex/react";
+import dayjs from "dayjs";
+import { Loader2, Send } from "lucide-react";
+import { toast } from "sonner";
+
+import { PillButton } from "@/components/ui/pill-button";
+import { Textarea } from "@claritylabs-inc/ui/components/textarea";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
+import { typeStyle } from "@/lib/typography";
+import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+
+const PREVIEW_DELAY_MS = 450;
+
+/** One send of one exact email. It lives from before the action starts until a definitive outcome. */
+type SendAttempt = { key: string; text: string; fingerprint: string; startedAt: number };
+
+// Storage is scoped to the signed-in operator and the conversation, so a
+// reload keeps a locked send and a sign-out never hands it to the next user.
+const scope = (operatorId: string, threadId: string) => `${operatorId}:${threadId}`;
+const attemptStorageKey = (id: string) => `teamReply:attempt:${id}`;
+const memoryAttempts = new Map<string, SendAttempt>();
+const replyDrafts = new Map<string, string>();
+
+function readAttempt(id: string): SendAttempt | null {
+  try {
+    const raw = window.sessionStorage.getItem(attemptStorageKey(id));
+    if (!raw) return memoryAttempts.get(id) ?? null;
+    const value = JSON.parse(raw) as Partial<SendAttempt>;
+    return typeof value.key === "string" &&
+      typeof value.text === "string" &&
+      typeof value.fingerprint === "string" &&
+      typeof value.startedAt === "number"
+      ? (value as SendAttempt)
+      : null;
+  } catch {
+    return memoryAttempts.get(id) ?? null;
+  }
+}
+
+function writeAttempt(id: string, attempt: SendAttempt | null) {
+  if (attempt) memoryAttempts.set(id, attempt);
+  else memoryAttempts.delete(id);
+  try {
+    if (attempt)
+      window.sessionStorage.setItem(attemptStorageKey(id), JSON.stringify(attempt));
+    else window.sessionStorage.removeItem(attemptStorageKey(id));
+  } catch {
+    // The in-memory copy still locks this tab session.
+  }
+}
+
+function useDebounced<T>(value: T, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+function PreviewLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 gap-2">
+      <dt className="w-10 shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 flex-1 break-words text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * Reply box for a team conversation. The server composes the exact email (From,
+ * recipients, signature, quoted history) and returns a fingerprint; Send is
+ * enabled only for a preview of the text as it currently stands, and sends
+ * against that fingerprint. Recipients are never guessed here.
+ *
+ * A send is recorded before the action starts and stays locked until the
+ * server reports a definitive outcome: `sent` (or the status query saying so)
+ * clears it, `not_sent` unlocks it for a fresh preview and key. A pending or
+ * lost response never unlocks; the only way forward is retrying the same email
+ * under the same key, which the server resumes without a second send.
+ */
+export function ReplyComposer(props: {
+  threadId: Id<"teamEmailThreads">;
+  recipient: string | null;
+  onSendingChange: (sending: boolean) => void;
+  /** True while the composer is focused with text, for presence. */
+  onReplyingChange: (replying: boolean) => void;
+}) {
+  const operatorId = useCachedOperatorCurrent()?.user._id;
+  if (!operatorId) return null;
+  return <OperatorReplyComposer key={operatorId} operatorId={operatorId} {...props} />;
+}
+
+function OperatorReplyComposer({
+  operatorId,
+  threadId,
+  recipient,
+  onSendingChange,
+  onReplyingChange,
+}: {
+  operatorId: string;
+  threadId: Id<"teamEmailThreads">;
+  recipient: string | null;
+  onSendingChange: (sending: boolean) => void;
+  onReplyingChange: (replying: boolean) => void;
+}) {
+  const id = scope(operatorId, threadId);
+  const sendReply = useAction(api.actions.teamEmailReplies.send);
+  const [attempt, setAttempt] = useState<SendAttempt | null>(() => readAttempt(id));
+  const [text, setText] = useState(() => readAttempt(id)?.text ?? replyDrafts.get(id) ?? "");
+  const [serverNote, setServerNote] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [showFull, setShowFull] = useState(false);
+  // A key belongs to one exact text and fingerprint: unchanged, it is reused.
+  const sendKey = useRef<{ key: string; text: string; fingerprint: string } | null>(null);
+
+  const locked = attempt !== null;
+  const hasText = text.trim().length > 0;
+  useEffect(() => {
+    onReplyingChange(focused && hasText && !locked);
+  }, [focused, hasText, locked, onReplyingChange]);
+  useEffect(() => () => onReplyingChange(false), [onReplyingChange]);
+
+  const settled = useDebounced(text, PREVIEW_DELAY_MS);
+  const previewResult = useQuery(
+    api.teamEmailReplies.preview,
+    !locked && settled.trim() ? { threadId, message: settled } : "skip",
+  );
+  const current = !locked && settled === text && hasText;
+  const preview = current && previewResult?.ok ? previewResult.preview : null;
+  const previewError = current && previewResult && !previewResult.ok ? previewResult.reason : null;
+  const previewing = !locked && hasText && !preview && !previewError;
+
+  // The server's record of this key; only `sent` is a positive answer.
+  const status = useQuery(
+    api.teamEmailReplies.status,
+    attempt ? { idempotencyKey: attempt.key } : "skip",
+  );
+
+  function update(value: string) {
+    setText(value);
+    if (value) replyDrafts.set(id, value);
+    else replyDrafts.delete(id);
+  }
+
+  // The server saying "sent" is the one positive answer. Clearing runs in an
+  // effect so it always commits; it syncs this form to a subscription.
+  const confirmedSent = attempt !== null && status?.state === "sent";
+  useEffect(() => {
+    if (!confirmedSent) return;
+    replyDrafts.delete(id);
+    sendKey.current = null;
+    writeAttempt(id, null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setText("");
+    setAttempt(null);
+    setServerNote(null);
+  }, [confirmedSent, id]);
+
+  async function send(retry?: SendAttempt) {
+    if (sending) return;
+    let next = retry ?? null;
+    if (!next && preview) {
+      const reusable =
+        sendKey.current?.text === text && sendKey.current.fingerprint === preview.fingerprint;
+      sendKey.current = reusable
+        ? sendKey.current
+        : { key: crypto.randomUUID(), text, fingerprint: preview.fingerprint };
+      next = { ...sendKey.current!, startedAt: dayjs().valueOf() };
+    }
+    if (!next) return;
+    // Recorded first: if this tab dies mid-send, the lock survives a reload.
+    writeAttempt(id, next);
+    setAttempt(next);
+    setServerNote(null);
+    setSending(true);
+    onSendingChange(true);
+    try {
+      const result = await sendReply({
+        threadId,
+        message: next.text,
+        expectedFingerprint: next.fingerprint,
+        idempotencyKey: next.key,
+      });
+      if (result.status === "sent") {
+        setText("");
+        replyDrafts.delete(id);
+        sendKey.current = null;
+        writeAttempt(id, null);
+        setAttempt(null);
+        setServerNote(null);
+        toast.success(
+          result.captured ? "Reply captured locally; nothing was sent" : "Reply sent",
+        );
+      } else if (result.status === "not_sent") {
+        sendKey.current = null;
+        writeAttempt(id, null);
+        setAttempt(null);
+        toast.error(result.message);
+      } else {
+        setServerNote(result.message);
+      }
+    } catch (error) {
+      // A lost response may still be a running send: stay locked.
+      setServerNote(getUserFacingErrorMessage(error, "We couldn’t confirm this reply was sent."));
+    } finally {
+      setSending(false);
+      onSendingChange(false);
+    }
+  }
+
+  return (
+    <div className="w-full space-y-2">
+      {attempt ? (
+        <div role="alert" className={`space-y-2 rounded-md bg-muted/50 p-3 ${typeStyle("caption.default")}`}>
+          <p className="text-foreground">
+            {sending
+              ? "Sending…"
+              : (serverNote ??
+                "This reply is locked until the server confirms whether it was sent.")}{" "}
+            {sending ? null : "This reply stays locked to prevent duplicates."}
+          </p>
+          <div className="flex justify-end">
+            <PillButton type="button" size="compact" disabled={sending} onClick={() => void send(attempt)}>
+              {sending ? "Retrying…" : "Retry same email"}
+            </PillButton>
+          </div>
+        </div>
+      ) : null}
+      <Textarea
+        aria-label="Reply"
+        placeholder={recipient ? `Reply to ${recipient}` : "Write a reply"}
+        value={text}
+        disabled={sending}
+        readOnly={locked}
+        onChange={(event) => update(event.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            void send();
+          }
+        }}
+        className="max-h-60 min-h-20 resize-none field-sizing-content"
+      />
+      {previewing ? (
+        <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>Preparing preview…</p>
+      ) : null}
+      {previewError ? (
+        <p role="alert" className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+          {previewError}
+        </p>
+      ) : null}
+      {preview ? (
+        <div className={`space-y-1.5 rounded-md border border-border p-2.5 ${typeStyle("caption.default")}`}>
+          <dl className="space-y-0.5">
+            <PreviewLine label="From" value={preview.from} />
+            <PreviewLine label="To" value={preview.to.join(", ") || "—"} />
+            {preview.cc.length ? <PreviewLine label="Cc" value={preview.cc.join(", ")} /> : null}
+            {preview.bcc.length ? <PreviewLine label="Bcc" value={preview.bcc.join(", ")} /> : null}
+            <PreviewLine label="Subject" value={preview.subject} />
+          </dl>
+          {preview.copiesOwner ? (
+            <p className="text-muted-foreground">{preview.copiesOwner} is copied as the conversation owner.</p>
+          ) : null}
+          {preview.mode === "standalone" ? (
+            <p className="text-muted-foreground">
+              Sent from your own inbox as a new email; it stays in this conversation.
+            </p>
+          ) : null}
+          {preview.stopsFollowUps ? (
+            <p className="text-muted-foreground">Sending stops this conversation’s automatic follow-ups.</p>
+          ) : null}
+          <button
+            type="button"
+            aria-expanded={showFull}
+            onClick={() => setShowFull((value) => !value)}
+            className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {showFull ? "Hide full email" : "Show full email"}
+          </button>
+          {showFull ? (
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-foreground">
+              {preview.text}
+            </pre>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="flex justify-end">
+        <PillButton
+          size="compact"
+          type="button"
+          title="Send (Ctrl or ⌘ + Enter)"
+          disabled={!preview || sending || locked}
+          onClick={() => void send()}
+        >
+          {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+          Send
+        </PillButton>
+      </div>
+    </div>
+  );
+}

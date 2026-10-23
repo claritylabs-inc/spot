@@ -603,7 +603,7 @@ export async function fileProcurementProposalByOperator(
     /** Attach to this exact proposal instead of resolving one by outreach. */
     proposalId?: Id<"procurementProposals">;
     supersedesProposalId?: Id<"procurementProposals">;
-    sourceEmailThreadId?: Id<"procurementEmailThreads">;
+    sourceEmailThreadId?: Id<"teamEmailThreads">;
   },
 ): Promise<FileProposalResult> {
   await requireDirectOperator(ctx, args.operatorUserId);
@@ -846,11 +846,13 @@ export async function fileProcurementProposalByOperator(
   };
 }
 
+const MAX_QUOTE_THREAD_MESSAGES = 300;
+
 export async function fileProcurementEmailQuoteByOperator(
   ctx: MutationCtx,
   args: {
     operatorUserId: Id<"users">;
-    emailThreadId: Id<"procurementEmailThreads">;
+    emailThreadId: Id<"teamEmailThreads">;
     outreachId: Id<"procurementBrokerOutreaches">;
     /** Files the whole thread when omitted. Narrow it to skip signature images
      * and logos that arrive as attachments alongside the quote. */
@@ -862,10 +864,18 @@ export async function fileProcurementEmailQuoteByOperator(
   const thread = await ctx.db.get(args.emailThreadId);
   if (!thread || thread.deletedAt || thread.archivedAt)
     throw new Error("Procurement email thread not found");
+  const { clientOrgId, requestId } = thread;
+  if (!clientOrgId || !requestId)
+    throw new Error("Link this email thread to a client request before filing its quote");
   const messages = await ctx.db
-    .query("procurementEmailMessages")
-    .withIndex("thread", (query) => query.eq("threadId", thread._id))
-    .collect();
+    .query("teamEmailMessages")
+    .withIndex("by_threadId_and_receivedAt", (query) => query.eq("threadId", thread._id))
+    .take(MAX_QUOTE_THREAD_MESSAGES + 1);
+  // Filing covers the whole thread or nothing: a bounded read cannot imply full coverage.
+  if (messages.length > MAX_QUOTE_THREAD_MESSAGES)
+    throw new Error(
+      `Filing a quote from an email thread supports at most ${MAX_QUOTE_THREAD_MESSAGES} messages; this thread has more.`,
+    );
   const clientFileIds = [
     ...new Set(messages.flatMap((message) => message.clientFileIds)),
   ];
@@ -876,7 +886,7 @@ export async function fileProcurementEmailQuoteByOperator(
       file &&
       !file.archivedAt &&
       !file.deletedAt &&
-      file.orgId === thread.clientOrgId
+      file.orgId === clientOrgId
     )
       activeClientFileIds.push(file._id);
   }
@@ -894,7 +904,7 @@ export async function fileProcurementEmailQuoteByOperator(
   }
   const result = await fileProcurementProposalByOperator(ctx, {
     operatorUserId: args.operatorUserId,
-    requestId: thread.requestId,
+    requestId,
     outreachId: args.outreachId,
     sources: selectedClientFileIds.map((clientFileId) => ({
       kind: "client_file",
@@ -908,7 +918,7 @@ export async function fileProcurementEmailQuoteByOperator(
 
 export const fileEmailQuote = mutation({
   args: {
-    emailThreadId: v.id("procurementEmailThreads"),
+    emailThreadId: v.id("teamEmailThreads"),
     outreachId: v.id("procurementBrokerOutreaches"),
     clientFileIds: v.optional(v.array(v.id("clientFiles"))),
     supersedesProposalId: v.optional(v.id("procurementProposals")),
