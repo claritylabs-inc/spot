@@ -793,7 +793,6 @@ export function TeamInbox({
     <section className="space-y-3">
       <AppShellPortal slot="actions">
         <div className="flex items-center gap-2">
-          {archivedToggle}
           {onCompose && !readOnly ? (
             <PillButton type="button" size="compact" onClick={onCompose}>
               <PenSquare className="size-3.5" />
@@ -825,6 +824,16 @@ export function TeamInbox({
       </div>
       {showFilters ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <PillButton
+            type="button"
+            variant={archivedView ? "secondary" : "ghost"}
+            size="compact"
+            aria-pressed={archivedView}
+            onClick={() => setArchivedView((value) => !value)}
+          >
+            <Archive className="size-3.5" />
+            Archived
+          </PillButton>
           <div className="w-44">
             <SearchableSelect
               ariaLabel="Client"
