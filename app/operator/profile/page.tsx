@@ -189,7 +189,7 @@ function TeamEmailFields({ settings }: { settings: TeamEmailSettingsData }) {
       <InlineFieldCard title="Team email">
         <InlineFieldRow label="Team address">
           <div className="space-y-1">
-            <div className="flex min-w-0 items-center gap-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-1">
               <Input
                 aria-label="Team address"
                 aria-invalid={localpartError ? true : undefined}
@@ -203,9 +203,9 @@ function TeamEmailFields({ settings }: { settings: TeamEmailSettingsData }) {
                 placeholder={settings.defaultLocalpart ?? "your-name"}
                 autoComplete="off"
                 spellCheck={false}
-                className="min-w-0 flex-1"
+                className="min-w-40 flex-1"
               />
-              <span className="shrink-0 text-muted-foreground">
+              <span className="max-w-full break-all text-muted-foreground">
                 @{settings.domain}
               </span>
             </div>
@@ -423,7 +423,7 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
                   ))}
                 </ul>
               </InlineFieldRow>
-              <InlineFieldRow label="Operator email">
+              <InlineFieldRow label="Legacy command email">
                 <span
                   className="break-all"
                   title="Email from a login address; replies land in your operator threads"
