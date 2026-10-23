@@ -11,7 +11,7 @@ export class SlackProviderError extends Error {
   }
 }
 
-/** A failed transport request is not evidence that Slack rejected the message. */
+/** For attachment-free posts only: a failed request does not prove rejection. */
 export function isDefinitiveSlackRejection(error: unknown): error is SlackProviderError {
   return error instanceof SlackProviderError && (
     DEFINITIVE_SLACK_ERRORS.has(error.code) ||
