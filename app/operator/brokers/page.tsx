@@ -41,6 +41,7 @@ import {
   StatusTag,
 } from "@claritylabs-inc/ui/components/status-tag";
 import { CountryFlag } from "@/components/ui/country-flag";
+import { RegionFlag } from "@/components/ui/region-flag";
 import { ListToolbar } from "@/components/ui/list-toolbar";
 import {
   Table,
@@ -67,17 +68,28 @@ function countryOption(code: string) {
   const label = countryNames.of(code) ?? code;
   return { value: code, label, icon: <CountryFlag code={code} label={label} /> };
 }
+// US first: most providers write there.
+const COUNTRY_ORDER = ["US", "CA"];
+function countryRank(code: string) {
+  const rank = COUNTRY_ORDER.indexOf(code);
+  return rank === -1 ? COUNTRY_ORDER.length : rank;
+}
 const regionOptions = BROKER_REGION_CODES.map((value) => {
   const country = brokerRegionCountry(value);
+  const name =
+    USPS_STATE_NAMES[value] ??
+    CANADIAN_PROVINCES[value as keyof typeof CANADIAN_PROVINCES];
   return {
     value,
     country,
-    label: `${USPS_STATE_NAMES[value] ?? CANADIAN_PROVINCES[value as keyof typeof CANADIAN_PROVINCES]} (${value})`,
-    icon: (
-      <CountryFlag code={country} label={countryNames.of(country) ?? country} />
-    ),
+    label: `${name} (${value})`,
+    icon: <RegionFlag country={country} region={value} label={name} />,
   };
-}).sort((a, b) => a.label.localeCompare(b.label));
+}).sort(
+  (a, b) =>
+    countryRank(a.country) - countryRank(b.country) ||
+    a.label.localeCompare(b.label),
+);
 const lineOptions = PROVIDER_ACORD_LOB_CODES.map((value) => ({
   value,
   label: `${ACORD_LOB_LABELS[value]} (${value})`,
@@ -152,7 +164,11 @@ export default function OperatorBrokersPage() {
         ]),
       ]
         .map(countryOption)
-        .sort((a, b) => a.label.localeCompare(b.label)),
+        .sort(
+          (a, b) =>
+            countryRank(a.value) - countryRank(b.value) ||
+            a.label.localeCompare(b.label),
+        ),
     [rows],
   );
   const filteredRows = rows?.filter((row) => {
@@ -246,7 +262,7 @@ export default function OperatorBrokersPage() {
             },
             {
               id: "region",
-              label: "State / province",
+              label: "State",
               icon: <MapPin />,
               multiple: true,
               options: countries.length
