@@ -1,5 +1,6 @@
 "use client";
 
+import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { useRef, useEffect, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -153,7 +154,9 @@ export function NotificationsPanel({
     >
       {/* Header */}
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
-        <span className={`min-w-0 truncate text-foreground ${typeStyle("body.medium")}`}>
+        <span
+          className={`min-w-0 truncate text-foreground ${typeStyle("body.medium")}`}
+        >
           Notifications
         </span>
         <button
@@ -182,7 +185,9 @@ export function NotificationsPanel({
         >
           Unread
           {unreadCount > 0 && (
-            <span className={`ml-1.5 text-muted-foreground/60 ${typeStyle("caption.default")}`}>
+            <span
+              className={`ml-1.5 text-muted-foreground/60 ${typeStyle("caption.default")}`}
+            >
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
@@ -200,7 +205,9 @@ export function NotificationsPanel({
         >
           Read
           {readCount > 0 && (
-            <span className={`ml-1.5 text-muted-foreground/60 ${typeStyle("caption.default")}`}>
+            <span
+              className={`ml-1.5 text-muted-foreground/60 ${typeStyle("caption.default")}`}
+            >
               {readCount > 99 ? "99+" : readCount}
             </span>
           )}
@@ -208,77 +215,90 @@ export function NotificationsPanel({
       </div>
 
       {/* List */}
-      <div
+      <ScrollArea
         className={
           variant === "pane"
-            ? "min-h-0 flex-1 overflow-y-auto"
-            : "max-h-100 overflow-y-auto"
+            ? "min-h-0 flex-1"
+            : "max-h-100 [&>[data-slot=scroll-area-viewport]]:max-h-[inherit]"
         }
       >
-        {isLoading ? (
-          <div className="min-h-24" aria-hidden="true" />
-        ) : activeNotifications.length === 0 ? (
-          <div className={`px-3 py-6 text-center text-muted-foreground/40 ${typeStyle("body.default")}`}>
-            No {activeTab} notifications
-          </div>
-        ) : (
-          activeNotifications.map((notification: Notification) => {
-            const isUnread = notification.status === "unread";
-            const isClickable =
-              !!(notification.actionType && notification.actionPayload);
-            const actionLabel = notificationActionLabel(notification);
+        <div>
+          {isLoading ? (
+            <div className="min-h-24" aria-hidden="true" />
+          ) : activeNotifications.length === 0 ? (
+            <div
+              className={`px-3 py-6 text-center text-muted-foreground/40 ${typeStyle("body.default")}`}
+            >
+              No {activeTab} notifications
+            </div>
+          ) : (
+            activeNotifications.map((notification: Notification) => {
+              const isUnread = notification.status === "unread";
+              const isClickable = !!(
+                notification.actionType && notification.actionPayload
+              );
+              const actionLabel = notificationActionLabel(notification);
 
-            return (
-              <button
-                key={notification._id}
-                type="button"
-                onClick={() =>
-                  handleNotificationClick(notification as Notification)
-                }
-                className={`flex w-full min-w-0 items-start gap-2.5 border-b border-border-subtle px-3 py-2.5 text-left transition-colors ${
-                  isClickable ? "hover:bg-foreground/4" : "cursor-default"
-                } ${isUnread ? "bg-foreground/2" : ""}`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <p className={`min-w-0 flex-1 truncate text-foreground ${typeStyle("body.default")}`}>
-                      {notificationDisplayTitle(notification)}
-                    </p>
-                    {(notification.coalescedCount ?? 1) > 1 && (
-                      <span className={`inline-flex items-center px-1 py-0 rounded bg-foreground/8 text-muted-foreground ${typeStyle("caption.medium")}`}>
-                        ×{notification.coalescedCount}
-                      </span>
+              return (
+                <button
+                  key={notification._id}
+                  type="button"
+                  onClick={() =>
+                    handleNotificationClick(notification as Notification)
+                  }
+                  className={`flex w-full min-w-0 items-start gap-2.5 border-b border-border-subtle px-3 py-2.5 text-left transition-colors ${
+                    isClickable ? "hover:bg-foreground/4" : "cursor-default"
+                  } ${isUnread ? "bg-foreground/2" : ""}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <p
+                        className={`min-w-0 flex-1 truncate text-foreground ${typeStyle("body.default")}`}
+                      >
+                        {notificationDisplayTitle(notification)}
+                      </p>
+                      {(notification.coalescedCount ?? 1) > 1 && (
+                        <span
+                          className={`inline-flex items-center px-1 py-0 rounded bg-foreground/8 text-muted-foreground ${typeStyle("caption.medium")}`}
+                        >
+                          ×{notification.coalescedCount}
+                        </span>
+                      )}
+                    </div>
+                    {notification.relatedOrgName && (
+                      <p
+                        className={`mt-0.5 truncate text-muted-foreground/50 ${typeStyle("caption.default")}`}
+                      >
+                        {notification.relatedOrgName}
+                      </p>
                     )}
+                    <p
+                      className={`mt-0.5 wrap-break-word text-muted-foreground/60 ${typeStyle("caption.default")} ${
+                        variant === "pane" ? "" : "line-clamp-2"
+                      }`}
+                    >
+                      {notification.body}
+                    </p>
+                    <p
+                      className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground/40 ${typeStyle("caption.default")}`}
+                    >
+                      <span>{dayjs(notification.createdAt).fromNow()}</span>
+                      {actionLabel && (
+                        <span className="text-muted-foreground/60">
+                          {actionLabel}
+                        </span>
+                      )}
+                    </p>
                   </div>
-                  {notification.relatedOrgName && (
-                    <p className={`mt-0.5 truncate text-muted-foreground/50 ${typeStyle("caption.default")}`}>
-                      {notification.relatedOrgName}
-                    </p>
+                  {isUnread && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 mt-1.5" />
                   )}
-                  <p
-                    className={`mt-0.5 wrap-break-word text-muted-foreground/60 ${typeStyle("caption.default")} ${
-                      variant === "pane" ? "" : "line-clamp-2"
-                    }`}
-                  >
-                    {notification.body}
-                  </p>
-                  <p className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground/40 ${typeStyle("caption.default")}`}>
-                    <span>{dayjs(notification.createdAt).fromNow()}</span>
-                    {actionLabel && (
-                      <span className="text-muted-foreground/60">
-                        {actionLabel}
-                      </span>
-                    )}
-                  </p>
-                </div>
-                {isUnread && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0 mt-1.5" />
-                )}
-              </button>
-            );
-          })
-        )}
-      </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </ScrollArea>
 
       {/* Footer */}
       {activeTab === "unread" && unreadCount > 0 && (

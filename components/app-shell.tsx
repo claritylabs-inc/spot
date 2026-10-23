@@ -43,6 +43,7 @@ import { AgentDockLayout } from "@/components/agent-dock/agent-dock-layout";
 import { AgentDockProvider } from "@/components/agent-dock/agent-dock-provider";
 import { clientDockAdapter } from "@/components/agent-thread/client-dock-adapter";
 import { operatorDockAdapter } from "@/components/operator-agent/operator-dock-adapter";
+import { OperatorPresence } from "@/components/operator-agent/operator-presence";
 import { OperatorSidebar } from "@/app/operator/operator-sidebar";
 import { OperatorSettingsSidebar } from "@/app/operator/settings/operator-settings-sidebar";
 import { OperatorClientShellSidebar } from "@/app/operator/clients/[clientOrgId]/operator-client-sidebar";
@@ -238,6 +239,9 @@ function ShellFrame({
               hasBreadcrumbDetail ? (
                 <span ref={setBreadcrumbTarget} className="contents" />
               ) : undefined
+            }
+            presence={
+              isOperator && agentEnabled ? <OperatorPresence /> : undefined
             }
             onMobileMenuToggle={() => setMobileOpen((value) => !value)}
             mobileMenuRef={mobileMenuRef}

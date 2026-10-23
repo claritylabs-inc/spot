@@ -12,6 +12,7 @@ import {
 import { ChatAttachmentList } from "@/components/chat/attachment-chip";
 import {
   ChatAssistantTurn,
+  ChatAvatar,
   ChatCopyButton,
   ChatUserTurn,
 } from "@/components/chat/chat-message";
@@ -238,6 +239,7 @@ function EmptyThread({
 function OperatorMessageRow({
   threadId,
   message,
+  viewerUserId,
   working,
   showSender,
   onFollowUp,
@@ -248,6 +250,7 @@ function OperatorMessageRow({
 }: {
   threadId: string;
   message: OperatorAgentMessage;
+  viewerUserId: string | null;
   working: boolean;
   showSender: boolean;
   onFollowUp: (message: string) => Promise<void>;
@@ -320,11 +323,20 @@ function OperatorMessageRow({
   }
 
   const emailBody = message.channel === "email" && Boolean(content);
+  const senderName =
+    message.sender?.name ?? (message.userName?.trim() || "Operator");
   return (
     <ChatUserTurn
-      own
+      own={!message.sender || message.sender.userId === viewerUserId}
       showSender={showSender}
-      name={message.userName?.trim() || "Operator"}
+      name={senderName}
+      avatar={
+        <ChatAvatar
+          name={senderName}
+          title={senderName}
+          imageUrl={message.sender?.avatarUrl}
+        />
+      }
       createdAt={message.createdAt}
       channel={bubbleChannel}
       isError={message.status === "error"}
@@ -401,12 +413,20 @@ export function OperatorConversation({
     [emailDraftsByMessage, openEmailDraftId],
   );
   const hasMessages = detail.messages.length > 0;
+  const senderKeys = new Set(
+    detail.messages
+      .filter((message) => message.role === "user")
+      .map(
+        (message) =>
+          message.sender?.userId ?? (message.userName?.trim() || "Operator"),
+      ),
+  );
+  // Name senders once anyone besides the viewer has written here.
   const multipleSenders =
-    new Set(
-      detail.messages
-        .filter((message) => message.role === "user")
-        .map((message) => message.userName?.trim() || "Operator"),
-    ).size > 1;
+    senderKeys.size > 1 ||
+    [...senderKeys].some(
+      (key) => detail.viewerUserId !== null && key !== detail.viewerUserId,
+    );
   const hasPendingConfirmation = detail.confirmations.some(
     (confirmation) => confirmation.state === "pending",
   );
@@ -514,6 +534,7 @@ export function OperatorConversation({
                 <OperatorMessageRow
                   threadId={threadId}
                   message={message}
+                  viewerUserId={detail.viewerUserId}
                   showSender={multipleSenders}
                   onFollowUp={onFollowUp}
                   emailDrafts={emailDraftsByMessage?.[message.id] ?? []}

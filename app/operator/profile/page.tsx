@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/app-shell";
 import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
+import { ChatAvatar } from "@/components/chat/chat-message";
+import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
+import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@claritylabs-inc/ui/components/input";
-import { Label } from "@claritylabs-inc/ui/components/label";
 import {
   OperationalPanel,
   OperationalPanelBody,
@@ -20,11 +23,11 @@ import { PasswordSettings } from "@/components/profile/password-settings";
 import { StreamingPreference } from "@/components/profile/streaming-preference";
 import { ThemeModeSelector } from "@/components/ui/theme-mode-selector";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { OPERATOR_EMAIL_ADDRESS } from "@/convex/lib/operatorEmailAddress";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import { typeStyle } from "@/lib/typography";
 
 type OperatorCurrent = FunctionReturnType<typeof api.operator.current>;
 
@@ -44,6 +47,82 @@ function OperatorProfileShell({
     >
       {children}
     </AppShell>
+  );
+}
+
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+
+function OperatorAvatarField({ current }: { current: OperatorCurrent }) {
+  const generateUploadUrl = useMutation(api.operator.generateAvatarUploadUrl);
+  const setAvatar = useMutation(api.operator.setAvatar);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [saving, setSaving] = useState(false);
+  const name = current.user.name?.trim() || current.user.email || "Operator";
+
+  async function save(file: File | null) {
+    if (file && (!file.type.startsWith("image/") || file.size > AVATAR_MAX_BYTES)) {
+      toast.error("Choose an image smaller than 5 MB");
+      return;
+    }
+    setSaving(true);
+    try {
+      let storageId: Id<"_storage"> | null = null;
+      if (file) {
+        const response = await fetch(await generateUploadUrl({}), {
+          method: "POST",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+        if (!response.ok) throw new Error("Upload failed");
+        ({ storageId } = (await response.json()) as {
+          storageId: Id<"_storage">;
+        });
+      }
+      await setAvatar({ storageId });
+    } catch (error) {
+      toast.error(
+        getUserFacingErrorMessage(error, "Your photo could not be saved."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <ChatAvatar name={name} imageUrl={current.user.avatarUrl} className="size-8" />
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file) void save(file);
+        }}
+      />
+      <PillButton
+        type="button"
+        variant="ghost"
+        size="compact"
+        disabled={saving}
+        onClick={() => inputRef.current?.click()}
+      >
+        {saving ? "Saving…" : current.user.hasUploadedAvatar ? "Replace" : "Upload"}
+      </PillButton>
+      {current.user.hasUploadedAvatar ? (
+        <PillButton
+          type="button"
+          variant="ghost"
+          size="compact"
+          disabled={saving}
+          onClick={() => void save(null)}
+        >
+          Use Gravatar
+        </PillButton>
+      ) : null}
+    </div>
   );
 }
 
@@ -89,90 +168,49 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
               void profileAutoSave.saveNow();
             }}
           >
-            <OperationalPanel>
-              <OperationalPanelHeader title="Account" />
-              <OperationalPanelBody className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="operator-profile-name" className="mb-1.5">
-                    Name
-                  </Label>
-                  <Input
-                    id="operator-profile-name"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    onBlur={() => void profileAutoSave.saveNow()}
-                    placeholder="Your name"
-                    autoComplete="name"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="operator-profile-phone" className="mb-1.5">
-                    iMessage phone
-                  </Label>
-                  <Input
-                    id="operator-profile-phone"
-                    type="tel"
-                    value={phone}
-                    onChange={(event) => setPhone(event.target.value)}
-                    onBlur={() => void profileAutoSave.saveNow()}
-                    placeholder="+1 202 555 0100"
-                    autoComplete="tel"
-                  />
-                  <p
-                    className={`mt-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
-                  >
-                    Messages from this number can use the internal operator
-                    agent.
-                  </p>
-                </div>
-                <div className="min-w-0">
-                  <p
-                    id="operator-profile-login-emails"
-                    className={`mb-1.5 ${typeStyle("label.field")}`}
-                  >
-                    Login emails
-                  </p>
-                  <ul
-                    aria-labelledby="operator-profile-login-emails"
-                    className={`space-y-1 break-all ${typeStyle("body.default")}`}
-                  >
-                    {loginEmails.map((loginEmail) => (
-                      <li key={loginEmail}>{loginEmail}</li>
-                    ))}
-                  </ul>
-                  <p
-                    className={`mt-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
-                  >
-                    Sign in with any of these addresses.
-                  </p>
-                </div>
-                <div>
-                  <Label htmlFor="operator-profile-access" className="mb-1.5">
-                    Access level
-                  </Label>
-                  <Input
-                    id="operator-profile-access"
-                    value={accessLevel}
-                    disabled
-                  />
-                </div>
-                <div className="min-w-0 sm:col-span-2">
-                  <p className={`mb-1.5 ${typeStyle("label.field")}`}>
-                    Operator email
-                  </p>
-                  <p className={`break-all ${typeStyle("body.default")}`}>
-                    {OPERATOR_EMAIL_ADDRESS}
-                  </p>
-                  <p
-                    className={`mt-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
-                  >
-                    Send or forward emails from a login address above. Spot
-                    replies by email and saves the conversation in your private
-                    operator threads.
-                  </p>
-                </div>
-              </OperationalPanelBody>
-            </OperationalPanel>
+            <InlineFieldCard title="Account">
+              <InlineFieldRow label="Photo">
+                <OperatorAvatarField current={current} />
+              </InlineFieldRow>
+              <InlineFieldRow label="Name">
+                <Input
+                  aria-label="Name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  onBlur={() => void profileAutoSave.saveNow()}
+                  placeholder="Your name"
+                  autoComplete="name"
+                />
+              </InlineFieldRow>
+              <InlineFieldRow label="iMessage phone">
+                <Input
+                  aria-label="iMessage phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  onBlur={() => void profileAutoSave.saveNow()}
+                  placeholder="+1 202 555 0100"
+                  autoComplete="tel"
+                  title="Messages from this number can use the operator agent"
+                />
+              </InlineFieldRow>
+              <InlineFieldRow label="Access level">{accessLevel}</InlineFieldRow>
+              <InlineFieldRow label="Login emails">
+                <ul className="space-y-0.5 py-1.5 break-all">
+                  {loginEmails.map((loginEmail) => (
+                    <li key={loginEmail}>{loginEmail}</li>
+                  ))}
+                </ul>
+              </InlineFieldRow>
+              <InlineFieldRow label="Operator email">
+                <span
+                  className="break-all"
+                  title="Email from a login address; replies land in your operator threads"
+                >
+                  {OPERATOR_EMAIL_ADDRESS}
+                </span>
+              </InlineFieldRow>
+            </InlineFieldCard>
           </form>
         </FadeIn>
 

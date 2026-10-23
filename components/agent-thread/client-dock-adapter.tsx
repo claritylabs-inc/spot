@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useMutation } from "convex/react";
 import type {
   AgentDockAdapter,
+  AgentDockHistoryView,
   AgentDockTabSummary,
 } from "@/components/agent-dock/types";
 import { api } from "@/convex/_generated/api";
@@ -14,7 +15,8 @@ import { getThreadDisplayLabel } from "@/lib/thread-display";
 import { ClientAgentChat } from "./client-agent-chat";
 import type { ThreadMessage } from "./types";
 
-function useClientThreads(archived: boolean) {
+function useClientThreads(view: AgentDockHistoryView) {
+  const archived = view === "archived";
   const threads = useCachedQuery(
     archived ? "threads.list.archived" : "threads.list.active",
     api.threads.list,

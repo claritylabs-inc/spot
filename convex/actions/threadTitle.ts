@@ -295,20 +295,23 @@ export const generate = internalAction({
   },
 });
 
-export const generateOperatorSlack = internalAction({
+/** Short title for an operator thread from its first message; Slack keeps its channel prefix. */
+export const generateOperatorTitle = internalAction({
   args: {
     threadId: v.id("operatorAgentThreads"),
     expectedTitle: v.string(),
-    titlePrefix: v.string(),
+    titlePrefix: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<void> => {
     try {
       const context = await ctx.runQuery(
-        internal.operatorAgent.getSlackThreadTitleContextInternal,
+        internal.operatorAgent.getThreadTitleContextInternal,
         { threadId: args.threadId, expectedTitle: args.expectedTitle },
       );
       if (!context) return;
-      const seed = slackThreadTitleSeed(context.message.content);
+      const seed = args.titlePrefix
+        ? slackThreadTitleSeed(context.message.content)
+        : context.message.content.trim();
       if (!seed) return;
       const titleContext = {
         userMessage: seed,
@@ -325,18 +328,21 @@ export const generateOperatorSlack = internalAction({
           (options) =>
             generateObjectForPublicTask(ctx, "summary", options, {
               taskKind: "thread_title",
-              trace: { traceId: String(args.threadId), channel: "slack" },
+              trace: {
+                traceId: String(args.threadId),
+                channel: args.titlePrefix ? "slack" : "convex",
+              },
             }),
           { seed, context: titleContext, titlePrefix: args.titlePrefix },
         );
       } catch (error) {
-        logAiError("threadTitle.generateOperatorSlackText", error, {
+        logAiError("threadTitle.generateOperatorText", error, {
           threadId: args.threadId,
         });
         title = fallbackThreadTitle(seed, args.titlePrefix);
       }
       await ctx.runMutation(
-        internal.operatorAgent.updateSlackThreadTitleInternal,
+        internal.operatorAgent.updateThreadTitleInternal,
         {
           threadId: args.threadId,
           expectedTitle: args.expectedTitle,
@@ -344,7 +350,7 @@ export const generateOperatorSlack = internalAction({
         },
       );
     } catch (error) {
-      logAiError("threadTitle.generateOperatorSlack", error, {
+      logAiError("threadTitle.generateOperator", error, {
         threadId: args.threadId,
       });
     }
