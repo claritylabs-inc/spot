@@ -3359,6 +3359,13 @@ export default defineSchema({
       confidence: v.number(),
       reason: v.string(),
     })),
+    forwardLinkAttempt: v.optional(v.object({
+      messageId: v.id("teamEmailMessages"),
+      status: v.union(v.literal("claimed"), v.literal("completed"), v.literal("failed")),
+      startedAt: v.number(),
+      finishedAt: v.optional(v.number()),
+      reason: v.optional(v.string()),
+    })),
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     resendThreadId: v.optional(v.string()),
     clientOrgId: v.optional(v.id("organizations")),
