@@ -36,7 +36,10 @@ import {
   SelectionDeleteBar,
   useRowSelection,
 } from "@/components/operator/bulk-delete";
-import { ListToolbar } from "@/components/ui/list-toolbar";
+import {
+  ListToolbar,
+  type FilterDefinition,
+} from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
@@ -65,10 +68,12 @@ import {
   TableHeader,
   TableRow,
   TableNameLink,
+  SortableTableHead,
 } from "@/components/ui/table";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useLocalDraft } from "@/hooks/use-local-draft";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate } from "@/lib/date-format";
@@ -91,6 +96,17 @@ type PolicyOption = {
 };
 
 type StatusFilter = "all" | "open" | "closed";
+
+const STATUS_ORDER = new Map<string, number>(
+  REQUEST_STATUS_OPTIONS.map((option, index) => [option.value, index]),
+);
+const REQUEST_SORT_COLUMNS = {
+  title: (request: ProcurementRequestRow) => request.title,
+  client: (request: ProcurementRequestRow) => request.client?.name,
+  status: (request: ProcurementRequestRow) => STATUS_ORDER.get(request.status),
+  targetDate: (request: ProcurementRequestRow) => request.targetEffectiveDate,
+  updated: (request: ProcurementRequestRow) => request.updatedAt,
+};
 
 type ProcurementRequestRow = {
   _id: Id<"procurementRequests">;
@@ -696,6 +712,14 @@ export function ProcurementListWorkspace({
     `procurement:${scopeKey}:list-search`,
     "",
   );
+  const [statusFilter, setStatusFilter] = useFollowedState<string[]>(
+    `procurement:${scopeKey}:list-status`,
+    [],
+  );
+  const [clientFilter, setClientFilter] = useFollowedState<string[]>(
+    `procurement:${scopeKey}:list-client`,
+    [],
+  );
   const [confirmDelete, setConfirmDelete] = useFollowedState(
     `procurement:${scopeKey}:confirm-delete`,
     false,
@@ -710,10 +734,17 @@ export function ProcurementListWorkspace({
     (request) =>
       (filter === "all" ||
         CLOSED_STATUSES.includes(request.status) === (filter === "closed")) &&
+      (statusFilter.length === 0 || statusFilter.includes(request.status)) &&
+      (clientFilter.length === 0 || clientFilter.includes(request.clientOrgId)) &&
       (!searchText ||
         [request.title, request.client?.name].some((value) =>
           value?.toLowerCase().includes(searchText),
         )),
+  );
+  const tableSort = useTableSort(
+    `procurement:${scopeKey}:list`,
+    visibleRequests,
+    REQUEST_SORT_COLUMNS,
   );
   const selection = useRowSelection<Id<"procurementRequests">>(
     `procurement:${scopeKey}:selected`,
@@ -847,10 +878,55 @@ export function ProcurementListWorkspace({
       />
     );
 
+  const clientOptions = Array.from(
+    new Map(
+      requests.flatMap((request) =>
+        request.client
+          ? [[request.client._id, request.client.name] as const]
+          : [],
+      ),
+    ),
+    ([value, label]) => ({ value: value as string, label }),
+  ).sort((left, right) => left.label.localeCompare(right.label));
+  const filters: FilterDefinition[] = [
+    ...(allClients
+      ? [
+          {
+            id: "client",
+            label: "Client",
+            inline: true,
+            multiple: true,
+            value: clientFilter,
+            onChange: (value: string[]) => {
+              setClientFilter(value);
+              selection.clear();
+            },
+            options: clientOptions,
+          },
+        ]
+      : []),
+    {
+      id: "status",
+      label: "Status",
+      multiple: true,
+      value: statusFilter,
+      onChange: (value) => {
+        setStatusFilter(value);
+        selection.clear();
+      },
+      options: REQUEST_STATUS_OPTIONS.map(({ value, label }) => ({
+        value,
+        label,
+      })),
+    },
+  ];
+
   const columns = 4 + (allClients ? 1 : 0) + (readOnly ? 0 : 2);
   return (
     <div className="flex flex-col gap-4">
       <ListToolbar
+        followKey={`procurement:${scopeKey}:list`}
+        filters={filters}
         tabs={
           <Tabs
             value={filter}
@@ -896,13 +972,38 @@ export function ProcurementListWorkspace({
                   />
                 </TableHead>
               )}
-              <TableHead className={allClients ? "w-[34%]" : "w-[52%]"}>
+              <SortableTableHead
+                className={allClients ? "w-[34%]" : "w-[52%]"}
+                {...tableSort.head("title")}
+              >
                 Request
-              </TableHead>
-              {allClients && <TableHead className="w-[24%]">Client</TableHead>}
-              <TableHead className="w-[16%]">Status</TableHead>
-              <TableHead className="w-[14%]">Target date</TableHead>
-              <TableHead className="w-[12%]">Updated</TableHead>
+              </SortableTableHead>
+              {allClients && (
+                <SortableTableHead
+                  className="w-[24%]"
+                  {...tableSort.head("client")}
+                >
+                  Client
+                </SortableTableHead>
+              )}
+              <SortableTableHead
+                className="w-[16%]"
+                {...tableSort.head("status")}
+              >
+                Status
+              </SortableTableHead>
+              <SortableTableHead
+                className="w-[14%]"
+                {...tableSort.head("targetDate")}
+              >
+                Target date
+              </SortableTableHead>
+              <SortableTableHead
+                className="w-[12%]"
+                {...tableSort.head("updated")}
+              >
+                Updated
+              </SortableTableHead>
               {!readOnly && (
                 <TableHead className="w-0">
                   <span className="sr-only">Actions</span>
@@ -917,11 +1018,11 @@ export function ProcurementListWorkspace({
                   colSpan={columns}
                   className={`h-24 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                 >
-                  No requests match this search.
+                  No requests match these filters.
                 </TableCell>
               </TableRow>
             ) : null}
-            {visibleRequests.map((request) => {
+            {tableSort.rows.map((request) => {
               const brand = request.client
                 ? clientBrand.get(request.client._id)
                 : undefined;

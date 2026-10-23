@@ -3,11 +3,18 @@
 import type { ReactNode } from "react";
 import { Search } from "lucide-react";
 import {
+  FilterBar,
+  type FilterDefinition,
+} from "@claritylabs-inc/ui/components/filter-bar";
+import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@claritylabs-inc/ui/components/input-group";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { cn } from "@/lib/utils";
+
+export type { FilterDefinition };
 
 type SearchFieldProps = {
   value: string;
@@ -39,25 +46,66 @@ export function SearchField({
   );
 }
 
-/** Tabs on the left; search and trailing controls right-aligned opposite them. */
+/**
+ * A list's toolbar: view tabs, inline filter chips and the Filters menu on the
+ * left; search and trailing controls right-aligned. Filter definitions own
+ * their values; `followKey` keeps open filter popovers followed.
+ */
 export function ListToolbar({
   tabs,
+  filters = [],
+  followKey,
+  onClearFilters,
   search,
   actions,
 }: {
-  tabs: ReactNode;
-  search: SearchFieldProps;
+  tabs?: ReactNode;
+  filters?: FilterDefinition[];
+  followKey: string;
+  /** One batched clear, for filters stored together (e.g. in the URL). */
+  onClearFilters?: () => void;
+  search?: SearchFieldProps;
   actions?: ReactNode;
 }) {
+  const [menuOpen, setMenuOpen] = useFollowedState(
+    `${followKey}:filters-open`,
+    false,
+  );
+  const [pane, setPane] = useFollowedState<string | null>(
+    `${followKey}:filters-pane`,
+    null,
+  );
+  const [openChip, setOpenChip] = useFollowedState<string | null>(
+    `${followKey}:filter-chip`,
+    null,
+  );
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {tabs}
-      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
-        <div className="w-56">
-          <SearchField {...search} />
-        </div>
-        {actions}
-      </div>
-    </div>
+    <FilterBar
+      leading={tabs}
+      filters={filters}
+      onClearAll={onClearFilters}
+      menu={{
+        open: menuOpen,
+        onOpenChange: setMenuOpen,
+        pane,
+        onPaneChange: setPane,
+      }}
+      chip={(id) => ({
+        open: openChip === id,
+        onOpenChange: (open) => setOpenChip(open ? id : null),
+      })}
+      trailing={
+        search || actions ? (
+          <>
+            {search ? (
+              <div className="w-56">
+                <SearchField {...search} />
+              </div>
+            ) : null}
+            {actions}
+          </>
+        ) : null
+      }
+    />
   );
 }

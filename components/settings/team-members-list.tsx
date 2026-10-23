@@ -9,14 +9,15 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
 import type {
   TeamInvitation,
   TeamMember,
 } from "@/components/settings/team-types";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { typeStyle } from "@/lib/typography";
 
 type TeamMembersListProps = {
@@ -29,6 +30,19 @@ type TeamMembersListProps = {
   onEditMember: (member: TeamMember) => void;
   onOpenInvitation: (invitation: TeamInvitation) => void;
   onInviteMember?: () => void;
+};
+
+type TeamRow =
+  | { kind: "member"; member: TeamMember }
+  | { kind: "invitation"; invitation: TeamInvitation };
+
+const TEAM_SORT_COLUMNS = {
+  name: (row: TeamRow) =>
+    row.kind === "member" ? row.member.name || row.member.email : undefined,
+  email: (row: TeamRow) =>
+    row.kind === "member" ? row.member.email : row.invitation.email,
+  access: (row: TeamRow) =>
+    row.kind === "member" ? row.member.role : row.invitation.role,
 };
 
 export function TeamMembersList({
@@ -44,6 +58,24 @@ export function TeamMembersList({
 }: TeamMembersListProps) {
   const pendingInvitations =
     invitations?.filter((invitation) => invitation.status === "pending") ?? [];
+  // Members and pending invitations sort within their own groups.
+  const tableSort = useTableSort(
+    "team-members",
+    [
+      ...members.map((member) => ({ kind: "member" as const, member })),
+      ...pendingInvitations.map((invitation) => ({
+        kind: "invitation" as const,
+        invitation,
+      })),
+    ],
+    TEAM_SORT_COLUMNS,
+  );
+  const sortedMembers = tableSort.rows.flatMap((row) =>
+    row.kind === "member" ? [row.member] : [],
+  );
+  const sortedInvitations = tableSort.rows.flatMap((row) =>
+    row.kind === "invitation" ? [row.invitation] : [],
+  );
 
   if (members.length === 0 && pendingInvitations.length === 0) {
     return (
@@ -65,13 +97,25 @@ export function TeamMembersList({
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-[35%] px-5">Member</TableHead>
-            <TableHead className="w-[40%]">Email</TableHead>
-            <TableHead className="w-[25%] px-5">Access</TableHead>
+            <SortableTableHead
+              className="w-[35%] px-5"
+              {...tableSort.head("name")}
+            >
+              Member
+            </SortableTableHead>
+            <SortableTableHead className="w-[40%]" {...tableSort.head("email")}>
+              Email
+            </SortableTableHead>
+            <SortableTableHead
+              className="w-[25%] px-5"
+              {...tableSort.head("access")}
+            >
+              Access
+            </SortableTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {members.map((member) => (
+          {sortedMembers.map((member) => (
             <TableRow
               key={member.membershipId}
               aria-label={
@@ -154,7 +198,7 @@ export function TeamMembersList({
             </TableRow>
           ))}
 
-          {pendingInvitations.map((invitation) => (
+          {sortedInvitations.map((invitation) => (
             <TableRow
               key={invitation._id}
               className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"

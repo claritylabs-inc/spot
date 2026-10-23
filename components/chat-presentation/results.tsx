@@ -29,7 +29,9 @@ import {
   TableHeader,
   TableNameLink,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
+import { useTableSort, type TableSortValue } from "@/hooks/use-table-sort";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { usePresentation } from "./context";
 import { referenceHref, Sources } from "./references";
@@ -70,30 +72,55 @@ export function FactList({ facts }: PresentationProps<"FactList">) {
   );
 }
 
+type ComparisonRow = PresentationProps<"ComparisonTable">["rows"][number] & {
+  index: number;
+};
+
 export function ComparisonTable({
   columns,
   rows,
 }: PresentationProps<"ComparisonTable">) {
-  const { openEvidence } = usePresentation();
+  const { stateKey, openEvidence } = usePresentation();
+  const indexedRows = useMemo(
+    () => rows.map((row, index) => ({ ...row, index })),
+    [rows],
+  );
+  const sortColumns = useMemo(() => {
+    const entries: [string, (row: ComparisonRow) => TableSortValue][] = [
+      ["item", (row) => row.label],
+    ];
+    columns.forEach((column, valueIndex) =>
+      entries.push([`column:${column.id}`, (row) => row.values[valueIndex]]),
+    );
+    return Object.fromEntries(entries);
+  }, [columns]);
+  const tableSort = useTableSort(
+    followedContentKey(`${stateKey}:comparison`, { columns, rows }),
+    indexedRows,
+    sortColumns,
+  );
   return (
     <OperationalPanel>
       <Table aria-label="Comparison">
         <TableHeader>
           <TableRow>
-            <TableHead scope="col">Item</TableHead>
+            <SortableTableHead scope="col" {...tableSort.head("item")}>
+              Item
+            </SortableTableHead>
             {columns.map((column) => (
-              <TableHead
+              <SortableTableHead
                 key={column.id}
                 scope="col"
                 className="min-w-32 whitespace-normal"
+                {...tableSort.head(`column:${column.id}`)}
               >
                 {column.label}
-              </TableHead>
+              </SortableTableHead>
             ))}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((row, index) => {
+          {tableSort.rows.map((row) => {
             const inspect = () =>
               openEvidence?.({
                 title: row.label,
@@ -105,7 +132,7 @@ export function ComparisonTable({
               });
             return (
               <TableRow
-                key={index}
+                key={row.index}
                 tabIndex={0}
                 aria-label={`Inspect ${row.label}`}
                 onClick={inspect}

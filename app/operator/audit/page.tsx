@@ -12,13 +12,6 @@ import {
   OperationalPanel,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@claritylabs-inc/ui/components/select";
-import {
   StatusTag,
   type StatusPresentation,
 } from "@claritylabs-inc/ui/components/status-tag";
@@ -28,14 +21,16 @@ import { AppShell } from "@/components/app-shell";
 import { ChatAvatar } from "@/components/chat/chat-message";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { PillButton } from "@/components/ui/pill-button";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
 import { getOperatorBrokerHref } from "@/lib/operator-navigation";
 import { typeStyle } from "@/lib/typography";
@@ -50,6 +45,14 @@ const SOURCES = {
   agent: "Spot agent",
   mcp: "MCP",
 } as const;
+
+const AUDIT_SORT_COLUMNS = {
+  time: (entry: AuditEntry) => entry.at,
+  operator: (entry: AuditEntry) => entry.actor?.name ?? "System",
+  source: (entry: AuditEntry) => sourceLabel(entry),
+  action: (entry: AuditEntry) => entry.title,
+  target: (entry: AuditEntry) => targetLink(entry)?.label,
+};
 
 function isSource(value: string | null): value is keyof typeof SOURCES {
   return value !== null && value in SOURCES;
@@ -224,21 +227,23 @@ export default function OperatorAuditPage() {
   const [feed, setFeed] = useState(latest);
   if (latest !== undefined && latest !== feed) setFeed(latest);
   const entries = feed?.entries ?? [];
+  const tableSort = useTableSort("operator-audit:entries", entries, AUDIT_SORT_COLUMNS, {
+    key: "time",
+    direction: "desc",
+  });
   const selected = entries.find((entry) => entry.id === selectedId) ?? null;
 
-  function setFilter(key: "operator" | "source", value: string) {
+  function setFilters(values: Partial<Record<"operator" | "source", string>>) {
     const next = new URLSearchParams(params);
-    if (value === "all") next.delete(key);
-    else next.set(key, value);
+    for (const [key, value] of Object.entries(values)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
     setLimit(PAGE_SIZE);
     setFeed(undefined);
     setSelectedId(null);
     router.replace(`${pathname}?${next}`, { scroll: false });
   }
-
-  const operatorName =
-    operators?.find((operator) => operator.userId === operatorParam)?.name ??
-    "All operators";
 
   return (
     <AppShell
@@ -253,53 +258,55 @@ export default function OperatorAuditPage() {
       }
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <Select
-            value={operatorParam ?? "all"}
-            onValueChange={(value) => setFilter("operator", String(value))}
-          >
-            <SelectTrigger className="w-52" aria-label="Filter by operator">
-              <SelectValue>{operatorName}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All operators</SelectItem>
-              {operators?.map((operator) => (
-                <SelectItem key={operator.userId} value={operator.userId}>
-                  {operator.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={source ?? "all"}
-            onValueChange={(value) => setFilter("source", String(value))}
-          >
-            <SelectTrigger className="w-40" aria-label="Filter by source">
-              <SelectValue>{source ? SOURCES[source] : "All sources"}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All sources</SelectItem>
-              {Object.entries(SOURCES).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <ListToolbar
+          followKey="operator-audit"
+          onClearFilters={() => setFilters({ operator: "", source: "" })}
+          filters={[
+            {
+              id: "operator",
+              label: "Operator",
+              inline: true,
+              options: (operators ?? []).map((operator) => ({
+                value: operator.userId,
+                label: operator.name,
+              })),
+              value: operatorParam ? [operatorParam] : [],
+              onChange: ([value]) => setFilters({ operator: value ?? "" }),
+            },
+            {
+              id: "source",
+              label: "Source",
+              inline: true,
+              options: Object.entries(SOURCES).map(([value, label]) => ({
+                value,
+                label,
+              })),
+              value: source ? [source] : [],
+              onChange: ([value]) => setFilters({ source: value ?? "" }),
+            },
+          ]}
+        />
         <OperationalPanel>
           <Table>
             <TableHeader>
               <TableRow>
-                {["Time", "Operator", "Source", "Action", "Target"].map(
-                  (label) => (
-                    <TableHead key={label}>{label}</TableHead>
-                  ),
-                )}
+                {(
+                  [
+                    ["time", "Time"],
+                    ["operator", "Operator"],
+                    ["source", "Source"],
+                    ["action", "Action"],
+                    ["target", "Target"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <SortableTableHead key={key} {...tableSort.head(key)}>
+                    {label}
+                  </SortableTableHead>
+                ))}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {entries.map((entry) => {
+              {tableSort.rows.map((entry) => {
                 const target = targetLink(entry);
                 return (
                   <TableRow

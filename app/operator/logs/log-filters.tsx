@@ -1,8 +1,5 @@
 "use client";
 import { ArrowLeft, SlidersHorizontal } from "lucide-react";
-import { useCachedOperatorClients } from "@/lib/sync/operator-cached-queries";
-import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
-import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Label } from "@claritylabs-inc/ui/components/label";
 import { PillButton } from "@/components/ui/pill-button";
@@ -29,6 +26,21 @@ export type LogFilters = {
   search: string;
   hours: string;
 };
+export const LOG_STATUS_OPTIONS = [
+  { value: "error", label: "Error" },
+  { value: "incomplete", label: "Incomplete" },
+  { value: "running", label: "Running" },
+  { value: "complete", label: "Complete" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "unknown", label: "Unknown outcome" },
+];
+export const LOG_ROUTE_SOURCE_OPTIONS = [
+  { value: "routed", label: "Routed" },
+  { value: "manual", label: "Manual" },
+  { value: "jev", label: "Jev" },
+  { value: "fallback", label: "Fallback" },
+  { value: "automatic", label: "Automatic" },
+];
 export const defaultFilters: LogFilters = {
   orgId: "",
   status: "",
@@ -56,7 +68,6 @@ export function LogSidebar({
   onChange: (filters: LogFilters, resetRange?: boolean) => void;
   customRange?: boolean;
 }) {
-  const clients = useCachedOperatorClients();
   if (!open)
     return (
       <OperatorSidebar
@@ -82,7 +93,7 @@ export function LogSidebar({
       </SidebarTooltipProvider>
     );
   const select = (
-    key: "hours" | "status" | "routeSource",
+    key: "hours",
     label: string,
     options: [string, string][],
   ) => (
@@ -142,15 +153,6 @@ export function LogSidebar({
           ["168", "Last 7 days"],
           ["720", "Last 30 days"],
         ])}
-        {select("status", "Status", [
-          ["all", "All statuses"],
-          ["error", "Error"],
-          ["incomplete", "Incomplete"],
-          ["running", "Running"],
-          ["complete", "Complete"],
-          ["cancelled", "Cancelled"],
-          ["unknown", "Unknown outcome"],
-        ])}
         {(["task", "model", "channel"] as const).map((key) => (
           <div key={key} className="space-y-2">
             <Label htmlFor={`log-${key}`}>
@@ -166,39 +168,6 @@ export function LogSidebar({
             />
           </div>
         ))}
-        <div className="space-y-2">
-          <Label>Client</Label>
-          <SearchableSelect
-            ariaLabel="Filter by client"
-            value={filters.orgId || "all"}
-            onChange={(value) =>
-              onChange({ ...filters, orgId: value === "all" ? "" : value })
-            }
-            options={[
-              { value: "all", label: "All clients" },
-              ...(clients ?? []).map((client) => ({
-                value: client._id,
-                label: client.name,
-                icon: (
-                  <OrgBrandIcon
-                    name={client.name}
-                    iconUrl={client.iconUrl}
-                    website={client.website}
-                    size="xs"
-                  />
-                ),
-              })),
-            ]}
-          />
-        </div>
-        {select("routeSource", "Route source", [
-          ["all", "All routes"],
-          ["routed", "Routed"],
-          ["manual", "Manual"],
-          ["jev", "Jev"],
-          ["fallback", "Fallback"],
-          ["automatic", "Automatic"],
-        ])}
       </div>
       <div className="border-t border-border p-4">
         <PillButton

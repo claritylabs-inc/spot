@@ -12,8 +12,8 @@ import {
   TableHeader,
   TableBody,
   TableRow,
-  TableHead,
   TableCell,
+  SortableTableHead,
 } from "@/components/ui/table";
 import {
   Select,
@@ -38,7 +38,16 @@ import {
   type ModelCall,
 } from "../logs/log-utils";
 import { useFollowedState } from "@/hooks/use-followed-state";
-import { summarizeCalls } from "./usage-summary";
+import { useTableSort } from "@/hooks/use-table-sort";
+import { summarizeCalls, type UsageRow } from "./usage-summary";
+
+const USAGE_SORT_COLUMNS = {
+  label: (row: UsageRow) => displayTask(row.label),
+  calls: (row: UsageRow) => row.calls,
+  input: (row: UsageRow) => (row.tokenCalls ? row.input : undefined),
+  output: (row: UsageRow) => (row.tokenCalls ? row.output : undefined),
+  cost: (row: UsageRow) => row.cost,
+};
 
 export default function OperatorUsagePage() {
   const convex = useConvex();
@@ -93,6 +102,12 @@ export default function OperatorUsagePage() {
     };
   }, [convex, from, setSelectedLabel, to]);
   const summary = useMemo(() => summarizeCalls(calls, group), [calls, group]);
+  const tableSort = useTableSort(
+    "operator-usage:rows",
+    summary.rows,
+    USAGE_SORT_COLUMNS,
+    { key: "cost", direction: "desc" },
+  );
   const selected =
     summary.rows.find((row) => row.label === selectedLabel) ?? null;
   const max = Math.max(...summary.days.map((row) => row.cost), 0.000001);
@@ -298,19 +313,23 @@ export default function OperatorUsagePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {[
-                      displayTask(group),
-                      "Calls",
-                      "Input tokens",
-                      "Output tokens",
-                      "Recorded cost",
-                    ].map((label) => (
-                      <TableHead key={label}>{label}</TableHead>
+                    {(
+                      [
+                        ["label", displayTask(group)],
+                        ["calls", "Calls"],
+                        ["input", "Input tokens"],
+                        ["output", "Output tokens"],
+                        ["cost", "Recorded cost"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <SortableTableHead key={key} {...tableSort.head(key)}>
+                        {label}
+                      </SortableTableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summary.rows.map((row) => (
+                  {tableSort.rows.map((row) => (
                     <TableRow
                       key={row.label}
                       tabIndex={0}

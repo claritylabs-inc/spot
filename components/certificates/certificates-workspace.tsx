@@ -23,6 +23,7 @@ import {
   OperationalSkeletonList,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import {
   Select,
   SelectContent,
@@ -40,7 +41,7 @@ import { typeStyle } from "@/lib/typography";
 import { CertificateGeneratePanel } from "@/components/certificates/certificate-generate-panel";
 
 type CertificateWorkspaceTab = "active" | "archived";
-type CertificatePolicyFilter = "all" | `policy:${string}`;
+type CertificatePolicyFilter = `policy:${string}`;
 
 type CertificatesWorkspaceShellArgs = {
   actions: ReactNode;
@@ -74,58 +75,8 @@ function certificatePolicyFilterOptions(rows: PolicyCertificateRecord[]) {
   for (const row of rows) {
     byValue.set(certificatePolicyFilterValue(row), certificatePolicyLabel(row.policy));
   }
-  return [
-    { value: "all" as const, label: "All policies" },
-    ...Array.from(byValue, ([value, label]) => ({ value, label }))
-      .sort((left, right) => left.label.localeCompare(right.label)),
-  ];
-}
-
-function filterCertificates({
-  rows,
-  policyFilter,
-}: {
-  rows: PolicyCertificateRecord[];
-  policyFilter: CertificatePolicyFilter;
-}) {
-  return rows.filter((row) =>
-    policyFilter === "all" || certificatePolicyFilterValue(row) === policyFilter,
-  );
-}
-
-function CertificatesPolicyFilter({
-  value,
-  label,
-  options,
-  onValueChange,
-}: {
-  value: CertificatePolicyFilter;
-  label: string;
-  options: Array<{ value: CertificatePolicyFilter; label: string }>;
-  onValueChange: (value: CertificatePolicyFilter) => void;
-}) {
-  return (
-    <label className={`flex min-w-0 max-w-xl flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
-      Policy
-      <Select
-        value={value}
-        onValueChange={(next) => next && onValueChange(next as CertificatePolicyFilter)}
-      >
-        <SelectTrigger className="w-full">
-          <SelectValue>{label}</SelectValue>
-        </SelectTrigger>
-        <SelectContent className="w-auto min-w-(--anchor-width) max-w-[36rem]">
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              <span className="block max-w-[32rem] truncate">
-                {option.label}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </label>
-  );
+  return Array.from(byValue, ([value, label]) => ({ value, label }))
+    .sort((left, right) => left.label.localeCompare(right.label));
 }
 
 function CertificateEmptyPanel({
@@ -187,7 +138,7 @@ export function CertificatesWorkspace({
   const [savingCertificateId, setSavingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
   const [archivingCertificateId, setArchivingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
   const [unarchivingCertificateId, setUnarchivingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
-  const [policyFilter, setPolicyFilter] = useFollowedState<CertificatePolicyFilter>(`${uiKey}:policy-filter`, "all");
+  const [policyFilter, setPolicyFilter] = useFollowedState<string[]>(`${uiKey}:policy-filters`, []);
   const viewerOrg = useCachedViewerOrg();
   const orgId =
     orgIdOverride ??
@@ -234,17 +185,16 @@ export function CertificatesWorkspace({
     () => certificatePolicyFilterOptions(tableCertificates),
     [tableCertificates],
   );
-  const effectivePolicyFilter = policyFilters.some((option) => option.value === policyFilter)
-    ? policyFilter
-    : "all";
-  const policyFilterLabel = policyFilters.find((option) => option.value === effectivePolicyFilter)?.label ??
-    "All policies";
+  const effectivePolicyFilter = policyFilter.filter((value) =>
+    policyFilters.some((option) => option.value === value),
+  );
   const visibleCertificates = useMemo(
     () =>
-      filterCertificates({
-        rows: tableCertificates,
-        policyFilter: effectivePolicyFilter,
-      }),
+      tableCertificates.filter(
+        (row) =>
+          effectivePolicyFilter.length === 0 ||
+          effectivePolicyFilter.includes(certificatePolicyFilterValue(row)),
+      ),
     [effectivePolicyFilter, tableCertificates],
   );
 
@@ -425,38 +375,55 @@ export function CertificatesWorkspace({
     <>
       <CertificatesPageContext activeCount={activeCertificates.length} />
       <div className="space-y-4">
-        {!renderShell && visibleTabs.length > 1 ? (
-          <Tabs
-            value={visibleTab}
-            onValueChange={(value) =>
-              setTab(value as CertificateWorkspaceTab)
+        {(!renderShell && visibleTabs.length > 1) ||
+        (!isLoading && tableCertificates.length > 0) ? (
+          <ListToolbar
+            followKey={uiKey}
+            tabs={
+              !renderShell && visibleTabs.length > 1 ? (
+                <Tabs
+                  value={visibleTab}
+                  onValueChange={(value) =>
+                    setTab(value as CertificateWorkspaceTab)
+                  }
+                >
+                  <TabsList variant="pill">
+                    {visibleTabs.map((item) => (
+                      <TabsTrigger key={item.value} value={item.value}>
+                        {item.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+              ) : undefined
             }
-          >
-            <TabsList variant="pill">
-              {visibleTabs.map((item) => (
-                <TabsTrigger key={item.value} value={item.value}>
-                  {item.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+            filters={
+              !isLoading && tableCertificates.length > 0
+                ? [
+                    {
+                      id: "policy",
+                      label: "Policy",
+                      inline: true,
+                      multiple: true,
+                      allLabel: "All policies",
+                      value: effectivePolicyFilter,
+                      onChange: setPolicyFilter,
+                      options: policyFilters,
+                    },
+                  ]
+                : []
+            }
+          />
         ) : null}
 
         {isLoading ? (
           <OperationalSkeletonList rows={4} />
         ) : tableCertificates.length > 0 ? (
           <>
-            <div>
-              <CertificatesPolicyFilter
-                value={effectivePolicyFilter}
-                label={policyFilterLabel}
-                options={policyFilters}
-                onValueChange={setPolicyFilter}
-              />
-            </div>
             {visibleCertificates.length > 0 ? (
               <CertificatesTable
                 rows={visibleCertificates}
+                sortKey={`${uiKey}:${tab}`}
                 selectedCertificateId={selectedCertificateId}
                 onSelectCertificate={(row) => setSelectedCertificateId(row._id)}
               />

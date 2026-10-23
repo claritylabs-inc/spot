@@ -5,13 +5,16 @@ import type { FunctionReturnType } from "convex/server";
 import { useConvex, usePaginatedQuery } from "convex/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import dayjs from "dayjs";
-import { Download, Pause, Play } from "lucide-react";
+import { Building2, Download, Pause, Play, Route } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
 import { useFollowedState } from "@/hooks/use-followed-state";
-import { Input } from "@claritylabs-inc/ui/components/input";
+import { useTableSort } from "@/hooks/use-table-sort";
+import { ListToolbar } from "@/components/ui/list-toolbar";
+import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
+import { useCachedOperatorClients } from "@/lib/sync/operator-cached-queries";
 import { PillButton } from "@/components/ui/pill-button";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
@@ -19,13 +22,19 @@ import {
   TableHeader,
   TableBody,
   TableRow,
-  TableHead,
   TableCell,
+  SortableTableHead,
 } from "@/components/ui/table";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { CallDetails } from "./call-details";
-import { defaultFilters, LogSidebar, type LogFilters } from "./log-filters";
+import {
+  defaultFilters,
+  LOG_ROUTE_SOURCE_OPTIONS,
+  LOG_STATUS_OPTIONS,
+  LogSidebar,
+  type LogFilters,
+} from "./log-filters";
 import {
   cost,
   diagnostic,
@@ -35,11 +44,28 @@ import {
   callStatusPresentation,
 } from "./log-utils";
 
+type Call = FunctionReturnType<
+  typeof api.modelRoutingEvents.listCalls
+>["page"][number];
+
+const CALL_SORT_COLUMNS = {
+  time: (call: Call) => call.timestamp,
+  status: (call: Call) => displayTask(call.status ?? "unknown"),
+  task: (call: Call) => displayTask(call.taskKind),
+  model: (call: Call) => call.model ?? call.callProvider,
+  tokens: (call: Call) =>
+    call.inputTokens === undefined && call.outputTokens === undefined
+      ? undefined
+      : (call.inputTokens ?? 0) + (call.outputTokens ?? 0),
+  cost: (call: Call) => call.costUsd,
+};
+
 export default function OperatorLogsPage() {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const convex = useConvex();
+  const clients = useCachedOperatorClients();
   const filters = Object.fromEntries(
     Object.entries(defaultFilters).map(([key, value]) => [
       key,
@@ -132,6 +158,10 @@ export default function OperatorLogsPage() {
     }
     return buckets;
   }, [from, to, results]);
+  const tableSort = useTableSort("operator-logs:calls", results, CALL_SORT_COLUMNS, {
+    key: "time",
+    direction: "desc",
+  });
   const peak = Math.max(1, ...activity.map((bucket) => bucket.count));
   function updateParams(next: URLSearchParams) {
     router.replace(`${pathname}?${next}`, { scroll: false });
@@ -239,24 +269,72 @@ export default function OperatorLogsPage() {
       }
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <Input
-            aria-label="Search logs"
-            placeholder="Search task, error, request or run ID…"
-            className="min-w-48 flex-1"
-            value={filters.search}
-            onChange={(event) =>
-              changeFilters({ ...filters, search: event.target.value })
-            }
-          />
-          <span
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            {dayjs(from).format("MMM D, HH:mm")} –{" "}
-            {dayjs(to).format("MMM D, HH:mm Z")}
-            {selected && live ? " · Live paused while inspecting" : ""}
-          </span>
-        </div>
+        <ListToolbar
+          followKey="operator-logs"
+          onClearFilters={() =>
+            changeFilters({
+              ...filters,
+              status: "",
+              orgId: "",
+              routeSource: "",
+            })
+          }
+          filters={[
+            {
+              id: "status",
+              label: "Status",
+              inline: true,
+              options: LOG_STATUS_OPTIONS,
+              value: filters.status ? [filters.status] : [],
+              onChange: ([value]) =>
+                changeFilters({ ...filters, status: value ?? "" }),
+            },
+            {
+              id: "client",
+              label: "Client",
+              icon: <Building2 />,
+              options: (clients ?? []).map((client) => ({
+                value: client._id,
+                label: client.name,
+                icon: (
+                  <OrgBrandIcon
+                    name={client.name}
+                    iconUrl={client.iconUrl}
+                    website={client.website}
+                    size="xs"
+                  />
+                ),
+              })),
+              value: filters.orgId ? [filters.orgId] : [],
+              onChange: ([value]) =>
+                changeFilters({ ...filters, orgId: value ?? "" }),
+            },
+            {
+              id: "routeSource",
+              label: "Route source",
+              icon: <Route />,
+              options: LOG_ROUTE_SOURCE_OPTIONS,
+              value: filters.routeSource ? [filters.routeSource] : [],
+              onChange: ([value]) =>
+                changeFilters({ ...filters, routeSource: value ?? "" }),
+            },
+          ]}
+          search={{
+            value: filters.search,
+            onChange: (search) => changeFilters({ ...filters, search }),
+            label: "Search logs",
+            placeholder: "Search task, error, request or run ID…",
+          }}
+          actions={
+            <span
+              className={`text-muted-foreground ${typeStyle("caption.default")}`}
+            >
+              {dayjs(from).format("MMM D, HH:mm")} –{" "}
+              {dayjs(to).format("MMM D, HH:mm Z")}
+              {selected && live ? " · Live paused while inspecting" : ""}
+            </span>
+          }
+        />
         {results.length ? (
           <div>
             <div
@@ -294,15 +372,24 @@ export default function OperatorLogsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                {["Time", "Status", "Task", "Model", "Tokens", "Cost"].map(
-                  (label) => (
-                    <TableHead key={label}>{label}</TableHead>
-                  ),
-                )}
+                {(
+                  [
+                    ["time", "Time"],
+                    ["status", "Status"],
+                    ["task", "Task"],
+                    ["model", "Model"],
+                    ["tokens", "Tokens"],
+                    ["cost", "Cost"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <SortableTableHead key={key} {...tableSort.head(key)}>
+                    {label}
+                  </SortableTableHead>
+                ))}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {results.map((call) => (
+              {tableSort.rows.map((call) => (
                 <TableRow
                   key={call._id}
                   tabIndex={0}

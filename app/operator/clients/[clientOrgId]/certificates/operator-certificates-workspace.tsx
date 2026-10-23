@@ -21,10 +21,11 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDateTime } from "@/lib/date-format";
@@ -60,6 +61,16 @@ function statusTone(status?: string) {
   if (status === "sending" || status === "queued") return "info" as const;
   return "neutral" as const;
 }
+
+const CERTIFICATE_SORT_COLUMNS = {
+  status: (row: PolicyCertificateRecord) => displayValue(row.status),
+  holder: (row: PolicyCertificateRecord) => row.holder?.displayName,
+  policy: (row: PolicyCertificateRecord) => row.policy?.policyNumber,
+  form: (row: PolicyCertificateRecord) => row.currentVersion?.formCode,
+  version: (row: PolicyCertificateRecord) => row.currentVersion?.versionNumber,
+  updated: (row: PolicyCertificateRecord) =>
+    row.updatedAt ?? row.lastIssuedAt ?? row.currentVersion?.createdAt,
+};
 
 export function OperatorCertificatesWorkspace({
   orgId,
@@ -104,13 +115,13 @@ export function OperatorCertificatesWorkspace({
       null,
     [certificates, selectedCertificateId],
   );
-  const visibleCertificates = useMemo(() => {
-    return [...(certificates ?? [])].sort(
-        (left, right) =>
-          Number(right.updatedAt ?? right.lastIssuedAt ?? 0) -
-          Number(left.updatedAt ?? left.lastIssuedAt ?? 0),
-      );
-  }, [certificates]);
+  const visibleCertificates = useMemo(() => certificates ?? [], [certificates]);
+  const tableSort = useTableSort(
+    `clients:${orgId}:certificates`,
+    visibleCertificates,
+    CERTIFICATE_SORT_COLUMNS,
+    { key: "updated", direction: "desc" },
+  );
 
   const archiveCertificate = useCallback(async (row: PolicyCertificateRecord) => {
     setArchivingCertificateId(row._id);
@@ -273,16 +284,28 @@ export function OperatorCertificatesWorkspace({
             <Table className="min-w-[1220px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[12%] px-4">Status</TableHead>
-                  <TableHead className="w-[24%]">Holder</TableHead>
-                  <TableHead className="w-[24%]">Policy</TableHead>
-                  <TableHead className="w-[16%]">Form / request</TableHead>
-                  <TableHead className="w-[10%]">Version</TableHead>
-                  <TableHead className="w-[14%] px-4">Updated</TableHead>
+                  <SortableTableHead className="w-[12%] px-4" {...tableSort.head("status")}>
+                    Status
+                  </SortableTableHead>
+                  <SortableTableHead className="w-[24%]" {...tableSort.head("holder")}>
+                    Holder
+                  </SortableTableHead>
+                  <SortableTableHead className="w-[24%]" {...tableSort.head("policy")}>
+                    Policy
+                  </SortableTableHead>
+                  <SortableTableHead className="w-[16%]" {...tableSort.head("form")}>
+                    Form / request
+                  </SortableTableHead>
+                  <SortableTableHead className="w-[10%]" {...tableSort.head("version")}>
+                    Version
+                  </SortableTableHead>
+                  <SortableTableHead className="w-[14%] px-4" {...tableSort.head("updated")}>
+                    Updated
+                  </SortableTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visibleCertificates.map((row) => {
+                {tableSort.rows.map((row) => {
                   const version = row.currentVersion;
                   return (
                     <TableRow
