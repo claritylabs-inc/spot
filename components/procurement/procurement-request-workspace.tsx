@@ -2449,7 +2449,14 @@ export function ProcurementRequestWorkspace({
         />
       );
     }
-    if (!node) return;
+    if (!node) {
+      // The record is gone (or another request loaded): drop its stale panel.
+      if (details !== undefined && shownPanel.current) {
+        shownPanel.current = null;
+        showPanel(null);
+      }
+      return;
+    }
     shownPanel.current = panel;
     showPanel(node);
   }, [

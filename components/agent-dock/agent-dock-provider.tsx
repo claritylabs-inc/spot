@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type ReactNode,
@@ -14,8 +15,8 @@ import dayjs from "dayjs";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import {
-  useFollowedReducer,
   useFollowedState,
+  useFollowedValue,
 } from "@/hooks/use-followed-state";
 import {
   agentDockDeepLink,
@@ -89,10 +90,38 @@ export function AgentDockProvider({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [state, dispatch] = useFollowedReducer(
-    "shell:agent-dock:state",
+  const [ownState, dispatch] = useReducer(
     agentDockReducer,
     initialAgentDockState,
+  );
+  // Followers see the leader's open thread and view; their own tabs and saved
+  // dock are untouched.
+  const screen = useFollowedValue(
+    "shell:agent-dock:screen",
+    {
+      mode: ownState.mode,
+      view: ownState.view,
+      activeThreadId: ownState.activeThreadId,
+      historyArchived: ownState.historyArchived,
+    },
+    {
+      mode: initialAgentDockState.mode,
+      view: initialAgentDockState.view,
+      activeThreadId: initialAgentDockState.activeThreadId,
+      historyArchived: initialAgentDockState.historyArchived,
+    },
+  );
+  const state = useMemo(
+    () => ({
+      ...ownState,
+      ...screen,
+      tabs:
+        screen.activeThreadId === null ||
+        ownState.tabs.some((tab) => tab.threadId === screen.activeThreadId)
+          ? ownState.tabs
+          : [...ownState.tabs, { threadId: screen.activeThreadId, seenAt: 0 }],
+    }),
+    [ownState, screen],
   );
   const [height, setHeightState] = useState(AGENT_DOCK_DEFAULT_HEIGHT);
   const [detachedContextKey, setDetachedContextKey] = useFollowedState<
@@ -124,17 +153,17 @@ export function AgentDockProvider({
   useEffect(() => {
     if (!storageKey || restoredKey !== storageKey) return;
     writeStoredAgentDock(storageKey, {
-      tabs: state.tabs,
-      activeThreadId: state.activeThreadId,
+      tabs: ownState.tabs,
+      activeThreadId: ownState.activeThreadId,
       height,
-      mode: state.mode,
+      mode: ownState.mode,
     });
   }, [
     height,
     restoredKey,
-    state.activeThreadId,
-    state.mode,
-    state.tabs,
+    ownState.activeThreadId,
+    ownState.mode,
+    ownState.tabs,
     storageKey,
   ]);
 

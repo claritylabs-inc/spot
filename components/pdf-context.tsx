@@ -44,9 +44,20 @@ export function PdfProvider({
   children: React.ReactNode;
   resetKey?: string;
 }) {
-  const [fileUrl, setFileUrlState] = useFollowedState<string | null>(
+  const [sharedUrl, setSharedUrl] = useFollowedState<string | null>(
     "shell:pdf:url",
     null,
+  );
+  // blob: and data: URLs (unsent attachments) only exist in this browser.
+  const [localUrl, setLocalUrl] = useState<string | null>(null);
+  const fileUrl = localUrl ?? sharedUrl;
+  const setFileUrlState = useCallback(
+    (url: string | null) => {
+      const local = url !== null && /^(blob|data):/.test(url);
+      setLocalUrl(local ? url : null);
+      setSharedUrl(local ? null : url);
+    },
+    [setSharedUrl],
   );
   const [currentPage, setCurrentPage] = useFollowedState("shell:pdf:page", 1);
   const [numPages, setNumPages] = useState(0);

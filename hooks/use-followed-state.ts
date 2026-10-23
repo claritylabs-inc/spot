@@ -133,3 +133,27 @@ export function useFollowedReducer<S, A>(
   );
   return [state, dispatch];
 }
+
+/**
+ * Follows a value derived elsewhere, such as a slice of a reducer, without
+ * taking ownership of it: publishes `value` and, while following, returns the
+ * leader's value instead (or `defaultValue` when the leader sent none). The
+ * follower's own state is untouched and reappears when following stops.
+ */
+export function useFollowedValue<T>(key: string, value: T, defaultValue: T): T {
+  const remote = useSyncExternalStore(subscribeMirrored, getMirrored, () => null);
+  const json = JSON.stringify(value);
+  const isDefault = json === JSON.stringify(defaultValue);
+  useEffect(() => {
+    if (isDefault) return;
+    const parsed: unknown = JSON.parse(json);
+    published.set(key, parsed);
+    notify(publishedListeners);
+    return () => {
+      if (published.get(key) === parsed) published.delete(key);
+      notify(publishedListeners);
+    };
+  }, [key, json, isDefault]);
+  if (remote === null) return value;
+  return Object.hasOwn(remote, key) ? (remote[key] as T) : defaultValue;
+}
