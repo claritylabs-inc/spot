@@ -66,10 +66,11 @@ an extraction, organization fact provenance, a pending approval, and an old draf
    cannot access team mail; impersonating operators cannot change it. Keep legacy
    tables until a separate cleanup follows verified readback on deployed targets.
 
-For the new profile, inbox, reader, linking action and draft card, exercise keyboard
-navigation, a narrow viewport, light/dark themes, loading, empty and failed states.
-Check unsaved reply text survives recoverable errors, scoped navigation and refresh
-behavior match the existing composer contract, and ordinary edits need no save mode.
+For the profile, inbox, reader, linking action and draft card, exercise keyboard
+navigation, a narrow viewport, light and dark themes, and loading, empty and failed
+states. Unsent reply text must survive a failed send and switching conversations
+but not a reload. A locked send must survive a reload until the server reports its
+outcome. Ordinary edits need no save mode.
 
 ## Live integration prerequisites
 

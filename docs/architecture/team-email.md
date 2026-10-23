@@ -120,7 +120,7 @@ thread/message copy and catch-up pass before accepting the release; legacy data
 not yet copied is absent from team inbox lists until its migration completes. Mapping ids make copies idempotent.
 Repoint file items, sequences, extractions, organization fact sources and
 notifications. Preserve extraction source keys and historical approval payloads;
-stale pending legacy approvals and cancel only their affected runs. Old operator
+mark pending legacy approvals stale and cancel only the runs they affect. Old operator
 drafts require re-signing.
 
 Run the migration series through `teamInboxMigrations:run`, then the paged
@@ -144,20 +144,12 @@ compatibility fallback. Provision the command inbox through
 `actions/handleInboundOperatorEmail:provisionAgentInbox` only after configuration.
 Check `/agent-health` and known inbox records before enabling the webhook.
 
-## Evidence recorded on October 23, 2026
+## Capacity and testing
 
-The isolated `team.dev.spot.insure` spike established that a real inbox email id
-resolved through the Receiving API, original MIME retained a passing aligned
-full-body DKIM signature, a synthetic Gmail-style forwarded header survived, and
-the downloaded attachment matched its source bytes. This did not exercise Gmail's
-actual forwarding UI. The production and development domains passed DNS and Resend
-verification. Registered webhooks remain disabled until the intended backend has
-the matching secret and released handler.
-
-Resend documents three included inboxes, with additional inboxes requiring its
-account overage setting. The spike did not change billing or verify that setting.
+Resend documents three included inboxes; more need its account overage setting
+([account limits](https://resend.com/docs/knowledge-base/account-quotas-and-limits)).
 Account capacity must cover one inbox per operator plus the command inbox, allowing
-for retired inboxes. See [Resend account limits](https://resend.com/docs/knowledge-base/account-quotas-and-limits).
+for retired inboxes.
 
 The repeatable local acceptance cases and actual outcomes belong in
 [team email workflows](../testing/team-email-workflows.md) and the
