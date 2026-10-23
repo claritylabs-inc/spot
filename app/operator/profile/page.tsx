@@ -50,22 +50,46 @@ function OperatorProfileShell({
   );
 }
 
-/** Team email: the operator's own address, Always CC and the shared command address. */
+type TeamEmailSettingsData = Extract<
+  NonNullable<FunctionReturnType<typeof api.operatorEmailSettings.get>>,
+  { configured: true }
+>;
+
 function TeamEmailSettings() {
   const settings = useQuery(api.operatorEmailSettings.get, {});
+  if (settings === undefined) return null;
+  if (!settings.configured) {
+    return (
+      <div className="mt-4">
+        <InlineFieldCard title="Team email">
+          <InlineFieldRow label="Team address">
+            <span className="text-muted-foreground">
+              Team email is not configured for this environment
+            </span>
+          </InlineFieldRow>
+        </InlineFieldCard>
+      </div>
+    );
+  }
+  return <TeamEmailFields settings={settings} />;
+}
+
+function TeamEmailFields({ settings }: { settings: TeamEmailSettingsData }) {
   const saveTeamAddress = useMutation(api.operatorEmailSettings.saveTeamAddress);
   const saveAlwaysCc = useMutation(api.operatorEmailSettings.saveAlwaysCc);
   const ensureInbox = useAction(api.operatorEmailSettings.ensureInbox);
-  const [localpartDraft, setLocalpartDraft] = useState<string | null>(null);
+  // A blank address field means "use the default".
+  const [localpart, setLocalpart] = useState(
+    settings.customLocalpart ? settings.localpart : "",
+  );
+  const [alwaysCc, setAlwaysCc] = useState(settings.alwaysCcEmail ?? "");
   const [localpartError, setLocalpartError] = useState<string | null>(null);
-  const [ccDraft, setCcDraft] = useState<string | null>(null);
-  const [ccError, setCcError] = useState<string | null>(null);
+  const [alwaysCcError, setAlwaysCcError] = useState<string | null>(null);
   const [setup, setSetup] = useState<{
     state: "idle" | "running" | "failed";
     message?: string;
   }>({ state: "idle" });
-  // Only the newest setup attempt may report; an older one finishing late
-  // never overwrites a newer save's status.
+  // Only the newest attempt reports, so a late failure never hides a newer save.
   const latestSetup = useRef(0);
 
   const runSetup = useCallback(async () => {
@@ -91,13 +115,9 @@ function TeamEmailSettings() {
     }
   }, [ensureInbox]);
 
-  // A default derived address must work for forwarding before any send or
-  // edit, so set the inbox up once when Profile first shows it. A failure
-  // shows Retry; it is never retried automatically.
-  const needsSetup =
-    settings?.configured === true &&
-    settings.status === "needs_setup" &&
-    Boolean(settings.address);
+  // A default address must work for forwarding before any edit or send. A
+  // failure shows Retry and is never retried automatically.
+  const needsSetup = settings.status === "needs_setup" && !!settings.address;
   const autoSetupStarted = useRef(false);
   useEffect(() => {
     if (!needsSetup || autoSetupStarted.current) return;
@@ -105,86 +125,62 @@ function TeamEmailSettings() {
     void runSetup();
   }, [needsSetup, runSetup]);
 
-  if (settings === undefined) return null;
-  if (!settings.configured) {
-    return (
-      <div className="mt-4">
-        <InlineFieldCard title="Team email">
-          <InlineFieldRow label="Team address">
-            <span className="text-muted-foreground">
-              Team email is not configured for this environment
-            </span>
-          </InlineFieldRow>
-        </InlineFieldCard>
-      </div>
-    );
-  }
-
-  const localpart = localpartDraft ?? settings.localpart;
-  const alwaysCc = ccDraft ?? settings.alwaysCcEmail ?? "";
-
-  async function commitLocalpart() {
-    if (localpartDraft === null) return;
-    const next = localpartDraft.trim().toLowerCase();
-    if (next === settings?.localpart) {
-      setLocalpartDraft(null);
+  const nextLocalpart = localpart.trim().toLowerCase();
+  const addressAutoSave = useLocalFirstAutoSave({
+    mutationName: "operator.teamEmail.address",
+    args: { localpart: nextLocalpart },
+    valueKey: nextLocalpart,
+    autoSave: false,
+    flush: async ({ localpart: value }) => {
+      const result = await saveTeamAddress({ localpart: value });
+      if (!result.ok) throw new Error(result.message);
+      return result;
+    },
+    onFlushed: (result) => {
       setLocalpartError(null);
-      return;
-    }
-    try {
-      const result = await saveTeamAddress({ localpart: next });
-      if (!result.ok) {
-        setLocalpartError(result.message);
-        return;
-      }
-      setLocalpartDraft(null);
-      setLocalpartError(null);
-      if (result.changed) void runSetup();
-    } catch (error) {
+      if (result?.changed) void runSetup();
+    },
+    onError: (error) =>
       setLocalpartError(
         getUserFacingErrorMessage(error, "Your team address could not be saved."),
-      );
-    }
-  }
-
-  async function commitAlwaysCc() {
-    if (ccDraft === null) return;
-    if (ccDraft.trim() === (settings?.alwaysCcEmail ?? "")) {
-      setCcDraft(null);
-      setCcError(null);
-      return;
-    }
-    try {
-      const result = await saveAlwaysCc({ value: ccDraft });
-      if (!result.ok) {
-        setCcError(result.message);
-        return;
-      }
-      setCcDraft(null);
-      setCcError(null);
-    } catch (error) {
-      setCcError(
+      ),
+  });
+  const alwaysCcAutoSave = useLocalFirstAutoSave({
+    mutationName: "operator.teamEmail.alwaysCc",
+    args: { value: alwaysCc.trim() },
+    valueKey: alwaysCc.trim(),
+    autoSave: false,
+    flush: async ({ value }) => {
+      const result = await saveAlwaysCc({ value });
+      if (!result.ok) throw new Error(result.message);
+      return result;
+    },
+    onFlushed: () => setAlwaysCcError(null),
+    onError: (error) =>
+      setAlwaysCcError(
         getUserFacingErrorMessage(error, "Always CC could not be saved."),
-      );
-    }
-  }
+      ),
+  });
 
   const statusText =
     setup.state === "running"
       ? "Setting up your inbox…"
       : setup.state === "failed"
         ? (setup.message ?? "Your team inbox could not be set up.")
-        : settings.status === "ready"
-          ? "Ready"
-          : settings.status === "captured"
-            ? "Local capture mode: no inbox is created"
-            : settings.status === "needs_name"
-              ? "Add your name above to set up your inbox"
-              : "Inbox not set up yet";
+        : !settings.address
+          ? "Enter a team address"
+          : settings.status === "ready"
+            ? "Ready"
+            : settings.status === "captured"
+              ? "Local capture mode: no inbox is created"
+              : settings.status === "needs_name"
+                ? "Add your full name above to set up your inbox"
+                : "Inbox not set up yet";
   const canRetry =
-    setup.state === "failed" ||
-    (setup.state === "idle" && settings.status === "needs_setup");
-  const keyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    !!settings.address &&
+    (setup.state === "failed" ||
+      (setup.state === "idle" && settings.status === "needs_setup"));
+  const saveOnEnter = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") event.currentTarget.blur();
   };
 
@@ -198,10 +194,13 @@ function TeamEmailSettings() {
                 aria-label="Team address"
                 aria-invalid={localpartError ? true : undefined}
                 value={localpart}
-                onChange={(event) => setLocalpartDraft(event.target.value)}
-                onBlur={() => void commitLocalpart()}
-                onKeyDown={keyDown}
-                placeholder="your-name"
+                onChange={(event) => {
+                  setLocalpart(event.target.value);
+                  setLocalpartError(null);
+                }}
+                onBlur={() => void addressAutoSave.saveNow()}
+                onKeyDown={saveOnEnter}
+                placeholder={settings.defaultLocalpart ?? "your-name"}
                 autoComplete="off"
                 spellCheck={false}
                 className="min-w-0 flex-1"
@@ -214,48 +213,47 @@ function TeamEmailSettings() {
               <p role="alert" className="text-destructive">
                 {localpartError}
               </p>
-            ) : null}
-          </div>
-        </InlineFieldRow>
-        <InlineFieldRow label="Sends from">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-3">
-            <span className="break-all">
-              {settings.address ?? "Enter a team address"}
-            </span>
-            <span className="text-muted-foreground">{statusText}</span>
-            {canRetry && settings.address ? (
-              <PillButton
-                type="button"
-                variant="ghost"
-                size="compact"
-                onClick={() => void runSetup()}
-              >
-                {setup.state === "failed" ? "Retry" : "Set up"}
-              </PillButton>
-            ) : null}
-            {settings.previousAddress ? (
-              <span className="w-full text-muted-foreground">
-                Mail to {settings.previousAddress} still arrives
-              </span>
-            ) : null}
+            ) : (
+              <p className="flex flex-wrap items-center gap-x-3 text-muted-foreground">
+                {statusText}
+                {canRetry ? (
+                  <PillButton
+                    type="button"
+                    variant="ghost"
+                    size="compact"
+                    onClick={() => void runSetup()}
+                  >
+                    {setup.state === "failed" ? "Retry" : "Set up"}
+                  </PillButton>
+                ) : null}
+                {settings.previousAddress ? (
+                  <span className="w-full">
+                    Mail to {settings.previousAddress} still arrives
+                  </span>
+                ) : null}
+              </p>
+            )}
           </div>
         </InlineFieldRow>
         <InlineFieldRow label="Always CC">
           <div className="space-y-1">
             <Input
               aria-label="Always CC"
-              aria-invalid={ccError ? true : undefined}
+              aria-invalid={alwaysCcError ? true : undefined}
               type="email"
               value={alwaysCc}
-              onChange={(event) => setCcDraft(event.target.value)}
-              onBlur={() => void commitAlwaysCc()}
-              onKeyDown={keyDown}
+              onChange={(event) => {
+                setAlwaysCc(event.target.value);
+                setAlwaysCcError(null);
+              }}
+              onBlur={() => void alwaysCcAutoSave.saveNow()}
+              onKeyDown={saveOnEnter}
               placeholder="Optional: copied on every email you send"
               autoComplete="off"
             />
-            {ccError ? (
+            {alwaysCcError ? (
               <p role="alert" className="text-destructive">
-                {ccError}
+                {alwaysCcError}
               </p>
             ) : null}
           </div>

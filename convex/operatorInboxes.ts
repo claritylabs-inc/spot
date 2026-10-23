@@ -9,7 +9,11 @@ import {
 } from "./_generated/server";
 import { requireOperatorForUser } from "./lib/operatorIdentity";
 import { inboxRecordValidator } from "./lib/providerOutreachValidators";
-import { agentInboxAddress, operatorTeamAddressFor } from "./lib/teamEmail";
+import {
+  agentInboxAddress,
+  getTeamEmailDomain,
+  operatorTeamAddressFor,
+} from "./lib/teamEmail";
 
 /**
  * Storage for `operatorOutreachInboxes`: one active inbox per operator plus the
@@ -97,15 +101,52 @@ export const getAgentInboxInternal = internalQuery({
   },
 });
 
+const MAX_PROFILE_RESERVATIONS = 10;
+
+/**
+ * Whether another owner's saved team localpart (any profile status) reserves
+ * `emailAddress` on the current team domain, before an inbox exists for it.
+ * More matches than the bound fails closed.
+ */
+async function reservedByOtherProfile(
+  ctx: Ctx,
+  emailAddress: string,
+  userId: Id<"users"> | undefined,
+) {
+  const [localpart, domain] = emailAddress.split("@");
+  let teamDomain: string;
+  try {
+    teamDomain = getTeamEmailDomain();
+  } catch {
+    return false;
+  }
+  if (!localpart || domain !== teamDomain) return false;
+  const profiles = await ctx.db
+    .query("operatorProfiles")
+    .withIndex("by_teamEmailLocalpart", (q) =>
+      q.eq("teamEmailLocalpart", localpart),
+    )
+    .take(MAX_PROFILE_RESERVATIONS + 1);
+  return (
+    profiles.length > MAX_PROFILE_RESERVATIONS ||
+    profiles.some((profile) => profile.userId !== userId)
+  );
+}
+
 /**
  * Whether `emailAddress` is free, already the caller's, or reserved by another
- * owner. Retired rows count as reservations. Checked before any Resend call
- * that could adopt or modify an inbox. Omit `userId` for the agent inbox.
+ * owner: an inbox row (retired rows included) or another operator's saved team
+ * localpart. Checked before any Resend call that could adopt or modify an
+ * inbox. Omit `userId` for the agent inbox.
  */
 export const addressOwnershipInternal = internalQuery({
   args: { emailAddress: v.string(), userId: v.optional(v.id("users")) },
   handler: async (ctx, args): Promise<"free" | "own" | "conflict"> => {
-    const rows = await rowsForAddress(ctx, args.emailAddress.toLowerCase());
+    const emailAddress = args.emailAddress.toLowerCase();
+    if (await reservedByOtherProfile(ctx, emailAddress, args.userId)) {
+      return "conflict";
+    }
+    const rows = await rowsForAddress(ctx, emailAddress);
     if (rows.length === 0) return "free";
     const userId = args.userId;
     const mine = (row: InboxRow) =>
