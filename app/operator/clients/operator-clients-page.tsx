@@ -105,7 +105,7 @@ export default function OperatorClientsScreen() {
           ]),
         ) ?? [])
       : [];
-  const selection = useRowSelection<string>([
+  const selection = useRowSelection<string>("clients:list:selected", [
     ...(filteredClients?.map((client) => client._id) ?? []),
     ...filteredApplications.map((application) => application.requestId),
   ]);

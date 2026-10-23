@@ -3,6 +3,7 @@ import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import {
   ArrowLeft,
   Briefcase,
+  ChevronDown,
   Building2,
   CircleHelp,
   FileText,
@@ -32,15 +33,15 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 import {
-  AppSidebarContent,
-  type AppSidebarSection,
-} from "@claritylabs-inc/ui/components/app-shell/app-sidebar";
-import {
   MENU_ITEM_INACTIVE_SUBTLE,
+  SidebarNavItem,
   SidebarTooltipProvider,
 } from "@claritylabs-inc/ui/components/app-shell/app-sidebar/nav-item";
+import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { AppShell } from "@/components/app-shell";
 import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
+import { useFollowedState } from "@/hooks/use-followed-state";
+import { typeStyle } from "@/lib/typography";
 import type { IntakeAnswers } from "@/lib/insurance-intake";
 import {
   coverageRequestLabel,
@@ -176,67 +177,136 @@ export function SectionMenu({
     event.stopPropagation();
     onRemove?.(key);
   };
-  const sectionsFor = (collapsed: boolean): AppSidebarSection[] => [
-    {
-      key: "back",
-      items: [{ label: back.label, icon: ArrowLeft, href: back.href }],
-    },
-    ...groups.map((group) => ({
-      key: group.label,
-      label: group.label,
-      // AppSidebarNav keys items by label; labels are unique within the menu.
-      items: group.items.map((entry) => ({
-        label: entry.label,
-        icon: entry.icon,
-        active: entry.key === active,
-        onClick: () => onChange(entry.key),
-        className: cn("group", entry.subtle && MENU_ITEM_INACTIVE_SUBTLE),
-        trailing: collapsed ? undefined : (
-          <>
-            {entry.count !== undefined && (
-              <span className="text-muted-foreground/60">{entry.count}</span>
-            )}
-            {entry.removable && onRemove && (
-              // Same affordance as the former thread archive action.
-              <span
-                role="button"
-                tabIndex={0}
-                aria-label={`Remove ${entry.label}`}
-                onClick={remove(entry.key)}
-                onKeyDown={remove(entry.key)}
-                className="-mr-1 flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/30 opacity-0 transition-[background-color,color,opacity] duration-100 group-hover:opacity-100 hover:bg-foreground/6 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
+  // Groups start expanded; the group holding the active section always shows.
+  const [collapsedGroups, setCollapsedGroups] = useFollowedState<string[]>(
+    `section-menu:${label}:collapsed`,
+    [],
+  );
+  const toggleGroup = (groupLabel: string) =>
+    setCollapsedGroups((current) =>
+      current.includes(groupLabel)
+        ? current.filter((entry) => entry !== groupLabel)
+        : [...current, groupLabel],
+    );
+  const groupId = (groupLabel: string) =>
+    `section-menu-${label}-${groupLabel}`.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const renderNav = (collapsed: boolean) => (
+    <nav className="flex flex-col gap-0.5 px-2 py-2">
+      <SidebarNavItem
+        label={back.label}
+        icon={ArrowLeft}
+        href={back.href}
+        collapsed={collapsed}
+      />
+      {groups.map((group) => {
+        const holdsActive = group.items.some((entry) => entry.key === active);
+        const expanded =
+          collapsed || holdsActive || !collapsedGroups.includes(group.label);
+        return (
+          <div key={group.label}>
+            {collapsed ? (
+              <div className="pt-4 pb-1" />
+            ) : (
+              <button
+                type="button"
+                aria-expanded={expanded}
+                aria-controls={groupId(group.label)}
+                disabled={holdsActive}
+                onClick={() => toggleGroup(group.label)}
+                className={cn(
+                  "flex w-full items-center gap-1 px-3 pt-5 pb-1.5 text-left text-muted-foreground/50 transition-colors enabled:hover:text-muted-foreground",
+                  typeStyle("caption.medium"),
+                )}
               >
-                <X className="size-3" />
-              </span>
+                <span className="min-w-0 flex-1 truncate">{group.label}</span>
+                <ChevronDown
+                  aria-hidden="true"
+                  className={cn(
+                    "size-3 shrink-0 transition-transform duration-150",
+                    !expanded && "-rotate-90",
+                  )}
+                />
+              </button>
             )}
-          </>
-        ),
-      })),
-    })),
-  ];
+            {expanded ? (
+              <div id={groupId(group.label)} className="flex flex-col gap-0.5">
+                {group.items.map((entry) => (
+                  <SidebarNavItem
+                    key={entry.key}
+                    label={entry.label}
+                    icon={entry.icon}
+                    active={entry.key === active}
+                    collapsed={collapsed}
+                    onClick={() => onChange(entry.key)}
+                    className={cn(
+                      "group",
+                      entry.subtle && MENU_ITEM_INACTIVE_SUBTLE,
+                    )}
+                    trailing={
+                      collapsed ? undefined : (
+                        <>
+                          {entry.count !== undefined && (
+                            <span className="text-muted-foreground/60">
+                              {entry.count}
+                            </span>
+                          )}
+                          {entry.removable && onRemove && (
+                            // Same affordance as the former thread archive action.
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Remove ${entry.label}`}
+                              onClick={remove(entry.key)}
+                              onKeyDown={remove(entry.key)}
+                              className="-mr-1 flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/30 opacity-0 transition-[background-color,color,opacity] duration-100 group-hover:opacity-100 hover:bg-foreground/6 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
+                            >
+                              <X className="size-3" />
+                            </span>
+                          )}
+                        </>
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </nav>
+  );
   const current = groups
     .flatMap((group) => group.items)
     .find((entry) => entry.key === active);
   return (
     <AppShell
-      sidebar={({ collapsed, onToggleCollapse }) => (
-        <SidebarTooltipProvider>
-          <div aria-label={label} className="flex h-full min-h-0 flex-col">
-            <SidebarHeader
-              collapsed={collapsed}
-              initials=""
-              headerOrgName={brand.name}
-              icon={brand.icon}
-              onToggleCollapse={onToggleCollapse}
-            />
-            <AppSidebarContent
-              collapsed={collapsed}
-              sections={sectionsFor(collapsed)}
-              footer={footer?.(collapsed)}
-            />
-          </div>
-        </SidebarTooltipProvider>
-      )}
+      sidebar={({ collapsed, onToggleCollapse }) => {
+        const footerNode = footer?.(collapsed);
+        return (
+          <SidebarTooltipProvider>
+            <div aria-label={label} className="flex h-full min-h-0 flex-col">
+              <SidebarHeader
+                collapsed={collapsed}
+                initials=""
+                headerOrgName={brand.name}
+                icon={brand.icon}
+                onToggleCollapse={onToggleCollapse}
+              />
+              {/* Mirrors AppSidebarContent, with collapsible group headers. */}
+              <div className="flex min-h-0 w-full flex-1 flex-col">
+                <ScrollArea className="min-h-0 flex-1">
+                  {renderNav(collapsed)}
+                </ScrollArea>
+                {footerNode ? (
+                  <div className="shrink-0 border-t border-border p-2">
+                    {footerNode}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </SidebarTooltipProvider>
+        );
+      }}
     >
       <div className="mb-5 lg:hidden">
         <Select

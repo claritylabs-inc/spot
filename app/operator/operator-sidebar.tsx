@@ -4,6 +4,7 @@ import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { useAuthActions } from "@convex-dev/auth/react";
 import {
   Building2,
+  FileSearch,
   History,
   Inbox,
   LogOut,
@@ -78,6 +79,13 @@ export function OperatorSidebar({
               label="Clients"
               icon={Users}
               active={active === "clients"}
+              collapsed={collapsed}
+            />
+            <SidebarMenuItem
+              href="/operator/procurement"
+              label="Procurement"
+              icon={FileSearch}
+              active={active === "procurement"}
               collapsed={collapsed}
             />
             <SidebarMenuItem

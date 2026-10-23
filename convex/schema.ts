@@ -2769,6 +2769,7 @@ export default defineSchema({
     .index("status", ["clientOrgId", "status", "updatedAt"])
     .index("inbox", ["inboxToken"])
     .index("owner_updated", ["ownerUserId", "updatedAt"])
+    .index("by_deletedAt_and_updatedAt", ["deletedAt", "updatedAt"])
     .index("intake_submitted_status", [
       "intakeSubmittedAt",
       "status",
