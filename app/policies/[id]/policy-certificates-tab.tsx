@@ -215,6 +215,7 @@ export function CertificatesTab({
           rows={activeCertificates}
           selectedCertificateId={selectedCertificateId}
           showPolicyColumn={false}
+          sortKey={`policy:${policyId}:certificates`}
           onSelectCertificate={(row) => onSelectCertificate?.(row)}
         />
       ) : null}

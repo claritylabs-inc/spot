@@ -457,6 +457,7 @@ export function CertificatesWorkspace({
             {visibleCertificates.length > 0 ? (
               <CertificatesTable
                 rows={visibleCertificates}
+                sortKey={`${uiKey}:${tab}`}
                 selectedCertificateId={selectedCertificateId}
                 onSelectCertificate={(row) => setSelectedCertificateId(row._id)}
               />

@@ -56,9 +56,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
 import {
   Tabs,
@@ -98,6 +98,7 @@ import { formatDisplayDate } from "@/lib/date-format";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort } from "@/hooks/use-table-sort";
 
 type RequirementScope = "vendors" | "own_org";
 type ComplianceStatus =
@@ -761,33 +762,75 @@ function OverviewTab({
   );
 }
 
+const COMPLIANCE_STATUS_ORDER: Record<ComplianceStatus, number> = {
+  met: 0,
+  expiring_soon: 1,
+  unverified: 2,
+  not_met: 3,
+  expired: 4,
+};
+
+const REQUIREMENT_SORT_COLUMNS = {
+  line: (requirement: Requirement) =>
+    lineDisplayLabel(requirement.lineOfBusiness),
+  source: (requirement: Requirement) => requirementSourcePrimary(requirement),
+  limit: (requirement: Requirement) => requirement.limits?.[0]?.amount,
+  limitType: (requirement: Requirement) =>
+    requirement.limits?.[0]
+      ? limitKindLabel(requirement.limits[0].kind)
+      : (requirement.provisions ?? []).length > 0
+        ? "Provisions"
+        : undefined,
+  status: (requirement: Requirement) =>
+    requirement.complianceCheck
+      ? COMPLIANCE_STATUS_ORDER[requirement.complianceCheck.status]
+      : undefined,
+};
+
 function RequirementsTable({
+  followKey,
   requirements,
   onSelect,
 }: {
+  followKey: string;
   requirements: Requirement[];
   onSelect: (requirementId: Id<"insuranceRequirements">) => void;
 }) {
-  const sorted = [...requirements].sort((a, b) => {
-    const lobCompare = (a.lineOfBusiness ?? "ZZ").localeCompare(
-      b.lineOfBusiness ?? "ZZ",
-    );
-    return lobCompare !== 0 ? lobCompare : a.title.localeCompare(b.title);
-  });
+  const sorted = useMemo(
+    () =>
+      [...requirements].sort((a, b) => {
+        const lobCompare = (a.lineOfBusiness ?? "ZZ").localeCompare(
+          b.lineOfBusiness ?? "ZZ",
+        );
+        return lobCompare !== 0 ? lobCompare : a.title.localeCompare(b.title);
+      }),
+    [requirements],
+  );
+  const tableSort = useTableSort(followKey, sorted, REQUIREMENT_SORT_COLUMNS);
   return (
     <OperationalPanel as="div">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead>Line</TableHead>
-            <TableHead>Source</TableHead>
-            <TableHead>Limit</TableHead>
-            <TableHead>Limit type</TableHead>
-            <TableHead>Status</TableHead>
+            <SortableTableHead {...tableSort.head("line")}>
+              Line
+            </SortableTableHead>
+            <SortableTableHead {...tableSort.head("source")}>
+              Source
+            </SortableTableHead>
+            <SortableTableHead {...tableSort.head("limit")}>
+              Limit
+            </SortableTableHead>
+            <SortableTableHead {...tableSort.head("limitType")}>
+              Limit type
+            </SortableTableHead>
+            <SortableTableHead {...tableSort.head("status")}>
+              Status
+            </SortableTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sorted.map((requirement) => {
+          {tableSort.rows.map((requirement) => {
             const limits = requirement.limits ?? [];
             const sourceSecondary =
               requirementTableSourceSecondary(requirement);
@@ -2194,13 +2237,24 @@ function SourceDrawer({
   );
 }
 
+const SOURCE_SORT_COLUMNS = {
+  name: (source: RequirementSource) => source.title,
+  sourceType: (source: RequirementSource) =>
+    REQUIREMENT_SOURCE_TYPE_LABELS[source.sourceType],
+  requirements: (source: RequirementSource) => source.requirementCount,
+  added: (source: RequirementSource) => source.createdAt,
+};
+
 function RequirementSourcesTable({
+  followKey,
   sources,
   onSelect,
 }: {
+  followKey: string;
   sources: RequirementSource[];
   onSelect: (sourceId: Id<"requirementSourceDocuments">) => void;
 }) {
+  const tableSort = useTableSort(followKey, sources, SOURCE_SORT_COLUMNS);
   if (sources.length === 0) {
     return (
       <OperationalPanel as="div" className="p-5">
@@ -2222,14 +2276,34 @@ function RequirementSourcesTable({
       <Table className="min-w-[840px]">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-[44%] px-4">Name</TableHead>
-            <TableHead className="w-[22%]">Source type</TableHead>
-            <TableHead className="w-[14%]">Requirements</TableHead>
-            <TableHead className="w-[20%] px-4">Added</TableHead>
+            <SortableTableHead
+              className="w-[44%] px-4"
+              {...tableSort.head("name")}
+            >
+              Name
+            </SortableTableHead>
+            <SortableTableHead
+              className="w-[22%]"
+              {...tableSort.head("sourceType")}
+            >
+              Source type
+            </SortableTableHead>
+            <SortableTableHead
+              className="w-[14%]"
+              {...tableSort.head("requirements")}
+            >
+              Requirements
+            </SortableTableHead>
+            <SortableTableHead
+              className="w-[20%] px-4"
+              {...tableSort.head("added")}
+            >
+              Added
+            </SortableTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sources.map((source) => (
+          {tableSort.rows.map((source) => (
             <TableRow
               key={source._id}
               className="cursor-pointer"
@@ -3601,6 +3675,7 @@ function ComplianceWorkspace({
           <RequirementsLoadingSkeleton />
         ) : (
           <RequirementSourcesTable
+            followKey={`${uiKey}:sources`}
             sources={requirementSources}
             onSelect={(sourceId) => {
               setSelectedSourceId(sourceId);
@@ -3693,6 +3768,7 @@ function ComplianceWorkspace({
             <EmptyState />
           ) : (
             <RequirementsTable
+              followKey={`${uiKey}:requirements`}
               requirements={visibleRequirements}
               onSelect={(requirementId) => {
                 setSelectedRequirementId(requirementId);

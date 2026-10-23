@@ -58,6 +58,7 @@ import {
   FitChips,
   OutreachSequenceActions,
   isLiveSequence,
+  outreachStatusSortValue,
   ProviderOutreachPanel,
   ProviderOutreachCadence,
   SequenceState,
@@ -2952,6 +2953,13 @@ export function ProcurementRequestWorkspace({
               return {
                 key: outreach._id,
                 brokerOrgId: outreach.brokerOrgId,
+                sort: {
+                  provider: outreach.brokerName,
+                  contact:
+                    sequence?.recipient.email ?? outreach.contactEmail,
+                  coverage: candidate?.lines.covered.length,
+                  status: outreachStatusSortValue(outreach.status),
+                },
                 row: (
                   <TableRow
                     key={outreach._id}

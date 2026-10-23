@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { usePdf } from "@/components/pdf-context";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
@@ -40,9 +41,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
 import {
   Tabs,
@@ -116,6 +117,13 @@ function policyOptionLabel(policy: ClientFilePolicyOption) {
     "Policy"
   );
 }
+
+const CLIENT_FILE_SORT_COLUMNS = {
+  name: (file: ClientFileRow) => file.name,
+  policy: (file: ClientFileRow) => file.policyLabel,
+  access: (file: ClientFileRow) => (file.clientVisible ? "Shared" : "Private"),
+  date: (file: ClientFileRow) => file.archivedAt ?? file.createdAt,
+};
 
 function formatFileSize(size: number) {
   if (size < 1_024) return `${size} B`;
@@ -765,6 +773,20 @@ export function ClientFilesWorkspace({
     preview,
   ]);
 
+  const visibleFiles = useMemo(() => {
+    const files = (result?.files ?? []) as ClientFileRow[];
+    return operatorView && !archivedView
+      ? files.filter((file) =>
+          view === "shared" ? file.clientVisible : !file.clientVisible,
+        )
+      : files;
+  }, [archivedView, operatorView, result, view]);
+  const tableSort = useTableSort(
+    `clients:${clientOrgId}:files:${view}`,
+    visibleFiles,
+    CLIENT_FILE_SORT_COLUMNS,
+  );
+
   if (result === undefined || policyRows === undefined) {
     return (
       <OperationalPanel
@@ -776,13 +798,6 @@ export function ClientFilesWorkspace({
     );
   }
 
-  const files = result.files as ClientFileRow[];
-  const visibleFiles =
-    operatorView && !archivedView
-      ? files.filter((file) =>
-          view === "shared" ? file.clientVisible : !file.clientVisible,
-        )
-      : files;
   const visibilityTabs =
     operatorView && (hasSharedFiles || hasArchivedFiles || result.truncated) ? (
       <div className="flex min-w-0 items-center justify-between gap-4">
@@ -853,14 +868,24 @@ export function ClientFilesWorkspace({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>File</TableHead>
-              <TableHead>Policy</TableHead>
-              {operatorView ? <TableHead>Client access</TableHead> : null}
-              <TableHead>{archivedView ? "Archived" : "Added"}</TableHead>
+              <SortableTableHead {...tableSort.head("name")}>
+                File
+              </SortableTableHead>
+              <SortableTableHead {...tableSort.head("policy")}>
+                Policy
+              </SortableTableHead>
+              {operatorView ? (
+                <SortableTableHead {...tableSort.head("access")}>
+                  Client access
+                </SortableTableHead>
+              ) : null}
+              <SortableTableHead {...tableSort.head("date")}>
+                {archivedView ? "Archived" : "Added"}
+              </SortableTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {visibleFiles.map((file) => {
+            {tableSort.rows.map((file) => {
               return (
                 <TableRow
                   key={file._id}

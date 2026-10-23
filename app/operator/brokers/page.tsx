@@ -46,10 +46,13 @@ import {
   TableCell,
   TableHead,
   TableHeader,
+  SortableTableHead,
   TableRow,
   TableNameLink,
 } from "@/components/ui/table";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort } from "@/hooks/use-table-sort";
+import type { FunctionReturnType } from "convex/server";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
   NETWORK_STATUS_LABELS,
@@ -81,6 +84,44 @@ const statusOptions = [
   })),
 ];
 
+type BrokerRow = FunctionReturnType<typeof api.brokerProfiles.list>[number];
+
+function serviceArea(row: BrokerRow) {
+  return [
+    ...(row.profile?.nationwideCountries ?? []).map((code) => {
+      const excluded = (row.profile?.excludedStates ?? []).filter(
+        (region) => brokerRegionCountry(region) === code,
+      );
+      return `${code} nationwide${excluded.length ? ` except ${excluded.join(", ")}` : ""}`;
+    }),
+    ...(row.profile?.writingStates ?? []).filter(
+      (code) =>
+        !row.profile?.excludedStates?.includes(code) &&
+        !(row.profile?.nationwideCountries ?? []).includes(
+          brokerRegionCountry(code),
+        ),
+    ),
+    ...(row.profile?.writingCountries ?? [])
+      .filter(
+        (code) =>
+          code !== "CA" &&
+          code !== "US" &&
+          !row.profile?.nationwideCountries?.includes(code),
+      )
+      .map((code) => countryNames.of(code) ?? code),
+  ].join(", ");
+}
+
+const STATUS_ORDER = Object.keys(NETWORK_STATUS_LABELS);
+const NO_BROKERS: BrokerRow[] = [];
+const BROKER_SORT_COLUMNS = {
+  name: (row: BrokerRow) => row.broker.name,
+  status: (row: BrokerRow) =>
+    STATUS_ORDER.indexOf(row.profile?.networkStatus ?? "prospect"),
+  area: serviceArea,
+  lines: (row: BrokerRow) => row.profile?.lineOfBusinessCodes.join(", "),
+};
+
 export default function OperatorBrokersPage() {
   const [creating, setCreating] = useFollowedState("brokers:creating", false);
   const [region, setRegion] = useFollowedState("brokers:region", ALL);
@@ -98,6 +139,11 @@ export default function OperatorBrokersPage() {
             "match"))
     );
   });
+  const tableSort = useTableSort(
+    "brokers:list",
+    filteredRows ?? NO_BROKERS,
+    BROKER_SORT_COLUMNS,
+  );
   const selection = useRowSelection(
     "brokers:list:selected",
     filteredRows?.map((row) => row.broker._id) ?? [],
@@ -197,10 +243,21 @@ export default function OperatorBrokersPage() {
                     onCheckedChange={selection.toggleAll}
                   />
                 </TableHead>
-                <TableHead className="w-[40%] px-4">Provider</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Service area</TableHead>
-                <TableHead>Lines</TableHead>
+                <SortableTableHead
+                  className="w-[40%] px-4"
+                  {...tableSort.head("name")}
+                >
+                  Provider
+                </SortableTableHead>
+                <SortableTableHead {...tableSort.head("status")}>
+                  Status
+                </SortableTableHead>
+                <SortableTableHead {...tableSort.head("area")}>
+                  Service area
+                </SortableTableHead>
+                <SortableTableHead {...tableSort.head("lines")}>
+                  Lines
+                </SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -225,7 +282,7 @@ export default function OperatorBrokersPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredRows?.map((row) => (
+                tableSort.rows.map((row) => (
                   <TableRow
                     key={row.broker._id}
                     data-state={
@@ -270,33 +327,7 @@ export default function OperatorBrokersPage() {
                       />
                     </TableCell>
                     <TableCell className="whitespace-normal text-muted-foreground">
-                      {[
-                        ...(row.profile?.nationwideCountries ?? []).map(
-                          (code) => {
-                            const excluded = (
-                              row.profile?.excludedStates ?? []
-                            ).filter(
-                              (region) => brokerRegionCountry(region) === code,
-                            );
-                            return `${code} nationwide${excluded.length ? ` except ${excluded.join(", ")}` : ""}`;
-                          },
-                        ),
-                        ...(row.profile?.writingStates ?? []).filter(
-                          (code) =>
-                            !row.profile?.excludedStates?.includes(code) &&
-                            !(row.profile?.nationwideCountries ?? []).includes(
-                              brokerRegionCountry(code),
-                            ),
-                        ),
-                        ...(row.profile?.writingCountries ?? [])
-                          .filter(
-                            (code) =>
-                              code !== "CA" &&
-                              code !== "US" &&
-                              !row.profile?.nationwideCountries?.includes(code),
-                          )
-                          .map((code) => countryNames.of(code) ?? code),
-                      ].join(", ") || "—"}
+                      {serviceArea(row) || "—"}
                     </TableCell>
                     <TableCell className="whitespace-normal text-muted-foreground">
                       {row.profile?.lineOfBusinessCodes.join(", ") || "—"}

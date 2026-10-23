@@ -65,10 +65,12 @@ import {
   TableHeader,
   TableRow,
   TableNameLink,
+  SortableTableHead,
 } from "@/components/ui/table";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useLocalDraft } from "@/hooks/use-local-draft";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate } from "@/lib/date-format";
@@ -91,6 +93,17 @@ type PolicyOption = {
 };
 
 type StatusFilter = "all" | "open" | "closed";
+
+const STATUS_ORDER = new Map<string, number>(
+  REQUEST_STATUS_OPTIONS.map((option, index) => [option.value, index]),
+);
+const REQUEST_SORT_COLUMNS = {
+  title: (request: ProcurementRequestRow) => request.title,
+  client: (request: ProcurementRequestRow) => request.client?.name,
+  status: (request: ProcurementRequestRow) => STATUS_ORDER.get(request.status),
+  targetDate: (request: ProcurementRequestRow) => request.targetEffectiveDate,
+  updated: (request: ProcurementRequestRow) => request.updatedAt,
+};
 
 type ProcurementRequestRow = {
   _id: Id<"procurementRequests">;
@@ -715,6 +728,11 @@ export function ProcurementListWorkspace({
           value?.toLowerCase().includes(searchText),
         )),
   );
+  const tableSort = useTableSort(
+    `procurement:${scopeKey}:list`,
+    visibleRequests,
+    REQUEST_SORT_COLUMNS,
+  );
   const selection = useRowSelection<Id<"procurementRequests">>(
     `procurement:${scopeKey}:selected`,
     visibleRequests.map((request) => request._id),
@@ -896,13 +914,38 @@ export function ProcurementListWorkspace({
                   />
                 </TableHead>
               )}
-              <TableHead className={allClients ? "w-[34%]" : "w-[52%]"}>
+              <SortableTableHead
+                className={allClients ? "w-[34%]" : "w-[52%]"}
+                {...tableSort.head("title")}
+              >
                 Request
-              </TableHead>
-              {allClients && <TableHead className="w-[24%]">Client</TableHead>}
-              <TableHead className="w-[16%]">Status</TableHead>
-              <TableHead className="w-[14%]">Target date</TableHead>
-              <TableHead className="w-[12%]">Updated</TableHead>
+              </SortableTableHead>
+              {allClients && (
+                <SortableTableHead
+                  className="w-[24%]"
+                  {...tableSort.head("client")}
+                >
+                  Client
+                </SortableTableHead>
+              )}
+              <SortableTableHead
+                className="w-[16%]"
+                {...tableSort.head("status")}
+              >
+                Status
+              </SortableTableHead>
+              <SortableTableHead
+                className="w-[14%]"
+                {...tableSort.head("targetDate")}
+              >
+                Target date
+              </SortableTableHead>
+              <SortableTableHead
+                className="w-[12%]"
+                {...tableSort.head("updated")}
+              >
+                Updated
+              </SortableTableHead>
               {!readOnly && (
                 <TableHead className="w-0">
                   <span className="sr-only">Actions</span>
@@ -921,7 +964,7 @@ export function ProcurementListWorkspace({
                 </TableCell>
               </TableRow>
             ) : null}
-            {visibleRequests.map((request) => {
+            {tableSort.rows.map((request) => {
               const brand = request.client
                 ? clientBrand.get(request.client._id)
                 : undefined;

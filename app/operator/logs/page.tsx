@@ -11,6 +11,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
@@ -19,8 +20,8 @@ import {
   TableHeader,
   TableBody,
   TableRow,
-  TableHead,
   TableCell,
+  SortableTableHead,
 } from "@/components/ui/table";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -34,6 +35,22 @@ import {
   tokens,
   callStatusPresentation,
 } from "./log-utils";
+
+type Call = FunctionReturnType<
+  typeof api.modelRoutingEvents.listCalls
+>["page"][number];
+
+const CALL_SORT_COLUMNS = {
+  time: (call: Call) => call.timestamp,
+  status: (call: Call) => displayTask(call.status ?? "unknown"),
+  task: (call: Call) => displayTask(call.taskKind),
+  model: (call: Call) => call.model ?? call.callProvider,
+  tokens: (call: Call) =>
+    call.inputTokens === undefined && call.outputTokens === undefined
+      ? undefined
+      : (call.inputTokens ?? 0) + (call.outputTokens ?? 0),
+  cost: (call: Call) => call.costUsd,
+};
 
 export default function OperatorLogsPage() {
   const params = useSearchParams();
@@ -132,6 +149,10 @@ export default function OperatorLogsPage() {
     }
     return buckets;
   }, [from, to, results]);
+  const tableSort = useTableSort("operator-logs:calls", results, CALL_SORT_COLUMNS, {
+    key: "time",
+    direction: "desc",
+  });
   const peak = Math.max(1, ...activity.map((bucket) => bucket.count));
   function updateParams(next: URLSearchParams) {
     router.replace(`${pathname}?${next}`, { scroll: false });
@@ -294,15 +315,24 @@ export default function OperatorLogsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                {["Time", "Status", "Task", "Model", "Tokens", "Cost"].map(
-                  (label) => (
-                    <TableHead key={label}>{label}</TableHead>
-                  ),
-                )}
+                {(
+                  [
+                    ["time", "Time"],
+                    ["status", "Status"],
+                    ["task", "Task"],
+                    ["model", "Model"],
+                    ["tokens", "Tokens"],
+                    ["cost", "Cost"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <SortableTableHead key={key} {...tableSort.head(key)}>
+                    {label}
+                  </SortableTableHead>
+                ))}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {results.map((call) => (
+              {tableSort.rows.map((call) => (
                 <TableRow
                   key={call._id}
                   tabIndex={0}

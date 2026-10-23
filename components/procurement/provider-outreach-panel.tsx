@@ -22,10 +22,15 @@ import {
   TableHeader,
   TableRow,
   TableNameLink,
+  SortableTableHead,
 } from "@/components/ui/table";
 import { PillButton } from "@/components/ui/pill-button";
-import { OutreachStatusTag } from "./procurement-shared";
+import {
+  OUTREACH_STATUS_OPTIONS,
+  OutreachStatusTag,
+} from "./procurement-shared";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort, type TableSortValue } from "@/hooks/use-table-sort";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
@@ -1068,6 +1073,48 @@ function IdentityHolds({
   );
 }
 
+/** Values a provider table row sorts by. */
+export type ProviderSortValues = {
+  provider: TableSortValue;
+  contact: TableSortValue;
+  coverage: TableSortValue;
+  status: TableSortValue;
+};
+
+const OUTREACH_STATUS_ORDER = new Map<string, number>(
+  OUTREACH_STATUS_OPTIONS.map((option, index) => [option.value, index]),
+);
+
+export function outreachStatusSortValue(status: string) {
+  return OUTREACH_STATUS_ORDER.get(status);
+}
+
+type ProviderTableRow = {
+  group: "submitted" | "matched" | "other";
+  sort: ProviderSortValues;
+  render: () => ReactNode;
+};
+
+const PROVIDER_SORT_COLUMNS = {
+  provider: (row: ProviderTableRow) => row.sort.provider,
+  contact: (row: ProviderTableRow) => row.sort.contact,
+  coverage: (row: ProviderTableRow) => row.sort.coverage,
+  status: (row: ProviderTableRow) => row.sort.status,
+};
+
+function candidateSortValues(
+  candidate: ProviderCandidateView,
+): ProviderSortValues {
+  return {
+    provider: candidate.name,
+    contact: candidate.recipient?.email,
+    coverage: candidate.lines.covered.length,
+    status: candidate.outreach
+      ? outreachStatusSortValue(candidate.outreach.status)
+      : undefined,
+  };
+}
+
 export function ProviderOutreachPanel({
   controller,
   submittedProviders = [],
@@ -1077,6 +1124,7 @@ export function ProviderOutreachPanel({
   submittedProviders?: {
     key: string;
     brokerOrgId?: Id<"organizations">;
+    sort: ProviderSortValues;
     row: ReactNode;
   }[];
   readOnly?: boolean;
@@ -1087,7 +1135,6 @@ export function ProviderOutreachPanel({
     `procurement:${requestId}:provider-others-open`,
     null,
   );
-  if (!panel && !readOnly) return null;
   const submittedIds = new Set(
     submittedProviders.map((row) => row.brokerOrgId),
   );
@@ -1113,6 +1160,33 @@ export function ProviderOutreachPanel({
       onSend={() => void send(candidate.brokerOrgId)}
     />
   );
+  // Submitted, matched and other providers each sort within their group.
+  const tableSort = useTableSort(
+    `procurement:${requestId}:providers`,
+    [
+      ...submittedProviders.map((provider) => ({
+        group: "submitted" as const,
+        sort: provider.sort,
+        render: () => provider.row,
+      })),
+      ...rows.map((candidate) => ({
+        group: "matched" as const,
+        sort: candidateSortValues(candidate),
+        render: () => candidateRow(candidate),
+      })),
+      ...others.map((candidate) => ({
+        group: "other" as const,
+        sort: candidateSortValues(candidate),
+        render: () => candidateRow(candidate),
+      })),
+    ],
+    PROVIDER_SORT_COLUMNS,
+  );
+  const renderGroup = (group: ProviderTableRow["group"]) =>
+    tableSort.rows
+      .filter((row) => row.group === group)
+      .map((row) => row.render());
+  if (!panel && !readOnly) return null;
   return (
     <div className="space-y-4">
       {panel?.request.closedReason ? (
@@ -1160,18 +1234,26 @@ export function ProviderOutreachPanel({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Provider</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Coverage</TableHead>
-                <TableHead>Status</TableHead>
+                <SortableTableHead {...tableSort.head("provider")}>
+                  Provider
+                </SortableTableHead>
+                <SortableTableHead {...tableSort.head("contact")}>
+                  Contact
+                </SortableTableHead>
+                <SortableTableHead {...tableSort.head("coverage")}>
+                  Coverage
+                </SortableTableHead>
+                <SortableTableHead {...tableSort.head("status")}>
+                  Status
+                </SortableTableHead>
                 <TableHead className="text-right">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {submittedProviders.map((provider) => provider.row)}
-              {rows.map(candidateRow)}
+              {renderGroup("submitted")}
+              {renderGroup("matched")}
               {!rows.length && !submittedProviders.length ? (
                 <TableRow>
                   <TableCell
@@ -1202,7 +1284,7 @@ export function ProviderOutreachPanel({
                   </TableCell>
                 </TableRow>
               ) : null}
-              {showOthers ? others.map(candidateRow) : null}
+              {showOthers ? renderGroup("other") : null}
             </TableBody>
           </Table>
         </OperationalPanel>

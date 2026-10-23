@@ -18,6 +18,7 @@ import {
   TableCell,
   TableHead,
   TableHeader,
+  SortableTableHead,
   TableRow,
   TableNameLink,
 } from "@/components/ui/table";
@@ -31,8 +32,11 @@ import {
 } from "@/lib/sync/operator-cached-queries";
 import { useStopOperatorImpersonation } from "@/hooks/use-stop-operator-impersonation";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort } from "@/hooks/use-table-sort";
+import type { FunctionReturnType } from "convex/server";
 import { formatDisplayDate } from "@/lib/date-format";
 import {
+  OPERATOR_CLIENT_STATUSES,
   type OperatorClientRow,
 } from "./client-model";
 import { typeStyle } from "@/lib/typography";
@@ -65,6 +69,38 @@ function applicationName(application: {
 const UNSUBMITTED_ROW_CLASS = "bg-warning/5 hover:bg-warning/10";
 
 type ClientFilter = "all" | "active" | "limited";
+
+type UnlinkedApplication = FunctionReturnType<
+  typeof api.operator.listUnlinkedApplications
+>[number];
+
+/** Clients and not-yet-named applicants share one sortable table. */
+type ClientListRow =
+  | { kind: "client"; client: OperatorClientRow }
+  | { kind: "application"; application: UnlinkedApplication };
+
+function contactEmail(client: OperatorClientRow) {
+  return client.primaryContactEmail ?? client.adminEmail;
+}
+
+const CLIENT_SORT_COLUMNS = {
+  name: (row: ClientListRow) =>
+    row.kind === "client"
+      ? (row.client.dba ?? row.client.name)
+      : applicationName(row.application),
+  admin: (row: ClientListRow) =>
+    row.kind === "client"
+      ? contactEmail(row.client)
+      : row.application.applicantEmail,
+  website: (row: ClientListRow) =>
+    row.kind === "client" ? row.client.website : undefined,
+  status: (row: ClientListRow) =>
+    row.kind === "client"
+      ? OPERATOR_CLIENT_STATUSES[row.client.clientAccessStatus].label
+      : "Not submitted",
+  created: (row: ClientListRow) =>
+    row.kind === "client" ? row.client.createdAt : row.application.createdAt,
+};
 
 export default function OperatorClientsScreen() {
   const [creating, setCreating] = useState(false);
@@ -105,6 +141,18 @@ export default function OperatorClientsScreen() {
           ]),
         ) ?? [])
       : [];
+  const tableSort = useTableSort(
+    "clients:list",
+    [
+      ...(filteredClients ?? []).map(
+        (client): ClientListRow => ({ kind: "client", client }),
+      ),
+      ...filteredApplications.map(
+        (application): ClientListRow => ({ kind: "application", application }),
+      ),
+    ],
+    CLIENT_SORT_COLUMNS,
+  );
   const selection = useRowSelection<string>("clients:list:selected", [
     ...(filteredClients?.map((client) => client._id) ?? []),
     ...filteredApplications.map((application) => application.requestId),
@@ -118,10 +166,6 @@ export default function OperatorClientsScreen() {
   const stopOperatorImpersonation = useStopOperatorImpersonation(
     current?.activeImpersonation,
   );
-
-  function contactEmail(client: OperatorClientRow) {
-    return client.primaryContactEmail ?? client.adminEmail;
-  }
 
   const actions = (
     <>
@@ -201,31 +245,36 @@ export default function OperatorClientsScreen() {
                     onCheckedChange={selection.toggleAll}
                   />
                 </TableHead>
-                <TableHead
+                <SortableTableHead
                   className={`w-[28%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("name")}
                 >
                   Client
-                </TableHead>
-                <TableHead
+                </SortableTableHead>
+                <SortableTableHead
                   className={`w-[24%] text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("admin")}
                 >
                   Admin
-                </TableHead>
-                <TableHead
+                </SortableTableHead>
+                <SortableTableHead
                   className={`w-[20%] text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("website")}
                 >
                   Website
-                </TableHead>
-                <TableHead
+                </SortableTableHead>
+                <SortableTableHead
                   className={`w-[14%] text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("status")}
                 >
                   Status
-                </TableHead>
-                <TableHead
+                </SortableTableHead>
+                <SortableTableHead
                   className={`w-[14%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("created")}
                 >
                   Created
-                </TableHead>
+                </SortableTableHead>
                 <TableHead className="w-36 pr-4">
                   <span className="sr-only">Procurement</span>
                 </TableHead>
@@ -258,75 +307,77 @@ export default function OperatorClientsScreen() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredClients?.map((client) => (
-                  <TableRow
-                    key={client._id}
-                    data-state={
-                      selection.isSelected(client._id) ? "selected" : undefined
-                    }
-                    className={
-                      client.applicationInProgress
-                        ? UNSUBMITTED_ROW_CLASS
-                        : undefined
-                    }
-                  >
-                    <TableCell className="pl-4 pr-0">
-                      <Checkbox
-                        aria-label={`Select ${client.dba ?? client.name}`}
-                        checked={selection.isSelected(client._id)}
-                        disabled={readOnly}
-                        onCheckedChange={(checked) =>
-                          selection.toggle(client._id, checked)
+                tableSort.rows.map((row) => {
+                  if (row.kind === "client") {
+                    const { client } = row;
+                    return (
+                      <TableRow
+                        key={client._id}
+                        data-state={
+                          selection.isSelected(client._id) ? "selected" : undefined
                         }
-                      />
-                    </TableCell>
-                    <TableCell className="px-4">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <OrgBrandIcon
-                          name={client.dba ?? client.name}
-                          iconUrl={client.iconUrl}
-                          website={client.website}
-                          size="md"
-                        />
-                        <TableNameLink
-                          href={`/operator/clients/${client._id}`}
-                          className="truncate"
-                        >
-                          {client.dba ?? client.name}
-                        </TableNameLink>
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-56 truncate text-muted-foreground">
-                      {contactEmail(client) ?? "No admin"}
-                    </TableCell>
-                    <TableCell className="max-w-44">
-                      <ClientWebsiteField
-                        client={client}
-                        disabled={readOnly}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <ClientStatusField client={client} disabled={readOnly} />
-                    </TableCell>
-                    <TableCell className="px-4 text-muted-foreground">
-                      {formatDisplayDate(client.createdAt)}
-                    </TableCell>
-                    <TableCell className="pr-4 text-right">
-                      <PillButton
-                        href={`/operator/clients/${client._id}/procurement`}
-                        variant="ghost"
-                        size="compact"
+                        className={
+                          client.applicationInProgress
+                            ? UNSUBMITTED_ROW_CLASS
+                            : undefined
+                        }
                       >
-                        <FileSearch className="size-3.5" />
-                        Procurement
-                      </PillButton>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-              {clients === undefined
-                ? null
-                : filteredApplications.map((application) => (
+                        <TableCell className="pl-4 pr-0">
+                          <Checkbox
+                            aria-label={`Select ${client.dba ?? client.name}`}
+                            checked={selection.isSelected(client._id)}
+                            disabled={readOnly}
+                            onCheckedChange={(checked) =>
+                              selection.toggle(client._id, checked)
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="px-4">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <OrgBrandIcon
+                              name={client.dba ?? client.name}
+                              iconUrl={client.iconUrl}
+                              website={client.website}
+                              size="md"
+                            />
+                            <TableNameLink
+                              href={`/operator/clients/${client._id}`}
+                              className="truncate"
+                            >
+                              {client.dba ?? client.name}
+                            </TableNameLink>
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-56 truncate text-muted-foreground">
+                          {contactEmail(client) ?? "No admin"}
+                        </TableCell>
+                        <TableCell className="max-w-44">
+                          <ClientWebsiteField
+                            client={client}
+                            disabled={readOnly}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <ClientStatusField client={client} disabled={readOnly} />
+                        </TableCell>
+                        <TableCell className="px-4 text-muted-foreground">
+                          {formatDisplayDate(client.createdAt)}
+                        </TableCell>
+                        <TableCell className="pr-4 text-right">
+                          <PillButton
+                            href={`/operator/clients/${client._id}/procurement`}
+                            variant="ghost"
+                            size="compact"
+                          >
+                            <FileSearch className="size-3.5" />
+                            Procurement
+                          </PillButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }
+                  const { application } = row;
+                  return (
                     <TableRow
                       key={application.requestId}
                       data-state={
@@ -373,7 +424,9 @@ export default function OperatorClientsScreen() {
                       </TableCell>
                       <TableCell />
                     </TableRow>
-                  ))}
+                  );
+                })
+              )}
             </TableBody>
           </Table>
         </OperationalPanel>
