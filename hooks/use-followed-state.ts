@@ -157,3 +157,41 @@ export function useFollowedValue<T>(key: string, value: T, defaultValue: T): T {
   if (remote === null) return value;
   return Object.hasOwn(remote, key) ? (remote[key] as T) : defaultValue;
 }
+
+/**
+ * Key for followed state on something with no id, derived from content that
+ * is identical in every browser (an attachment set, a rendered block).
+ */
+export function followedContentKey(prefix: string, content: unknown) {
+  const text = JSON.stringify(content);
+  let hash = 5381;
+  for (let index = 0; index < text.length; index++) {
+    hash = ((hash << 5) + hash + text.charCodeAt(index)) | 0;
+  }
+  return `${prefix}:${(hash >>> 0).toString(36)}`;
+}
+
+/** Whether this browser is currently following a teammate. */
+export function useIsFollowing() {
+  return (
+    useSyncExternalStore(subscribeMirrored, getMirrored, () => null) !== null
+  );
+}
+
+/**
+ * Wraps a mutation or action so it does nothing while following. A follower
+ * mirrors the leader's state, so effects keyed on it (autosave, background
+ * preparation) would otherwise write the leader's position as the follower.
+ * The returned promise never settles, so no follow-up code runs; remount the
+ * surface when following stops (`key={isFollowing ? "following" : "own"}`).
+ */
+export function useLeaderOnly<Args extends unknown[], Result>(
+  fn: (...args: Args) => Promise<Result>,
+): (...args: Args) => Promise<Result> {
+  const following = useIsFollowing();
+  return useCallback(
+    (...args: Args) =>
+      following ? new Promise<Result>(() => {}) : fn(...args),
+    [following, fn],
+  );
+}

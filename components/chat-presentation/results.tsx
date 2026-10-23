@@ -1,7 +1,11 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo } from "react";
 import { useEntityPreview } from "@/hooks/use-entity-preview";
+import {
+  followedContentKey,
+  useFollowedState,
+} from "@/hooks/use-followed-state";
 import type { PresentationProps } from "@/lib/chat-presentation";
 import { typeStyle } from "@/lib/typography";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -172,7 +176,11 @@ export function FindingsList({ findings }: PresentationProps<"FindingsList">) {
 export function RequirementMatrix({
   requirements,
 }: PresentationProps<"RequirementMatrix">) {
-  const [status, setStatus] = useState("all");
+  const { stateKey } = usePresentation();
+  const [status, setStatus] = useFollowedState(
+    `${followedContentKey(`${stateKey}:requirements`, requirements)}:status`,
+    "all",
+  );
   const visible = requirements.filter(
     (row) => status === "all" || row.status === status,
   );
@@ -219,10 +227,11 @@ export function RequirementMatrix({
 }
 
 export function RecordList({ records }: PresentationProps<"RecordList">) {
-  const { references, openRecord } = usePresentation();
+  const { stateKey, references, openRecord } = usePresentation();
   const { openPreview } = useEntityPreview();
-  const [filter, setFilter] = useState("");
-  const [order, setOrder] = useState("original");
+  const blockKey = followedContentKey(`${stateKey}:records`, records);
+  const [filter, setFilter] = useFollowedState(`${blockKey}:filter`, "");
+  const [order, setOrder] = useFollowedState(`${blockKey}:order`, "original");
   const filterId = useId();
   const visible = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase();

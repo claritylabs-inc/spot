@@ -584,6 +584,16 @@ export function ProcurementListWorkspace({
     setPanel(request._id);
 
   const panelRequest = requests.find((request) => request._id === panel);
+  // A preview whose request is gone closes for good rather than reopening if
+  // the request returns.
+  const panelRequestGone =
+    panel !== null &&
+    panel !== NEW_REQUEST_PANEL &&
+    requestRows !== undefined &&
+    !panelRequest;
+  useEffect(() => {
+    if (panelRequestGone) setPanel(null);
+  }, [panelRequestGone, setPanel]);
   useEffect(() => {
     if (panel === NEW_REQUEST_PANEL) {
       onRightPanel(

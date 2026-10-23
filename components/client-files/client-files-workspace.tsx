@@ -713,6 +713,17 @@ export function ClientFilesWorkspace({
     ] as ClientFileRow[];
     return rows.find((file) => file._id === panel.fileId) ?? null;
   }, [activeResult, archivedResult, panel]);
+  // A panel whose file is gone closes for good rather than reopening if the
+  // file returns.
+  const panelFileGone =
+    panel !== null &&
+    panel.kind !== "upload" &&
+    activeResult !== undefined &&
+    archivedResult !== undefined &&
+    !panelFile;
+  useEffect(() => {
+    if (panelFileGone) setPanel(null);
+  }, [panelFileGone, setPanel]);
 
   useEffect(() => {
     const panelKind = panel?.kind;

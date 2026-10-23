@@ -239,6 +239,7 @@ type RequestPanel =
       documentCategory: "requirements" | "policy" | "loss_runs" | "supporting";
     }
   | { kind: "file"; fileItemId: string }
+  | { kind: "image"; fileItemId: string }
   | { kind: "client-composer" };
 
 type RequestDetails = {
@@ -2431,14 +2432,18 @@ export function ProcurementRequestWorkspace({
                 onRightPanel(null);
                 openWithUrl(file.url);
               } else {
-                onRightPanel(
-                  <ImagePreview file={file} onClose={closeRightPanel} />,
-                );
+                setPanel({ kind: "image", fileItemId: fileItem._id });
               }
             }}
             onClose={closeRightPanel}
           />
         );
+    } else if (panel.kind === "image") {
+      const file = details?.files.find(
+        (row) => row._id === panel.fileItemId,
+      )?.clientFile;
+      if (file?.url)
+        node = <ImagePreview file={file} onClose={closeRightPanel} />;
     } else {
       node = (
         <ClientOutreachComposer
@@ -2473,6 +2478,7 @@ export function ProcurementRequestWorkspace({
     requestId,
     requestTitle,
     router,
+    setPanel,
     showPanel,
   ]);
 
