@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireOperator } from "./lib/operatorIdentity";
+import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import {
   getTeamThreadDetails,
   listSuggestedTeamThreads,
@@ -41,7 +42,9 @@ export async function markTeamThreadRead(
   args: { userId: Id<"users">; threadId: Id<"teamEmailThreads"> },
 ) {
   const thread = await ctx.db.get(args.threadId);
-  if (!thread || thread.deletedAt) throw new Error("Conversation not found");
+  if (!thread || thread.deletedAt || await teamTargetProblem(ctx, thread)) {
+    throw new Error("Conversation not found");
+  }
   const readAt = thread.latestInboundAt ?? thread.latestMessageAt;
   const existing = await ctx.db
     .query("teamInboxReads")
@@ -141,6 +144,7 @@ export const markRead = mutation({
   args: { threadId: v.id("teamEmailThreads") },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
     return await markTeamThreadRead(ctx, { userId: operator.userId, threadId: args.threadId });
   },
 });
