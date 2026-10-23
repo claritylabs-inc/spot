@@ -149,19 +149,18 @@ function OperatorReplyComposer({
     else replyDrafts.delete(id);
   }
 
-  // The server saying "sent" is the one positive answer. State is adjusted
-  // while rendering; the stored copies are cleared in the effect below.
+  // The server saying "sent" is the one positive answer. Clearing runs in an
+  // effect so it always commits; it syncs this form to a subscription.
   const confirmedSent = attempt !== null && status?.state === "sent";
-  if (confirmedSent) {
-    setText("");
-    setAttempt(null);
-    setServerNote(null);
-  }
   useEffect(() => {
     if (!confirmedSent) return;
     replyDrafts.delete(id);
     sendKey.current = null;
     writeAttempt(id, null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setText("");
+    setAttempt(null);
+    setServerNote(null);
   }, [confirmedSent, id]);
 
   async function send(retry?: SendAttempt) {
@@ -225,7 +224,7 @@ function OperatorReplyComposer({
               ? "Sending…"
               : (serverNote ??
                 "This reply is locked until the server confirms whether it was sent.")}{" "}
-            {sending ? null : "It will not be sent under a new key."}
+            {sending ? null : "This reply stays locked to prevent duplicates."}
           </p>
           <div className="flex justify-end">
             <PillButton type="button" size="compact" disabled={sending} onClick={() => void send(attempt)}>
