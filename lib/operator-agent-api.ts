@@ -8,6 +8,12 @@ import type { RouterJobFailure } from "@/convex/lib/routerJobFailure";
 import type { Id } from "@/convex/_generated/dataModel";
 import type { PageContext } from "@/hooks/use-page-context";
 
+export type OperatorPerson = {
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+};
+
 type BackendThread = {
   _id: string;
   channel: "chat" | "slack" | "imessage" | "email" | "mcp";
@@ -17,6 +23,8 @@ type BackendThread = {
   createdAt: number;
   lastMessageAt: number;
   archivedAt?: number;
+  /** Present on list results; detail results carry it beside the thread. */
+  creator?: OperatorPerson;
 };
 
 type BackendMessage = {
@@ -34,6 +42,7 @@ type BackendMessage = {
   emailContent?: Infer<typeof operatorEmailContentValidator>;
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
+  userId?: string;
   userName?: string;
   pageContext?: PageContext;
   rerun?: { runId: string; withErrorContext: boolean };
@@ -87,11 +96,17 @@ type BackendConfirmation = {
   expiresAt?: number;
 };
 
-type ListThreadsArgs = { limit?: number; archived?: boolean };
+type ListThreadsArgs = {
+  limit?: number;
+  view?: "recent" | "mcp" | "archived";
+};
 type GetThreadArgs = { threadId: string };
 type SetThreadArchiveArgs = { threadId: string };
 type GetThreadResult = {
   thread: BackendThread;
+  viewerUserId: string;
+  creator: OperatorPerson;
+  people: OperatorPerson[];
   messages: BackendMessage[];
   activeRun: BackendRun | null;
   confirmations: BackendConfirmation[];
@@ -146,6 +161,7 @@ export type OperatorAgentThread = {
   createdAt: number;
   lastMessageAt: number;
   archivedAt?: number;
+  creator?: OperatorPerson;
 };
 
 export type OperatorAgentIntent = { id: string; label: string };
@@ -176,6 +192,8 @@ export type OperatorAgentMessage = {
   status?: "processing" | "error" | "cancelled";
   createdAt: number;
   userName?: string;
+  /** The operator who wrote a user message, when known. */
+  sender?: OperatorPerson;
   pageContext?: PageContext;
   rerun?: { runId: string; withErrorContext: boolean };
   replyToMessageId?: string;
@@ -193,6 +211,7 @@ type OperatorAgentToolCall = {
 
 export type OperatorAgentThreadDetail = {
   thread: OperatorAgentThread | null;
+  viewerUserId: string | null;
   messages: OperatorAgentMessage[];
   activeRun: boolean;
   confirmations: OperatorAgentConfirmation[];
@@ -283,8 +302,12 @@ export const operatorAgentApi = {
   >("operatorAgent:confirmAction"),
 } as const;
 
-function normalizeThread(thread: BackendThread): OperatorAgentThread {
+function normalizeThread(
+  thread: BackendThread,
+  creator = thread.creator,
+): OperatorAgentThread {
   return {
+    creator,
     id: thread._id,
     channel: thread.channel,
     title: thread.title,
@@ -313,7 +336,7 @@ function normalizeConfirmation(
 export function normalizeOperatorAgentThreads(
   threads: BackendThread[] | undefined,
 ): OperatorAgentThread[] {
-  return (threads ?? []).map(normalizeThread);
+  return (threads ?? []).map((thread) => normalizeThread(thread));
 }
 
 export function normalizeOperatorAgentThread(
@@ -322,13 +345,16 @@ export function normalizeOperatorAgentThread(
   if (!value) {
     return {
       thread: null,
+      viewerUserId: null,
       messages: [],
       activeRun: false,
       confirmations: [],
     };
   }
+  const people = new Map(value.people.map((person) => [person.userId, person]));
   return {
-    thread: normalizeThread(value.thread),
+    thread: normalizeThread(value.thread, value.creator),
+    viewerUserId: value.viewerUserId,
     messages: value.messages.map((message) => ({
       id: message._id,
       role: message.role === "user" ? "user" : "assistant",
@@ -349,6 +375,7 @@ export function normalizeOperatorAgentThread(
       status: message.status,
       createdAt: message.createdAt,
       userName: message.userName,
+      sender: message.userId ? people.get(message.userId) : undefined,
       pageContext: message.pageContext,
       rerun: message.rerun,
       replyToMessageId: message.replyToMessageId,

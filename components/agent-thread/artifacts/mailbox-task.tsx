@@ -1,8 +1,14 @@
 "use client";
 
+import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { useState } from "react";
 import { useAction } from "convex/react";
-import { ClipboardList, FileText, Mail as MailIcon, Paperclip } from "lucide-react";
+import {
+  ClipboardList,
+  FileText,
+  Mail as MailIcon,
+  Paperclip,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -78,17 +84,31 @@ export function mailboxTaskDisplayName(task: NormalizedMailboxTask) {
   const accountEmails = [
     ...task.searches.map((search) => search.accountEmail),
     ...task.emails.map((email) => email.accountEmail),
-  ].filter((email): email is string => typeof email === "string" && email.trim().length > 0);
+  ].filter(
+    (email): email is string =>
+      typeof email === "string" && email.trim().length > 0,
+  );
   const uniqueAccounts = Array.from(new Set(accountEmails));
   if (uniqueAccounts.length === 0) return "Mailbox search";
-  if (uniqueAccounts.length === 1) return `Mailbox search - ${uniqueAccounts[0]}`;
+  if (uniqueAccounts.length === 1)
+    return `Mailbox search - ${uniqueAccounts[0]}`;
   return `Mailbox search - ${uniqueAccounts[0]} + ${uniqueAccounts.length - 1}`;
 }
 
-function MailboxSearchAudit({ searches }: { searches: NormalizedMailboxTask["searches"] }) {
+function MailboxSearchAudit({
+  searches,
+}: {
+  searches: NormalizedMailboxTask["searches"];
+}) {
   if (searches.length === 0) return null;
-  const totalMatches = searches.reduce((total, search) => total + search.resultCount, 0);
-  const totalErrors = searches.reduce((total, search) => total + search.errorCount, 0);
+  const totalMatches = searches.reduce(
+    (total, search) => total + search.resultCount,
+    0,
+  );
+  const totalErrors = searches.reduce(
+    (total, search) => total + search.errorCount,
+    0,
+  );
 
   return (
     <div>
@@ -96,38 +116,66 @@ function MailboxSearchAudit({ searches }: { searches: NormalizedMailboxTask["sea
         <p className={`text-muted-foreground/35 ${typeStyle("label.eyebrow")}`}>
           Search audit
         </p>
-        <span className={`text-muted-foreground/40 ${typeStyle("caption.default")}`}>
-          {searches.length} search{searches.length === 1 ? "" : "es"} · {totalMatches} match{totalMatches === 1 ? "" : "es"}{totalErrors ? ` · ${totalErrors} error${totalErrors === 1 ? "" : "s"}` : ""}
+        <span
+          className={`text-muted-foreground/40 ${typeStyle("caption.default")}`}
+        >
+          {searches.length} search{searches.length === 1 ? "" : "es"} ·{" "}
+          {totalMatches} match{totalMatches === 1 ? "" : "es"}
+          {totalErrors
+            ? ` · ${totalErrors} error${totalErrors === 1 ? "" : "s"}`
+            : ""}
         </span>
       </div>
       <div className="space-y-1.5">
         {searches.map((search, index) => {
-          const windowText = [search.dateFrom, search.dateTo].filter(Boolean).join(" to ");
+          const windowText = [search.dateFrom, search.dateTo]
+            .filter(Boolean)
+            .join(" to ");
           return (
-            <div key={`${search.accountEmail ?? "account"}-${search.mailbox}-${search.query ?? "all"}-${index}`} className="rounded-md border border-input bg-foreground/[0.035] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-              <div className={`flex flex-wrap items-center gap-1.5 text-muted-foreground/55 ${typeStyle("caption.default")}`}>
-                <Badge variant="outline" className={`h-5 border-input px-1.5 text-muted-foreground/55 ${typeStyle("label.tag")}`}>
+            <div
+              key={`${search.accountEmail ?? "account"}-${search.mailbox}-${search.query ?? "all"}-${index}`}
+              className="rounded-md border border-input bg-foreground/[0.035] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+            >
+              <div
+                className={`flex flex-wrap items-center gap-1.5 text-muted-foreground/55 ${typeStyle("caption.default")}`}
+              >
+                <Badge
+                  variant="outline"
+                  className={`h-5 border-input px-1.5 text-muted-foreground/55 ${typeStyle("label.tag")}`}
+                >
                   {search.accountEmail ?? "Mailbox"}
                 </Badge>
                 <span>{search.mailbox}</span>
                 {windowText ? <span>· {windowText}</span> : null}
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <span className={`min-w-0 truncate text-foreground/80 ${typeStyle("caption.medium")}`}>
+                <span
+                  className={`min-w-0 truncate text-foreground/80 ${typeStyle("caption.medium")}`}
+                >
                   {search.query ? `"${search.query}"` : "All recent mail"}
                 </span>
-                <span className={`shrink-0 text-muted-foreground/45 ${typeStyle("caption.default")}`}>
-                  {search.resultCount} match{search.resultCount === 1 ? "" : "es"}
+                <span
+                  className={`shrink-0 text-muted-foreground/45 ${typeStyle("caption.default")}`}
+                >
+                  {search.resultCount} match
+                  {search.resultCount === 1 ? "" : "es"}
                 </span>
               </div>
               {search.identified.length > 0 ? (
                 <div className="mt-1.5 space-y-1">
                   {search.identified.map((item, itemIndex) => (
-                    <div key={`${item.subject}-${itemIndex}`} className={`flex min-w-0 items-center gap-2 text-muted-foreground/55 ${typeStyle("caption.default")}`}>
+                    <div
+                      key={`${item.subject}-${itemIndex}`}
+                      className={`flex min-w-0 items-center gap-2 text-muted-foreground/55 ${typeStyle("caption.default")}`}
+                    >
                       <MailIcon className="h-3 w-3 shrink-0 text-muted-foreground/35" />
-                      <span className="min-w-0 flex-1 truncate">{item.subject}</span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {item.subject}
+                      </span>
                       {item.attachmentCount ? (
-                        <span className="shrink-0 text-muted-foreground/35">{item.attachmentCount} att.</span>
+                        <span className="shrink-0 text-muted-foreground/35">
+                          {item.attachmentCount} att.
+                        </span>
                       ) : null}
                     </div>
                   ))}
@@ -151,14 +199,19 @@ function MailboxTaskDetail({
   threadId: Id<"threads">;
 }) {
   const { importPolicy, importRequirements } = useMailboxImports(orgId);
-  const saveAttachmentsToThread = useAction(api.actions.connectedEmail.saveAttachmentsToThread);
+  const saveAttachmentsToThread = useAction(
+    api.actions.connectedEmail.saveAttachmentsToThread,
+  );
   const readEmail = useAction(api.actions.connectedEmail.readEmail);
   const { busyKey, runBusy } = useBusyKey();
   const [readingKey, setReadingKey] = useState<string | null>(null);
   const [openEmailKey, setOpenEmailKey] = useState<string | null>(null);
-  const [liveEmails, setLiveEmails] = useState<Record<string, LiveMailboxEmail>>({});
+  const [liveEmails, setLiveEmails] = useState<
+    Record<string, LiveMailboxEmail>
+  >({});
 
-  if (!task.summary && task.searches.length === 0 && task.emails.length === 0) return null;
+  if (!task.summary && task.searches.length === 0 && task.emails.length === 0)
+    return null;
   const needsReview = task.status === "needs_review";
 
   function handlePolicyImport(email: MailboxTaskEmail, index: number) {
@@ -168,39 +221,55 @@ function MailboxTaskDetail({
       toast.error("No PDF attachments found");
       return;
     }
-    void runBusy(`policy-${index}`, async () => {
-      const result = await importPolicy(emailRef, email.attachments);
-      if (result.status === "no_pdf_attachments") {
-        toast.error("No PDF attachments found");
-      } else {
-        toast.success(result.started);
-      }
-    }, "Failed to import policy");
+    void runBusy(
+      `policy-${index}`,
+      async () => {
+        const result = await importPolicy(emailRef, email.attachments);
+        if (result.status === "no_pdf_attachments") {
+          toast.error("No PDF attachments found");
+        } else {
+          toast.success(result.started);
+        }
+      },
+      "Failed to import policy",
+    );
   }
 
   function handleSaveToThread(email: MailboxTaskEmail, index: number) {
     if (!email.emailRef) return;
     const emailRef = email.emailRef;
-    const filenames = email.attachments.map((attachment) => attachment.filename);
+    const filenames = email.attachments.map(
+      (attachment) => attachment.filename,
+    );
     if (filenames.length === 0) {
       toast.error("No attachments found");
       return;
     }
-    void runBusy(`save-${index}`, async () => {
-      const result = await saveAttachmentsToThread({
-        orgId,
-        threadId,
-        emailRef,
-        filenames,
-      }) as { status?: string; attachments?: unknown[]; skippedDuplicateFilenames?: string[] };
-      if (result.status === "no_saveable_attachments") {
-        toast.error("No saveable attachments found");
-      } else if (result.status === "duplicate_attachments") {
-        toast.info("Those documents are already saved to this thread");
-      } else {
-        toast.success(`Saved ${result.attachments?.length ?? filenames.length} document${filenames.length === 1 ? "" : "s"} to this thread`);
-      }
-    }, "Failed to save documents to thread");
+    void runBusy(
+      `save-${index}`,
+      async () => {
+        const result = (await saveAttachmentsToThread({
+          orgId,
+          threadId,
+          emailRef,
+          filenames,
+        })) as {
+          status?: string;
+          attachments?: unknown[];
+          skippedDuplicateFilenames?: string[];
+        };
+        if (result.status === "no_saveable_attachments") {
+          toast.error("No saveable attachments found");
+        } else if (result.status === "duplicate_attachments") {
+          toast.info("Those documents are already saved to this thread");
+        } else {
+          toast.success(
+            `Saved ${result.attachments?.length ?? filenames.length} document${filenames.length === 1 ? "" : "s"} to this thread`,
+          );
+        }
+      },
+      "Failed to save documents to thread",
+    );
   }
 
   function handleRequirementImport(
@@ -210,22 +279,26 @@ function MailboxTaskDetail({
   ) {
     if (!email.emailRef) return;
     const emailRef = email.emailRef;
-    void runBusy(`${scope}-${index}`, async () => {
-      const { status, createdCount } = await importRequirements(
-        emailRef,
-        email.attachments,
-        scope,
-      );
-      if (status === "no_requirement_sources") {
-        toast.error("No requirement source text found");
-      } else {
-        toast.success(
-          createdCount > 0
-            ? `Created ${createdCount} requirement${createdCount === 1 ? "" : "s"}`
-            : "Requirement import finished",
+    void runBusy(
+      `${scope}-${index}`,
+      async () => {
+        const { status, createdCount } = await importRequirements(
+          emailRef,
+          email.attachments,
+          scope,
         );
-      }
-    }, "Failed to create requirements");
+        if (status === "no_requirement_sources") {
+          toast.error("No requirement source text found");
+        } else {
+          toast.success(
+            createdCount > 0
+              ? `Created ${createdCount} requirement${createdCount === 1 ? "" : "s"}`
+              : "Requirement import finished",
+          );
+        }
+      },
+      "Failed to create requirements",
+    );
   }
 
   async function handleReadEmail(email: MailboxTaskEmail, index: number) {
@@ -256,14 +329,18 @@ function MailboxTaskDetail({
   return (
     <div className="space-y-4">
       {task.summary ? (
-        <p className={`text-muted-foreground/75 ${typeStyle("caption.default")}`}>
+        <p
+          className={`text-muted-foreground/75 ${typeStyle("caption.default")}`}
+        >
           {task.summary}
         </p>
       ) : null}
       <MailboxSearchAudit searches={task.searches} />
       {task.emails.length > 0 ? (
         <div>
-          <p className={`mb-1.5 text-muted-foreground/35 ${typeStyle("label.eyebrow")}`}>
+          <p
+            className={`mb-1.5 text-muted-foreground/35 ${typeStyle("label.eyebrow")}`}
+          >
             Email context
           </p>
           <div className="space-y-2">
@@ -307,28 +384,42 @@ function MailboxTaskDetail({
                 },
               ];
               return (
-                <div key={`${email.emailRef ?? email.subject}-${index}`} className="rounded-md border border-border bg-background px-3 py-2.5">
+                <div
+                  key={`${email.emailRef ?? email.subject}-${index}`}
+                  className="rounded-md border border-border bg-background px-3 py-2.5"
+                >
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className={`min-w-0 flex-1 truncate text-foreground/85 ${typeStyle("caption.medium")}`}>
+                    <span
+                      className={`min-w-0 flex-1 truncate text-foreground/85 ${typeStyle("caption.medium")}`}
+                    >
                       {email.subject}
                     </span>
                     {email.accountEmail ? (
-                      <Badge variant="outline" className={`h-5 border-input px-1.5 text-muted-foreground/50 ${typeStyle("label.tag")}`}>
+                      <Badge
+                        variant="outline"
+                        className={`h-5 border-input px-1.5 text-muted-foreground/50 ${typeStyle("label.tag")}`}
+                      >
                         {email.accountEmail}
                       </Badge>
                     ) : null}
                   </div>
-                  <p className={`mt-1 truncate text-muted-foreground/45 ${typeStyle("caption.default")}`}>
+                  <p
+                    className={`mt-1 truncate text-muted-foreground/45 ${typeStyle("caption.default")}`}
+                  >
                     {[
                       email.from,
                       email.mailbox,
                       email.date
                         ? formatDisplayDateTime(email.date, email.date)
                         : undefined,
-                    ].filter(Boolean).join(" · ")}
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </p>
                   {email.reason ? (
-                    <p className={`mt-1 text-muted-foreground/65 ${typeStyle("caption.default")}`}>
+                    <p
+                      className={`mt-1 text-muted-foreground/65 ${typeStyle("caption.default")}`}
+                    >
                       {email.reason}
                     </p>
                   ) : null}
@@ -342,8 +433,14 @@ function MailboxTaskDetail({
                             className={`inline-flex max-w-full items-center gap-1.5 rounded-full border border-input bg-foreground/[0.02] px-2 py-1 text-muted-foreground/65 ${typeStyle("label.tag")}`}
                           >
                             <Paperclip className="h-3 w-3 shrink-0" />
-                            <span className="truncate">{attachment.filename}</span>
-                            {size ? <span className="text-muted-foreground/35">{size}</span> : null}
+                            <span className="truncate">
+                              {attachment.filename}
+                            </span>
+                            {size ? (
+                              <span className="text-muted-foreground/35">
+                                {size}
+                              </span>
+                            ) : null}
                           </span>
                         );
                       })}
@@ -380,21 +477,33 @@ function MailboxTaskDetail({
                   ) : null}
                   {isOpen && liveEmail ? (
                     <div className="mt-2 border-t border-border pt-2">
-                      <dl className={`space-y-1 text-muted-foreground/55 ${typeStyle("caption.default")}`}>
-                        {[["To", liveEmail.to], ["Cc", liveEmail.cc]].map(([label, value]) =>
+                      <dl
+                        className={`space-y-1 text-muted-foreground/55 ${typeStyle("caption.default")}`}
+                      >
+                        {[
+                          ["To", liveEmail.to],
+                          ["Cc", liveEmail.cc],
+                        ].map(([label, value]) =>
                           value ? (
                             <div key={label} className="flex gap-2">
-                              <dt className="w-6 shrink-0 text-muted-foreground/35">{label}</dt>
+                              <dt className="w-6 shrink-0 text-muted-foreground/35">
+                                {label}
+                              </dt>
                               <dd className="min-w-0 break-words">{value}</dd>
                             </div>
                           ) : null,
                         )}
                       </dl>
-                      <div className="mt-2 max-h-72 overflow-y-auto rounded-md bg-foreground/[0.025] px-3 py-2.5">
-                        <p className={`whitespace-pre-wrap text-foreground/75 ${typeStyle("caption.default")}`}>
-                          {liveEmail.text?.trim() || "This email has no plain-text message body."}
-                        </p>
-                      </div>
+                      <ScrollArea className="mt-2 max-h-72 rounded-md bg-foreground/[0.025] [&>[data-slot=scroll-area-viewport]]:max-h-[inherit]">
+                        <div className="px-3 py-2.5">
+                          <p
+                            className={`whitespace-pre-wrap text-foreground/75 ${typeStyle("caption.default")}`}
+                          >
+                            {liveEmail.text?.trim() ||
+                              "This email has no plain-text message body."}
+                          </p>
+                        </div>
+                      </ScrollArea>
                     </div>
                   ) : null}
                 </div>
@@ -421,13 +530,14 @@ export function MailboxTaskSidebar({
   onClose: () => void;
 }) {
   const task = normalizeMailboxTask(artifact.data);
-  const selectedReviewEmail = task.status === "needs_review"
-    ? task.emails[emailIndex ?? 0]
-    : undefined;
+  const selectedReviewEmail =
+    task.status === "needs_review" ? task.emails[emailIndex ?? 0] : undefined;
   if (selectedReviewEmail) {
     return (
       <MailboxEmailReviewSidebar
-        key={selectedReviewEmail.automationItemId ?? selectedReviewEmail.emailRef}
+        key={
+          selectedReviewEmail.automationItemId ?? selectedReviewEmail.emailRef
+        }
         email={selectedReviewEmail}
         orgId={orgId}
         threadId={threadId}

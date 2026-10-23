@@ -1,5 +1,6 @@
 "use client";
 
+import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -135,58 +136,60 @@ function OperatorClientSidebar({
           icon={<LogoIcon size={15} />}
         />
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
-          <SidebarMenuItem
-            href="/operator/clients"
-            label="Clients"
-            icon={ArrowLeft}
-            active={false}
-            collapsed={collapsed}
-          />
-
-          <SectionHeader label="Client" collapsed={collapsed} />
-          <SidebarMenuItem
-            href={`${basePath}/wiki`}
-            label="Profile"
-            icon={Building2}
-            active={active === "wiki"}
-            collapsed={collapsed}
-          />
-          <SidebarMenuItem
-            href={`${basePath}/files`}
-            label="Files"
-            icon={FolderOpen}
-            active={active === "files"}
-            collapsed={collapsed}
-          />
-          <SectionHeader label="Insurance" collapsed={collapsed} />
-          {INSURANCE_NAV_ITEMS.map((item) => (
+        <ScrollArea className="min-h-0 flex-1">
+          <nav className="space-y-0.5 px-2 py-2">
             <SidebarMenuItem
-              key={item.id}
-              href={`${basePath}${item.href}`}
-              label={item.label}
-              icon={item.icon}
-              active={active === item.id}
+              href="/operator/clients"
+              label="Clients"
+              icon={ArrowLeft}
+              active={false}
               collapsed={collapsed}
             />
-          ))}
 
-          <SectionHeader label="Settings" collapsed={collapsed} />
-          <SidebarMenuItem
-            href={`${basePath}?tab=team`}
-            label="Team"
-            icon={Users}
-            active={active === "team"}
-            collapsed={collapsed}
-          />
-          <SidebarMenuItem
-            href={`${basePath}?tab=settings`}
-            label="Settings"
-            icon={Settings}
-            active={active === "settings"}
-            collapsed={collapsed}
-          />
-        </nav>
+            <SectionHeader label="Client" collapsed={collapsed} />
+            <SidebarMenuItem
+              href={`${basePath}/wiki`}
+              label="Profile"
+              icon={Building2}
+              active={active === "wiki"}
+              collapsed={collapsed}
+            />
+            <SidebarMenuItem
+              href={`${basePath}/files`}
+              label="Files"
+              icon={FolderOpen}
+              active={active === "files"}
+              collapsed={collapsed}
+            />
+            <SectionHeader label="Insurance" collapsed={collapsed} />
+            {INSURANCE_NAV_ITEMS.map((item) => (
+              <SidebarMenuItem
+                key={item.id}
+                href={`${basePath}${item.href}`}
+                label={item.label}
+                icon={item.icon}
+                active={active === item.id}
+                collapsed={collapsed}
+              />
+            ))}
+
+            <SectionHeader label="Settings" collapsed={collapsed} />
+            <SidebarMenuItem
+              href={`${basePath}?tab=team`}
+              label="Team"
+              icon={Users}
+              active={active === "team"}
+              collapsed={collapsed}
+            />
+            <SidebarMenuItem
+              href={`${basePath}?tab=settings`}
+              label="Settings"
+              icon={Settings}
+              active={active === "settings"}
+              collapsed={collapsed}
+            />
+          </nav>
+        </ScrollArea>
 
         <div className="flex shrink-0 justify-center border-t border-border px-2 py-2">
           <OperatorClientImpersonationAction

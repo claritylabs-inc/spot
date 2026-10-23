@@ -161,6 +161,7 @@ import {
   type SlackThreadContextSnapshot,
 } from "./lib/slackThreadContext";
 import { threadPageContext } from "./lib/threadPageContext";
+import { operatorPeople } from "./lib/operatorAvatar";
 
 const operatorChannelValidator = v.union(
   v.literal("chat"),
@@ -1228,15 +1229,14 @@ async function requireOperatorThread(
   ctx: QueryCtx | MutationCtx,
   threadId: Id<"operatorAgentThreads">,
   operatorUserId: Id<"users">,
-  options: { allowShared?: boolean } = {},
+  options: { anyOperator?: boolean } = {},
 ) {
   const thread = await ctx.db.get(threadId);
+  // Every operator conversation is open to all operators; ownership only
+  // gates creator-scoped actions such as reusing an empty draft chat.
   if (
     !thread ||
-    (!options.allowShared && thread.ownerUserId !== operatorUserId) ||
-    (options.allowShared &&
-      thread.ownerUserId !== operatorUserId &&
-      thread.visibility !== "shared")
+    (!options.anyOperator && thread.ownerUserId !== operatorUserId)
   ) {
     throw new Error("Operator thread not found");
   }
@@ -1409,7 +1409,7 @@ export async function enqueueOperatorMessage(
     ctx,
     args.threadId,
     args.operatorUserId,
-    { allowShared: true },
+    { anyOperator: true },
   );
   const content = args.content.trim();
   if (!content) throw new Error("Message content is required");
@@ -1588,10 +1588,14 @@ export async function enqueueOperatorMessage(
       ? { initialContext: pageContext }
       : {}),
     ...(!threadPageContext(thread) && pageContext ? { pageContext } : {}),
-    ...(thread.title === "New chat"
-      ? { title: normalizeOperatorThreadTitle(content).slice(0, 80) }
-      : {}),
   });
+  if (thread.title === "New chat") {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.threadTitle.generateOperatorTitle,
+      { threadId: args.threadId, expectedTitle: "New chat" },
+    );
+  }
   await ctx.scheduler.runAfter(0, internal.operatorAgentRunner.run, { runId });
   return { messageId: userMessageId, runId, duplicate: false };
 }
@@ -1610,13 +1614,11 @@ async function executeToolDomain(
   if (toolName === "list_operator_conversations") {
     const archived = input.archived === true;
     const threads =
-      input.scope === "shared"
+      input.scope === "all"
         ? ctx.db
             .query("operatorAgentThreads")
-            .withIndex("visibility_archive", (q) =>
-              q
-                .eq("visibility", "shared")
-                .eq("archiveState", archived ? "archived" : undefined),
+            .withIndex("archive_last_message", (q) =>
+              q.eq("archiveState", archived ? "archived" : undefined),
             )
         : ctx.db
             .query("operatorAgentThreads")
@@ -1629,12 +1631,16 @@ async function executeToolDomain(
       cursor: typeof input.cursor === "string" ? input.cursor : null,
       numItems: typeof input.limit === "number" ? input.limit : 15,
     });
+    const people = await operatorPeople(
+      ctx,
+      page.page.map((thread) => thread.ownerUserId),
+    );
     return {
       conversations: page.page.map((thread) => ({
         threadId: thread._id,
         title: thread.title,
         channel: thread.channel,
-        visibility: thread.visibility,
+        createdBy: people.get(thread.ownerUserId)?.name,
         archived: Boolean(thread.archivedAt),
         lastMessageAt: thread.lastMessageAt,
       })),
@@ -1652,7 +1658,7 @@ async function executeToolDomain(
       ctx,
       threadId,
       args.operatorUserId,
-      { allowShared: true },
+      { anyOperator: true },
     );
     const page = await ctx.db
       .query("operatorAgentMessages")
@@ -3333,7 +3339,7 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
     throw new Error("Operator agent run not found");
   }
   await requireOperatorThread(ctx, args.threadId, args.operatorUserId, {
-    allowShared: true,
+    anyOperator: true,
   });
   const spec = getOperatorAgentToolSpec(args.toolName);
   if (spec.execution !== "mutation") {
@@ -3507,42 +3513,51 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
   }
 }
 
+const CONVERSATION_CHANNELS = ["chat", "slack", "imessage", "email"] as const;
+
 export const listThreads = query({
   args: {
     limit: v.optional(v.number()),
-    archived: v.optional(v.boolean()),
+    /** Recent conversations, MCP requests, or everything archived. */
+    view: v.optional(
+      v.union(v.literal("recent"), v.literal("mcp"), v.literal("archived")),
+    ),
   },
   handler: async (ctx, args) => {
-    const operator = await requireOperator(ctx);
+    await requireOperator(ctx);
     const limit = Math.max(1, Math.min(args.limit ?? 50, 100));
-    const archived = args.archived === true;
-    const [owned, shared] = await Promise.all([
+    const view = args.view ?? "recent";
+    const byChannel = (channel: OperatorChannel) =>
       ctx.db
         .query("operatorAgentThreads")
-        .withIndex("owner_archive", (index) =>
-          index
-            .eq("ownerUserId", operator.userId)
-            .eq("archiveState", archived ? "archived" : undefined),
+        .withIndex("archive_channel_last_message", (index) =>
+          index.eq("archiveState", undefined).eq("channel", channel),
         )
         .order("desc")
-        .take(limit),
-      ctx.db
-        .query("operatorAgentThreads")
-        .withIndex("visibility_archive", (index) =>
-          index
-            .eq("visibility", "shared")
-            .eq("archiveState", archived ? "archived" : undefined),
-        )
-        .order("desc")
-        .take(limit),
-    ]);
-    return [
-      ...new Map(
-        [...owned, ...shared].map((thread) => [thread._id, thread]),
-      ).values(),
-    ]
-      .sort((left, right) => right.lastMessageAt - left.lastMessageAt)
-      .slice(0, limit);
+        .take(limit);
+    const threads =
+      view === "archived"
+        ? await ctx.db
+            .query("operatorAgentThreads")
+            .withIndex("archive_last_message", (index) =>
+              index.eq("archiveState", "archived"),
+            )
+            .order("desc")
+            .take(limit)
+        : view === "mcp"
+          ? await byChannel("mcp")
+          : (await Promise.all(CONVERSATION_CHANNELS.map(byChannel)))
+              .flat()
+              .sort((left, right) => right.lastMessageAt - left.lastMessageAt)
+              .slice(0, limit);
+    const people = await operatorPeople(
+      ctx,
+      threads.map((thread) => thread.ownerUserId),
+    );
+    return threads.map((thread) => ({
+      ...thread,
+      creator: people.get(thread.ownerUserId)!,
+    }));
   },
 });
 
@@ -3551,7 +3566,7 @@ export const archiveThread = mutation({
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     await requireOperatorThread(ctx, args.threadId, operator.userId, {
-      allowShared: true,
+      anyOperator: true,
     });
     const now = dayjs().valueOf();
     await ctx.db.patch(args.threadId, {
@@ -3568,7 +3583,7 @@ export const unarchiveThread = mutation({
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     await requireOperatorThread(ctx, args.threadId, operator.userId, {
-      allowShared: true,
+      anyOperator: true,
     });
     await ctx.db.patch(args.threadId, {
       archivedAt: undefined,
@@ -3611,7 +3626,7 @@ export const clearThreadContext = mutation({
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     await requireOperatorThread(ctx, args.threadId, operator.userId, {
-      allowShared: true,
+      anyOperator: true,
     });
     await ctx.db.patch(args.threadId, {
       pageContext: null,
@@ -3629,7 +3644,7 @@ export const getThread = query({
       ctx,
       args.threadId,
       operator.userId,
-      { allowShared: true },
+      { anyOperator: true },
     );
     const [initialContext, pageContext] = await Promise.all([
       withPageContextHref(ctx, thread.initialContext),
@@ -3673,8 +3688,15 @@ export const getThread = query({
         ]),
     );
     const presentationBudget = presentationReadBudget();
+    const people = await operatorPeople(ctx, [
+      thread.ownerUserId,
+      ...messages.flatMap((message) => (message.userId ? [message.userId] : [])),
+    ]);
     return {
       thread: { ...thread, initialContext, pageContext: pageContext ?? null },
+      viewerUserId: operator.userId,
+      creator: people.get(thread.ownerUserId)!,
+      people: [...people.values()],
       messages: (
         await Promise.all(
           [...messages].reverse().map(async (message) => {
@@ -3940,7 +3962,7 @@ export const getAttachmentUrl = query({
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     await requireOperatorThread(ctx, args.threadId, operator.userId, {
-      allowShared: true,
+      anyOperator: true,
     });
     const attachment = await ctx.db
       .query("operatorAgentAttachments")
@@ -3995,7 +4017,7 @@ export const rerunTurn = mutation({
       throw new Error("Operator agent run not found");
     }
     await requireOperatorThread(ctx, source.threadId, operator.userId, {
-      allowShared: true,
+      anyOperator: true,
     });
     if (
       source.executionKind === "direct_tool" ||
@@ -4067,7 +4089,7 @@ export const cancelRun = mutation({
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     await requireOperatorThread(ctx, args.threadId, operator.userId, {
-      allowShared: true,
+      anyOperator: true,
     });
     const cancelled = await cancelActiveRunsForThread(
       ctx,
@@ -4109,7 +4131,7 @@ async function confirmOperatorAction(
     ctx,
     args.threadId,
     operator.userId,
-    { allowShared: true },
+    { anyOperator: true },
   );
   const channel =
     args.channel ??
@@ -4472,7 +4494,7 @@ export const validateConfirmedActionToolExecutionInternal = internalMutation({
       run.threadId,
       run.operatorUserId,
       {
-        allowShared: true,
+        anyOperator: true,
       },
     );
     if (run.status !== "running" || run.cancellationRequestedAt) {
@@ -4817,7 +4839,7 @@ export const getPendingConfirmationInternal = internalQuery({
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
     await requireOperatorThread(ctx, args.threadId, args.operatorUserId, {
-      allowShared: true,
+      anyOperator: true,
     });
     const confirmation = await ctx.db
       .query("operatorAgentConfirmations")
@@ -4928,18 +4950,14 @@ export const createOrGetChannelThreadWithStatusInternal = internalMutation({
   },
 });
 
-export const getSlackThreadTitleContextInternal = internalQuery({
+export const getThreadTitleContextInternal = internalQuery({
   args: {
     threadId: v.id("operatorAgentThreads"),
     expectedTitle: v.string(),
   },
   handler: async (ctx, args) => {
     const thread = await ctx.db.get(args.threadId);
-    if (
-      !thread ||
-      thread.channel !== "slack" ||
-      thread.title !== args.expectedTitle
-    ) {
+    if (!thread || thread.title !== args.expectedTitle) {
       return null;
     }
     const message = await ctx.db
@@ -4949,6 +4967,38 @@ export const getSlackThreadTitleContextInternal = internalQuery({
       .filter((query) => query.eq(query.field("role"), "user"))
       .first();
     return message ? { message } : null;
+  },
+});
+
+/** Regenerates long or placeholder titles on existing non-Slack threads, one page per call. */
+export const retitleOperatorThreadsInternal = internalMutation({
+  args: { cursor: v.union(v.string(), v.null()), dryRun: v.boolean() },
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("operatorAgentThreads")
+      .paginate({ cursor: args.cursor, numItems: 100 });
+    const stale = page.page.filter(
+      (thread) =>
+        thread.channel !== "slack" &&
+        (thread.title === "Operator API" ||
+          thread.title.split(/\s+/).length > 4 ||
+          thread.title.length > 40),
+    );
+    if (!args.dryRun) {
+      for (const [index, thread] of stale.entries()) {
+        await ctx.scheduler.runAfter(
+          index * 500,
+          internal.actions.threadTitle.generateOperatorTitle,
+          { threadId: thread._id, expectedTitle: thread.title },
+        );
+      }
+    }
+    return {
+      scheduled: args.dryRun ? 0 : stale.length,
+      matched: stale.length,
+      continueCursor: page.continueCursor,
+      isDone: page.isDone,
+    };
   },
 });
 
@@ -4969,14 +5019,14 @@ export const scheduleSlackThreadTitleInternal = internalMutation({
     }
     await ctx.scheduler.runAfter(
       0,
-      internal.actions.threadTitle.generateOperatorSlack,
+      internal.actions.threadTitle.generateOperatorTitle,
       args,
     );
     return true;
   },
 });
 
-export const updateSlackThreadTitleInternal = internalMutation({
+export const updateThreadTitleInternal = internalMutation({
   args: {
     threadId: v.id("operatorAgentThreads"),
     expectedTitle: v.string(),
@@ -4984,11 +5034,7 @@ export const updateSlackThreadTitleInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const thread = await ctx.db.get(args.threadId);
-    if (
-      !thread ||
-      thread.channel !== "slack" ||
-      thread.title !== args.expectedTitle
-    ) {
+    if (!thread || thread.title !== args.expectedTitle) {
       return false;
     }
     await ctx.db.patch(args.threadId, {
@@ -5027,7 +5073,7 @@ export const getRunResultForOperatorInternal = internalQuery({
       throw new Error("Operator agent run not found");
     }
     await requireOperatorThread(ctx, run.threadId, args.operatorUserId, {
-      allowShared: true,
+      anyOperator: true,
     });
     const response = await ctx.db.get(run.agentMessageId);
     return {
@@ -5145,7 +5191,7 @@ export const cancelRunInternal = internalMutation({
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
     await requireOperatorThread(ctx, args.threadId, args.operatorUserId, {
-      allowShared: true,
+      anyOperator: true,
     });
     const cancelled = await cancelActiveRunsForThread(
       ctx,
@@ -5209,7 +5255,7 @@ export const prepareDirectToolInvocationInternal = internalMutation({
     let threadId = args.threadId;
     if (threadId) {
       await requireOperatorThread(ctx, threadId, args.operatorUserId, {
-        allowShared: true,
+        anyOperator: true,
       });
     } else {
       const conversationKey = normalizeOperatorConversationKey(
@@ -5224,14 +5270,20 @@ export const prepareDirectToolInvocationInternal = internalMutation({
             .eq("conversationKey", conversationKey),
         )
         .unique();
-      threadId =
-        existingThread?._id ??
-        (await insertOperatorThread(ctx, {
+      if (existingThread) {
+        threadId = existingThread._id;
+      } else {
+        threadId = await insertOperatorThread(ctx, {
           operatorUserId: args.operatorUserId,
           channel: args.channel,
-          title: "Operator API",
           conversationKey,
-        }));
+        });
+        await ctx.scheduler.runAfter(
+          0,
+          internal.actions.threadTitle.generateOperatorTitle,
+          { threadId, expectedTitle: "New chat" },
+        );
+      }
     }
 
     const now = dayjs().valueOf();
@@ -5242,7 +5294,7 @@ export const prepareDirectToolInvocationInternal = internalMutation({
       channel: args.channel,
       role: "user",
       userId: args.operatorUserId,
-      userName: "Operator API",
+      userName: args.channel === "mcp" ? "MCP" : "Operator tool",
       content: summary,
       createdAt: now,
       updatedAt: now,
@@ -5298,7 +5350,7 @@ export const prepareUnconfirmedActionToolInternal = internalMutation({
       throw new Error("Operator agent run not found");
     }
     await requireOperatorThread(ctx, args.threadId, args.operatorUserId, {
-      allowShared: true,
+      anyOperator: true,
     });
     const spec = getOperatorAgentToolSpec(args.toolName);
     assertOperatorRole(operator.profile.role, spec.requiredRole);
@@ -5614,7 +5666,7 @@ export const getRunContextInternal = internalQuery({
       ctx,
       run.threadId,
       run.operatorUserId,
-      { allowShared: true },
+      { anyOperator: true },
     );
     const messages = await ctx.db
       .query("operatorAgentMessages")
@@ -5680,7 +5732,7 @@ export const searchThreadHistoryInternal = internalQuery({
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
     await requireOperatorThread(ctx, args.threadId, args.operatorUserId, {
-      allowShared: true,
+      anyOperator: true,
     });
     const limit = Math.max(1, Math.min(args.limit ?? 5, 8));
     const messages = await ctx.db
@@ -5714,7 +5766,7 @@ export const getThreadAttachmentInternal = internalQuery({
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
     await requireOperatorThread(ctx, args.threadId, args.operatorUserId, {
-      allowShared: true,
+      anyOperator: true,
     });
     const message = await ctx.db.get(args.messageId);
     if (!message || message.threadId !== args.threadId) return null;
@@ -5830,7 +5882,7 @@ export const requestToolConfirmationInternal = internalMutation({
       throw new Error("Operator agent run not found");
     }
     await requireOperatorThread(ctx, args.threadId, args.operatorUserId, {
-      allowShared: true,
+      anyOperator: true,
     });
     const spec = getOperatorAgentToolSpec(args.toolName);
     assertOperatorRole(operator.profile.role, spec.requiredRole);

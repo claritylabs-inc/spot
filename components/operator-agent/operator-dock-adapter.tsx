@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 
 import type {
   AgentDockAdapter,
+  AgentDockHistoryView,
   AgentDockTabSummary,
 } from "@/components/agent-dock/types";
 import {
@@ -12,13 +13,15 @@ import {
   normalizeOperatorAgentThreads,
   operatorAgentApi,
 } from "@/lib/operator-agent-api";
+import { useActiveOperators } from "@/hooks/use-operator-presence";
 import { OperatorAgentChat } from "./operator-agent-chat";
 
-function useOperatorThreads(archived: boolean) {
+function useOperatorThreads(view: AgentDockHistoryView) {
   const rawThreads = useQuery(operatorAgentApi.listThreads, {
     limit: 100,
-    archived,
+    view,
   });
+  const activeOperators = useActiveOperators();
   return useMemo(
     () =>
       rawThreads === undefined
@@ -29,8 +32,12 @@ function useOperatorThreads(archived: boolean) {
             lastMessageAt: thread.lastMessageAt,
             archivedAt: thread.archivedAt,
             channel: thread.channel,
+            creator: thread.creator,
+            activeUsers: activeOperators.filter(
+              (operator) => !operator.self && operator.threadId === thread.id,
+            ),
           })),
-    [rawThreads],
+    [activeOperators, rawThreads],
   );
 }
 
@@ -73,6 +80,7 @@ function useOperatorArchiveActions() {
 
 export const operatorDockAdapter: AgentDockAdapter = {
   newChatLabel: "Ask anything",
+  historyViews: ["recent", "mcp", "archived"],
   useThreads: useOperatorThreads,
   useTabSummary: useOperatorTabSummary,
   useArchiveActions: useOperatorArchiveActions,

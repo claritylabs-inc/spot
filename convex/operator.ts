@@ -23,6 +23,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { buildEmailShell, escapeHtml } from "./lib/emailTemplate";
 import { getAuthFromAddress, sendResendEmail } from "./lib/resend";
 import { getAuthSiteUrl } from "./lib/domains";
+import { operatorPerson } from "./lib/operatorAvatar";
 import {
   findUserByNormalizedPhone,
   normalizeAvailableUserPhone,
@@ -139,11 +140,14 @@ export const current = query({
       ? await ctx.db.get(activeImpersonation.targetOrgId)
       : null;
     const loginEmails = operatorEmailAliases(operator.user.email);
+    const person = await operatorPerson(ctx, operator.userId);
     return {
       user: {
         _id: operator.user._id,
         name: operator.user.name,
         email: operator.user.email,
+        avatarUrl: person.avatarUrl,
+        hasUploadedAvatar: Boolean(operator.profile.avatarStorageId),
         loginEmails: loginEmails.length
           ? loginEmails
           : [operator.user.email].filter((email): email is string => !!email),
@@ -159,6 +163,40 @@ export const current = query({
             }
           : null,
     };
+  },
+});
+
+export const generateAvatarUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireOperator(ctx);
+    return ctx.storage.generateUploadUrl();
+  },
+});
+
+/** Sets the operator's profile photo; `null` falls back to Gravatar. */
+export const setAvatar = mutation({
+  args: { storageId: v.union(v.id("_storage"), v.null()) },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    const previous = operator.profile.avatarStorageId;
+    if (args.storageId) {
+      const file = await ctx.db.system.get("_storage", args.storageId);
+      if (
+        !file?.contentType?.startsWith("image/") ||
+        file.size > 5 * 1024 * 1024
+      ) {
+        throw new Error("Choose an image smaller than 5 MB");
+      }
+    }
+    if (previous && previous !== args.storageId) {
+      await ctx.storage.delete(previous).catch(() => {});
+    }
+    await ctx.db.patch(operator.profile._id, {
+      avatarStorageId: args.storageId ?? undefined,
+      updatedAt: dayjs().valueOf(),
+    });
+    return null;
   },
 });
 

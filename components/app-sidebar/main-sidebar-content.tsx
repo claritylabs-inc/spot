@@ -1,7 +1,15 @@
 "use client";
 
+import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import Link from "next/link";
-import { Bell, ChevronUp, LogOut, MessageSquare, Settings, User } from "lucide-react";
+import {
+  Bell,
+  ChevronUp,
+  LogOut,
+  MessageSquare,
+  Settings,
+  User,
+} from "lucide-react";
 import type { Id } from "@/convex/_generated/dataModel";
 import { NotificationsPanel } from "@/components/notifications-panel";
 import {
@@ -116,40 +124,42 @@ export function MainSidebarContent({
         ) : null}
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
-        <SectionHeader
-          label={isBroker ? "Partner" : "Insurance"}
-          collapsed={collapsed}
-        />
-        {navItems.map((item) => (
-          <SidebarMenuItem
-            key={item.href}
-            href={item.href}
-            label={item.label}
-            icon={item.icon}
-            active={isActive(item.href)}
+      <ScrollArea className="min-h-0 flex-1">
+        <nav className="px-2 pb-2 space-y-0.5">
+          <SectionHeader
+            label={isBroker ? "Partner" : "Insurance"}
             collapsed={collapsed}
-            shortcut={item.shortcut ?? undefined}
           />
-        ))}
+          {navItems.map((item) => (
+            <SidebarMenuItem
+              key={item.href}
+              href={item.href}
+              label={item.label}
+              icon={item.icon}
+              active={isActive(item.href)}
+              collapsed={collapsed}
+              shortcut={item.shortcut ?? undefined}
+            />
+          ))}
 
-        {connectItems.length > 0 ? (
-          <>
-            <SectionHeader label="Connect" collapsed={collapsed} />
-            {connectItems.map((item) => (
-              <SidebarMenuItem
-                key={item.href}
-                href={item.href}
-                label={item.label}
-                icon={item.icon}
-                active={isActive(item.href)}
-                collapsed={collapsed}
-                shortcut={item.shortcut ?? undefined}
-              />
-            ))}
-          </>
-        ) : null}
-      </nav>
+          {connectItems.length > 0 ? (
+            <>
+              <SectionHeader label="Connect" collapsed={collapsed} />
+              {connectItems.map((item) => (
+                <SidebarMenuItem
+                  key={item.href}
+                  href={item.href}
+                  label={item.label}
+                  icon={item.icon}
+                  active={isActive(item.href)}
+                  collapsed={collapsed}
+                  shortcut={item.shortcut ?? undefined}
+                />
+              ))}
+            </>
+          ) : null}
+        </nav>
+      </ScrollArea>
 
       <div className="border-t border-border px-2 py-2">
         <DropdownMenu>
@@ -160,7 +170,8 @@ export function MainSidebarContent({
               MENU_ITEM_BASE,
               typeStyle("body.default"),
               collapsed && "justify-center",
-              isActive("/profile") || (canManageSettings && isActive("/settings"))
+              isActive("/profile") ||
+                (canManageSettings && isActive("/settings"))
                 ? MENU_ITEM_ACTIVE
                 : MENU_ITEM_INACTIVE,
             )}

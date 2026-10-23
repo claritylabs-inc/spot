@@ -301,6 +301,7 @@ import type * as lib_operatorAgentContinuation from "../lib/operatorAgentContinu
 import type * as lib_operatorAgentIntentRegistry from "../lib/operatorAgentIntentRegistry.js";
 import type * as lib_operatorAgentToolFailure from "../lib/operatorAgentToolFailure.js";
 import type * as lib_operatorAgentToolRegistry from "../lib/operatorAgentToolRegistry.js";
+import type * as lib_operatorAvatar from "../lib/operatorAvatar.js";
 import type * as lib_operatorEmailAddress from "../lib/operatorEmailAddress.js";
 import type * as lib_operatorEmailAuthentication from "../lib/operatorEmailAuthentication.js";
 import type * as lib_operatorEmailTools from "../lib/operatorEmailTools.js";
@@ -428,6 +429,7 @@ import type * as operatorInvitations from "../operatorInvitations.js";
 import type * as operatorMcpOAuth from "../operatorMcpOAuth.js";
 import type * as operatorMcpServers from "../operatorMcpServers.js";
 import type * as operatorPolicyImports from "../operatorPolicyImports.js";
+import type * as operatorPresence from "../operatorPresence.js";
 import type * as operatorProvisioning from "../operatorProvisioning.js";
 import type * as operatorSecondFactor from "../operatorSecondFactor.js";
 import type * as operatorSlack from "../operatorSlack.js";
@@ -773,6 +775,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorAgentIntentRegistry": typeof lib_operatorAgentIntentRegistry;
   "lib/operatorAgentToolFailure": typeof lib_operatorAgentToolFailure;
   "lib/operatorAgentToolRegistry": typeof lib_operatorAgentToolRegistry;
+  "lib/operatorAvatar": typeof lib_operatorAvatar;
   "lib/operatorEmailAddress": typeof lib_operatorEmailAddress;
   "lib/operatorEmailAuthentication": typeof lib_operatorEmailAuthentication;
   "lib/operatorEmailTools": typeof lib_operatorEmailTools;
@@ -900,6 +903,7 @@ declare const fullApi: ApiFromModules<{
   operatorMcpOAuth: typeof operatorMcpOAuth;
   operatorMcpServers: typeof operatorMcpServers;
   operatorPolicyImports: typeof operatorPolicyImports;
+  operatorPresence: typeof operatorPresence;
   operatorProvisioning: typeof operatorProvisioning;
   operatorSecondFactor: typeof operatorSecondFactor;
   operatorSlack: typeof operatorSlack;

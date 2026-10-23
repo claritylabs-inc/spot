@@ -402,8 +402,7 @@ async function activeScope(
       run.status !== "completed" ||
       run.cancellationRequestedAt ||
       !thread ||
-      thread.archivedAt ||
-      (thread.ownerUserId !== evidence.userId && thread.visibility !== "shared")
+      thread.archivedAt
     )
       return null;
     await requireOperatorForUser(ctx, evidence.userId);

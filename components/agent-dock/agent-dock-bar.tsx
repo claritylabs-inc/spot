@@ -233,7 +233,7 @@ export function AgentDockBar({
             variant="icon"
             size="compact"
             iconOnly
-            label="Minimize (⌘J)"
+            label="Minimize (⌥J)"
             onClick={() => dock.setMode("collapsed")}
           >
             <X className="size-3.5" />

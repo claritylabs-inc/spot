@@ -225,6 +225,13 @@ export function AgentDockProvider({
         dispatch({ type: "closeTab", threadId });
         return;
       }
+      if (shortcut === "tab1" || shortcut === "tab2" || shortcut === "tab3") {
+        const tab = state.tabs[Number(shortcut.slice(3)) - 1];
+        if (!tab) return;
+        event.preventDefault();
+        run({ type: "openThread", threadId: tab.threadId, now: dayjs().valueOf() });
+        return;
+      }
       event.preventDefault();
       if (shortcut === "newChat") {
         run({ type: "newChat" });
@@ -245,6 +252,7 @@ export function AgentDockProvider({
     standaloneOrgId,
     state.activeThreadId,
     state.mode,
+    state.tabs,
     state.view,
   ]);
 

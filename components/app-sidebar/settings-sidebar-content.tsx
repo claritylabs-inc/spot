@@ -1,5 +1,6 @@
 "use client";
 
+import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { getSettingsNavigation } from "@/lib/settings-sections";
 import { SectionHeader, SidebarMenuItem } from "./nav-item";
 import { SidebarHeader } from "./sidebar-header";
@@ -27,23 +28,25 @@ export function SettingsSidebarContent({
         backHref="/"
       />
 
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
-        {groups.map((group) => (
-          <div key={group.label}>
-            <SectionHeader label={group.label} collapsed={collapsed} />
-            {group.pages.map((item) => (
-              <SidebarMenuItem
-                key={item.id}
-                href={`/settings?section=${item.id}`}
-                label={item.label}
-                icon={item.icon}
-                active={item.id === activeSettingsSection}
-                collapsed={collapsed}
-              />
-            ))}
-          </div>
-        ))}
-      </nav>
+      <ScrollArea className="min-h-0 flex-1">
+        <nav className="space-y-0.5 px-2 py-2">
+          {groups.map((group) => (
+            <div key={group.label}>
+              <SectionHeader label={group.label} collapsed={collapsed} />
+              {group.pages.map((item) => (
+                <SidebarMenuItem
+                  key={item.id}
+                  href={`/settings?section=${item.id}`}
+                  label={item.label}
+                  icon={item.icon}
+                  active={item.id === activeSettingsSection}
+                  collapsed={collapsed}
+                />
+              ))}
+            </div>
+          ))}
+        </nav>
+      </ScrollArea>
     </div>
   );
 }

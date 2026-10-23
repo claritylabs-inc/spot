@@ -1,5 +1,6 @@
 "use client";
 
+import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import { PillButton } from "@/components/ui/pill-button";
@@ -78,14 +79,9 @@ export function ChatArtifact({
       ) : (
         <div className="shrink-0 border-t border-border/70" />
       )}
-      <div
-        className={cn(
-          "min-h-0 flex-1 overflow-y-auto px-4 py-4",
-          bodyClassName,
-        )}
-      >
-        {children}
-      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        <div className={cn("px-4 py-4", bodyClassName)}>{children}</div>
+      </ScrollArea>
       {footer ? (
         <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border/70 px-4 py-3">
           {footer}
@@ -115,10 +111,7 @@ export function ChatArtifactMetaRow({
   return (
     <>
       <dt
-        className={cn(
-          "text-muted-foreground/60",
-          typeStyle("caption.default"),
-        )}
+        className={cn("text-muted-foreground/60", typeStyle("caption.default"))}
       >
         {label}
       </dt>

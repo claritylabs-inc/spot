@@ -36,6 +36,7 @@ import {
   operatorThreadContextHref,
 } from "./operator-page-context";
 import { OperatorConversation } from "./operator-conversation";
+import { OperatorThreadPeople } from "./operator-presence";
 
 const OPERATOR_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 const OPERATOR_ATTACHMENT_MAX_AGGREGATE_BYTES = 50 * 1024 * 1024;
@@ -51,6 +52,7 @@ function reportError(fallback: string) {
 export function OperatorAgentChat({
   threadId: activeThreadId,
   onThreadCreated,
+  onActions,
 }: AgentDockChatProps) {
   const dock = useAgentDock();
   const pathname = usePathname();
@@ -76,6 +78,14 @@ export function OperatorAgentChat({
     () => normalizeOperatorAgentThread(rawThread),
     [rawThread],
   );
+  const threadCreator = detail.thread?.creator;
+  useEffect(() => {
+    if (!activeThreadId) return;
+    onActions(
+      <OperatorThreadPeople threadId={activeThreadId} creator={threadCreator} />,
+    );
+    return () => onActions(null);
+  }, [activeThreadId, onActions, threadCreator]);
   const createThread = useMutation(operatorAgentApi.createThread);
   const generateUploadUrl = useMutation(operatorAgentApi.generateUploadUrl);
   const registerUpload = useMutation(operatorAgentApi.registerUpload);
