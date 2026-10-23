@@ -9,6 +9,12 @@ import {
 } from "react";
 import { motion, useReducedMotion, type Transition } from "framer-motion";
 import { ArrowDown } from "lucide-react";
+import { usePanelRef } from "react-resizable-panels";
+import {
+  ResizablePanel,
+  ResizablePanelGroup,
+  ResizableSeparator,
+} from "@claritylabs-inc/ui/components/resizable";
 import { useMediaQuery } from "@/components/app-sidebar/utils";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
@@ -121,8 +127,22 @@ function ResizeHandle({
   );
 }
 
-/** Artifact card width beside the conversation on wide screens. */
-const ARTIFACT_CARD_WIDTH = "min(30rem,42%)";
+/** Artifact card width beside the conversation on wide screens; drag to resize. */
+const ARTIFACT_CARD_DEFAULT_WIDTH = 480;
+const ARTIFACT_CARD_WIDTH_KEY = "spot:agent-dock:artifact-width";
+
+function readArtifactWidth() {
+  try {
+    const stored = Number(localStorage.getItem(ARTIFACT_CARD_WIDTH_KEY));
+    return Number.isFinite(stored) && stored >= 320
+      ? stored
+      : ARTIFACT_CARD_DEFAULT_WIDTH;
+  } catch {
+    return ARTIFACT_CARD_DEFAULT_WIDTH;
+  }
+}
+const ARTIFACT_CARD_MIN_WIDTH = "320px";
+const ARTIFACT_CARD_MAX_WIDTH = "80%";
 
 export function DockBody({
   adapter,
@@ -143,65 +163,129 @@ export function DockBody({
   const dock = useAgentDock();
   const { Chat } = adapter;
   const chatKey = dock.activeThreadId ?? "new";
-  return (
-    <div className="relative flex min-h-0 flex-1">
-      <div
-        className="relative flex min-h-0 min-w-0 flex-1 flex-col"
-        onClickCapture={(event) => {
-          // Following a link from full screen reveals the page behind the dock.
-          if (mode !== "full" || event.metaKey || event.ctrlKey) return;
-          const link =
-            event.target instanceof Element
-              ? event.target.closest("a[href^='/']")
-              : null;
-          if (link && link.getAttribute("target") !== "_blank") {
-            dock.setMode("expanded");
+  const artifactPanel = usePanelRef();
+  const [artifactWidth] = useState(readArtifactWidth);
+  const [animating, setAnimating] = useState(false);
+  const sideArtifacts = Boolean(artifactPanelRef) && artifactPlacement === "side";
+
+  // The artifact panel stays mounted so an artifact can portal in before the
+  // card opens; opening expands it and shifts the chat left.
+  useEffect(() => {
+    if (!sideArtifacts) return;
+    const panel = artifactPanel.current;
+    if (!panel) return;
+    // Animate only the open/close, never a drag.
+    setAnimating(true);
+    const timer = window.setTimeout(() => setAnimating(false), 250);
+    if (artifactOpen && panel.isCollapsed()) panel.expand();
+    else if (!artifactOpen && !panel.isCollapsed()) panel.collapse();
+    return () => window.clearTimeout(timer);
+  }, [artifactOpen, artifactPanel, sideArtifacts]);
+
+  const chat = (
+    <div
+      className="@container relative flex min-h-0 min-w-0 flex-1 flex-col"
+      onClickCapture={(event) => {
+        // Following a link from full screen reveals the page behind the dock.
+        if (mode !== "full" || event.metaKey || event.ctrlKey) return;
+        const link =
+          event.target instanceof Element
+            ? event.target.closest("a[href^='/']")
+            : null;
+        if (link && link.getAttribute("target") !== "_blank") {
+          dock.setMode("expanded");
+        }
+      }}
+    >
+      {dock.view === "history" ? (
+        <AgentDockHistory adapter={adapter} />
+      ) : (
+        <DockErrorBoundary
+          key={chatKey}
+          fallback={
+            <p
+              className={cn(
+                "px-6 py-10 text-center text-muted-foreground",
+                typeStyle("body.default"),
+              )}
+            >
+              This chat is unavailable.
+            </p>
           }
-        }}
+        >
+          <Chat
+            threadId={dock.activeThreadId}
+            onThreadCreated={(threadId) => dock.openThread(threadId)}
+            onActions={onActions}
+          />
+        </DockErrorBoundary>
+      )}
+    </div>
+  );
+
+  if (sideArtifacts) {
+    return (
+      <ResizablePanelGroup
+        id="agent-dock-artifact-panels"
+        orientation="horizontal"
+        className="relative flex min-h-0 flex-1"
       >
-        {dock.view === "history" ? (
-          <AgentDockHistory adapter={adapter} />
-        ) : (
-          <DockErrorBoundary
-            key={chatKey}
-            fallback={
-              <p
-                className={cn(
-                  "px-6 py-10 text-center text-muted-foreground",
-                  typeStyle("body.default"),
-                )}
-              >
-                This chat is unavailable.
-              </p>
-            }
-          >
-            <Chat
-              threadId={dock.activeThreadId}
-              onThreadCreated={(threadId) => dock.openThread(threadId)}
-              onActions={onActions}
-            />
-          </DockErrorBoundary>
-        )}
-      </div>
-      {artifactPanelRef && artifactPlacement === "side" ? (
-        // The target stays mounted so an artifact can portal in before the
-        // card opens; the card then widens and shifts the chat left.
-        <div
+        <ResizablePanel
+          id="agent-dock-chat"
+          minSize="320px"
           className={cn(
-            "shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-out motion-reduce:transition-none",
-            artifactOpen ? "opacity-100" : "pointer-events-none opacity-0",
+            "flex h-full min-w-0 flex-col",
+            animating && "transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none",
           )}
-          style={{ width: artifactOpen ? ARTIFACT_CARD_WIDTH : 0 }}
+        >
+          {chat}
+        </ResizablePanel>
+        <ResizableSeparator
+          id="agent-dock-artifact-separator"
+          aria-label="Resize artifact"
+          className={cn(!artifactOpen && "pointer-events-none lg:hidden")}
+        />
+        <ResizablePanel
+          id="agent-dock-artifact"
+          panelRef={artifactPanel}
+          collapsible
+          collapsedSize={0}
+          defaultSize={artifactOpen ? `${artifactWidth}px` : 0}
+          onResize={({ inPixels }) => {
+            if (!artifactOpen || inPixels < 320) return;
+            try {
+              localStorage.setItem(
+                ARTIFACT_CARD_WIDTH_KEY,
+                String(Math.round(inPixels)),
+              );
+            } catch {
+              // Restricted storage keeps the width for this session only.
+            }
+          }}
+          minSize={ARTIFACT_CARD_MIN_WIDTH}
+          maxSize={ARTIFACT_CARD_MAX_WIDTH}
+          groupResizeBehavior="preserve-pixel-size"
+          className={cn(
+            "h-full overflow-hidden",
+            animating && "transition-[flex-grow] duration-200 ease-out motion-reduce:transition-none",
+          )}
           inert={!artifactOpen}
         >
           <div className="h-full py-2 pr-2">
             <div
               ref={artifactPanelRef}
-              className="flex h-full w-full min-w-[20rem] overflow-hidden rounded-xl border border-border bg-background shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_-14px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_24px_-14px_rgba(0,0,0,0.6)]"
+              className="flex h-full w-full overflow-hidden rounded-xl border border-border bg-background shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_-14px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_24px_-14px_rgba(0,0,0,0.6)]"
             />
           </div>
-        </div>
-      ) : artifactPanelRef ? (
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    );
+  }
+
+  return (
+    <div className="relative flex min-h-0 flex-1">
+      {chat}
+      {artifactPanelRef ? (
         <div
           ref={artifactPanelRef}
           className="absolute inset-0 z-20 flex bg-background empty:hidden"
