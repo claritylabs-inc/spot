@@ -11,10 +11,17 @@ import {
 } from "./lib/access";
 import dayjs from "dayjs";
 import type { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import { isOperatorEmailDraft } from "./lib/actionConfirmationFingerprint";
 import { extractEmailAddress } from "./lib/emailAddress";
 import { normalizeProcurementSubject } from "./lib/procurement";
+import {
+  MAX_EMAIL_ATTACHMENTS,
+  insertProcurementEmailFileItems,
+  storeProcurementEmailAttachments,
+  teamTargetProblem,
+} from "./lib/teamEmailStore";
 import {
   cancelDraftOrPendingEmail,
   invalidateDraftConfirmations,
@@ -30,7 +37,7 @@ export const get = query({
     assertCanUseTenantAgent(access);
     const { orgId } = access;
     const pending = await ctx.db.get(args.id);
-    if (!pending || pending.orgId !== orgId || pending.operatorThreadId)
+    if (!pending || pending.orgId !== orgId || isOperatorEmailDraft(pending))
       return null;
     return pending;
   },
@@ -43,7 +50,7 @@ export const cancel = mutation({
     assertCanUseTenantAgent(access);
     const { orgId } = access;
     const pending = await ctx.db.get(args.id);
-    if (!pending || pending.orgId !== orgId || pending.operatorThreadId)
+    if (!pending || pending.orgId !== orgId || isOperatorEmailDraft(pending))
       throw new Error("Not found");
     if (!(await cancelDraftOrPendingEmail(ctx, args.id))) {
       throw new Error("Email already processed");
@@ -58,7 +65,7 @@ export const restoreAsDraft = mutation({
     assertCanUseTenantAgent(access);
     const { orgId } = access;
     const pending = await ctx.db.get(args.id);
-    if (!pending || pending.orgId !== orgId || pending.operatorThreadId)
+    if (!pending || pending.orgId !== orgId || isOperatorEmailDraft(pending))
       throw new Error("Not found");
     if (pending.status !== "cancelled") {
       throw new Error("Only cancelled emails can be restored");
@@ -404,7 +411,7 @@ export const listDraftsInternal = internalQuery({
         (row) =>
           row.orgId === args.orgId &&
           row.status === "draft" &&
-          !row.operatorThreadId,
+          !isOperatorEmailDraft(row),
       )
       .sort((a, b) => b._creationTime - a._creationTime);
     return drafts;
@@ -669,28 +676,18 @@ export const recordOperatorInboxSentInternal = internalMutation({
       .trim()
       .slice(0, THREAD_PREVIEW_CHARS);
 
-    // Files stay referenced: client files by storage within the client, the rest as unfiled.
-    const clientFileIds: Id<"clientFiles">[] = [];
-    const unfiled: NonNullable<Doc<"teamEmailMessages">["unfiledAttachments"]> =
-      [];
-    for (const attachment of pending.attachments ?? []) {
-      const file = pending.orgId
-        ? (
-            await ctx.db
-              .query("clientFiles")
-              .withIndex("storage", (q) => q.eq("fileId", attachment.fileId))
-              .take(10)
-          ).find((candidate) => candidate.orgId === pending.orgId)
-        : undefined;
-      if (file) clientFileIds.push(file._id);
-      else
-        unfiled.push({
-          storageId: attachment.fileId,
-          name: attachment.filename,
-          contentType: attachment.contentType,
-          size: attachment.size,
-        });
-    }
+    // The sent files are held on the message first (the draft's own storage, which is
+    // never deleted); a linked thread files them as client files right after this commit.
+    const held: NonNullable<Doc<"teamEmailMessages">["unfiledAttachments"]> = (
+      pending.attachments ?? []
+    )
+      .slice(0, MAX_EMAIL_ATTACHMENTS)
+      .map((attachment) => ({
+        storageId: attachment.fileId,
+        name: attachment.filename,
+        contentType: attachment.contentType,
+        size: attachment.size,
+      }));
 
     const intended = pending.teamEmailThreadId
       ? await ctx.db.get(pending.teamEmailThreadId)
@@ -787,11 +784,10 @@ export const recordOperatorInboxSentInternal = internalMutation({
         ...(!existingMessage.addressedRequestId && pending.procurementRequestId
           ? { addressedRequestId: pending.procurementRequestId }
           : {}),
-        ...(existingMessage.clientFileIds.length === 0 && clientFileIds.length
-          ? { clientFileIds }
-          : {}),
-        ...(!existingMessage.unfiledAttachments?.length && unfiled.length
-          ? { unfiledAttachments: unfiled }
+        ...(!existingMessage.unfiledAttachments?.length &&
+        !existingMessage.clientFileIds.length &&
+        held.length
+          ? { unfiledAttachments: held }
           : {}),
       });
     } else {
@@ -812,8 +808,8 @@ export const recordOperatorInboxSentInternal = internalMutation({
         bccAddresses: pending.bccAddresses ?? [],
         currentText: pending.emailBody,
         bodyHtml: pending.renderedHtml,
-        clientFileIds,
-        ...(unfiled.length ? { unfiledAttachments: unfiled } : {}),
+        clientFileIds: [],
+        ...(held.length ? { unfiledAttachments: held } : {}),
         receivedAt: now,
         createdAt: now,
       });
@@ -826,6 +822,112 @@ export const recordOperatorInboxSentInternal = internalMutation({
       sendBlockedReason: undefined,
       explicitSendAuthorization: undefined,
     });
+    // Files held by this thread's messages (this send and any merged mail) are
+    // filed outside this transaction, so a filing problem can never undo or
+    // repeat the delivery record; the held storage stays until it is filed.
+    const target = await ctx.db.get(threadId);
+    if (target?.clientOrgId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.pendingEmails.fileHeldAttachmentsInternal,
+        {
+          threadId,
+          clientOrgId: target.clientOrgId,
+          ...(target.requestId ? { requestId: target.requestId } : {}),
+          round: 0,
+        },
+      );
+    }
     return { teamEmailThreadId: threadId };
+  },
+});
+
+const FILE_HELD_BUDGET = 40;
+const FILE_HELD_SCAN = 300;
+const FILE_HELD_MAX_ROUNDS = 50;
+
+/**
+ * Files the attachments held by a linked thread's messages through the shared
+ * team-mail writers: client files (reusing identical content) and, for a
+ * request, its file items. The live client/request is rechecked on every run,
+ * and the thread must still belong to the client/request it was scheduled for,
+ * so a re-link or deletion stops it. Bounded per run with a continuation;
+ * idempotent because filed holds are cleared. Storage owned by a sent draft is
+ * preserved when content dedupes; disposable inbound uploads are not.
+ */
+export const fileHeldAttachmentsInternal = internalMutation({
+  args: {
+    threadId: v.id("teamEmailThreads"),
+    clientOrgId: v.id("organizations"),
+    requestId: v.optional(v.id("procurementRequests")),
+    round: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const thread = await ctx.db.get(args.threadId);
+    if (
+      !thread ||
+      thread.deletedAt !== undefined ||
+      thread.clientOrgId !== args.clientOrgId ||
+      (args.requestId && thread.requestId !== args.requestId) ||
+      (await teamTargetProblem(ctx, {
+        clientOrgId: args.clientOrgId,
+        requestId: args.requestId,
+      }))
+    ) {
+      return { done: true as const, stale: true as const };
+    }
+    const messages = await ctx.db
+      .query("teamEmailMessages")
+      .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
+      .order("desc")
+      .take(FILE_HELD_SCAN);
+    const now = dayjs().valueOf();
+    let filed = 0;
+    let more = false;
+    for (const message of messages) {
+      const heldFiles = message.unfiledAttachments ?? [];
+      if (!heldFiles.length) continue;
+      if (filed > 0 && filed + heldFiles.length > FILE_HELD_BUDGET) {
+        more = true;
+        break;
+      }
+      const stored = await storeProcurementEmailAttachments(ctx, {
+        clientOrgId: args.clientOrgId,
+        attachments: heldFiles.map((file) => ({
+          fileId: file.storageId,
+          filename: file.name,
+          contentType: file.contentType,
+          size: file.size,
+        })),
+        subject: message.subject,
+        // A sent message's files are the draft's storage; keep it when content dedupes.
+        preserveSourceStorage: Boolean(message.pendingEmailId),
+      });
+      const clientFileIds = [...new Set([...message.clientFileIds, ...stored])];
+      await ctx.db.patch(message._id, {
+        clientOrgId: args.clientOrgId,
+        addressedRequestId: message.addressedRequestId ?? args.requestId,
+        clientFileIds,
+        unfiledAttachments: undefined,
+      });
+      if (args.requestId) {
+        await insertProcurementEmailFileItems(ctx, {
+          requestId: args.requestId,
+          clientOrgId: args.clientOrgId,
+          emailMessageId: message._id,
+          clientFileIds,
+          now,
+        });
+      }
+      filed += heldFiles.length;
+    }
+    if (more && args.round < FILE_HELD_MAX_ROUNDS) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.pendingEmails.fileHeldAttachmentsInternal,
+        { ...args, round: args.round + 1 },
+      );
+    }
+    return { done: !more, stale: false as const };
   },
 });
