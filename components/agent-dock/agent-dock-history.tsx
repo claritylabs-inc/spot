@@ -175,7 +175,7 @@ export function AgentDockHistory({ adapter }: { adapter: AgentDockAdapter }) {
             <section
               key={group.label}
               aria-label={group.label}
-              className="pt-5 first:pt-3"
+              className="pt-5 first:pt-6"
             >
               <h3
                 className={cn(
