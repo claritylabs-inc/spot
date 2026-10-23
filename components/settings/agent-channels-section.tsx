@@ -17,6 +17,7 @@ import { SlackConnectionFields } from "@/components/settings/slack-connection-fi
 import { useSettingsActions } from "@/components/settings/settings-actions-context";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import {
   Dialog,
@@ -529,15 +530,24 @@ export function AgentChannelsSection({
   const disconnect = useAction(api.actions.slackOAuth.disconnect);
   const provisionPrimary = useAction(api.slackOnboarding.createPrimaryChannel);
 
-  const [activeDrawer, setActiveDrawer] = useState<ChannelDrawer | null>(null);
+  const [activeDrawer, setActiveDrawer] = useFollowedState<ChannelDrawer | null>(
+    `settings:agent-channels:${clientOrgId}:drawer`,
+    null,
+  );
   const [busy, setBusy] = useState<string | null>(null);
   const [inviteMemberId, setInviteMemberId] = useState<Id<"users"> | null>(
     defaultInviteUserId ?? null,
   );
   const clientSlug = defaultClientSlug;
   const [channelRefreshToken, setChannelRefreshToken] = useState(0);
-  const [compactSlackTab, setCompactSlackTab] = useState("overview");
-  const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
+  const [compactSlackTab, setCompactSlackTab] = useFollowedState(
+    `settings:agent-channels:${clientOrgId}:slack-tab`,
+    "overview",
+  );
+  const [disconnectDialogOpen, setDisconnectDialogOpen] = useFollowedState(
+    `settings:agent-channels:${clientOrgId}:disconnect-dialog`,
+    false,
+  );
   const [manualSetupReason, setManualSetupReason] = useState<string | null>(
     null,
   );

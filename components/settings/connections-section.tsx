@@ -24,6 +24,7 @@ import {
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useSettingsActions } from "@/components/settings/settings-actions-context";
 import { ModelProviderLogo } from "@/components/model-provider-logo";
 import {
@@ -291,23 +292,25 @@ function ConnectedApps() {
     Record<string, never>
   >("oauth.listConnectedApps");
   const revokeApp = useMutation(api.oauth.revokeApp);
-  const [revokeTarget, setRevokeTarget] = useState<{
-    clientName: string;
-    clientId: string;
-  } | null>(null);
+  const [revokeClientId, setRevokeClientId] = useFollowedState<string | null>(
+    "settings:integrations:revoke-app",
+    null,
+  );
+  const revokeTarget =
+    connectedApps?.find((app) => app.clientId === revokeClientId) ?? null;
   const [revoking, setRevoking] = useState(false);
 
   useEffect(() => {
     setRightPanel(
       <SettingsDrawer
         open={!!revokeTarget}
-        onOpenChange={(open) => !open && setRevokeTarget(null)}
+        onOpenChange={(open) => !open && setRevokeClientId(null)}
         title="Revoke connection"
         footer={
           <>
             <PillButton
               variant="secondary"
-              onClick={() => setRevokeTarget(null)}
+              onClick={() => setRevokeClientId(null)}
               disabled={revoking}
             >
               Cancel
@@ -345,7 +348,7 @@ function ConnectedApps() {
         current.filter((app) => app.clientId !== revokeTarget.clientId),
       );
       toast.success("Connection revoked");
-      setRevokeTarget(null);
+      setRevokeClientId(null);
     } catch {
       toast.error("Failed to revoke connection");
     } finally {
@@ -392,12 +395,7 @@ function ConnectedApps() {
               <PillButton
                 variant="destructive"
                 size="compact"
-                onClick={() =>
-                  setRevokeTarget({
-                    clientName: app.clientName,
-                    clientId: app.clientId,
-                  })
-                }
+                onClick={() => setRevokeClientId(app.clientId)}
               >
                 <Trash2 className="size-3.5" />
                 Revoke
