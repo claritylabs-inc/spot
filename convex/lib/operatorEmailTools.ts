@@ -5,16 +5,17 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import {
   buildEmailToolExecutors,
-  resolveEmailAgentIdentity,
   serializeEmailDraft,
-  type EmailToolContext,
   type EmailToolResult,
+  type OperatorEmailToolContext,
 } from "./emailTools";
 
 /**
- * Operator-agent email tools run the shared client draft executors against one
- * exact client organization. Only the operator thread can reach its drafts, and
- * a send runs only under the operator's completed exact approval.
+ * Operator-agent email tools run the shared draft executors as the operator
+ * making the call: drafts are signed with their name, sent from their own team
+ * address, and optionally linked to a client, request or team thread. Only the
+ * operator thread can reach its drafts, and a send runs only under the signing
+ * operator's completed exact approval.
  */
 export const OPERATOR_EMAIL_TOOL_NAMES = new Set([
   "draft_email",
@@ -33,6 +34,8 @@ function operatorEmailResult(result: EmailToolResult) {
     Object.entries({
       status: result.status,
       draftId: result.pendingEmailId,
+      from: result.responseFrom,
+      teamThreadId: result.teamEmailThreadId,
       to: result.responseTo,
       cc: result.responseCc,
       bcc: result.responseBcc,
@@ -76,39 +79,45 @@ export async function runOperatorEmailTool(
   if (args.toolName === "send_email_draft" && !args.confirmationId) {
     throw new Error("Exact operator confirmation is required");
   }
+  // `clientOrgId` is accepted as an alias of `orgId`.
+  const clientOrgId =
+    typeof input.orgId === "string"
+      ? input.orgId
+      : typeof input.clientOrgId === "string"
+        ? input.clientOrgId
+        : undefined;
   const sender = await ctx.runQuery(
     internal.operatorEmailDrafts.resolveSenderInternal,
     {
       operatorUserId: args.operatorUserId,
       threadId: args.threadId,
-      orgId: typeof input.orgId === "string" ? input.orgId : undefined,
+      orgId: clientOrgId,
       draftId: typeof input.draftId === "string" ? input.draftId : undefined,
       procurementRequestId:
         typeof input.procurementRequestId === "string"
           ? input.procurementRequestId
           : undefined,
+      teamEmailThreadId:
+        typeof input.teamEmailThreadId === "string"
+          ? input.teamEmailThreadId
+          : undefined,
       write: true,
     },
   );
-  const identity = resolveEmailAgentIdentity({
-    agentHandle: sender.agentHandle,
-  });
-  if (!identity.canSend || !identity.agentAddress || !identity.fromHeader) {
-    throw new Error(
-      identity.reason ?? "Email is not available for this client",
-    );
-  }
-  const context: EmailToolContext = {
+  const context: OperatorEmailToolContext = {
     orgId: sender.orgId,
     userId: args.operatorUserId,
     channel: "web",
-    fromHeader: identity.fromHeader,
-    agentAddress: identity.agentAddress,
-    replyTo: sender.replyTo.length ? sender.replyTo.join(", ") : undefined,
+    fromHeader: sender.fromHeader,
     operator: {
       threadId: args.threadId,
       messageId: args.messageId,
-      senderName: sender.operatorName,
+      senderUserId: sender.senderUserId,
+      senderName: sender.name,
+      teamAddress: sender.teamAddress,
+      alwaysCc: sender.alwaysCc ?? undefined,
+      procurementRequestId: sender.procurementRequestId,
+      teamThread: sender.teamThread,
     },
     sendAuthorization: args.confirmationId
       ? {
@@ -118,7 +127,13 @@ export async function runOperatorEmailTool(
       : undefined,
   };
   const executors = buildEmailToolExecutors(ctx, context);
-  const { orgId: _orgId, procurementRequestId: _requestId, ...fields } = input;
+  const {
+    orgId: _orgId,
+    clientOrgId: _clientOrgId,
+    procurementRequestId: _requestId,
+    teamEmailThreadId: _teamThreadId,
+    ...fields
+  } = input;
   const result = await (async (): Promise<EmailToolResult> => {
     switch (args.toolName) {
       case "draft_email":

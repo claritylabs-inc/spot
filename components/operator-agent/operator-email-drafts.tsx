@@ -20,6 +20,7 @@ import {
   ChatArtifactMetaRow,
 } from "@/components/chat/artifact";
 import { ChatAttachmentList } from "@/components/chat/attachment-chip";
+import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDateTime } from "@/lib/date-format";
@@ -198,7 +199,7 @@ export function OperatorEmailDraftPanel({
   const status = draftStatus(draft);
   return (
     <ChatArtifact
-      eyebrow={draft.organizationName}
+      eyebrow={draft.organizationName ?? "Not linked to a client"}
       title={draft.subject || "(no subject)"}
       status={
         <StatusTag
@@ -238,6 +239,14 @@ export function OperatorEmailDraftPanel({
           >
             {draft.sendBlockedReason}
           </p>
+        ) : draft.status === "sent" && draft.teamEmailThreadId ? (
+          <PillButton
+            variant="secondary"
+            size="xs"
+            href={`/operator/inbox/${draft.teamEmailThreadId}`}
+          >
+            View in team inbox
+          </PillButton>
         ) : null
       }
     >
