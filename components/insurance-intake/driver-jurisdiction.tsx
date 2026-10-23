@@ -4,7 +4,7 @@ import { getCountries } from "react-phone-number-input";
 import { useContext, useState } from "react";
 import { InlineFieldsContext } from "@/components/ui/inline-fields";
 import { useCountryHint } from "@/hooks/use-country-hint";
-import flags from "react-phone-number-input/flags";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { Field, FieldLabel } from "@claritylabs-inc/ui/components/field";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -15,15 +15,10 @@ const names = new Intl.DisplayNames(["en"], { type: "region" });
 export const countryOptions = getCountries()
   .map((code) => {
     const label = names.of(code) || code;
-    const Flag = flags[code];
     return {
       value: label,
       label,
-      icon: Flag ? (
-        <span className="flex h-3 w-4 overflow-hidden rounded-xs">
-          <Flag title={label} />
-        </span>
-      ) : undefined,
+      icon: <CountryFlag code={code} label={label} />,
     };
   })
   .sort((a, b) => a.label.localeCompare(b.label));
