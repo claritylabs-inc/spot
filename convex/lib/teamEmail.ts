@@ -2,11 +2,8 @@ import { buildSpotEmailIconHtml, escapeHtml } from "./emailTemplate";
 import { extractEmailAddress } from "./emailAddress";
 
 /**
- * Identity primitives for operator team email: one team mail domain
- * (`TEAM_EMAIL_DOMAIN`), one Resend inbox per operator, every message sent
- * from and signed by a specific person. Transport lives in `resendInbox.ts`;
- * inbox lifecycle lives in `operatorInbox.ts`. This module is pure (no Convex
- * context, no network) and must not import `resend.ts`, which imports it.
+ * Pure identity rules for operator team email (no Convex context, no network).
+ * It must not import `resend.ts`, which imports it.
  */
 
 export type TeamEmailErrorCode =
@@ -30,40 +27,35 @@ export function isTeamEmailError(error: unknown): error is TeamEmailError {
   return error instanceof TeamEmailError;
 }
 
-// --- Domain ------------------------------------------------------------------
-
 function normalizeDomain(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase().replace(/^@/, "");
 }
 
-/** The configured team domain, or null. Never throws. */
-function configuredTeamEmailDomain(): string | null {
-  return (
-    normalizeDomain(process.env.TEAM_EMAIL_DOMAIN) ||
-    normalizeDomain(process.env.PROVIDER_OUTREACH_EMAIL_DOMAIN) ||
-    null
-  );
+function configuredTeamEmailDomains(): { team: string | null; outreach: string | null } {
+  return {
+    team: normalizeDomain(process.env.TEAM_EMAIL_DOMAIN) || null,
+    outreach: normalizeDomain(process.env.PROVIDER_OUTREACH_EMAIL_DOMAIN) || null,
+  };
 }
 
-/**
- * `TEAM_EMAIL_DOMAIN`, falling back to `PROVIDER_OUTREACH_EMAIL_DOMAIN` so
- * deployments configured for per-operator outreach inboxes keep working.
- */
+/** `TEAM_EMAIL_DOMAIN`, else `PROVIDER_OUTREACH_EMAIL_DOMAIN` (the pre-cutover outreach domain). */
 export function getTeamEmailDomain(): string {
-  const domain = configuredTeamEmailDomain();
+  const { team, outreach } = configuredTeamEmailDomains();
+  const domain = team ?? outreach;
   if (!domain) {
     throw new TeamEmailError("not_configured", "TEAM_EMAIL_DOMAIN not set");
   }
   return domain;
 }
 
-/** Domains whose mailboxes Spot owns for team email; empty when unconfigured. */
+/**
+ * Domains whose mailboxes Spot owns for team email: the team domain and the
+ * outreach domain, so old outreach addresses stay Spot-owned during cutover.
+ */
 export function teamOwnedDomains(): string[] {
-  const domain = configuredTeamEmailDomain();
-  return domain ? [domain] : [];
+  const { team, outreach } = configuredTeamEmailDomains();
+  return Array.from(new Set([team, outreach].filter((d): d is string => d !== null)));
 }
-
-// --- Localparts and addresses -------------------------------------------------
 
 const MAX_LOCALPART_LENGTH = 64;
 
@@ -110,9 +102,9 @@ export type TeamLocalpartValidation =
   | { ok: false; code: "invalid_localpart" | "reserved_localpart"; message: string };
 
 /**
- * Resend Inboxes allow only letters, numbers and `. _ % -` (max 64, no
- * leading/trailing/double dots) and reject `+`. Spot additionally refuses `%`
- * (unsafe in paths) and the reserved list above. The result is lowercased.
+ * Resend Inboxes allow letters, numbers and `. _ % -` (max 64, no leading,
+ * trailing or double dots) and reject `+`. Spot also refuses `%` and the
+ * reserved list. The result is lowercased.
  */
 export function validateTeamLocalpart(input: string): TeamLocalpartValidation {
   const localpart = input.trim().toLowerCase();
@@ -157,12 +149,7 @@ export function assertTeamLocalpart(input: string): string {
   return result.localpart;
 }
 
-/**
- * The default localpart for an operator, taken from their login email: `+`
- * tags dropped, characters Resend rejects removed. Throws when nothing usable
- * remains or the result is reserved; the operator then sets a team address in
- * Profile (`operatorProfiles.teamEmailLocalpart`).
- */
+/** Default localpart from the login email (`+` tags and rejected characters dropped); throws when unusable or reserved. */
 export function deriveOperatorLocalpart(operatorEmail: string): string {
   const full =
     extractEmailAddress(operatorEmail) ?? operatorEmail.trim().toLowerCase();
@@ -185,7 +172,6 @@ export function deriveOperatorLocalpart(operatorEmail: string): string {
   return result.localpart;
 }
 
-/** `local@team-domain`; the localpart is validated. */
 export function operatorTeamAddress(
   localpart: string,
   domain: string = getTeamEmailDomain(),
@@ -193,12 +179,27 @@ export function operatorTeamAddress(
   return `${assertTeamLocalpart(localpart)}@${normalizeDomain(domain)}`;
 }
 
-/** The shared command-channel inbox (`agent@team…`), recorded with `kind: "agent"`. */
+/** The operator's address: the saved team localpart, else one derived from their login email. */
+export function operatorTeamAddressFor(operator: {
+  email: string | null;
+  teamEmailLocalpart: string | null;
+}): string {
+  if (operator.teamEmailLocalpart) {
+    return operatorTeamAddress(operator.teamEmailLocalpart);
+  }
+  if (!operator.email) {
+    throw new TeamEmailError(
+      "invalid_localpart",
+      "Your account has no email; set a team address in Profile",
+    );
+  }
+  return operatorTeamAddress(deriveOperatorLocalpart(operator.email));
+}
+
+/** The shared command-channel inbox, stored with `kind: "agent"`. */
 export function agentInboxAddress(domain: string = getTeamEmailDomain()): string {
   return `agent@${normalizeDomain(domain)}`;
 }
-
-// --- Names and signature --------------------------------------------------------
 
 const MAX_FROM_NAME_LENGTH = 78;
 const MAX_SIGNATURE_NAME_LENGTH = 80;
@@ -220,11 +221,7 @@ function requirePersonName(name: string | null | undefined): string {
   return cleaned;
 }
 
-/**
- * The Resend `from_name`: the operator's full name without characters Resend
- * rejects (`: < >`, line breaks), at most 78 characters. A missing name is an
- * error that asks the operator to set it in Profile.
- */
+/** Resend `from_name`: the full name without `: < >` or line breaks, at most 78 characters. */
 export function operatorFromName(name: string | null | undefined): string {
   const sanitized = requirePersonName(name)
     .replace(/[:<>]/g, " ")
@@ -249,11 +246,7 @@ export function operatorFromHeader(
   return `${operatorFromName(name)} <${address}>`;
 }
 
-/**
- * Person signature for every operator email: Spot mark, the operator's name,
- * "Spot". No address line; replies reach the operator through the sending
- * address itself.
- */
+/** Person signature for operator email: Spot mark, the operator's name, "Spot". */
 export function buildOperatorSignature(operator: { name: string | null | undefined }): {
   text: string;
   html: string;
