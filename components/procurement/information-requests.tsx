@@ -226,34 +226,32 @@ export function InformationRequestActions(props: Actions) {
     ) : null;
   }
   return (
-    <>
-      <div className="flex flex-wrap items-center gap-2">
-        <PillButton
-          variant="secondary"
-          disabled={syncing}
-          onClick={() =>
-            void attempt(async () => {
-              setSyncing(true);
-              try {
-                const result = await syncInbox({ requestId });
-                toast.success(
-                  `Checking ${result.checked} recent replies. New replies are processed automatically.`,
-                );
-              } finally {
-                setSyncing(false);
-              }
-            })
-          }
-        >
-          <RefreshCw className={`size-3.5${syncing ? " animate-spin" : ""}`} />
-          Sync from email
-        </PillButton>
-        <PillButton variant="secondary" onClick={() => open({ kind: "add" })}>
-          <Plus className="size-3.5" />
-          Add question
-        </PillButton>
-      </div>
-    </>
+    <div className="flex flex-wrap items-center gap-2">
+      <PillButton
+        variant="secondary"
+        disabled={syncing}
+        onClick={() =>
+          void attempt(async () => {
+            setSyncing(true);
+            try {
+              const result = await syncInbox({ requestId });
+              toast.success(
+                `Checking ${result.checked} recent replies. New replies are processed automatically.`,
+              );
+            } finally {
+              setSyncing(false);
+            }
+          })
+        }
+      >
+        <RefreshCw className={`size-3.5${syncing ? " animate-spin" : ""}`} />
+        Sync from email
+      </PillButton>
+      <PillButton variant="secondary" onClick={() => open({ kind: "add" })}>
+        <Plus className="size-3.5" />
+        Add question
+      </PillButton>
+    </div>
   );
 }
 

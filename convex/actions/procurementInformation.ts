@@ -442,7 +442,11 @@ export const extractInternal = internalAction({
         questions: ordered,
         reviewReasons,
       });
-    } catch {
+    } catch (error) {
+      console.error("[procurementInformation] extraction failed", {
+        extractionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       await ctx.runMutation(internal.procurementInformation.finishExtraction, {
         extractionId,
         failed: true,
