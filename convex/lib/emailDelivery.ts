@@ -4,6 +4,7 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { markdownToHtml, stripMarkdown } from "./aiUtils";
+import { isOperatorEmailDraft } from "./actionConfirmationFingerprint";
 import { extractEmailAddress, parseReplyToAddresses } from "./emailAddress";
 import {
   getAgentDomain,
@@ -13,6 +14,10 @@ import {
   type ResendPayload,
   type ResendResult,
 } from "./resend";
+import {
+  MAX_DRAFT_ATTACHMENT_BYTES,
+  type DraftAttachment,
+} from "./resendInbox";
 
 export const MAX_EMAIL_SIZE = 38 * 1024 * 1024;
 
@@ -80,6 +85,11 @@ export function buildPendingEmailResendPayload(
     threadEmail?: string;
   },
 ): ResendPayload {
+  if (isOperatorEmailDraft(pending)) {
+    throw new Error(
+      "Operator drafts send only from the operator's team inbox, never through the client agent address.",
+    );
+  }
   const from = pending.fromHeader;
   if (!from) {
     throw new Error("Draft is missing sender metadata.");
@@ -148,6 +158,32 @@ export async function toResendAttachments(
     result.push({ filename: att.filename, content });
   }
 
+  return result;
+}
+
+/** Stored files as base64 inbox draft attachments, bounded by Resend's per-draft limit. */
+export async function toInboxDraftAttachments(
+  ctx: ActionCtx,
+  attachments: EmailAttachmentMeta[],
+): Promise<DraftAttachment[]> {
+  let total = 0;
+  const result: DraftAttachment[] = [];
+  for (const att of attachments) {
+    const blob = await ctx.storage.get(att.fileId);
+    if (!blob) {
+      throw new Error(`Attachment "${att.filename}" is no longer available.`);
+    }
+    const buffer = Buffer.from(await blob.arrayBuffer());
+    total += buffer.byteLength;
+    if (total > MAX_DRAFT_ATTACHMENT_BYTES) {
+      throw new Error("Attachments are too large to send in one email.");
+    }
+    result.push({
+      filename: att.filename,
+      content: buffer.toString("base64"),
+      contentType: att.contentType,
+    });
+  }
   return result;
 }
 

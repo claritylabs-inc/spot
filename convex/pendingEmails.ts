@@ -9,6 +9,10 @@ import {
   assertCanUseTenantAgent,
   requireCurrentOrgAccess as requireOrgAccess,
 } from "./lib/access";
+import dayjs from "dayjs";
+import { isOperatorEmailDraft } from "./lib/actionConfirmationFingerprint";
+import { extractEmailAddress } from "./lib/emailAddress";
+import { normalizeProcurementSubject } from "./lib/procurement";
 import {
   cancelDraftOrPendingEmail,
   invalidateDraftConfirmations,
@@ -64,7 +68,11 @@ export const restoreAsDraft = mutation({
 
 export const create = internalMutation({
   args: {
-    orgId: v.id("organizations"),
+    orgId: v.optional(v.id("organizations")),
+    senderUserId: v.optional(v.id("users")),
+    transport: v.optional(v.literal("operator_inbox")),
+    procurementRequestId: v.optional(v.id("procurementRequests")),
+    teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
     threadId: v.optional(v.id("threads")),
     operatorThreadId: v.optional(v.id("operatorAgentThreads")),
     scheduledSendTime: v.number(),
@@ -113,6 +121,9 @@ export const setThreadMessage = internalMutation({
 export const updateDraftInternal = internalMutation({
   args: {
     id: v.id("pendingEmails"),
+    // Operator drafts re-sign as the current operator on every revision.
+    senderUserId: v.optional(v.id("users")),
+    transport: v.optional(v.literal("operator_inbox")),
     recipientEmail: v.string(),
     ccAddresses: v.optional(v.array(v.string())),
     bccAddresses: v.optional(v.array(v.string())),
@@ -138,6 +149,9 @@ export const updateDraftInternal = internalMutation({
     await invalidateDraftConfirmations(ctx, existing, "draft_content_changed");
     await ctx.db.patch(id, {
       ...patch,
+      ...(args.senderUserId
+        ? { senderUserId: args.senderUserId, transport: args.transport }
+        : {}),
       ccAddresses: args.ccAddresses,
       bccAddresses: args.bccAddresses,
       fromHeader: args.fromHeader,
@@ -183,6 +197,9 @@ export const scheduleDraftInternal = internalMutation({
     if (!pending || pending.status !== "draft") {
       throw new Error("Only draft emails can be scheduled");
     }
+    if (isOperatorEmailDraft(pending)) {
+      throw new Error("Operator drafts cannot be scheduled.");
+    }
 
     if (pending.threadId) {
       const threadId = pending.threadId;
@@ -218,6 +235,10 @@ export const markSent = internalMutation({
     sentMessageId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const pending = await ctx.db.get(args.id);
+    if (pending && isOperatorEmailDraft(pending)) {
+      throw new Error("Operator drafts are marked sent by the inbox transport.");
+    }
     await ctx.db.patch(args.id, {
       status: "sent",
       sentMessageId: args.sentMessageId,
@@ -284,7 +305,8 @@ export const findDraftByThreadAndRecipient = internalQuery({
 
 export const findDraftByOperatorThreadAndRecipient = internalQuery({
   args: {
-    orgId: v.id("organizations"),
+    orgId: v.optional(v.id("organizations")),
+    teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
     operatorThreadId: v.id("operatorAgentThreads"),
     recipientEmail: v.string(),
   },
@@ -301,6 +323,7 @@ export const findDraftByOperatorThreadAndRecipient = internalQuery({
       drafts.find(
         (draft) =>
           draft.orgId === args.orgId &&
+          draft.teamEmailThreadId === args.teamEmailThreadId &&
           draft.status === "draft" &&
           draft.recipientEmail.trim().toLowerCase() === recipientEmail,
       ) ?? null
@@ -357,6 +380,11 @@ export const listDraftsInternal = internalQuery({
 export const cancelInternal = internalMutation({
   args: { id: v.id("pendingEmails") },
   handler: async (ctx, args) => {
+    const pending = await ctx.db.get(args.id);
+    // A claimed operator send may already have left; it can no longer be cancelled.
+    if (pending && isOperatorEmailDraft(pending) && pending.status === "pending") {
+      throw new Error("This email is already being sent.");
+    }
     return await cancelDraftOrPendingEmail(ctx, args.id);
   },
 });
@@ -366,5 +394,143 @@ export const restoreAsDraftInternal = internalMutation({
   handler: async (ctx, args) => {
     const restored = await restoreCancelledEmailAsDraft(ctx, args.id);
     return restored ? { id: args.id } : null;
+  },
+});
+
+const THREAD_PREVIEW_CHARS = 200;
+
+/**
+ * Records an operator inbox send in the team inbox and marks the draft sent in
+ * one transaction, so a mirror failure leaves the draft pending (never resent)
+ * and a retry only finishes the record. Keyed by `resendInboxEmailId`: the
+ * `inbox.email.sent` webhook finds this message instead of adding another.
+ */
+export const recordOperatorInboxSentInternal = internalMutation({
+  args: {
+    id: v.id("pendingEmails"),
+    attemptId: v.id("emailDeliveryAttempts"),
+    emailId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const [pending, attempt] = await Promise.all([
+      ctx.db.get(args.id),
+      ctx.db.get(args.attemptId),
+    ]);
+    if (
+      !pending ||
+      pending.transport !== "operator_inbox" ||
+      !pending.senderUserId ||
+      !attempt ||
+      attempt.pendingEmailId !== pending._id ||
+      attempt.operatorStage !== "sent" ||
+      attempt.resendEmailId !== args.emailId
+    ) {
+      throw new Error("Operator send was not recorded as delivered.");
+    }
+    if (pending.status === "sent" && pending.teamEmailThreadId) {
+      return { teamEmailThreadId: pending.teamEmailThreadId };
+    }
+    if (pending.status !== "pending") {
+      throw new Error("Only a claimed operator email can be recorded as sent.");
+    }
+
+    const now = dayjs().valueOf();
+    const fromEmail = extractEmailAddress(pending.fromHeader) ?? "";
+    const fromName =
+      pending.fromHeader?.split("<")[0]?.trim() || undefined;
+    const copied = [
+      pending.recipientEmail,
+      ...(pending.ccAddresses ?? []),
+    ].map((address) => address.trim().toLowerCase());
+    const preview = pending.emailBody
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, THREAD_PREVIEW_CHARS);
+
+    const existingMessage = await ctx.db
+      .query("teamEmailMessages")
+      .withIndex("by_resendInboxEmailId", (q) =>
+        q.eq("resendInboxEmailId", args.emailId),
+      )
+      .first();
+    let threadId = existingMessage?.threadId ?? pending.teamEmailThreadId;
+    const thread = threadId ? await ctx.db.get(threadId) : null;
+    if (threadId && (!thread || thread.deletedAt !== undefined)) {
+      throw new Error("The team email thread is no longer available.");
+    }
+    if (thread && !existingMessage) {
+      await ctx.db.patch(thread._id, {
+        participantEmails: [
+          ...new Set([...thread.participantEmails, ...copied]),
+        ].filter((address) => address !== fromEmail),
+        latestDirection: "outbound",
+        preview,
+        latestFromName: fromName,
+        latestFromEmail: fromEmail,
+        latestSentByUserId: pending.senderUserId,
+        latestMessageAt: now,
+        messageCount: thread.messageCount + 1,
+        updatedAt: now,
+      });
+    } else if (!thread) {
+      const linked = Boolean(pending.orgId || pending.procurementRequestId);
+      threadId = await ctx.db.insert("teamEmailThreads", {
+        source: "team",
+        ownerUserId: pending.senderUserId,
+        ...(linked
+          ? { linkedAt: now, linkedByUserId: pending.senderUserId }
+          : {}),
+        clientOrgId: pending.orgId,
+        requestId: pending.procurementRequestId,
+        normalizedSubject: normalizeProcurementSubject(pending.subject),
+        subject: pending.subject,
+        category: "other",
+        categorySource: "auto",
+        participantEmails: [...new Set(copied)].filter(
+          (address) => address !== fromEmail,
+        ),
+        latestDirection: "outbound",
+        preview,
+        latestFromName: fromName,
+        latestFromEmail: fromEmail,
+        latestSentByUserId: pending.senderUserId,
+        latestMessageAt: now,
+        messageCount: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    if (!threadId) throw new Error("Team email thread was not created.");
+    if (!existingMessage) {
+      await ctx.db.insert("teamEmailMessages", {
+        direction: "outbound",
+        sentByUserId: pending.senderUserId,
+        pendingEmailId: pending._id,
+        resendInboxEmailId: args.emailId,
+        threadId,
+        clientOrgId: pending.orgId,
+        addressedRequestId: pending.procurementRequestId,
+        references: [],
+        subject: pending.subject,
+        fromName,
+        fromEmail,
+        toAddresses: [pending.recipientEmail],
+        ccAddresses: pending.ccAddresses ?? [],
+        bccAddresses: pending.bccAddresses ?? [],
+        currentText: pending.emailBody,
+        bodyHtml: pending.renderedHtml,
+        clientFileIds: [],
+        receivedAt: now,
+        createdAt: now,
+      });
+    }
+    await ctx.db.patch(pending._id, {
+      status: "sent",
+      sentMessageId: args.emailId,
+      resendInboxEmailId: args.emailId,
+      teamEmailThreadId: threadId,
+      explicitSendAuthorization: undefined,
+    });
+    return { teamEmailThreadId: threadId };
   },
 });
