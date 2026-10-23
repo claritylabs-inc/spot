@@ -481,7 +481,7 @@ Unknown-scope coverage matching runs after the saved text settles, outside navig
 
 ### Revising supplementary submissions
 
-Submitted information forms expose Edit answers. `procurementInformation.editForm`
+Submitted information forms expose Edit answers. `procurementInformationForms.editForm`
 authorizes the client, checks the form revision and stages `editDraft` responses
 with the current canonical answer IDs. The original submitted responses remain
 unchanged while autosave updates only the draft. Resubmission requires accuracy

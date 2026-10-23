@@ -39,7 +39,9 @@ import {
   useLeaderOnly,
 } from "@/hooks/use-followed-state";
 
-type Form = FunctionReturnType<typeof api.procurementInformation.clientForm>;
+type Form = FunctionReturnType<
+  typeof api.procurementInformationForms.clientForm
+>;
 export function InformationForm({
   formId,
 }: {
@@ -51,7 +53,7 @@ export function InformationForm({
   const viewer = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
   const needsLogin = !isLoading && (!isAuthenticated || viewer === null);
   const form = useQuery(
-    api.procurementInformation.clientForm,
+    api.procurementInformationForms.clientForm,
     isAuthenticated && viewer ? { formId } : "skip",
   );
   useEffect(() => {
@@ -80,8 +82,12 @@ function FormEditor({ form }: { form: Form }) {
     `information-form:${form.id}:started`,
     !!form.editDraft,
   );
-  const edit = useLeaderOnly(useMutation(api.procurementInformation.editForm));
-  const save = useLeaderOnly(useMutation(api.procurementInformation.saveForm));
+  const edit = useLeaderOnly(
+    useMutation(api.procurementInformationForms.editForm),
+  );
+  const save = useLeaderOnly(
+    useMutation(api.procurementInformationForms.saveForm),
+  );
   const [responses, setResponses] = useState(
     form.editDraft?.responses ?? form.responses,
   );
@@ -93,7 +99,10 @@ function FormEditor({ form }: { form: Form }) {
   const uploading =
     tasks.get(`information-file:${form.id}`)?.status === "running";
   const revision = useRef(form.revision);
-  const [step, setStep] = useFollowedState(`information-form:${form.id}:step`, 0);
+  const [step, setStep] = useFollowedState(
+    `information-form:${form.id}:step`,
+    0,
+  );
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -125,7 +134,7 @@ function FormEditor({ form }: { form: Form }) {
   const reachableStep = firstUnanswered < 0 ? visible.length : firstUnanswered;
   const coverageGroups = informationCoverageGroups(visible);
   const autosave = useLocalFirstAutoSave({
-    mutationName: "procurementInformation.saveForm",
+    mutationName: "procurementInformationForms.saveForm",
     resetKey: form.id,
     args: responses,
     enabled: form.status === "open" || !!form.editDraft,
@@ -579,8 +588,8 @@ function SupportingUpload({
   form: Form;
   onUploaded: (id: Id<"procurementFileItems">) => void;
 }) {
-  const uploadUrl = useMutation(api.procurementInformation.uploadUrl);
-  const attach = useMutation(api.procurementInformation.attachFile);
+  const uploadUrl = useMutation(api.procurementInformationForms.uploadUrl);
+  const attach = useMutation(api.procurementInformationForms.attachFile);
   const { run, tasks } = useBackgroundTasks();
   const taskId = `information-file:${form.id}`;
   return (
@@ -633,7 +642,9 @@ export function ClientInformationForms({
 }: {
   requestId: Id<"procurementRequests">;
 }) {
-  const forms = useQuery(api.procurementInformation.clientForms, { requestId });
+  const forms = useQuery(api.procurementInformationForms.clientForms, {
+    requestId,
+  });
   const open = forms?.filter((f) => f.status === "open") ?? [];
   if (!open.length) return null;
   return (

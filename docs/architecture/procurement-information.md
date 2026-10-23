@@ -1,7 +1,9 @@
 # Procurement information requests
 
 `convex/procurementInformation.ts` owns request-scoped questions, the providers
-who requested them, fixed supplementary forms and immutable answers. `components/procurement/information-requests.tsx` uses Spot row
+who requested them and immutable answers; `convex/procurementInformationForms.ts`
+owns fixed supplementary forms and `convex/procurementInformationEmail.ts` the
+email queue and extraction records. `components/procurement/information/` uses Spot row
 cards and the app-shell SettingsDrawer. Each card has one question-level status
 and a Requested by list using `OrgBrandIcon`, the same branding primitive as
 provider outreach. Provider acceptance and delivery records remain historical
@@ -37,11 +39,25 @@ An active operator already associated with the conversation/request is retained
 as the responsible staff member. No new permission or send authorization is
 created. The bounded Sync inbox action catches up recent linked mail.
 
-`convex/actions/procurementInformation.ts` makes one bounded structured CL-router
-generation call for the message. Provider requests become individual questions
-with exact source quotes. Atomic Jev Nouls (requested, conditions, and any
-proposed semantic reuse) run in parallel and must all clear the threshold via
-`jevAtomicConjunction`; deterministic scope checks still apply.
+`convex/actions/procurementInformation.ts` runs a code-owned provider flow
+(`convex/lib/procurementInformationProviderExtraction.ts`):
+
+1. The body is split deterministically into paragraph, list-item and sentence
+   segments with source offsets (`convex/lib/procurementInformationSegments.ts`).
+2. One Jev Noul per segment asks whether it requests anything. Only a confident
+   no skips a segment; if detection is unavailable every segment is processed and
+   the extraction is flagged for review.
+3. Contiguous request segments are grouped and each group gets one bounded
+   structured generation, all in parallel. There is no model-reported
+   completeness flag and no continuation loop.
+4. Verification runs atomic Nouls in parallel. Per request segment: is any request
+   unrepresented, is anything conditional on a yes/no answer, and is one fact
+   asked for several locations or entities. Code then requires zero uncovered
+   requests, a conditioned proposal where the source is conditional, and more than
+   one subject where the source repeats a fact. Per proposal: requested,
+   conditions and any semantic reuse, combined with `jevAtomicConjunction`.
+   Deterministic scope checks still apply.
+
 Clear, supported requirements populate the tracker automatically. Unknown scopes,
 uncertain decisions, invalid definitions and failures remain available for manual
 review through From email. A matching provider/fact already tracked resolves its
