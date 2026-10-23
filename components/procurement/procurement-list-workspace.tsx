@@ -134,7 +134,7 @@ function ProcurementRequestPreview({
 
   const [view, setView] = useState<"summary" | "links">("summary");
   const back = () => setView("summary");
-  const forward = useForwardingCopy(null);
+  const forward = useForwardingCopy(null, readOnly);
 
   if (view === "links" && !readOnly) {
     return (

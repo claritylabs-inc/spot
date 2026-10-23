@@ -37,7 +37,10 @@ import {
 import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
-import { TeamInbox, type InboxThread } from "@/components/inbox/team-inbox";
+import { ReaderBoundary } from "@/components/inbox/reader-boundary";
+import { useResolvedThreadId } from "@/components/inbox/resolve-thread-id";
+import { TeamInbox } from "@/components/inbox/team-inbox";
+import type { InboxThread } from "@/components/inbox/team-inbox";
 import { ClientOutreachComposer } from "./client-outreach-composer";
 import {
   FitChips,
@@ -2009,8 +2012,13 @@ export function ProcurementRequestWorkspace({
   const requestedProposalId = searchParams.get("proposal");
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const handledProposalLink = useRef<string | null>(null);
+  // The email in the right panel, and the one being opened. Any other panel
+  // replaces it, which clears the first.
+  const openedEmailId = useRef<string | null>(null);
+  const openingEmailId = useRef<string | null>(null);
   const onRightPanel = useCallback(
     (node: ReactNode) => {
+      openedEmailId.current = null;
       setRightPanelOpen(node !== null);
       setRightPanel(node);
     },
@@ -2315,26 +2323,67 @@ export function ProcurementRequestWorkspace({
     router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
   }, [closeRightPanel, router, basePath, requestId]);
   const openEmail = useCallback(
-    async (thread: InboxThread) => {
-      if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
+    async (thread: {
+      _id: Id<"teamEmailThreads">;
+      subject?: string;
+      source?: InboxThread["source"];
+    }) => {
+      if (
+        openedEmailId.current === thread._id ||
+        openingEmailId.current === thread._id
+      )
         return;
-      closePdf();
-      onRightPanel(
-        <ProcurementEmailDrawer
-          ref={emailDrawerRef}
-          emailThreadId={thread._id}
-          subject={thread.subject}
-          replyable={thread.source === "outreach"}
-          requestId={requestId}
-          includeArchived={Boolean(thread.archivedAt)}
-          requests={requestOptions}
-          readOnly={readOnly}
-          onClose={closeEmail}
-        />,
-      );
+      openingEmailId.current = thread._id;
+      try {
+        if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
+          return;
+        closePdf();
+        onRightPanel(
+          <ReaderBoundary resetKey={thread._id} onClose={closeEmail}>
+            <ProcurementEmailDrawer
+              ref={emailDrawerRef}
+              emailThreadId={thread._id}
+              subject={thread.subject}
+              replyable={thread.source === "outreach"}
+              requestId={requestId}
+              includeArchived
+              requests={requestOptions}
+              readOnly={readOnly}
+              onClose={closeEmail}
+            />
+          </ReaderBoundary>,
+        );
+        openedEmailId.current = thread._id;
+      } finally {
+        openingEmailId.current = null;
+      }
     },
     [closePdf, closeEmail, onRightPanel, readOnly, requestOptions, requestId],
   );
+
+  // The reader opens from the URL on its own, so a saved link works whether or
+  // not the conversation is in the loaded page. Legacy ids move to the current
+  // one; an unavailable id is reported once and cleared.
+  const threadParam = view === "email" ? searchParams.get("thread") : null;
+  const resolvedThread = useResolvedThreadId(threadParam, requestId);
+  const handledThread = useRef<string | null>(null);
+  useEffect(() => {
+    if (resolvedThread.status === "none") handledThread.current = null;
+    if (resolvedThread.status === "unavailable" && handledThread.current !== threadParam) {
+      handledThread.current = threadParam;
+      toast.error("That conversation is not available");
+      router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
+    }
+    if (resolvedThread.status !== "ready") return;
+    const id = resolvedThread.threadId;
+    if (handledThread.current === id) return;
+    handledThread.current = id;
+    if (resolvedThread.redirected)
+      router.replace(`${basePath}/${requestId}?view=email&thread=${id}`, {
+        scroll: false,
+      });
+    void openEmail({ _id: id });
+  }, [resolvedThread, threadParam, openEmail, router, basePath, requestId]);
 
   const requestTitle = details?.request.title ?? "";
   const openClientComposer = useCallback(async () => {
@@ -2874,7 +2923,9 @@ export function ProcurementRequestWorkspace({
           <TeamInbox
             key={requestId}
             scope={{ kind: "request", requestId }}
-            selectedThreadId={searchParams.get("thread")}
+            selectedThreadId={
+              resolvedThread.status === "loading" ? threadParam : resolvedThread.threadId
+            }
             fallbackForwardingAddress={forwardingAddress ?? null}
             onSelect={selectInboxThread}
             onOpenThread={(thread) => void openEmail(thread)}

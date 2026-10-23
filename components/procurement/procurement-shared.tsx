@@ -556,10 +556,17 @@ function ConversationContext({
   const viewers = groupEmailThreadPeople(useActiveOperators()).get(threadId) ?? [];
   const replying = replyingOperators(viewers);
   const drafts = thread.draftsInProgress.slice(0, MAX_SHOWN_DRAFTS);
+  // The server bounds the list too, so a full list may hide more than it counts.
+  const hiddenDrafts = thread.draftsInProgress.length - drafts.length;
+  const moreDrafts = thread.draftsLimited
+    ? `${hiddenDrafts > 0 ? `${hiddenDrafts}+` : "More"} drafts not shown`
+    : hiddenDrafts > 0
+      ? `+${hiddenDrafts} more draft${hiddenDrafts === 1 ? "" : "s"}`
+      : null;
   const filedUnder = thread.client
     ? [thread.client.name, thread.request?.title].filter(Boolean).join(" · ")
     : "Unlinked";
-  if (!showFiledUnder && !viewers.length && !drafts.length) return null;
+  if (!showFiledUnder && !viewers.length && !drafts.length && !moreDrafts) return null;
   return (
     <div className="space-y-1 bg-muted/30 px-4 py-2">
       <div className="flex min-w-0 items-center justify-between gap-3">
@@ -582,10 +589,16 @@ function ConversationContext({
           key={draft._id}
           className={`truncate text-muted-foreground ${typeStyle("caption.default")}`}
         >
-          {draft.sender?.name ?? "Someone"} is drafting “
+          {draft.sender?.name ?? "Someone"}{" "}
+          {draft.status === "pending" ? "is sending" : "is drafting"} “
           {draft.subject.slice(0, 80) || "(no subject)"}”
         </p>
       ))}
+      {moreDrafts ? (
+        <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+          {moreDrafts}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -1025,7 +1038,7 @@ export function ProcurementEmailDrawer({
   const readAt = thread?.readAt ?? null;
   const markedKey = useRef("");
   useEffect(() => {
-    if (latestInboundAt === undefined) return;
+    if (readOnly || latestInboundAt === undefined) return;
     if (readAt !== null && readAt >= latestInboundAt) return;
     const key = `${emailThreadId}:${latestInboundAt}`;
     if (markedKey.current === key) return;
@@ -1033,7 +1046,7 @@ export function ProcurementEmailDrawer({
     markRead({ threadId: emailThreadId }).catch(() => {
       markedKey.current = "";
     });
-  }, [emailThreadId, latestInboundAt, markRead, readAt]);
+  }, [emailThreadId, latestInboundAt, markRead, readAt, readOnly]);
 
   return (
     <SettingsDrawer
