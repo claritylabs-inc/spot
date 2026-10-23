@@ -19,11 +19,7 @@ import {
 import { requireCompanyRequest, type CompanyRequest } from "./lib/companyRequest";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { requireOperator, writeOperatorAudit } from "./lib/operatorIdentity";
-import {
-  normalizeProcurementEmail,
-  normalizeProcurementSubject,
-  uniqueProcurementEmails,
-} from "./lib/procurement";
+import { normalizeProcurementEmail } from "./lib/procurement";
 import {
   classifyProvider,
   needAcceptedCodes,
@@ -84,13 +80,19 @@ import { getClientPortalUrl } from "./lib/domains";
 import { clientRecipientOptions } from "./lib/clientOutreach";
 import {
   createProcurementOutreachByOperator,
-  insertProcurementEmailFileItems,
   requireDirectOperatorWrite,
-  storeProcurementEmailAttachments,
 } from "./procurementRequests";
+import {
+  mirrorTeamEmail,
+  teamThreadForSequence,
+  type NewTeamThread,
+  type TeamThread,
+} from "./lib/teamEmailStore";
 import { mintPacketLinkForOperator, previewBrokerPacket } from "./procurementPacket";
 
 type Ctx = QueryCtx | MutationCtx;
+/** How long a sent event with no conversation yet waits for the send that created it to be mirrored. */
+const SENT_EVENT_BINDING_WAIT_MS = 30 * 1000;
 type Sequence = Doc<"procurementOutreachSequences">;
 type Step = Doc<"procurementOutreachSteps">;
 type SequenceStatus = Sequence["status"];
@@ -350,7 +352,7 @@ export type SequenceView = {
   senderUserId: Id<"users">;
   inboxId: string | null;
   resendThreadId: string | null;
-  procurementEmailThreadId: Id<"procurementEmailThreads"> | null;
+  teamEmailThreadId: Id<"teamEmailThreads"> | null;
   replyPending: boolean;
   respondedAt: number | null;
   nextDueAt: number | null;
@@ -377,7 +379,7 @@ export function sequenceView(sequence: Sequence, steps: Step[]): SequenceView {
     senderUserId: sequence.senderUserId,
     inboxId: sequence.inboxId ?? null,
     resendThreadId: sequence.resendThreadId ?? null,
-    procurementEmailThreadId: sequence.procurementEmailThreadId ?? null,
+    teamEmailThreadId: sequence.teamEmailThreadId ?? null,
     replyPending: sequence.status === "reply_check",
     respondedAt: sequence.respondedAt ?? null,
     nextDueAt: next?.dueAt ?? null,
@@ -720,6 +722,7 @@ async function notifyManualHandoff(
     : `Automated follow-ups stopped${subject}. Review the conversation in the request Inbox.`;
   // Client mail always lives in the Inbox; provider delivery problems open Providers.
   const view = needsAttention && !client ? "proposals" : "email";
+  const thread = view === "email" ? await teamThreadForSequence(ctx, sequence) : null;
   // Scheduled, so a notification failure can never roll back the state change.
   // The explicit userId keeps this operator-private: it is neither org-wide nor
   // eligible for the client's Slack/email fan-out. Warning uses the operator's
@@ -735,8 +738,7 @@ async function notifyManualHandoff(
       clientOrgId: sequence.clientOrgId,
       requestId: sequence.requestId,
       view,
-      ...(view === "email" && sequence.procurementEmailThreadId
-        ? { emailThreadId: sequence.procurementEmailThreadId } : {}),
+      ...(thread ? { emailThreadId: thread._id } : {}),
     },
     title,
     body,
@@ -2381,11 +2383,9 @@ export const recordInboxEventInternal = internalMutation({
     occurredAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const known = await ctx.db
-      .query("operatorOutreachInboxes")
-      .withIndex("by_inboxId", (q) => q.eq("inboxId", args.inboxId))
-      .first();
-    // The Resend webhook is account-wide; only inboxes Spot created matter.
+    // The Resend webhook is account-wide; only inboxes this deployment created
+    // matter (retired ones included, so replies to old threads still map).
+    const known = await knownInbox(ctx, args.inboxId);
     if (!known) return { recorded: false as const, reason: "unknown_inbox" as const };
     const now = dayjs().valueOf();
     const existing = await ctx.db
@@ -2450,6 +2450,16 @@ type InboxEventRoute =
       resendThreadId: string | null;
       senderUserId: Id<"users">;
     }
+  /** An existing team conversation: by thread id, by a linked extra thread, or by the sent email it was bound from. */
+  | {
+      kind: "thread";
+      threadId: Id<"teamEmailThreads">;
+      via: "thread" | "link" | "sent_binding";
+    }
+  /** Normal mail in a known operator inbox that no conversation owns: becomes an unlinked team thread. */
+  | { kind: "team" }
+  /** The shared command-channel inbox: never imported as mail. */
+  | { kind: "agent" }
   | { kind: "unmatched" };
 
 export type ClaimInboxEventResult =
@@ -2466,13 +2476,32 @@ export type ClaimInboxEventResult =
         threadId: string;
       };
       route: InboxEventRoute;
+      /** The operator who owns the inbox; null for the agent inbox. */
+      inboxOwnerUserId: Id<"users"> | null;
       inbox: InboxRecord | null;
     };
 
+/** A row for an inbox this deployment created (active or retired), else null. */
+async function knownInbox(ctx: Ctx, inboxId: string) {
+  return await ctx.db
+    .query("operatorOutreachInboxes")
+    .withIndex("by_inboxId", (q) => q.eq("inboxId", inboxId))
+    .first();
+}
+
+/**
+ * Routing order: the known-inbox guard, then the outreach sequence, a team
+ * thread by Resend thread id, a link row, the sent email a conversation was
+ * bound from, and finally an unlinked team thread. Unknown inboxes are never
+ * imported and the command-channel inbox is reserved.
+ */
 async function routeInboxEvent(
   ctx: Ctx,
   event: Doc<"providerOutreachWebhookEvents">,
 ): Promise<InboxEventRoute> {
+  const inbox = await knownInbox(ctx, event.inboxId);
+  if (!inbox) return { kind: "unmatched" };
+  if (inbox.kind === "agent") return { kind: "agent" };
   let step: Step | null = null;
   let sequence: Sequence | null = null;
   if (event.eventType === "inbox.email.sent") {
@@ -2488,18 +2517,72 @@ async function routeInboxEvent(
       .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", event.threadId))
       .first();
   // Only the inbox that owns the sequence may drive it.
-  if (!sequence || sequence.inboxId !== event.inboxId) return { kind: "unmatched" };
-  return {
-    kind: "sequence",
-    sequenceId: sequence._id,
-    stepId: step?._id ?? null,
-    requestId: sequence.requestId,
-    outreachId: sequence.outreachId ?? null,
-    sequenceStatus: sequence.status,
-    recipientEmail: sequence.recipient.email,
-    resendThreadId: sequence.resendThreadId ?? null,
-    senderUserId: sequence.senderUserId,
-  };
+  if (sequence && sequence.inboxId === event.inboxId)
+    return {
+      kind: "sequence",
+      sequenceId: sequence._id,
+      stepId: step?._id ?? null,
+      requestId: sequence.requestId,
+      outreachId: sequence.outreachId ?? null,
+      sequenceStatus: sequence.status,
+      recipientEmail: sequence.recipient.email,
+      resendThreadId: sequence.resendThreadId ?? null,
+      senderUserId: sequence.senderUserId,
+    };
+  const byThread = await ctx.db
+    .query("teamEmailThreads")
+    .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", event.threadId))
+    .first();
+  if (byThread && !byThread.deletedAt)
+    return { kind: "thread", threadId: byThread._id, via: "thread" };
+  const link = await ctx.db
+    .query("teamEmailThreadLinks")
+    .withIndex("by_inboxId_and_resendThreadId", (q) =>
+      q.eq("inboxId", event.inboxId).eq("resendThreadId", event.threadId),
+    )
+    .first();
+  const linked = link ? await ctx.db.get(link.threadId) : null;
+  if (linked && !linked.deletedAt) return { kind: "thread", threadId: linked._id, via: "link" };
+  if (event.eventType === "inbox.email.sent") {
+    const sent = await ctx.db
+      .query("teamEmailMessages")
+      .withIndex("by_resendInboxEmailId", (q) => q.eq("resendInboxEmailId", event.emailId))
+      .first();
+    const bound = sent ? await ctx.db.get(sent.threadId) : null;
+    if (bound && !bound.deletedAt)
+      return { kind: "thread", threadId: bound._id, via: "sent_binding" };
+  }
+  return { kind: "team" };
+}
+
+/**
+ * Whether a conversation event that nothing owns yet could still gain an owner:
+ * an inbound email can be the copy of a sent email (in any inbox) whose own
+ * event has not been processed, and a sent email can belong to a send that has
+ * not been mirrored.
+ */
+async function teamBindingMayAppear(
+  ctx: MutationCtx,
+  event: Doc<"providerOutreachWebhookEvents">,
+  now: number,
+) {
+  if (event.eventType === "inbox.email.sent")
+    return now - event.createdAt < SENT_EVENT_BINDING_WAIT_MS;
+  const LIMIT = 100;
+  for (const status of ["pending", "processing"] as const) {
+    const open = await ctx.db
+      .query("providerOutreachWebhookEvents")
+      .withIndex("by_status_and_updatedAt", (q) => q.eq("status", status))
+      .take(LIMIT);
+    if (open.length >= LIMIT) return true;
+    if (
+      open.some(
+        (row) => row._id !== event._id && row.eventType === "inbox.email.sent",
+      )
+    )
+      return true;
+  }
+  return false;
 }
 
 /**
@@ -2567,9 +2650,10 @@ export const claimInboxEventInternal = internalMutation({
       }
     }
     if (
-      route.kind === "unmatched" &&
+      (route.kind === "unmatched" || route.kind === "team") &&
       now - event.createdAt < INBOX_EVENT_MAPPING_WINDOW_MS &&
-      (await mappingMayAppear(ctx, event, now))
+      ((await mappingMayAppear(ctx, event, now)) ||
+        (route.kind === "team" && (await teamBindingMayAppear(ctx, event, now))))
     ) {
       const runAt = now + INBOX_EVENT_RETRY_MS;
       await ctx.db.patch(event._id, {
@@ -2590,10 +2674,7 @@ export const claimInboxEventInternal = internalMutation({
       leaseUntil: now + INBOX_EVENT_LEASE_MS,
       updatedAt: now,
     });
-    const operatorInbox = await ctx.db
-      .query("operatorOutreachInboxes")
-      .withIndex("by_inboxId", (q) => q.eq("inboxId", event.inboxId))
-      .first();
+    const operatorInbox = await knownInbox(ctx, event.inboxId);
     return {
       status: "claimed",
       leaseToken,
@@ -2606,6 +2687,7 @@ export const claimInboxEventInternal = internalMutation({
         threadId: event.threadId,
       },
       route,
+      inboxOwnerUserId: operatorInbox?.userId ?? null,
       inbox: operatorInbox
         ? {
             inboxId: operatorInbox.inboxId,
@@ -2704,8 +2786,10 @@ export const releaseInboxEventInternal = internalMutation({
 });
 
 /**
- * Idempotent mirror of one inbox email into the request's Email view. The row
- * is keyed by `resendInboxEmailId`; a repeat only deletes the extra uploads.
+ * Idempotent mirror of one sequence email into its request's conversation. The
+ * conversation is the sequence's team thread (adopting its legacy thread when
+ * the pointer has not been repointed), found by Resend thread id, or created on
+ * the first email. Outreach conversations never move between requests.
  */
 async function mirrorInboxEmail(
   ctx: MutationCtx,
@@ -2716,106 +2800,51 @@ async function mirrorInboxEmail(
     attachments: { fileId: Id<"_storage">; filename: string; contentType: string; size: number }[];
     resendThreadId: string;
     inbound: boolean;
+    sentByUserId?: Id<"users">;
     now: number;
   },
 ) {
   const { sequence, request, email } = args;
-  const duplicate = await ctx.db
-    .query("procurementEmailMessages")
-    .withIndex("by_resendInboxEmailId", (q) =>
-      q.eq("resendInboxEmailId", email.resendInboxEmailId),
-    )
-    .first();
-  if (duplicate) {
-    await Promise.all(args.attachments.map((file) => ctx.storage.delete(file.fileId)));
-    return { duplicate: true as const, threadId: duplicate.threadId, messageId: duplicate._id };
-  }
-  const subject = email.subject.trim().slice(0, 500) || "(no subject)";
-  const participants = uniqueProcurementEmails([
-    sequence.recipient.email,
-    email.fromEmail,
-    ...email.toAddresses,
-    ...email.ccAddresses,
-  ]);
-  let thread: Doc<"procurementEmailThreads"> | null = sequence.procurementEmailThreadId
-    ? await ctx.db.get(sequence.procurementEmailThreadId)
-    : null;
+  let thread: TeamThread | null = await teamThreadForSequence(ctx, sequence);
   if (thread?.deletedAt) thread = null;
   thread ??= await ctx.db
-    .query("procurementEmailThreads")
+    .query("teamEmailThreads")
     .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", args.resendThreadId))
     .first();
   if (thread?.deletedAt) thread = null;
-  let threadId: Id<"procurementEmailThreads">;
-  if (thread) {
-    if (thread.requestId !== request._id || thread.clientOrgId !== sequence.clientOrgId) {
-      throw new Error("Outreach conversation belongs to another request");
-    }
-    threadId = thread._id;
-    await ctx.db.patch(thread._id, {
-      participantEmails: uniqueProcurementEmails([...thread.participantEmails, ...participants]),
-      latestMessageAt: Math.max(thread.latestMessageAt, email.occurredAt),
-      messageCount: thread.messageCount + 1,
-      ...(args.inbound ? { archivedAt: undefined, archivedByUserId: undefined } : {}),
-      updatedAt: args.now,
-    });
-  } else {
-    threadId = await ctx.db.insert("procurementEmailThreads", {
-      outreachId: sequence.outreachId,
-      resendThreadId: args.resendThreadId,
-      clientOrgId: sequence.clientOrgId,
-      addressedRequestId: request._id,
-      requestId: request._id,
-      normalizedSubject: normalizeProcurementSubject(subject),
-      subject,
-      category: isClientSequence(sequence) ? "client" : "broker",
-      categorySource: "auto",
-      categoryReason: isClientSequence(sequence) ? "client email" : "provider outreach",
-      participantEmails: participants,
-      latestMessageAt: email.occurredAt,
-      messageCount: 1,
-      createdAt: args.now,
-      updatedAt: args.now,
-    });
+  if (thread && (thread.requestId !== request._id || thread.clientOrgId !== sequence.clientOrgId)) {
+    await Promise.all(args.attachments.map((file) => ctx.storage.delete(file.fileId)));
+    throw new Error("Outreach conversation belongs to another request");
   }
-  if (sequence.procurementEmailThreadId !== threadId)
-    await ctx.db.patch(sequence._id, { procurementEmailThreadId: threadId, updatedAt: args.now });
-  const clientFileIds = args.attachments.length
-    ? await storeProcurementEmailAttachments(ctx, {
-        clientOrgId: sequence.clientOrgId,
-        attachments: args.attachments,
-        subject,
-      })
-    : [];
-  const messageId = await ctx.db.insert("procurementEmailMessages", {
-    resendInboxEmailId: email.resendInboxEmailId,
-    threadId,
+  const client = isClientSequence(sequence);
+  const create: NewTeamThread = {
+    source: "outreach",
+    ownerUserId: sequence.senderUserId,
+    outreachId: sequence.outreachId,
+    resendThreadId: args.resendThreadId,
     clientOrgId: sequence.clientOrgId,
-    addressedRequestId: request._id,
-    messageId: email.messageId?.slice(0, 500),
-    inReplyTo: email.inReplyTo?.slice(0, 500),
-    references: email.references.map((value) => value.slice(0, 500)).slice(0, 50),
-    subject,
-    fromName: email.fromName?.slice(0, 300),
-    fromEmail: normalizeProcurementEmail(email.fromEmail),
-    toAddresses: uniqueProcurementEmails(email.toAddresses),
-    ccAddresses: uniqueProcurementEmails(email.ccAddresses),
-    bccAddresses: uniqueProcurementEmails(email.bccAddresses),
-    currentText: email.text.slice(0, 120_000),
-    forwarded: email.forwarded,
-    bodyHtml: email.html?.slice(0, 180_000),
-    clientFileIds,
-    receivedAt: email.occurredAt,
-    createdAt: args.now,
-  });
-  await insertProcurementEmailFileItems(ctx, {
     requestId: request._id,
-    clientOrgId: sequence.clientOrgId,
-    emailMessageId: messageId,
-    clientFileIds,
+    addressedRequestId: request._id,
+    category: client ? "client" : "broker",
+    categoryReason: client ? "client email" : "provider outreach",
+  };
+  const mirrored = await mirrorTeamEmail(ctx, {
+    target: thread ? { thread } : { create },
+    email,
+    direction: args.inbound ? "inbound" : "outbound",
+    attachments: args.attachments,
+    resendThreadId: args.resendThreadId,
+    sentByUserId: args.inbound ? undefined : (args.sentByUserId ?? sequence.senderUserId),
+    extraParticipants: [sequence.recipient.email],
     now: args.now,
   });
-  return { duplicate: false as const, threadId, messageId };
+  if (sequence.teamEmailThreadId !== mirrored.threadId || sequence.procurementEmailThreadId)
+    await ctx.db.patch(sequence._id, {
+      teamEmailThreadId: mirrored.threadId,
+      procurementEmailThreadId: undefined,
+      updatedAt: args.now,
+    });
+  return mirrored;
 }
 
 /** Request for mirroring; null when it can no longer hold mirrored mail. */
@@ -2984,6 +3013,175 @@ export const applyInboundInboxEmailInternal = internalMutation({
         args.classification === "reply" &&
         (status === "responded" || status === "stopped" || status === "failed"),
       classifyScheduled,
+    };
+  },
+});
+
+/**
+ * Makes later mail in this inbox thread map to the conversation: the first
+ * inbox thread becomes the conversation's `resendThreadId`, any other (a second
+ * operator's reply, a CC delivered to another inbox) gets a link row.
+ */
+async function bindInboxThread(
+  ctx: MutationCtx,
+  args: { threadId: Id<"teamEmailThreads">; inboxId: string; resendThreadId: string },
+) {
+  const thread = await ctx.db.get(args.threadId);
+  if (!thread || thread.resendThreadId === args.resendThreadId) return;
+  if (!thread.resendThreadId) {
+    await ctx.db.patch(thread._id, { resendThreadId: args.resendThreadId });
+    return;
+  }
+  const link = await ctx.db
+    .query("teamEmailThreadLinks")
+    .withIndex("by_inboxId_and_resendThreadId", (q) =>
+      q.eq("inboxId", args.inboxId).eq("resendThreadId", args.resendThreadId),
+    )
+    .first();
+  if (!link)
+    await ctx.db.insert("teamEmailThreadLinks", {
+      threadId: thread._id,
+      inboxId: args.inboxId,
+      resendThreadId: args.resendThreadId,
+    });
+}
+
+/**
+ * `inbox.email.received` / `inbox.email.sent` for mail no outreach sequence
+ * owns: mirrors it into its team conversation (found by thread id, link, or
+ * the send it was bound from) or into a new unlinked conversation owned by the
+ * inbox's operator. The route is recomputed here from the stored event; the
+ * action's claim is never trusted. A copy of mail Spot itself sent (for example
+ * a CC in another inbox) is bound to the original conversation, not stored again.
+ */
+export const applyTeamInboxEmailInternal = internalMutation({
+  args: {
+    eventId: v.id("providerOutreachWebhookEvents"),
+    leaseToken: v.string(),
+    email: inboxEmailValidator,
+    /** Uploaded attachment bytes; empty while Resend exposes no byte download. */
+    attachments: v.optional(v.array(inboxAttachmentValidator)),
+  },
+  handler: async (ctx, args) => {
+    const now = dayjs().valueOf();
+    const attachments = args.attachments ?? [];
+    const dropUploads = () =>
+      Promise.all(attachments.map((file) => ctx.storage.delete(file.fileId)));
+    const event = await fencedEvent(ctx, args.eventId, args.leaseToken, now);
+    if (!event) {
+      await dropUploads();
+      return { applied: false as const, reason: "stale_lease" };
+    }
+    const reject = async (reason: string) => {
+      await dropUploads();
+      await finishEvent(ctx, event, now, reason);
+      return { applied: false as const, reason };
+    };
+    if (event.emailId !== args.email.resendInboxEmailId) return await reject("event_email_mismatch");
+    const inbox = await knownInbox(ctx, event.inboxId);
+    if (!inbox) return await reject("unknown_inbox");
+    if (inbox.kind === "agent") return await reject("agent_inbox_reserved");
+    const route = await routeInboxEvent(ctx, event);
+    if (route.kind !== "thread" && route.kind !== "team") return await reject("event_route_mismatch");
+    const inbound = event.eventType === "inbox.email.received";
+    // Mail from one of our own inboxes may be the copy of a send whose
+    // `inbox.email.sent` has not landed to supply its Message-ID: wait briefly,
+    // then treat it as ordinary (internal) mail. The sender address only delays.
+    if (
+      route.kind === "team" &&
+      inbound &&
+      now - event.createdAt < SENT_EVENT_BINDING_WAIT_MS &&
+      (await ctx.db
+        .query("operatorOutreachInboxes")
+        .withIndex("by_emailAddress", (q) =>
+          q.eq("emailAddress", normalizeProcurementEmail(args.email.fromEmail)),
+        )
+        .first())
+    ) {
+      await dropUploads();
+      const retryAt = now + INBOX_EVENT_RETRY_MS;
+      await ctx.db.patch(event._id, {
+        status: "pending",
+        leaseToken: undefined,
+        leaseUntil: undefined,
+        updatedAt: now,
+      });
+      await ctx.scheduler.runAt(retryAt, internal.actions.providerOutreach.handleInboxEvent, {
+        eventId: event._id,
+      });
+      return { applied: false as const, reason: "awaiting_sent_event" };
+    }
+    let target: { thread: TeamThread } | { create: NewTeamThread };
+    if (route.kind === "thread") {
+      const thread = await ctx.db.get(route.threadId);
+      if (!thread || thread.deletedAt) return await reject("thread_missing");
+      target = { thread };
+    } else {
+      target = {
+        create: {
+          source: "team",
+          ownerUserId: inbox.userId,
+          resendThreadId: event.threadId,
+          category: "other",
+          categoryReason: "Unlinked team mail",
+        },
+      };
+    }
+    const mirrored = await mirrorTeamEmail(ctx, {
+      target,
+      email: args.email,
+      direction: inbound ? "inbound" : "outbound",
+      attachments,
+      resendThreadId: event.threadId,
+      sentByUserId: inbound ? undefined : inbox.userId,
+      now,
+    });
+    await bindInboxThread(ctx, {
+      threadId: mirrored.threadId,
+      inboxId: event.inboxId,
+      resendThreadId: event.threadId,
+    });
+    let notifyOwner = false;
+    if (inbound && !mirrored.duplicate) {
+      const thread = (await ctx.db.get(mirrored.threadId))!;
+      const ownerUserId = thread.ownerUserId ?? inbox.userId;
+      if (ownerUserId) {
+        if (thread.clientOrgId && thread.requestId) {
+          // Linked conversations reach the owner the same way outreach handoffs do.
+          await ctx.scheduler.runAfter(0, internal.lib.notify.notifyInternal, {
+            orgId: thread.clientOrgId,
+            userId: ownerUserId,
+            type: "mailbox_attention",
+            severity: "warning",
+            actionType: "view_operator_procurement",
+            actionPayload: {
+              clientOrgId: thread.clientOrgId,
+              requestId: thread.requestId,
+              view: "email",
+              emailThreadId: thread._id,
+            },
+            title: "New email in your conversation",
+            body: `${thread.subject.slice(0, 200)}: review it in the request Inbox.`,
+            coalesceKeyParts: ["team_email_thread", String(thread._id)],
+            nowMs: now,
+          });
+        } else {
+          // No client to file a notification under: the badge shows it and the owner is emailed.
+          await ctx.scheduler.runAfter(0, internal.actions.teamInbox.notifyOwnerOfUnlinkedMail, {
+            userId: ownerUserId,
+            threadId: thread._id,
+          });
+          notifyOwner = true;
+        }
+      }
+    }
+    await finishEvent(ctx, event, now);
+    return {
+      applied: true as const,
+      duplicate: mirrored.duplicate,
+      internalCopy: mirrored.internalCopy,
+      threadId: mirrored.threadId,
+      notifyOwner,
     };
   },
 });
@@ -3250,7 +3448,7 @@ export const recoverInternal = internalMutation({
 export const prepareOperatorReplyInternal = internalMutation({
   args: {
     operatorUserId: v.id("users"),
-    emailThreadId: v.id("procurementEmailThreads"),
+    emailThreadId: v.id("teamEmailThreads"),
     requestId: v.optional(v.id("procurementRequests")),
   },
   handler: async (ctx, args) => {
@@ -3259,7 +3457,7 @@ export const prepareOperatorReplyInternal = internalMutation({
     if (!thread || thread.deletedAt) throw new Error("Conversation not found");
     if (args.requestId && thread.requestId !== args.requestId)
       throw new Error("Conversation belongs to another request");
-    if (!thread.resendThreadId)
+    if (!thread.resendThreadId || !thread.requestId)
       throw new Error("Forwarded mail can only be answered from your own mailbox");
     const resendThreadId = thread.resendThreadId;
     const sequence = await ctx.db
@@ -3274,8 +3472,8 @@ export const prepareOperatorReplyInternal = internalMutation({
       .withIndex("by_inboxId", (q) => q.eq("inboxId", sequence.inboxId!))
       .first();
     const latest = await ctx.db
-      .query("procurementEmailMessages")
-      .withIndex("thread", (q) => q.eq("threadId", thread._id))
+      .query("teamEmailMessages")
+      .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
       .order("desc")
       .take(20);
     const target = latest.find((message) => message.resendInboxEmailId);
@@ -3284,7 +3482,7 @@ export const prepareOperatorReplyInternal = internalMutation({
     const now = dayjs().valueOf();
     if (isLive(sequence.status))
       await terminalizeSequence(ctx, sequence, { status: "stopped", reason: "operator_replied", now });
-    const inbound = target.fromEmail !== normalizeProcurementEmail(inbox.emailAddress);
+    const inbound = target.direction === "inbound";
     return {
       sequenceId: sequence._id,
       inboxId: sequence.inboxId,
@@ -3321,6 +3519,7 @@ export const recordOperatorReplyInternal = internalMutation({
           attachments: [],
           resendThreadId: args.resendThreadId,
           inbound: false,
+          sentByUserId: args.operatorUserId,
           now,
         })
       : null;

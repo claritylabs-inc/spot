@@ -139,9 +139,11 @@ const extractClientFileRef = makeFunctionReference<
   "action",
   { clientFileId: Id<"clientFiles"> }
 >("actions/companyInformationExtraction:extractClientFile");
+/** Scheduled jobs from before the cutover can still carry a legacy thread id. */
+type EmailThreadJobId = Id<"teamEmailThreads"> | Id<"procurementEmailThreads">;
 const extractEmailThreadRef = makeFunctionReference<
   "action",
-  { emailThreadId: Id<"procurementEmailThreads"> }
+  { emailThreadId: EmailThreadJobId }
 >("actions/companyInformationExtraction:extractProcurementEmailThread");
 
 type ClaimStatus = {
@@ -174,6 +176,7 @@ type EmailThreadClaim =
   | {
       status: "claimed";
       source: {
+        emailThreadId: Id<"teamEmailThreads">;
         orgId: Id<"organizations">;
         organizationName: string;
         sourceKind: "procurement_email_thread";
@@ -200,7 +203,7 @@ const claimClientFileRef = makeFunctionReference<
 >("companyInformation:claimClientFileInternal");
 const claimEmailThreadRef = makeFunctionReference<
   "mutation",
-  { emailThreadId: Id<"procurementEmailThreads"> },
+  { emailThreadId: EmailThreadJobId },
   EmailThreadClaim
 >("companyInformation:claimEmailThreadInternal");
 
@@ -418,7 +421,12 @@ export const extractClientFile = internalAction({
 });
 
 export const extractProcurementEmailThread = internalAction({
-  args: { emailThreadId: v.id("procurementEmailThreads") },
+  args: {
+    emailThreadId: v.union(
+      v.id("teamEmailThreads"),
+      v.id("procurementEmailThreads"),
+    ),
+  },
   handler: async (ctx, args): Promise<{ status: string }> => {
     const claim = await ctx.runMutation(claimEmailThreadRef, args);
     if (claim.status !== "claimed") return claim;
@@ -451,7 +459,7 @@ export const extractProcurementEmailThread = internalAction({
       return await ctx.runMutation(
         internal.companyInformation.completeEmailThreadInternal,
         {
-          emailThreadId: args.emailThreadId,
+          emailThreadId: source.emailThreadId,
           sourceFingerprint: source.sourceFingerprint,
           ...extraction,
         },
