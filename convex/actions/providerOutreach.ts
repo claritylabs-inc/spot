@@ -36,6 +36,7 @@ import {
 } from "../lib/providerOutreachSchedule";
 import { getEmailDeliveryMode } from "../lib/resend";
 import { ensureOperatorInbox, validateAlwaysCcEmail } from "../lib/operatorInbox";
+import { outreachIdentityFingerprint } from "../lib/outreachIdentity";
 import { operatorEmailAliases } from "../lib/operatorIdentity";
 import { isTeamEmailError } from "../lib/teamEmail";
 import {
@@ -370,7 +371,7 @@ function emailInputFor(
   };
 }
 
-/** The earlier email, quoted when a follow-up continues from a new inbox when a follow-up continues from a new inbox. */
+/** Appends the earlier email, quoted, for a follow-up that continues from a new inbox. */
 function withQuotedHistory(
   composed: { text: string; html: string },
   quote: { sentAt: number; text: string; senderName: string },
@@ -390,6 +391,8 @@ function withQuotedHistory(
 type SenderIdentity = {
   /** Full name, as signed. */
   name: string;
+  /** Binds the saved draft to this identity and the inbox it is composed for. */
+  snapshot: { fingerprint: string; inboxId: string };
   /** Exactly the CC list this step sends. */
   cc: string[];
   /** Set when this follow-up continues from a new inbox: the earlier email is quoted. */
@@ -431,6 +434,7 @@ async function resolveDraft(
     const saved = await ctx.runMutation(internal.providerOutreach.saveDraftInternal, {
       stepId,
       leaseToken,
+      identity: identity.snapshot,
       draft: {
         cc: identity.cc,
         subject: composed.subject,
@@ -484,6 +488,14 @@ export const sendStep = internalAction({
     const capture = getEmailDeliveryMode() === "capture";
     let deliveryAttempted = false;
 
+    const hold = async (message: string) => {
+      await ctx.runMutation(internal.providerOutreach.holdStepForIdentityInternal, {
+        stepId,
+        leaseToken,
+        message,
+      });
+      return { status: "held" as const };
+    };
     const fail = async (failure: StepFailure) => {
       try {
         await ctx.runMutation(internal.providerOutreach.failStepInternal, {
@@ -536,8 +548,9 @@ export const sendStep = internalAction({
       try {
         ensured = await ensureOperatorInbox(ctx, claim.sender.userId);
       } catch (error) {
-        // Identity problems (no name, bad address) are the operator's to fix in Profile.
-        if (isTeamEmailError(error)) return await fail(permanentFailure(error.message));
+        // Identity problems (no name, bad address) are the operator's to fix in Profile:
+        // hold the step instead of failing the sequence.
+        if (isTeamEmailError(error)) return await hold(error.message);
         throw error;
       }
       const inbox = ensured.inbox;
@@ -560,26 +573,38 @@ export const sendStep = internalAction({
       const inboxId = inbox.inboxId;
 
       // The exact CC list: the saved Always CC, validated now, never the recipient itself.
-      let cc: string[] = [];
+      let alwaysCc: string | null = null;
       if (ensured.alwaysCcEmail) {
         try {
-          const own = [
+          alwaysCc = validateAlwaysCcEmail(ensured.alwaysCcEmail, [
             inbox.emailAddress,
-            ...(claim.sender.email ? [claim.sender.email, ...operatorEmailAliases(claim.sender.email)] : []),
-          ];
-          const address = validateAlwaysCcEmail(ensured.alwaysCcEmail, own);
-          if (address !== claim.sequence.recipient.email.trim().toLowerCase()) cc = [address];
+            ...(claim.sender.email
+              ? [claim.sender.email, ...operatorEmailAliases(claim.sender.email)]
+              : []),
+          ]);
         } catch (error) {
           if (isTeamEmailError(error))
-            return await fail(
-              permanentFailure(`Always CC cannot be used: ${error.message}. Fix it in Profile.`),
-            );
+            return await hold(`Always CC cannot be used: ${error.message}. Fix it in Profile.`);
           throw error;
         }
       }
-      const senderName = claim.sender.name?.trim() ?? "";
+      const cc =
+        alwaysCc && alwaysCc !== claim.sequence.recipient.email.trim().toLowerCase()
+          ? [alwaysCc]
+          : [];
+      const senderName = (claim.sender.name ?? "").replace(/\s+/g, " ").trim();
       const identity: SenderIdentity = {
         name: senderName,
+        snapshot: {
+          fingerprint: await outreachIdentityFingerprint({
+            senderUserId: claim.sender.userId,
+            name: senderName,
+            fromName: inbox.fromName,
+            address: inbox.emailAddress,
+            alwaysCc,
+          }),
+          inboxId,
+        },
         cc,
         quote:
           rotated && claim.lastSent
@@ -590,7 +615,7 @@ export const sendStep = internalAction({
       try {
         draft = await resolveDraft(ctx, claim, leaseToken, identity);
       } catch (error) {
-        if (isTeamEmailError(error)) return await fail(permanentFailure(error.message));
+        if (isTeamEmailError(error)) return await hold(error.message);
         throw error;
       }
       if (!draft) return { status: "stale" as const };
@@ -602,6 +627,7 @@ export const sendStep = internalAction({
           await ctx.runMutation(internal.providerOutreach.beginSendInternal, {
             stepId,
             leaseToken,
+            inboxId: ensured.captured ? null : inboxId,
           })
         ).ok;
       const finishCaptured = async () => {
