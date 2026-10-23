@@ -20,7 +20,7 @@ import {
   TableRow,
   TableNameLink,
 } from "@/components/ui/table";
-import { Loader2, LogOut, Plus, Search } from "lucide-react";
+import { FileSearch, Loader2, LogOut, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
@@ -222,6 +222,9 @@ export default function OperatorClientsScreen() {
                 >
                   Created
                 </TableHead>
+                <TableHead className="w-36 pr-4">
+                  <span className="sr-only">Procurement</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -231,7 +234,7 @@ export default function OperatorClientsScreen() {
               {clients === undefined ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="h-32 text-center text-muted-foreground"
                   >
                     <Loader2 className="mx-auto h-5 w-5 animate-spin" />
@@ -242,7 +245,7 @@ export default function OperatorClientsScreen() {
                 !creating ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                   >
                     {searchText || filter !== "all"
@@ -304,6 +307,16 @@ export default function OperatorClientsScreen() {
                     <TableCell className="px-4 text-muted-foreground">
                       {formatDisplayDate(client.createdAt)}
                     </TableCell>
+                    <TableCell className="pr-4 text-right">
+                      <PillButton
+                        href={`/operator/clients/${client._id}/procurement`}
+                        variant="ghost"
+                        size="compact"
+                      >
+                        <FileSearch className="size-3.5" />
+                        Procurement
+                      </PillButton>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -354,6 +367,7 @@ export default function OperatorClientsScreen() {
                       <TableCell className="px-4 text-muted-foreground">
                         {formatDisplayDate(application.createdAt)}
                       </TableCell>
+                      <TableCell />
                     </TableRow>
                   ))}
             </TableBody>
@@ -439,6 +453,7 @@ function NewClientRow({ onDone }: { onDone: () => void }) {
       <TableCell className="px-4 text-muted-foreground">
         {busy ? <Loader2 className="size-4 animate-spin" /> : null}
       </TableCell>
+      <TableCell />
     </TableRow>
   );
 }

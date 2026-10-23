@@ -1,5 +1,23 @@
 # Platform workflow QA
 
+## Operator UI polish (inbox, reader, settings) — October 23, 2026
+
+Local Conductor stack, synthetic operator via email OTP + TOTP enrollment, and
+synthetic team threads (a forward from an operator alias, a linked client
+thread with a second message). Screenshots in `.context/qa/nitpicks/`.
+
+| Workflow | Status | Evidence / remaining check |
+| --- | --- | --- |
+| Inbox defaults to Mine; filters on top; search and Archived in the top bar | Passed locally | `01-inbox-mine.png`, `02-inbox-all.png` |
+| Row avatars (operator photo for operator-domain senders), unread-only bold, client tag only when linked | Passed locally | `02-inbox-all.png` |
+| Reader opens at the wide width; circular avatars; avatar collapses an open message | Passed locally | `03-reader-forward.png`, `05-reader-collapsed.png` |
+| Forwarded message card and compact attachment chips | Passed locally (forward); attachments not exercised with real files | `03-reader-forward.png` |
+| Mail-style reply compose (From/To/Cc/Subject from the server preview) | Passed locally up to preview; no send exercised | `06-reply-compose.png` |
+| Request Inbox: search/Archived/forward bar separate from the list or empty state | Passed locally | `14-request-email.png` |
+| Settings Team lists all operators; Clients rows link to Procurement | Passed locally | `08-settings-team.png`, `10-clients.png` |
+| New email from the Inbox: compose, server preview (From, Always CC, signature), exact-fingerprint send, new conversation opens | Passed locally in capture mode | `20-compose.png`, `21-sent-thread.png`; live Resend delivery not exercised |
+| Inline field cards fit the label column; website value aligns; operator-size dropdown search | Passed locally | `13-request.png`, `15-client-business.png`, `16-dropdown.png` |
+
 ## Operator team email — October 23, 2026
 
 The repeatable local run is [team-email-workflows.md](team-email-workflows.md).

@@ -16,6 +16,7 @@ import {
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { extractEmailAddress, parseReplyToAddresses } from "./lib/emailAddress";
 import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
+import { isComposeKey } from "./lib/teamEmailReply";
 import { operatorSenderIdentity, type OperatorSenderIdentity } from "./lib/outreachIdentity";
 import {
   quotedHistory,
@@ -393,7 +394,7 @@ export async function operatorDraftBlocker(
   // A reply draft cannot be updated: the person previews the reply again instead.
   const redo = (updateText: string) =>
     draft.directReplyKey
-      ? "Your sender details changed — preview the reply again before sending."
+      ? "Your sender details changed — preview the email again before sending."
       : updateText;
   if (!draft.transport || !draft.senderUserId) return SENDER_CHANGED_REASON;
   let identity: OperatorSenderIdentity;
@@ -508,15 +509,19 @@ export async function checkOperatorSendApproval(
 
   if (!args.confirmationId) {
     const grant = draft.directApproval;
+    // The browser grants two kinds: a reply on its conversation, or a new email
+    // that has no conversation until it is sent.
+    const browserReply =
+      draft.directReplyKey?.startsWith("browser:") && Boolean(draft.teamEmailThreadId);
+    const browserCompose = isComposeKey(draft.directReplyKey) && !draft.teamEmailThreadId;
     if (
       !grant ||
       draft.operatorThreadId ||
-      !draft.directReplyKey?.startsWith("browser:") ||
-      !draft.teamEmailThreadId ||
+      !(browserReply || browserCompose) ||
       grant.actorUserId !== draft.senderUserId ||
       grant.fingerprint !== fingerprint
     ) {
-      return denied("The reply was not approved, or it changed after approval.");
+      return denied("The email was not approved, or it changed after approval.");
     }
   } else {
     const confirmation = await ctx.db.get(args.confirmationId);

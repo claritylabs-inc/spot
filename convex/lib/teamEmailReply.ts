@@ -47,6 +47,11 @@ export const normalizeReplyMessage = (message: string) =>
 
 export const MAX_TEAM_REPLY_CHARS = 20_000;
 
+/** Browser-composed new emails are keyed apart from replies (`browser:`) and agent replies. */
+export const COMPOSE_KEY_PREFIX = "compose:";
+export const isComposeKey = (key: string | undefined) =>
+  Boolean(key?.startsWith(COMPOSE_KEY_PREFIX));
+
 /** Every field of the pending draft a reply becomes; the fingerprint is computed over these. */
 export type TeamReplyDraftFields = {
   recipientEmail: string;
@@ -109,7 +114,7 @@ export type TeamReplyComposition =
     }
   | { ok: false; reason: string };
 
-function paragraphsHtml(text: string) {
+export function paragraphsHtml(text: string) {
   return text
     .split(/\n{2,}/)
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
@@ -129,7 +134,7 @@ const normalized = (address: string) =>
   (extractEmailAddress(address) ?? address.trim().toLowerCase()).toLowerCase();
 
 /** Mail addresses Spot runs for clients and notifications; never a correspondent to copy. */
-function isMachineAddress(address: string) {
+export function isMachineAddress(address: string) {
   const domain = address.split("@")[1] ?? "";
   return isSpotOutboundAddress(address) && !teamOwnedDomains().includes(domain);
 }
@@ -359,7 +364,9 @@ export async function replyContextProblem(
   draft: Doc<"pendingEmails">,
   confirmationId?: Id<"operatorAgentConfirmations">,
 ): Promise<string | null> {
-  if (!draft.directReplyKey) return null;
+  // A new email has no conversation to recompose against; its sender identity,
+  // Always CC and client link are rechecked by `operatorDraftBlocker`.
+  if (!draft.directReplyKey || isComposeKey(draft.directReplyKey)) return null;
   if (!draft.teamEmailThreadId || !draft.senderUserId) {
     return "The reply is missing its conversation — preview it again.";
   }

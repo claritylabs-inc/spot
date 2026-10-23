@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { Loader2 } from "lucide-react";
+import { Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app-shell";
@@ -170,7 +170,7 @@ function TeamEmailFields({ settings }: { settings: TeamEmailSettingsData }) {
         : !settings.address
           ? "Enter a team address"
           : settings.status === "ready"
-            ? "Ready"
+            ? "Ready. Forward mail here to add it to the Inbox."
             : settings.status === "captured"
               ? "Local capture mode: no inbox is created"
               : settings.status === "needs_name"
@@ -216,6 +216,26 @@ function TeamEmailFields({ settings }: { settings: TeamEmailSettingsData }) {
             ) : (
               <p className="flex flex-wrap items-center gap-x-3 text-muted-foreground">
                 {statusText}
+                {settings.address &&
+                setup.state === "idle" &&
+                (settings.status === "ready" || settings.status === "captured") ? (
+                  <PillButton
+                    type="button"
+                    variant="ghost"
+                    size="compact"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(settings.address!);
+                        toast.success("Forwarding address copied");
+                      } catch {
+                        toast.error("Could not copy to the clipboard");
+                      }
+                    }}
+                  >
+                    <Copy className="size-3.5" />
+                    Copy address
+                  </PillButton>
+                ) : null}
                 {canRetry ? (
                   <PillButton
                     type="button"
