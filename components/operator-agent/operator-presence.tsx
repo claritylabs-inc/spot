@@ -28,7 +28,7 @@ export function OperatorPresence() {
   return (
     <>
       <PresenceAvatars users={others} />
-      <div className="h-4 w-px bg-foreground/10" />
+      <div className="mx-1.5 h-4 w-px bg-foreground/10" />
     </>
   );
 }

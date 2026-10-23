@@ -74,7 +74,7 @@ export function PresenceAvatars({
   size?: "sm" | "md";
 }) {
   if (users.length === 0) return null;
-  const avatarSize = size === "sm" ? "size-5" : "size-6";
+  const avatarSize = size === "sm" ? "size-5" : "size-7";
   return (
     <div className="flex shrink-0 items-center -space-x-1.5">
       {users.slice(0, max).map((u) => (
