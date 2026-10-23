@@ -1,5 +1,29 @@
 # Platform workflow QA
 
+## Procurement information requests — October 23, 2026
+
+The repeatable workflow and results are in
+[procurement-information-workflow.md](procurement-information-workflow.md).
+Synthetic actors used the native-local backend and visible Chrome; no live
+emails were sent. Evidence: `.context/qa/information-requests/`.
+
+| Workflow | Status | Evidence / limits |
+| --- | --- | --- |
+| Shared provider facts and client form | Passed locally | Two providers, one fact, one submitted currency answer; independent requirement state. |
+| Conditional questions and files | Passed locally | Prerequisite ordering fixed; hidden answer excluded; uploaded-file review and submission. Browser file picker blocked by extension file URL permission; upload/intent API verified separately. |
+| Email extraction and operator review | Passed locally | Exact quoted source reviewed before addition; failed extraction stays terminal. Hosted durable callback behavior is a release check. |
+| Delivery, acceptance and corrections | Passed locally | Stored synthetic outbound evidence and explicit acceptance note; correction flags old acceptance as changed. No actual email delivery claimed. |
+| Form revision and client isolation | Passed locally | Stale revision, changed answer, replay, anonymous and unrelated client calls rejected. |
+| Reusable concepts | Passed locally | Observe/approve/retire/reactivate in UI; active selector includes generic concept, retired excludes it, no answers copied. |
+| Automatic provider/client mail | Passed locally | Existing inbound writer queued cl-router generation and atomic Jev checks: two provider questions created, a paraphrase reused the existing fact, and client count 8 became Answered with source quote. Duplicate and unknown-correspondent guards passed. |
+| Automatic request form and operator answer | Passed locally | No checkbox selection; two unanswered facts included, unchanged form reused, operator answer 3 excluded from the next request; superseded link shows a clear closed-form message. |
+| Responsive UI | Passed locally | Dark desktop tracker, 393px operator drawers and client review; overrides reset. Light theme not separately exercised. |
+| TypeScript and lint | Passed locally | noEmit clean; focused lint has zero errors and one pre-existing application effect dependency warning. |
+
+No unit tests or migrations were added. Deleted-request and impersonation guards
+were reviewed in code; separate browser exercises are not claimed.
+
+
 ## Operator team email — October 23, 2026
 
 The repeatable local run is [team-email-workflows.md](team-email-workflows.md).
@@ -2355,3 +2379,84 @@ Helium at localhost:3207 verified the submitted HUB row has View details without
 Helium at localhost:3207 verified shared searchable state/province, ACORD coverage-line and status filters. Restricted returned only BLIS; adding Ontario showed the empty state and disabled Select all. Ontario + Prospect + CYBER returned 27 providers, including recorded nationwide providers. Selecting KBD and clearing filters cleared the bulk selection and restored all three defaults. An empty Create provider row placed its name and status under the correct headers; Escape dismissed it without creating a provider. The status trigger's extra left padding is removed. Service-area text includes countries and explicit nationwide exceptions; the filter reuses `brokerAreaFit`, so exclusions override nationwide service. Shared Table, Select/SearchableSelect, OperationalPanel and PillButton primitives are retained.
 
 Root TypeScript, touched-file ESLint and whitespace checks passed. No tests or database migrations were written. Evidence: `.context/provider-expansion/provider-filters.png`, `provider-draft-alignment.png`, `provider-filters-ontario-cyber-prospect.txt`, and `types-provider-filters.log`. No outreach was sent or stopped during this review.
+
+### Follow-up information UI refinements — October 23, 2026
+
+Local Chrome, signed-in synthetic operator/applicant, Next :3207 / Convex :3220.
+
+| Workflow | Outcome |
+| --- | --- |
+| Intake start screen | Passed: shared introduction, Continue arrow, coverage shield icon, title-width subtitle and pretty wrapping; desktop and 393px mobile inspected. |
+| Question layout | Passed: business name in the title and progress labels, coverage above title, no numeric question counter, descriptive subtitle or period subtitle; larger title/input gap and large arrow navigation. Mobile bars remain elongated and fit the header. |
+| Review | Passed during the first browser pass: one coverage is a permanently expanded section with the original label/value rows and Edit. Confirmation remains unchecked. Later visual refinements remove review helper copy. No client answers submitted. |
+| Inline operator answers | Passed: synthetic Cyber short-text answer saved, updated status to Answered and survived reload. Professional-liability Yes saved as Answered; changing to unsure restored Needs answer and survived reload. Currency changed to 70,001 and was restored to 70,000. |
+| Coverage grouping | Passed: General liability, Professional liability and Cyber form separate ordered groups. Automatic request preview includes all 12 unresolved definitions grouped by coverage and excludes the answered Cyber question. No replacement form was published. |
+| Future-intake reuse removal | Passed source audit: no UI action, observation/review mutation, learned-reference helper or generation injection remains. Deprecated compatibility schema is inert. Existing curated question references remain. |
+
+Two coverage sample questions were added through the operator UI. The existing
+client form and its current saved draft were preserved. A separate temporary
+preview tab was used for visual QA and viewport overrides were reset. The current
+draft has an unanswered question, so jumping to review remains disabled; no draft
+answers were changed to bypass that guard. Multiple-coverage client review and
+new external email delivery were not exercised in this refinement pass.
+
+TypeScript, focused ESLint, local Convex sync/codegen and whitespace checks passed.
+No tests or database migrations were written; no email or deployment was sent.
+Evidence: `.context/qa/information-start-screen.png`,
+`information-question-redesign.png`, `information-mobile-question.png`.
+
+### Information Needed top-bar actions — October 23, 2026
+
+Local Chrome / synthetic Intake Followups QA LLC: Sync, From email, Add question
+and Request information now render through the existing procurement app-shell
+actions owner beside Notes. The Questions/Forms row uses shared InputGroup,
+InputGroupAddon and InputGroupInput primitives for an aligned search field.
+Browser QA verified search filtering, clearing, switching to Forms and back,
+and opening/closing all three relocated composition drawers. No requirements,
+forms, answers or emails were created during this pass. Inline field styling is
+scoped to the coverage cards so it does not override search styling. TypeScript,
+focused ESLint and whitespace checks passed. Evidence:
+`.context/qa/information-top-bar.png`. No tests or migrations were written.
+
+### Information form navigation, cards and names — October 23, 2026
+
+Visible local Chrome verified Information needed as a separate sidebar section,
+Overview-style coverage/question cards in the retained submitted sample, and
+consistent `Oct 23, 2026`, `(2)` and `(3)` names across the menu and form header.
+Supporting-document chips render in Answer rows; clicking the synthetic PDF
+opened its one-page document in the app-shell PDF viewer. Submitted responses
+were read without changes. Extra old QA form records were removed at the user's
+request after a local backup; subsequently created forms were retained.
+
+Root TypeScript noEmit, focused ESLint and whitespace checks passed. ESLint retains
+the pre-existing `application.tsx:1350` exhaustive-deps warning. No tests or
+database migrations were written. Evidence:
+`.context/qa/information-form-date-cards.png` and
+`.context/qa/information-overview-attachments.png`.
+
+### Sidebar forms and independent batches — October 23, 2026
+
+Local Chrome / normal signed-in synthetic operator and applicant. Removed the
+Questions/Forms tabs; Overview remains the full list and each sidebar form opens
+its own question batch. Add form preselects eligible unanswered questions, allows
+subsets and excludes questions already in another open form. Server selection
+rechecks ownership, applicability, dependencies, overlap and the 40-question cap.
+Creating a batch no longer replaces other open forms.
+
+Browser QA passed subset creation (two operations questions / one contracts
+question), simultaneous open batches, per-form subjects/messages/links, draft
+separation on close/reopen, and client intake showing exactly its two-question
+batch. All questions assigned to open batches produced the new-form empty state.
+Existing complete forms remain in the sidebar. Local fixture cleanup removed an
+early operations sample; the independent-batch check was repeated on the current
+forms. No applicant answers or external emails were sent. The incomplete synthetic
+sender profile retains its existing Send guard.
+
+Email-to-form pairing is stored atomically when launch creates its sequence;
+separate forms can launch independent sequences to the same client while legacy
+unscoped duplicate protection remains. Both claim and final-send checkpoints
+hold unavailable/closed forms. These send-path changes were source-reviewed and
+typechecked; actual delivery and webhook replies were not exercised in this pass.
+TypeScript, focused ESLint, local Convex sync/codegen and whitespace checks passed.
+No tests or database migrations were written. Evidence:
+`.context/qa/information-batches.png`, `information-batch-client.png`.
