@@ -881,12 +881,12 @@ export function OutreachSequenceActions({
   onOpenThread,
 }: {
   sequence: SequenceView | null;
-  onOpenThread: (threadId: Id<"procurementEmailThreads">) => void;
+  onOpenThread: (threadId: Id<"teamEmailThreads">) => void;
 }) {
   if (!sequence) return null;
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      {sequence.procurementEmailThreadId ? (
+      {sequence.teamEmailThreadId ? (
         <PillButton
           type="button"
           size="compact"
@@ -895,7 +895,7 @@ export function OutreachSequenceActions({
           aria-label="Open conversation in Inbox"
           onClick={(event) => {
             event.stopPropagation();
-            onOpenThread(sequence.procurementEmailThreadId!);
+            onOpenThread(sequence.teamEmailThreadId!);
           }}
         >
           <Mail className="size-3.5" />

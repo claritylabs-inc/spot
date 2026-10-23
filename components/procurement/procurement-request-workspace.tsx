@@ -37,7 +37,7 @@ import {
 import type { StoredProposalFinding } from "@/convex/lib/proposalReview";
 
 import { RequestCompletionOutcome } from "./request-completion-outcome";
-import { RequestInbox, type InboxThread } from "./request-inbox";
+import { TeamInbox, type InboxThread } from "@/components/inbox/team-inbox";
 import { ClientOutreachComposer } from "./client-outreach-composer";
 import {
   FitChips,
@@ -207,7 +207,7 @@ type Outreach = {
 type ProcurementFileItem = {
   _id: Id<"procurementFileItems">;
   clientFileId?: Id<"clientFiles">;
-  sourceEmailMessageId?: Id<"procurementEmailMessages">;
+  sourceEmailMessageId?: Id<"teamEmailMessages"> | Id<"procurementEmailMessages">;
   intakeCategory?: "requirements" | "policy" | "loss_runs" | "supporting";
   label: string;
   brokerRelease?: "hidden" | "listed" | "attached";
@@ -217,7 +217,7 @@ type ProcurementFileItem = {
 };
 
 type EmailThread = {
-  _id: Id<"procurementEmailThreads">;
+  _id: Id<"teamEmailThreads">;
   subject: string;
   category: "broker" | "client" | "internal" | "mixed" | "other";
   participantEmails: string[];
@@ -2324,7 +2324,7 @@ export function ProcurementRequestWorkspace({
           ref={emailDrawerRef}
           emailThreadId={thread._id}
           subject={thread.subject}
-          replyable={thread.source === "resend"}
+          replyable={thread.source === "outreach"}
           requestId={requestId}
           requests={requestOptions}
           readOnly={readOnly}
@@ -2870,11 +2870,11 @@ export function ProcurementRequestWorkspace({
         ) : null}
 
         {view === "email" ? (
-          <RequestInbox
+          <TeamInbox
             key={requestId}
-            requestId={requestId}
+            scope={{ kind: "request", requestId }}
             selectedThreadId={searchParams.get("thread")}
-            forwardingAddress={forwardingAddress ?? null}
+            fallbackForwardingAddress={forwardingAddress ?? null}
             onSelect={selectInboxThread}
             onOpenThread={(thread) => void openEmail(thread)}
           />
