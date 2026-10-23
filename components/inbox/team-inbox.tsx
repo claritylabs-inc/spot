@@ -338,7 +338,7 @@ export function TeamInbox({
   const queryArgs = useMemo(
     () =>
       requestId
-        ? { requestId }
+        ? { requestId, ...(archivedView ? { archived: true } : {}) }
         : {
             ...(filter === "mine" ? { mine: true } : {}),
             ...(filter === "unlinked" ? { unlinked: true } : {}),
@@ -411,7 +411,11 @@ export function TeamInbox({
   function prewarm(thread: InboxThread) {
     convex.prewarmQuery({
       query: api.teamInbox.getThread,
-      args: { threadId: thread._id, ...(requestId ? { requestId } : {}) },
+      args: {
+        threadId: thread._id,
+        ...(requestId ? { requestId } : {}),
+        ...(requestId && archivedView ? { includeArchived: true } : {}),
+      },
     });
     if (thread.request)
       convex.prewarmQuery({
@@ -541,6 +545,16 @@ export function TeamInbox({
             </label>
             <PillButton
               type="button"
+              variant={archivedView ? "secondary" : "ghost"}
+              size="compact"
+              aria-pressed={archivedView}
+              onClick={() => setArchivedView((value) => !value)}
+            >
+              <Archive className="size-3.5" />
+              <span className="hidden @md:inline">Archived</span>
+            </PillButton>
+            <PillButton
+              type="button"
               variant="ghost"
               size="compact"
               disabled={forward.loading || forward.busy}
@@ -607,16 +621,6 @@ export function TeamInbox({
                   ))}
                 </SelectContent>
               </Select>
-              <PillButton
-                type="button"
-                variant={archivedView ? "secondary" : "ghost"}
-                size="compact"
-                aria-pressed={archivedView}
-                onClick={() => setArchivedView((value) => !value)}
-              >
-                <Archive className="size-3.5" />
-                Archived
-              </PillButton>
               {filtered ? (
                 <PillButton type="button" variant="ghost" size="compact" onClick={resetFilters}>
                   Clear filters
@@ -626,7 +630,7 @@ export function TeamInbox({
           ) : null}
         </>
       )}
-      {requestId ? <SuggestedStrip requestId={requestId} /> : null}
+      {requestId && !archivedView ? <SuggestedStrip requestId={requestId} /> : null}
       {status === "LoadingFirstPage" ? (
         <div className="divide-y divide-border">
           {Array.from({ length: 4 }, (_, index) => (

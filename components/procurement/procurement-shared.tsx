@@ -981,6 +981,7 @@ export function ProcurementEmailDrawer({
   ref,
   emailThreadId,
   requestId,
+  includeArchived,
   subject,
   replyable,
   requests = [],
@@ -991,6 +992,8 @@ export function ProcurementEmailDrawer({
   emailThreadId: Id<"teamEmailThreads">;
   /** Set when opened from a request's Inbox; the conversation must belong to it. */
   requestId?: Id<"procurementRequests">;
+  /** Open an archived conversation of the request (its archive view). */
+  includeArchived?: boolean;
   /** List data shown while the conversation loads. */
   subject?: string;
   replyable?: boolean;
@@ -1002,6 +1005,7 @@ export function ProcurementEmailDrawer({
   const result = useQuery(api.teamInbox.getThread, {
     threadId: emailThreadId,
     ...(requestId ? { requestId } : {}),
+    ...(requestId && includeArchived ? { includeArchived: true } : {}),
   });
   const markRead = useMutation(api.teamInbox.markRead);
   const busy = useRef(false);
