@@ -23,6 +23,8 @@ import { readResponseBytesWithinLimit } from "./websiteBrand";
 
 const RECEIVING_API = "https://api.resend.com/emails/receiving";
 const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_ENVELOPE_BYTES = 256 * 1024;
+const MAX_OMISSIONS = 20;
 const RECEIVED_EMAIL_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 export type ReceivedEmailRejection = "too_large" | "mismatch";
@@ -97,7 +99,12 @@ export async function fetchReceivedEmailRaw(
     await envelopeResponse.body?.cancel().catch(() => undefined);
     throw new Error(`Could not retrieve received email (${envelopeResponse.status})`);
   }
-  const envelope = envelopeSchema.parse(await envelopeResponse.json());
+  // Only the raw URL is needed, so the JSON envelope is read under a small cap.
+  const envelope = envelopeSchema.parse(
+    JSON.parse(
+      (await readBounded(envelopeResponse, MAX_ENVELOPE_BYTES)).toString("utf8"),
+    ),
+  );
   if (envelope.id && envelope.id !== emailId) {
     throw new ReceivedEmailRejectedError(
       "mismatch",
@@ -133,15 +140,18 @@ export type ReceivedAttachmentFile = {
 
 export type ReceivedAttachmentResult = {
   files: ReceivedAttachmentFile[];
-  /** Attachments not imported (limits, download failure, missing list). */
+  /** Wanted attachments not imported (limits, download failure, missing); at most 20. */
   omitted: Array<{ filename: string; reason: string }>;
+  /** Omissions beyond the 20 listed. */
+  omittedMore: number;
 };
 
 /**
  * Best-effort bounded attachment download for `emailId`. `wanted` are the
- * attachment ids the inbox reported for this email; anything else the
- * Receiving API lists is ignored. Failures are reported in `omitted`, never
- * thrown, and file bytes stay untrusted data.
+ * attachments the inbox reported for this email; anything else the Receiving
+ * API lists is ignored, and every wanted attachment is either returned or
+ * named in `omitted` (bounded; the rest are counted in `omittedMore`).
+ * Failures are reported, never thrown, and file bytes stay untrusted data.
  */
 export async function fetchReceivedEmailAttachments(
   emailId: string,
@@ -149,40 +159,51 @@ export async function fetchReceivedEmailAttachments(
   limits: { maxFiles: number; maxFileBytes: number; maxTotalBytes: number },
 ): Promise<ReceivedAttachmentResult> {
   const files: ReceivedAttachmentFile[] = [];
-  const omitted: ReceivedAttachmentResult["omitted"] = [];
-  if (wanted.length === 0) return { files, omitted };
-  const displayName = (filename: string | null) => filename?.trim() || "attachment";
-  const omitAll = (reason: string) => ({
+  const omissions: ReceivedAttachmentResult["omitted"] = [];
+  const result = (): ReceivedAttachmentResult => ({
     files,
-    omitted: wanted.map((item) => ({ filename: displayName(item.filename), reason })),
+    omitted: omissions.slice(0, MAX_OMISSIONS),
+    omittedMore: Math.max(0, omissions.length - MAX_OMISSIONS),
   });
+  if (wanted.length === 0) return result();
+  const displayName = (filename: string | null) => filename?.trim() || "attachment";
+  const omit = (filename: string | null, reason: string) =>
+    omissions.push({ filename: displayName(filename), reason });
 
   let listed: ResendReceivedAttachment[];
   try {
     assertReceivedEmailId(emailId);
-    const result = await listReceivedEmailAttachments(emailId);
-    if (result.status !== "ok") return omitAll("attachments were not retrieved");
-    listed = result.data;
+    const listing = await listReceivedEmailAttachments(emailId);
+    if (listing.status !== "ok") {
+      for (const item of wanted) omit(item.filename, "attachments were not retrieved");
+      return result();
+    }
+    listed = listing.data;
   } catch {
-    return omitAll("attachments could not be retrieved");
+    for (const item of wanted) omit(item.filename, "attachments could not be retrieved");
+    return result();
   }
 
-  const wantedIds = new Set(wanted.map((item) => item.id));
-  const candidates = listed.filter((item) => wantedIds.has(item.id));
+  const byId = new Map(listed.map((item) => [item.id, item]));
   let totalBytes = 0;
-  for (const [index, attachment] of candidates.entries()) {
-    const filename = displayName(attachment.filename);
+  for (const [index, item] of wanted.entries()) {
     if (index >= limits.maxFiles) {
-      omitted.push({ filename, reason: "too many attachments" });
+      omit(item.filename, "too many attachments");
       continue;
     }
+    const attachment = byId.get(item.id);
+    if (!attachment) {
+      omit(item.filename, "not available from Resend");
+      continue;
+    }
+    const filename = attachment.filename ?? item.filename;
     if ((attachment.size ?? 0) > limits.maxFileBytes) {
-      omitted.push({ filename, reason: "file is too large" });
+      omit(filename, "file is too large");
       continue;
     }
     try {
       if (new URL(attachment.downloadUrl).protocol !== "https:") {
-        omitted.push({ filename, reason: "download link is not https" });
+        omit(filename, "download link is not https");
         continue;
       }
       const response = await fetch(attachment.downloadUrl, {
@@ -190,30 +211,29 @@ export async function fetchReceivedEmailAttachments(
       });
       if (!response.ok) {
         await response.body?.cancel().catch(() => undefined);
-        omitted.push({ filename, reason: "download failed" });
+        omit(filename, "download failed");
         continue;
       }
       const bytes = await readBounded(response, limits.maxFileBytes);
       if (totalBytes + bytes.length > limits.maxTotalBytes) {
-        omitted.push({ filename, reason: "attachments exceed the total size limit" });
+        omit(filename, "attachments exceed the total size limit");
         continue;
       }
       totalBytes += bytes.length;
       files.push({
-        filename,
+        filename: displayName(filename),
         contentType: attachment.contentType || "application/octet-stream",
         size: bytes.length,
         bytes,
       });
     } catch (error) {
-      omitted.push({
+      omit(
         filename,
-        reason:
-          error instanceof ReceivedEmailRejectedError
-            ? "file is too large"
-            : "download failed",
-      });
+        error instanceof ReceivedEmailRejectedError
+          ? "file is too large"
+          : "download failed",
+      );
     }
   }
-  return { files, omitted };
+  return result();
 }
