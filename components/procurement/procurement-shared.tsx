@@ -993,10 +993,6 @@ export function ProcurementEmailDrawer({
           <ReplyComposer
             key={emailThreadId}
             threadId={emailThreadId}
-            latestOutboundAt={
-              thread?.messages.findLast((message) => message.direction === "outbound")
-                ?.receivedAt ?? 0
-            }
             recipient={
               latestInbound?.fromName ??
               latestInbound?.fromEmail ??
