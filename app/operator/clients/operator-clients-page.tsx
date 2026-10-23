@@ -202,6 +202,7 @@ export default function OperatorClientsScreen() {
     <AppShell actions={actions}>
       <main className="flex w-full flex-col gap-4">
         <ListToolbar
+          followKey="clients:list"
           tabs={
             <Tabs
               value={filter}

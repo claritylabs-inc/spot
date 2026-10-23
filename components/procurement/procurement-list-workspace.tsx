@@ -36,7 +36,10 @@ import {
   SelectionDeleteBar,
   useRowSelection,
 } from "@/components/operator/bulk-delete";
-import { ListToolbar } from "@/components/ui/list-toolbar";
+import {
+  ListToolbar,
+  type FilterDefinition,
+} from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
@@ -709,6 +712,14 @@ export function ProcurementListWorkspace({
     `procurement:${scopeKey}:list-search`,
     "",
   );
+  const [statusFilter, setStatusFilter] = useFollowedState<string[]>(
+    `procurement:${scopeKey}:list-status`,
+    [],
+  );
+  const [clientFilter, setClientFilter] = useFollowedState<string[]>(
+    `procurement:${scopeKey}:list-client`,
+    [],
+  );
   const [confirmDelete, setConfirmDelete] = useFollowedState(
     `procurement:${scopeKey}:confirm-delete`,
     false,
@@ -723,6 +734,8 @@ export function ProcurementListWorkspace({
     (request) =>
       (filter === "all" ||
         CLOSED_STATUSES.includes(request.status) === (filter === "closed")) &&
+      (statusFilter.length === 0 || statusFilter.includes(request.status)) &&
+      (clientFilter.length === 0 || clientFilter.includes(request.clientOrgId)) &&
       (!searchText ||
         [request.title, request.client?.name].some((value) =>
           value?.toLowerCase().includes(searchText),
@@ -865,10 +878,55 @@ export function ProcurementListWorkspace({
       />
     );
 
+  const clientOptions = Array.from(
+    new Map(
+      requests.flatMap((request) =>
+        request.client
+          ? [[request.client._id, request.client.name] as const]
+          : [],
+      ),
+    ),
+    ([value, label]) => ({ value: value as string, label }),
+  ).sort((left, right) => left.label.localeCompare(right.label));
+  const filters: FilterDefinition[] = [
+    ...(allClients
+      ? [
+          {
+            id: "client",
+            label: "Client",
+            inline: true,
+            multiple: true,
+            value: clientFilter,
+            onChange: (value: string[]) => {
+              setClientFilter(value);
+              selection.clear();
+            },
+            options: clientOptions,
+          },
+        ]
+      : []),
+    {
+      id: "status",
+      label: "Status",
+      multiple: true,
+      value: statusFilter,
+      onChange: (value) => {
+        setStatusFilter(value);
+        selection.clear();
+      },
+      options: REQUEST_STATUS_OPTIONS.map(({ value, label }) => ({
+        value,
+        label,
+      })),
+    },
+  ];
+
   const columns = 4 + (allClients ? 1 : 0) + (readOnly ? 0 : 2);
   return (
     <div className="flex flex-col gap-4">
       <ListToolbar
+        followKey={`procurement:${scopeKey}:list`}
+        filters={filters}
         tabs={
           <Tabs
             value={filter}
@@ -960,7 +1018,7 @@ export function ProcurementListWorkspace({
                   colSpan={columns}
                   className={`h-24 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                 >
-                  No requests match this search.
+                  No requests match these filters.
                 </TableCell>
               </TableRow>
             ) : null}

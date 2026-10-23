@@ -13,7 +13,7 @@ import {
 
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, MapPin, Plus, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -39,7 +39,7 @@ import {
   StatusLabel,
   StatusTag,
 } from "@claritylabs-inc/ui/components/status-tag";
-import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import {
   Table,
   TableBody,
@@ -60,29 +60,18 @@ import {
   type NetworkStatus,
 } from "./broker-model";
 
-const ALL = "all";
 const countryNames = new Intl.DisplayNames(["en"], { type: "region" });
-const regionOptions = [
-  { value: ALL, label: "All states / provinces" },
-  ...BROKER_REGION_CODES.map((value) => ({
-    value,
-    label: `${USPS_STATE_NAMES[value] ?? CANADIAN_PROVINCES[value as keyof typeof CANADIAN_PROVINCES]} (${value}) · ${brokerRegionCountry(value) === "CA" ? "Canada" : "United States"}`,
-  })).sort((a, b) => a.label.localeCompare(b.label)),
-];
-const lineOptions = [
-  { value: ALL, label: "All coverage lines" },
-  ...PROVIDER_ACORD_LOB_CODES.map((value) => ({
-    value,
-    label: `${ACORD_LOB_LABELS[value]} (${value})`,
-  })).sort((a, b) => a.label.localeCompare(b.label)),
-];
-const statusOptions = [
-  { value: ALL, label: "All statuses" },
-  ...Object.entries(NETWORK_STATUS_LABELS).map(([value, label]) => ({
-    value,
-    label,
-  })),
-];
+const regionOptions = BROKER_REGION_CODES.map((value) => ({
+  value,
+  label: `${USPS_STATE_NAMES[value] ?? CANADIAN_PROVINCES[value as keyof typeof CANADIAN_PROVINCES]} (${value}) · ${brokerRegionCountry(value) === "CA" ? "Canada" : "United States"}`,
+})).sort((a, b) => a.label.localeCompare(b.label));
+const lineOptions = PROVIDER_ACORD_LOB_CODES.map((value) => ({
+  value,
+  label: `${ACORD_LOB_LABELS[value]} (${value})`,
+})).sort((a, b) => a.label.localeCompare(b.label));
+const statusOptions = Object.entries(NETWORK_STATUS_LABELS).map(
+  ([value, label]) => ({ value, label }),
+);
 
 type BrokerRow = FunctionReturnType<typeof api.brokerProfiles.list>[number];
 
@@ -124,19 +113,30 @@ const BROKER_SORT_COLUMNS = {
 
 export default function OperatorBrokersPage() {
   const [creating, setCreating] = useFollowedState("brokers:creating", false);
-  const [region, setRegion] = useFollowedState("brokers:region", ALL);
-  const [line, setLine] = useFollowedState("brokers:line", ALL);
-  const [status, setStatus] = useFollowedState("brokers:status", ALL);
+  const [regions, setRegions] = useFollowedState<string[]>(
+    "brokers:regions",
+    [],
+  );
+  const [lines, setLines] = useFollowedState<string[]>("brokers:lines", []);
+  const [statuses, setStatuses] = useFollowedState<string[]>(
+    "brokers:statuses",
+    [],
+  );
   const rows = useQuery(api.brokerProfiles.list, {});
   const filteredRows = rows?.filter((row) => {
     const profile = row.profile;
     return (
-      (status === ALL || (profile?.networkStatus ?? "prospect") === status) &&
-      (line === ALL || profile?.lineOfBusinessCodes.includes(line)) &&
-      (region === ALL ||
+      (statuses.length === 0 ||
+        statuses.includes(profile?.networkStatus ?? "prospect")) &&
+      (lines.length === 0 ||
+        lines.some((line) => profile?.lineOfBusinessCodes.includes(line))) &&
+      (regions.length === 0 ||
         (profile &&
-          brokerAreaFit(profile, brokerRegionCountry(region), region) ===
-            "match"))
+          regions.some(
+            (region) =>
+              brokerAreaFit(profile, brokerRegionCountry(region), region) ===
+              "match",
+          )))
     );
   });
   const tableSort = useTableSort(
@@ -148,7 +148,14 @@ export default function OperatorBrokersPage() {
     "brokers:list:selected",
     filteredRows?.map((row) => row.broker._id) ?? [],
   );
-  const hasFilters = region !== ALL || line !== ALL || status !== ALL;
+  const hasFilters =
+    regions.length > 0 || lines.length > 0 || statuses.length > 0;
+  // Changing filters drops a selection the rows may no longer show.
+  const filterSetter =
+    (set: (value: string[]) => void) => (value: string[]) => {
+      set(value);
+      selection.clear();
+    };
 
   return (
     <AppShell
@@ -168,62 +175,38 @@ export default function OperatorBrokersPage() {
       }
     >
       <div className="@container/brokers space-y-4">
-        <div
-          className="flex flex-wrap items-center gap-2"
-          role="group"
-          aria-label="Provider filters"
-        >
-          <div className="w-full sm:w-64">
-            <SearchableSelect
-              options={regionOptions}
-              value={region}
-              onChange={(next) => {
-                setRegion(next);
-                selection.clear();
-              }}
-              ariaLabel="Filter providers by state or province"
-              typographyRole="control.menu"
-            />
-          </div>
-          <div className="w-full sm:w-80">
-            <SearchableSelect
-              options={lineOptions}
-              value={line}
-              onChange={(next) => {
-                setLine(next);
-                selection.clear();
-              }}
-              ariaLabel="Filter providers by coverage line"
-              typographyRole="control.menu"
-            />
-          </div>
-          <div className="w-full sm:w-44">
-            <SearchableSelect
-              options={statusOptions}
-              value={status}
-              onChange={(next) => {
-                setStatus(next);
-                selection.clear();
-              }}
-              ariaLabel="Filter providers by status"
-              typographyRole="control.menu"
-            />
-          </div>
-          {hasFilters ? (
-            <PillButton
-              variant="secondary"
-              size="compact"
-              onClick={() => {
-                setRegion(ALL);
-                setLine(ALL);
-                setStatus(ALL);
-                selection.clear();
-              }}
-            >
-              Clear filters
-            </PillButton>
-          ) : null}
-        </div>
+        <ListToolbar
+          followKey="brokers:list"
+          filters={[
+            {
+              id: "status",
+              label: "Status",
+              inline: true,
+              multiple: true,
+              options: statusOptions,
+              value: statuses,
+              onChange: filterSetter(setStatuses),
+            },
+            {
+              id: "region",
+              label: "State / province",
+              icon: <MapPin />,
+              multiple: true,
+              options: regionOptions,
+              value: regions,
+              onChange: filterSetter(setRegions),
+            },
+            {
+              id: "line",
+              label: "Coverage line",
+              icon: <Shield />,
+              multiple: true,
+              options: lineOptions,
+              value: lines,
+              onChange: filterSetter(setLines),
+            },
+          ]}
+        />
         <BulkDeleteBar
           type="broker"
           orgIds={selection.selectedIds}
