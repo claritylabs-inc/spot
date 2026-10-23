@@ -24,15 +24,12 @@ import {
   deriveOperatorLocalpart,
   getTeamEmailDomain,
   isTeamEmailError,
+  operatorFromName,
   operatorTeamAddress,
   validateTeamLocalpart,
 } from "./lib/teamEmail";
 
-/**
- * The signed-in operator's own team email settings (Profile): team address
- * localpart, Always CC, and the read-only command address. Every function acts
- * only on the caller's identity.
- */
+/** The signed-in operator's own team email settings; nothing here takes a user id. */
 
 type SettingsFailure = { ok: false; message: string };
 type SaveTeamAddressResult =
@@ -49,7 +46,7 @@ export type TeamInboxSetupStatus =
   | "needs_setup"
   | "not_configured";
 
-/** Shape of `operatorInboxes.getTeamIdentityInternal`; annotated to break the api type cycle. */
+/** Shape of `getTeamIdentityInternal`, annotated to break the api type cycle. */
 type TeamIdentity = {
   name: string | null;
   email: string | null;
@@ -72,6 +69,15 @@ function derivedLocalpart(email: string | null | undefined) {
     return deriveOperatorLocalpart(email);
   } catch {
     return null;
+  }
+}
+
+function hasUsableName(name: string | null) {
+  try {
+    operatorFromName(name);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -100,7 +106,7 @@ export const get = query({
     const activeAddress = identity.inbox?.emailAddress.toLowerCase() ?? null;
     const status: TeamInboxSetupStatus = !address
       ? "needs_setup"
-      : !identity.name
+      : !hasUsableName(identity.name)
         ? "needs_name"
         : getEmailDeliveryMode() === "capture"
           ? "captured"
@@ -110,11 +116,10 @@ export const get = query({
     return {
       configured: true as const,
       domain,
-      /** Saved localpart, else the one derived from the login email ("" if none). */
       localpart,
+      defaultLocalpart,
       customLocalpart: identity.teamEmailLocalpart !== null,
       address,
-      /** The inbox currently receiving mail when it is not the intended address. */
       previousAddress:
         activeAddress && activeAddress !== address ? activeAddress : null,
       status,
@@ -125,11 +130,9 @@ export const get = query({
 });
 
 /**
- * Saves the intended team address (an empty value restores the default derived
- * from the login email). Validates the localpart and that no other owner, active
- * or retired, holds the address, before anything external changes. The caller
- * then runs `ensureInbox`; the old inbox keeps receiving until the new one is
- * recorded.
+ * Saves the intended team address; empty restores the default from the login
+ * email. Nothing external changes: the caller then runs `ensureInbox`, and the
+ * old inbox keeps receiving until the new one is recorded.
  */
 export const saveTeamAddress = mutation({
   args: { localpart: v.string() },
@@ -226,11 +229,9 @@ export type EnsureInboxResult =
   | { status: "failed"; message: string };
 
 /**
- * Self-only: brings the caller's inbox to the address their profile currently intends,
- * recording it and retiring the previous one. The target is read at run time,
- * so a newer save is never rolled back by an older request; a result for a
- * superseded address reports a retryable failure. Capture mode makes no
- * network call and records nothing.
+ * Brings the caller's inbox to the address their profile currently intends and
+ * retires the previous one. The target is read at run time, so an older request
+ * never rolls back a newer save. Capture mode makes no network call.
  */
 export const ensureInbox = action({
   args: {},
