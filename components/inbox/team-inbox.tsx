@@ -13,19 +13,23 @@ import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/reac
 import { toast } from "sonner";
 import type { FunctionReturnType } from "convex/server";
 import dayjs from "dayjs";
-import { Archive, ArchiveRestore, AtSign, Inbox, PenSquare, Search } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  AtSign,
+  Inbox,
+  PenSquare,
+  SlidersHorizontal,
+} from "lucide-react";
 
 import { PillButton } from "@/components/ui/pill-button";
+import { ListToolbar, SearchField } from "@/components/ui/list-toolbar";
+import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { ChatAvatar } from "@/components/chat/chat-message";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@claritylabs-inc/ui/components/input-group";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Select,
@@ -388,6 +392,7 @@ export function TeamInbox({
   const [category, setCategory] = useFollowedState(`${uiKey}:category`, ALL_CATEGORIES);
   const [archivedView, setArchivedView] = useFollowedState(`${uiKey}:archived`, false);
   const [search, setSearch] = useFollowedState(`${uiKey}:search`, "");
+  const [showFilters, setShowFilters] = useFollowedState(`${uiKey}:show-filters`, false);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const clients = useCachedOperatorClients();
   // Impersonating operators read mail; every write below is withheld.
@@ -546,7 +551,19 @@ export function TeamInbox({
   }
 
   const clientOptions = useMemo(
-    () => (clients ?? []).map((client) => ({ value: client._id, label: client.name })),
+    () =>
+      (clients ?? []).map((client) => ({
+        value: client._id,
+        label: client.name,
+        icon: (
+          <OrgBrandIcon
+            name={client.name}
+            iconUrl={client.iconUrl}
+            website={client.website}
+            size="xs"
+          />
+        ),
+      })),
     [clients],
   );
   const filtered =
@@ -557,21 +574,12 @@ export function TeamInbox({
     setArchivedView(false);
   };
 
-  const searchField = (
-    <InputGroup
-      className={`w-full ${scope.kind === "request" ? "border-transparent bg-transparent" : ""}`}
-    >
-      <InputGroupAddon>
-        <Search className="size-3.5" />
-      </InputGroupAddon>
-      <InputGroupInput
-        aria-label="Search conversations"
-        placeholder="Search mail"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-      />
-    </InputGroup>
-  );
+  const searchProps = {
+    value: search,
+    onChange: setSearch,
+    label: "Search conversations",
+    placeholder: "Search mail",
+  };
   const archivedToggle = (
     <PillButton
       type="button"
@@ -583,6 +591,19 @@ export function TeamInbox({
       onClick={() => setArchivedView((value) => !value)}
     >
       <Archive className="size-3.5" />
+    </PillButton>
+  );
+  const filtersToggle = (
+    <PillButton
+      type="button"
+      variant={showFilters ? "secondary" : "ghost"}
+      size="compact"
+      iconOnly
+      label={showFilters ? "Hide filters" : "Show filters"}
+      aria-pressed={showFilters}
+      onClick={() => setShowFilters((value) => !value)}
+    >
+      <SlidersHorizontal className="size-3.5" />
     </PillButton>
   );
   const selectionBar = checkedVisible.length ? (
@@ -732,7 +753,9 @@ export function TeamInbox({
       <section className="@container space-y-3">
         <OperationalPanel className="flex items-center gap-2 px-2 py-1.5">
           {archivedToggle}
-          <div className="min-w-0 flex-1">{searchField}</div>
+          <div className="min-w-0 flex-1">
+            <SearchField {...searchProps} className="border-transparent bg-transparent" />
+          </div>
           <PillButton
             type="button"
             variant="ghost"
@@ -763,8 +786,6 @@ export function TeamInbox({
     <section className="space-y-3">
       <AppShellPortal slot="actions">
         <div className="flex items-center gap-2">
-          {archivedToggle}
-          <div className="w-56">{searchField}</div>
           {onCompose && !readOnly ? (
             <PillButton type="button" size="compact" onClick={onCompose}>
               <PenSquare className="size-3.5" />
@@ -773,57 +794,75 @@ export function TeamInbox({
           ) : null}
         </div>
       </AppShellPortal>
-      <div className="flex flex-wrap items-center gap-2">
-        <Tabs
-          value={filter}
-          onValueChange={(value) => {
-            const next = value as TeamFilter;
-            setFilter(next);
-            // Unlinked mail has no client, so the two cannot combine.
-            if (next === "unlinked") setClientOrgId("");
-          }}
-        >
-          <TabsList variant="pill" aria-label="Show">
-            <TabsTrigger value="mine">Mine</TabsTrigger>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <div className="w-44">
-          <SearchableSelect
-            ariaLabel="Client"
-            typographyRole="control.menu"
-            value={clientOrgId}
-            options={clientOptions}
-            onChange={(value) => {
-              setClientOrgId(value);
-              if (filter === "unlinked") setFilter("all");
+      <ListToolbar
+        tabs={
+          <Tabs
+            value={filter}
+            onValueChange={(value) => {
+              const next = value as TeamFilter;
+              setFilter(next);
+              // Unlinked mail has no client, so the two cannot combine.
+              if (next === "unlinked") setClientOrgId("");
             }}
-            placeholder="Any client"
-          />
-        </div>
-        <Select
-          value={category}
-          items={CATEGORY_ITEMS}
-          onValueChange={(value) => value && setCategory(value)}
-        >
-          <SelectTrigger className="w-40" aria-label="Category">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(CATEGORY_ITEMS).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {filtered ? (
-          <PillButton type="button" variant="ghost" size="compact" onClick={resetFilters}>
-            Clear filters
+          >
+            <TabsList variant="pill" aria-label="Show">
+              <TabsTrigger value="mine">Mine</TabsTrigger>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        }
+        search={searchProps}
+        actions={filtersToggle}
+      />
+      {showFilters ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <PillButton
+            type="button"
+            variant={archivedView ? "secondary" : "ghost"}
+            size="compact"
+            aria-pressed={archivedView}
+            onClick={() => setArchivedView((value) => !value)}
+          >
+            <Archive className="size-3.5" />
+            Archived
           </PillButton>
-        ) : null}
-      </div>
+          <div className="w-44">
+            <SearchableSelect
+              ariaLabel="Client"
+              typographyRole="control.menu"
+              value={clientOrgId}
+              options={clientOptions}
+              onChange={(value) => {
+                setClientOrgId(value);
+                if (filter === "unlinked") setFilter("all");
+              }}
+              placeholder="Any client"
+            />
+          </div>
+          <Select
+            value={category}
+            items={CATEGORY_ITEMS}
+            onValueChange={(value) => value && setCategory(value)}
+          >
+            <SelectTrigger className="w-40" aria-label="Category">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(CATEGORY_ITEMS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {filtered ? (
+            <PillButton type="button" variant="ghost" size="compact" onClick={resetFilters}>
+              Clear filters
+            </PillButton>
+          ) : null}
+        </div>
+      ) : null}
       {list}
     </section>
   );

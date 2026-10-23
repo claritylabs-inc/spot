@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -116,6 +116,11 @@ function LoadedProfile({
     account,
   });
   const techScan = useWebsiteTechScan(client._id, profileTab === "Tech stack");
+  const updateTechStack = useCallback(
+    (patch: Pick<typeof details, "techStack" | "techStackScanFilledAt">) =>
+      setDetails((current) => ({ ...current, ...patch })),
+    [],
+  );
   const [notesOpen, setNotesOpen] = useFollowedState(
     `clients:${client._id}:profile:notes-open`,
     false,
@@ -272,7 +277,12 @@ function LoadedProfile({
           </TabsList>
           <TabsContent value={profileTab}>
             {profileTab === "Tech stack" ? (
-              <WebsiteTechSection scan={techScan} />
+              <WebsiteTechSection
+                scan={techScan}
+                details={details}
+                onChange={updateTechStack}
+                readOnly={readOnly}
+              />
             ) : profileTab === "Account" ? (
               <ClientAccountSection
                 client={client}

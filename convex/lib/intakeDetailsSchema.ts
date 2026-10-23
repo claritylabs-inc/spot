@@ -119,6 +119,14 @@ export const intakeDetailsValidator = v.object({
   additionalNote: v.optional(v.string()),
   dateInput: v.optional(v.string()),
   dateParts: v.object({ year: v.string(), month: v.string(), day: v.string() }),
+  techStack: v.optional(
+    v.object({
+      paymentProcessors: v.array(v.string()),
+      hostingProviders: v.array(v.string()),
+      dataCountries: v.array(v.string()),
+    }),
+  ),
+  techStackScanFilledAt: v.optional(v.number()),
   revenueStep: v.optional(v.union(v.literal("annual"), v.literal("projected"))),
   revenue: v.optional(
     v.object({
