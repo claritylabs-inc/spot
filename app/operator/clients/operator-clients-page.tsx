@@ -29,6 +29,7 @@ import {
   useOperatorClientCacheActions,
 } from "@/lib/sync/operator-cached-queries";
 import { useStopOperatorImpersonation } from "@/hooks/use-stop-operator-impersonation";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { formatDisplayDate } from "@/lib/date-format";
 import {
   type OperatorClientRow,
@@ -66,8 +67,11 @@ type ClientFilter = "all" | "active" | "limited";
 
 export default function OperatorClientsScreen() {
   const [creating, setCreating] = useState(false);
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<ClientFilter>("all");
+  const [search, setSearch] = useFollowedState("clients:list:search", "");
+  const [filter, setFilter] = useFollowedState<ClientFilter>(
+    "clients:list:filter",
+    "all",
+  );
 
   const current = useCachedOperatorCurrent();
   const readOnly = Boolean(current?.activeImpersonation);
