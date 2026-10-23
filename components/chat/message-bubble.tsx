@@ -58,11 +58,13 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
         role === "user" && (channel === "email"
           ? [
               "border border-border",
-              isOwnMessage ? "bg-foreground/[0.04]" : "bg-foreground/[0.02]",
+              isOwnMessage
+                ? "bg-foreground/[0.04] dark:bg-foreground/[0.08]"
+                : "bg-foreground/[0.02] dark:bg-foreground/[0.06]",
             ]
           : isOwnMessage
-            ? "bg-foreground/[0.06]"
-            : "bg-foreground/[0.03]"),
+            ? "bg-foreground/[0.06] dark:bg-foreground/10"
+            : "bg-foreground/[0.03] dark:bg-foreground/[0.07]"),
       )}
     >
       {children}
