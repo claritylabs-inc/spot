@@ -198,8 +198,13 @@ export function DockBody({
     if (!sideArtifacts) return;
     const panel = artifactPanel.current;
     if (!panel) return;
-    if (artifactOpen && panel.isCollapsed()) panel.expand();
-    else if (!artifactOpen && !panel.isCollapsed()) panel.collapse();
+    if (artifactOpen && panel.isCollapsed()) {
+      // Expanding a panel that mounted collapsed lands on its minimum size, so
+      // restore the width the user last chose.
+      const width = readArtifactWidth();
+      panel.expand();
+      panel.resize(`${width}px`);
+    } else if (!artifactOpen && !panel.isCollapsed()) panel.collapse();
   }, [artifactOpen, artifactPanel, sideArtifacts]);
 
   const chat = (
@@ -264,7 +269,10 @@ export function DockBody({
         <ResizableSeparator
           id="agent-dock-artifact-separator"
           aria-label="Resize artifact"
-          className={cn(!artifactOpen && "pointer-events-none lg:hidden")}
+          className={cn(
+            "data-[separator=active]:after:bg-transparent data-[separator=focus]:after:bg-transparent data-[separator=hover]:after:bg-transparent",
+            !artifactOpen && "pointer-events-none lg:hidden",
+          )}
         />
         <ResizablePanel
           id="agent-dock-artifact"
