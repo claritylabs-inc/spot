@@ -89,7 +89,7 @@ async function resolveClientFileSource(
     if (!emailFileItem?.sourceEmailMessageId) return null;
     const message = await ctx.db.get(emailFileItem.sourceEmailMessageId);
     const thread = message ? await ctx.db.get(message.threadId) : null;
-    if (!message || !thread || !isActiveSource(thread)) return null;
+    if (!message || !thread || !thread.requestId || !isActiveSource(thread)) return null;
     const request = await ctx.db.get(thread.requestId);
     if (!request || request.clientOrgId !== file.orgId) return null;
     requestId = request._id;
