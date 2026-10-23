@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Settings, Users } from "lucide-react";
+import { Bell, Settings, Users } from "lucide-react";
 import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
 import {
   SidebarMenuItem,
@@ -15,8 +15,9 @@ export function OperatorSettingsSidebar({
   collapsed: boolean;
   onToggleCollapse: () => void;
 }) {
+  const param = useSearchParams().get("section");
   const section =
-    useSearchParams().get("section") === "team" ? "team" : "general";
+    param === "team" || param === "notifications" ? param : "general";
   return (
     <SidebarTooltipProvider>
       <SidebarHeader
@@ -39,6 +40,13 @@ export function OperatorSettingsSidebar({
           icon={Users}
           label="Team"
           active={section === "team"}
+          collapsed={collapsed}
+        />
+        <SidebarMenuItem
+          href="/operator/settings?section=notifications"
+          icon={Bell}
+          label="Notifications"
+          active={section === "notifications"}
           collapsed={collapsed}
         />
       </div>
