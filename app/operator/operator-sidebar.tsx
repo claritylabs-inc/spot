@@ -4,6 +4,7 @@ import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { useAuthActions } from "@convex-dev/auth/react";
 import {
   Building2,
+  History,
   Inbox,
   LogOut,
   MessageSquare,
@@ -109,6 +110,13 @@ export function OperatorSidebar({
               label="Logs"
               icon={ScrollText}
               active={active === "logs"}
+              collapsed={collapsed}
+            />
+            <SidebarMenuItem
+              href="/operator/audit"
+              label="Audit log"
+              icon={History}
+              active={active === "audit"}
               collapsed={collapsed}
             />
           </div>

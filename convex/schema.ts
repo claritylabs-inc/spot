@@ -980,12 +980,29 @@ export default defineSchema({
       v.literal("second_factor_enrolled"),
       v.literal("second_factor_recovery_used"),
       v.literal("second_factor_reset"),
+      v.literal("console_write"),
     ),
     targetOrgId: v.optional(v.id("organizations")),
     targetUserId: v.optional(v.id("users")),
     requestId: v.optional(v.id("procurementRequests")),
     summary: v.string(),
     metadata: v.optional(v.any()),
+    // Public mutation that wrote the event, and the documents it changed.
+    functionName: v.optional(v.string()),
+    writes: v.optional(
+      v.array(
+        v.object({
+          op: v.union(
+            v.literal("insert"),
+            v.literal("patch"),
+            v.literal("replace"),
+            v.literal("delete"),
+          ),
+          table: v.optional(v.string()),
+          id: v.string(),
+        }),
+      ),
+    ),
     createdAt: v.number(),
   })
     .index("operator_created", ["operatorUserId", "createdAt"])
@@ -4988,6 +5005,8 @@ export default defineSchema({
     .index("operator_created", ["operatorThreadId", "createdAt"])
     .index("actor_created", ["slackActorId", "createdAt"])
     .index("run_created", ["runId", "createdAt"])
+    .index("actor_kind_created", ["actorKind", "createdAt"])
+    .index("operator_user_created", ["operatorUserId", "createdAt"])
     .index("idempotency", ["operatorUserId", "idempotencyKey"]),
 
   routerJobs: defineTable({
@@ -5040,6 +5059,8 @@ export default defineSchema({
       v.union(v.literal("goal"), v.literal("direct_tool")),
     ),
     objective: v.string(),
+    // OAuth client that started the run over MCP.
+    mcpClientId: v.optional(v.string()),
     planRequested: v.optional(v.boolean()),
     planningAssessment: v.optional(operatorPlanningAssessmentValidator),
     executionPlan: v.optional(operatorExecutionPlanValidator),
