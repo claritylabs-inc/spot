@@ -2674,3 +2674,19 @@ correction therefore remains unverified through inference; this is not a passing
 end-to-end replay. Evidence: `local-command.json`, `local-command-retry.json`,
 `typecheck-root.log`, `typecheck-convex.log`, `lint.log`, and `tests.log` in the
 same evidence directory. No production code deployment or manual table purge ran.
+
+
+## Insurance request and provider follow-up round trip — 2026-10-23
+
+Native-local capture QA covered fresh client intake, two-provider outreach,
+provider replies through parser/event routing and cl-router extraction, operator
+answers, batched invitations, conditional client forms, PDF upload, email answers,
+correction/resubmission and reminder termination. Four concurrent reply trials,
+28 aggregate assertions, 8 authorization/revision guards and 10 lifecycle cases
+passed. Found and fixed concurrent question duplication, misleading accepted
+intake completion, delayed reminder terminalization and submitted-form composer
+cadence. No live sends or production writes. Real delivery, webhook signature
+verification, hosted callbacks and clean signed-out browser recovery remain
+outside the verified scope. See
+[round-trip report](insurance-request-roundtrip-2026-10-23.md) and
+`.context/qa/full-insurance-workflow/` for evidence and validation.

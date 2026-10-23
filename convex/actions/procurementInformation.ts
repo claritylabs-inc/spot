@@ -47,12 +47,17 @@ const questionSchema = z.object({
 export const extractInternal = internalAction({
   args: { extractionId: v.id("procurementInformationExtractions") },
   handler: async (ctx, { extractionId }): Promise<void> => {
+    const claimed = await ctx.runMutation(
+      internal.procurementInformation.claimExtraction,
+      { extractionId },
+    );
+    if (!claimed) return;
     try {
       const context = await ctx.runQuery(
         internal.procurementInformation.extractionContext,
         { extractionId },
       );
-      if (!context) return;
+      if (!context) throw new Error("Extraction context unavailable");
       if (new TextEncoder().encode(JSON.stringify(context)).byteLength > 96000)
         throw new Error("Extraction context too large");
       const trace = {

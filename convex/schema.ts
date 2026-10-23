@@ -2756,6 +2756,8 @@ export default defineSchema({
     unappliedCount: v.optional(v.number()),
     reviewReasons: v.optional(v.array(v.string())),
     startedAt: v.number(),
+    // 0 means queued; absent means a legacy action may already own inference.
+    processingStartedAt: v.optional(v.number()),
     finishedAt: v.optional(v.number()),
     status: v.union(
       v.literal("running"),
@@ -2765,6 +2767,7 @@ export default defineSchema({
     questions: v.array(informationExtractionQuestionValidator),
   })
     .index("by_requestId_and_messageId", ["requestId", "messageId"])
+    .index("by_requestId_and_status", ["requestId", "status"])
     .index("by_requestId", ["requestId"]),
   procurementInformationQuestions: defineTable({
     requestId: v.id("procurementRequests"),

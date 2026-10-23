@@ -715,6 +715,29 @@ async function terminalizeSequence(
   return cancelled;
 }
 
+/** Closing an authorized form stops only its own client reminder sequence. */
+export async function closeInformationFormOutreach(
+  ctx: MutationCtx,
+  form: Pick<
+    Doc<"procurementInformationForms">,
+    "_id" | "requestId" | "outreachSequenceId"
+  >,
+  reason: "information_form_submitted" | "information_form_cancelled",
+) {
+  if (!form.outreachSequenceId) return;
+  const sequence = await ctx.db.get(form.outreachSequenceId);
+  if (
+    !sequence || !isClientSequence(sequence) ||
+    sequence.requestId !== form.requestId ||
+    sequence.informationFormId !== form._id || !isLive(sequence.status)
+  ) return;
+  await terminalizeSequence(ctx, sequence, {
+    status: reason === "information_form_submitted" ? "completed" : "stopped",
+    reason,
+    now: dayjs().valueOf(),
+  });
+}
+
 async function notifyManualHandoff(
   ctx: MutationCtx,
   sequence: Sequence,

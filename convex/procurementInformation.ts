@@ -5,6 +5,7 @@ import {
   orderInformationQuestions,
 } from "../lib/procurement-information";
 import { internal } from "./_generated/api";
+import { closeInformationFormOutreach } from "./providerOutreach";
 import dayjs from "dayjs";
 import { intakeCurrency } from "../lib/intake-money";
 import { COVERAGE_OPTIONS } from "../lib/insurance-intake-details";
@@ -803,6 +804,7 @@ export const cancelForm = mutation({
       status: "cancelled",
       revision: form.revision + 1,
     });
+    await closeInformationFormOutreach(ctx, form, "information_form_cancelled");
     await audit(
       ctx,
       operator.user._id,
@@ -1058,6 +1060,8 @@ export const saveForm = mutation({
           }
         : {}),
     });
+    if (args.submit)
+      await closeInformationFormOutreach(ctx, form, "information_form_submitted");
     if (impersonated && request.clientOrgId) await recordImpersonatedWrite(ctx);
     return form.revision + 1;
   },
@@ -1353,6 +1357,7 @@ export const startExtraction = mutation({
       operatorUserId: operator.userId,
       startedAt: dayjs().valueOf(),
       status: "running",
+      processingStartedAt: 0,
       questions: [],
     });
     await ctx.scheduler.runAfter(
@@ -1380,6 +1385,50 @@ export const extraction = query({
     return { status: row.status, questions: row.questions };
   },
 });
+
+async function nextExtraction(
+  ctx: MutationCtx,
+  requestId: Id<"procurementRequests">,
+) {
+  return await ctx.db
+    .query("procurementInformationExtractions")
+    .withIndex("by_requestId_and_status", (q) =>
+      q.eq("requestId", requestId).eq("status", "running"),
+    )
+    .first();
+}
+
+async function wakeNextExtraction(
+  ctx: MutationCtx,
+  requestId: Id<"procurementRequests">,
+) {
+  const next = await nextExtraction(ctx, requestId);
+  if (next?.processingStartedAt === 0)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.procurementInformation.extractInternal,
+      { extractionId: next._id },
+    );
+}
+
+/** Read the latest facts only after earlier mail on this request has finished. */
+export const claimExtraction = internalMutation({
+  args: { extractionId: v.id("procurementInformationExtractions") },
+  handler: async (ctx, { extractionId }) => {
+    const row = await ctx.db.get(extractionId);
+    if (!row || row.status !== "running" || row.processingStartedAt !== 0)
+      return false;
+    if ((await nextExtraction(ctx, row.requestId))?._id !== row._id) return false;
+    await ctx.db.patch(row._id, { processingStartedAt: dayjs().valueOf() });
+    await ctx.scheduler.runAfter(
+      15 * 60 * 1000,
+      internal.procurementInformation.expireExtraction,
+      { extractionId },
+    );
+    return true;
+  },
+});
+
 export const extractionContext = internalQuery({
   args: { extractionId: v.id("procurementInformationExtractions") },
   handler: async (ctx, { extractionId }) => {
@@ -1698,17 +1747,34 @@ export const finishExtraction = internalMutation({
       reviewReasons,
       finishedAt: dayjs().valueOf(),
     });
+    await wakeNextExtraction(ctx, row.requestId);
   },
 });
 export const expireExtraction = internalMutation({
   args: { extractionId: v.id("procurementInformationExtractions") },
   handler: async (ctx, { extractionId }) => {
     const row = await ctx.db.get(extractionId);
-    if (row?.status === "running")
+    if (row?.status === "running") {
+      if (row.processingStartedAt === 0) {
+        await wakeNextExtraction(ctx, row.requestId);
+        return;
+      }
+      const remaining =
+        (row.processingStartedAt ?? row.startedAt) + 15 * 60 * 1000 - dayjs().valueOf();
+      if (remaining > 0) {
+        await ctx.scheduler.runAfter(
+          remaining,
+          internal.procurementInformation.expireExtraction,
+          { extractionId },
+        );
+        return;
+      }
       await ctx.db.patch(row._id, {
         status: "failed",
         finishedAt: dayjs().valueOf(),
       });
+      await wakeNextExtraction(ctx, row.requestId);
+    }
   },
 });
 export const archiveQuestion = mutation({
@@ -1888,6 +1954,7 @@ export const queueEmail = internalMutation({
         })),
         startedAt: dayjs().valueOf(),
         status: "running",
+        processingStartedAt: 0,
         questions: [],
       },
     );
@@ -1962,9 +2029,11 @@ async function cancelSupersededForms(
       form.status === "open" &&
       (form.questions.some((q) => q.questionId === questionId) ||
         form.prerequisites?.some((q) => q.questionId === questionId))
-    )
+    ) {
       await ctx.db.patch(form._id, {
         status: "cancelled",
         revision: form.revision + 1,
       });
+      await closeInformationFormOutreach(ctx, form, "information_form_cancelled");
+    }
 }

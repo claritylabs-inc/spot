@@ -55,7 +55,12 @@ conversions are not inferred. Prerequisites are processed first and must apply.
 Existing operator or client answers are never silently overwritten.
 
 Extraction is persisted once per request/message; duplicate deliveries do not
-repeat inference. Unknown outcomes never replay generation. Confidence-check
+repeat inference. An atomic per-request claim serializes extraction so each message
+reads facts saved by preceding messages. The request/status index selects the
+oldest running row without scanning completed history. `processingStartedAt: 0`
+marks unclaimed work; a positive timestamp owns inference and starts its watchdog.
+Absent markers are legacy work that may already own inference and are not replayed.
+Completion, failure and expiry wake the next queued row. Unknown outcomes never replay generation. Confidence-check
 failure holds the proposal, and a watchdog closes stalled work. Hosted generation
 uses durable router jobs; native-local generation uses the existing bounded
 synchronous transport for this task kind. Email content cannot send messages,
@@ -95,7 +100,10 @@ the form to one client outreach sequence (`outreachSequenceId` /
 conversation link. Different batches may have independent sequences to the same
 contact, while legacy unscoped duplicate-send guards remain. Claims and the final
 send checkpoint reject unavailable, completed or cancelled forms. Sender identity,
-recipient and approval checks remain authoritative. Client request views and submitted intake show open forms.
+recipient and approval checks remain authoritative. Submitting or cancelling a
+form atomically terminalizes only its exact linked client sequence and cancels
+pending reminders. Submitted-form email remains available, with zero automatic
+follow-ups reflected in both the composer and send backend. Client request views and submitted intake show open forms.
 
 `components/insurance-intake/information-form.tsx` reuses the intake frame,
 conditional primitives, save/reload, review and explicit submission. Saves use

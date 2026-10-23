@@ -81,23 +81,31 @@ export async function getClientOutreachPanel(
 }
 
 export const getPanel = query({
-  args: { requestId: v.id("procurementRequests") },
+  args: {
+    requestId: v.id("procurementRequests"),
+    informationFormId: v.optional(v.id("procurementInformationForms")),
+  },
   handler: async (
     ctx,
-    { requestId },
+    { requestId, informationFormId },
   ): Promise<
     | (ClientOutreachPanel & {
         sender: OutreachSenderPanel & { email: string | null };
+        formSubmitted: boolean;
       })
     | null
   > => {
     const operator = await requireOperator(ctx);
     const panel = await getClientOutreachPanel(ctx, requestId);
     if (!panel) return null;
+    const form = informationFormId ? await ctx.db.get(informationFormId) : null;
+    if (informationFormId && (!form || form.requestId !== requestId))
+      throw new Error("Choose a form from this request");
+    const formSubmitted = form?.status === "submitted";
     // The From line is the operator's current full name and personal team address,
     // with the Always CC and the fingerprint to approve. Nothing is provisioned here.
     const sender = await outreachSenderPanel(ctx, operator.userId);
-    return { ...panel, sender: { ...sender, email: sender.address } };
+    return { ...panel, formSubmitted, sender: { ...sender, email: sender.address } };
   },
 });
 
