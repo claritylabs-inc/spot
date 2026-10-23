@@ -4,6 +4,7 @@ import {
   DEFAULT_AGENT_DOMAIN,
   LEGACY_AGENT_DOMAINS,
 } from "./agentEmailDomains";
+import { teamOwnedDomains } from "./teamEmail";
 
 const RESEND_API = "https://api.resend.com/emails";
 const DEFAULT_NOTIFICATION_EMAIL_DOMAIN = "notifications.spot.insure";
@@ -74,6 +75,7 @@ export function isSpotOutboundAddress(address: string): boolean {
     ...getAgentDomains(),
     getNotificationEmailDomain(),
     getAuthEmailDomain(),
+    ...teamOwnedDomains(),
   ]).includes(domain);
 }
 
