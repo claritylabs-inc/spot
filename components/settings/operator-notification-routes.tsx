@@ -13,7 +13,11 @@ import {
 } from "@/convex/lib/operatorNotificationTypes";
 import { PillButton } from "@/components/ui/pill-button";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
-import { useIsFollowing, useLeaderOnly } from "@/hooks/use-followed-state";
+import {
+  useFollowedOpen,
+  useIsFollowing,
+  useLeaderOnly,
+} from "@/hooks/use-followed-state";
 import {
   OperationalPanel,
   OperationalPanelBody,
@@ -77,6 +81,9 @@ function RouteRow({
 }) {
   const setRoute = useLeaderOnly(useAction(api.actions.operatorNotifications.setRoute));
   const [saving, setSaving] = useState(false);
+  const channelMenu = useFollowedOpen(
+    `settings:operator-notifications:${route.category}:channel`,
+  );
   const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
 
   const shownChannelId = pendingChannelId ?? route.channelId ?? "";
@@ -126,6 +133,7 @@ function RouteRow({
         />
       </div>
       <Select
+        {...channelMenu}
         value={shownChannelId || null}
         onValueChange={(next) => {
           if (typeof next !== "string" || next === route.channelId) return;
@@ -244,7 +252,7 @@ export function OperatorNotificationRoutes({
                 ) ?? { category: entry.category, enabled: false, revision: 0 };
                 return (
                   <RouteRow
-                    key={`${entry.category}:${route.revision}`}
+                    key={`${entry.category}:${route.revision}:${following ? "following" : "own"}`}
                     route={route}
                     label={entry.label}
                     description={entry.description}
