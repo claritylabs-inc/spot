@@ -1,5 +1,5 @@
 import { escapeHtml } from "@claritylabs-inc/ui/lib/email";
-import { buildOutreachSignature } from "./outreachSignature";
+import { buildOperatorSignature } from "./teamEmail";
 import type { ComposedOutreachEmail } from "./providerOutreachEmail";
 
 /**
@@ -12,7 +12,8 @@ export type ClientOutreachEmailInput = {
   kind: "initial" | "follow_up";
   isFinal: boolean;
   recipientName?: string;
-  operator: { name: string; email?: string };
+  /** The sender's full name, as signed. */
+  operator: { name: string };
   message: { subject: string; text: string };
 };
 
@@ -37,7 +38,7 @@ export function composeClientOutreachEmail(
       ? input.message.subject
       : `Re: ${input.message.subject}`;
   const greeting = `Hi ${firstName(input.recipientName) ?? "there"},`;
-  const signature = buildOutreachSignature(input.operator);
+  const signature = buildOperatorSignature(input.operator);
   const paragraphs = [greeting, ...body(input).split(/\n{2,}/), "Thanks,"];
   return {
     subject,
