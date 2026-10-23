@@ -39,7 +39,10 @@ import {
   useActiveOperators,
 } from "@/hooks/use-operator-presence";
 import { formatDisplayDateTime } from "@/lib/date-format";
-import { useCachedOperatorClients } from "@/lib/sync/operator-cached-queries";
+import {
+  useCachedOperatorClients,
+  useCachedOperatorCurrent,
+} from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
@@ -147,6 +150,7 @@ function ThreadRow({
   selected,
   checked,
   viewers,
+  selectable,
   onCheckedChange,
   onSelect,
   onIntent,
@@ -156,6 +160,8 @@ function ThreadRow({
   selected: boolean;
   checked: boolean;
   viewers: ActiveOperator[] | undefined;
+  /** Bulk selection writes (archive), so it is off while impersonating. */
+  selectable: boolean;
   onCheckedChange: (checked: boolean) => void;
   onSelect: () => void;
   onIntent: () => void;
@@ -173,13 +179,17 @@ function ThreadRow({
     <div
       className={`flex items-center ${selected ? "bg-muted" : checked ? "bg-muted/60" : "hover:bg-muted/50"}`}
     >
-      <span className="flex shrink-0 items-center pr-1 pl-4">
-        <Checkbox
-          aria-label={`Select ${thread.subject}`}
-          checked={checked}
-          onCheckedChange={(value) => onCheckedChange(value === true)}
-        />
-      </span>
+      {selectable ? (
+        <span className="flex shrink-0 items-center pr-1 pl-4">
+          <Checkbox
+            aria-label={`Select ${thread.subject}`}
+            checked={checked}
+            onCheckedChange={(value) => onCheckedChange(value === true)}
+          />
+        </span>
+      ) : (
+        <span className="w-2 shrink-0" />
+      )}
       <button
         type="button"
         data-thread-id={thread._id}
@@ -247,7 +257,13 @@ function ThreadRow({
 }
 
 /** Spot's link suggestions for this request; unlinked mail is otherwise absent from a request. */
-function SuggestedStrip({ requestId }: { requestId: Id<"procurementRequests"> }) {
+function SuggestedStrip({
+  requestId,
+  readOnly,
+}: {
+  requestId: Id<"procurementRequests">;
+  readOnly: boolean;
+}) {
   const suggested = useQuery(api.teamInbox.suggestedForRequest, { requestId });
   const linkThread = useMutation(api.teamInbox.linkThread);
   const [linking, setLinking] = useState<string | null>(null);
@@ -266,6 +282,7 @@ function SuggestedStrip({ requestId }: { requestId: Id<"procurementRequests"> })
           >
             Open
           </Link>
+          {readOnly ? null : (
           <PillButton
             type="button"
             size="compact"
@@ -292,6 +309,7 @@ function SuggestedStrip({ requestId }: { requestId: Id<"procurementRequests"> })
           >
             Link here
           </PillButton>
+          )}
         </div>
       ))}
       {suggested.limited ? (
@@ -333,7 +351,9 @@ export function TeamInbox({
   const [search, setSearch] = useState("");
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const clients = useCachedOperatorClients();
-  const forward = useForwardingCopy(fallbackForwardingAddress);
+  // Impersonating operators read mail; every write below is withheld.
+  const readOnly = Boolean(useCachedOperatorCurrent()?.activeImpersonation);
+  const forward = useForwardingCopy(fallbackForwardingAddress, readOnly);
 
   const queryArgs = useMemo(
     () =>
@@ -391,9 +411,10 @@ export function TeamInbox({
     openedRef.current = selected._id;
     onOpenThread?.(selected);
   }, [selected, selectedThreadId, onOpenThread]);
-  // Request lists clear a conversation removed after it was selected (for
-  // example, moved to another request). The team list never does: its reader
-  // loads any conversation by id, and a filter can hide the open one.
+  // Request lists clear a conversation that was in the list and then left it
+  // (for example, moved to another request). A deep-linked conversation that
+  // was never loaded stays: the reader loads it by id. The team list never
+  // clears, since a filter can hide the open conversation.
   useEffect(() => {
     if (scope.kind !== "request") return;
     if (selectionLoaded) {
@@ -401,11 +422,11 @@ export function TeamInbox({
     } else if (
       status !== "LoadingFirstPage" &&
       selectedThreadId &&
-      (exhausted || lastLoadedSelection.current === selectedThreadId)
+      lastLoadedSelection.current === selectedThreadId
     ) {
       onSelect(null, { replace: true });
     }
-  }, [scope.kind, selectionLoaded, selectedThreadId, status, exhausted, onSelect]);
+  }, [scope.kind, selectionLoaded, selectedThreadId, status, onSelect]);
 
   // Subscribe ahead of a click so the reader opens with its data in place.
   function prewarm(thread: InboxThread) {
@@ -414,7 +435,7 @@ export function TeamInbox({
       args: {
         threadId: thread._id,
         ...(requestId ? { requestId } : {}),
-        ...(requestId && archivedView ? { includeArchived: true } : {}),
+        ...(requestId ? { includeArchived: true } : {}),
       },
     });
     if (thread.request)
@@ -469,6 +490,7 @@ export function TeamInbox({
   const allChecked = visible.length > 0 && checkedVisible.length === visible.length;
 
   async function archive(ids: Id<"teamEmailThreads">[], archived: boolean) {
+    if (readOnly) return;
     try {
       if (requestId)
         await setRequestThreadsArchived({ requestId, emailThreadIds: ids, archived });
@@ -630,7 +652,9 @@ export function TeamInbox({
           ) : null}
         </>
       )}
-      {requestId && !archivedView ? <SuggestedStrip requestId={requestId} /> : null}
+      {requestId && !archivedView ? (
+        <SuggestedStrip requestId={requestId} readOnly={readOnly} />
+      ) : null}
       {status === "LoadingFirstPage" ? (
         <div className="divide-y divide-border">
           {Array.from({ length: 4 }, (_, index) => (
@@ -659,6 +683,7 @@ export function TeamInbox({
               selected={thread._id === selected?._id}
               checked={checked.has(thread._id)}
               viewers={people.get(thread._id)}
+              selectable={!readOnly}
               onCheckedChange={(value) =>
                 setChecked((current) => {
                   const next = new Set(current);

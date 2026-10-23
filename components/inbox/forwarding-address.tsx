@@ -25,7 +25,10 @@ async function writeClipboard(value: string) {
  * The request's legacy address is only a fallback when team email is not
  * configured in this environment.
  */
-export function useForwardingCopy(fallbackAddress?: string | null) {
+export function useForwardingCopy(
+  fallbackAddress?: string | null,
+  readOnly = false,
+) {
   const router = useRouter();
   const settings = useQuery(api.operatorEmailSettings.get, {});
   const ensureInbox = useAction(api.operatorEmailSettings.ensureInbox);
@@ -56,7 +59,15 @@ export function useForwardingCopy(fallbackAddress?: string | null) {
       });
       return;
     }
+    // The address to copy and whether only the local capture stub exists. After
+    // a provision, trust its result: the profile may have changed meanwhile.
+    let target = settings.address;
+    let captured = settings.status === "captured";
     if (settings.status === "needs_setup") {
+      if (readOnly) {
+        toast.error("Team inbox setup is unavailable while viewing as a client");
+        return;
+      }
       setBusy(true);
       try {
         const result = await ensureInbox({});
@@ -64,6 +75,8 @@ export function useForwardingCopy(fallbackAddress?: string | null) {
           toast.error(result.message, { action: openProfile });
           return;
         }
+        target = result.address;
+        captured = result.status === "captured";
       } catch (error) {
         toast.error(
           getUserFacingErrorMessage(error, "Your team inbox could not be set up."),
@@ -73,13 +86,13 @@ export function useForwardingCopy(fallbackAddress?: string | null) {
         setBusy(false);
       }
     }
-    if (!(await writeClipboard(settings.address))) return;
+    if (!(await writeClipboard(target))) return;
     toast.success(
-      settings.status === "captured"
+      captured
         ? "Address copied; local capture mode does not create an inbox"
         : "Forwarding address copied",
     );
-  }, [busy, ensureInbox, fallbackAddress, router, settings]);
+  }, [busy, ensureInbox, fallbackAddress, readOnly, router, settings]);
 
   return { address, busy, loading: settings === undefined, copy };
 }

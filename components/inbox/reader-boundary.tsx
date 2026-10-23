@@ -5,6 +5,20 @@ import { Component, type ReactNode } from "react";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 
+/** Shown in the reader when a conversation id is invalid, deleted or out of scope. */
+export function ConversationUnavailable({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex flex-col items-start gap-3 p-4">
+      <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+        This conversation is not available.
+      </p>
+      <PillButton type="button" variant="ghost" onClick={onClose}>
+        Close
+      </PillButton>
+    </div>
+  );
+}
+
 type Props = { resetKey: string; onClose: () => void; children: ReactNode };
 
 /**
@@ -29,15 +43,6 @@ export class ReaderBoundary extends Component<Props, { failedKey: string | null 
 
   render() {
     if (this.state.failedKey === null) return this.props.children;
-    return (
-      <div className="flex flex-col items-start gap-3 p-4">
-        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-          This conversation is not available.
-        </p>
-        <PillButton type="button" variant="ghost" onClick={this.props.onClose}>
-          Close
-        </PillButton>
-      </div>
-    );
+    return <ConversationUnavailable onClose={this.props.onClose} />;
   }
 }
