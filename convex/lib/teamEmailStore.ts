@@ -27,9 +27,13 @@ export const MAX_EMAIL_ATTACHMENTS = 20;
 /** Unlinked mail keeps its uploads until a client is linked: bound what it can hold. */
 export const MAX_UNFILED_PER_THREAD = 50;
 const PREVIEW_CHARS = 240;
-const UNFILED_SCAN_LIMIT = 100;
-/** Messages copied inline when a legacy thread is adopted by a live writer. */
-const ADOPT_MESSAGE_LIMIT = 300;
+const UNFILED_SCAN_LIMIT = 300;
+/**
+ * Messages copied per transaction. A message body can reach ~300 KB, and a
+ * transaction reads the legacy row and writes its copy, so a page must stay far
+ * under the read and write limits.
+ */
+export const COPY_MESSAGE_PAGE = 15;
 
 export type StoredUpload = {
   fileId: Id<"_storage">;
@@ -165,16 +169,87 @@ export async function insertProcurementEmailFileItems(
   }
 }
 
-async function unfiledUploadCount(ctx: Ctx, threadId: Id<"teamEmailThreads">) {
+/**
+ * How many more uploads an unlinked thread may hold. The count is the whole
+ * thread's retained uploads; if the thread has more messages than one bounded
+ * scan can cover, the count is unknown and there is no room (fail closed).
+ */
+async function unfiledUploadRoom(ctx: Ctx, threadId: Id<"teamEmailThreads">) {
   const messages = await ctx.db
     .query("teamEmailMessages")
     .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", threadId))
-    .order("desc")
-    .take(UNFILED_SCAN_LIMIT);
-  return messages.reduce(
+    .take(UNFILED_SCAN_LIMIT + 1);
+  if (messages.length > UNFILED_SCAN_LIMIT) return 0;
+  const held = messages.reduce(
     (total, message) => total + (message.unfiledAttachments?.length ?? 0),
     0,
   );
+  return Math.max(0, MAX_UNFILED_PER_THREAD - held);
+}
+
+// ---------------------------------------------------------------------------
+// Inbox bindings and live-target validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Records that `inboxId` holds Resend thread `resendThreadId` as part of this
+ * conversation. Every real inbox/thread association gets a link row, including
+ * a conversation's first thread: the owner's id alone cannot prove which inbox
+ * holds a thread once an address or domain has rotated. The thread's
+ * `resendThreadId` is the primary id and is set when absent. An association
+ * that already belongs to another conversation throws instead of being ignored.
+ */
+export async function bindTeamInboxThread(
+  ctx: MutationCtx,
+  args: { threadId: Id<"teamEmailThreads">; inboxId: string; resendThreadId: string },
+) {
+  const link = await ctx.db
+    .query("teamEmailThreadLinks")
+    .withIndex("by_inboxId_and_resendThreadId", (q) =>
+      q.eq("inboxId", args.inboxId).eq("resendThreadId", args.resendThreadId),
+    )
+    .first();
+  if (link && link.threadId !== args.threadId)
+    throw new Error("This inbox thread already belongs to another conversation");
+  const owner = await ctx.db
+    .query("teamEmailThreads")
+    .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", args.resendThreadId))
+    .first();
+  if (owner && owner._id !== args.threadId && !owner.deletedAt)
+    throw new Error("This inbox thread already belongs to another conversation");
+  const thread = await ctx.db.get(args.threadId);
+  if (!thread) throw new Error("Conversation not found");
+  if (!thread.resendThreadId)
+    await ctx.db.patch(thread._id, { resendThreadId: args.resendThreadId });
+  if (!link)
+    await ctx.db.insert("teamEmailThreadLinks", {
+      threadId: args.threadId,
+      inboxId: args.inboxId,
+      resendThreadId: args.resendThreadId,
+    });
+}
+
+/**
+ * Why a client/request target cannot receive new mail, files or file items, or
+ * null when it can: the client must be live and a client organization, and a
+ * request must be live, a company request, and belong to that client.
+ */
+export async function teamTargetProblem(
+  ctx: Ctx,
+  target: { clientOrgId?: Id<"organizations">; requestId?: Id<"procurementRequests"> },
+): Promise<string | null> {
+  if (target.requestId && !target.clientOrgId) return "request without a client";
+  if (target.clientOrgId) {
+    const client = await ctx.db.get(target.clientOrgId);
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
+      return "client is unavailable";
+  }
+  if (target.requestId) {
+    const request = await ctx.db.get(target.requestId);
+    if (!request || request.deletedAt || request.clientOrgId !== target.clientOrgId)
+      return "request is unavailable";
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +271,7 @@ async function legacyThreadInbox(ctx: Ctx, legacy: LegacyThread) {
         .first()
     : null;
   return {
+    inboxId: sequence.inboxId,
     senderUserId: sequence.senderUserId,
     inboxAddress: inbox ? normalizeProcurementEmail(inbox.emailAddress) : null,
     inboxOwnerUserId: inbox?.userId,
@@ -224,14 +300,22 @@ export async function copyLegacyThread(
     .query("teamEmailThreads")
     .withIndex("by_legacyThreadId", (q) => q.eq("legacyThreadId", legacy._id))
     .first();
-  if (existing) return existing;
   const inbox = await legacyThreadInbox(ctx, legacy);
-  const recent = await ctx.db
+  if (existing) {
+    // Copies made before inbox bindings existed gain theirs on the next touch.
+    if (inbox?.inboxId && legacy.resendThreadId)
+      await bindTeamInboxThread(ctx, {
+        threadId: existing._id,
+        inboxId: inbox.inboxId,
+        resendThreadId: legacy.resendThreadId,
+      });
+    return existing;
+  }
+  const latest = await ctx.db
     .query("procurementEmailMessages")
     .withIndex("thread", (q) => q.eq("threadId", legacy._id))
     .order("desc")
-    .take(50);
-  const latest = recent[0];
+    .first();
   const summary = latest
     ? threadSummaryPatch({
         direction: legacyDirection(latest, inbox),
@@ -267,6 +351,12 @@ export async function copyLegacyThread(
     createdAt: legacy.createdAt,
     updatedAt: legacy.updatedAt,
   });
+  if (inbox?.inboxId && legacy.resendThreadId)
+    await bindTeamInboxThread(ctx, {
+      threadId: id,
+      inboxId: inbox.inboxId,
+      resendThreadId: legacy.resendThreadId,
+    });
   return (await ctx.db.get(id))!;
 }
 
@@ -323,6 +413,29 @@ export async function copyLegacyMessage(
  * `complete` is false only when the legacy thread has more messages than fit
  * inline; the migration finishes the copy.
  */
+/** Copies one bounded page of a legacy thread's messages (oldest first). */
+export async function copyLegacyMessagesPage(
+  ctx: MutationCtx,
+  legacy: LegacyThread,
+  thread: TeamThread,
+  cursor: string | null,
+) {
+  const page = await ctx.db
+    .query("procurementEmailMessages")
+    .withIndex("thread", (q) => q.eq("threadId", legacy._id))
+    .paginate({ cursor, numItems: COPY_MESSAGE_PAGE });
+  for (const message of page.page) await copyLegacyMessage(ctx, message, thread, legacy);
+  return { isDone: page.isDone, continueCursor: page.continueCursor };
+}
+
+/**
+ * Copy-on-resolve for live writers: adopts an existing mapped team thread, or
+ * copies the legacy thread and its first page of messages before anything new
+ * is written to it. Never creates a second team thread for one legacy thread.
+ * The rest of a longer thread is copied by a scheduled continuation, and
+ * `complete` is false until then; a bounded read is never reported as the whole
+ * thread.
+ */
 export async function adoptLegacyThread(
   ctx: MutationCtx,
   legacyThreadId: Id<"procurementEmailThreads">,
@@ -330,13 +443,13 @@ export async function adoptLegacyThread(
   const legacy = await ctx.db.get(legacyThreadId);
   if (!legacy) return null;
   const thread = await copyLegacyThread(ctx, legacy);
-  const messages = await ctx.db
-    .query("procurementEmailMessages")
-    .withIndex("thread", (q) => q.eq("threadId", legacy._id))
-    .take(ADOPT_MESSAGE_LIMIT + 1);
-  for (const message of messages.slice(0, ADOPT_MESSAGE_LIMIT))
-    await copyLegacyMessage(ctx, message, thread, legacy);
-  return { thread, complete: messages.length <= ADOPT_MESSAGE_LIMIT };
+  const page = await copyLegacyMessagesPage(ctx, legacy, thread, null);
+  if (!page.isDone)
+    await ctx.scheduler.runAfter(0, internal.teamInboxMigrations.copyThreadMessagesInternal, {
+      legacyThreadId,
+      cursor: page.continueCursor,
+    });
+  return { thread, complete: page.isDone };
 }
 
 /**
@@ -424,7 +537,9 @@ export type MirrorTeamEmailResult =
       threadId: Id<"teamEmailThreads">;
       messageId: Id<"teamEmailMessages">;
       internalCopy: false;
-    };
+    }
+  /** The conversation's client or request is gone: nothing was stored and the uploads were deleted. */
+  | { rejected: true; reason: string; duplicate?: never };
 
 /**
  * Idempotent mirror of one inbox email into the team inbox. The row is keyed by
@@ -435,9 +550,15 @@ export type MirrorTeamEmailResult =
  * (for example a CC delivered to another operator inbox) and is not stored
  * again; its sender address is never what suppresses it.
  *
- * Uploads belong to the caller until this returns: linked threads file them as
- * client files (and request file items when the thread has a request), unlinked
- * threads keep them as bounded `unfiledAttachments`. Anything not kept is deleted.
+ * `attachments` must be NEW uploads this call may consume: linked threads file
+ * them as client files (and request file items when the thread has a request),
+ * unlinked threads keep them as bounded `unfiledAttachments`, and anything not
+ * kept, including every upload of a duplicate or rejected email, is DELETED.
+ * Never pass storage that another record still owns (a pending draft's
+ * attachments, for example). A conversation whose client or request is no
+ * longer live is rejected before anything is stored. Uploads dropped for the
+ * unlinked-thread limit are named in the stored text. With `inboxId` and
+ * `resendThreadId` the inbox thread is bound to the conversation.
  */
 export async function mirrorTeamEmail(
   ctx: MutationCtx,
@@ -448,6 +569,8 @@ export async function mirrorTeamEmail(
     attachments: StoredUpload[];
     /** The Resend thread this email was delivered in. */
     resendThreadId?: string;
+    /** The inbox that holds `resendThreadId`; binds it to the conversation. */
+    inboxId?: string;
     sentByUserId?: Id<"users">;
     pendingEmailId?: Id<"pendingEmails">;
     /** Known correspondents to add to the thread's participants (for example an outreach recipient). */
@@ -471,6 +594,12 @@ export async function mirrorTeamEmail(
     if (!duplicate.sentByUserId && args.sentByUserId) fill.sentByUserId = args.sentByUserId;
     if (!duplicate.pendingEmailId && args.pendingEmailId) fill.pendingEmailId = args.pendingEmailId;
     if (Object.keys(fill).length) await ctx.db.patch(duplicate._id, fill);
+    if (args.inboxId && args.resendThreadId)
+      await bindTeamInboxThread(ctx, {
+        threadId: duplicate.threadId,
+        inboxId: args.inboxId,
+        resendThreadId: args.resendThreadId,
+      });
     return { duplicate: true, threadId: duplicate.threadId, messageId: duplicate._id, internalCopy: false };
   }
   if (args.direction === "inbound" && email.messageId) {
@@ -481,6 +610,12 @@ export async function mirrorTeamEmail(
     const own = sent.find((message) => message.direction === "outbound");
     if (own) {
       await dropUploads();
+      if (args.inboxId && args.resendThreadId)
+        await bindTeamInboxThread(ctx, {
+          threadId: own.threadId,
+          inboxId: args.inboxId,
+          resendThreadId: args.resendThreadId,
+        });
       return { duplicate: true, threadId: own.threadId, messageId: own._id, internalCopy: true };
     }
   }
@@ -493,12 +628,21 @@ export async function mirrorTeamEmail(
     ...email.ccAddresses,
   ]);
   let thread: TeamThread;
+  const scoped = "thread" in args.target ? args.target.thread : args.target.create;
+  if ("thread" in args.target && args.target.thread.deletedAt) {
+    await dropUploads();
+    return { rejected: true, reason: "conversation_deleted" };
+  }
+  const targetProblem = await teamTargetProblem(ctx, {
+    clientOrgId: scoped.clientOrgId,
+    requestId: scoped.requestId,
+  });
+  if (targetProblem) {
+    await dropUploads();
+    return { rejected: true, reason: `target_unavailable: ${targetProblem}` };
+  }
   if ("thread" in args.target) {
     thread = args.target.thread;
-    if (thread.deletedAt) {
-      await dropUploads();
-      throw new Error("Conversation not found");
-    }
   } else {
     const create = args.target.create;
     const id = await ctx.db.insert("teamEmailThreads", {
@@ -525,6 +669,7 @@ export async function mirrorTeamEmail(
 
   let clientFileIds: Id<"clientFiles">[] = [];
   let unfiled: TeamMessage["unfiledAttachments"];
+  let skippedNotice = "";
   if (args.attachments.length) {
     if (thread.clientOrgId) {
       clientFileIds = await storeProcurementEmailAttachments(ctx, {
@@ -533,11 +678,15 @@ export async function mirrorTeamEmail(
         subject,
       });
     } else {
-      const room = Math.max(0, MAX_UNFILED_PER_THREAD - (await unfiledUploadCount(ctx, thread._id)));
+      const room = await unfiledUploadRoom(ctx, thread._id);
       const kept = args.attachments.slice(0, Math.min(room, MAX_EMAIL_ATTACHMENTS));
-      await Promise.all(
-        args.attachments.slice(kept.length).map((file) => ctx.storage.delete(file.fileId)),
-      );
+      const skipped = args.attachments.slice(kept.length);
+      await Promise.all(skipped.map((file) => ctx.storage.delete(file.fileId)));
+      if (skipped.length)
+        skippedNotice = `\n\n[${skipped.length} attachment${skipped.length === 1 ? "" : "s"} not kept because this unlinked conversation is at its attachment limit: ${skipped
+          .slice(0, 10)
+          .map((file) => file.filename.replace(/\s+/g, " ").slice(0, 100))
+          .join("; ")}.]`;
       unfiled = kept.length
         ? kept.map((file) => ({
             storageId: file.fileId,
@@ -568,7 +717,7 @@ export async function mirrorTeamEmail(
     toAddresses: uniqueProcurementEmails(email.toAddresses),
     ccAddresses: uniqueProcurementEmails(email.ccAddresses),
     bccAddresses: uniqueProcurementEmails(email.bccAddresses),
-    currentText: email.text.slice(0, 120_000),
+    currentText: `${email.text.slice(0, 120_000 - skippedNotice.length)}${skippedNotice}`,
     forwarded: email.forwarded,
     bodyHtml: email.html?.slice(0, 180_000),
     clientFileIds,
@@ -610,6 +759,12 @@ export async function mirrorTeamEmail(
       : {}),
     updatedAt: now,
   });
+  if (args.inboxId && args.resendThreadId)
+    await bindTeamInboxThread(ctx, {
+      threadId: thread._id,
+      inboxId: args.inboxId,
+      resendThreadId: args.resendThreadId,
+    });
   return { duplicate: false, threadId: thread._id, messageId, internalCopy: false };
 }
 
@@ -688,7 +843,21 @@ async function linkSuggestionFor(ctx: Ctx, thread: TeamThread) {
   return { ...suggestion, requestTitle: request.title };
 }
 
-async function inboxRow(
+/** Same rule as `teamTargetProblem`, over documents the caller already read. */
+function targetIsLive(
+  thread: Pick<TeamThread, "clientOrgId" | "requestId">,
+  client: Doc<"organizations"> | null,
+  request: Doc<"procurementRequests"> | null,
+) {
+  if (thread.clientOrgId && (!client || client.deletedAt !== undefined || client.type !== "client"))
+    return false;
+  return !(
+    thread.requestId &&
+    (!request || request.deletedAt || request.clientOrgId !== thread.clientOrgId)
+  );
+}
+
+export async function teamInboxRow(
   ctx: Ctx,
   thread: TeamThread,
   viewerUserId: Id<"users">,
@@ -703,6 +872,9 @@ async function inboxRow(
     personFor(ctx, people, thread.latestSentByUserId),
     linkSuggestionFor(ctx, thread),
   ]);
+  // A conversation whose client or request is gone is hidden, with its stored
+  // linkage left as it is; no deleted target's name is ever returned.
+  if (!targetIsLive(thread, client, request)) return null;
   const latestDirection = thread.latestDirection ?? ("unknown" as const);
   let counterpart: string | null = null;
   if (latestDirection === "outbound") {
@@ -843,15 +1015,61 @@ export async function listTeamInbox(
       (!category || thread.category === category),
   );
   const people = new Map<Id<"users">, OperatorPerson>();
-  const page = await Promise.all(
-    visible.map((thread) => inboxRow(ctx, thread, viewerUserId, people)),
+  const rows = await Promise.all(
+    visible.map((thread) => teamInboxRow(ctx, thread, viewerUserId, people)),
   );
+  const page = rows.filter((row): row is NonNullable<typeof row> => row !== null);
   return {
     ...result,
     page,
     scanned: result.page.length,
-    hiddenCount: result.page.length - visible.length,
-    partial: result.page.length !== visible.length,
+    hiddenCount: result.page.length - page.length,
+    partial: result.page.length !== page.length,
+    /** Archived pages are in archive-time order (then recency); active pages are by latest message. */
+    order: archived ? ("archivedAt" as const) : ("latestMessageAt" as const),
+  };
+}
+
+const SUGGESTION_SCAN_LIMIT = 100;
+
+/**
+ * Unlinked conversations whose stored link suggestion points at `requestId`
+ * (the request's "Suggested" strip), as inbox rows. Suggestions are only
+ * stored, never inferred here. With no index on the suggestion the scan reads
+ * the newest unlinked active threads, so `limited` says an older suggestion
+ * may exist beyond it. A suggestion for a deleted request or another client's
+ * request is not offered.
+ */
+export async function listSuggestedTeamThreads(
+  ctx: QueryCtx,
+  args: { viewerUserId: Id<"users">; requestId: Id<"procurementRequests"> },
+) {
+  const request = await ctx.db.get(args.requestId);
+  if (!request || request.deletedAt || !request.clientOrgId)
+    return { page: [], scanned: 0, limited: false };
+  const clientOrgId = request.clientOrgId;
+  const threads = await ctx.db
+    .query("teamEmailThreads")
+    .withIndex("by_clientOrgId_and_archivedAt_and_latestMessageAt", (q) =>
+      q.eq("clientOrgId", undefined).eq("archivedAt", undefined),
+    )
+    .order("desc")
+    .take(SUGGESTION_SCAN_LIMIT + 1);
+  const scanned = threads.slice(0, SUGGESTION_SCAN_LIMIT);
+  const matches = scanned.filter(
+    (thread) =>
+      !thread.deletedAt &&
+      thread.linkSuggestion?.requestId === args.requestId &&
+      thread.linkSuggestion.clientOrgId === clientOrgId,
+  );
+  const people = new Map<Id<"users">, OperatorPerson>();
+  const rows = await Promise.all(
+    matches.map((thread) => teamInboxRow(ctx, thread, args.viewerUserId, people)),
+  );
+  return {
+    page: rows.filter((row): row is NonNullable<typeof row> => row !== null),
+    scanned: scanned.length,
+    limited: threads.length > SUGGESTION_SCAN_LIMIT,
   };
 }
 
@@ -869,7 +1087,13 @@ export async function teamInboxUnreadCount(ctx: QueryCtx, viewerUserId: Id<"user
     )
     .order("desc")
     .take(UNREAD_SCAN_LIMIT + 1);
-  const scanned = threads.slice(0, UNREAD_SCAN_LIMIT).filter((thread) => !thread.deletedAt);
+  // Same visibility as the list: a conversation whose client or request is gone is not counted.
+  const live = await Promise.all(
+    threads.slice(0, UNREAD_SCAN_LIMIT).map(async (thread) =>
+      !thread.deletedAt && (await teamTargetProblem(ctx, thread)) === null ? thread : null,
+    ),
+  );
+  const scanned = live.filter((thread): thread is TeamThread => thread !== null);
   const reads = await Promise.all(
     scanned.map((thread) => readAtFor(ctx, viewerUserId, thread._id)),
   );
@@ -879,6 +1103,37 @@ export async function teamInboxUnreadCount(ctx: QueryCtx, viewerUserId: Id<"user
   };
 }
 
+const DRAFT_SCAN_LIMIT = 100;
+const DRAFT_LIMIT = 20;
+
+/**
+ * Drafts being written and sends waiting to go for one conversation, newest
+ * first. Sent and cancelled history is skipped as it is scanned, so it cannot
+ * push a new draft out of view; `limited` says the scan hit its bound.
+ */
+async function threadDraftsInProgress(ctx: Ctx, threadId: Id<"teamEmailThreads">) {
+  const rows: Doc<"pendingEmails">[] = [];
+  let scanned = 0;
+  let limited = false;
+  for await (const draft of ctx.db
+    .query("pendingEmails")
+    .withIndex("by_teamEmailThreadId", (q) => q.eq("teamEmailThreadId", threadId))
+    .order("desc")) {
+    if (scanned >= DRAFT_SCAN_LIMIT) {
+      limited = true;
+      break;
+    }
+    scanned += 1;
+    if (draft.status !== "draft" && draft.status !== "pending") continue;
+    if (rows.length >= DRAFT_LIMIT) {
+      limited = true;
+      break;
+    }
+    rows.push(draft);
+  }
+  return { rows, limited };
+}
+
 /** The thread's detail for an authorized viewer; null when missing, deleted or outside the request. */
 export async function getTeamThreadDetails(
   ctx: QueryCtx,
@@ -886,13 +1141,16 @@ export async function getTeamThreadDetails(
     threadId: Id<"teamEmailThreads">;
     requestId?: Id<"procurementRequests">;
     viewerUserId?: Id<"users">;
+    /** Open an archived conversation inside a request scope (the archive view). */
+    includeArchived?: boolean;
   },
 ) {
   const thread = await ctx.db.get(args.threadId);
   if (
     !thread ||
     thread.deletedAt ||
-    (args.requestId && (thread.requestId !== args.requestId || thread.archivedAt))
+    (args.requestId &&
+      (thread.requestId !== args.requestId || (thread.archivedAt && !args.includeArchived)))
   )
     return null;
   const people = new Map<Id<"users">, OperatorPerson>();
@@ -901,19 +1159,21 @@ export async function getTeamThreadDetails(
       thread.requestId ? ctx.db.get(thread.requestId) : null,
       thread.addressedRequestId ? ctx.db.get(thread.addressedRequestId) : null,
       thread.clientOrgId ? ctx.db.get(thread.clientOrgId) : null,
+      // Newest first, so a long thread keeps its latest history.
       ctx.db
         .query("teamEmailMessages")
         .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
+        .order("desc")
         .take(MAX_THREAD_MESSAGES + 1),
       threadSequence(ctx, thread),
       args.viewerUserId ? readAtFor(ctx, args.viewerUserId, thread._id) : null,
       personFor(ctx, people, thread.ownerUserId),
-      ctx.db
-        .query("pendingEmails")
-        .withIndex("by_teamEmailThreadId", (q) => q.eq("teamEmailThreadId", thread._id))
-        .take(20),
+      threadDraftsInProgress(ctx, thread._id),
       linkSuggestionFor(ctx, thread),
     ]);
+  // A deleted client or request hides the conversation (its stored linkage is kept)
+  // and no deleted target's metadata is returned.
+  if (!targetIsLive(thread, client, request)) return null;
   const outreachInbox = sequence?.inboxId
     ? await ctx.db
         .query("operatorOutreachInboxes")
@@ -929,8 +1189,9 @@ export async function getTeamThreadDetails(
       ).filter((step) => step.status === "scheduled" || step.status === "sending")
     : [];
   const truncated = messages.length > MAX_THREAD_MESSAGES;
+  // Retain the newest 300 and present them oldest to newest.
   const hydrated = await Promise.all(
-    messages.slice(0, MAX_THREAD_MESSAGES).map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
+    messages.slice(0, MAX_THREAD_MESSAGES).reverse().map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
       ...message,
       sentBy: await personFor(ctx, people, message.sentByUserId),
       files: await Promise.all(
@@ -959,21 +1220,24 @@ export async function getTeamThreadDetails(
     })),
   );
   const draftsInProgress = await Promise.all(
-    drafts
-      .filter((draft) => draft.status === "draft")
-      .map(async (draft) => ({
-        _id: draft._id,
-        subject: draft.subject,
-        updatedAt: draft._creationTime,
-        sender: await personFor(ctx, people, draft.senderUserId),
-      })),
+    drafts.rows.map(async (draft) => ({
+      _id: draft._id,
+      subject: draft.subject,
+      status: draft.status as "draft" | "pending",
+      updatedAt: draft._creationTime,
+      sender: await personFor(ctx, people, draft.senderUserId),
+    })),
   );
-  const forwardingAddress = addressedRequest ? requestForwardingAddressOf(addressedRequest) : null;
+  const liveAddressed =
+    addressedRequest && !addressedRequest.deletedAt && addressedRequest.clientOrgId === thread.clientOrgId
+      ? addressedRequest
+      : null;
+  const forwardingAddress = liveAddressed ? requestForwardingAddressOf(liveAddressed) : null;
   return {
     thread,
     request: request ? { requestId: request._id, title: request.title } : null,
-    addressedRequest: addressedRequest
-      ? { requestId: addressedRequest._id, title: addressedRequest.title, forwardingAddress }
+    addressedRequest: liveAddressed
+      ? { requestId: liveAddressed._id, title: liveAddressed.title, forwardingAddress }
       : null,
     client: client ? { _id: client._id, name: client.name } : null,
     messages: hydrated,
@@ -995,5 +1259,6 @@ export async function getTeamThreadDetails(
     readAt,
     linkSuggestion,
     draftsInProgress,
+    draftsLimited: drafts.limited,
   };
 }

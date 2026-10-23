@@ -65,6 +65,7 @@ import {
   type ProcurementEmailAttachment,
   getTeamThreadDetails,
   listTeamInbox,
+  teamTargetProblem,
   type TeamThread,
 } from "./lib/teamEmailStore";
 import {
@@ -1846,11 +1847,13 @@ export async function getProcurementEmailThreadDetails(
   emailThreadId: Id<"teamEmailThreads">,
   expectedRequestId?: Id<"procurementRequests">,
   viewerUserId?: Id<"users">,
+  includeArchived?: boolean,
 ) {
   return await getTeamThreadDetails(ctx, {
     threadId: emailThreadId,
     requestId: expectedRequestId,
     viewerUserId,
+    includeArchived,
   });
 }
 
@@ -1863,12 +1866,12 @@ export async function previewProcurementEmailReconciliation(
   const thread = await ctx.db.get(emailThreadId);
   if (!thread || thread.deletedAt || !thread.requestId) return null;
   const threadRequestId = thread.requestId;
-  const [request, messages, outreaches, proposals] = await Promise.all([
+  const [request, scanned, outreaches, proposals] = await Promise.all([
     requireRequest(ctx, threadRequestId),
     ctx.db
       .query("teamEmailMessages")
       .withIndex("by_threadId_and_receivedAt", (query) => query.eq("threadId", thread._id))
-      .take(MAX_THREAD_PREVIEW_MESSAGES),
+      .take(MAX_THREAD_PREVIEW_MESSAGES + 1),
     ctx.db
       .query("procurementBrokerOutreaches")
       .withIndex("request", (query) => query.eq("requestId", threadRequestId))
@@ -1878,6 +1881,10 @@ export async function previewProcurementEmailReconciliation(
       .withIndex("request", (query) => query.eq("requestId", threadRequestId))
       .collect(),
   ]);
+  // A bounded read never stands for the whole thread: past the cap the preview
+  // says so and offers no filing, because the file list would be incomplete.
+  const messagesTruncated = scanned.length > MAX_THREAD_PREVIEW_MESSAGES;
+  const messages = scanned.slice(0, MAX_THREAD_PREVIEW_MESSAGES);
   const clientFileIds = [
     ...new Set(messages.flatMap((message) => message.clientFileIds)),
   ];
@@ -1972,7 +1979,7 @@ export async function previewProcurementEmailReconciliation(
   );
   // `fileEmailQuote` refuses archived threads, so the preview must not offer
   // filing from one either.
-  const filable = !thread.archivedAt;
+  const filable = !thread.archivedAt && !messagesTruncated;
   return {
     emailThreadId: thread._id,
     filable,
@@ -1982,6 +1989,7 @@ export async function previewProcurementEmailReconciliation(
     category: thread.category,
     participantEmails: thread.participantEmails,
     messageCount: messages.length,
+    messagesTruncated,
     files,
     unfiledFiles,
     selectedOutreachId: selectedOutreach?._id ?? null,
@@ -2043,6 +2051,7 @@ export const getEmailThread = query({
   args: {
     emailThreadId: v.id("teamEmailThreads"),
     requestId: v.optional(v.id("procurementRequests")),
+    includeArchived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -2052,6 +2061,7 @@ export const getEmailThread = query({
       args.emailThreadId,
       args.requestId,
       operator.userId,
+      args.includeArchived,
     );
   },
 });
@@ -2082,12 +2092,17 @@ async function moveTeamThreadRequest(
 ) {
   const { thread, nextRequest } = args;
   const now = dayjs().valueOf();
-  const messages = await ctx.db
+  const movedClientFileIds = new Set<Id<"clientFiles">>();
+  // Every message moves or nothing does: refuse a thread past the bound before any write.
+  const sized = await ctx.db
     .query("teamEmailMessages")
     .withIndex("by_threadId_and_receivedAt", (index) => index.eq("threadId", thread._id))
-    .take(MAX_LINK_BATCH * 4);
-  const movedClientFileIds = new Set<Id<"clientFiles">>();
-  for (const message of messages) {
+    .take(MAX_MOVE_MESSAGES + 1);
+  if (sized.length > MAX_MOVE_MESSAGES)
+    throw new Error(
+      `Moving a conversation supports at most ${MAX_MOVE_MESSAGES} messages; this one has more.`,
+    );
+  for (const message of sized) {
     const fileItems = await ctx.db
       .query("procurementFileItems")
       .withIndex("email", (index) => index.eq("sourceEmailMessageId", message._id))
@@ -2142,6 +2157,10 @@ export async function updateProcurementEmailThreadByOperator(
         throw new Error("Email thread can move only within the same client");
       }
       patch.requestId = nextRequest._id;
+      // A new link revision: a filing continuation still running for the old
+      // request stops, and filing restarts for the new one (held uploads included).
+      patch.linkedAt = patch.updatedAt;
+      patch.linkedByUserId = args.operatorUserId;
       await moveTeamThreadRequest(ctx, {
         operatorUserId: args.operatorUserId,
         thread,
@@ -2159,8 +2178,14 @@ export async function updateProcurementEmailThreadByOperator(
   if (fields.length === 0) throw new Error("No email thread fields changed");
   const previousRequestId = thread.requestId;
   if (patch.requestId || patch.category) await ctx.db.patch(thread._id, patch);
-  if (patch.requestId) {
-    await scheduleEmailThreadCompanyInformation(ctx, thread._id);
+  if (patch.requestId && thread.clientOrgId && patch.linkedAt) {
+    await fileLinkedThreadBatch(ctx, {
+      threadId: thread._id,
+      linkedAt: patch.linkedAt,
+      clientOrgId: thread.clientOrgId,
+      requestId: patch.requestId,
+      cursor: null,
+    });
   }
   // A link audits itself; a move or category change is audited here.
   if (patch.requestId || patch.category)
@@ -2346,14 +2371,16 @@ async function adoptMatchingLegacyThread(
 }
 
 const MAX_LINK_BATCH = 25;
+const MAX_MOVE_MESSAGES = 300;
 const MAX_EMAIL_FILE_ITEMS = 40;
 
 async function emailThreadClientFileIds(ctx: QueryCtx | MutationCtx, emailThreadId: Id<"teamEmailThreads">) {
-  const messages = await ctx.db
+  const ids = new Set<Id<"clientFiles">>();
+  for await (const message of ctx.db
     .query("teamEmailMessages")
-    .withIndex("by_threadId_and_receivedAt", (index) => index.eq("threadId", emailThreadId))
-    .take(MAX_THREAD_PREVIEW_MESSAGES);
-  return [...new Set(messages.flatMap((message) => message.clientFileIds))];
+    .withIndex("by_threadId_and_receivedAt", (index) => index.eq("threadId", emailThreadId)))
+    for (const clientFileId of message.clientFileIds) ids.add(clientFileId);
+  return [...ids];
 }
 
 /**
@@ -2499,7 +2526,12 @@ async function fileLinkedThreadBatch(
     thread.deletedAt ||
     thread.linkedAt !== args.linkedAt ||
     thread.clientOrgId !== args.clientOrgId ||
-    (args.requestId && thread.requestId !== args.requestId)
+    (args.requestId && thread.requestId !== args.requestId) ||
+    // The client or request may have been deleted between batches.
+    (await teamTargetProblem(ctx, {
+      clientOrgId: args.clientOrgId,
+      requestId: args.requestId,
+    }))
   )
     return { done: true as const, stale: true as const };
   const page = await ctx.db
