@@ -24,7 +24,8 @@
       "deliveryMode": "live",
       "agentDomain": "agent.spot.insure",
       "notificationDomain": "notifications.spot.insure",
-      "authDomain": "auth.spot.insure"
+      "authDomain": "auth.spot.insure",
+      "teamDomain": "team.spot.insure"
     }
   },
   "local": {
@@ -43,7 +44,8 @@
       "required": false
     },
     "email": {
-      "deliveryMode": "capture"
+      "deliveryMode": "capture",
+      "teamDomain": "team.dev.spot.insure"
     }
   }
 }

@@ -489,7 +489,13 @@ http.route({
         process.env.RESEND_WEBHOOK_SECRET,
       ),
       emailOutboundConfigured: Boolean(process.env.AUTH_RESEND_KEY),
-      providerOutreachDomainConfigured: Boolean(process.env.PROVIDER_OUTREACH_EMAIL_DOMAIN),
+      teamEmailDomainConfigured: Boolean(
+        process.env.TEAM_EMAIL_DOMAIN || process.env.PROVIDER_OUTREACH_EMAIL_DOMAIN,
+      ),
+      providerOutreachDomainConfigured: Boolean(
+        process.env.TEAM_EMAIL_DOMAIN || process.env.PROVIDER_OUTREACH_EMAIL_DOMAIN,
+      ),
+      teamEmailWebhookSecretConfigured: Boolean(process.env.RESEND_INBOX_WEBHOOK_SECRET),
       providerOutreachWebhookSecretConfigured: Boolean(process.env.RESEND_INBOX_WEBHOOK_SECRET),
       connectedEmailEncryptionConfigured: Boolean(
         process.env.EMAIL_CONNECTIONS_ENCRYPTION_KEY,
