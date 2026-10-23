@@ -35,7 +35,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
-import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
+import {
+  StatusLabel,
+  StatusTag,
+} from "@claritylabs-inc/ui/components/status-tag";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import {
   Table,
@@ -252,6 +255,9 @@ export default function OperatorBrokersPage() {
                         >
                           {row.broker.name}
                         </TableNameLink>
+                        {row.profile?.isTest ? (
+                          <StatusTag tone="neutral">Test</StatusTag>
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell>

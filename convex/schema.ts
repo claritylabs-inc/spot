@@ -682,6 +682,8 @@ export default defineSchema({
       ),
     ),
     brokerOrgId: v.id("organizations"),
+    // Marks a provider as a test one: the only kind a client in test mode can reach.
+    isTest: v.optional(v.boolean()),
     networkStatus: v.union(
       v.literal("prospect"),
       v.literal("active"),
@@ -873,6 +875,11 @@ export default defineSchema({
     slackTeamId: v.optional(v.string()),
     slackUserId: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
+    // Test mode, for testing in production: while set, every email this
+    // operator causes goes to `email` instead (or is blocked where it cannot be
+    // rerouted), and only test providers are eligible for their outreach.
+    // Client and system email is never affected.
+    testModeEnabledAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

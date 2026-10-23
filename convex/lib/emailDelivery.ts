@@ -10,7 +10,7 @@ import {
   getAgentDomain,
   getEmailDeliveryMode,
   getLegacyAgentDomains,
-  sendResendEmail,
+  type EmailActor, sendResendEmail,
   type ResendPayload,
   type ResendResult,
 } from "./resend";
@@ -199,6 +199,8 @@ export async function toInboxDraftAttachments(
 export async function sendTrackedResendEmail(
   ctx: ActionCtx,
   params: {
+    /** The user whose action sends this email; see `EmailActor`. */
+    actorUserId: EmailActor;
     source: EmailDeliverySource;
     orgId: Id<"organizations">;
     pendingEmailId?: Id<"pendingEmails">;
@@ -231,7 +233,7 @@ export async function sendTrackedResendEmail(
   )) as Id<"emailDeliveryAttempts">;
 
   try {
-    const result = await sendResendEmail(params.payload, {
+    const result = await sendResendEmail(ctx, params.actorUserId, params.payload, {
       retries: params.retries,
     });
     if (result.ok) {

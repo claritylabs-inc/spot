@@ -256,6 +256,7 @@ export function requestMatchContext(
 // ---------------------------------------------------------------------------
 
 export type ProviderFitProfile = {
+  isTest?: boolean;
   networkStatus: "prospect" | "active" | "inactive" | "blacklisted";
   writingCountries?: string[];
   nationwideCountries?: string[];
@@ -266,6 +267,7 @@ export type ProviderFitProfile = {
 export type ProviderFitReason =
   | "blacklisted"
   | "inactive"
+  | "test_mode"
   | "no_profile"
   | "request_not_evaluable"
   | "geography_primary_not_serviced"
@@ -303,6 +305,8 @@ export function classifyProvider(
   profile: ProviderFitProfile | null | undefined,
   geography: RequestGeography,
   { needs: needList }: Pick<RequestLobNeeds, "needs">,
+  /** The client is in test mode: only test providers are eligible. */
+  testMode = false,
 ): ProviderFit {
   const result: ProviderFit = {
     verdict: "unknown",
@@ -321,6 +325,11 @@ export function classifyProvider(
   ) {
     result.verdict = "excluded";
     result.reasons.push(profile.networkStatus);
+    return result;
+  }
+  if (testMode && !profile.isTest) {
+    result.verdict = "excluded";
+    result.reasons.push("test_mode");
     return result;
   }
 

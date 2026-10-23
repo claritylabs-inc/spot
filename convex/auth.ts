@@ -8,7 +8,7 @@ import { components, internal } from "./_generated/api";
 import { internalMutation, type ActionCtx } from "./_generated/server";
 import { buildOtpEmail } from "./lib/emailTemplate";
 import { getBrandingContext } from "./lib/branding";
-import { sendResendEmail, getAuthFromAddress } from "./lib/resend";
+import { sendAuthCodeEmail, getAuthFromAddress } from "./lib/resend";
 import { getAuthSiteUrl } from "./lib/domains";
 import { createOrUpdateEmailUser } from "./lib/authEmailIdentity";
 import { generateOtpCode } from "./lib/otp";
@@ -48,7 +48,7 @@ const sendVerificationRequest = async function (this: unknown, ...args: any[]) {
 
   const { html, text } = buildOtpEmail(token, getAuthSiteUrl(), branding);
   const subject = "Your Spot sign-in code";
-  const result = await sendResendEmail({
+  const result = await sendAuthCodeEmail({
     from: getAuthFromAddress(),
     to: email,
     subject,

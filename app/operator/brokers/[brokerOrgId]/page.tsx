@@ -26,6 +26,7 @@ import {
 import { AcordLinesField } from "@/components/broker-network/acord-lines-field";
 import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
+import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
@@ -98,6 +99,7 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
     name: row.broker.name,
     website: row.broker.website ?? "",
     status: row.profile?.networkStatus ?? ("prospect" as NetworkStatus),
+    isTest: row.profile?.isTest ?? false,
     address: office?.street1 ?? "",
     address2: office?.street2 ?? "",
     country: office?.country ?? "",
@@ -125,7 +127,12 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
       const trimmed = (
         key: Exclude<
           keyof typeof values,
-          "countries" | "states" | "lines" | "nationwide" | "excluded"
+          | "countries"
+          | "states"
+          | "lines"
+          | "nationwide"
+          | "excluded"
+          | "isTest"
         >,
       ) => (changed(key) ? next[key].trim() : undefined);
       const officeChanged = (
@@ -145,6 +152,7 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
           ? normalizeWebsiteUrl(next.website) || next.website.trim() || null
           : undefined,
         networkStatus: changed("status") ? next.status : undefined,
+        isTest: changed("isTest") ? next.isTest : undefined,
         officeAddress: officeChanged
           ? {
               street1: trimmed("address"),
@@ -248,6 +256,13 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
                   )}
                 </SelectContent>
               </Select>
+            </InlineFieldRow>
+            <InlineFieldRow label="Test provider">
+              <SettingsSwitch
+                checked={values.isTest}
+                onCheckedChange={() => set("isTest", !values.isTest)}
+                label="Test provider"
+              />
             </InlineFieldRow>
           </InlineFieldCard>
           <InlineFieldCard title="Primary office">

@@ -615,6 +615,8 @@ export const sendMemberInvitation = action({
     const text = `${inviterName} invited you to join ${orgName} on Spot as a ${roleLabel}.\n\nAccept invitation:\n${inviteUrl}\n\nSign in or create an account with ${invitedEmail}. This invitation expires in 7 days.`;
 
     const result = await sendResendEmail(
+      ctx,
+      userId,
       {
         from: getAuthFromAddress(orgName),
         to: invitedEmail,

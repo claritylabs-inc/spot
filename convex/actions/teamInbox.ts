@@ -29,6 +29,8 @@ export const notifyOwnerOfUnlinkedMail = internalAction({
       siteUrl,
     });
     const result = await sendResendEmail(
+      ctx,
+      null,
       {
         from: getNotificationFromAddress(email.fromName),
         to: context.to,

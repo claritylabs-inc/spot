@@ -25,6 +25,7 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { OperatorClientImpersonationAction } from "./operator-client-impersonation-action";
+import { OperatorTestModeAction } from "@/components/operator-test-mode-action";
 
 type OperatorClientNavigationSection =
   | "policies"
@@ -191,7 +192,8 @@ function OperatorClientSidebar({
           </nav>
         </ScrollArea>
 
-        <div className="shrink-0 border-t border-border p-2">
+        <div className="shrink-0 space-y-2 border-t border-border p-2">
+          <OperatorTestModeAction collapsed={collapsed} />
           <OperatorClientImpersonationAction
             clientOrgId={clientOrgId}
             activeImpersonation={activeImpersonation}

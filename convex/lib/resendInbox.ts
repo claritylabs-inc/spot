@@ -9,8 +9,11 @@ import {
   operatorTeamAddress,
 } from "./teamEmail";
 import {
+  type EmailActor,
+  type EmailDeliveryCtx,
   evaluateRecipientDeliveryPolicy,
   getEmailDeliveryMode,
+  getTestModeRecipient,
   logLocalEmailCapture,
 } from "./resend";
 
@@ -24,6 +27,9 @@ import {
  * - `restricted`: sends are blocked unless every actual recipient is in the
  *   allowlist (`EMAIL_ALLOWED_RECIPIENTS` / `EMAIL_ALLOWED_RECIPIENT_DOMAINS`).
  *   Inbox mail cannot be redirected, so it is never rewritten.
+ * - Operator test mode (any mode but `capture`, only when the acting user is an
+ *   operator with test mode on): drafts are rewritten to that operator, and
+ *   every send or reply is blocked unless all of its actual recipients are them.
  * - `live`: pass through.
  *
  * Sends and draft creation require an `Idempotency-Key`. Resend keeps keys for
@@ -936,9 +942,25 @@ export type CreateDraftParams = {
  * produces a draft.
  */
 export async function createDraft(
-  params: CreateDraftParams,
+  ctx: EmailDeliveryCtx,
+  actorUserId: EmailActor,
+  draftParams: CreateDraftParams,
 ): Promise<ResendInboxResult<{ id: string }>> {
   const operation = "createDraft";
+  // Test mode rewrites the draft itself, so `sendDraft` only ever sends to the
+  // test mode recipient.
+  const testModeRecipient = await getTestModeRecipient(ctx, actorUserId);
+  const params: CreateDraftParams = testModeRecipient
+    ? {
+        ...draftParams,
+        to: testModeRecipient,
+        cc: undefined,
+        bcc: undefined,
+        subject: draftParams.subject?.startsWith("[TEST]")
+          ? draftParams.subject
+          : `[TEST] ${draftParams.subject ?? ""}`.trim(),
+      }
+    : draftParams;
   const idempotencyKey = requireIdempotencyKey(
     operation,
     params.idempotencyKey,
@@ -962,7 +984,7 @@ export async function createDraft(
     ...asList(params.cc),
     ...asList(params.bcc),
   ];
-  const policy = evaluateRecipientDeliveryPolicy(recipients);
+  const policy = evaluateRecipientDeliveryPolicy(recipients, testModeRecipient);
   if (policy.action === "blocked")
     throw blockedError(operation, policy.disallowed);
   if (policy.action === "capture") {
@@ -1052,6 +1074,8 @@ export type SendDraftParams = {
  * `inbox.email.sent` webhook.
  */
 export async function sendDraft(
+  ctx: EmailDeliveryCtx,
+  actorUserId: EmailActor,
   params: SendDraftParams,
 ): Promise<ResendInboxResult<{ emailId: string }>> {
   const operation = "sendDraft";
@@ -1064,14 +1088,14 @@ export async function sendDraft(
   }
   assertRealResourceIds(operation, params.inboxId, params.draftId);
 
-  if (getEmailDeliveryMode() === "restricted") {
+  const testModeRecipient = await getTestModeRecipient(ctx, actorUserId);
+  if (getEmailDeliveryMode() === "restricted" || testModeRecipient) {
     const draft = await getDraft(params.inboxId, params.draftId);
     if (draft.status !== "ok") return draft;
-    const policy = evaluateRecipientDeliveryPolicy([
-      ...draft.data.to,
-      ...draft.data.cc,
-      ...draft.data.bcc,
-    ]);
+    const policy = evaluateRecipientDeliveryPolicy(
+      [...draft.data.to, ...draft.data.cc, ...draft.data.bcc],
+      testModeRecipient,
+    );
     if (policy.action === "blocked")
       throw blockedError(operation, policy.disallowed);
   }
@@ -1113,9 +1137,18 @@ export type ReplyToThreadEmailParams = {
  * checked first.
  */
 export async function replyToThreadEmail(
-  params: ReplyToThreadEmailParams,
+  ctx: EmailDeliveryCtx,
+  actorUserId: EmailActor,
+  replyParams: ReplyToThreadEmailParams,
 ): Promise<ResendInboxResult<{ emailId: string }>> {
   const operation = "replyToThreadEmail";
+  // Resend derives reply recipients, so test mode cannot reroute a reply: it
+  // drops cc/bcc and only lets one through when every derived recipient is the
+  // test recipient.
+  const testModeRecipient = await getTestModeRecipient(ctx, actorUserId);
+  const params: ReplyToThreadEmailParams = testModeRecipient
+    ? { ...replyParams, cc: undefined, bcc: undefined }
+    : replyParams;
   const idempotencyKey = requireIdempotencyKey(
     operation,
     params.idempotencyKey,
@@ -1143,7 +1176,7 @@ export async function replyToThreadEmail(
   );
 
   const emailPath = `/inboxes/${seg(params.inboxId)}/threads/${seg(params.threadId)}/emails/${seg(params.emailId)}`;
-  if (getEmailDeliveryMode() === "restricted") {
+  if (getEmailDeliveryMode() === "restricted" || testModeRecipient) {
     const target = await request(
       { operation: "getThreadEmail", method: "GET", path: emailPath },
       threadEmailWireSchema,
@@ -1174,11 +1207,10 @@ export async function replyToThreadEmail(
         ...target.data.cc,
       ].filter((address) => (extractEmailAddress(address) ?? address.trim().toLowerCase()) !== own);
     }
-    const policy = evaluateRecipientDeliveryPolicy([
-      ...derived,
-      ...asList(params.cc),
-      ...asList(params.bcc),
-    ]);
+    const policy = evaluateRecipientDeliveryPolicy(
+      [...derived, ...asList(params.cc), ...asList(params.bcc)],
+      testModeRecipient,
+    );
     if (policy.action === "blocked")
       throw blockedError(operation, policy.disallowed);
   }

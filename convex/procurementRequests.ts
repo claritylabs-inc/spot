@@ -3,6 +3,7 @@ import {
   procurementBrokerMatch,
   procurementMatchAreaLabels,
 } from "./lib/procurementBrokerMatching";
+import { operatorInTestMode } from "./testMode";
 import { procurementApplicationInputSchema } from "./lib/procurementApplicationInput";
 import { detailsFromAnswers } from "../lib/insurance-intake-details";
 import { intakeAnswersValidator } from "./lib/insuranceIntakeSchema";
@@ -1308,6 +1309,7 @@ export const autoAddBrokers = mutation({
     const operator = await requireOperator(ctx);
     await requireDirectOperatorWrite(ctx, operator.userId);
     const request = await requireRequest(ctx, args.requestId);
+    const testMode = await operatorInTestMode(ctx, operator.userId);
     const criteria = procurementBrokerCriteria(
       submittedIntakeApplication(request),
     );
@@ -1334,7 +1336,8 @@ export const autoAddBrokers = mutation({
     for (const profile of profiles) {
       if (
         profile.networkStatus === "blacklisted" ||
-        profile.networkStatus === "inactive"
+        profile.networkStatus === "inactive" ||
+        (testMode && !profile.isTest)
       ) {
         unavailable++;
         continue;

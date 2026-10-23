@@ -108,6 +108,8 @@ export const send = internalAction({
     const to = recipientsToEmail.map((r) => r.email);
 
     const result = await sendResendEmail(
+      ctx,
+      null,
       {
         from: getNotificationFromAddress(emailContent.fromName),
         to,

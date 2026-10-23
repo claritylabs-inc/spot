@@ -94,6 +94,7 @@ const SKIP_COPY: Record<string, string> = {
 const REASON_COPY: Record<ProviderFitReason, string> = {
   blacklisted: "Blacklisted",
   inactive: "Inactive in the network",
+  test_mode: "Not a test provider (test mode)",
   no_profile: "No appetite profile",
   request_not_evaluable: "Request coverage or location unknown",
   geography_primary_not_serviced: "Doesn't serve the main location",

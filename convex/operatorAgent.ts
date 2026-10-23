@@ -2941,6 +2941,7 @@ async function executeToolDomain(
     return await getProviderOutreachPanel(
       ctx,
       normalizeProcurementRequestId(ctx, input.procurementRequestId),
+      args.operatorUserId,
     );
   }
 
