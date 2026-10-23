@@ -451,6 +451,7 @@ import type * as operator from "../operator.js";
 import type * as operatorAgent from "../operatorAgent.js";
 import type * as operatorAgentRunner from "../operatorAgentRunner.js";
 import type * as operatorAudit from "../operatorAudit.js";
+import type * as operatorCursors from "../operatorCursors.js";
 import type * as operatorEmail from "../operatorEmail.js";
 import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
 import type * as operatorEmailSettings from "../operatorEmailSettings.js";
@@ -963,6 +964,7 @@ declare const fullApi: ApiFromModules<{
   operatorAgent: typeof operatorAgent;
   operatorAgentRunner: typeof operatorAgentRunner;
   operatorAudit: typeof operatorAudit;
+  operatorCursors: typeof operatorCursors;
   operatorEmail: typeof operatorEmail;
   operatorEmailDrafts: typeof operatorEmailDrafts;
   operatorEmailSettings: typeof operatorEmailSettings;

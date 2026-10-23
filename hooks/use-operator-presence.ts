@@ -75,13 +75,15 @@ export function useReportEmailThreadPresence(
   }, [token, emailThreadId, effective]);
 }
 
-/** Reports this operator's page, open dock thread and open email thread while the tab is visible. */
+/** Reports this operator's page, open dock thread, open email thread and followed operator while the tab is visible. */
 export function useOperatorPresenceHeartbeat({
   pathname,
   threadId,
+  followingUserId,
 }: {
   pathname: string;
   threadId: string | null;
+  followingUserId: Id<"users"> | null;
 }) {
   const heartbeat = useMutation(api.operatorPresence.heartbeat);
   const leave = useMutation(api.operatorPresence.leave);
@@ -103,6 +105,7 @@ export function useOperatorPresenceHeartbeat({
           | undefined,
         emailThreadId,
         activity,
+        followingUserId: followingUserId ?? undefined,
       }).catch(() => {});
     };
     // A hidden tab stops beating, so remove its row now; otherwise others keep
@@ -118,7 +121,15 @@ export function useOperatorPresenceHeartbeat({
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [heartbeat, leave, pathname, threadId, emailThreadId, activity]);
+  }, [
+    heartbeat,
+    leave,
+    pathname,
+    threadId,
+    emailThreadId,
+    activity,
+    followingUserId,
+  ]);
 
   useEffect(() => {
     const onPageHide = () => void leave().catch(() => {});
