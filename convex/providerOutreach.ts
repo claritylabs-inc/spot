@@ -1615,6 +1615,11 @@ async function checkStepWorld(
     return { kind: "stop", reason: "client_unavailable" };
   let provider: ProviderWorld | null = null;
   if (isClientSequence(sequence)) {
+    if (sequence.informationFormId) {
+      const form = await ctx.db.get(sequence.informationFormId);
+      if (!form || form.requestId !== sequence.requestId || form.outreachSequenceId !== sequence._id || form.status !== "open")
+        return { kind: "stop", reason: "information_form_unavailable" };
+    }
     // The recipient is a snapshot: it must still be a current client contact.
     const recipients = await clientRecipientOptions(ctx, request, client._id);
     const snapshotEmail = normalizeProcurementEmail(sequence.recipient.email);

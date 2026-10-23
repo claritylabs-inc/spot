@@ -112,6 +112,7 @@ export async function launchClientOutreachByOperator(
     cadence: OutreachCadenceInput;
     /** From the reviewed preview (`sender.fingerprint`); a mismatch refuses the launch. */
     expectedIdentityFingerprint?: string;
+    informationFormId?: Id<"procurementInformationForms">;
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
@@ -134,12 +135,16 @@ export async function launchClientOutreachByOperator(
     (option) => option.email === email,
   );
   if (!recipient) throw new Error("Choose a current client contact");
+  const form = args.informationFormId ? await ctx.db.get(args.informationFormId) : null;
+  if (args.informationFormId && (!form || form.requestId !== request._id || form.status !== "open")) throw new Error("Choose an open form from this request");
+  if (form?.outreachSequenceId) throw new Error("This form already has an email sequence. Open its conversation to follow up.");
   const live = await requestSequences(ctx, request._id, "client");
   if (
     live.rows.some(
       (row) =>
         (row.status === "active" || row.status === "reply_check") &&
-        normalizeProcurementEmail(row.recipient.email) === email,
+        normalizeProcurementEmail(row.recipient.email) === email &&
+        (!args.informationFormId || !row.informationFormId || row.informationFormId === args.informationFormId),
     )
   )
     throw new Error(
@@ -152,6 +157,7 @@ export async function launchClientOutreachByOperator(
     request,
     sequence: {
       audience: "client",
+      informationFormId: args.informationFormId,
       recipient: {
         email: recipient.email,
         ...(recipient.userId ? { userId: recipient.userId } : {}),
@@ -166,6 +172,7 @@ export async function launchClientOutreachByOperator(
     now,
     expectedIdentityFingerprint: args.expectedIdentityFingerprint,
   });
+  if (form) await ctx.db.patch(form._id, { outreachSequenceId: sequenceId });
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -192,6 +199,7 @@ export async function launchClientOutreachByOperator(
 export const launch = mutation({
   args: {
     requestId: v.id("procurementRequests"),
+    informationFormId: v.optional(v.id("procurementInformationForms")),
     recipientEmail: v.string(),
     subject: v.string(),
     text: v.string(),

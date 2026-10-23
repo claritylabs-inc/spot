@@ -57,6 +57,7 @@ import type * as actions_operatorSecondFactor from "../actions/operatorSecondFac
 import type * as actions_ownComplianceMonitor from "../actions/ownComplianceMonitor.js";
 import type * as actions_policyExtraction from "../actions/policyExtraction.js";
 import type * as actions_processThreadChat from "../actions/processThreadChat.js";
+import type * as actions_procurementInformation from "../actions/procurementInformation.js";
 import type * as actions_proposalExtraction from "../actions/proposalExtraction.js";
 import type * as actions_proposalReview from "../actions/proposalReview.js";
 import type * as actions_providerOutreach from "../actions/providerOutreach.js";
@@ -359,6 +360,7 @@ import type * as lib_procurementApplicationInput from "../lib/procurementApplica
 import type * as lib_procurementBrokerMatching from "../lib/procurementBrokerMatching.js";
 import type * as lib_procurementCapabilities from "../lib/procurementCapabilities.js";
 import type * as lib_procurementCompletionOutcome from "../lib/procurementCompletionOutcome.js";
+import type * as lib_procurementInformationSchema from "../lib/procurementInformationSchema.js";
 import type * as lib_procurementNarrative from "../lib/procurementNarrative.js";
 import type * as lib_procurementPacket from "../lib/procurementPacket.js";
 import type * as lib_profileResearchOrchestrator from "../lib/profileResearchOrchestrator.js";
@@ -475,6 +477,7 @@ import type * as policyAuditLog from "../policyAuditLog.js";
 import type * as policyFiles from "../policyFiles.js";
 import type * as policyVersions from "../policyVersions.js";
 import type * as presence from "../presence.js";
+import type * as procurementInformation from "../procurementInformation.js";
 import type * as procurementPacket from "../procurementPacket.js";
 import type * as procurementProposals from "../procurementProposals.js";
 import type * as procurementRequests from "../procurementRequests.js";
@@ -569,6 +572,7 @@ declare const fullApi: ApiFromModules<{
   "actions/ownComplianceMonitor": typeof actions_ownComplianceMonitor;
   "actions/policyExtraction": typeof actions_policyExtraction;
   "actions/processThreadChat": typeof actions_processThreadChat;
+  "actions/procurementInformation": typeof actions_procurementInformation;
   "actions/proposalExtraction": typeof actions_proposalExtraction;
   "actions/proposalReview": typeof actions_proposalReview;
   "actions/providerOutreach": typeof actions_providerOutreach;
@@ -871,6 +875,7 @@ declare const fullApi: ApiFromModules<{
   "lib/procurementBrokerMatching": typeof lib_procurementBrokerMatching;
   "lib/procurementCapabilities": typeof lib_procurementCapabilities;
   "lib/procurementCompletionOutcome": typeof lib_procurementCompletionOutcome;
+  "lib/procurementInformationSchema": typeof lib_procurementInformationSchema;
   "lib/procurementNarrative": typeof lib_procurementNarrative;
   "lib/procurementPacket": typeof lib_procurementPacket;
   "lib/profileResearchOrchestrator": typeof lib_profileResearchOrchestrator;
@@ -987,6 +992,7 @@ declare const fullApi: ApiFromModules<{
   policyFiles: typeof policyFiles;
   policyVersions: typeof policyVersions;
   presence: typeof presence;
+  procurementInformation: typeof procurementInformation;
   procurementPacket: typeof procurementPacket;
   procurementProposals: typeof procurementProposals;
   procurementRequests: typeof procurementRequests;

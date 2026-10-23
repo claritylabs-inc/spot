@@ -163,7 +163,7 @@ async function intakeUser(ctx: QueryCtx | MutationCtx) {
   }
   return user;
 }
-async function ownedRequest(
+export async function ownedRequest(
   ctx: QueryCtx | MutationCtx,
   requestId: Id<"procurementRequests">,
 ) {
