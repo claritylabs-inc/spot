@@ -310,7 +310,9 @@ export const panel = query({
         needsReview: extractions.filter(
           (row) =>
             row.automatic &&
-            (row.status === "failed" || (row.unappliedCount ?? 0) > 0) &&
+            (row.status === "failed" ||
+              (row.unappliedCount ?? 0) > 0 ||
+              !!row.reviewReasons?.length) &&
             (row.audience !== "client" ||
               (row.answerTargets ?? []).some((target) => {
                 const q = questionViews.find(
@@ -318,10 +320,9 @@ export const panel = query({
                 );
                 return q && (!q.answer || q.answer.unsure);
               })) &&
-            !requirements.some(
-              (requirement) => requirement.sourceMessageId === row.messageId,
-            ) &&
-            (!row.questions.length ||
+            (!!row.reviewReasons?.length ||
+              row.status === "failed" ||
+              !row.questions.length ||
               row.questions.some(
                 (proposal) =>
                   !questions.some(
@@ -852,6 +853,7 @@ export const clientForm = query({
       revision: form.revision,
       questions: form.questions,
       responses: form.responses,
+      editDraft: form.editDraft,
       currency: intakeCurrency(
         request.intakeSubmittedApplication?.details.registrationCountry ??
           request.intakeDetails?.registrationCountry,
@@ -859,6 +861,61 @@ export const clientForm = query({
       businessName: await businessNameForRequest(ctx, request),
       files: await filesForClient(ctx, form.requestId),
     };
+  },
+});
+
+/** Stage revisions separately from the accepted submission and canonical answers. */
+export const editForm = mutation({
+  args: {
+    formId: v.id("procurementInformationForms"),
+    revision: v.number(),
+    discard: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const form = await ctx.db.get(args.formId);
+    if (!form) throw new Error("Form not found");
+    const { impersonated } = await clientAccess(ctx, form.requestId, true);
+    if (form.status !== "submitted" || form.revision !== args.revision)
+      throw new Error("This form changed. Reload before editing.");
+    if (args.discard) {
+      await ctx.db.patch(form._id, {
+        editDraft: undefined,
+        revision: form.revision + 1,
+      });
+    } else if (!form.editDraft) {
+      const facts = await Promise.all(
+        form.questions.map((q) => question(ctx, q.questionId, form.requestId)),
+      );
+      const responses = await Promise.all(
+        facts.map(async (fact) => {
+          const answer = fact.answerId ? await ctx.db.get(fact.answerId) : null;
+          return answer
+            ? {
+                questionId: fact._id,
+                answer: answer.answer,
+                unsure: answer.unsure,
+                fileItemIds: answer.fileItemIds,
+              }
+            : (form.responses.find((r) => r.questionId === fact._id) ?? {
+                questionId: fact._id,
+                answer: "",
+                unsure: false,
+                fileItemIds: [],
+              });
+        }),
+      );
+      await ctx.db.patch(form._id, {
+        editDraft: {
+          responses,
+          answerVersions: facts.map((fact) => ({
+            questionId: fact._id,
+            answerId: fact.answerId,
+          })),
+        },
+        revision: form.revision + 1,
+      });
+    }
+    if (impersonated) await recordImpersonatedWrite(ctx);
   },
 });
 
@@ -878,7 +935,11 @@ export const saveForm = mutation({
       form.requestId,
       true,
     );
-    if (form.status !== "open" || form.revision !== args.revision)
+    if (
+      (form.status !== "open" &&
+        !(form.status === "submitted" && form.editDraft)) ||
+      form.revision !== args.revision
+    )
       throw new Error(
         "This form changed. Reload before continuing; your edits remain visible",
       );
@@ -962,9 +1023,16 @@ export const saveForm = mutation({
         const published = form.questions.find(
           (q) => q.questionId === response.questionId,
         )!;
-        if (current.answerId !== published.answerIdAtPublish)
+        const expectedAnswerId = form.editDraft
+          ? form.editDraft.answerVersions.find(
+              (item) => item.questionId === response.questionId,
+            )?.answerId
+          : published.answerIdAtPublish;
+        if (current.answerId !== expectedAnswerId)
           throw new Error(
-            "An answer changed after this form was published. Ask Spot to issue an updated form; your edits remain visible.",
+            form.editDraft
+              ? "An answer changed while you were editing. Cancel these edits and reopen Edit answers to use the latest values."
+              : "An answer changed after this form was published. Ask Spot to issue an updated form; your edits remain visible.",
           );
         const answerId = await ctx.db.insert("procurementInformationAnswers", {
           ...response,
@@ -978,7 +1046,9 @@ export const saveForm = mutation({
       }
     }
     await ctx.db.patch(form._id, {
-      responses,
+      ...(form.editDraft && !args.submit
+        ? { editDraft: { ...form.editDraft, responses } }
+        : { responses, editDraft: undefined }),
       revision: form.revision + 1,
       ...(args.submit
         ? {
@@ -1169,7 +1239,12 @@ export const uploadUrl = mutation({
   args: { formId: v.id("procurementInformationForms") },
   handler: async (ctx, { formId }) => {
     const form = await ctx.db.get(formId);
-    if (!form || form.status !== "open") throw new Error("Open form required");
+    if (
+      !form ||
+      (form.status !== "open" &&
+        !(form.status === "submitted" && form.editDraft))
+    )
+      throw new Error("Editable form required");
     const { user, request } = await clientAccess(ctx, form.requestId, true);
     if (!request.clientOrgId)
       throw new Error("Company attachment required before uploading");
@@ -1192,7 +1267,12 @@ export const attachFile = mutation({
   },
   handler: async (ctx, args) => {
     const form = await ctx.db.get(args.formId);
-    if (!form || form.status !== "open") throw new Error("Open form required");
+    if (
+      !form ||
+      (form.status !== "open" &&
+        !(form.status === "submitted" && form.editDraft))
+    )
+      throw new Error("Editable form required");
     const { user, request, impersonated } = await clientAccess(
       ctx,
       form.requestId,
@@ -1331,7 +1411,7 @@ export const extractionContext = internalQuery({
         unsure: q.answer?.unsure ?? false,
       })),
       answerTargets: row.answerTargets ?? [],
-      body: message.currentText.slice(0, 30000),
+      body: message.currentText,
       application: request.intakeSubmittedApplication ?? null,
       requestId: row.requestId,
     };
@@ -1343,6 +1423,7 @@ export const finishExtraction = internalMutation({
     failed: v.boolean(),
     questions: v.array(informationExtractionQuestionValidator),
     emailAnswers: v.optional(v.array(informationEmailAnswerValidator)),
+    reviewReasons: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.extractionId);
@@ -1360,7 +1441,7 @@ export const finishExtraction = internalMutation({
     const message = await ctx.db.get(row.messageId);
     const questions = valid
       ? args.questions
-          .slice(0, 20)
+          .slice(0, 80)
           .filter((q) => message?.currentText.includes(q.quote))
       : [];
     const emailAnswers = valid
@@ -1368,7 +1449,12 @@ export const finishExtraction = internalMutation({
           .slice(0, 40)
           .filter((answer) => message?.currentText.includes(answer.quote))
       : [];
-    let unappliedCount = 0;
+    const reviewReasons = [...(args.reviewReasons ?? [])];
+    if (args.questions.length > 80)
+      reviewReasons.push(
+        "Question limit reached; review the remaining email requests.",
+      );
+    let unappliedCount = valid ? args.questions.length - questions.length : 0;
     if (valid && row.automatic && request && message) {
       const route = await informationEmailRoute(ctx, row.messageId);
       if (
@@ -1378,7 +1464,19 @@ export const finishExtraction = internalMutation({
       )
         valid = false;
       else if (row.audience === "provider" && row.outreachId) {
+        const proposalIds = new Map<
+          string,
+          Id<"procurementInformationQuestions">
+        >();
+        const keys = questions.map((q) => q.key).filter(Boolean);
+        const duplicateKeys = new Set(
+          keys.filter((key, index) => keys.indexOf(key) !== index),
+        );
         for (const proposal of questions) {
+          if (proposal.key && duplicateKeys.has(proposal.key)) {
+            unappliedCount++;
+            continue;
+          }
           if (!proposal.confirmed) {
             unappliedCount++;
             continue;
@@ -1393,6 +1491,32 @@ export const finishExtraction = internalMutation({
             unappliedCount++;
             continue;
           }
+          const conditions: { questionId: string; answer: string }[] = [];
+          for (const condition of proposal.conditions ?? []) {
+            const parentId =
+              proposalIds.get(condition.questionId) ??
+              ctx.db.normalizeId(
+                "procurementInformationQuestions",
+                condition.questionId,
+              );
+            const parent = parentId ? await ctx.db.get(parentId) : null;
+            if (
+              !parent ||
+              parent.archivedAt ||
+              parent.requestId !== row.requestId ||
+              parent.question.kind !== "yes_no" ||
+              !["Yes", "No"].includes(condition.answer)
+            )
+              break;
+            conditions.push({
+              questionId: String(parent._id),
+              answer: condition.answer,
+            });
+          }
+          if (conditions.length !== (proposal.conditions ?? []).length) {
+            unappliedCount++;
+            continue;
+          }
           const existingId = proposal.existingQuestionId
             ? ctx.db.normalizeId(
                 "procurementInformationQuestions",
@@ -1404,7 +1528,14 @@ export const finishExtraction = internalMutation({
             existing &&
             !existing.archivedAt &&
             existing.requestId === row.requestId &&
-            !existing.question.conditions?.length &&
+            (existing.question.conditions ?? []).length === conditions.length &&
+            conditions.every((condition) =>
+              existing.question.conditions?.some(
+                (c) =>
+                  c.questionId === condition.questionId &&
+                  c.answer === condition.answer,
+              ),
+            ) &&
             existing.question.kind === proposal.kind &&
             ["subject", "period", "coverage"].every(
               (key) =>
@@ -1426,6 +1557,7 @@ export const finishExtraction = internalMutation({
           }
           const questionDefinition = {
             id: "provider_question",
+            conditions: conditions.length ? conditions : undefined,
             label: proposal.label,
             section: "additional" as const,
             kind: proposal.kind,
@@ -1451,7 +1583,7 @@ export const finishExtraction = internalMutation({
             unappliedCount++;
             continue;
           }
-          await addRequirementForRequest(
+          const requirementId = await addRequirementForRequest(
             ctx,
             {
               requestId: row.requestId,
@@ -1470,6 +1602,11 @@ export const finishExtraction = internalMutation({
             request,
             row.operatorUserId,
           );
+          if (proposal.key) {
+            const requirement = await ctx.db.get(requirementId);
+            if (requirement)
+              proposalIds.set(proposal.key, requirement.questionId);
+          }
         }
       } else if (row.audience === "client") {
         const factsForOrder = await requestFacts(ctx, row.requestId);
@@ -1558,6 +1695,7 @@ export const finishExtraction = internalMutation({
       questions: valid ? questions : [],
       emailAnswers: valid ? emailAnswers : [],
       unappliedCount,
+      reviewReasons,
       finishedAt: dayjs().valueOf(),
     });
   },

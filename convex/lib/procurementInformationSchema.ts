@@ -30,6 +30,10 @@ export const informationFormQuestionValidator = v.object({
 
 export const informationExtractionQuestionValidator = v.object({
   confirmed: v.optional(v.boolean()),
+  key: v.optional(v.string()),
+  conditions: v.optional(
+    v.array(v.object({ questionId: v.string(), answer: v.string() })),
+  ),
   existingQuestionId: v.optional(v.union(v.string(), v.null())),
   label: v.string(),
   kind: v.union(

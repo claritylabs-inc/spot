@@ -42,30 +42,40 @@ export function InformationForm({
 }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const router = useRouter();
+  const viewer = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
+  const needsLogin = !isLoading && (!isAuthenticated || viewer === null);
   const form = useQuery(
     api.procurementInformation.clientForm,
-    isAuthenticated ? { formId } : "skip",
+    isAuthenticated && viewer ? { formId } : "skip",
   );
   useEffect(() => {
-    if (!isLoading && !isAuthenticated)
+    if (needsLogin)
       router.replace(
         `/login?next=${encodeURIComponent(`/intake/information/${formId}`)}`,
       );
-  }, [isLoading, isAuthenticated, router, formId]);
+  }, [needsLogin, router, formId]);
   if (!form)
     return (
       <IntakeFrame showSteps={false}>
         <p role="status">Loading your questions…</p>
       </IntakeFrame>
     );
-  return <FormEditor key={form.id} form={form} />;
+  return (
+    <FormEditor
+      key={`${form.id}:${form.editDraft ? "editing" : form.status}`}
+      form={form}
+    />
+  );
 }
 
 function FormEditor({ form }: { form: Form }) {
   const router = useRouter();
-  const [started, setStarted] = useState(false);
+  const [started, setStarted] = useState(!!form.editDraft);
+  const edit = useMutation(api.procurementInformation.editForm);
   const save = useMutation(api.procurementInformation.saveForm);
-  const [responses, setResponses] = useState(form.responses);
+  const [responses, setResponses] = useState(
+    form.editDraft?.responses ?? form.responses,
+  );
   const [showFiles, setShowFiles] = useState(false);
   const { tasks } = useBackgroundTasks();
   const uploading =
@@ -75,7 +85,7 @@ function FormEditor({ form }: { form: Form }) {
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const submitted = form.status === "submitted";
+  const submitted = form.status === "submitted" && !form.editDraft;
   const displayedResponses = submitted ? form.responses : responses;
   const orderedQuestions = orderInformationQuestions(form.questions);
   const history: IntakeFollowupAnswer[] = orderedQuestions.map((q) => {
@@ -106,7 +116,7 @@ function FormEditor({ form }: { form: Form }) {
     mutationName: "procurementInformation.saveForm",
     resetKey: form.id,
     args: responses,
-    enabled: form.status === "open",
+    enabled: form.status === "open" || !!form.editDraft,
     canSave: !submitting,
     flush: async (rows) => {
       const next = await save({
@@ -128,14 +138,15 @@ function FormEditor({ form }: { form: Form }) {
     onFlushed: () => setError(""),
   });
   useEffect(() => {
-    if (form.status !== "open" || autosave.status === "saved") return;
+    if (submitted || form.status === "cancelled" || autosave.status === "saved")
+      return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [form.status, autosave.status]);
+  }, [form.status, submitted, autosave.status]);
   const row =
     current && responses.find((r) => r.questionId === current.questionId);
   function change(
@@ -268,12 +279,22 @@ function FormEditor({ form }: { form: Form }) {
       footer={
         submitted ? (
           <PillButton
-            href={`/intake?request=${form.requestId}`}
-            variant="ghost"
             size="large"
+            disabled={submitting}
+            onClick={() => {
+              setSubmitting(true);
+              setError("");
+              void edit({ formId: form.id, revision: revision.current })
+                .catch((cause) =>
+                  setError(
+                    getUserFacingErrorMessage(cause, "Could not edit answers"),
+                  ),
+                )
+                .finally(() => setSubmitting(false));
+            }}
           >
-            <ChevronLeft aria-hidden="true" className="size-4" />
-            Back to application
+            Edit answers
+            <ArrowRight aria-hidden="true" className="size-4" />
           </PillButton>
         ) : (
           <>
@@ -281,12 +302,34 @@ function FormEditor({ form }: { form: Form }) {
               variant="ghost"
               size="large"
               disabled={submitting || uploading}
-              onClick={() =>
-                step === 0 ? setStarted(false) : void navigate(step - 1)
-              }
+              onClick={() => {
+                if (step === 0 && form.editDraft) {
+                  setSubmitting(true);
+                  void autosave
+                    .saveNow()
+                    .then(async (saved) => {
+                      if (saved)
+                        await edit({
+                          formId: form.id,
+                          revision: revision.current,
+                          discard: true,
+                        });
+                    })
+                    .catch((cause) =>
+                      setError(
+                        getUserFacingErrorMessage(
+                          cause,
+                          "Could not cancel edits",
+                        ),
+                      ),
+                    )
+                    .finally(() => setSubmitting(false));
+                } else if (step === 0) setStarted(false);
+                else void navigate(step - 1);
+              }}
             >
               <ChevronLeft aria-hidden="true" className="size-4" />
-              Back
+              {step === 0 && form.editDraft ? "Cancel edits" : "Back"}
             </PillButton>
             {reviewing ? (
               <PillButton
@@ -294,7 +337,11 @@ function FormEditor({ form }: { form: Form }) {
                 disabled={!confirmed || submitting || uploading}
                 onClick={() => void submit()}
               >
-                {submitting ? "Submitting…" : "Submit answers"}
+                {submitting
+                  ? "Submitting…"
+                  : form.editDraft
+                    ? "Resubmit answers"
+                    : "Submit answers"}
               </PillButton>
             ) : (
               <PillButton

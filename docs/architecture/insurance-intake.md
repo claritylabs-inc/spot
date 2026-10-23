@@ -477,3 +477,33 @@ Operator procurement requests use one section menu in the app shell's `secondary
 `intakeFollowupPrompt.ts` removes duplicated history, hashes and UI bookkeeping from the generation input, preserving typed facts, blank/skipped base questions, driver redaction and upload metadata. Reference hints are trimmed first under a 96,000-byte UTF-8 budget; oversized application facts fail before inference rather than being truncated. The current router stream target supports chat messages only, so structured questions remain hidden until final validation.
 
 Unknown-scope coverage matching runs after the saved text settles, outside navigation. Next uses an already-ready result for that exact request/scope or continues immediately; late results never move the page or overwrite answers. Interactive industry, coverage, date, body-type and vehicle-specification verification decisions use a 5-second router budget and 6-second transport timeout. Their existing manual fallbacks remain available. Retrieval and generation preceding vehicle verification retain their existing execution path.
+
+
+### Revising supplementary submissions
+
+Submitted information forms expose Edit answers. `procurementInformation.editForm`
+authorizes the client, checks the form revision and stages `editDraft` responses
+with the current canonical answer IDs. The original submitted responses remain
+unchanged while autosave updates only the draft. Resubmission requires accuracy
+confirmation, existing question/file validation, unchanged external prerequisites
+and matching captured answer versions; it creates new provenance-bearing answer
+records and atomically updates the submission. Cancel edits discards only the
+staged revision. Cancelled forms remain unavailable for edits and uploads.
+Operator form cards use the same inline canonical answer writer as All Questions,
+including submitted forms. New operator answers do not rewrite client submission
+snapshots and invalidate stale client resubmissions through version checks.
+
+
+### Provider email extraction completeness
+
+Provider question extraction uses bounded 12-question continuation batches, stable
+proposal keys and persisted conditional relationships, capped at 80 questions.
+The entire current body enters generation under the existing 96 KB context
+budget; excessive context fails visibly. Long-body request coverage is checked
+across overlapping windows, while exact-quote context grounds individual facts.
+Static and most-recent-event scope are distinct from ambiguous reporting windows.
+Incomplete output and unavailable verification retain explicit review reasons;
+adding some requirements never clears attention for other held proposals.
+Dependencies resolve only to valid request-owned Yes/No questions and remain
+applicability gates in question lists and published forms. Unknown inference
+outcomes are never retried. No historical email reprocessing is automatic.

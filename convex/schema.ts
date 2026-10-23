@@ -2731,6 +2731,7 @@ export default defineSchema({
     ),
     emailAnswers: v.optional(v.array(informationEmailAnswerValidator)),
     unappliedCount: v.optional(v.number()),
+    reviewReasons: v.optional(v.array(v.string())),
     startedAt: v.number(),
     finishedAt: v.optional(v.number()),
     status: v.union(
@@ -2783,6 +2784,13 @@ export default defineSchema({
       ),
     ),
     responses: v.array(informationResponseValidator),
+    editDraft: v.optional(v.object({
+      responses: v.array(informationResponseValidator),
+      answerVersions: v.array(v.object({
+        questionId: v.id("procurementInformationQuestions"),
+        answerId: v.optional(v.id("procurementInformationAnswers")),
+      })),
+    })),
     revision: v.number(),
     status: v.union(
       v.literal("open"),

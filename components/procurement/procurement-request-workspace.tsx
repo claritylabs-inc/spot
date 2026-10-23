@@ -67,6 +67,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAction, useMutation, useQuery } from "convex/react";
 import {
   FileText,
+  ListChecks,
   Loader2,
   StickyNote,
   Trash2,
@@ -2643,7 +2644,7 @@ export function ProcurementRequestWorkspace({
     {
       label: "Information needed",
       items: [
-        { key: "information", label: "Overview", icon: FileText },
+        { key: "information", label: "All Questions", icon: ListChecks },
         ...(informationForms ?? []).map((form) => ({
           key: `information-form:${form.id}`,
           label: form.title,

@@ -2460,3 +2460,151 @@ typechecked; actual delivery and webhook replies were not exercised in this pass
 TypeScript, focused ESLint, local Convex sync/codegen and whitespace checks passed.
 No tests or database migrations were written. Evidence:
 `.context/qa/information-batches.png`, `information-batch-client.png`.
+
+
+### Provider email extraction broad audit — October 23, 2026
+
+Diagnostic pass: 34 distinct synthetic provider replies plus one duplicate
+delivery, production parser/storage/routing/extraction owners, real cl-router
+generation and grounding, and normal signed-in operator Chrome. Ordinary
+extraction, cross-provider reuse, currency/period/unit separation, quoted-history
+filtering, duplicate delivery, sender/lifecycle guards and hostile-content cases
+passed their narrow checks. Broader cases exposed silent 20-question and
+30,000-character truncation, lost conditional children, inconsistent date/static
+scope promotion, and a browser-confirmed missing partial-review notice.
+
+See [the full audit](provider-email-extraction-audit-2026-10-23.md) for case counts,
+reproductions, priorities and limits. These defects are **open**; earlier basic
+workflow passes do not establish complete email extraction. No product fixes,
+external sends, production actions or database migrations were made. The local
+fixture API was removed; clearly named synthetic records and evidence remain in
+`.context/qa/email-extraction-audit/`. Live Receiving/webhook authentication,
+hosted durable-job recovery and client-answer extraction were not run.
+
+
+### All Questions sidebar and unassigned list — October 23, 2026
+
+Renamed Overview to All Questions with the existing Lucide ListChecks icon.
+The list excludes questions assigned to open or submitted forms; cancelled forms
+release their questions. Coverage grouping, applicability checks and search are
+retained, with an explicit empty state when every applicable question is in a
+form. Visible local Chrome confirmed unassigned questions remain, assigned
+questions are absent, and the existing two-question form still shows its batch.
+No form, answer or email records were changed. TypeScript, focused ESLint and
+whitespace checks passed; no tests or migrations were written. Evidence:
+`.context/qa/all-questions-unassigned.png`.
+
+
+### Minimal Add question drawer — October 23, 2026
+
+Manual Add question uses the shared SettingsDrawer, Field/FieldGroup/FieldLabel,
+Textarea, Select and PillButton primitives. Four base fields: question, answer
+type, coverage and requested-by provider. Currency and dropdown options appear
+only for their respective answer types. Company/current scope defaults replace
+manual metadata fields; email-source review remains in From email. Creation uses
+the existing authorized addRequirement mutation and a fixed drawer footer.
+Visible local Chrome verified the four-field layout, conditional inputs, disabled
+empty submission, cancellation and successful creation on the isolated email QA
+request. A single known question coverage prefilled successfully. The temporary
+question was archived through the ordinary remove action. No email or client form
+was sent. TypeScript, focused ESLint and whitespace checks passed. Evidence:
+`.context/qa/add-question-simple.png`. No tests or migrations were written.
+
+
+### Draft / All question tabs — October 23, 2026
+
+All Questions now uses shared pill tabs: Draft is the default and excludes
+questions assigned to open/submitted forms; All includes those questions.
+Question-level status badges were removed from both the list and form cards;
+form-level status remains. Visible Chrome verified default Draft, switching to
+All (19 applicable questions in the synthetic fixture), assigned-question
+visibility only in All, and search retained across tabs with the correct empty
+state. No data changed. TypeScript, focused ESLint and whitespace checks passed.
+Evidence: `.context/qa/question-tabs-draft.png`. No tests or migrations written.
+
+
+### Intake account recovery — October 23, 2026
+
+Supplementary form queries now wait for the authenticated viewer before reading
+protected form data. The shared intake error boundary offers Sign in when signed
+out and Switch account when signed in, preserving the exact intake URL in login
+`next`. Switch account uses normal auth signOut before navigation; backend access
+checks remain intact. Recovery actions use large PillButtons with navigation
+icons, and error pages hide question progress indicators. Other application
+Find my drafts recovery buttons also use large sizing.
+
+Visible browser QA verified a wrong-account synthetic form shows Switch account
+and the larger recovery actions, and a separate signed-out browser reaches login
+for both supplementary and original intake routes with the correct return URL.
+No OTP was sent and the active operator was not signed out, so the complete
+account-switch/login round trip was source-reviewed, not executed. TypeScript and
+whitespace passed; focused lint has only the pre-existing application.tsx:1350
+exhaustive-deps warning. No tests or migrations written. Evidence:
+`.context/qa/intake-wrong-account.png`.
+
+
+### Extraction QA form client access repair — October 23, 2026
+
+The user identified extraction-qa@example.com as the intended recipient of local
+form px7zhwrs0yw9byk5a8enh6329s8gtakf. Its isolated audit request had no owner,
+clientVisible false and no membership for that user. A guarded local-only fixture
+repair assigned this exact request to the verified user, marked the request
+client-visible and added a member role in the marked synthetic client org. No
+other request visibility or ownership changed; no authorization checks were
+weakened and no schema migration was needed. The temporary repair function was
+removed and local codegen resynced.
+
+A separate browser completed normal OTP sign-in as extraction-qa@example.com,
+returned to the exact form, opened its start screen and continued to the first
+question. Form status remained open; no answers or client submission were made.
+Draft/open forms have no submission-status access prerequisite. Evidence:
+`.context/qa/client-form-access-fixed.png`.
+
+
+### Possessive wording and supplementary revisions — October 23, 2026
+
+The shared personalization helper now preserves explicit possession and handles
+common attribute phrases without an apostrophe, including company DBA name,
+annual revenue and employees. Direct subject/verb phrases retain the plain
+business name. Manual samples covered straight/curly apostrophes, a name ending
+in s, an already possessive name and unchanged subject forms. Browser review
+confirmed “Email Extraction QA’s DBA name?” without changing saved question IDs.
+
+Submitted client forms replace Back to application with Edit answers. The
+separate editDraft preserves the submitted snapshot and captures canonical
+answer versions. Operator form cards remain inline editable after submission.
+Normal signed-in client/operator browsers verified draft 20 versus canonical 19,
+operator autosave to 21, blocked stale client resubmission, cancel edits restoring
+submitted 19, successful resubmission to 20 and resubmission back to original 19.
+Final values were confirmed on both surfaces; other answers remain unsure and no
+external mail was sent. New immutable answer rows retain the verification history.
+Evidence: `.context/qa/information-resubmitted.png`,
+`information-operator-editable.png`, `information-edit-conflict.png`.
+Local Convex sync/codegen, TypeScript, focused lint and whitespace checks passed.
+No tests or database migrations were written; editDraft is an optional schema
+addition. Attachment edits use the existing authorized upload path; fresh upload
+and multi-account concurrent editing were source-reviewed, not browser-tested.
+
+
+### Information answer/provider alignment — October 23, 2026
+
+Provider names now share the input text inset in All Questions and form cards;
+logos occupy a hanging gutter beside the name. Visible Chrome confirmed the
+number text and provider name both begin at x=618.992 CSS pixels in the submitted
+sample. Focused ESLint and whitespace checks passed; no data changed or tests
+written. Evidence: `.context/qa/information-fields-aligned.png`.
+
+
+### Provider extraction reliability fixes — October 23, 2026
+
+[Full verification](provider-email-extraction-reliability-2026-10-23.md) supersedes
+the five open findings from the earlier broad audit. Real cl-router and local
+production ingestion owners processed 44 distinct synthetic messages and one
+duplicate delivery across the broad rerun and focused iterations. Final controls
+verified 25/25 twice, 3/3 training questions three times, 2/2 warehouse questions
+three times, long-email tail extraction, stored conditional/nested dependencies,
+and explicit review at the 80-question/96 KB boundaries. Chrome verified Yes/No
+applicability, parent/child form selection, and partial/oversized/capped review
+warnings. No external emails were sent. Temporary fixture API removed afterward;
+local sync/codegen, focused ESLint, TypeScript and whitespace checks passed.
+No database migrations or permanent unit tests were written.

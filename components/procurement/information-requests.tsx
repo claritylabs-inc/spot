@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, useEffect, useId, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import {
@@ -26,7 +26,6 @@ import {
   personalizeIntakeQuestion,
   type IntakeFollowupQuestion,
 } from "@/lib/intake-followups";
-import { formatDisplayDate } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import {
   InlineFieldCard,
@@ -48,8 +47,19 @@ import {
   InputGroupText,
   InputGroupInput,
 } from "@claritylabs-inc/ui/components/input-group";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@claritylabs-inc/ui/components/tabs";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { Input } from "@claritylabs-inc/ui/components/input";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+} from "@claritylabs-inc/ui/components/field";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import {
   Select,
@@ -64,7 +74,6 @@ import {
   OperationalSkeletonList,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
-import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 type Panel = FunctionReturnType<typeof api.procurementInformation.panel>;
@@ -227,8 +236,7 @@ export function InformationRequestActions(props: Actions) {
     <>
       <div className="flex flex-wrap items-center gap-2">
         <PillButton
-          variant="icon"
-          label="Sync latest provider and client replies"
+          variant="secondary"
           disabled={syncing}
           onClick={() =>
             void attempt(async () => {
@@ -244,14 +252,8 @@ export function InformationRequestActions(props: Actions) {
             })
           }
         >
-          <RefreshCw className="size-3.5" />
-        </PillButton>
-        <PillButton
-          variant="secondary"
-          onClick={() => open({ kind: "add", mode: "email" })}
-        >
-          <Mail className="size-3.5" />
-          From email
+          <RefreshCw className={`size-3.5${syncing ? " animate-spin" : ""}`} />
+          Sync from email
         </PillButton>
         <PillButton variant="secondary" onClick={() => open({ kind: "add" })}>
           <Plus className="size-3.5" />
@@ -267,6 +269,7 @@ export function InformationRequests(props: Actions) {
   const panel = useQuery(api.procurementInformation.panel, { requestId });
   const archive = useMutation(api.procurementInformation.archiveQuestion);
   const [search, setSearch] = useState("");
+  const [view, setView] = useState("draft");
   const open = (target: DrawerTarget) =>
     onRightPanel(
       <InformationDrawer
@@ -282,16 +285,29 @@ export function InformationRequests(props: Actions) {
         <OperationalSkeletonList rows={3} />
       </OperationalPanel>
     );
-  const openForms = panel.forms.filter((f) => f.status === "open");
+  const assignedQuestionIds = new Set(
+    panel.forms
+      .filter((form) => form.status !== "cancelled")
+      .flatMap((form) => form.questions.map((item) => item.questionId)),
+  );
   const applicableQuestions = panel.questions.filter(
     (q) => informationApplicability(q, panel.questions) !== "not_applicable",
   );
-  const visible = applicableQuestions.filter((q) =>
+  const unassignedQuestions = applicableQuestions.filter(
+    (q) => !assignedQuestionIds.has(q._id),
+  );
+  const tabQuestions =
+    view === "all" ? applicableQuestions : unassignedQuestions;
+  const visible = tabQuestions.filter((q) =>
     q.question.label.toLowerCase().includes(search.toLowerCase()),
   );
   return (
-    <div className="space-y-5">
+    <Tabs value={view} onValueChange={setView} className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
+        <TabsList variant="pill" aria-label="Questions">
+          <TabsTrigger value="draft">Draft</TabsTrigger>
+          <TabsTrigger value="all">All</TabsTrigger>
+        </TabsList>
         {applicableQuestions.length > 0 && (
           <InputGroup className="w-full sm:w-72">
             <InputGroupAddon>
@@ -307,153 +323,154 @@ export function InformationRequests(props: Actions) {
           </InputGroup>
         )}
       </div>
-      {(panel.emailActivity.running > 0 ||
-        panel.emailActivity.needsReview > 0) && (
-        <p
-          role="status"
-          className={`text-muted-foreground ${typeStyle("caption.default")}`}
-        >
-          {panel.emailActivity.running > 0 ? "Reading recent replies… " : ""}
-          {panel.emailActivity.needsReview > 0
-            ? "Some replies need review. Check the inbox or add missing information manually."
-            : ""}
-          {panel.emailActivity.needsReview > 0 && (
-            <PillButton href={props.inboxHref} variant="ghost" size="compact">
-              Review inbox
-            </PillButton>
-          )}
-        </p>
-      )}
-      {!applicableQuestions.length ? (
-        <EmptyStateCard
-          icon={<FileQuestion className="size-6" />}
-          title="Keep quote questions in one place"
-          description="Add what a provider needs, combine overlapping questions, and send your client one short form."
-          actionLabel={readOnly ? undefined : "Add a question"}
-          onAction={() => open({ kind: "add" })}
-        />
-      ) : !visible.length ? (
-        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-          No questions match your search.
-        </p>
-      ) : (
-        informationCoverageGroups(visible).map((group) => (
-          <section
-            key={group.coverage}
-            data-operator-inline-fields
-            className="space-y-4"
-            aria-label={coverageLabel(group.coverage)}
+      <TabsContent value={view} className="space-y-5">
+        {(panel.emailActivity.running > 0 ||
+          panel.emailActivity.needsReview > 0) && (
+          <p
+            role="status"
+            className={`text-muted-foreground ${typeStyle("caption.default")}`}
           >
-            <h2 className={typeStyle("heading.item")}>
-              {coverageLabel(group.coverage)}
-            </h2>
-            {group.questions.map((q) => {
-              const requested = openForms.some((f) =>
-                f.questions.some((item) => item.questionId === q._id),
-              );
-              const applicability = informationApplicability(
-                q,
-                panel.questions,
-              );
-              const answered =
-                !!q.answer && !q.answer.unsure && applicability === "applies";
-              return (
-                <InlineFieldCard
-                  key={q._id}
-                  title={
-                    <span className="block min-w-0 py-0.5">
-                      <span className="flex flex-wrap items-start justify-between gap-2">
-                        <span className="min-w-0 flex-1">
-                          {q.question.label}
-                        </span>
-                        <StatusTag tone={answered ? "success" : "warning"}>
-                          {answered
-                            ? "Answered"
-                            : requested
-                              ? "Waiting for client"
-                              : "Needs answer"}
-                        </StatusTag>
-                      </span>
-                      <span
-                        className={`mt-1 block text-muted-foreground ${typeStyle("caption.default")}`}
-                      >
-                        {[
-                          displaySubject(q),
-                          q.scope.period !== "current" ? q.scope.period : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </span>
-                    </span>
-                  }
-                  actions={
-                    !readOnly ? (
-                      <div className="flex shrink-0 items-center gap-2">
-                        <RemoveButton
-                          label={`Remove ${q.question.label}`}
-                          onClick={() =>
-                            void attempt(async () => {
-                              await archive({
-                                questionId: q._id,
-                                archive: true,
-                              });
-                              toast.success("Question removed", {
-                                action: {
-                                  label: "Undo",
-                                  onClick: () =>
-                                    void attempt(() =>
-                                      archive({
-                                        questionId: q._id,
-                                        archive: false,
-                                      }),
-                                    ),
-                                },
-                              });
-                            })
-                          }
-                        />
-                      </div>
-                    ) : undefined
-                  }
-                >
-                  <InlineFieldRow label="Answer">
-                    <InlineInformationAnswer
-                      key={q._id}
-                      question={q}
-                      files={panel.files}
-                      currency={panel.currency}
-                      disabled={readOnly || applicability !== "applies"}
-                    />
-                  </InlineFieldRow>
-                  <InlineFieldRow label="Requested by">
-                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-2">
-                      <InformationProviders panel={panel} questionId={q._id} />
-                      {!readOnly && (
-                        <PillButton
-                          variant="ghost"
-                          onClick={() =>
-                            open({ kind: "add", questionId: q._id })
-                          }
+            {panel.emailActivity.running > 0 ? "Reading recent replies… " : ""}
+            {panel.emailActivity.needsReview > 0
+              ? "Some replies need review. Check the inbox or add missing information manually."
+              : ""}
+            {panel.emailActivity.needsReview > 0 && (
+              <PillButton href={props.inboxHref} variant="ghost" size="compact">
+                Review inbox
+              </PillButton>
+            )}
+          </p>
+        )}
+        {!tabQuestions.length ? (
+          <EmptyStateCard
+            icon={<FileQuestion className="size-6" />}
+            title={
+              applicableQuestions.length
+                ? "All questions are in forms"
+                : "Keep quote questions in one place"
+            }
+            description={
+              applicableQuestions.length
+                ? "Open a form in the sidebar to view its questions, or add a new question here."
+                : "Add what a provider needs, combine overlapping questions, and send your client one short form."
+            }
+            actionLabel={readOnly ? undefined : "Add a question"}
+            onAction={() => open({ kind: "add" })}
+          />
+        ) : !visible.length ? (
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+            No questions match your search.
+          </p>
+        ) : (
+          informationCoverageGroups(visible).map((group) => (
+            <section
+              key={group.coverage}
+              data-operator-inline-fields
+              className="space-y-4"
+              aria-label={coverageLabel(group.coverage)}
+            >
+              <h2 className={typeStyle("heading.item")}>
+                {coverageLabel(group.coverage)}
+              </h2>
+              {group.questions.map((q) => {
+                const applicability = informationApplicability(
+                  q,
+                  panel.questions,
+                );
+                return (
+                  <InlineFieldCard
+                    key={q._id}
+                    title={
+                      <span className="block min-w-0 py-0.5">
+                        <span className="block">{q.question.label}</span>
+                        <span
+                          className={`mt-1 block text-muted-foreground ${typeStyle("caption.default")}`}
                         >
-                          <Plus className="size-3.5" />
-                          Add provider
-                        </PillButton>
-                      )}
-                    </div>
-                  </InlineFieldRow>
-                </InlineFieldCard>
-              );
-            })}
-          </section>
-        ))
-      )}
-      {(panel.threadsLimited || panel.deliveriesLimited) && (
-        <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-          Showing the latest 50 email threads and 500 delivery records. Older
-          correspondence remains in the inbox.
-        </p>
-      )}
-    </div>
+                          {[
+                            displaySubject(q),
+                            q.scope.period !== "current"
+                              ? q.scope.period
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </span>
+                    }
+                    actions={
+                      !readOnly ? (
+                        <div className="flex shrink-0 items-center gap-2">
+                          <RemoveButton
+                            label={`Remove ${q.question.label}`}
+                            onClick={() =>
+                              void attempt(async () => {
+                                await archive({
+                                  questionId: q._id,
+                                  archive: true,
+                                });
+                                toast.success("Question removed", {
+                                  action: {
+                                    label: "Undo",
+                                    onClick: () =>
+                                      void attempt(() =>
+                                        archive({
+                                          questionId: q._id,
+                                          archive: false,
+                                        }),
+                                      ),
+                                  },
+                                });
+                              })
+                            }
+                          />
+                        </div>
+                      ) : undefined
+                    }
+                  >
+                    <InlineFieldRow label="Answer">
+                      <InlineInformationAnswer
+                        key={q._id}
+                        question={q}
+                        files={panel.files}
+                        currency={panel.currency}
+                        disabled={readOnly || applicability !== "applies"}
+                      />
+                    </InlineFieldRow>
+                    <InlineFieldRow label="Requested by">
+                      <div className="flex min-h-9 flex-wrap items-center gap-x-8 gap-y-2 border border-transparent px-3 py-1">
+                        <InformationProviders
+                          panel={panel}
+                          questionId={q._id}
+                        />
+                        {!readOnly && (
+                          <PillButton
+                            variant="ghost"
+                            onClick={() =>
+                              open({ kind: "add", questionId: q._id })
+                            }
+                          >
+                            <Plus className="size-3.5" />
+                            Add provider
+                          </PillButton>
+                        )}
+                      </div>
+                    </InlineFieldRow>
+                  </InlineFieldCard>
+                );
+              })}
+            </section>
+          ))
+        )}
+        {(panel.threadsLimited || panel.deliveriesLimited) && (
+          <p
+            className={`text-muted-foreground ${typeStyle("caption.default")}`}
+          >
+            Showing the latest 50 email threads and 500 delivery records. Older
+            correspondence remains in the inbox.
+          </p>
+        )}
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -478,13 +495,14 @@ function InformationProviders({
           return (
             <span
               key={outreachId}
-              className="inline-flex min-w-0 items-center gap-2"
+              className="relative inline-flex min-w-0 items-center"
             >
               <OrgBrandIcon
                 name={provider?.brokerName}
                 iconUrl={provider?.iconUrl}
                 website={provider?.website}
                 size="xs"
+                className="absolute right-full mr-2"
               />
               <span>
                 {provider?.brokerName ?? "Provider"}
@@ -628,42 +646,6 @@ export function InformationFormWorkspace(
     );
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 className={typeStyle("heading.item")}>{form.title}</h2>
-        <StatusTag
-          tone={
-            form.status === "submitted"
-              ? "success"
-              : form.status === "open"
-                ? "warning"
-                : "neutral"
-          }
-        >
-          {form.status === "submitted"
-            ? "Submitted"
-            : form.status === "open"
-              ? form.email
-                ? "Waiting for client"
-                : "Ready to send"
-              : "Cancelled"}
-        </StatusTag>
-      </div>
-      <InlineFieldCard>
-        <InlineFieldRow label="Created">
-          {formatDisplayDate(form.createdAt)}
-        </InlineFieldRow>
-        <InlineFieldRow label="Questions">
-          {form.questions.length}
-        </InlineFieldRow>
-        <InlineFieldRow label="Email">
-          {form.email
-            ? `${form.email.deliveryStatus === "sent" ? "Sent" : ({ active: "Queued", reply_check: "Checking reply", responded: "Reply received", completed: "Complete", stopped: "Follow-ups stopped", failed: "Needs attention" }[form.email.status])} · ${form.email.recipient}`
-            : "Not sent"}
-        </InlineFieldRow>
-        {form.email && (
-          <InlineFieldRow label="Subject">{form.email.subject}</InlineFieldRow>
-        )}
-      </InlineFieldCard>
       {informationCoverageGroups(form.questions).map((group) => (
         <section
           key={group.coverage}
@@ -680,25 +662,13 @@ export function InformationFormWorkspace(
             );
             const fact = panel.questions.find((q) => q._id === item.questionId);
             const answer =
-              form.status === "submitted" ? response : fact?.answer;
-            const answered = !!answer?.answer && !answer.unsure;
+              fact?.answer ?? response;
             return (
               <InlineFieldCard
                 key={item.questionId}
                 title={
                   <span className="block min-w-0 py-0.5">
-                    <span className="flex flex-wrap items-start justify-between gap-2">
-                      <span className="min-w-0 flex-1">
-                        {item.question.label}
-                      </span>
-                      <StatusTag tone={answered ? "success" : "warning"}>
-                        {answered
-                          ? "Answered"
-                          : form.status === "open"
-                            ? "Waiting for client"
-                            : "Needs answer"}
-                      </StatusTag>
-                    </span>
+                    <span className="block">{item.question.label}</span>
                     {item.scope.period !== "current" && (
                       <span
                         className={`mt-1 block text-muted-foreground ${typeStyle("caption.default")}`}
@@ -710,7 +680,7 @@ export function InformationFormWorkspace(
                 }
               >
                 <InlineFieldRow label="Answer">
-                  {form.status === "open" && fact ? (
+                  {form.status !== "cancelled" && fact ? (
                     <InlineInformationAnswer
                       question={fact}
                       files={panel.files}
@@ -741,7 +711,7 @@ export function InformationFormWorkspace(
                   )}
                 </InlineFieldRow>
                 <InlineFieldRow label="Requested by">
-                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2 py-2">
+                  <div className="flex min-h-9 flex-wrap items-center gap-x-8 gap-y-2 border border-transparent px-3 py-1">
                     <InformationProviders
                       panel={panel}
                       questionId={item.questionId}
@@ -750,7 +720,7 @@ export function InformationFormWorkspace(
                       (requirement) =>
                         requirement.questionId === item.questionId,
                     ) && (
-                      <span className="px-3 text-muted-foreground">
+                      <span className="text-muted-foreground">
                         No provider specified
                       </span>
                     )}
@@ -773,6 +743,14 @@ function InformationDrawer({
   const panel = useQuery(api.procurementInformation.panel, {
     requestId: props.requestId,
   });
+  if (panel && !target.mode && !target.questionId)
+    return (
+      <AddQuestionDrawer
+        requestId={props.requestId}
+        panel={panel}
+        onClose={onClose}
+      />
+    );
   return (
     <SettingsDrawer
       open
@@ -796,6 +774,187 @@ function InformationDrawer({
       ) : (
         <OperationalSkeletonList rows={3} />
       )}
+    </SettingsDrawer>
+  );
+}
+
+function AddQuestionDrawer({
+  requestId,
+  panel,
+  onClose,
+}: {
+  requestId: Actions["requestId"];
+  panel: Panel;
+  onClose: () => void;
+}) {
+  const add = useMutation(api.procurementInformation.addRequirement);
+  const formId = useId();
+  const [label, setLabel] = useState("");
+  const [kind, setKind] =
+    useState<IntakeFollowupQuestion["kind"]>("short_text");
+  const [coverage, setCoverage] = useState(() => {
+    const coverages = new Set(panel.questions.map((q) => q.scope.coverage));
+    return coverages.size === 1 ? [...coverages][0] : "";
+  });
+  const [outreachId, setOutreachId] = useState(
+    panel.outreaches.length === 1 ? panel.outreaches[0]._id : "",
+  );
+  const [currency, setCurrency] = useState(panel.currency);
+  const [options, setOptions] = useState("");
+  const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
+  const choices = options
+    .split("\n")
+    .map((option) => option.trim())
+    .filter(Boolean);
+  const canAdd =
+    !!label.trim() &&
+    !!coverage &&
+    !!outreachId &&
+    (kind !== "dropdown" || (choices.length >= 2 && choices.length <= 12));
+  return (
+    <SettingsDrawer
+      open
+      title="Add a question"
+      onOpenChange={(open) => !open && onClose()}
+      footer={
+        <>
+          <PillButton variant="ghost" onClick={onClose}>
+            Cancel
+          </PillButton>
+          <PillButton type="submit" form={formId} disabled={busy || !canAdd}>
+            {busy ? "Adding…" : "Add question"}
+          </PillButton>
+        </>
+      }
+    >
+      <form
+        id={formId}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!canAdd || saving.current) return;
+          saving.current = true;
+          setBusy(true);
+          void attempt(async () => {
+            try {
+              await add({
+                requestId,
+                outreachId: outreachId as Id<"procurementBrokerOutreaches">,
+                question: {
+                  id: "provider_question",
+                  section: "additional",
+                  label: label.trim(),
+                  kind,
+                  options: kind === "dropdown" ? choices : [],
+                },
+                scope: {
+                  subject: "company",
+                  period: "current",
+                  coverage,
+                  currency: kind === "currency" ? currency : undefined,
+                },
+              });
+              toast.success("Question added");
+              onClose();
+            } finally {
+              saving.current = false;
+              setBusy(false);
+            }
+          });
+        }}
+      >
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor={`${formId}-question`}>Question</FieldLabel>
+            <Textarea
+              id={`${formId}-question`}
+              placeholder="What do you need to know?"
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+              maxLength={500}
+              rows={3}
+              autoFocus
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Answer type</FieldLabel>
+            <Choice
+              label="Answer type"
+              value={kind}
+              onChange={(value) => setKind(value as typeof kind)}
+              options={KINDS.map((value) => ({
+                value,
+                label: KIND_LABELS[value],
+              }))}
+            />
+          </Field>
+          {kind === "currency" && (
+            <Field>
+              <FieldLabel>Currency</FieldLabel>
+              <Choice
+                label="Answer currency"
+                value={currency}
+                onChange={setCurrency}
+                options={[
+                  "USD",
+                  "CAD",
+                  "EUR",
+                  "GBP",
+                  "AUD",
+                  "NZD",
+                  "CHF",
+                  "JPY",
+                ].map((value) => ({ value, label: value }))}
+              />
+            </Field>
+          )}
+          {kind === "dropdown" && (
+            <Field>
+              <FieldLabel htmlFor={`${formId}-options`}>Options</FieldLabel>
+              <Textarea
+                id={`${formId}-options`}
+                placeholder="One option per line"
+                rows={3}
+                value={options}
+                onChange={(event) => setOptions(event.target.value)}
+              />
+            </Field>
+          )}
+          <Field>
+            <FieldLabel>Coverage</FieldLabel>
+            <Choice
+              label="Coverage"
+              value={coverage}
+              onChange={setCoverage}
+              placeholder="Select coverage"
+              options={COVERAGE_OPTIONS.map((item) => ({
+                value: item.id,
+                label: item.label,
+              }))}
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Requested by</FieldLabel>
+            <Choice
+              label="Requested by"
+              value={outreachId}
+              onChange={setOutreachId}
+              placeholder="Select provider"
+              options={panel.outreaches.map((item) => ({
+                value: item._id,
+                label: item.brokerName,
+              }))}
+            />
+          </Field>
+          {!panel.outreaches.length && (
+            <p
+              className={`text-muted-foreground ${typeStyle("caption.default")}`}
+            >
+              Add a provider to this request first.
+            </p>
+          )}
+        </FieldGroup>
+      </form>
     </SettingsDrawer>
   );
 }
@@ -887,13 +1046,6 @@ function PublishForm({
 
   return (
     <div className="space-y-4">
-      <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-        Choose the questions for this batch. The client can answer by email or
-        complete its form. Questions in another open form stay in that batch.
-      </p>
-      <InlineFieldList>
-        <InlineFieldRow label="Form name">{title}</InlineFieldRow>
-      </InlineFieldList>
       {informationCoverageGroups(candidates).map((group) => (
         <section key={group.coverage} className="space-y-3">
           <h3 className={typeStyle("heading.item")}>
@@ -920,11 +1072,6 @@ function PublishForm({
           </OperationalPanel>
         </section>
       ))}
-      <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-        {needed.length} unanswered{" "}
-        {needed.length === 1 ? "question" : "questions"} selected for this form.
-        Unanswered prerequisites are included with dependent questions.
-      </p>
       <PillButton
         disabled={busy || !needed.length || needed.length > 40}
         onClick={() =>

@@ -244,8 +244,18 @@ export function personalizeIntakeQuestion(
 ): string {
   if (!label) return "";
   if (!businessName?.trim()) return label;
-  return label.replace(/\b(?:the|your|this) (?:business|company)\b/gi, () =>
-    businessName.trim(),
+  const name = businessName.trim();
+  const possessive = /[’']s$|[’']$/.test(name) ? name : `${name}’s`;
+  // Preserve explicit possession and common noun phrases even when the source
+  // omits its apostrophe (for example, "your company DBA name"). Subject/verb
+  // phrases such as "does your company subcontract" keep the plain name.
+  const ownedFact = /^\s+(?:(?:annual|projected|estimated|total|gross|net|current|previous|registered|legal|trading|primary|full-time|part-time)\s+)*(?:DBA|name|address|website|revenue|turnover|payroll|income|sales|profit|expenses|operations|activities|employees|staff|workers|owners|directors|officers|customers|clients|contracts|equipment|vehicles|premises|locations|policies|coverage|insurance|records|procedures|process|processes|number|headcount|registration|tax|safety|security|training|data|systems|business hours)\b/i;
+  return label.replace(
+    /\b(?:the|your|this) (?:business|company)\b([’']s\b)?/gi,
+    (match: string, suffix: string | undefined, offset: number) =>
+      suffix || ownedFact.test(label.slice(offset + match.length))
+        ? possessive
+        : name,
   );
 }
 

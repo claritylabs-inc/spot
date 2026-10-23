@@ -269,7 +269,7 @@ export function InsuranceIntake() {
             : "Confirming your saved application…"}
         </p>
         {confirmationError && (
-          <PillButton href={withQuoteProvider("/signup", params.get("provider"))}>Find my drafts</PillButton>
+          <PillButton size="large" href={withQuoteProvider("/signup", params.get("provider"))}>Find my drafts</PillButton>
         )}
       </IntakeFrame>
     );
@@ -278,7 +278,7 @@ export function InsuranceIntake() {
     return (
       <IntakeFrame>
         <p>Please reopen your saved application.</p>
-        <PillButton href={withQuoteProvider("/signup", params.get("provider"))}>Find my drafts</PillButton>
+        <PillButton size="large" href={withQuoteProvider("/signup", params.get("provider"))}>Find my drafts</PillButton>
       </IntakeFrame>
     );
   if (!recovered)
