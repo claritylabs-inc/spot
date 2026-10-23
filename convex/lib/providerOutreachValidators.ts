@@ -73,6 +73,12 @@ export const cadencePicksValidator = v.object({
 });
 
 export const stepDraftValidator = v.object({
+  /**
+   * The CC list this step sends, fixed when the draft is saved (the operator's
+   * Always CC at that moment). A retry sends exactly this list; it is never
+   * recomputed. Drafts saved before this field existed have none.
+   */
+  cc: v.optional(v.array(v.string())),
   subject: v.string(),
   text: v.string(),
   html: v.string(),
@@ -95,6 +101,8 @@ export const stepFinishOutcomeValidator = v.union(
     resendEmailId: v.string(),
     resendThreadId: v.optional(v.string()),
     resendDraftId: v.optional(v.string()),
+    /** The inbox the email was sent from; a sequence still on a retired inbox moves to it. */
+    inboxId: v.optional(v.string()),
   }),
   v.object({ kind: v.literal("captured") }),
 );

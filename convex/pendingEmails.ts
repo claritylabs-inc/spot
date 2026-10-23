@@ -11,10 +11,12 @@ import {
 } from "./lib/access";
 import dayjs from "dayjs";
 import type { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import { isOperatorEmailDraft } from "./lib/actionConfirmationFingerprint";
 import { extractEmailAddress } from "./lib/emailAddress";
 import { normalizeProcurementSubject } from "./lib/procurement";
+import { MAX_EMAIL_ATTACHMENTS, teamTargetProblem } from "./lib/teamEmailStore";
 import {
   cancelDraftOrPendingEmail,
   invalidateDraftConfirmations,
@@ -30,7 +32,7 @@ export const get = query({
     assertCanUseTenantAgent(access);
     const { orgId } = access;
     const pending = await ctx.db.get(args.id);
-    if (!pending || pending.orgId !== orgId || pending.operatorThreadId)
+    if (!pending || pending.orgId !== orgId || isOperatorEmailDraft(pending))
       return null;
     return pending;
   },
@@ -43,7 +45,7 @@ export const cancel = mutation({
     assertCanUseTenantAgent(access);
     const { orgId } = access;
     const pending = await ctx.db.get(args.id);
-    if (!pending || pending.orgId !== orgId || pending.operatorThreadId)
+    if (!pending || pending.orgId !== orgId || isOperatorEmailDraft(pending))
       throw new Error("Not found");
     if (!(await cancelDraftOrPendingEmail(ctx, args.id))) {
       throw new Error("Email already processed");
@@ -58,7 +60,7 @@ export const restoreAsDraft = mutation({
     assertCanUseTenantAgent(access);
     const { orgId } = access;
     const pending = await ctx.db.get(args.id);
-    if (!pending || pending.orgId !== orgId || pending.operatorThreadId)
+    if (!pending || pending.orgId !== orgId || isOperatorEmailDraft(pending))
       throw new Error("Not found");
     if (pending.status !== "cancelled") {
       throw new Error("Only cancelled emails can be restored");
@@ -161,6 +163,10 @@ export const updateDraftInternal = internalMutation({
     if (!existing || existing.status !== "draft") {
       throw new Error("Only draft emails can be updated");
     }
+    // A reply is approved for one exact target and message; it is previewed again, not edited.
+    if (existing.directReplyKey) {
+      throw new Error("A team inbox reply cannot be edited.");
+    }
     if (
       (orgId && existing.orgId && existing.orgId !== orgId) ||
       (procurementRequestId &&
@@ -199,6 +205,8 @@ export const updateDraftInternal = internalMutation({
       status: "draft",
       scheduledSendTime: 0,
       sendBlockedReason: args.sendBlockedReason,
+      // Any edit voids a browser reply's approval of the earlier content.
+      directApproval: undefined,
       explicitSendAuthorization: undefined,
       coiBatchAuthorization: undefined,
     });
@@ -211,6 +219,10 @@ export const updateDraftRecipientInternal = internalMutation({
     recipientEmail: v.string(),
   },
   handler: async (ctx, args) => {
+    const draft = await ctx.db.get(args.id);
+    if (draft?.directApproval) {
+      await ctx.db.patch(draft._id, { directApproval: undefined });
+    }
     return await updateDraftRecipient(ctx, args.id, args.recipientEmail);
   },
 });
@@ -404,7 +416,7 @@ export const listDraftsInternal = internalQuery({
         (row) =>
           row.orgId === args.orgId &&
           row.status === "draft" &&
-          !row.operatorThreadId,
+          !isOperatorEmailDraft(row),
       )
       .sort((a, b) => b._creationTime - a._creationTime);
     return drafts;
@@ -418,6 +430,10 @@ export const cancelInternal = internalMutation({
     // A claimed operator send may already have left; it can no longer be cancelled.
     if (pending && isOperatorEmailDraft(pending) && pending.status === "pending") {
       throw new Error("This email is already being sent.");
+    }
+    // A cancelled reply keeps no approval to send.
+    if (pending?.directApproval) {
+      await ctx.db.patch(pending._id, { directApproval: undefined });
     }
     return await cancelDraftOrPendingEmail(ctx, args.id);
   },
@@ -669,28 +685,18 @@ export const recordOperatorInboxSentInternal = internalMutation({
       .trim()
       .slice(0, THREAD_PREVIEW_CHARS);
 
-    // Files stay referenced: client files by storage within the client, the rest as unfiled.
-    const clientFileIds: Id<"clientFiles">[] = [];
-    const unfiled: NonNullable<Doc<"teamEmailMessages">["unfiledAttachments"]> =
-      [];
-    for (const attachment of pending.attachments ?? []) {
-      const file = pending.orgId
-        ? (
-            await ctx.db
-              .query("clientFiles")
-              .withIndex("storage", (q) => q.eq("fileId", attachment.fileId))
-              .take(10)
-          ).find((candidate) => candidate.orgId === pending.orgId)
-        : undefined;
-      if (file) clientFileIds.push(file._id);
-      else
-        unfiled.push({
-          storageId: attachment.fileId,
-          name: attachment.filename,
-          contentType: attachment.contentType,
-          size: attachment.size,
-        });
-    }
+    // The sent files are held on the message first (the draft's own storage, which is
+    // never deleted); a linked thread files them as client files right after this commit.
+    const held: NonNullable<Doc<"teamEmailMessages">["unfiledAttachments"]> = (
+      pending.attachments ?? []
+    )
+      .slice(0, MAX_EMAIL_ATTACHMENTS)
+      .map((attachment) => ({
+        storageId: attachment.fileId,
+        name: attachment.filename,
+        contentType: attachment.contentType,
+        size: attachment.size,
+      }));
 
     const intended = pending.teamEmailThreadId
       ? await ctx.db.get(pending.teamEmailThreadId)
@@ -787,11 +793,10 @@ export const recordOperatorInboxSentInternal = internalMutation({
         ...(!existingMessage.addressedRequestId && pending.procurementRequestId
           ? { addressedRequestId: pending.procurementRequestId }
           : {}),
-        ...(existingMessage.clientFileIds.length === 0 && clientFileIds.length
-          ? { clientFileIds }
-          : {}),
-        ...(!existingMessage.unfiledAttachments?.length && unfiled.length
-          ? { unfiledAttachments: unfiled }
+        ...(!existingMessage.unfiledAttachments?.length &&
+        !existingMessage.clientFileIds.length &&
+        held.length
+          ? { unfiledAttachments: held }
           : {}),
       });
     } else {
@@ -812,8 +817,8 @@ export const recordOperatorInboxSentInternal = internalMutation({
         bccAddresses: pending.bccAddresses ?? [],
         currentText: pending.emailBody,
         bodyHtml: pending.renderedHtml,
-        clientFileIds,
-        ...(unfiled.length ? { unfiledAttachments: unfiled } : {}),
+        clientFileIds: [],
+        ...(held.length ? { unfiledAttachments: held } : {}),
         receivedAt: now,
         createdAt: now,
       });
@@ -826,6 +831,34 @@ export const recordOperatorInboxSentInternal = internalMutation({
       sendBlockedReason: undefined,
       explicitSendAuthorization: undefined,
     });
+    // Files held by this thread's messages (this send and any merged mail) are
+    // filed outside this transaction by the canonical thread filing, so a
+    // filing problem can never undo or repeat the delivery record; held storage
+    // stays until it is filed. A thread with no link revision gets one now.
+    const target = await ctx.db.get(threadId);
+    if (
+      target?.clientOrgId &&
+      !(await teamTargetProblem(ctx, {
+        clientOrgId: target.clientOrgId,
+        requestId: target.requestId,
+      }))
+    ) {
+      const linkedAt = target.linkedAt ?? now;
+      if (target.linkedAt === undefined) {
+        await ctx.db.patch(target._id, { linkedAt });
+      }
+      await ctx.scheduler.runAfter(
+        0,
+        internal.procurementRequests.linkTeamEmailThreadBatchInternal,
+        {
+          threadId,
+          linkedAt,
+          clientOrgId: target.clientOrgId,
+          ...(target.requestId ? { requestId: target.requestId } : {}),
+          cursor: null,
+        },
+      );
+    }
     return { teamEmailThreadId: threadId };
   },
 });

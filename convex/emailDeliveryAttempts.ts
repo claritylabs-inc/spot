@@ -13,6 +13,7 @@ import {
 } from "./lib/actionConfirmationFingerprint";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { getEmailDeliveryMode } from "./lib/resend";
+import { replyContextProblem } from "./lib/teamEmailReply";
 import {
   SENDER_CHANGED_REASON,
   checkOperatorSendApproval,
@@ -93,7 +94,7 @@ export const markFailed = internalMutation({
 const OPERATOR_CLAIM_LEASE_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS_PER_FINGERPRINT = 100;
 const UNKNOWN_OUTCOME_REASON =
-  "Delivery outcome unknown — this email stays locked while Spot verifies with Resend, and is never sent again unless it is replaced by an edited email.";
+  "Delivery outcome unknown — this email stays locked while Spot checks Resend for delivery evidence. It will not be sent again.";
 
 type OperatorStage = NonNullable<Doc<"emailDeliveryAttempts">["operatorStage"]>;
 
@@ -153,10 +154,11 @@ export const getOperatorAttemptInternal = internalQuery({
   },
 });
 
+/** Without `confirmationId` the draft's own browser-reply approval is the grant. */
 export const claimOperatorInboxSendInternal = internalMutation({
   args: {
     pendingEmailId: v.id("pendingEmails"),
-    confirmationId: v.id("operatorAgentConfirmations"),
+    confirmationId: v.optional(v.id("operatorAgentConfirmations")),
   },
   handler: async (ctx, args) => {
     const draft = await ctx.db.get(args.pendingEmailId);
@@ -247,6 +249,8 @@ export const claimOperatorInboxSendInternal = internalMutation({
     if (!approval.approved) {
       return { kind: "rejected", reason: approval.reason } as const;
     }
+    const context = await replyContextProblem(ctx, draft, args.confirmationId);
+    if (context) return { kind: "rejected", reason: context } as const;
     await assertNoOperatorImpersonation(ctx, senderUserId);
 
     const attemptId = await ctx.db.insert("emailDeliveryAttempts", {
@@ -303,7 +307,6 @@ export const beginOperatorInboxSendingInternal = internalMutation({
       !attempt ||
       attempt.source !== "operator_inbox" ||
       !attempt.pendingEmailId ||
-      !attempt.operatorConfirmationId ||
       !attempt.senderUserId ||
       (attempt.operatorStage !== "claimed" &&
         attempt.operatorStage !== "draft_created")
@@ -327,26 +330,35 @@ export const beginOperatorInboxSendingInternal = internalMutation({
       pendingEmailId: draft._id,
     });
     if (!approval.approved) return refuse(approval.reason);
+    const context = await replyContextProblem(
+      ctx,
+      draft,
+      attempt.operatorConfirmationId,
+    );
+    if (context) return refuse(context);
     try {
       await assertNoOperatorImpersonation(ctx, attempt.senderUserId);
     } catch {
       return refuse("Email cannot be sent while impersonating a client.");
     }
-    const confirmation = await ctx.db.get(attempt.operatorConfirmationId);
-    const run =
-      confirmation?.payload.kind === "operator_tool_action"
-        ? await ctx.db.get(confirmation.payload.runId)
-        : null;
-    if (
-      !run ||
-      run.operatorUserId !== attempt.senderUserId ||
-      run.status !== "running" ||
-      run.cancellationRequestedAt
-    ) {
-      return refuse("The approving operator run is no longer active.");
-    }
-    if (run.emailReadOnly) {
-      return refuse("Email sends are disabled for this run.");
+    // A browser reply has no run; an agent send needs its live, writable run.
+    if (attempt.operatorConfirmationId) {
+      const confirmation = await ctx.db.get(attempt.operatorConfirmationId);
+      const run =
+        confirmation?.payload.kind === "operator_tool_action"
+          ? await ctx.db.get(confirmation.payload.runId)
+          : null;
+      if (
+        !run ||
+        run.operatorUserId !== attempt.senderUserId ||
+        run.status !== "running" ||
+        run.cancellationRequestedAt
+      ) {
+        return refuse("The approving operator run is no longer active.");
+      }
+      if (run.emailReadOnly) {
+        return refuse("Email sends are disabled for this run.");
+      }
     }
     await ctx.db.patch(attempt._id, { operatorStage: "sending" });
     return { ok: true } as const;

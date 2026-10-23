@@ -20,6 +20,7 @@ import {
   type EmailAttachmentMeta,
 } from "./emailDelivery";
 import { buildEmailSignature, getEmailAgentFromName } from "./emailIdentity";
+import { isOperatorEmailDraft } from "./actionConfirmationFingerprint";
 import { NoWriteInputError } from "./noWriteInputError";
 import { buildOperatorSignature } from "./teamEmail";
 import type { TeamThreadDraftContext } from "../operatorEmailDrafts";
@@ -502,7 +503,9 @@ export function buildEmailToolExecutors(
       // An operator revision may add a client to a draft that has none.
       (draft.orgId !== orgId && !(operator && draft.orgId === undefined)) ||
       (activeThreadId && draft.threadId !== activeThreadId) ||
-      draft.operatorThreadId !== operator?.threadId
+      draft.operatorThreadId !== operator?.threadId ||
+      // Operator drafts never belong to a client context, whichever org they name.
+      (!operator && isOperatorEmailDraft(draft))
     )
       throw new Error("Draft not found");
     if (draft.threadId) await assertThread(draft.threadId);

@@ -55,8 +55,19 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { createClientFileFromProcurementEmail } from "./lib/clientFiles";
-import { boundedClientFileHint } from "./lib/clientFileNames";
+import {
+  activeTeamThread,
+  adoptLegacyThread,
+  insertProcurementEmailFileItems,
+  isOutreachLocked,
+  storeProcurementEmailAttachments,
+  threadSummaryPatch,
+  type ProcurementEmailAttachment,
+  getTeamThreadDetails,
+  listTeamInbox,
+  teamTargetProblem,
+  type TeamThread,
+} from "./lib/teamEmailStore";
 import {
   requireOperator,
   requireOperatorForUser,
@@ -89,13 +100,15 @@ import {
   scheduleEmailThreadCompanyInformation,
 } from "./companyInformation";
 
+export { insertProcurementEmailFileItems, storeProcurementEmailAttachments };
+export type { ProcurementEmailAttachment };
+
 const MAX_REQUESTS = 100;
 const MAX_EMAIL_THREADS = 200;
 const MAX_TEXT = 20_000;
+const MAX_THREAD_PREVIEW_MESSAGES = 300;
 
-function activeEmailThread(thread: Doc<"procurementEmailThreads">) {
-  return !thread.archivedAt && !thread.deletedAt;
-}
+const activeEmailThread = activeTeamThread;
 
 const requestStatusValidator = v.union(
   v.literal("draft"),
@@ -124,7 +137,7 @@ const releaseValidator = v.union(
   v.literal("attached"),
 );
 
-const emailCategoryValidator = v.union(
+export const emailCategoryValidator = v.union(
   v.literal("broker"),
   v.literal("client"),
   v.literal("internal"),
@@ -188,7 +201,7 @@ function optionalDate(value: unknown) {
   return normalized;
 }
 
-async function requireClient(ctx: Ctx, clientOrgId: Id<"organizations">) {
+export async function requireClient(ctx: Ctx, clientOrgId: Id<"organizations">) {
   const client = await ctx.db.get(clientOrgId);
   if (!client || client.deletedAt !== undefined || client.type !== "client") {
     throw new Error("Client organization not found");
@@ -196,7 +209,7 @@ async function requireClient(ctx: Ctx, clientOrgId: Id<"organizations">) {
   return client;
 }
 
-async function requireRequest(ctx: Ctx, requestId: Id<"procurementRequests">) {
+export async function requireRequest(ctx: Ctx, requestId: Id<"procurementRequests">) {
   const request = await ctx.db.get(requestId);
   if (!request) throw new Error("Procurement request not found");
   requireCompanyRequest(request);
@@ -305,9 +318,11 @@ async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
         .withIndex("request", (index) => index.eq("requestId", request._id))
         .collect(),
       ctx.db
-        .query("procurementEmailThreads")
-        .withIndex("request", (index) => index.eq("requestId", request._id))
-        .collect(),
+        .query("teamEmailThreads")
+        .withIndex("by_requestId_and_archivedAt_and_latestMessageAt", (index) =>
+          index.eq("requestId", request._id).eq("archivedAt", undefined),
+        )
+        .take(MAX_EMAIL_THREADS),
     ]);
   return {
     ...request,
@@ -341,7 +356,7 @@ export type ProcurementTimelineEntry = {
  * Each entry is a stored record's own timestamp, never a reconstructed one. */
 function buildRequestTimeline(args: {
   auditEvents: Array<{ _id: string; summary: string; createdAt: number }>;
-  emailThreads: Doc<"procurementEmailThreads">[];
+  emailThreads: Doc<"teamEmailThreads">[];
   fileItems: Array<{
     _id: Id<"procurementFileItems">;
     label: string;
@@ -426,8 +441,10 @@ export async function getProcurementRequestDetails(
       .order("desc")
       .collect(),
     ctx.db
-      .query("procurementEmailThreads")
-      .withIndex("request", (index) => index.eq("requestId", requestId))
+      .query("teamEmailThreads")
+      .withIndex("by_requestId_and_latestMessageAt", (index) =>
+        index.eq("requestId", requestId),
+      )
       .order("desc")
       .take(50),
     ctx.db
@@ -1806,133 +1823,68 @@ export async function listProcurementEmailThreads(
       throw new Error("Procurement request does not belong to this client");
     }
     const rows = await ctx.db
-      .query("procurementEmailThreads")
-      .withIndex("request", (index) => index.eq("requestId", request._id))
+      .query("teamEmailThreads")
+      .withIndex("by_requestId_and_archivedAt_and_latestMessageAt", (index) =>
+        index.eq("requestId", request._id).eq("archivedAt", undefined),
+      )
       .order("desc")
       .take(MAX_EMAIL_THREADS);
     return rows.filter(activeEmailThread).slice(0, limit);
   }
   const rows = await ctx.db
-    .query("procurementEmailThreads")
-    .withIndex("organization", (index) =>
-      index.eq("clientOrgId", args.clientOrgId),
+    .query("teamEmailThreads")
+    .withIndex("by_clientOrgId_and_archivedAt_and_latestMessageAt", (index) =>
+      index.eq("clientOrgId", args.clientOrgId).eq("archivedAt", undefined),
     )
     .order("desc")
     .take(MAX_EMAIL_THREADS);
   return rows.filter(activeEmailThread).slice(0, limit);
 }
 
+/** Thread detail for operator tools and the Inbox reader; null when missing, deleted or outside `expectedRequestId`. */
 export async function getProcurementEmailThreadDetails(
-  ctx: Ctx,
-  emailThreadId: Id<"procurementEmailThreads">,
+  ctx: QueryCtx,
+  emailThreadId: Id<"teamEmailThreads">,
   expectedRequestId?: Id<"procurementRequests">,
+  viewerUserId?: Id<"users">,
+  includeArchived?: boolean,
 ) {
-  const thread = await ctx.db.get(emailThreadId);
-  if (
-    !thread ||
-    thread.deletedAt ||
-    (expectedRequestId &&
-      (thread.requestId !== expectedRequestId || thread.archivedAt))
-  ) return null;
-  const [request, addressedRequest, messages] = await Promise.all([
-    requireRequest(ctx, thread.requestId),
-    requireRequest(ctx, thread.addressedRequestId),
-    ctx.db
-      .query("procurementEmailMessages")
-      .withIndex("thread", (index) => index.eq("threadId", thread._id))
-      .collect(),
-  ]);
-  // The outreach inbox address marks which messages Spot sent.
-  const sequence = thread.resendThreadId
-    ? await ctx.db
-        .query("procurementOutreachSequences")
-        .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", thread.resendThreadId))
-        .first()
-    : null;
-  const outreachInbox = sequence?.inboxId
-    ? await ctx.db
-        .query("operatorOutreachInboxes")
-        .withIndex("by_inboxId", (q) => q.eq("inboxId", sequence.inboxId!))
-        .first()
-    : null;
-  const ownSequence = sequence?.requestId === thread.requestId ? sequence : null;
-  const pendingSteps = ownSequence
-    ? (
-        await ctx.db
-          .query("procurementOutreachSteps")
-          .withIndex("by_sequenceId_and_index", (q) => q.eq("sequenceId", ownSequence._id))
-          .take(10)
-      ).filter((step) => step.status === "scheduled" || step.status === "sending")
-    : [];
-  const hydratedMessages = await Promise.all(
-    messages.map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
-      ...message,
-      files: await Promise.all(
-        message.clientFileIds.map(async (clientFileId) => {
-          const file = await ctx.db.get(clientFileId);
-          return file && !file.archivedAt && !file.deletedAt
-            ? {
-                clientFileId,
-                name: file.name,
-                contentType: file.contentType,
-                size: file.size,
-                url: await ctx.storage.getUrl(file.fileId),
-              }
-            : null;
-        }),
-      ),
-    })),
-  );
-  return {
-    thread,
-    request: { requestId: request._id, title: request.title },
-    addressedRequest: {
-      requestId: addressedRequest._id,
-      title: addressedRequest.title,
-      forwardingAddress: requestForwardingAddress(addressedRequest),
-    },
-    messages: hydratedMessages,
-    outboundAddress: outreachInbox
-      ? normalizeProcurementEmail(outreachInbox.emailAddress)
-      : null,
-    canReply: Boolean(outreachInbox && ownSequence),
-    followUps: ownSequence
-      ? {
-          sequenceId: ownSequence._id,
-          audience: ownSequence.audience ?? ("provider" as const),
-          status: ownSequence.status,
-          stopReason: ownSequence.stopReason ?? null,
-          recipient: ownSequence.recipient.name ?? ownSequence.recipient.email,
-          remaining: pendingSteps.length,
-          nextDueAt: pendingSteps[0]?.dueAt ?? null,
-        }
-      : null,
-  };
+  return await getTeamThreadDetails(ctx, {
+    threadId: emailThreadId,
+    requestId: expectedRequestId,
+    viewerUserId,
+    includeArchived,
+  });
 }
 
+/** Filing preview for a linked conversation; null when it is missing, deleted or not linked to a request yet. */
 export async function previewProcurementEmailReconciliation(
   ctx: Ctx,
-  emailThreadId: Id<"procurementEmailThreads">,
+  emailThreadId: Id<"teamEmailThreads">,
   selectedOutreachId?: Id<"procurementBrokerOutreaches">,
 ) {
   const thread = await ctx.db.get(emailThreadId);
-  if (!thread || thread.deletedAt)
-    throw new Error("Procurement email thread not found");
-  const [request, messages, outreaches, proposals] = await Promise.all([
-    requireRequest(ctx, thread.requestId),
+  if (!thread || thread.deletedAt || !thread.requestId) return null;
+  const threadRequestId = thread.requestId;
+  const [request, scanned, outreaches, proposals] = await Promise.all([
+    requireRequest(ctx, threadRequestId),
     ctx.db
-      .query("procurementEmailMessages")
-      .withIndex("thread", (query) => query.eq("threadId", thread._id))
-      .collect(),
+      .query("teamEmailMessages")
+      .withIndex("by_threadId_and_receivedAt", (query) => query.eq("threadId", thread._id))
+      .take(MAX_THREAD_PREVIEW_MESSAGES + 1),
     ctx.db
       .query("procurementBrokerOutreaches")
-      .withIndex("request", (query) => query.eq("requestId", thread.requestId))
+      .withIndex("request", (query) => query.eq("requestId", threadRequestId))
       .collect(),
     ctx.db
       .query("procurementProposals")
-      .withIndex("request", (query) => query.eq("requestId", thread.requestId))
+      .withIndex("request", (query) => query.eq("requestId", threadRequestId))
       .collect(),
   ]);
+  // A bounded read never stands for the whole thread: past the cap the preview
+  // says so and offers no filing, because the file list would be incomplete.
+  const messagesTruncated = scanned.length > MAX_THREAD_PREVIEW_MESSAGES;
+  const messages = scanned.slice(0, MAX_THREAD_PREVIEW_MESSAGES);
   const clientFileIds = [
     ...new Set(messages.flatMap((message) => message.clientFileIds)),
   ];
@@ -2027,7 +1979,7 @@ export async function previewProcurementEmailReconciliation(
   );
   // `fileEmailQuote` refuses archived threads, so the preview must not offer
   // filing from one either.
-  const filable = !thread.archivedAt;
+  const filable = !thread.archivedAt && !messagesTruncated;
   return {
     emailThreadId: thread._id,
     filable,
@@ -2037,6 +1989,7 @@ export async function previewProcurementEmailReconciliation(
     category: thread.category,
     participantEmails: thread.participantEmails,
     messageCount: messages.length,
+    messagesTruncated,
     files,
     unfiledFiles,
     selectedOutreachId: selectedOutreach?._id ?? null,
@@ -2080,82 +2033,42 @@ export async function previewProcurementEmailReconciliation(
   };
 }
 
-/** Request-bound inbox projection; never reads the operator's other conversations. */
+/** Request-bound inbox projection; the team inbox reader scoped to one request. */
 export const getInbox = query({
   args: { requestId: v.id("procurementRequests"), paginationOpts: paginationOptsValidator },
   handler: async (ctx, { requestId, paginationOpts }) => {
-    await requireOperator(ctx);
+    const operator = await requireOperator(ctx);
     await requireRequest(ctx, requestId);
-    const result = await ctx.db
-      .query("procurementEmailThreads")
-      .withIndex("request", (q) => q.eq("requestId", requestId))
-      .order("desc")
-      .paginate({ ...paginationOpts, numItems: Math.max(1, Math.min(40, paginationOpts.numItems)) });
-    const threads = await Promise.all(
-      result.page.filter(activeEmailThread).map(async (thread) => {
-        const [latest, candidateSequence] = await Promise.all([
-          ctx.db.query("procurementEmailMessages")
-            .withIndex("thread", (q) => q.eq("threadId", thread._id))
-            .order("desc").first(),
-          thread.resendThreadId
-            ? ctx.db.query("procurementOutreachSequences")
-                .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", thread.resendThreadId))
-                .order("desc").first()
-            : null,
-        ]);
-        const sequence = candidateSequence?.requestId === requestId &&
-          candidateSequence.procurementEmailThreadId === thread._id
-          ? candidateSequence : null;
-        const inbox = sequence?.inboxId
-          ? await ctx.db.query("operatorOutreachInboxes")
-              .withIndex("by_inboxId", (q) => q.eq("inboxId", sequence.inboxId!))
-              .first()
-          : null;
-        const latestDirection = latest && inbox
-          ? normalizeProcurementEmail(latest.fromEmail) === normalizeProcurementEmail(inbox.emailAddress)
-            ? "outbound" as const : "inbound" as const
-          : "unknown" as const;
-        return {
-          _id: thread._id,
-          subject: thread.subject,
-          category: thread.category,
-          participantEmails: thread.participantEmails,
-          latestMessageAt: thread.latestMessageAt,
-          messageCount: thread.messageCount,
-          source: thread.resendThreadId ? "resend" as const : "forwarded" as const,
-          latestDirection,
-          needsReply: latestDirection === "inbound" && sequence !== null &&
-            ["responded", "stopped", "failed"].includes(sequence.status) && sequence.stopReason !== "bounced",
-          sequenceStatus: sequence?.status ?? null,
-          preview: latest?.currentText.replace(/\s+/g, " ").trim().slice(0, 240) ?? "",
-          fromName: latest?.fromName ?? null,
-          fromEmail: latest?.fromEmail ?? null,
-          // Mail we sent last is listed by who it went to, as in a sent folder.
-          counterpart: latestDirection === "outbound" && sequence
-            ? `To ${sequence.recipient.name ?? sequence.recipient.email}`
-            : null,
-        };
-      }),
-    );
-    return { ...result, page: threads };
+    return await listTeamInbox(ctx, {
+      viewerUserId: operator.userId,
+      requestId,
+      paginationOpts,
+    });
   },
 });
 
 export const getEmailThread = query({
   args: {
-    emailThreadId: v.id("procurementEmailThreads"),
+    emailThreadId: v.id("teamEmailThreads"),
     requestId: v.optional(v.id("procurementRequests")),
+    includeArchived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireOperator(ctx);
+    const operator = await requireOperator(ctx);
     if (args.requestId) await requireRequest(ctx, args.requestId);
-    return await getProcurementEmailThreadDetails(ctx, args.emailThreadId, args.requestId);
+    return await getProcurementEmailThreadDetails(
+      ctx,
+      args.emailThreadId,
+      args.requestId,
+      operator.userId,
+      args.includeArchived,
+    );
   },
 });
 
 export const previewEmailReconciliation = query({
   args: {
-    emailThreadId: v.id("procurementEmailThreads"),
+    emailThreadId: v.id("teamEmailThreads"),
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
   },
   handler: async (ctx, args) => {
@@ -2168,137 +2081,207 @@ export const previewEmailReconciliation = query({
   },
 });
 
+/** Whether the thread's own request may be changed: only linked, non-outreach threads can move. */
+async function moveTeamThreadRequest(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    thread: TeamThread;
+    nextRequest: Doc<"procurementRequests">;
+  },
+) {
+  const { thread, nextRequest } = args;
+  const now = dayjs().valueOf();
+  const movedClientFileIds = new Set<Id<"clientFiles">>();
+  // Every message moves or nothing does: refuse a thread past the bound before any write.
+  const sized = await ctx.db
+    .query("teamEmailMessages")
+    .withIndex("by_threadId_and_receivedAt", (index) => index.eq("threadId", thread._id))
+    .take(MAX_MOVE_MESSAGES + 1);
+  if (sized.length > MAX_MOVE_MESSAGES)
+    throw new Error(
+      `Moving a conversation supports at most ${MAX_MOVE_MESSAGES} messages; this one has more.`,
+    );
+  for (const message of sized) {
+    const fileItems = await ctx.db
+      .query("procurementFileItems")
+      .withIndex("email", (index) => index.eq("sourceEmailMessageId", message._id))
+      .take(MAX_EMAIL_FILE_ITEMS);
+    for (const fileItem of fileItems) {
+      if (fileItem.clientFileId) movedClientFileIds.add(fileItem.clientFileId);
+      await ctx.db.patch(fileItem._id, {
+        requestId: nextRequest._id,
+        updatedByUserId: args.operatorUserId,
+        updatedAt: now,
+      });
+    }
+  }
+  for (const clientFileId of movedClientFileIds) {
+    await scheduleClientFileCompanyInformation(ctx, clientFileId);
+  }
+}
+
 export async function updateProcurementEmailThreadByOperator(
   ctx: MutationCtx,
   args: {
     operatorUserId: Id<"users">;
-    emailThreadId: Id<"procurementEmailThreads">;
+    emailThreadId: Id<"teamEmailThreads">;
     category?: ProcurementEmailCategory;
     requestId?: Id<"procurementRequests">;
     source: "operator" | "agent" | "workspace_scan";
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
-  const thread = await ctx.db.get(args.emailThreadId);
+  let thread = await ctx.db.get(args.emailThreadId);
   if (!thread || thread.deletedAt) {
     throw new Error("Procurement email thread not found");
   }
-  const currentRequest = await requireRequest(ctx, thread.requestId);
-  const patch: Partial<Doc<"procurementEmailThreads">> = {
-    updatedAt: dayjs().valueOf(),
-  };
+  const fields: string[] = [];
+  const patch: Partial<TeamThread> = { updatedAt: dayjs().valueOf() };
+  if (args.requestId !== undefined && args.requestId !== thread.requestId) {
+    if (isOutreachLocked(thread)) {
+      throw new Error("Provider outreach conversations stay with their originating request");
+    }
+    const nextRequest = await requireRequest(ctx, args.requestId);
+    if (!thread.requestId) {
+      // Unlinked or client-only: this is a link, with its own audit and filing.
+      await linkTeamEmailThreadByOperator(ctx, {
+        operatorUserId: args.operatorUserId,
+        threadId: thread._id,
+        requestId: nextRequest._id,
+        source: args.source,
+      });
+      thread = (await ctx.db.get(thread._id))!;
+    } else {
+      if (nextRequest.clientOrgId !== thread.clientOrgId) {
+        throw new Error("Email thread can move only within the same client");
+      }
+      patch.requestId = nextRequest._id;
+      // A new link revision: a filing continuation still running for the old
+      // request stops, and filing restarts for the new one (held uploads included).
+      patch.linkedAt = patch.updatedAt;
+      patch.linkedByUserId = args.operatorUserId;
+      await moveTeamThreadRequest(ctx, {
+        operatorUserId: args.operatorUserId,
+        thread,
+        nextRequest,
+      });
+    }
+    fields.push("requestId");
+  }
   if (args.category !== undefined) {
     patch.category = args.category;
     patch.categorySource = "operator";
     patch.categoryReason = `Set manually through ${args.source}`;
+    fields.push("category");
   }
-  if (args.requestId !== undefined && args.requestId !== thread.requestId) {
-    if (thread.resendThreadId) {
-      throw new Error("Provider outreach conversations stay with their originating request");
-    }
-    const nextRequest = await requireRequest(ctx, args.requestId);
-    if (nextRequest.clientOrgId !== thread.clientOrgId) {
-      throw new Error("Email thread can move only within the same client");
-    }
-    patch.requestId = nextRequest._id;
-    const messages = await ctx.db
-      .query("procurementEmailMessages")
-      .withIndex("thread", (index) => index.eq("threadId", thread._id))
-      .collect();
-    const movedClientFileIds = new Set<Id<"clientFiles">>();
-    for (const message of messages) {
-      const fileItems = await ctx.db
-        .query("procurementFileItems")
-        .withIndex("email", (index) =>
-          index.eq("sourceEmailMessageId", message._id),
-        )
-        .collect();
-      for (const fileItem of fileItems) {
-        if (fileItem.clientFileId) {
-          movedClientFileIds.add(fileItem.clientFileId);
-        }
-        await ctx.db.patch(fileItem._id, {
-          requestId: nextRequest._id,
-          updatedByUserId: args.operatorUserId,
-          updatedAt: dayjs().valueOf(),
-        });
-      }
-    }
-    for (const clientFileId of movedClientFileIds) {
-      await scheduleClientFileCompanyInformation(ctx, clientFileId);
-    }
-  }
-  const fields = Object.keys(patch).filter((field) => field !== "updatedAt");
   if (fields.length === 0) throw new Error("No email thread fields changed");
-  await ctx.db.patch(thread._id, patch);
-  if (patch.requestId) {
-    await scheduleEmailThreadCompanyInformation(ctx, thread._id);
+  const previousRequestId = thread.requestId;
+  if (patch.requestId || patch.category) await ctx.db.patch(thread._id, patch);
+  if (patch.requestId && thread.clientOrgId && patch.linkedAt) {
+    await fileLinkedThreadBatch(ctx, {
+      threadId: thread._id,
+      linkedAt: patch.linkedAt,
+      clientOrgId: thread.clientOrgId,
+      requestId: patch.requestId,
+      cursor: null,
+    });
   }
-  await writeOperatorAudit(ctx, {
-    operatorUserId: args.operatorUserId,
-    type: "setup_write",
-    targetOrgId: thread.clientOrgId,
-    summary: `Updated procurement email thread ${thread.subject}`,
-    metadata: {
-      domain: "procurement",
-      requestId: patch.requestId ?? currentRequest._id,
-      emailThreadId: thread._id,
-      previousRequestId: currentRequest._id,
-      nextRequestId: patch.requestId ?? currentRequest._id,
-      fields,
-      source: args.source,
-    },
-  });
+  // A link audits itself; a move or category change is audited here.
+  if (patch.requestId || patch.category)
+    await writeOperatorAudit(ctx, {
+      operatorUserId: args.operatorUserId,
+      type: "setup_write",
+      targetOrgId: thread.clientOrgId,
+      summary: `Updated procurement email thread ${thread.subject}`,
+      metadata: {
+        domain: "procurement",
+        requestId: patch.requestId ?? thread.requestId,
+        emailThreadId: thread._id,
+        previousRequestId,
+        nextRequestId: patch.requestId ?? thread.requestId,
+        fields,
+        source: args.source,
+      },
+    });
   return { emailThreadId: thread._id, fields };
 }
 
-/** Inbox bulk archive/unarchive. A later inbound message unarchives a conversation. */
+/**
+ * Archives or restores up to 100 conversations, in or out of any scope. With a
+ * `requestId` every conversation must belong to that request. A later inbound
+ * message unarchives a conversation.
+ */
+export async function setTeamThreadsArchivedByOperator(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    emailThreadIds: Id<"teamEmailThreads">[];
+    archived: boolean;
+    requestId?: Id<"procurementRequests">;
+  },
+) {
+  await requireDirectOperatorWrite(ctx, args.operatorUserId);
+  const request = args.requestId ? await requireRequest(ctx, args.requestId) : null;
+  const ids = [...new Set(args.emailThreadIds)];
+  if (!ids.length || ids.length > 100) throw new Error("Select 1 to 100 conversations");
+  const now = dayjs().valueOf();
+  const changedThreads: TeamThread[] = [];
+  for (const emailThreadId of ids) {
+    const thread = await ctx.db.get(emailThreadId);
+    if (!thread || thread.deletedAt || (request && thread.requestId !== request._id))
+      throw new Error(
+        request ? "Conversation not found on this request" : "Conversation not found",
+      );
+    if (Boolean(thread.archivedAt) === args.archived) continue;
+    await ctx.db.patch(thread._id, {
+      archivedAt: args.archived ? now : undefined,
+      archivedByUserId: args.archived ? args.operatorUserId : undefined,
+      updatedAt: now,
+    });
+    changedThreads.push(thread);
+  }
+  if (changedThreads.length) {
+    const clientOrgIds = [
+      ...new Set(
+        changedThreads.flatMap((thread) => (thread.clientOrgId ? [thread.clientOrgId] : [])),
+      ),
+    ];
+    await writeOperatorAudit(ctx, {
+      operatorUserId: args.operatorUserId,
+      type: "setup_write",
+      targetOrgId: request?.clientOrgId ?? (clientOrgIds.length === 1 ? clientOrgIds[0] : undefined),
+      summary: `${args.archived ? "Archived" : "Restored"} ${changedThreads.length} conversation${changedThreads.length === 1 ? "" : "s"}${request ? ` on ${request.title}` : ""}`,
+      metadata: {
+        domain: "procurement",
+        operation: args.archived ? "archive_email_threads" : "unarchive_email_threads",
+        ...(request ? { requestId: request._id } : {}),
+        emailThreadIds: changedThreads.map((thread) => thread._id),
+      },
+    });
+  }
+  return { changed: changedThreads.length };
+}
+
+/** Inbox bulk archive/unarchive. */
 export const setEmailThreadsArchived = mutation({
   args: {
-    requestId: v.id("procurementRequests"),
-    emailThreadIds: v.array(v.id("procurementEmailThreads")),
+    requestId: v.optional(v.id("procurementRequests")),
+    emailThreadIds: v.array(v.id("teamEmailThreads")),
     archived: v.boolean(),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
-    await requireDirectOperatorWrite(ctx, operator.userId);
-    const request = await requireRequest(ctx, args.requestId);
-    if (!args.emailThreadIds.length || args.emailThreadIds.length > 100)
-      throw new Error("Select 1 to 100 conversations");
-    const now = dayjs().valueOf();
-    let changed = 0;
-    for (const emailThreadId of new Set(args.emailThreadIds)) {
-      const thread = await ctx.db.get(emailThreadId);
-      if (!thread || thread.deletedAt || thread.requestId !== request._id)
-        throw new Error("Conversation not found on this request");
-      if (Boolean(thread.archivedAt) === args.archived) continue;
-      await ctx.db.patch(thread._id, {
-        archivedAt: args.archived ? now : undefined,
-        archivedByUserId: args.archived ? operator.userId : undefined,
-        updatedAt: now,
-      });
-      changed += 1;
-    }
-    if (changed)
-      await writeOperatorAudit(ctx, {
-        operatorUserId: operator.userId,
-        type: "setup_write",
-        targetOrgId: request.clientOrgId,
-        summary: `${args.archived ? "Archived" : "Restored"} ${changed} conversation${changed === 1 ? "" : "s"} on ${request.title}`,
-        metadata: {
-          domain: "procurement",
-          operation: args.archived ? "archive_email_threads" : "unarchive_email_threads",
-          requestId: request._id,
-          emailThreadIds: args.emailThreadIds,
-        },
-      });
-    return { changed };
+    return await setTeamThreadsArchivedByOperator(ctx, {
+      operatorUserId: operator.userId,
+      ...args,
+    });
   },
 });
 
 export const updateEmailThread = mutation({
   args: {
-    emailThreadId: v.id("procurementEmailThreads"),
+    emailThreadId: v.id("teamEmailThreads"),
     category: v.optional(emailCategoryValidator),
     requestId: v.optional(v.id("procurementRequests")),
   },
@@ -2311,17 +2294,6 @@ export const updateEmailThread = mutation({
     });
   },
 });
-
-async function emailThreadClientFileIds(
-  ctx: QueryCtx | MutationCtx,
-  emailThreadId: Id<"procurementEmailThreads">,
-) {
-  const messages = await ctx.db
-    .query("procurementEmailMessages")
-    .withIndex("thread", (index) => index.eq("threadId", emailThreadId))
-    .collect();
-  return [...new Set(messages.flatMap((message) => message.clientFileIds))];
-}
 
 export const resolveInboxInternal = internalQuery({
   args: { inboxToken: v.string() },
@@ -2350,85 +2322,277 @@ const inboundAttachmentValidator = v.object({
   size: v.number(),
 });
 
-export type ProcurementEmailAttachment = {
-  fileId: Id<"_storage">;
-  filename: string;
-  contentType: string;
-  size: number;
-};
-
-const MAX_EMAIL_ATTACHMENTS = 20;
-
 /**
- * Stores uploaded email attachments as org-owned client files (reusing identical
- * content), schedules naming and company-information extraction for new files,
- * and returns the client file ids in attachment order, at most 20.
- *
- * Authorization is the caller's: resolve the request with `requireRequest` (company
- * request, live client) and pass that request's `clientOrgId`. Call
- * `insertProcurementEmailFileItems` with the resulting ids once the message row exists.
+ * During the cutover window a reply can arrive for a conversation that has not
+ * been copied yet. Match it against the legacy tables with the same rules and
+ * adopt (copy) that thread so no second team thread is created for it.
  */
-export async function storeProcurementEmailAttachments(
+async function adoptMatchingLegacyThread(
   ctx: MutationCtx,
   args: {
-    clientOrgId: Id<"organizations">;
-    attachments: ProcurementEmailAttachment[];
-    /** Subject of the carrying email; bounds the file-naming hint. */
-    subject: string;
+    request: Awaited<ReturnType<typeof requireRequest>>;
+    referenceIds: string[];
+    normalizedSubject: string;
+    participants: string[];
   },
-): Promise<Id<"clientFiles">[]> {
-  const storedClientFiles = await Promise.all(
-    args.attachments.slice(0, MAX_EMAIL_ATTACHMENTS).map((attachment) =>
-      createClientFileFromProcurementEmail(ctx, {
-        orgId: args.clientOrgId,
-        fileId: attachment.fileId,
-        originalName: attachment.filename,
-        contentType: attachment.contentType,
-        size: attachment.size,
-      }),
-    ),
-  );
-  for (const stored of storedClientFiles) {
-    if (!stored.created) continue;
-    await ctx.scheduler.runAfter(0, internal.actions.clientFileNaming.infer, {
-      clientFileId: stored.clientFileId,
-      expectedUpdatedAt: stored.expectedUpdatedAt,
-      hint: boundedClientFileHint(args.subject),
-    });
-    await scheduleClientFileCompanyInformation(ctx, stored.clientFileId);
+): Promise<TeamThread | null> {
+  for (const reference of args.referenceIds) {
+    const parent = await ctx.db
+      .query("procurementEmailMessages")
+      .withIndex("message", (index) => index.eq("messageId", reference))
+      .first();
+    if (!parent) continue;
+    const candidate = await ctx.db.get(parent.threadId);
+    if (
+      candidate &&
+      candidate.clientOrgId === args.request.clientOrgId &&
+      !candidate.deletedAt &&
+      (!candidate.resendThreadId || candidate.requestId === args.request._id)
+    )
+      return (await adoptLegacyThread(ctx, candidate._id))?.thread ?? null;
   }
-  return storedClientFiles.map((stored) => stored.clientFileId);
+  if (!args.normalizedSubject) return null;
+  const candidates = await ctx.db
+    .query("procurementEmailThreads")
+    .withIndex("subject", (index) =>
+      index
+        .eq("clientOrgId", args.request.clientOrgId)
+        .eq("normalizedSubject", args.normalizedSubject),
+    )
+    .order("desc")
+    .take(20);
+  const match = candidates.find(
+    (candidate) =>
+      !candidate.deletedAt &&
+      candidate.addressedRequestId === args.request._id &&
+      procurementParticipantsOverlap(candidate.participantEmails, args.participants),
+  );
+  return match ? ((await adoptLegacyThread(ctx, match._id))?.thread ?? null) : null;
+}
+
+const MAX_LINK_BATCH = 25;
+const MAX_MOVE_MESSAGES = 300;
+const MAX_EMAIL_FILE_ITEMS = 40;
+
+async function emailThreadClientFileIds(ctx: QueryCtx | MutationCtx, emailThreadId: Id<"teamEmailThreads">) {
+  const ids = new Set<Id<"clientFiles">>();
+  for await (const message of ctx.db
+    .query("teamEmailMessages")
+    .withIndex("by_threadId_and_receivedAt", (index) => index.eq("threadId", emailThreadId)))
+    for (const clientFileId of message.clientFileIds) ids.add(clientFileId);
+  return [...ids];
 }
 
 /**
- * Lists stored email attachments as request file items tied to their source message.
- * Same caller-owned authorization as `storeProcurementEmailAttachments`;
- * `requestId` must belong to `clientOrgId`.
+ * Attaches a client, and optionally one of its requests, to a team thread and
+ * files the held attachments. Derives the client from `requestId`; a `clientOrgId`
+ * that disagrees is rejected and at least one target is required. Outreach
+ * conversations stay with their request, and a linked conversation is never
+ * moved to another client. Callers authorize the operator (this checks direct
+ * write access, so impersonation is read-only). Filing is bounded: when the
+ * thread has more messages than one batch, `linkTeamEmailThreadBatchInternal`
+ * continues and re-checks the link revision so a changed link cannot move files
+ * into another client. Held storage is reused by the client files it becomes;
+ * it is deleted only when identical content already exists for the client.
  */
-export async function insertProcurementEmailFileItems(
+export async function linkTeamEmailThreadByOperator(
   ctx: MutationCtx,
   args: {
-    requestId: Id<"procurementRequests">;
-    clientOrgId: Id<"organizations">;
-    emailMessageId: Id<"procurementEmailMessages">;
-    clientFileIds: Id<"clientFiles">[];
-    now: number;
+    operatorUserId: Id<"users">;
+    threadId: Id<"teamEmailThreads">;
+    requestId?: Id<"procurementRequests">;
+    clientOrgId?: Id<"organizations">;
+    source: "operator" | "agent" | "workspace_scan" | "suggestion";
   },
 ) {
-  for (const clientFileId of args.clientFileIds) {
-    const file = await ctx.db.get(clientFileId);
-    if (!file) continue;
-    await ctx.db.insert("procurementFileItems", {
-      requestId: args.requestId,
-      clientOrgId: args.clientOrgId,
-      clientFileId,
-      sourceEmailMessageId: args.emailMessageId,
-      label: file.name,
-      createdAt: args.now,
-      updatedAt: args.now,
-    });
-  }
+  await requireDirectOperatorWrite(ctx, args.operatorUserId);
+  const thread = await ctx.db.get(args.threadId);
+  if (!thread || thread.deletedAt) throw new Error("Conversation not found");
+  if (!args.requestId && !args.clientOrgId)
+    throw new Error("Choose a client or request to link this conversation to");
+  const request = args.requestId ? await requireRequest(ctx, args.requestId) : null;
+  if (request && args.clientOrgId && request.clientOrgId !== args.clientOrgId)
+    throw new Error("Request does not belong to that client");
+  const clientOrgId = request?.clientOrgId ?? args.clientOrgId!;
+  await requireClient(ctx, clientOrgId);
+  if (isOutreachLocked(thread))
+    throw new Error("Provider outreach conversations stay with their originating request");
+  if (thread.clientOrgId && thread.clientOrgId !== clientOrgId)
+    throw new Error("Email thread can move only within the same client");
+  if (thread.requestId && request && thread.requestId !== request._id)
+    throw new Error("Use the request move for a conversation that already has a request");
+  if (thread.clientOrgId === clientOrgId && (!request || thread.requestId === request._id))
+    return { threadId: thread._id, linked: false as const };
+
+  const now = dayjs().valueOf();
+  const participants = thread.participantEmails;
+  const [brokerEmails, clientEmails, operatorEmails] = await linkedParticipantGroups(ctx, {
+    clientOrgId,
+    requestId: request?._id,
+  });
+  const inferred = inferProcurementEmailCategory({
+    participantEmails: participants,
+    brokerEmails,
+    clientEmails,
+    operatorEmails,
+  });
+  await ctx.db.patch(thread._id, {
+    clientOrgId,
+    ...(request
+      ? { requestId: request._id, addressedRequestId: thread.addressedRequestId ?? request._id }
+      : {}),
+    linkedAt: now,
+    linkedByUserId: args.operatorUserId,
+    linkSuggestion: undefined,
+    ...(thread.categorySource === "auto"
+      ? { category: inferred.category, categoryReason: inferred.reason }
+      : {}),
+    updatedAt: now,
+  });
+  await writeOperatorAudit(ctx, {
+    operatorUserId: args.operatorUserId,
+    type: "setup_write",
+    targetOrgId: clientOrgId,
+    summary: `Linked email conversation ${thread.subject} to ${request ? request.title : "the client"}`,
+    metadata: {
+      domain: "procurement",
+      operation: "link_team_email_thread",
+      ...(request ? { requestId: request._id } : {}),
+      emailThreadId: thread._id,
+      clientOrgId,
+      source: args.source,
+    },
+  });
+  await fileLinkedThreadBatch(ctx, {
+    threadId: thread._id,
+    linkedAt: now,
+    clientOrgId,
+    requestId: request?._id,
+    cursor: null,
+  });
+  return { threadId: thread._id, linked: true as const };
 }
+
+async function linkedParticipantGroups(
+  ctx: QueryCtx | MutationCtx,
+  args: { clientOrgId: Id<"organizations">; requestId?: Id<"procurementRequests"> },
+) {
+  const [outreaches, memberships, operatorProfiles] = await Promise.all([
+    args.requestId
+      ? ctx.db
+          .query("procurementBrokerOutreaches")
+          .withIndex("request", (index) => index.eq("requestId", args.requestId!))
+          .take(200)
+      : [],
+    ctx.db
+      .query("orgMemberships")
+      .withIndex("organization", (index) => index.eq("orgId", args.clientOrgId))
+      .take(200),
+    ctx.db
+      .query("operatorProfiles")
+      .withIndex("status", (index) => index.eq("status", "active"))
+      .take(200),
+  ]);
+  const emailOf = async (userId: Id<"users">) => (await ctx.db.get(userId))?.email;
+  const compact = (values: (string | undefined)[]) =>
+    values.filter((email): email is string => Boolean(email));
+  return [
+    compact(outreaches.map((outreach) => outreach.contactEmail)),
+    compact(await Promise.all(memberships.map((membership) => emailOf(membership.userId)))),
+    compact(await Promise.all(operatorProfiles.map((profile) => emailOf(profile.userId)))),
+  ] as const;
+}
+
+/**
+ * Files one batch of a linked thread's messages: held uploads become client
+ * files, then every attached client file is listed on the request when there is
+ * one. A batch resumes only while the thread still carries the same link
+ * revision (`linkedAt`) and client, so a re-link between batches stops the
+ * stale continuation instead of filing into the wrong client.
+ */
+async function fileLinkedThreadBatch(
+  ctx: MutationCtx,
+  args: {
+    threadId: Id<"teamEmailThreads">;
+    linkedAt: number;
+    clientOrgId: Id<"organizations">;
+    requestId?: Id<"procurementRequests">;
+    cursor: string | null;
+  },
+) {
+  const thread = await ctx.db.get(args.threadId);
+  if (
+    !thread ||
+    thread.deletedAt ||
+    thread.linkedAt !== args.linkedAt ||
+    thread.clientOrgId !== args.clientOrgId ||
+    (args.requestId && thread.requestId !== args.requestId) ||
+    // The client or request may have been deleted between batches.
+    (await teamTargetProblem(ctx, {
+      clientOrgId: args.clientOrgId,
+      requestId: args.requestId,
+    }))
+  )
+    return { done: true as const, stale: true as const };
+  const page = await ctx.db
+    .query("teamEmailMessages")
+    .withIndex("by_threadId_and_receivedAt", (index) => index.eq("threadId", thread._id))
+    .paginate({ cursor: args.cursor, numItems: MAX_LINK_BATCH });
+  const now = dayjs().valueOf();
+  for (const message of page.page) {
+    let clientFileIds = message.clientFileIds;
+    const held = message.unfiledAttachments ?? [];
+    if (held.length) {
+      const filed = await storeProcurementEmailAttachments(ctx, {
+        clientOrgId: args.clientOrgId,
+        // Held files may still be referenced by an operator's sent draft.
+        preserveSourceStorage: true,
+        attachments: held.map((file) => ({
+          fileId: file.storageId,
+          filename: file.name,
+          contentType: file.contentType,
+          size: file.size,
+        })),
+        subject: message.subject,
+      });
+      clientFileIds = [...new Set([...clientFileIds, ...filed])];
+    }
+    await ctx.db.patch(message._id, {
+      clientOrgId: args.clientOrgId,
+      addressedRequestId: message.addressedRequestId ?? args.requestId,
+      clientFileIds,
+      unfiledAttachments: undefined,
+    });
+    if (args.requestId)
+      await insertProcurementEmailFileItems(ctx, {
+        requestId: args.requestId,
+        clientOrgId: args.clientOrgId,
+        emailMessageId: message._id,
+        clientFileIds,
+        now,
+      });
+  }
+  if (page.isDone) {
+    await scheduleEmailThreadCompanyInformation(ctx, thread._id);
+    return { done: true as const, stale: false as const };
+  }
+  await ctx.scheduler.runAfter(0, internal.procurementRequests.linkTeamEmailThreadBatchInternal, {
+    ...args,
+    cursor: page.continueCursor,
+  });
+  return { done: false as const, stale: false as const };
+}
+
+export const linkTeamEmailThreadBatchInternal = internalMutation({
+  args: {
+    threadId: v.id("teamEmailThreads"),
+    linkedAt: v.number(),
+    clientOrgId: v.id("organizations"),
+    requestId: v.optional(v.id("procurementRequests")),
+    cursor: v.union(v.string(), v.null()),
+  },
+  handler: async (ctx, args) => await fileLinkedThreadBatch(ctx, args),
+});
 
 export const ingestEmailInternal = internalMutation({
   args: {
@@ -2451,35 +2615,54 @@ export const ingestEmailInternal = internalMutation({
     receivedAt: v.number(),
   },
   handler: async (ctx, args) => {
+    const dropUploads = () =>
+      Promise.all(args.attachments.map((attachment) => ctx.storage.delete(attachment.fileId)));
     if (args.resendEmailId) {
       const duplicate = await ctx.db
-        .query("procurementEmailMessages")
-        .withIndex("resend", (index) =>
-          index.eq("resendEmailId", args.resendEmailId),
-        )
+        .query("teamEmailMessages")
+        .withIndex("by_resendEmailId", (index) => index.eq("resendEmailId", args.resendEmailId))
         .first();
       if (duplicate) {
-        await Promise.all(
-          args.attachments.map((attachment) =>
-            ctx.storage.delete(attachment.fileId),
-          ),
-        );
+        await dropUploads();
         return { duplicate: true as const, threadId: duplicate.threadId };
       }
     }
     if (args.messageId) {
       const duplicate = await ctx.db
-        .query("procurementEmailMessages")
-        .withIndex("message", (index) => index.eq("messageId", args.messageId))
+        .query("teamEmailMessages")
+        .withIndex("by_messageId", (index) => index.eq("messageId", args.messageId))
         .first();
       if (duplicate) {
-        await Promise.all(
-          args.attachments.map((attachment) =>
-            ctx.storage.delete(attachment.fileId),
-          ),
-        );
+        await dropUploads();
         return { duplicate: true as const, threadId: duplicate.threadId };
       }
+    }
+    // Redelivery of mail that is still only in the legacy tables.
+    const legacyDuplicate =
+      (args.resendEmailId
+        ? await ctx.db
+            .query("procurementEmailMessages")
+            .withIndex("resend", (index) => index.eq("resendEmailId", args.resendEmailId))
+            .first()
+        : null) ??
+      (args.messageId
+        ? await ctx.db
+            .query("procurementEmailMessages")
+            .withIndex("message", (index) => index.eq("messageId", args.messageId))
+            .first()
+        : null);
+    if (legacyDuplicate) {
+      await dropUploads();
+      const mapped = await ctx.db
+        .query("teamEmailThreads")
+        .withIndex("by_legacyThreadId", (index) =>
+          index.eq("legacyThreadId", legacyDuplicate.threadId),
+        )
+        .first();
+      return {
+        duplicate: true as const,
+        threadId: mapped?._id ?? (await adoptLegacyThread(ctx, legacyDuplicate.threadId))?.thread._id,
+      };
     }
 
     const addressedRequest = await requireRequest(ctx, args.addressedRequestId);
@@ -2487,23 +2670,21 @@ export const ingestEmailInternal = internalMutation({
     const participants = uniqueProcurementEmails(args.participantEmails);
     const referenceIds = Array.from(
       new Set(
-        [args.inReplyTo ?? "", ...args.references]
-          .map((value) => value.trim())
-          .filter(Boolean),
+        [args.inReplyTo ?? "", ...args.references].map((value) => value.trim()).filter(Boolean),
       ),
     ).slice(0, 50);
-    let thread: Doc<"procurementEmailThreads"> | null = null;
+    let thread: TeamThread | null = null;
     for (const reference of referenceIds) {
       const parent = await ctx.db
-        .query("procurementEmailMessages")
-        .withIndex("message", (index) => index.eq("messageId", reference))
+        .query("teamEmailMessages")
+        .withIndex("by_messageId", (index) => index.eq("messageId", reference))
         .first();
       if (!parent) continue;
       const candidate = await ctx.db.get(parent.threadId);
       if (
         candidate?.clientOrgId === addressedRequest.clientOrgId &&
         !candidate.deletedAt &&
-        (!candidate.resendThreadId || candidate.requestId === addressedRequest._id)
+        (!isOutreachLocked(candidate) || candidate.requestId === addressedRequest._id)
       ) {
         thread = candidate;
         break;
@@ -2511,7 +2692,7 @@ export const ingestEmailInternal = internalMutation({
     }
     if (!thread && normalizedSubject) {
       const candidates = await ctx.db
-        .query("procurementEmailThreads")
+        .query("teamEmailThreads")
         .withIndex("subject", (index) =>
           index
             .eq("clientOrgId", addressedRequest.clientOrgId)
@@ -2524,46 +2705,21 @@ export const ingestEmailInternal = internalMutation({
           (candidate) =>
             !candidate.deletedAt &&
             candidate.addressedRequestId === addressedRequest._id &&
-            procurementParticipantsOverlap(
-              candidate.participantEmails,
-              participants,
-            ),
+            procurementParticipantsOverlap(candidate.participantEmails, participants),
         ) ?? null;
     }
+    thread ??= await adoptMatchingLegacyThread(ctx, {
+      request: addressedRequest,
+      referenceIds,
+      normalizedSubject,
+      participants,
+    });
 
     const requestId = thread?.requestId ?? addressedRequest._id;
-    const [outreaches, clientMemberships, operatorProfiles] = await Promise.all(
-      [
-        ctx.db
-          .query("procurementBrokerOutreaches")
-          .withIndex("request", (index) => index.eq("requestId", requestId))
-          .collect(),
-        ctx.db
-          .query("orgMemberships")
-          .withIndex("organization", (index) =>
-            index.eq("orgId", addressedRequest.clientOrgId),
-          )
-          .collect(),
-        ctx.db.query("operatorProfiles").collect(),
-      ],
-    );
-    const brokerEmails = outreaches.flatMap((outreach) =>
-      outreach.contactEmail ? [outreach.contactEmail] : [],
-    );
-    const clientEmails = (
-      await Promise.all(
-        clientMemberships.map(
-          async (membership) => (await ctx.db.get(membership.userId))?.email,
-        ),
-      )
-    ).filter((email): email is string => Boolean(email));
-    const operatorEmails = (
-      await Promise.all(
-        operatorProfiles
-          .filter((profile) => profile.status === "active")
-          .map(async (profile) => (await ctx.db.get(profile.userId))?.email),
-      )
-    ).filter((email): email is string => Boolean(email));
+    const [brokerEmails, clientEmails, operatorEmails] = await linkedParticipantGroups(ctx, {
+      clientOrgId: addressedRequest.clientOrgId,
+      requestId,
+    });
     const classificationParticipants = thread
       ? uniqueProcurementEmails([...thread.participantEmails, ...participants])
       : participants;
@@ -2577,60 +2733,53 @@ export const ingestEmailInternal = internalMutation({
     const restoredClientFileIds = thread?.archivedAt
       ? await emailThreadClientFileIds(ctx, thread._id)
       : [];
-    let threadId: Id<"procurementEmailThreads">;
+    const subject = requiredText(args.subject || "(no subject)", "Subject", 500);
+    let threadId: Id<"teamEmailThreads">;
     if (thread) {
       threadId = thread._id;
       await ctx.db.patch(thread._id, {
-        subject: requiredText(args.subject || "(no subject)", "Subject", 500),
-        participantEmails: classificationParticipants,
-        latestMessageAt: args.receivedAt,
-        messageCount: thread.messageCount + 1,
-        archivedAt: undefined,
-        archivedByUserId: undefined,
+        subject,
         ...(thread.categorySource === "auto"
-          ? {
-              category: inferred.category,
-              categoryReason: inferred.reason,
-            }
+          ? { category: inferred.category, categoryReason: inferred.reason }
           : {}),
-        updatedAt: now,
       });
     } else {
-      threadId = await ctx.db.insert("procurementEmailThreads", {
+      threadId = await ctx.db.insert("teamEmailThreads", {
+        source: "forward",
         clientOrgId: addressedRequest.clientOrgId,
         addressedRequestId: addressedRequest._id,
         requestId: addressedRequest._id,
         normalizedSubject,
-        subject: requiredText(args.subject || "(no subject)", "Subject", 500),
+        subject,
         category: inferred.category,
         categorySource: "auto",
         categoryReason: inferred.reason,
         participantEmails: participants,
-        latestMessageAt: args.receivedAt,
-        messageCount: 1,
+        latestMessageAt: 0,
+        messageCount: 0,
         createdAt: now,
         updatedAt: now,
       });
     }
-
+    const target = (await ctx.db.get(threadId))!;
     const clientFileIds = await storeProcurementEmailAttachments(ctx, {
       clientOrgId: addressedRequest.clientOrgId,
       attachments: args.attachments,
       subject: args.subject,
     });
-    const emailMessageId = await ctx.db.insert("procurementEmailMessages", {
+    const fromEmail = normalizeProcurementEmail(args.fromEmail);
+    const emailMessageId = await ctx.db.insert("teamEmailMessages", {
+      direction: "inbound",
       threadId,
       clientOrgId: addressedRequest.clientOrgId,
       addressedRequestId: addressedRequest._id,
       resendEmailId: optionalText(args.resendEmailId, 500),
       messageId: optionalText(args.messageId, 500),
       inReplyTo: optionalText(args.inReplyTo, 500),
-      references: args.references
-        .map((value) => value.slice(0, 500))
-        .slice(0, 50),
-      subject: requiredText(args.subject || "(no subject)", "Subject", 500),
+      references: args.references.map((value) => value.slice(0, 500)).slice(0, 50),
+      subject,
       fromName: optionalText(args.fromName, 300),
-      fromEmail: normalizeProcurementEmail(args.fromEmail),
+      fromEmail,
       toAddresses: uniqueProcurementEmails(args.toAddresses),
       ccAddresses: uniqueProcurementEmails(args.ccAddresses),
       bccAddresses: uniqueProcurementEmails(args.bccAddresses),
@@ -2640,6 +2789,23 @@ export const ingestEmailInternal = internalMutation({
       clientFileIds,
       receivedAt: args.receivedAt,
       createdAt: now,
+    });
+    await ctx.db.patch(threadId, {
+      participantEmails: classificationParticipants,
+      latestMessageAt: Math.max(target.latestMessageAt, args.receivedAt),
+      messageCount: target.messageCount + 1,
+      archivedAt: undefined,
+      archivedByUserId: undefined,
+      latestInboundAt: Math.max(target.latestInboundAt ?? 0, args.receivedAt),
+      ...(args.receivedAt >= target.latestMessageAt
+        ? threadSummaryPatch({
+            direction: "inbound",
+            currentText: args.currentText,
+            fromName: optionalText(args.fromName, 300),
+            fromEmail,
+          })
+        : {}),
+      updatedAt: now,
     });
     await insertProcurementEmailFileItems(ctx, {
       requestId,

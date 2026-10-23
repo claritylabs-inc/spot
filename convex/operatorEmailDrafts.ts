@@ -274,7 +274,7 @@ export async function teamThreadReplyPlan(
   };
 }
 
-async function teamThreadOwnerAddress(
+export async function teamThreadOwnerAddress(
   ctx: Ctx,
   ownerUserId: Id<"users"> | undefined,
 ): Promise<string | undefined> {
@@ -290,7 +290,7 @@ async function teamThreadOwnerAddress(
 
 const QUOTE_MAX_CHARS = 700;
 
-function quotedHistory(message: Doc<"teamEmailMessages">) {
+export function quotedHistory(message: Doc<"teamEmailMessages">) {
   const who = message.fromName
     ? `${message.fromName} <${message.fromEmail}>`
     : message.fromEmail;
@@ -404,7 +404,8 @@ export const resolveSenderInternal = internalQuery({
           "That team thread is not linked to a client. Link it first, or omit the client.",
         );
       }
-      const threadRequestId = thread.requestId ?? thread.addressedRequestId;
+      // `requestId` is the thread's request link; `addressedRequestId` is only where mail was sent.
+      const threadRequestId = thread.requestId;
       if (threadRequestId) {
         if (requestId && requestId !== threadRequestId) {
           throw new Error("That team thread belongs to a different request.");
@@ -481,10 +482,29 @@ export const resolveSenderInternal = internalQuery({
 
 /** Send-time facts the inbox transport needs: where a team-thread reply threads. */
 export const getReplyTargetInternal = internalQuery({
-  args: { pendingEmailId: v.id("pendingEmails"), inboxId: v.string() },
+  args: {
+    pendingEmailId: v.id("pendingEmails"),
+    inboxId: v.string(),
+    /** Capture mode: `inboxId` is a placeholder and cannot be compared. */
+    captured: v.boolean(),
+  },
   handler: async (ctx, args) => {
     const draft = await ctx.db.get(args.pendingEmailId);
     if (!draft?.senderUserId || !draft.teamEmailThreadId) return null;
+    // A reply was approved for one exact target: use it, never a fresh guess.
+    const approved = draft.directReplyContext;
+    if (approved) {
+      if (approved.mode !== "thread") return null;
+      if (!args.captured && approved.inboxId !== args.inboxId) {
+        throw new Error("The approved reply target no longer matches your inbox.");
+      }
+      return approved.resendThreadId && approved.replyToEmailId
+        ? {
+            resendThreadId: approved.resendThreadId,
+            replyToEmailId: approved.replyToEmailId,
+          }
+        : null;
+    }
     const thread = await ctx.db.get(draft.teamEmailThreadId);
     if (!thread || thread.deletedAt !== undefined) return null;
     const plan = await teamThreadReplyPlan(ctx, thread, draft.senderUserId);
@@ -532,14 +552,21 @@ export async function operatorDraftBlocker(
   ctx: Ctx,
   draft: Doc<"pendingEmails">,
 ): Promise<string | null> {
+  // A reply draft cannot be updated: the person previews the reply again instead.
+  const redo = (updateText: string) =>
+    draft.directReplyKey
+      ? "Your sender details changed — preview the reply again before sending."
+      : updateText;
   if (!draft.transport || !draft.senderUserId) return SENDER_CHANGED_REASON;
   let identity: OperatorSenderIdentity;
   try {
     identity = await operatorSenderIdentity(ctx, draft.senderUserId);
   } catch {
-    return "The signing operator is no longer available — update the draft to re-sign.";
+    return redo(
+      "The signing operator is no longer available — update the draft to re-sign.",
+    );
   }
-  if (draft.fromHeader !== identity.fromHeader) return SENDER_CHANGED_REASON;
+  if (draft.fromHeader !== identity.fromHeader) return redo(SENDER_CHANGED_REASON);
   const copied = new Set(
     [draft.recipientEmail, ...(draft.ccAddresses ?? [])].map((address) =>
       address.trim().toLowerCase(),
@@ -547,11 +574,11 @@ export async function operatorDraftBlocker(
   );
   // The snapshot must equal the current setting: clearing or changing Always CC
   // invalidates the draft, not only a missing copy.
-  if ((draft.operatorAlwaysCcEmail ?? null) !== identity.alwaysCc) {
-    return "Always CC changed — update draft to re-sign.";
-  }
-  if (identity.alwaysCc && !copied.has(identity.alwaysCc)) {
-    return "Always CC changed — update draft to re-sign.";
+  if (
+    (draft.operatorAlwaysCcEmail ?? null) !== identity.alwaysCc ||
+    (identity.alwaysCc && !copied.has(identity.alwaysCc))
+  ) {
+    return redo("Always CC changed — update draft to re-sign.");
   }
   if (draft.orgId) {
     const organization = await ctx.db.get(draft.orgId);
@@ -578,14 +605,23 @@ export async function operatorDraftBlocker(
     if (!thread || thread.deletedAt !== undefined) {
       return "The team email thread is no longer available.";
     }
-    if (thread.clientOrgId && thread.clientOrgId !== draft.orgId) {
-      return "The team email thread is linked to a different client.";
+    if (draft.directReplyKey && thread.archivedAt) {
+      return "The conversation was archived; restore it before replying.";
+    }
+    // The draft's links must be exactly the thread's now, an absent link included.
+    if (
+      thread.clientOrgId !== draft.orgId ||
+      thread.requestId !== draft.procurementRequestId
+    ) {
+      return redo(
+        "The conversation was linked to a different client or request — update the draft to re-sign.",
+      );
     }
     const plan = await teamThreadReplyPlan(ctx, thread, draft.senderUserId);
     if (!plan.owns && thread.ownerUserId !== draft.senderUserId) {
       const ownerAddress = await teamThreadOwnerAddress(ctx, thread.ownerUserId);
       if (ownerAddress && !copied.has(ownerAddress)) {
-        return "The thread owner changed — update the draft to copy them.";
+        return redo("The thread owner changed — update the draft to copy them.");
       }
     }
   }
@@ -596,56 +632,89 @@ type SendApproval =
   | { approved: true; draft: Doc<"pendingEmails"> }
   | { approved: false; reason: string };
 
+/** Tools whose exact confirmation approves a team-thread reply draft. */
+export const REPLY_TOOL_NAMES: readonly string[] = [
+  "reply_email_thread",
+  "reply_procurement_email_thread",
+];
+
+/** The idempotency key of a reply draft created for one agent confirmation. */
+export const agentReplyKey = (confirmationId: Id<"operatorAgentConfirmations">) =>
+  `confirmation:${confirmationId}`;
+
 /**
- * An operator draft may be sent only under a completed exact approval of this
- * unchanged draft, in the owning operator thread, by the operator who signed
- * it. Used by the send gate and again inside the delivery claim.
+ * An operator draft may be sent only under an exact approval of this unchanged
+ * draft by the operator who signed it, rechecked again inside the delivery
+ * claim. Two grants exist, never a boolean:
+ * - an agent/MCP exact confirmation (`confirmationId`): `send_email_draft`
+ *   for a drafted email, or a reply tool for the reply draft created from that
+ *   very confirmation;
+ * - a browser reply's `directApproval` snapshot (no `confirmationId`), which
+ *   only the session-authenticated reply mutation writes: the signing operator
+ *   approved this exact fingerprint.
  */
 export async function checkOperatorSendApproval(
   ctx: Ctx,
   args: {
-    confirmationId: Id<"operatorAgentConfirmations">;
+    confirmationId?: Id<"operatorAgentConfirmations">;
     pendingEmailId: Id<"pendingEmails">;
   },
 ): Promise<SendApproval> {
-  const [confirmation, draft] = await Promise.all([
-    ctx.db.get(args.confirmationId),
-    ctx.db.get(args.pendingEmailId),
-  ]);
+  const draft = await ctx.db.get(args.pendingEmailId);
   const denied = (reason: string): SendApproval => ({ approved: false, reason });
   if (!draft || !isOperatorEmailDraft(draft)) {
     return denied("This is not an operator draft.");
   }
-  if (
-    !confirmation ||
-    confirmation.status !== "completed" ||
-    confirmation.payload.toolName !== "send_email_draft" ||
-    confirmation.threadId !== draft.operatorThreadId ||
-    !confirmation.payload.sourceFingerprint
-  ) {
-    return denied(
-      "A completed operator approval for this exact draft is required.",
-    );
-  }
-  if (!draft.senderUserId || confirmation.operatorUserId !== draft.senderUserId) {
-    return denied(
-      "Only the operator who signed this draft can approve sending it. Update the draft to re-sign it as you.",
-    );
+  if (!draft.senderUserId) return denied(SENDER_CHANGED_REASON);
+  const fingerprint = await pendingEmailDraftFingerprint(draft);
+
+  if (!args.confirmationId) {
+    const grant = draft.directApproval;
+    if (
+      !grant ||
+      draft.operatorThreadId ||
+      !draft.directReplyKey?.startsWith("browser:") ||
+      !draft.teamEmailThreadId ||
+      grant.actorUserId !== draft.senderUserId ||
+      grant.fingerprint !== fingerprint
+    ) {
+      return denied("The reply was not approved, or it changed after approval.");
+    }
+  } else {
+    const confirmation = await ctx.db.get(args.confirmationId);
+    if (
+      !confirmation ||
+      confirmation.status !== "completed" ||
+      confirmation.threadId !== draft.operatorThreadId ||
+      !confirmation.payload.sourceFingerprint
+    ) {
+      return denied(
+        "A completed operator approval for this exact draft is required.",
+      );
+    }
+    if (confirmation.operatorUserId !== draft.senderUserId) {
+      return denied(
+        "Only the operator who signed this draft can approve sending it. Update the draft to re-sign it as you.",
+      );
+    }
+    const toolName = confirmation.payload.toolName;
+    const input = JSON.parse(confirmation.payload.input) as Record<string, unknown>;
+    // A reply draft is bound to its confirmation when created (thread and message
+    // checked there, ids of any generation resolved); the fingerprint then pins
+    // the exact reply, target included.
+    const targetsThisDraft =
+      toolName === "send_email_draft"
+        ? input.draftId === draft._id
+        : REPLY_TOOL_NAMES.includes(toolName) &&
+          draft.directReplyKey === agentReplyKey(confirmation._id);
+    if (!targetsThisDraft || confirmation.payload.sourceFingerprint !== fingerprint) {
+      return denied("The draft changed since it was approved.");
+    }
   }
   try {
     await requireOperatorForUser(ctx, draft.senderUserId);
   } catch {
     return denied("The signing operator is no longer active.");
-  }
-  const approved = JSON.parse(confirmation.payload.input) as {
-    draftId?: string;
-  };
-  if (
-    approved.draftId !== draft._id ||
-    confirmation.payload.sourceFingerprint !==
-      (await pendingEmailDraftFingerprint(draft))
-  ) {
-    return denied("The draft changed since it was approved.");
   }
   const blocker = await operatorDraftBlocker(ctx, draft);
   return blocker ? denied(blocker) : { approved: true, draft };
