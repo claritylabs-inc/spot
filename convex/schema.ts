@@ -5217,7 +5217,7 @@ export default defineSchema({
     procurementRequestId: v.optional(v.id("procurementRequests")),
     teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
     resendInboxEmailId: v.optional(v.string()),
-    orgId: v.id("organizations"),
+    orgId: v.optional(v.id("organizations")),
     threadId: v.optional(v.id("threads")),
     // Drafts written by the operator agent belong to an operator thread, not a
     // client thread, and are only reachable from that operator thread.
@@ -5274,7 +5274,20 @@ export default defineSchema({
     .index("status", ["status"]),
 
   emailDeliveryAttempts: defineTable({
-    orgId: v.id("organizations"),
+    orgId: v.optional(v.id("organizations")),
+    senderUserId: v.optional(v.id("users")),
+    draftFingerprint: v.optional(v.string()),
+    operatorConfirmationId: v.optional(v.id("operatorAgentConfirmations")),
+    inboxId: v.optional(v.string()),
+    draftId: v.optional(v.string()),
+    operatorStage: v.optional(v.union(
+      v.literal("claimed"),
+      v.literal("draft_created"),
+      v.literal("sending"),
+      v.literal("sent"),
+      v.literal("unknown"),
+      v.literal("failed"),
+    )),
     pendingEmailId: v.optional(v.id("pendingEmails")),
     threadId: v.optional(v.id("threads")),
     threadMessageId: v.optional(v.id("threadMessages")),
@@ -5285,6 +5298,7 @@ export default defineSchema({
       v.literal("inbound_email"),
       v.literal("procurement_packet"),
       v.literal("procurement_outreach"),
+      v.literal("operator_inbox"),
     ),
     provider: v.literal("resend"),
     deliveryMode: v.optional(v.string()),
