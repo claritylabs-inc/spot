@@ -212,6 +212,8 @@ export const processInbound = internalAction({
           emailContent: command.emailContent,
           threadToken: tokens[0],
           attachments,
+          // Legacy mail is DKIM-authenticated above before it reaches here.
+          emailReadOnly: false,
         }),
       (result) => !result.duplicate,
     );
