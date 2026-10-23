@@ -15,7 +15,6 @@ const NAMED_TABLES = [
   "procurementRequests",
   "procurementProposals",
   "procurementFileItems",
-  "procurementEmailThreads",
   "teamEmailThreads",
   "policies",
   "clientFiles",

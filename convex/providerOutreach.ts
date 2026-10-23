@@ -88,7 +88,6 @@ import {
   createProcurementOutreachByOperator,
   requireDirectOperatorWrite,
 } from "./procurementRequests";
-import { teamThreadForSequence } from "./lib/teamEmailLegacy";
 import { mirrorTeamEmail, type NewTeamThread, type TeamThread } from "./lib/teamEmailStore";
 import { mintPacketLinkForOperator, previewBrokerPacket } from "./procurementPacket";
 
@@ -748,7 +747,9 @@ async function notifyManualHandoff(
     : `Automated follow-ups stopped${subject}. Review the conversation in the request Inbox.`;
   // Client mail always lives in the Inbox; provider delivery problems open Providers.
   const view = needsAttention && !client ? "proposals" : "email";
-  const thread = view === "email" ? await teamThreadForSequence(ctx, sequence) : null;
+  const thread = view === "email" && sequence.teamEmailThreadId
+    ? await ctx.db.get(sequence.teamEmailThreadId)
+    : null;
   // Scheduled, so a notification failure can never roll back the state change.
   // The explicit userId keeps this operator-private: it is neither org-wide nor
   // eligible for the client's Slack/email fan-out. Warning uses the operator's
@@ -2845,18 +2846,9 @@ async function sequencesForTeamThread(ctx: Ctx, thread: TeamThread): Promise<Seq
     .query("procurementOutreachSequences")
     .withIndex("by_teamEmailThreadId", (q) => q.eq("teamEmailThreadId", thread._id))
     .take(101);
-  const legacy = thread.legacyThreadId
-    ? await ctx.db
-        .query("procurementOutreachSequences")
-        .withIndex("by_procurementEmailThreadId", (q) =>
-          q.eq("procurementEmailThreadId", thread.legacyThreadId!),
-        )
-        .take(101)
-    : [];
-  if (current.length > 100 || legacy.length > 100)
+  if (current.length > 100)
     throw new Error("Too many outreach sequences for this conversation; review before replying");
-  return [...new Map([...current, ...legacy].map((sequence) => [sequence._id, sequence])).values()]
-    .filter((sequence) => sequence.requestId === thread.requestId);
+  return current.filter((sequence) => sequence.requestId === thread.requestId);
 }
 
 /**
@@ -3192,8 +3184,7 @@ export const releaseInboxEventInternal = internalMutation({
 
 /**
  * Idempotent mirror of one sequence email into its request's conversation. The
- * conversation is the sequence's team thread (adopting its legacy thread when
- * the pointer has not been repointed), found by Resend thread id, or created on
+ * conversation is the sequence's team thread, found by Resend thread id, or created on
  * the first email. Outreach conversations never move between requests.
  */
 async function mirrorInboxEmail(
@@ -3212,7 +3203,9 @@ async function mirrorInboxEmail(
   },
 ) {
   const { sequence, request, email } = args;
-  let thread: TeamThread | null = await teamThreadForSequence(ctx, sequence);
+  let thread: TeamThread | null = sequence.teamEmailThreadId
+    ? await ctx.db.get(sequence.teamEmailThreadId)
+    : null;
   if (thread?.deletedAt) thread = null;
   thread ??= await ctx.db
     .query("teamEmailThreads")
@@ -3247,10 +3240,9 @@ async function mirrorInboxEmail(
     now: args.now,
   });
   if ("rejected" in mirrored) throw new Error(`Outreach conversation unavailable: ${mirrored.reason}`);
-  if (sequence.teamEmailThreadId !== mirrored.threadId || sequence.procurementEmailThreadId)
+  if (sequence.teamEmailThreadId !== mirrored.threadId)
     await ctx.db.patch(sequence._id, {
       teamEmailThreadId: mirrored.threadId,
-      procurementEmailThreadId: undefined,
       updatedAt: args.now,
     });
   return mirrored;
@@ -3608,7 +3600,7 @@ export const getReplyContextInternal = internalMutation({
     if (sequence.replyClassificationEmailId === args.emailId)
       return { status: "already_claimed" as const };
     const message = await ctx.db
-      .query("procurementEmailMessages")
+      .query("teamEmailMessages")
       .withIndex("by_resendInboxEmailId", (q) => q.eq("resendInboxEmailId", args.emailId))
       .first();
     // Not mirrored yet: leave unclaimed; recovery hands it to the operator on timeout.

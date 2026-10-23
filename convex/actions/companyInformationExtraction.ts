@@ -139,8 +139,7 @@ const extractClientFileRef = makeFunctionReference<
   "action",
   { clientFileId: Id<"clientFiles"> }
 >("actions/companyInformationExtraction:extractClientFile");
-/** Scheduled jobs from before the cutover can still carry a legacy thread id. */
-type EmailThreadJobId = Id<"teamEmailThreads"> | Id<"procurementEmailThreads">;
+type EmailThreadJobId = Id<"teamEmailThreads">;
 const extractEmailThreadRef = makeFunctionReference<
   "action",
   { emailThreadId: EmailThreadJobId }
@@ -422,10 +421,7 @@ export const extractClientFile = internalAction({
 
 export const extractProcurementEmailThread = internalAction({
   args: {
-    emailThreadId: v.union(
-      v.id("teamEmailThreads"),
-      v.id("procurementEmailThreads"),
-    ),
+    emailThreadId: v.id("teamEmailThreads"),
   },
   handler: async (ctx, args): Promise<{ status: string }> => {
     const claim = await ctx.runMutation(claimEmailThreadRef, args);

@@ -410,7 +410,6 @@ import type * as lib_storedAgentFile from "../lib/storedAgentFile.js";
 import type * as lib_supplementaryExtraction from "../lib/supplementaryExtraction.js";
 import type * as lib_teamEmail from "../lib/teamEmail.js";
 import type * as lib_teamEmailForwards from "../lib/teamEmailForwards.js";
-import type * as lib_teamEmailLegacy from "../lib/teamEmailLegacy.js";
 import type * as lib_teamEmailReply from "../lib/teamEmailReply.js";
 import type * as lib_teamEmailStore from "../lib/teamEmailStore.js";
 import type * as lib_teamInboxProjection from "../lib/teamInboxProjection.js";
@@ -508,13 +507,11 @@ import type * as sourceSpans from "../sourceSpans.js";
 import type * as teamEmailForwarding from "../teamEmailForwarding.js";
 import type * as teamEmailReplies from "../teamEmailReplies.js";
 import type * as teamInbox from "../teamInbox.js";
-import type * as teamInboxMigrations from "../teamInboxMigrations.js";
 import type * as testMode from "../testMode.js";
 import type * as threadActionConfirmations from "../threadActionConfirmations.js";
 import type * as threads from "../threads.js";
 import type * as users from "../users.js";
 import type * as websiteTech from "../websiteTech.js";
-import type * as zzAuditProbe from "../zzAuditProbe.js";
 
 import type {
   ApiFromModules,
@@ -925,7 +922,6 @@ declare const fullApi: ApiFromModules<{
   "lib/supplementaryExtraction": typeof lib_supplementaryExtraction;
   "lib/teamEmail": typeof lib_teamEmail;
   "lib/teamEmailForwards": typeof lib_teamEmailForwards;
-  "lib/teamEmailLegacy": typeof lib_teamEmailLegacy;
   "lib/teamEmailReply": typeof lib_teamEmailReply;
   "lib/teamEmailStore": typeof lib_teamEmailStore;
   "lib/teamInboxProjection": typeof lib_teamInboxProjection;
@@ -1023,13 +1019,11 @@ declare const fullApi: ApiFromModules<{
   teamEmailForwarding: typeof teamEmailForwarding;
   teamEmailReplies: typeof teamEmailReplies;
   teamInbox: typeof teamInbox;
-  teamInboxMigrations: typeof teamInboxMigrations;
   testMode: typeof testMode;
   threadActionConfirmations: typeof threadActionConfirmations;
   threads: typeof threads;
   users: typeof users;
   websiteTech: typeof websiteTech;
-  zzAuditProbe: typeof zzAuditProbe;
 }>;
 
 /**

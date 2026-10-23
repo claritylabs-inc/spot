@@ -10,7 +10,6 @@ import { forwardedCorrespondents } from "./teamEmailForwards";
 import { operatorEmailAliases, requireOperatorForUser } from "./operatorIdentity";
 import { isSpotOutboundAddress } from "./resend";
 import { buildOperatorSignature, teamOwnedDomains } from "./teamEmail";
-import { mappedTeamThreadId } from "./teamEmailLegacy";
 import { teamTargetProblem } from "./teamEmailStore";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -326,18 +325,16 @@ export type TeamReplyPreviewResult =
  * The preview for an operator-agent reply, usable from any query or mutation
  * (the confirmation preflight runs in one). It requires an active operator and
  * a live, unarchived target with live client/request, and only reads.
- * `teamEmailThreadId` may be an older generation id if it is already mapped;
- * an unmapped one is reported, not migrated (the execution step adopts it). The
- * canonical thread id is returned so callers bind the approval to the real target.
+ * The validated team thread id is returned so callers bind approval to that target.
  */
 export async function previewTeamEmailReply(
   ctx: Ctx,
   args: { operatorUserId: Id<"users">; teamEmailThreadId: string; message: string },
 ): Promise<TeamReplyPreviewResult> {
   await requireOperatorForUser(ctx, args.operatorUserId);
-  const threadId = await mappedTeamThreadId(ctx, args.teamEmailThreadId);
+  const threadId = ctx.db.normalizeId("teamEmailThreads", args.teamEmailThreadId);
   if (!threadId) {
-    return { ok: false, reason: "Conversation not found, or not migrated to the team inbox yet." };
+    return { ok: false, reason: "Conversation not found." };
   }
   const composed = await composeTeamReply(ctx, {
     operatorUserId: args.operatorUserId,

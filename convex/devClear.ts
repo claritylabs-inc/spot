@@ -47,8 +47,6 @@ const TABLES: TableNames[] = [
   "teamEmailThreadLinks",
   "teamEmailMessages",
   "teamEmailThreads",
-  "procurementEmailMessages",
-  "procurementEmailThreads",
   "procurementOutreachSteps",
   "procurementOutreachSequences",
   "procurementOutreachCadences",

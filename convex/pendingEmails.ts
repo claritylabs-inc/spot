@@ -474,7 +474,7 @@ const MERGE_READ_LIMIT = 100;
 /**
  * Folds a webhook-created provisional thread into the approved target when the
  * sent webhook raced ahead of the immediate mirror. Only a provably
- * provisional conversation qualifies: an unlinked, non-legacy `team` thread
+ * provisional conversation qualifies: an unlinked `team` thread
  * whose messages and link rows all belong to this inbox's one Resend
  * conversation, with no draft pointing at it and no other thread claiming that
  * conversation. Anything else throws, which leaves the draft pending for
@@ -498,7 +498,6 @@ async function mergeProvisionalThread(
   if (
     provisional.source !== "team" ||
     provisional.deletedAt !== undefined ||
-    provisional.legacyThreadId ||
     provisional.outreachId ||
     provisional.clientOrgId ||
     provisional.requestId ||

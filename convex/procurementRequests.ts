@@ -56,7 +56,6 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { adoptLegacyThread } from "./lib/teamEmailLegacy";
 import {
   activeTeamThread,
   insertProcurementEmailFileItems,
@@ -2324,54 +2323,6 @@ const inboundAttachmentValidator = v.object({
   size: v.number(),
 });
 
-/**
- * During the cutover window a reply can arrive for a conversation that has not
- * been copied yet. Match it against the legacy tables with the same rules and
- * adopt (copy) that thread so no second team thread is created for it.
- */
-async function adoptMatchingLegacyThread(
-  ctx: MutationCtx,
-  args: {
-    request: Awaited<ReturnType<typeof requireRequest>>;
-    referenceIds: string[];
-    normalizedSubject: string;
-    participants: string[];
-  },
-): Promise<TeamThread | null> {
-  for (const reference of args.referenceIds) {
-    const parent = await ctx.db
-      .query("procurementEmailMessages")
-      .withIndex("message", (index) => index.eq("messageId", reference))
-      .first();
-    if (!parent) continue;
-    const candidate = await ctx.db.get(parent.threadId);
-    if (
-      candidate &&
-      candidate.clientOrgId === args.request.clientOrgId &&
-      !candidate.deletedAt &&
-      (!candidate.resendThreadId || candidate.requestId === args.request._id)
-    )
-      return (await adoptLegacyThread(ctx, candidate._id))?.thread ?? null;
-  }
-  if (!args.normalizedSubject) return null;
-  const candidates = await ctx.db
-    .query("procurementEmailThreads")
-    .withIndex("subject", (index) =>
-      index
-        .eq("clientOrgId", args.request.clientOrgId)
-        .eq("normalizedSubject", args.normalizedSubject),
-    )
-    .order("desc")
-    .take(20);
-  const match = candidates.find(
-    (candidate) =>
-      !candidate.deletedAt &&
-      candidate.addressedRequestId === args.request._id &&
-      procurementParticipantsOverlap(candidate.participantEmails, args.participants),
-  );
-  return match ? ((await adoptLegacyThread(ctx, match._id))?.thread ?? null) : null;
-}
-
 const MAX_LINK_BATCH = 25;
 const MAX_MOVE_MESSAGES = 300;
 const MAX_EMAIL_FILE_ITEMS = 40;
@@ -2639,34 +2590,6 @@ export const ingestEmailInternal = internalMutation({
         return { duplicate: true as const, threadId: duplicate.threadId };
       }
     }
-    // Redelivery of mail that is still only in the legacy tables.
-    const legacyDuplicate =
-      (args.resendEmailId
-        ? await ctx.db
-            .query("procurementEmailMessages")
-            .withIndex("resend", (index) => index.eq("resendEmailId", args.resendEmailId))
-            .first()
-        : null) ??
-      (args.messageId
-        ? await ctx.db
-            .query("procurementEmailMessages")
-            .withIndex("message", (index) => index.eq("messageId", args.messageId))
-            .first()
-        : null);
-    if (legacyDuplicate) {
-      await dropUploads();
-      const mapped = await ctx.db
-        .query("teamEmailThreads")
-        .withIndex("by_legacyThreadId", (index) =>
-          index.eq("legacyThreadId", legacyDuplicate.threadId),
-        )
-        .first();
-      return {
-        duplicate: true as const,
-        threadId: mapped?._id ?? (await adoptLegacyThread(ctx, legacyDuplicate.threadId))?.thread._id,
-      };
-    }
-
     const addressedRequest = await requireRequest(ctx, args.addressedRequestId);
     const normalizedSubject = normalizeProcurementSubject(args.subject);
     const participants = uniqueProcurementEmails(args.participantEmails);
@@ -2710,12 +2633,6 @@ export const ingestEmailInternal = internalMutation({
             procurementParticipantsOverlap(candidate.participantEmails, participants),
         ) ?? null;
     }
-    thread ??= await adoptMatchingLegacyThread(ctx, {
-      request: addressedRequest,
-      referenceIds,
-      normalizedSubject,
-      participants,
-    });
 
     const requestId = thread?.requestId ?? addressedRequest._id;
     const [brokerEmails, clientEmails, operatorEmails] = await linkedParticipantGroups(ctx, {

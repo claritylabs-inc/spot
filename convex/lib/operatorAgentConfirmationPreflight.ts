@@ -26,7 +26,6 @@ import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
 import { resolveOperatorPolicySources } from "../operatorPolicyImports";
 import { validateOperatorInvitation } from "../operatorInvitations";
 import { requireSendableOperatorEmailDraft } from "../operatorEmailDrafts";
-import { mappedTeamThreadId } from "./teamEmailLegacy";
 import { isOutreachLocked } from "./teamEmailStore";
 import { previewTeamEmailReply } from "./teamEmailReply";
 import { assertOutreachIdentity } from "./outreachIdentity";
@@ -151,7 +150,7 @@ async function requireClientOrganization(ctx: MutationCtx, value: unknown) {
 }
 
 async function requireTeamEmailThread(ctx: MutationCtx, value: unknown) {
-  const id = typeof value === "string" ? await mappedTeamThreadId(ctx, value) : null;
+  const id = typeof value === "string" ? ctx.db.normalizeId("teamEmailThreads", value) : null;
   const thread = id ? await ctx.db.get(id) : null;
   if (!thread || thread.deletedAt !== undefined) throw new Error("Email conversation not found");
   if (thread.clientOrgId) await requireClientOrganization(ctx, thread.clientOrgId);
