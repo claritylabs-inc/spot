@@ -1030,46 +1030,47 @@ export async function listTeamInbox(
   };
 }
 
-const SUGGESTION_SCAN_LIMIT = 100;
+const SUGGESTION_LIMIT = 20;
 
 /**
  * Unlinked conversations whose stored link suggestion points at `requestId`
- * (the request's "Suggested" strip), as inbox rows. Suggestions are only
- * stored, never inferred here. With no index on the suggestion the scan reads
- * the newest unlinked active threads, so `limited` says an older suggestion
- * may exist beyond it. A suggestion for a deleted request or another client's
- * request is not offered.
+ * (the request's "Suggested" strip), newest first, as inbox rows. Suggestions
+ * are only stored, never inferred here. Excluded: deleted or archived
+ * conversations, ones already linked to a client, a suggestion naming another
+ * client than the request's, and any whose client or request is no longer live.
+ * `limited` says more candidates exist than the bounded read returned.
  */
 export async function listSuggestedTeamThreads(
   ctx: QueryCtx,
   args: { viewerUserId: Id<"users">; requestId: Id<"procurementRequests"> },
 ) {
   const request = await ctx.db.get(args.requestId);
-  if (!request || request.deletedAt || !request.clientOrgId)
-    return { page: [], scanned: 0, limited: false };
+  if (!request || request.deletedAt || !request.clientOrgId || (await teamTargetProblem(ctx, request)))
+    return { threads: [], limited: false };
   const clientOrgId = request.clientOrgId;
-  const threads = await ctx.db
+  const candidates = await ctx.db
     .query("teamEmailThreads")
-    .withIndex("by_clientOrgId_and_archivedAt_and_latestMessageAt", (q) =>
-      q.eq("clientOrgId", undefined).eq("archivedAt", undefined),
+    .withIndex("by_suggestedRequestId_and_latestMessageAt", (q) =>
+      q.eq("linkSuggestion.requestId", args.requestId),
     )
     .order("desc")
-    .take(SUGGESTION_SCAN_LIMIT + 1);
-  const scanned = threads.slice(0, SUGGESTION_SCAN_LIMIT);
-  const matches = scanned.filter(
-    (thread) =>
-      !thread.deletedAt &&
-      thread.linkSuggestion?.requestId === args.requestId &&
-      thread.linkSuggestion.clientOrgId === clientOrgId,
-  );
+    .take(SUGGESTION_LIMIT + 1);
+  const eligible = candidates
+    .slice(0, SUGGESTION_LIMIT)
+    .filter(
+      (thread) =>
+        !thread.deletedAt &&
+        !thread.archivedAt &&
+        !thread.clientOrgId &&
+        thread.linkSuggestion?.clientOrgId === clientOrgId,
+    );
   const people = new Map<Id<"users">, OperatorPerson>();
   const rows = await Promise.all(
-    matches.map((thread) => teamInboxRow(ctx, thread, args.viewerUserId, people)),
+    eligible.map((thread) => teamInboxRow(ctx, thread, args.viewerUserId, people)),
   );
   return {
-    page: rows.filter((row): row is NonNullable<typeof row> => row !== null),
-    scanned: scanned.length,
-    limited: threads.length > SUGGESTION_SCAN_LIMIT,
+    threads: rows.filter((row): row is NonNullable<typeof row> => row !== null),
+    limited: candidates.length > SUGGESTION_LIMIT,
   };
 }
 
@@ -1103,35 +1104,27 @@ export async function teamInboxUnreadCount(ctx: QueryCtx, viewerUserId: Id<"user
   };
 }
 
-const DRAFT_SCAN_LIMIT = 100;
 const DRAFT_LIMIT = 20;
 
 /**
  * Drafts being written and sends waiting to go for one conversation, newest
- * first. Sent and cancelled history is skipped as it is scanned, so it cannot
- * push a new draft out of view; `limited` says the scan hit its bound.
+ * first. Indexed by status, so sent and cancelled history can never push a new
+ * draft out of view; `limited` says more exist than the cap returns.
  */
 async function threadDraftsInProgress(ctx: Ctx, threadId: Id<"teamEmailThreads">) {
-  const rows: Doc<"pendingEmails">[] = [];
-  let scanned = 0;
-  let limited = false;
-  for await (const draft of ctx.db
-    .query("pendingEmails")
-    .withIndex("by_teamEmailThreadId", (q) => q.eq("teamEmailThreadId", threadId))
-    .order("desc")) {
-    if (scanned >= DRAFT_SCAN_LIMIT) {
-      limited = true;
-      break;
-    }
-    scanned += 1;
-    if (draft.status !== "draft" && draft.status !== "pending") continue;
-    if (rows.length >= DRAFT_LIMIT) {
-      limited = true;
-      break;
-    }
-    rows.push(draft);
-  }
-  return { rows, limited };
+  const [drafting, pending] = await Promise.all(
+    (["draft", "pending"] as const).map((status) =>
+      ctx.db
+        .query("pendingEmails")
+        .withIndex("by_teamEmailThreadId_and_status", (q) =>
+          q.eq("teamEmailThreadId", threadId).eq("status", status),
+        )
+        .order("desc")
+        .take(DRAFT_LIMIT + 1),
+    ),
+  );
+  const all = [...drafting, ...pending].sort((a, b) => b._creationTime - a._creationTime);
+  return { rows: all.slice(0, DRAFT_LIMIT), limited: all.length > DRAFT_LIMIT };
 }
 
 /** The thread's detail for an authorized viewer; null when missing, deleted or outside the request. */

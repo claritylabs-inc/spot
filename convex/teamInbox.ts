@@ -83,8 +83,7 @@ export const list = query({
 /**
  * Unlinked conversations suggested for one request (its Email tab "Suggested"
  * strip). Accept with `linkThread({threadId, requestId})`, which re-checks the
- * live target. `limited` means the bounded scan did not cover every unlinked
- * thread.
+ * live target. `limited` means more suggestions exist than one bounded read returns.
  */
 export const suggestedForRequest = query({
   args: { requestId: v.id("procurementRequests") },
