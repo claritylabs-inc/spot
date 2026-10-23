@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
@@ -12,6 +12,7 @@ import { useResolvedThreadId } from "@/components/inbox/resolve-thread-id";
 import { NewEmailComposer } from "@/components/inbox/new-email-composer";
 import { TeamInbox, type InboxThread } from "@/components/inbox/team-inbox";
 import { ProcurementEmailDrawer } from "@/components/procurement/procurement-shared";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 
 /**
@@ -24,7 +25,7 @@ export default function OperatorInboxPage() {
   const current = useCachedOperatorCurrent();
   // Route params arrive decoded; the id is opaque.
   const selectedId = params.threadId?.[0] ?? null;
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposing] = useFollowedState("inbox:composing", false);
 
   const select = useCallback(
     (thread: InboxThread | null, options?: { replace?: boolean }) => {
@@ -37,9 +38,8 @@ export default function OperatorInboxPage() {
   const close = useCallback(() => select(null), [select]);
   // Opening a conversation replaces the composer; its draft is kept for the session.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (selectedId) setComposing(false);
-  }, [selectedId]);
+  }, [selectedId, setComposing]);
   const resolved = useResolvedThreadId(selectedId);
   // A saved link with a legacy id moves to the current id.
   useEffect(() => {

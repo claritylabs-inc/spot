@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -131,7 +132,7 @@ function OperatorReplyComposer({
   const [serverNote, setServerNote] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [showFull, setShowFull] = useState(false);
+  const [showFull, setShowFull] = useFollowedState(`inbox:reply:${threadId}:show-full`, false);
   // A key belongs to one exact text and fingerprint: unchanged, it is reused.
   const sendKey = useRef<{ key: string; text: string; fingerprint: string } | null>(null);
 
@@ -153,7 +154,7 @@ function OperatorReplyComposer({
   const [lastHeaders, setLastHeaders] = useState<typeof preview>(null);
   if (preview && preview !== lastHeaders) setLastHeaders(preview);
   const headers = hasText ? (preview ?? lastHeaders) : null;
-  const [open, setOpen] = useState(() => Boolean(readAttempt(id)?.text ?? replyDrafts.get(id)));
+  const [open, setOpen] = useFollowedState(`inbox:reply:${threadId}:open`, false);
   const previewError = current && previewResult && !previewResult.ok ? previewResult.reason : null;
   const previewing = !locked && hasText && !preview && !previewError;
 

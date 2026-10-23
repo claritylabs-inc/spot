@@ -58,6 +58,7 @@ import {
   TableNameLink,
 } from "@/components/ui/table";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useLocalDraft } from "@/hooks/use-local-draft";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -66,6 +67,7 @@ import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const NO_POLICY = "__none__";
+const NEW_REQUEST_PANEL = "new";
 
 type PolicyOption = {
   policyId: Id<"policies">;
@@ -134,7 +136,10 @@ function ProcurementRequestPreview({
     }
   }
 
-  const [view, setView] = useState<"summary" | "links">("summary");
+  const [view, setView] = useFollowedState<"summary" | "links">(
+    `procurement:${request._id}:preview-view`,
+    "summary",
+  );
   const back = () => setView("summary");
   const forward = useForwardingCopy(null, readOnly);
 
@@ -533,8 +538,11 @@ export function ProcurementListWorkspace({
     () => (policyRows ?? []) as PolicyOption[],
     [policyRows],
   );
-  const [selectedRequestId, setSelectedRequestId] =
-    useState<Id<"procurementRequests"> | null>(null);
+  const [panel, setPanel] = useFollowedState<string | null>(
+    `procurement:${clientOrgId}:list-panel`,
+    null,
+  );
+  const selectedRequestId = panel === NEW_REQUEST_PANEL ? null : panel;
   const ensureShareUrl = useMutation(api.procurementPacket.ensureShareUrl);
   const [copyingLinkId, setCopyingLinkId] =
     useState<Id<"procurementRequests"> | null>(null);
@@ -567,40 +575,52 @@ export function ProcurementListWorkspace({
     }
   }
 
-  const closeRightPanel = useCallback(() => {
-    setSelectedRequestId(null);
-    onRightPanel(null);
-  }, [onRightPanel]);
-  const openNewRequest = useCallback(() => {
-    setSelectedRequestId(null);
-    onRightPanel(
-      <NewProcurementRequestDrawer
-        clientOrgId={clientOrgId}
-        policies={policies}
-        onClose={closeRightPanel}
-        onCreated={(requestId) => {
-          closeRightPanel();
-          router.push(`${basePath}/${requestId}`);
-        }}
-      />,
-    );
-  }, [basePath, clientOrgId, closeRightPanel, onRightPanel, policies, router]);
+  const closeRightPanel = useCallback(() => setPanel(null), [setPanel]);
+  const openNewRequest = useCallback(
+    () => setPanel(NEW_REQUEST_PANEL),
+    [setPanel],
+  );
+  const openRequestPreview = (request: ProcurementRequestRow) =>
+    setPanel(request._id);
 
-  const openRequestPreview = useCallback(
-    (request: ProcurementRequestRow) => {
-      setSelectedRequestId(request._id);
+  const panelRequest = requests.find((request) => request._id === panel);
+  useEffect(() => {
+    if (panel === NEW_REQUEST_PANEL) {
+      onRightPanel(
+        <NewProcurementRequestDrawer
+          clientOrgId={clientOrgId}
+          policies={policies}
+          onClose={closeRightPanel}
+          onCreated={(requestId) => {
+            closeRightPanel();
+            router.push(`${basePath}/${requestId}`);
+          }}
+        />,
+      );
+    } else if (panelRequest) {
       onRightPanel(
         <ProcurementRequestPreview
-          key={request._id}
-          request={request}
+          key={panelRequest._id}
+          request={panelRequest}
           readOnly={readOnly}
           basePath={basePath}
           onClose={closeRightPanel}
         />,
       );
-    },
-    [basePath, closeRightPanel, onRightPanel, readOnly],
-  );
+    } else {
+      onRightPanel(null);
+    }
+  }, [
+    basePath,
+    clientOrgId,
+    closeRightPanel,
+    onRightPanel,
+    panel,
+    panelRequest,
+    policies,
+    readOnly,
+    router,
+  ]);
 
   useEffect(() => {
     onActions?.(
