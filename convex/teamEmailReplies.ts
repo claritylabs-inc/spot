@@ -18,7 +18,7 @@ import {
   previewTeamEmailReply,
   teamReplyError,
 } from "./lib/teamEmailReply";
-import { resolveTeamThreadId } from "./lib/teamEmailStore";
+import { mappedTeamThreadId } from "./lib/teamEmailLegacy";
 import { REPLY_TOOL_NAMES, agentReplyKey } from "./operatorEmailDrafts";
 
 /**
@@ -193,7 +193,7 @@ export const prepareAgentReplyInternal = internalMutation({
     const named = [input.teamEmailThreadId, input.procurementEmailThreadId].filter(
       (id): id is string => typeof id === "string" && id.length > 0,
     );
-    const resolved = await Promise.all(named.map((id) => resolveTeamThreadId(ctx, id)));
+    const resolved = await Promise.all(named.map((id) => mappedTeamThreadId(ctx, id)));
     if (
       !named.length ||
       resolved.some((id) => id !== args.teamEmailThreadId) ||

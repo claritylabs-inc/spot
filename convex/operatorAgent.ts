@@ -3,7 +3,7 @@ import { getClientOutreachPanel, launchClientOutreachByOperator } from "./client
 import { NoWriteInputError } from "./lib/noWriteInputError";
 import { operatorTeamAddressFor } from "./lib/teamEmail";
 import { ensureOperatorInbox } from "./lib/operatorInbox";
-import { resolveTeamThreadId } from "./lib/teamEmailStore";
+import { adoptTeamThreadId, mappedTeamThreadId } from "./lib/teamEmailLegacy";
 import { listTeamInbox, getTeamThreadDetails, linkTeamEmailThreadByOperator } from "./teamInbox";
 import {
   operatorPlanningAssessmentValidator,
@@ -507,7 +507,7 @@ async function referenceDisplayName(
     return row?.label?.trim() || DISPLAY_REFERENCE_FALLBACKS[key];
   }
   if (key === "procurementEmailThreadId" || key === "teamEmailThreadId") {
-    const id = await resolveTeamThreadId(ctx, value);
+    const id = await mappedTeamThreadId(ctx, value);
     const row = id ? await ctx.db.get(id) : null;
     return row?.subject?.trim() || DISPLAY_REFERENCE_FALLBACKS[key];
   }
@@ -1119,23 +1119,37 @@ function normalizeProcurementFileItemId(
   return fileItemId;
 }
 
-async function normalizeProcurementEmailThreadId(
-  ctx: QueryCtx | MutationCtx,
-  value: unknown,
-) {
+function emailThreadIdInput(value: unknown) {
   if (typeof value !== "string") {
     throw new NoWriteInputError(
       "invalid_identifier",
       "Procurement email thread ID is required",
     );
   }
-  const emailThreadId = await resolveTeamThreadId(ctx, value);
-  if (!emailThreadId)
-    throw new NoWriteInputError(
-      "invalid_identifier",
-      "Invalid procurement email thread ID",
-    );
-  return emailThreadId;
+  return value;
+}
+
+const invalidEmailThreadId = () =>
+  new NoWriteInputError(
+    "invalid_identifier",
+    "Invalid procurement email thread ID",
+  );
+
+/** Read-only: a legacy id works only once its thread has been copied. */
+async function normalizeProcurementEmailThreadId(
+  ctx: QueryCtx | MutationCtx,
+  value: unknown,
+) {
+  const id = await mappedTeamThreadId(ctx, emailThreadIdInput(value));
+  if (!id) throw invalidEmailThreadId();
+  return id;
+}
+
+/** For write tools that must act on a legacy thread that may not be copied yet. */
+async function adoptProcurementEmailThreadId(ctx: MutationCtx, value: unknown) {
+  const id = await adoptTeamThreadId(ctx, emailThreadIdInput(value));
+  if (!id) throw invalidEmailThreadId();
+  return id;
 }
 
 function normalizeProcurementProposalId(
@@ -2249,7 +2263,7 @@ async function executeToolDomain(
   if (toolName === "link_team_inbox_thread") {
     return await linkTeamEmailThreadByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      threadId: await normalizeProcurementEmailThreadId(ctx, input.teamEmailThreadId),
+      threadId: await adoptProcurementEmailThreadId(ctx, input.teamEmailThreadId),
       clientOrgId: input.clientOrgId ? normalizeOrganizationId(ctx, input.clientOrgId) : undefined,
       requestId: input.procurementRequestId ? normalizeProcurementRequestId(ctx, input.procurementRequestId) : undefined,
       source: "agent",
@@ -2770,7 +2784,7 @@ async function executeToolDomain(
   if (toolName === "file_procurement_email_quote") {
     return await fileProcurementEmailQuoteByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      emailThreadId: await normalizeProcurementEmailThreadId(
+      emailThreadId: await adoptProcurementEmailThreadId(
         ctx,
         input.procurementEmailThreadId,
       ),
@@ -3061,7 +3075,7 @@ async function executeToolDomain(
   if (toolName === "update_procurement_email_thread") {
     return await updateProcurementEmailThreadByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      emailThreadId: await normalizeProcurementEmailThreadId(
+      emailThreadId: await adoptProcurementEmailThreadId(
         ctx,
         input.procurementEmailThreadId,
       ),

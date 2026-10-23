@@ -18,7 +18,7 @@ import {
   copyLegacyMessagesPage,
   copyLegacyThread,
   teamThreadForSequence,
-} from "./lib/teamEmailStore";
+} from "./lib/teamEmailLegacy";
 
 /**
  * Procurement email -> team inbox cutover. Every step is idempotent, resumable

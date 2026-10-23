@@ -9,26 +9,20 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import dayjs from "dayjs";
-
 import {
   isOperatorEmailDraft,
   pendingEmailDraftFingerprint,
 } from "./lib/actionConfirmationFingerprint";
-import { validateAlwaysCcEmail } from "./lib/operatorInbox";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { extractEmailAddress, parseReplyToAddresses } from "./lib/emailAddress";
+import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
+import { operatorSenderIdentity, type OperatorSenderIdentity } from "./lib/outreachIdentity";
 import {
-  requireOperator,
-  requireOperatorForUser,
-  operatorEmailAliases,
-} from "./lib/operatorIdentity";
-import {
-  isTeamEmailError,
-  operatorFromHeader,
-  operatorFromName,
-  operatorTeamAddressFor,
-} from "./lib/teamEmail";
+  quotedHistory,
+  teamThreadOwnerAddress,
+  teamThreadReplyPlan,
+  type TeamThreadDraftContext,
+} from "./lib/teamThreadReply";
 
 const MAX_MESSAGES_PER_QUERY = 50;
 const MAX_DRAFTS_PER_MESSAGE = 10;
@@ -161,169 +155,6 @@ export const attachDraftToOperatorMessageInternal = internalMutation({
     return null;
   },
 });
-
-export type OperatorSenderIdentity = {
-  senderUserId: Id<"users">;
-  name: string;
-  fromHeader: string;
-  teamAddress: string;
-  alwaysCc: string | null;
-};
-
-/**
- * The person an operator email is sent as: full name, personal team address
- * and Always CC. Computed from the operator's profile; it provisions nothing.
- */
-export async function operatorSenderIdentity(
-  ctx: Ctx,
-  operatorUserId: Id<"users">,
-): Promise<OperatorSenderIdentity> {
-  const { user, profile } = await requireOperatorForUser(ctx, operatorUserId);
-  try {
-    const name = operatorFromName(user.name);
-    const teamAddress = operatorTeamAddressFor({
-      email: user.email ?? null,
-      teamEmailLocalpart: profile.teamEmailLocalpart ?? null,
-    });
-    const alwaysCc = profile.alwaysCcEmail
-      ? validateAlwaysCcEmail(profile.alwaysCcEmail, [
-          teamAddress,
-          ...(user.email ? [user.email, ...operatorEmailAliases(user.email)] : []),
-        ])
-      : null;
-    return {
-      senderUserId: operatorUserId,
-      name,
-      fromHeader: operatorFromHeader(name, teamAddress),
-      teamAddress,
-      alwaysCc,
-    };
-  } catch (error) {
-    if (isTeamEmailError(error)) throw new Error(error.message);
-    throw error;
-  }
-}
-
-/** The operator's active inbox row; a row with no `status` is a pre-cutover active inbox. */
-async function activeSenderInbox(ctx: Ctx, userId: Id<"users">) {
-  const [explicit, legacy] = await Promise.all([
-    ctx.db
-      .query("operatorOutreachInboxes")
-      .withIndex("by_userId_and_status", (q) =>
-        q.eq("userId", userId).eq("status", "active"),
-      )
-      .order("desc")
-      .first(),
-    ctx.db
-      .query("operatorOutreachInboxes")
-      .withIndex("by_userId_and_status", (q) =>
-        q.eq("userId", userId).eq("status", undefined),
-      )
-      .order("desc")
-      .first(),
-  ]);
-  return (
-    [explicit, legacy]
-      .filter((row) => row !== null && row.kind !== "agent")
-      .sort((a, b) => (b?._creationTime ?? 0) - (a?._creationTime ?? 0))[0] ??
-    null
-  );
-}
-
-/**
- * Whether the sender's active inbox holds a Resend conversation of this team
- * thread, and if so which one and which message a reply threads under. The
- * only evidence is a `teamEmailThreadLinks` row for that exact inbox: thread
- * ownership says nothing about it, because an owner's inbox can rotate. With no
- * mapping the reply is a new quoted "Re:" (copying the owner).
- */
-export async function teamThreadReplyPlan(
-  ctx: Ctx,
-  thread: Doc<"teamEmailThreads">,
-  senderUserId: Id<"users">,
-) {
-  const [inbox, links, messages] = await Promise.all([
-    activeSenderInbox(ctx, senderUserId),
-    ctx.db
-      .query("teamEmailThreadLinks")
-      .withIndex("by_threadId", (q) => q.eq("threadId", thread._id))
-      .take(50),
-    ctx.db
-      .query("teamEmailMessages")
-      .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
-      .order("desc")
-      .take(50),
-  ]);
-  const link = inbox
-    ? links.find((candidate) => candidate.inboxId === inbox.inboxId)
-    : undefined;
-  const resendThreadId = link?.resendThreadId;
-  const replyToEmailId = resendThreadId
-    ? messages.find(
-        (message) =>
-          message.resendInboxEmailId &&
-          message.resendThreadId === resendThreadId,
-      )?.resendInboxEmailId
-    : undefined;
-  const latestInbound = messages.find((m) => m.direction === "inbound");
-  return {
-    threaded: Boolean(
-      link && replyToEmailId && inbox &&
-      messages[0]?.resendThreadId === resendThreadId,
-    ),
-    inboxId: inbox?.inboxId,
-    resendThreadId,
-    replyToEmailId,
-    latest: messages[0],
-    defaultTo:
-      latestInbound?.fromEmail ?? messages[0]?.toAddresses[0] ?? undefined,
-  };
-}
-
-export async function teamThreadOwnerAddress(
-  ctx: Ctx,
-  ownerUserId: Id<"users"> | undefined,
-): Promise<string | undefined> {
-  if (!ownerUserId) return undefined;
-  const inbox = await activeSenderInbox(ctx, ownerUserId);
-  if (inbox) return inbox.emailAddress.toLowerCase();
-  try {
-    return (await operatorSenderIdentity(ctx, ownerUserId)).teamAddress;
-  } catch {
-    return undefined;
-  }
-}
-
-const QUOTE_MAX_CHARS = 700;
-
-export function quotedHistory(message: Doc<"teamEmailMessages">) {
-  const who = message.fromName
-    ? `${message.fromName} <${message.fromEmail}>`
-    : message.fromEmail;
-  const header = `On ${dayjs(message.receivedAt).format("MMM D, YYYY, h:mm A")} UTC, ${who} wrote:`;
-  const text = message.currentText.replace(/\r\n/g, "\n").trim();
-  const clipped =
-    text.length > QUOTE_MAX_CHARS
-      ? `${text.slice(0, QUOTE_MAX_CHARS).trimEnd()}…`
-      : text;
-  const quote = clipped
-    .split("\n")
-    .map((line) => `> ${line}`.trimEnd())
-    .join("\n");
-  return { header, block: `${header}\n\n${quote}` };
-}
-
-export type TeamThreadDraftContext = {
-  id: Id<"teamEmailThreads">;
-  subject: string;
-  ownerUserId?: Id<"users">;
-  /** The sender's inbox does not hold this conversation: send a new "Re:" and copy the owner. */
-  crossReply: boolean;
-  ownerAddress?: string;
-  defaultTo?: string;
-  quoteHeader?: string;
-  quote?: string;
-};
 
 /** Validates that the operator may write email as themself and resolves any link targets. */
 export const resolveSenderInternal = internalQuery({

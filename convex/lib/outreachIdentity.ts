@@ -108,6 +108,34 @@ export async function outreachSenderIdentity(
   }
 }
 
+/** The identity operator email is composed from, flattened for the draft and reply paths. */
+export type OperatorSenderIdentity = {
+  senderUserId: Id<"users">;
+  /** Full name, whitespace-collapsed, as signed. */
+  name: string;
+  /** `Full Name <address>`; the name is sanitized for the header only. */
+  fromHeader: string;
+  teamAddress: string;
+  alwaysCc: string | null;
+};
+
+/** `outreachSenderIdentity` for callers that treat an unusable sender as an error. */
+export async function operatorSenderIdentity(
+  ctx: QueryCtx | MutationCtx,
+  operatorUserId: Id<"users">,
+): Promise<OperatorSenderIdentity> {
+  const result = await outreachSenderIdentity(ctx, operatorUserId);
+  if (!result.ok) throw new Error(result.message);
+  const { identity } = result;
+  return {
+    senderUserId: identity.senderUserId,
+    name: identity.name,
+    fromHeader: identity.fromHeader,
+    teamAddress: identity.address,
+    alwaysCc: identity.alwaysCc,
+  };
+}
+
 /**
  * The identity a launch is approved with. Throws a readable error when it is
  * unusable, or when `expectedFingerprint` (from the preview the operator

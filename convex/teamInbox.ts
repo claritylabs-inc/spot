@@ -5,14 +5,14 @@ import type { Id } from "./_generated/dataModel";
 import { internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireOperator } from "./lib/operatorIdentity";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
+import { mappedTeamThreadId } from "./lib/teamEmailLegacy";
+import { teamTargetProblem } from "./lib/teamEmailStore";
 import {
   getTeamThreadDetails,
   listSuggestedTeamThreads,
   listTeamInbox,
-  resolveTeamThreadId,
-  teamTargetProblem,
   teamInboxUnreadCount,
-} from "./lib/teamEmailStore";
+} from "./lib/teamInboxProjection";
 import {
   emailCategoryValidator,
   linkTeamEmailThreadByOperator,
@@ -30,7 +30,7 @@ export {
   listSuggestedTeamThreads,
   listTeamInbox,
   teamInboxUnreadCount,
-} from "./lib/teamEmailStore";
+} from "./lib/teamInboxProjection";
 
 /**
  * Records that `userId` has read everything in the thread up to its newest
@@ -122,7 +122,7 @@ export const resolveThreadId = query({
   args: { threadId: v.string(), requestId: v.optional(v.id("procurementRequests")) },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
-    const id = await resolveTeamThreadId(ctx, args.threadId);
+    const id = await mappedTeamThreadId(ctx, args.threadId);
     const thread = id ? await ctx.db.get(id) : null;
     if (!thread || thread.deletedAt ||
       (args.requestId && thread.requestId !== args.requestId) ||

@@ -23,7 +23,7 @@ import { buildEmailSignature, getEmailAgentFromName } from "./emailIdentity";
 import { isOperatorEmailDraft } from "./actionConfirmationFingerprint";
 import { NoWriteInputError } from "./noWriteInputError";
 import { buildOperatorSignature } from "./teamEmail";
-import type { TeamThreadDraftContext } from "../operatorEmailDrafts";
+import type { TeamThreadDraftContext } from "./teamThreadReply";
 import { EMAIL_FAMILY_GUIDANCE } from "./channelStyle";
 import {
   MULTIPLE_COI_SINGLE_RECIPIENT_WARNING,
