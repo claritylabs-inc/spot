@@ -1240,7 +1240,7 @@ export async function getTeamThreadDetails(
     messages: hydrated,
     messagesTruncated: truncated,
     outboundAddress: outreachInbox ? normalizeProcurementEmail(outreachInbox.emailAddress) : null,
-    canReply: Boolean(outreachInbox && sequence),
+    canReply: !thread.archivedAt && messages.page.length > 0,
     followUps: sequence
       ? {
           sequenceId: sequence._id,

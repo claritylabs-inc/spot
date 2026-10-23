@@ -7,8 +7,7 @@ import { v } from "convex/values";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { action, internalAction, type ActionCtx } from "../_generated/server";
-import { getSessionUserId } from "../lib/sessionIdentity";
+import { internalAction, type ActionCtx } from "../_generated/server";
 import { extractEmailAddress } from "../lib/emailAddress";
 import { clRouterDecide } from "../lib/clRouterClient";
 import {
@@ -976,8 +975,15 @@ export const handleInboxEvent = internalAction({
     try {
       // The command-channel inbox is reserved for its own routing, never imported as mail.
       if (route.kind === "agent") {
+        if (event.eventType === "inbox.email.received") {
+          await ctx.runAction(internal.actions.handleInboundOperatorEmail.processInboxCommand, {
+            inboxId: event.inboxId,
+            resendThreadId: event.threadId,
+            emailId: event.emailId,
+          });
+        }
         await complete();
-        return { status: "agent_inbox_reserved" as const };
+        return { status: "agent_command" as const };
       }
       // Unknown inbox (the webhook is account-wide): nothing to import.
       if (route.kind === "unmatched") {
@@ -1187,105 +1193,4 @@ export const handleInboxWebhook = internalAction({
       return { ok: false, status: 500, outcome: "record_failed" };
     }
   },
-});
-
-// ---------------------------------------------------------------------------
-// Operator replies from the request Inbox
-// ---------------------------------------------------------------------------
-
-const MAX_REPLY_CHARS = 20_000;
-
-type ThreadReplyArgs = {
-  operatorUserId: Id<"users">;
-  requestId?: Id<"procurementRequests">;
-  emailThreadId: Id<"teamEmailThreads">;
-  text: string;
-  idempotencyKey: string;
-};
-
-/**
- * Sends an operator's reply on an outreach thread (provider or client) through
- * the sending operator's Resend inbox. Follow-ups stop first; the reply is
- * mirrored into the request Inbox as soon as Resend accepts it.
- */
-async function sendThreadReply(
-  ctx: ActionCtx,
-  args: ThreadReplyArgs,
-): Promise<{ status: "sent" | "captured" }> {
-  const text = args.text.trim();
-  if (!text) throw new Error("Write a reply first");
-  if (text.length > MAX_REPLY_CHARS) throw new Error("Reply is too long");
-  if (!/^[A-Za-z0-9-]{8,80}$/.test(args.idempotencyKey))
-    throw new Error("Invalid reply key");
-  const target = await ctx.runMutation(
-    internal.providerOutreach.prepareOperatorReplyInternal,
-    {
-      operatorUserId: args.operatorUserId,
-      emailThreadId: args.emailThreadId,
-      ...(args.requestId ? { requestId: args.requestId } : {}),
-    },
-  );
-  const html = text
-    .split(/\n{2,}/)
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
-    .join("");
-  const sent = await replyToThreadEmail({
-    inboxId: target.inboxId,
-    threadId: target.resendThreadId,
-    emailId: target.replyToEmailId,
-    text,
-    html,
-    idempotencyKey: `inbox-reply:${args.idempotencyKey}`,
-  });
-  if (sent.status === "captured") return { status: "captured" };
-  const subject = /^re:/i.test(target.subject) ? target.subject : `Re: ${target.subject}`;
-  await ctx.runMutation(internal.providerOutreach.recordOperatorReplyInternal, {
-    operatorUserId: args.operatorUserId,
-    sequenceId: target.sequenceId,
-    resendThreadId: target.resendThreadId,
-    email: {
-      resendInboxEmailId: sent.data.emailId,
-      fromEmail: target.fromEmail,
-      fromName: target.fromName,
-      toAddresses: target.to,
-      ccAddresses: [],
-      bccAddresses: [],
-      subject,
-      inReplyTo: target.messageId,
-      references: target.references,
-      text,
-      html,
-      occurredAt: dayjs().valueOf(),
-    },
-  });
-  return { status: "sent" };
-}
-
-export const replyToThread = action({
-  args: {
-    emailThreadId: v.id("teamEmailThreads"),
-    text: v.string(),
-    idempotencyKey: v.string(),
-  },
-  handler: async (ctx, args): Promise<{ status: "sent" | "captured" }> => {
-    const operatorUserId = await getSessionUserId(ctx);
-    if (!operatorUserId) throw new Error("Authentication required");
-    return await sendThreadReply(ctx, {
-      operatorUserId: operatorUserId as Id<"users">,
-      ...args,
-    });
-  },
-});
-
-/** Operator agent and MCP replies; the caller has exact confirmation. */
-export const replyToThreadInternal = internalAction({
-  args: {
-    operatorUserId: v.id("users"),
-    requestId: v.id("procurementRequests"),
-    emailThreadId: v.id("teamEmailThreads"),
-    text: v.string(),
-    idempotencyKey: v.string(),
-  },
-  handler: async (ctx, args): Promise<{ status: "sent" | "captured" }> =>
-    await sendThreadReply(ctx, args),
 });

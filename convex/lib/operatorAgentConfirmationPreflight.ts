@@ -26,6 +26,9 @@ import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
 import { resolveOperatorPolicySources } from "../operatorPolicyImports";
 import { validateOperatorInvitation } from "../operatorInvitations";
 import { requireSendableOperatorEmailDraft } from "../operatorEmailDrafts";
+import { resolveTeamThreadId, isOutreachLocked } from "./teamEmailStore";
+import { previewTeamEmailReply } from "./teamEmailReply";
+import { assertOutreachIdentity } from "./outreachIdentity";
 
 export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "call_mcp_tool",
@@ -44,6 +47,8 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "stop_procurement_provider_outreach",
   "send_procurement_client_email",
   "reply_procurement_email_thread",
+  "reply_email_thread",
+  "link_team_inbox_thread",
   "update_procurement_broker_outreach",
   "file_procurement_proposal",
   "file_procurement_email_quote",
@@ -144,6 +149,18 @@ async function requireClientOrganization(ctx: MutationCtx, value: unknown) {
   return organization;
 }
 
+async function requireTeamEmailThread(ctx: MutationCtx, value: unknown) {
+  const id = typeof value === "string" ? await resolveTeamThreadId(ctx, value) : null;
+  const thread = id ? await ctx.db.get(id) : null;
+  if (!thread || thread.deletedAt !== undefined) throw new Error("Email conversation not found");
+  if (thread.clientOrgId) await requireClientOrganization(ctx, thread.clientOrgId);
+  if (thread.requestId) {
+    const request = await requireProcurementRequest(ctx, thread.requestId);
+    if (request.clientOrgId !== thread.clientOrgId) throw new Error("Email conversation has an invalid client link");
+  }
+  return thread;
+}
+
 async function requireProcurementRequest(ctx: MutationCtx, value: unknown) {
   const request = await requireDocument(
     ctx,
@@ -151,6 +168,7 @@ async function requireProcurementRequest(ctx: MutationCtx, value: unknown) {
     value,
     "Procurement request",
   );
+  if (request.deletedAt !== undefined) throw new Error("Procurement request not found");
   await requireClientOrganization(ctx, request.clientOrgId);
   return request;
 }
@@ -548,12 +566,7 @@ async function preflightProcurementEmailQuote(
   ctx: MutationCtx,
   input: Record<string, unknown>,
 ) {
-  const thread = await requireDocument(
-    ctx,
-    "procurementEmailThreads",
-    input.procurementEmailThreadId,
-    "Procurement email thread",
-  );
+  const thread = await requireTeamEmailThread(ctx, input.procurementEmailThreadId);
   if (thread.deletedAt || thread.archivedAt)
     throw new Error("Procurement email thread not found");
   const request = await requireProcurementRequest(ctx, thread.requestId);
@@ -566,9 +579,10 @@ async function preflightProcurementEmailQuote(
   if (outreach.requestId !== request._id)
     throw new Error("Outreach does not belong to this email thread's request");
   const messages = await ctx.db
-    .query("procurementEmailMessages")
-    .withIndex("thread", (query) => query.eq("threadId", thread._id))
-    .collect();
+    .query("teamEmailMessages")
+    .withIndex("by_threadId_and_receivedAt", (query) => query.eq("threadId", thread._id))
+    .take(301);
+  if (messages.length > 300) throw new Error("This conversation exceeds the filing preview limit; select exact client files instead.");
   const clientFileIds = [
     ...new Set(messages.flatMap((message) => message.clientFileIds)),
   ];
@@ -969,6 +983,7 @@ export async function preflightOperatorToolConfirmation(
       await preflightProcurementRequestUpdate(ctx, args.input);
       return;
     case "launch_procurement_provider_outreach": {
+      await assertOutreachIdentity(ctx, args.operatorUserId);
       const request = await requireProcurementRequest(
         ctx,
         args.input.procurementRequestId,
@@ -994,6 +1009,7 @@ export async function preflightOperatorToolConfirmation(
       return;
     }
     case "send_procurement_client_email": {
+      await assertOutreachIdentity(ctx, args.operatorUserId);
       const request = await requireProcurementRequest(
         ctx,
         args.input.procurementRequestId,
@@ -1015,22 +1031,32 @@ export async function preflightOperatorToolConfirmation(
         throw new Error("Recipient is not a current client contact");
       return;
     }
-    case "reply_procurement_email_thread": {
-      const request = await requireProcurementRequest(
-        ctx,
-        args.input.procurementRequestId,
-      );
-      requireCompanyRequest(request);
-      const thread = await requireDocument(
-        ctx,
-        "procurementEmailThreads",
-        args.input.procurementEmailThreadId,
-        "Email thread",
-      );
-      if (thread.requestId !== request._id || thread.deletedAt)
-        throw new Error("Email thread does not belong to the request");
-      if (!thread.resendThreadId)
-        throw new Error("Forwarded mail can only be answered from your own mailbox");
+    case "reply_procurement_email_thread":
+    case "reply_email_thread": {
+      const thread = await requireTeamEmailThread(ctx, args.input.teamEmailThreadId ?? args.input.procurementEmailThreadId);
+      if (args.input.procurementRequestId) {
+        const request = await requireProcurementRequest(ctx, args.input.procurementRequestId);
+        if (thread.requestId !== request._id) throw new Error("Email conversation does not belong to the request");
+      }
+      if (thread.archivedAt) throw new Error("Restore this conversation before replying");
+      const reply = await previewTeamEmailReply(ctx, {
+        operatorUserId: args.operatorUserId,
+        teamEmailThreadId: thread._id,
+        message: String(args.input.message ?? ""),
+      });
+      if (!reply.ok) throw new Error(reply.reason);
+      return;
+    }
+    case "link_team_inbox_thread": {
+      const thread = await requireTeamEmailThread(ctx, args.input.teamEmailThreadId);
+      if (isOutreachLocked(thread)) throw new Error("Outreach conversations stay with their originating request");
+      const request = args.input.procurementRequestId
+        ? await requireProcurementRequest(ctx, args.input.procurementRequestId)
+        : null;
+      const client = await requireClientOrganization(ctx, args.input.clientOrgId ?? request?.clientOrgId);
+      if (request && request.clientOrgId !== client._id) throw new Error("Request does not belong to that client");
+      if (thread.clientOrgId && thread.clientOrgId !== client._id) throw new Error("Email conversation can move only within the same client");
+      if (thread.requestId && request && thread.requestId !== request._id) throw new Error("Use the request move for a conversation that already has a request");
       return;
     }
     case "stop_procurement_provider_outreach": {
@@ -1101,24 +1127,16 @@ export async function preflightOperatorToolConfirmation(
       await preflightProcurementFileUpdate(ctx, args.input);
       return;
     case "update_procurement_email_thread": {
-      const thread = await requireDocument(
-        ctx,
-        "procurementEmailThreads",
-        args.input.procurementEmailThreadId,
-        "Procurement email thread",
-      );
-      if (thread.deletedAt)
-        throw new Error("Procurement email thread not found");
-      await requireProcurementRequest(ctx, thread.requestId);
+      const thread = await requireTeamEmailThread(ctx, args.input.procurementEmailThreadId);
       if (args.input.procurementRequestId != null) {
         const request = await requireProcurementRequest(
           ctx,
           args.input.procurementRequestId,
         );
-        if (request.clientOrgId !== thread.clientOrgId) {
+        if (thread.clientOrgId && request.clientOrgId !== thread.clientOrgId) {
           throw new Error("Email thread can move only within the same client");
         }
-        if (thread.resendThreadId && request._id !== thread.requestId) {
+        if (isOutreachLocked(thread) && request._id !== thread.requestId) {
           throw new Error("Provider outreach conversations stay with their originating request");
         }
         if (request._id === thread.requestId && args.input.category == null) {
@@ -1185,6 +1203,7 @@ export async function preflightOperatorToolConfirmation(
       return;
     case "send_email_draft":
       await requireSendableOperatorEmailDraft(ctx, {
+        operatorUserId: args.operatorUserId,
         threadId: args.threadId,
         draftId: args.input.draftId,
       });

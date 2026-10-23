@@ -137,7 +137,7 @@ export const prepareSend = mutation({
         stored.directReplyMessage !== normalizeReplyMessage(args.message) ||
         stored.directApproval?.fingerprint !== args.expectedFingerprint
       ) {
-        throw teamReplyError("This reply key was already used for a different reply.");
+        throw teamReplyError("This reply key was already used for a different reply.", "key_mismatch");
       }
       return { pendingEmailId: existing._id };
     }

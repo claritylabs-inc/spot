@@ -2,6 +2,9 @@ import { getProviderOutreachPanel, launchProviderOutreachByOperator, stopProvide
 import { getClientOutreachPanel, launchClientOutreachByOperator } from "./clientOutreach";
 import { NoWriteInputError } from "./lib/noWriteInputError";
 import { operatorTeamAddressFor } from "./lib/teamEmail";
+import { ensureOperatorInbox } from "./lib/operatorInbox";
+import { resolveTeamThreadId } from "./lib/teamEmailStore";
+import { listTeamInbox, getTeamThreadDetails, linkTeamEmailThreadByOperator } from "./teamInbox";
 import {
   operatorPlanningAssessmentValidator,
   operatorExecutionPlanValidator,
@@ -143,6 +146,9 @@ import {
 } from "./procurementPacket";
 import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
 import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmationPreflight";
+import { previewTeamEmailReply } from "./lib/teamEmailReply";
+import { assertOutreachIdentity } from "./lib/outreachIdentity";
+import { composeClientOutreachEmail } from "./lib/clientOutreachEmail";
 import {
   OPERATOR_EMAIL_SEND_SUMMARY_LIMIT,
   operatorEmailSendConfirmation,
@@ -342,7 +348,10 @@ function serializedOperatorActionOutput(toolName: string, result: unknown) {
   return isOperatorGoogleWorkspaceTool(toolName) ||
     toolName === "web_search" ||
     toolName === "list_operator_conversations" ||
-    toolName === "read_operator_conversation"
+    toolName === "read_operator_conversation" ||
+    toolName === "list_team_inbox_threads" ||
+    toolName === "get_team_inbox_thread" ||
+    toolName === "get_procurement_email_thread"
     ? JSON.stringify(result)
     : boundedJson(result);
 }
@@ -451,6 +460,7 @@ const DISPLAY_REFERENCE_FALLBACKS: Record<string, string> = {
   procurementOutreachId: "the selected provider outreach",
   procurementFileItemId: "the selected procurement file",
   procurementEmailThreadId: "the selected email thread",
+  teamEmailThreadId: "the selected email conversation",
   requirementId: "the selected requirement",
   requirementSourceDocumentId: "the selected requirements source",
 };
@@ -496,8 +506,8 @@ async function referenceDisplayName(
     const row = id ? await ctx.db.get(id) : null;
     return row?.label?.trim() || DISPLAY_REFERENCE_FALLBACKS[key];
   }
-  if (key === "procurementEmailThreadId") {
-    const id = ctx.db.normalizeId("procurementEmailThreads", value);
+  if (key === "procurementEmailThreadId" || key === "teamEmailThreadId") {
+    const id = await resolveTeamThreadId(ctx, value);
     const row = id ? await ctx.db.get(id) : null;
     return row?.subject?.trim() || DISPLAY_REFERENCE_FALLBACKS[key];
   }
@@ -538,6 +548,32 @@ async function operatorConfirmationSummary(
     threadId: Id<"operatorAgentThreads">;
   },
 ) {
+  if (toolName === "reply_email_thread" || toolName === "reply_procurement_email_thread") {
+    return (await operatorReplyConfirmation(ctx, input, context.operatorUserId)).summary;
+  }
+  if (toolName === "launch_procurement_provider_outreach" || toolName === "send_procurement_client_email") {
+    const identity = await assertOutreachIdentity(ctx, context.operatorUserId);
+    const lines = [
+      await operatorDisplaySummary(ctx, getOperatorAgentToolSpec(toolName).summarize(input), input),
+      `From: ${identity.fromHeader}`,
+      `Always CC: ${identity.alwaysCc ?? "None"}`,
+    ];
+    if (toolName === "send_procurement_client_email") {
+      const panel = await getClientOutreachPanel(ctx, normalizeProcurementRequestId(ctx, input.procurementRequestId));
+      const recipient = panel?.recipients.find((person) => person.email === input.recipientEmail);
+      const composed = composeClientOutreachEmail({
+        kind: "initial", isFinal: false, recipientName: recipient?.name ?? undefined,
+        operator: { name: identity.name },
+        message: { subject: String(input.subject), text: String(input.message) },
+      });
+      lines.push("", composed.text);
+    }
+    const summary = lines.join("\n");
+    if (summary.length > OPERATOR_EMAIL_SEND_SUMMARY_LIMIT) {
+      throw new Error("This email is too long to review here. Send it from the request's Email client composer.");
+    }
+    return summary;
+  }
   if (toolName === "call_mcp_tool") {
     const id = ctx.db.normalizeId("operatorMcpServers", String(input.serverId));
     const server = id ? await ctx.db.get(id) : null;
@@ -556,6 +592,7 @@ async function operatorConfirmationSummary(
   }
   if (toolName === "send_email_draft") {
     const { summary } = await operatorEmailSendConfirmation(ctx, {
+      operatorUserId: context.operatorUserId,
       threadId: context.threadId,
       draftId: input.draftId,
     });
@@ -606,6 +643,33 @@ async function operatorConfirmationSummary(
     2_500,
     true,
   );
+}
+
+async function operatorReplyConfirmation(
+  ctx: MutationCtx,
+  input: Record<string, unknown>,
+  operatorUserId: Id<"users">,
+) {
+  const result = await previewTeamEmailReply(ctx, {
+    operatorUserId,
+    teamEmailThreadId: String(input.teamEmailThreadId ?? input.procurementEmailThreadId ?? ""),
+    message: String(input.message ?? ""),
+  });
+  if (!result.ok) throw new Error(result.reason);
+  const { preview } = result;
+  const summary = [
+    `From: ${preview.from}`,
+    `To: ${preview.to.join(", ")}`,
+    `Cc: ${preview.cc.join(", ") || "None"}`,
+    `Subject: ${preview.subject}`,
+    preview.mode === "standalone" ? "New email with quoted history; stays in this conversation." : "Reply in your inbox conversation.",
+    ...(preview.stopsFollowUps ? ["Stops automatic follow-ups."] : []),
+    "", preview.text,
+  ].join("\n");
+  if (summary.length > OPERATOR_EMAIL_SEND_SUMMARY_LIMIT) {
+    throw new Error("This reply is too long to review here. Send it from the team Inbox, which shows the full email.");
+  }
+  return { summary, fingerprint: preview.fingerprint };
 }
 
 function boundedTokenEditDistance(
@@ -1055,7 +1119,7 @@ function normalizeProcurementFileItemId(
   return fileItemId;
 }
 
-function normalizeProcurementEmailThreadId(
+async function normalizeProcurementEmailThreadId(
   ctx: QueryCtx | MutationCtx,
   value: unknown,
 ) {
@@ -1065,7 +1129,7 @@ function normalizeProcurementEmailThreadId(
       "Procurement email thread ID is required",
     );
   }
-  const emailThreadId = ctx.db.normalizeId("procurementEmailThreads", value);
+  const emailThreadId = await resolveTeamThreadId(ctx, value);
   if (!emailThreadId)
     throw new NoWriteInputError(
       "invalid_identifier",
@@ -1293,10 +1357,11 @@ async function insertOperatorThread(
   });
 }
 
-async function cancelActiveRunsForThread(
+export async function cancelActiveRunsForThread(
   ctx: MutationCtx,
   threadId: Id<"operatorAgentThreads">,
   reason: string,
+  onlyRunId?: Id<"operatorAgentRuns">,
 ) {
   const runs = (
     await Promise.all(
@@ -1309,7 +1374,7 @@ async function cancelActiveRunsForThread(
           .take(25),
       ),
     )
-  ).flat();
+  ).flat().filter((run) => !onlyRunId || run._id === onlyRunId);
   const now = dayjs().valueOf();
   for (const run of runs) {
     if (run.modelContinuationStorageId)
@@ -1487,6 +1552,25 @@ export async function enqueueOperatorMessage(
     );
   }
 
+  if (args.channel === "email" && args.emailReadOnly) {
+    const privilegedRuns = await Promise.all(
+      (["queued", "running", "waiting_confirmation"] as const).map((status) =>
+        ctx.db
+          .query("operatorAgentRuns")
+          .withIndex("thread_status", (index) =>
+            index.eq("threadId", args.threadId).eq("status", status),
+          )
+          .filter((q) => q.neq(q.field("emailReadOnly"), true))
+          .first(),
+      ),
+    );
+    if (privilegedRuns.some(Boolean)) {
+      throw new Error(
+        "This conversation has an active authenticated request. Use operator chat or authenticated email to continue it.",
+      );
+    }
+  }
+
   const continuedRun =
     args.channel === "email" && !args.emailReadOnly && args.preservePendingEmailConfirmation
       ? await ctx.db
@@ -1615,6 +1699,7 @@ async function executeToolDomain(
     channel: OperatorChannel;
     toolName: OperatorAgentToolName;
     input: Record<string, unknown>;
+    sourceFingerprint?: string;
   },
 ) {
   const { toolName, input } = args;
@@ -2136,16 +2221,39 @@ async function executeToolDomain(
     return { profiles, bounded: profiles.length === limit };
   }
 
-  if (toolName === "get_procurement_forwarding_address") {
-    const requestId = normalizeProcurementRequestId(
-      ctx,
-      input.procurementRequestId,
-    );
-    const details = await getProcurementRequestDetails(ctx, requestId);
-    return {
-      procurementRequestId: requestId,
-      forwardingAddress: details.request.forwardingAddress,
-    };
+  if (toolName === "list_team_inbox_threads") {
+    return await listTeamInbox(ctx, {
+      viewerUserId: args.operatorUserId,
+      paginationOpts: {
+        cursor: typeof input.cursor === "string" ? input.cursor : null,
+        numItems: typeof input.limit === "number" ? input.limit : 40,
+      },
+      mine: input.mine === true,
+      unlinked: input.unlinked === true,
+      archived: input.archived === true,
+      clientOrgId: input.clientOrgId ? normalizeOrganizationId(ctx, input.clientOrgId) : undefined,
+      requestId: input.procurementRequestId ? normalizeProcurementRequestId(ctx, input.procurementRequestId) : undefined,
+      category: procurementEmailCategory(input.category),
+    });
+  }
+
+  if (toolName === "get_team_inbox_thread") {
+    const thread = await getTeamThreadDetails(ctx, {
+      threadId: await normalizeProcurementEmailThreadId(ctx, input.teamEmailThreadId),
+      viewerUserId: args.operatorUserId,
+    });
+    if (!thread) throw new Error("Email conversation not found");
+    return thread;
+  }
+
+  if (toolName === "link_team_inbox_thread") {
+    return await linkTeamEmailThreadByOperator(ctx, {
+      operatorUserId: args.operatorUserId,
+      threadId: await normalizeProcurementEmailThreadId(ctx, input.teamEmailThreadId),
+      clientOrgId: input.clientOrgId ? normalizeOrganizationId(ctx, input.clientOrgId) : undefined,
+      requestId: input.procurementRequestId ? normalizeProcurementRequestId(ctx, input.procurementRequestId) : undefined,
+      source: "agent",
+    });
   }
 
   if (toolName === "list_procurement_email_threads") {
@@ -2165,11 +2273,11 @@ async function executeToolDomain(
   }
 
   if (toolName === "get_procurement_email_thread") {
-    const emailThreadId = normalizeProcurementEmailThreadId(
+    const emailThreadId = await normalizeProcurementEmailThreadId(
       ctx,
       input.procurementEmailThreadId,
     );
-    const thread = await getProcurementEmailThreadDetails(ctx, emailThreadId);
+    const thread = await getProcurementEmailThreadDetails(ctx, emailThreadId, undefined, args.operatorUserId);
     if (!thread) throw new Error("Procurement email thread not found");
     return thread;
   }
@@ -2177,7 +2285,7 @@ async function executeToolDomain(
   if (toolName === "preview_procurement_email_reconciliation") {
     return await previewProcurementEmailReconciliation(
       ctx,
-      normalizeProcurementEmailThreadId(ctx, input.procurementEmailThreadId),
+      await normalizeProcurementEmailThreadId(ctx, input.procurementEmailThreadId),
     );
   }
 
@@ -2662,7 +2770,7 @@ async function executeToolDomain(
   if (toolName === "file_procurement_email_quote") {
     return await fileProcurementEmailQuoteByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      emailThreadId: normalizeProcurementEmailThreadId(
+      emailThreadId: await normalizeProcurementEmailThreadId(
         ctx,
         input.procurementEmailThreadId,
       ),
@@ -2824,12 +2932,14 @@ async function executeToolDomain(
 
   if (toolName === "launch_procurement_provider_outreach") {
     const parsed = OPERATOR_AGENT_TOOL_REGISTRY.launch_procurement_provider_outreach.inputSchema.parse(input);
+    if (!args.sourceFingerprint) throw new Error("Request a fresh sender approval before launching outreach.");
     return await launchProviderOutreachByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       requestId: normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
       brokerOrgIds: parsed.brokerOrgIds.map((id) => normalizeOrganizationId(ctx, id)),
       cadence: parsed.cadence,
       cadenceSource: { followUpCount: "operator", intervalBusinessDays: "operator", style: "operator" },
+      expectedIdentityFingerprint: args.sourceFingerprint,
     });
   }
 
@@ -2842,6 +2952,7 @@ async function executeToolDomain(
 
   if (toolName === "send_procurement_client_email") {
     const parsed = OPERATOR_AGENT_TOOL_REGISTRY.send_procurement_client_email.inputSchema.parse(input);
+    if (!args.sourceFingerprint) throw new Error("Request a fresh sender approval before sending this email.");
     return await launchClientOutreachByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       requestId: normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
@@ -2849,6 +2960,7 @@ async function executeToolDomain(
       subject: parsed.subject,
       text: parsed.message,
       cadence: { ...parsed.cadence, style: "brief_nudge" },
+      expectedIdentityFingerprint: args.sourceFingerprint,
     });
   }
 
@@ -2949,7 +3061,7 @@ async function executeToolDomain(
   if (toolName === "update_procurement_email_thread") {
     return await updateProcurementEmailThreadByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      emailThreadId: normalizeProcurementEmailThreadId(
+      emailThreadId: await normalizeProcurementEmailThreadId(
         ctx,
         input.procurementEmailThreadId,
       ),
@@ -3178,6 +3290,29 @@ function operatorCertificateSource(channel: OperatorChannel) {
   return "agent" as const;
 }
 
+export const forwardingContextInternal = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    requestId: v.id("procurementRequests"),
+  },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    const details = await getProcurementRequestDetails(ctx, args.requestId);
+    return { legacyForwardingAddress: details.request.forwardingAddress };
+  },
+});
+
+export const teamEmailThreadForToolInternal = internalQuery({
+  args: { operatorUserId: v.id("users"), threadId: v.string() },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    const threadId = await normalizeProcurementEmailThreadId(ctx, args.threadId);
+    const details = await getTeamThreadDetails(ctx, { threadId });
+    if (!details) throw new Error("Email conversation not found");
+    return { threadId };
+  },
+});
+
 async function executeToolActionDomain(
   ctx: ActionCtx,
   args: {
@@ -3191,6 +3326,24 @@ async function executeToolActionDomain(
     threadMessageId?: Id<"operatorAgentMessages">;
   },
 ): Promise<OperatorActionToolResult> {
+  if (args.toolName === "get_procurement_forwarding_address") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.get_procurement_forwarding_address.inputSchema.parse(args.input);
+    const context = await ctx.runQuery(internal.operatorAgent.forwardingContextInternal, {
+      operatorUserId: args.operatorUserId,
+      requestId: parsed.procurementRequestId as Id<"procurementRequests">,
+    });
+    const ensured = await ensureOperatorInbox(ctx, args.operatorUserId);
+    return {
+      result: {
+        procurementRequestId: parsed.procurementRequestId,
+        forwardingAddress: ensured.inbox.emailAddress,
+        ...context,
+        instruction: "Forward to your team address, then confirm that the conversation is linked to the intended request in the team inbox.",
+        captured: ensured.captured,
+      },
+    };
+  }
+
   if (args.toolName === "list_mcp_tools" || args.toolName === "call_mcp_tool") {
     return await ctx.runAction(internal.actions.operatorMcp.run, {
       operatorUserId: args.operatorUserId,
@@ -3345,24 +3498,24 @@ async function executeToolActionDomain(
     };
   }
 
-  if (args.toolName === "reply_procurement_email_thread") {
+  if (args.toolName === "reply_procurement_email_thread" || args.toolName === "reply_email_thread") {
     const parsed =
       OPERATOR_AGENT_TOOL_REGISTRY.reply_procurement_email_thread.inputSchema.parse(
         args.input,
       );
-    // One delivery per exact approval: the confirmation keys the Resend send.
-    const key = args.confirmationId ?? args.idempotencyKey;
-    if (!key) throw new Error("Email replies require exact confirmation");
+    if (!args.confirmationId) throw new Error("Email replies require exact confirmation");
+    const { threadId } = await ctx.runQuery(internal.operatorAgent.teamEmailThreadForToolInternal, {
+      operatorUserId: args.operatorUserId,
+      threadId: parsed.teamEmailThreadId ?? parsed.procurementEmailThreadId!,
+    });
     return {
       result: await ctx.runAction(
-        internal.actions.providerOutreach.replyToThreadInternal,
+        internal.actions.teamEmailReplies.sendAgentReplyInternal,
         {
           operatorUserId: args.operatorUserId,
-          requestId: parsed.procurementRequestId as Id<"procurementRequests">,
-          emailThreadId:
-            parsed.procurementEmailThreadId as Id<"procurementEmailThreads">,
-          text: parsed.message,
-          idempotencyKey: String(key).replace(/[^A-Za-z0-9-]/g, "-").slice(0, 80),
+          confirmationId: args.confirmationId,
+          teamEmailThreadId: threadId,
+          message: parsed.message,
         },
       ),
     };
@@ -3575,6 +3728,9 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
       channel: args.channel,
       toolName: args.toolName as OperatorAgentToolName,
       input,
+      sourceFingerprint: args.confirmationId
+        ? (await ctx.db.get(args.confirmationId))?.payload.sourceFingerprint
+        : undefined,
     });
     await ctx.db.patch(auditId, {
       status: "succeeded",
@@ -4406,6 +4562,16 @@ async function confirmOperatorAction(
       toolName: payload.toolName as OperatorAgentToolName,
       input,
     });
+    if (payload.toolName === "reply_email_thread" || payload.toolName === "reply_procurement_email_thread") {
+      const reply = await operatorReplyConfirmation(ctx, input, operator.userId);
+      if (payload.sourceFingerprint !== reply.fingerprint) {
+        throw new Error("The reply changed since confirmation; request a fresh approval.");
+      }
+    }
+    if (payload.toolName === "launch_procurement_provider_outreach" || payload.toolName === "send_procurement_client_email") {
+      if (!payload.sourceFingerprint) throw new Error("Request a fresh sender approval.");
+      await assertOutreachIdentity(ctx, operator.userId, payload.sourceFingerprint);
+    }
     if (payload.toolName === "import_policy_files") {
       const files = await resolveOperatorPolicySources(ctx, {
         operatorUserId: operator.userId,
@@ -6112,10 +6278,15 @@ export const requestToolConfirmationInternal = internalMutation({
           args.toolName === "send_email_draft"
             ? (
                 await operatorEmailSendConfirmation(ctx, {
+                  operatorUserId: args.operatorUserId,
                   threadId: args.threadId,
                   draftId: input.draftId,
                 })
               ).fingerprint
+            : args.toolName === "reply_email_thread" || args.toolName === "reply_procurement_email_thread"
+            ? (await operatorReplyConfirmation(ctx, input, args.operatorUserId)).fingerprint
+            : args.toolName === "launch_procurement_provider_outreach" || args.toolName === "send_procurement_client_email"
+            ? (await assertOutreachIdentity(ctx, args.operatorUserId)).fingerprint
             : args.toolName === "import_policy_files"
             ? await operatorPolicySourceFingerprint(
                 await resolveOperatorPolicySources(ctx, {

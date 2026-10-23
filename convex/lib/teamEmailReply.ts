@@ -23,15 +23,20 @@ type Ctx = QueryCtx | MutationCtx;
  * else thrown on the way (provider bodies, internals) is never shown.
  */
 export const TEAM_REPLY_ERROR = "team_reply";
-class TeamReplyError extends ConvexError<{ code: "team_reply"; message: string }> {
-  constructor(message: string) {
-    super({ code: TEAM_REPLY_ERROR, message });
+class TeamReplyError extends ConvexError<{ code: "team_reply"; message: string; reason?: "key_mismatch" }> {
+  constructor(message: string, reason?: "key_mismatch") {
+    super({ code: TEAM_REPLY_ERROR, message, ...(reason ? { reason } : {}) });
     // Read as plain text where only `message` is shown (agent tool results).
     this.message = message;
     this.name = "TeamReplyError";
   }
 }
-export const teamReplyError = (message: string) => new TeamReplyError(message);
+export const teamReplyError = (message: string, reason?: "key_mismatch") => new TeamReplyError(message, reason);
+export function isReplyKeyMismatch(error: unknown): boolean {
+  if (!(error instanceof ConvexError)) return false;
+  const data = error.data as { code?: unknown; reason?: unknown } | null;
+  return data?.code === TEAM_REPLY_ERROR && data.reason === "key_mismatch";
+}
 export function teamReplyErrorMessage(error: unknown): string | null {
   if (!(error instanceof ConvexError)) return null;
   const data = error.data as { code?: unknown; message?: unknown } | null;
@@ -250,7 +255,7 @@ export async function composeTeamReply(
   const [recipientEmail] = correspondents.to;
   // Only a reply that is not threaded in the sender's own inbox copies the owner.
   const ownerAddress =
-    plan.owns || thread.ownerUserId === args.operatorUserId
+    plan.threaded || thread.ownerUserId === args.operatorUserId
       ? undefined
       : await teamThreadOwnerAddress(ctx, thread.ownerUserId);
   const cc = [
@@ -263,8 +268,7 @@ export async function composeTeamReply(
   ];
 
   // Threaded only when the sender's inbox maps this conversation and holds a message to answer.
-  const threaded =
-    plan.owns && Boolean(plan.replyToEmailId && plan.inboxId && plan.resendThreadId);
+  const threaded = plan.threaded;
   const quote = threaded ? undefined : quotedHistory(latest);
   const signature = buildOperatorSignature({ name: identity.name });
   const renderedText = `${message}\n\n${signature.text}${quote ? `\n\n${quote.block}` : ""}`;
