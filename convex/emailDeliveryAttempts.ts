@@ -85,14 +85,15 @@ export const markFailed = internalMutation({
 // An operator send is claimed in one transaction against the exact approval
 // and draft fingerprint, which also locks the draft (`status: "pending"`).
 // Stages only move forward. Once `sending` begins the outcome is never
-// replayed: an interrupted or unanswered send becomes `unknown`, the draft
-// stays locked, and a read-only check of the stored Resend draft decides
-// whether it was sent (record it) or verifiably was not (release it).
+// replayed: an interrupted or unanswered send becomes `unknown` and the draft
+// stays locked. A read-only check of the stored Resend draft can only end the
+// lock with positive evidence that it was sent (then it is recorded); absence
+// is never proof, because a timed-out send can still complete.
 
 const OPERATOR_CLAIM_LEASE_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS_PER_FINGERPRINT = 100;
 const UNKNOWN_OUTCOME_REASON =
-  "Delivery outcome unknown — Spot is verifying with Resend and will not send this email again until it is known not to have been sent.";
+  "Delivery outcome unknown — this email stays locked while Spot verifies with Resend, and is never sent again unless it is replaced by an edited email.";
 
 type OperatorStage = NonNullable<Doc<"emailDeliveryAttempts">["operatorStage"]>;
 
@@ -102,7 +103,8 @@ const OPERATOR_STAGE_FROM: Record<OperatorStage, OperatorStage[]> = {
   sending: ["claimed", "draft_created"],
   sent: ["sending", "unknown"],
   unknown: ["sending"],
-  failed: ["claimed", "draft_created", "sending", "unknown"],
+  // No source proves a timed-out send will not complete, so `unknown` never fails.
+  failed: ["claimed", "draft_created", "sending"],
 };
 
 type OperatorAttempt = Doc<"emailDeliveryAttempts">;
@@ -205,7 +207,7 @@ export const claimOperatorInboxSendInternal = internalMutation({
           kind: "unknown",
           attemptId: attempt._id,
           reason:
-            "A previous send of this exact email has an unknown outcome. It stays locked until Resend confirms whether it was sent.",
+            "A previous send of this exact email has an unknown outcome. It stays locked and is only resolved when Resend shows it was sent.",
         } as const;
       }
       if (stage === "sending" || stage === "claimed" || stage === "draft_created") {
@@ -218,7 +220,7 @@ export const claimOperatorInboxSendInternal = internalMutation({
             kind: "unknown",
             attemptId: attempt._id,
             reason:
-              "A previous send of this exact email did not finish and its outcome is unknown. It stays locked until Resend confirms whether it was sent.",
+              "A previous send of this exact email did not finish and its outcome is unknown. It stays locked and is only resolved when Resend shows it was sent.",
           } as const;
         }
         // Expired before any send began: nothing left, so reclaim it.
@@ -342,6 +344,9 @@ export const beginOperatorInboxSendingInternal = internalMutation({
       run.cancellationRequestedAt
     ) {
       return refuse("The approving operator run is no longer active.");
+    }
+    if (run.emailReadOnly) {
+      return refuse("Email sends are disabled for this run.");
     }
     await ctx.db.patch(attempt._id, { operatorStage: "sending" });
     return { ok: true } as const;

@@ -1,7 +1,6 @@
 "use node";
 
 import type { FunctionArgs } from "convex/server";
-import dayjs from "dayjs";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -31,13 +30,13 @@ import {
 /** Delays between bounded read-only retries of an unknown outcome and of a failed record. */
 const RECONCILE_DELAYS_MS = [30_000, 120_000, 600_000, 3_600_000, 21_600_000];
 const FINALIZE_DELAYS_MS = [15_000, 60_000, 300_000, 1_800_000, 7_200_000];
-/** An unsent Resend draft only proves "not sent" once an in-flight send would have landed. */
-const MIN_AGE_TO_RELEASE_MS = 30_000;
 
 const FINALIZING_REASON =
   "Email delivered; recording it in the team inbox is being retried automatically. It will not be sent again.";
 const UNVERIFIED_REASON =
   "Delivery status could not be verified. Check the team inbox; this email stays locked and is never resent automatically.";
+const FINALIZE_STUCK_REASON =
+  "Email delivered, but recording it in the team inbox needs manual reconciliation. It will not be sent again.";
 
 const MAX_TRANSIENT_RETRIES = 2;
 const MAX_RETRY_DELAY_MS = 5_000;
@@ -162,6 +161,11 @@ export async function finalizeOperatorAttempt(
       internal.actions.sendPendingEmail.finalizeOperatorSend,
       { attemptId: attempt._id, round: args.round + 1 },
     );
+  } else {
+    await ctx.runMutation(internal.pendingEmails.setOperatorPendingReasonInternal, {
+      id: attempt.pendingEmailId,
+      reason: FINALIZE_STUCK_REASON,
+    });
   }
 }
 
@@ -169,9 +173,9 @@ type ReconcileOutcome = "sent" | "released" | "pending";
 
 /**
  * Settles an attempt whose send may have died, using only reads. An expired
- * pre-send claim is released. For an unknown outcome the stored Resend draft
- * says whether it was sent (record it) or verifiably was not (release it);
- * anything else stays locked and is retried a bounded number of times.
+ * pre-send claim is released (nothing was asked of Resend). For an unknown
+ * outcome the stored Resend draft is read: an email id means it was sent and
+ * is recorded. Anything else stays locked, retried a bounded number of times.
  */
 export async function reconcileOperatorAttempt(
   ctx: ActionCtx,
@@ -235,19 +239,9 @@ export async function reconcileOperatorAttempt(
       await finalizeOperatorAttempt(ctx, { attemptId: attempt._id, round: 0 });
       return "sent";
     }
-    if (dayjs().valueOf() - (attempt.completedAt ?? 0) < MIN_AGE_TO_RELEASE_MS) {
-      return await retry();
-    }
-    // The draft exists and was never sent: it is safe to offer it for editing or a fresh send.
-    await ctx.runMutation(
-      internal.emailDeliveryAttempts.advanceOperatorInboxAttemptInternal,
-      {
-        attemptId: attempt._id,
-        stage: "failed",
-        error: "Verified with Resend: the email was not sent.",
-      },
-    );
-    return "released";
+    // An unsent stored draft is not proof: a timed-out send can still complete.
+    // Only positive evidence that it was sent ends the lock.
+    return await retry();
   } catch {
     return await retry();
   }
@@ -281,7 +275,7 @@ export async function sendOperatorInboxDraft(
       if (outcome === "sent") return result;
       throw new Error(
         outcome === "released"
-          ? "The earlier send was verified as not sent and the draft is editable again. Ask to send it again for a fresh approval."
+          ? "The earlier attempt never reached Resend and the draft is editable again. Ask to send it again for a fresh approval."
           : claim.reason,
       );
     }
