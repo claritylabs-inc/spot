@@ -27,6 +27,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
 import { ChatAvatar } from "@/components/chat/chat-message";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   Table,
@@ -205,8 +206,11 @@ export default function OperatorAuditPage() {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const [limit, setLimit] = useState(PAGE_SIZE);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [limit, setLimit] = useFollowedState("operator-audit:limit", PAGE_SIZE);
+  const [selectedId, setSelectedId] = useFollowedState<string | null>(
+    "operator-audit:selected-entry",
+    null,
+  );
   const operatorParam = params.get("operator");
   const sourceParam = params.get("source");
   const source = isSource(sourceParam) ? sourceParam : undefined;

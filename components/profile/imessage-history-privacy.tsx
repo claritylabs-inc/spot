@@ -21,6 +21,7 @@ import {
 } from "@claritylabs-inc/ui/components/dialog";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
@@ -42,7 +43,10 @@ function useImessagePrivacy() {
     api.imessagePrivacy.requestPersonalImessageDeletion,
   );
   const [busy, setBusy] = useState(false);
-  const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [manualDialogOpen, setManualDialogOpen] = useFollowedState(
+    "profile:imessage-history:dialog",
+    false,
+  );
   const [dismissedPreviewJobId, setDismissedPreviewJobId] =
     useState<ImessagePreviewJobId | null>(null);
   const [pendingPreviewJobId, setPendingPreviewJobId] =
