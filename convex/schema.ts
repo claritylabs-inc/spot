@@ -3387,9 +3387,6 @@ export default defineSchema({
     .index("by_clientOrgId_and_latestMessageAt", ["clientOrgId", "latestMessageAt"])
     .index("by_requestId_and_latestMessageAt", ["requestId", "latestMessageAt"])
     .index("by_addressedRequestId_and_latestMessageAt", ["addressedRequestId", "latestMessageAt"])
-    .index("organization", ["clientOrgId", "latestMessageAt"])
-    .index("request", ["requestId", "latestMessageAt"])
-    .index("addressed", ["addressedRequestId", "latestMessageAt"])
     .index("subject", ["clientOrgId", "normalizedSubject", "latestMessageAt"])
     .index("by_resendThreadId", ["resendThreadId"]),
 
@@ -3430,10 +3427,7 @@ export default defineSchema({
     .index("by_threadId_and_receivedAt", ["threadId", "receivedAt"])
     .index("by_resendEmailId", ["resendEmailId"])
     .index("by_messageId", ["messageId"])
-    .index("thread", ["threadId", "receivedAt"])
     .index("by_resendInboxEmailId", ["resendInboxEmailId"])
-    .index("resend", ["resendEmailId"])
-    .index("message", ["messageId"])
     .index("request", ["addressedRequestId", "receivedAt"]),
 
   teamEmailThreadLinks: defineTable({
