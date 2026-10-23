@@ -120,6 +120,12 @@ class AgentIncompleteOutputError extends Error {
 }
 export type AgentModelRunOptions = {
   streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
+  activityTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
+  activityOperatorRun?: {
+    runId: Id<"operatorAgentRuns">;
+    expectedRunnerAttempt: number;
+    expectedCheckpointIteration: number;
+  };
   durable?: { invocationKey: string; route?: ModelRoute };
   sessionKey: string;
   taskKind: ModelCallTaskKind;
@@ -811,6 +817,22 @@ function agentLanguageModel(
       },
       onResponse: async (response, step) => {
         routerResponses.push(response);
+        const activityTarget = run.activityTarget ?? run.streamTarget;
+        if (activityTarget) {
+          await ctx.runMutation(internal.routerJobs.recordActivity, {
+            target: activityTarget,
+            ...(run.activityOperatorRun
+              ? { operatorRun: run.activityOperatorRun }
+              : {}),
+            update: {
+              kind: "stage",
+              stageId: `model:${response.requestId}`,
+              stage: "selecting_model",
+              status: "completed",
+              detail: `${response.model.provider} · ${response.model.model}`,
+            },
+          });
+        }
         await run.onResponse?.(response, step);
       },
     }),
