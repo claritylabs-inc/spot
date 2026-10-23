@@ -332,6 +332,32 @@
   box-shadow: none;
   outline: none;
 }
+/* Phone inputs follow the same rest / hover / active states as other fields. */
+[data-operator-inline-fields] .PhoneInput {
+  background-color: transparent;
+  border-color: transparent;
+}
+[data-operator-inline-fields] .PhoneInput [data-slot="phone-country-select"] {
+  border-color: transparent;
+}
+[data-operator-inline-fields] .PhoneInput:hover {
+  background-color: var(--muted);
+}
+[data-operator-inline-fields] .PhoneInput:hover [data-slot="phone-country-select"] {
+  border-color: var(--border);
+}
+[data-operator-inline-fields] .PhoneInput:focus-within,
+[data-operator-inline-fields] .PhoneInput:has([data-popup-open], [aria-expanded="true"]) {
+  background-color: var(--muted);
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-operator-inline-fields] .PhoneInput:is(:focus-within, :has([aria-expanded="true"])) [data-slot="phone-country-select"] {
+  border-color: transparent;
+}
+[data-operator-inline-fields] .PhoneInput [data-slot="phone-country-select"]:hover {
+  background-color: transparent;
+}
 /* All editable values share a left edge, including numbers and select values. */
 [data-operator-inline-fields] [data-inline-field-row] :is(input, textarea, [data-slot="select-trigger"], [data-slot="select-value"]) {
   text-align: left;
