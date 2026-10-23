@@ -1,11 +1,20 @@
 import type { ComponentType, ReactNode } from "react";
 
+export type AgentDockPerson = {
+  userId: string;
+  name: string;
+  avatarUrl?: string | null;
+};
+
 export type AgentDockThread = {
   id: string;
   title: string;
   lastMessageAt: number;
   archivedAt?: number;
   channel?: string;
+  /** Shared surfaces show who started the chat and who has it open. */
+  creator?: AgentDockPerson;
+  activeUsers?: AgentDockPerson[];
 };
 
 type AgentDockTabStatus = "working" | "approval" | null;
@@ -24,10 +33,14 @@ export type AgentDockChatProps = {
   onActions: (actions: ReactNode) => void;
 };
 
+export type AgentDockHistoryView = "recent" | "mcp" | "archived";
+
 /** Surface-specific data and chat for the shared dock. */
 export type AgentDockAdapter = {
   newChatLabel: string;
-  useThreads: (archived: boolean) => AgentDockThread[] | undefined;
+  /** History tabs this surface offers; defaults to Recent and Archived. */
+  historyViews?: AgentDockHistoryView[];
+  useThreads: (view: AgentDockHistoryView) => AgentDockThread[] | undefined;
   /** `undefined` while loading, `null` when the thread is gone. */
   useTabSummary: (threadId: string) => AgentDockTabSummary | null | undefined;
   useArchiveActions: () => {

@@ -15,7 +15,7 @@ import {
   type PresentationReference,
 } from "@/lib/chat-presentation";
 import { typeStyle } from "@/lib/typography";
-import { SettingsDrawer } from "@/components/settings/settings-drawer";
+import { ChatArtifact } from "@/components/chat/artifact";
 import {
   AppShellPortal,
   useOptionalAppShellSlots,
@@ -107,13 +107,13 @@ class PresentationBoundary extends Component<
   }
 }
 
-/** Record and evidence details open in the app shell's right panel. */
+/** Record and evidence details open in the dock artifact card. */
 function PresentationDetailPanel({ children }: { children: ReactNode }) {
   if (useOptionalAppShellSlots()) {
     return <AppShellPortal slot="artifactPanel">{children}</AppShellPortal>;
   }
   return (
-    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-background">
+    <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-border bg-background">
       {children}
     </div>
   );
@@ -231,11 +231,9 @@ export function ChatPresentationView({
           </div>
           {selected ? (
             <PresentationDetailPanel>
-              <SettingsDrawer
-                open
-                onOpenChange={(open) => {
-                  if (!open) setSelected(null);
-                }}
+              <ChatArtifact
+                closeLabel="Close details"
+                onClose={closeRecord}
                 title={
                   selected.kind === "evidence"
                     ? selected.evidence.title
@@ -274,7 +272,7 @@ export function ChatPresentationView({
                     {selected.detail ?? selected.reference.label}
                   </p>
                 )}
-              </SettingsDrawer>
+              </ChatArtifact>
             </PresentationDetailPanel>
           ) : null}
         </PresentationContext.Provider>

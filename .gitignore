@@ -104,7 +104,8 @@ next-env.d.ts
 .context/
 
 # AI assistant history and local config
-.claude/
+.claude/*
+!.claude/settings.json
 .cursor/
 .codex/
 

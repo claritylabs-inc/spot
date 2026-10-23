@@ -1,5 +1,6 @@
 "use client";
 
+import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { useEffect, useState, type ReactNode } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Dialog } from "@base-ui/react/dialog";
@@ -116,11 +117,18 @@ export function SettingsDrawer({
                     </Dialog.Close>
                   </div>
 
-                  <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-4">
-                    <div className={cn("flex min-w-0 flex-col my-4", contentClassName)}>
-                      {children}
+                  <ScrollArea className="min-h-0 flex-1">
+                    <div className="flex flex-col gap-4 px-4">
+                      <div
+                        className={cn(
+                          "flex min-w-0 flex-col my-4",
+                          contentClassName,
+                        )}
+                      >
+                        {children}
+                      </div>
                     </div>
-                  </div>
+                  </ScrollArea>
 
                   {hasFooter && (
                     <div

@@ -128,7 +128,7 @@ export function ChatAssistantTurn({
         />
       )
     ) : (
-      <div className="min-w-0 max-w-[min(max(32rem,80vw),100%)]">
+      <div className="min-w-0 max-w-[min(max(32rem,80cqw),100%)]">
         {body ?? (
           <ChatMessageBubble role="agent" channel={channel} isError={isError}>
             <ChatPresentationView
@@ -222,32 +222,56 @@ export function ChatAssistantTurn({
 export function ChatAvatar({
   name,
   title,
+  imageUrl,
   className,
   children,
 }: {
   name: string;
   title?: string;
+  /** Profile photo; initials show while it is missing or fails to load. */
+  imageUrl?: string | null;
   className?: string;
   children?: ReactNode;
 }) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const initials = name
     .split(/\s+/)
     .slice(0, 2)
     .map((word) => word[0])
     .join("")
     .toUpperCase();
+  const showImage = !children && imageUrl && failedUrl !== imageUrl;
   return (
     <div
       className={cn(
-        "flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground/8",
+        "@container flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-foreground/8",
         className,
       )}
       title={title}
     >
-      {children ?? (
-        <span className={cn("text-foreground/60", typeStyle("caption.medium"))}>
-          {initials}
-        </span>
+      {showImage ? (
+        // eslint-disable-next-line @next/next/no-img-element -- remote avatar hosts vary
+        <img
+          src={imageUrl}
+          alt=""
+          className="size-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setFailedUrl(imageUrl)}
+        />
+      ) : (
+        (children ?? (
+          // Initials scale with the circle so every avatar size stays balanced.
+          <span
+            className={cn(
+              "text-foreground/60 select-none",
+              typeStyle("caption.medium"),
+              // Trim to cap height so the letters sit optically centered.
+              "text-[44cqw]! [text-box:trim-both_cap_alphabetic]",
+            )}
+          >
+            {initials}
+          </span>
+        ))
       )}
     </div>
   );
@@ -293,12 +317,11 @@ export function ChatUserTurn({
   return (
     <div
       className={cn(
-        "flex w-fit max-w-[min(max(32rem,66.667vw),100%)] items-start gap-2.5",
-        own && "ml-auto flex-row-reverse",
+        "w-fit max-w-[min(max(32rem,66.667cqw),100%)]",
+        own && "ml-auto",
       )}
     >
-      {showSender ? (avatar ?? <ChatAvatar name={name} />) : null}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         {showSender ? (
           <div
             className={cn(
@@ -306,18 +329,26 @@ export function ChatUserTurn({
               own && "justify-end",
             )}
           >
-            <p
-              className={cn(
-                "min-w-0 max-w-[min(24rem,70vw)] truncate text-muted-foreground/50",
-                typeStyle("caption.medium"),
-              )}
-              title={nameTitle ?? name}
-            >
-              {name}
-            </p>
+            {/* You know who you are: your own turns show only channel and time. */}
+            {own ? null : (
+              <>
+                <span className="flex shrink-0 [&>*]:size-5">
+                  {avatar ?? <ChatAvatar name={name} />}
+                </span>
+                <p
+                  className={cn(
+                    "min-w-0 max-w-[min(24rem,70cqw)] truncate text-muted-foreground/50",
+                    typeStyle("caption.medium"),
+                  )}
+                  title={nameTitle ?? name}
+                >
+                  {name}
+                </p>
+              </>
+            )}
             {meta}
             {channelIcon}
-            <span className="text-muted-foreground/30">·</span>
+            {own ? null : <span className="text-muted-foreground/30">·</span>}
             <span
               className={cn(
                 "shrink-0 text-muted-foreground/45",

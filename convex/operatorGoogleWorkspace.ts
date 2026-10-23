@@ -193,13 +193,7 @@ export const getActionContextInternal = internalQuery({
     const operator = await requireOperatorForUser(ctx, args.operatorUserId);
     if (args.threadId) {
       const thread = await ctx.db.get(args.threadId);
-      if (
-        !thread ||
-        (thread.ownerUserId !== args.operatorUserId &&
-          thread.visibility !== "shared")
-      ) {
-        throw new Error("Operator agent thread not found");
-      }
+      if (!thread) throw new Error("Operator agent thread not found");
     }
     const config = await configRow(ctx);
     return {

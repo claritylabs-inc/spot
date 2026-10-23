@@ -174,7 +174,15 @@ function NewClientChat({ onThreadCreated }: AgentDockChatProps) {
 }
 
 function ThreadPresence({ threadId }: { threadId: string }) {
-  return <PresenceAvatars users={usePresence(`thread:${threadId}`)} />;
+  const others = usePresence(`thread:${threadId}`);
+  return (
+    <PresenceAvatars
+      users={others.map((user) => ({
+        userId: user.userId,
+        name: user.userName ?? "User",
+      }))}
+    />
+  );
 }
 
 function ClientThreadChat({

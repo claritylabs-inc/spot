@@ -4,7 +4,11 @@ import { z } from "zod";
 const probability = v.union(v.number(), v.null());
 export const operatorPlanningAssessmentValidator = v.object({
   required: v.boolean(),
-  source: v.union(v.literal("jev"), v.literal("uncertain")),
+  source: v.union(
+    v.literal("jev"),
+    v.literal("uncertain"),
+    v.literal("operator"),
+  ),
   probabilities: v.object({
     multipleToolCalls: probability,
     sequentialActions: probability,

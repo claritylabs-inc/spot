@@ -43,6 +43,7 @@ import { AgentDockLayout } from "@/components/agent-dock/agent-dock-layout";
 import { AgentDockProvider } from "@/components/agent-dock/agent-dock-provider";
 import { clientDockAdapter } from "@/components/agent-thread/client-dock-adapter";
 import { operatorDockAdapter } from "@/components/operator-agent/operator-dock-adapter";
+import { OperatorPresence } from "@/components/operator-agent/operator-presence";
 import { OperatorSidebar } from "@/app/operator/operator-sidebar";
 import { OperatorSettingsSidebar } from "@/app/operator/settings/operator-settings-sidebar";
 import { OperatorClientShellSidebar } from "@/app/operator/clients/[clientOrgId]/operator-client-sidebar";
@@ -209,8 +210,7 @@ function ShellFrame({
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const hasPdfPanel = isPdfOpen && !!fileUrl;
   const hasEntityPanel = !!entityPreview;
-  const showArtifactInRightPanel = hasArtifactPanel && isDesktop;
-  const hasRightPanel = hasPageRightPanel || showArtifactInRightPanel;
+  const hasRightPanel = hasPageRightPanel;
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMobileOpen(false));
@@ -239,6 +239,9 @@ function ShellFrame({
               hasBreadcrumbDetail ? (
                 <span ref={setBreadcrumbTarget} className="contents" />
               ) : undefined
+            }
+            presence={
+              isOperator && agentEnabled ? <OperatorPresence /> : undefined
             }
             onMobileMenuToggle={() => setMobileOpen((value) => !value)}
             mobileMenuRef={mobileMenuRef}
@@ -272,12 +275,6 @@ function ShellFrame({
               ref={setRightPanelTarget}
               className="flex h-full min-h-0 w-full min-w-0"
             />
-            {showArtifactInRightPanel ? (
-              <div
-                ref={setArtifactPanelTarget}
-                className="absolute inset-0 z-10 flex bg-background"
-              />
-            ) : null}
           </div>
         ) : undefined
       }
@@ -388,7 +385,9 @@ function ShellFrame({
             : clientDockAdapter
           : null
       }
-      artifactPanelRef={isDesktop ? undefined : setArtifactPanelTarget}
+      artifactPanelRef={agentEnabled ? setArtifactPanelTarget : undefined}
+      artifactPlacement={isDesktop ? "side" : "overlay"}
+      artifactOpen={hasArtifactPanel}
       detailPanelOpen={hasRightPanel || hasEntityPanel || hasPdfPanel}
     />
   );

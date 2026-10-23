@@ -2,7 +2,7 @@
 
 import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
 import Link from "next/link";
-import { AtSign, Focus } from "lucide-react";
+import { AtSign, Focus, ListChecks } from "lucide-react";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
@@ -72,6 +72,34 @@ export function AgentDockContextToggle({
       onClick={onToggle}
     >
       <Focus className="size-3.5" />
+    </PillButton>
+  );
+}
+
+/** Asks the agent to plan before acting on the next message only. */
+export function AgentDockPlanToggle({
+  active,
+  onToggle,
+}: {
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <PillButton
+      type="button"
+      variant="icon"
+      size="compact"
+      iconOnly
+      label={
+        active
+          ? "Plan requested: make a plan before acting"
+          : "Make a plan before acting"
+      }
+      aria-pressed={active}
+      className={cn(active && "bg-foreground/6 text-foreground")}
+      onClick={onToggle}
+    >
+      <ListChecks className="size-3.5" />
     </PillButton>
   );
 }

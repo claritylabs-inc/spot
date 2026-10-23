@@ -1,5 +1,6 @@
 "use client";
 
+import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { Combobox } from "@base-ui/react/combobox";
 import { ChevronDown, Search } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -136,17 +137,19 @@ export function MapboxPlaceSelect({
             >
               No results
             </Combobox.Empty>
-            <Combobox.List className="max-h-dropdown overflow-y-auto">
-              {(option: PlaceOption) => (
-                <Combobox.Item
-                  key={option.value}
-                  value={option}
-                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 ${typeStyle("control.input")}`}
-                >
-                  <span className="flex-1 truncate">{option.label}</span>
-                </Combobox.Item>
-              )}
-            </Combobox.List>
+            <ScrollArea className="max-h-dropdown [&>[data-slot=scroll-area-viewport]]:max-h-[inherit]">
+              <Combobox.List>
+                {(option: PlaceOption) => (
+                  <Combobox.Item
+                    key={option.value}
+                    value={option}
+                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors data-highlighted:bg-foreground/4 ${typeStyle("control.input")}`}
+                  >
+                    <span className="flex-1 truncate">{option.label}</span>
+                  </Combobox.Item>
+                )}
+              </Combobox.List>
+            </ScrollArea>
           </Combobox.Popup>
         </Combobox.Positioner>
       </Combobox.Portal>

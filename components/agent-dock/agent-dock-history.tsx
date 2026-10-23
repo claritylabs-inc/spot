@@ -6,6 +6,8 @@ import { Archive, ArchiveRestore } from "lucide-react";
 import { toast } from "sonner";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PresenceAvatars } from "@/components/app-top-bar";
+import { ChatAvatar } from "@/components/chat/chat-message";
 import { PillButton } from "@/components/ui/pill-button";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
@@ -15,7 +17,11 @@ import {
   formatAgentDockRelativeTime,
   groupAgentDockHistory,
 } from "./history-groups";
-import type { AgentDockAdapter, AgentDockThread } from "./types";
+import type {
+  AgentDockAdapter,
+  AgentDockHistoryView,
+  AgentDockThread,
+} from "./types";
 
 function useNow() {
   const [now, setNow] = useState(() => dayjs().valueOf());
@@ -48,11 +54,23 @@ function HistoryRow({
         onClick={onOpen}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
       >
+        {thread.creator ? (
+          <ChatAvatar
+            name={thread.creator.name}
+            title={`Started by ${thread.creator.name}`}
+            imageUrl={thread.creator.avatarUrl}
+            className="size-5"
+          />
+        ) : null}
         <span
-          className={cn("min-w-0 flex-1 truncate text-foreground", typeStyle("body.default"))}
+          className={cn("mr-6 min-w-0 flex-1 truncate text-foreground", typeStyle("body.default"))}
+          title={thread.title}
         >
           {thread.title}
         </span>
+        {thread.activeUsers?.length ? (
+          <PresenceAvatars users={thread.activeUsers} max={3} size="sm" />
+        ) : null}
         <span
           className={cn(
             "shrink-0 text-muted-foreground transition-opacity group-hover/row:opacity-0",
@@ -84,11 +102,27 @@ function HistoryRow({
   );
 }
 
+const DEFAULT_VIEWS: AgentDockHistoryView[] = ["recent", "archived"];
+const VIEW_LABELS: Record<AgentDockHistoryView, string> = {
+  recent: "Recent",
+  mcp: "MCP",
+  archived: "Archived",
+};
+const EMPTY_LABELS: Record<AgentDockHistoryView, string> = {
+  recent: "No chats yet.",
+  mcp: "No MCP requests yet.",
+  archived: "No archived chats.",
+};
+
 /** Past chats grouped by day, with search, archived toggle and archive/restore. */
 export function AgentDockHistory({ adapter }: { adapter: AgentDockAdapter }) {
   const dock = useAgentDock();
+  const views = adapter.historyViews ?? DEFAULT_VIEWS;
+  // Archived lives in dock state (deep links open it); other tabs are local.
+  const [liveView, setLiveView] = useState<AgentDockHistoryView>("recent");
   const archived = dock.historyArchived;
-  const threads = adapter.useThreads(archived);
+  const view: AgentDockHistoryView = archived ? "archived" : liveView;
+  const threads = adapter.useThreads(view);
   const { archive, restore } = adapter.useArchiveActions();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const now = useNow();
@@ -134,14 +168,18 @@ export function AgentDockHistory({ adapter }: { adapter: AgentDockAdapter }) {
               typeStyle("body.default"),
             )}
           >
-            {archived ? "No archived chats." : "No chats yet."}
+            {EMPTY_LABELS[view]}
           </p>
         ) : (
           groups.map((group) => (
-            <section key={group.label} aria-label={group.label} className="pt-3">
+            <section
+              key={group.label}
+              aria-label={group.label}
+              className="pt-5 first:pt-3"
+            >
               <h3
                 className={cn(
-                  "px-2 pb-1 text-foreground",
+                  "flex items-center gap-3 px-2 pb-1.5 text-muted-foreground after:h-px after:flex-1 after:bg-border",
                   typeStyle("caption.medium"),
                 )}
               >
@@ -163,16 +201,22 @@ export function AgentDockHistory({ adapter }: { adapter: AgentDockAdapter }) {
             </section>
           ))
         )}
+        {/* Floats over the list so the views stay reachable while scrolling. */}
         <Tabs
-          className="mt-3 self-end"
-          value={archived ? "archived" : "active"}
-          onValueChange={(value) =>
-            dock.setHistoryArchived(value === "archived")
-          }
+          className="sticky bottom-2 z-10 mt-3 self-end rounded-full bg-background/90 shadow-sm ring-1 ring-border backdrop-blur"
+          value={view}
+          onValueChange={(value) => {
+            const next = value as AgentDockHistoryView;
+            if (next !== "archived") setLiveView(next);
+            dock.setHistoryArchived(next === "archived");
+          }}
         >
           <TabsList variant="pill">
-            <TabsTrigger value="active">Recent</TabsTrigger>
-            <TabsTrigger value="archived">Archived</TabsTrigger>
+            {views.map((option) => (
+              <TabsTrigger key={option} value={option}>
+                {VIEW_LABELS[option]}
+              </TabsTrigger>
+            ))}
           </TabsList>
         </Tabs>
       </div>

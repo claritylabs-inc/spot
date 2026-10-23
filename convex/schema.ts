@@ -869,6 +869,7 @@ export default defineSchema({
     status: v.union(v.literal("active"), v.literal("disabled")),
     slackTeamId: v.optional(v.string()),
     slackUserId: v.optional(v.string()),
+    avatarStorageId: v.optional(v.id("_storage")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -4628,6 +4629,12 @@ export default defineSchema({
       "archiveState",
       "lastMessageAt",
     ])
+    .index("archive_last_message", ["archiveState", "lastMessageAt"])
+    .index("archive_channel_last_message", [
+      "archiveState",
+      "channel",
+      "lastMessageAt",
+    ])
     .index("owner_conversation", ["ownerUserId", "channel", "conversationKey"])
     .index("channel_conversation", ["channel", "conversationKey"]),
 
@@ -4882,6 +4889,7 @@ export default defineSchema({
       v.union(v.literal("goal"), v.literal("direct_tool")),
     ),
     objective: v.string(),
+    planRequested: v.optional(v.boolean()),
     planningAssessment: v.optional(operatorPlanningAssessmentValidator),
     executionPlan: v.optional(operatorExecutionPlanValidator),
     status: v.union(
@@ -5300,4 +5308,14 @@ export default defineSchema({
   })
     .index("page", ["pageKey"])
     .index("user", ["userId"]),
+
+  // One row per operator; heartbeats keep it fresh while the portal is open.
+  operatorPresence: defineTable({
+    userId: v.id("users"),
+    pathname: v.string(),
+    threadId: v.optional(v.id("operatorAgentThreads")),
+    lastSeen: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_lastSeen", ["lastSeen"]),
 });

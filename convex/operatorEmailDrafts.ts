@@ -27,18 +27,13 @@ export const OPERATOR_EMAIL_SEND_SUMMARY_LIMIT = 2_500;
 
 type Ctx = QueryCtx | MutationCtx;
 
+/** Every operator thread is open to all operators. */
 async function requireOperatorEmailThread(
   ctx: Ctx,
   threadId: Id<"operatorAgentThreads">,
-  operatorUserId: Id<"users">,
 ) {
   const thread = await ctx.db.get(threadId);
-  if (
-    !thread ||
-    (thread.ownerUserId !== operatorUserId && thread.visibility !== "shared")
-  ) {
-    throw new Error("Operator thread not found");
-  }
+  if (!thread) throw new Error("Operator thread not found");
   return thread;
 }
 
@@ -75,26 +70,12 @@ export const listForMessages = query({
     if (args.messageIds.length > MAX_MESSAGES_PER_QUERY) {
       throw new Error("Too many messages requested");
     }
-    const operator = await requireOperator(ctx);
-    const threadAccess = new Map<string, boolean>();
+    await requireOperator(ctx);
     const organizationNames = new Map<string, string | undefined>();
     const result: Record<string, OperatorEmailDraftView[]> = {};
     for (const messageId of new Set(args.messageIds)) {
       const message = await ctx.db.get(messageId);
       if (!message?.pendingEmailIds?.length) continue;
-      let allowed = threadAccess.get(message.threadId);
-      if (allowed === undefined) {
-        allowed = await requireOperatorEmailThread(
-          ctx,
-          message.threadId,
-          operator.userId,
-        ).then(
-          () => true,
-          () => false,
-        );
-        threadAccess.set(message.threadId, allowed);
-      }
-      if (!allowed) continue;
       const views: OperatorEmailDraftView[] = [];
       for (const draftId of message.pendingEmailIds.slice(
         0,
@@ -174,7 +155,7 @@ export const resolveSenderInternal = internalQuery({
   },
   handler: async (ctx, args) => {
     const operator = await requireOperatorForUser(ctx, args.operatorUserId);
-    await requireOperatorEmailThread(ctx, args.threadId, args.operatorUserId);
+    await requireOperatorEmailThread(ctx, args.threadId);
     if (args.write)
       await assertNoOperatorImpersonation(ctx, args.operatorUserId);
     let orgId = args.orgId
@@ -255,7 +236,7 @@ export const listForThreadInternal = internalQuery({
   },
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
-    await requireOperatorEmailThread(ctx, args.threadId, args.operatorUserId);
+    await requireOperatorEmailThread(ctx, args.threadId);
     return await ctx.db
       .query("pendingEmails")
       .withIndex("operator_thread", (q) =>

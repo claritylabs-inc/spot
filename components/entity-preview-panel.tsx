@@ -5,6 +5,7 @@
  * Content components are in components/preview/.
  */
 
+import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { useState } from "react";
 import { useEntityPreview } from "@/hooks/use-entity-preview";
 import { usePdf, type PdfHighlightBox } from "@/components/pdf-context";
@@ -57,16 +58,18 @@ export function EntityPreviewPanel() {
         </div>
 
         {/* Content */}
-        <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4">
-          <PolicyPreview
-            id={preview.id}
-            page={preview.page}
-            citedSections={preview.citedSections}
-            citedCoverageNames={preview.citedCoverageNames}
-            citedSourceSpanIds={preview.citedSourceSpanIds}
-            onFooterActions={setFooterActions}
-          />
-        </div>
+        <ScrollArea className="min-h-0 min-w-0 flex-1">
+          <div className="min-w-0 p-4">
+            <PolicyPreview
+              id={preview.id}
+              page={preview.page}
+              citedSections={preview.citedSections}
+              citedCoverageNames={preview.citedCoverageNames}
+              citedSourceSpanIds={preview.citedSourceSpanIds}
+              onFooterActions={setFooterActions}
+            />
+          </div>
+        </ScrollArea>
 
         {currentFooterActions && (
           <div className="shrink-0 border-t border-border px-4 py-3">

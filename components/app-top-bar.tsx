@@ -6,6 +6,8 @@ import { AppTopBar as SharedAppTopBar } from "@claritylabs-inc/ui/components/app
 import type { Ref } from "react";
 import { typeStyle } from "@/lib/typography";
 import { OperatorClientSwitcher } from "@/components/operator-client-switcher";
+import { ChatAvatar } from "@/components/chat/chat-message";
+import { cn } from "@/lib/utils";
 
 const BREADCRUMB_MAP: Record<string, { label: string; href?: string }> = {
   "/": { label: "Dashboard" },
@@ -57,40 +59,48 @@ function resolveAppBreadcrumb(pathname: string) {
 
 export interface PresenceUser {
   userId: string;
-  userName?: string;
-  lastSeen: number;
+  name: string;
+  avatarUrl?: string | null;
 }
 
-export function PresenceAvatars({ users }: { users: PresenceUser[] }) {
+/** Overlapping avatars of people active right now, each with a live dot. */
+export function PresenceAvatars({
+  users,
+  max = 4,
+  size = "md",
+}: {
+  users: PresenceUser[];
+  max?: number;
+  size?: "sm" | "md";
+}) {
   if (users.length === 0) return null;
-
-  function getInitials(name?: string) {
-    if (!name) return "?";
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  }
-
+  const avatarSize = size === "sm" ? "size-5" : "size-6";
   return (
-    <div className="flex items-center -space-x-1.5">
-      {users.slice(0, 4).map((u) => (
-        <div
-          key={u.userId}
-          title={u.userName}
-          className={`relative w-6 h-6 rounded-full bg-foreground/8 border-2 border-background flex items-center justify-center text-foreground ${typeStyle("caption.medium")}`}
-        >
-          {getInitials(u.userName)}
-          <span className="absolute -bottom-px -right-px w-2 h-2 rounded-full bg-emerald-400 border border-background" />
+    <div className="flex shrink-0 items-center -space-x-1.5">
+      {users.slice(0, max).map((u) => (
+        <div key={u.userId} className="relative">
+          <ChatAvatar
+            name={u.name}
+            title={u.name}
+            imageUrl={u.avatarUrl}
+            className={cn(avatarSize, "border-2 border-background")}
+          />
+          <span className="absolute -right-px -bottom-px size-2 rounded-full border border-background bg-emerald-400" />
         </div>
       ))}
-      {users.length > 4 && (
+      {users.length > max && (
         <div
-          className={`w-6 h-6 rounded-full bg-foreground/8 border-2 border-background flex items-center justify-center text-muted-foreground ${typeStyle("caption.medium")}`}
+          title={users
+            .slice(max)
+            .map((u) => u.name)
+            .join(", ")}
+          className={cn(
+            avatarSize,
+            "flex items-center justify-center rounded-full border-2 border-background bg-foreground/8 text-muted-foreground",
+            typeStyle("caption.medium"),
+          )}
         >
-          +{users.length - 4}
+          +{users.length - max}
         </div>
       )}
     </div>
@@ -101,14 +111,15 @@ export function AppTopBar({
   actions,
   breadcrumbDetail,
   onMobileMenuToggle,
-  presenceUsers,
+  presence,
   mobileMenuRef,
   mobileMenuOpen,
 }: {
   actions?: React.ReactNode;
   breadcrumbDetail?: React.ReactNode;
   onMobileMenuToggle?: () => void;
-  presenceUsers?: PresenceUser[];
+  /** Who else is here, shown before the page actions. */
+  presence?: React.ReactNode;
   mobileMenuRef?: Ref<HTMLButtonElement>;
   mobileMenuOpen?: boolean;
 }) {
@@ -142,12 +153,7 @@ export function AppTopBar({
       mobileMenuOpen={mobileMenuOpen}
       actions={
         <>
-          {presenceUsers && presenceUsers.length > 0 ? (
-            <>
-              <PresenceAvatars users={presenceUsers} />
-              <div className="w-px h-4 bg-foreground/10" />
-            </>
-          ) : null}
+          {presence}
           {actions}
         </>
       }

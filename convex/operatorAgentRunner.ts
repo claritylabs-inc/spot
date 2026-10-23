@@ -53,6 +53,7 @@ import {
 import {
   operatorExecutionPlanSchema,
   type OperatorExecutionPlan,
+  type OperatorPlanningAssessment,
 } from "./lib/operatorRunPlan";
 import {
   containsLeakedToolCall,
@@ -673,7 +674,31 @@ export const run = internalAction({
           expectedRunnerAttempt,
           expectedCheckpointIteration: expectedCheckpointIteration ?? 0,
         };
-        if (!assessment) {
+        if (!assessment && run.planRequested) {
+          const requested: OperatorPlanningAssessment = {
+            required: true,
+            source: "operator",
+            probabilities: {
+              multipleToolCalls: null,
+              sequentialActions: null,
+              multipleEntities: null,
+              multipleEntityEdits: null,
+            },
+          };
+          await recordActivity({
+            kind: "stage",
+            stageId: `${stagePrefix}:assess`,
+            stage: "assessing_workflow",
+            status: "completed",
+            detail: "Plan requested",
+          });
+          const saved: boolean = await ctx.runMutation(
+            internal.operatorAgent.recordPlanningAssessmentInternal,
+            { ...guard, assessment: requested },
+          );
+          if (!saved) return { status: "superseded" as const };
+          assessment = requested;
+        } else if (!assessment) {
           // Only a stored decision gates execution; a failed request fails
           // the run rather than silently running unplanned.
           const decided = await traceStage(
@@ -687,7 +712,11 @@ export const run = internalAction({
                 { telemetry: ctx },
               ),
             (assessment) =>
-              assessment.required ? "Plan required" : "No plan needed",
+              assessment.required
+                ? "Plan required"
+                : assessment.source === "uncertain"
+                  ? "No plan needed (check inconclusive)"
+                  : "No plan needed",
           );
           const saved: boolean = await ctx.runMutation(
             internal.operatorAgent.recordPlanningAssessmentInternal,

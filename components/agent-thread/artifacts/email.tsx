@@ -20,7 +20,12 @@ import {
 import type { ThreadMessage } from "../types";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
-import { ActionPill, ArtifactSidebar } from "./shell";
+import {
+  ChatArtifact,
+  ChatArtifactMeta,
+  ChatArtifactMetaRow,
+} from "@/components/chat/artifact";
+import { ActionPill } from "./shell";
 
 type PendingEmailAction = "send" | "cancel" | "restore";
 
@@ -155,7 +160,7 @@ export function EmailBodyPreview({ html, text }: { html?: string; text: string }
   if (safeHtml) {
     return (
       <div
-        className={`break-words text-foreground/90 [overflow-wrap:anywhere] [&_a]:text-primary-light [&_a]:underline [&_img]:inline-block [&_img]:align-middle [&_p+p]:mt-3 ${typeStyle("body.default")}`}
+        className={`break-words text-foreground/90 [overflow-wrap:anywhere] [&_a]:text-primary-light [&_a]:underline [&_img]:inline-block [&_img]:align-middle [&_li+li]:mt-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p+p]:mt-3 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 ${typeStyle("body.default")}`}
         dangerouslySetInnerHTML={{ __html: safeHtml }}
       />
     );
@@ -165,42 +170,6 @@ export function EmailBodyPreview({ html, text }: { html?: string; text: string }
     <div className={`whitespace-pre-wrap break-words text-foreground/90 [overflow-wrap:anywhere] ${typeStyle("body.default")}`}>
       {text}
     </div>
-  );
-}
-
-export function EmailHeaderRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null;
-}) {
-  if (!value) return null;
-
-  return (
-    <>
-      <dt className={`pt-0.5 text-muted-foreground/50 ${typeStyle("caption.medium")}`}>
-        {label}
-      </dt>
-      <dd className={`min-w-0 break-words text-foreground/70 ${typeStyle("body.large")}`}>
-        {value}
-      </dd>
-    </>
-  );
-}
-
-/** Header grid shared by the client and operator email panels. */
-export function EmailHeaderGrid({ children }: { children: ReactNode }) {
-  return (
-    <dl
-      className="grid items-start gap-x-4 border-b border-input px-5 py-5"
-      style={{
-        gridTemplateColumns: "5rem minmax(0, 1fr)",
-        rowGap: "0.375rem",
-      }}
-    >
-      {children}
-    </dl>
   );
 }
 
@@ -215,11 +184,9 @@ export function EmailHeaderAttachments({
 }) {
   if (!attachments?.length) return null;
   return (
-    <>
-      <dt className={`col-span-1 pt-0.5 text-muted-foreground/50 ${typeStyle("caption.medium")}`}>
-        Attachments
-      </dt>
-      <dd className="col-span-1 min-w-0">
+    <ChatArtifactMetaRow
+      label="Attachments"
+      value={
         <ChatAttachmentList
           attachments={attachments}
           threadId={threadId}
@@ -227,8 +194,8 @@ export function EmailHeaderAttachments({
           size="compact"
           collapseAfter={2}
         />
-      </dd>
-    </>
+      }
+    />
   );
 }
 
@@ -597,7 +564,7 @@ export function EmailThreadSidebar({
   const previewBody = pendingEmail?.renderedText ?? pendingEmail?.emailBody ?? message.content;
 
   return (
-    <ArtifactSidebar
+    <ChatArtifact
       title={
         pendingEmail?.subject || message.subject ||
           (message.role === "agent" ? "Sent email" : "Received email")
@@ -609,18 +576,18 @@ export function EmailThreadSidebar({
       }
       closeLabel="Close email"
       onClose={onClose}
-      header={
-        <EmailHeaderGrid>
-          <EmailHeaderRow label="From" value={fromLine} />
-          <EmailHeaderRow label="To" value={toLine} />
-          <EmailHeaderRow label="Cc" value={ccLine} />
-          <EmailHeaderRow label="Bcc" value={bccLine} />
-          <EmailHeaderRow label="Time" value={formatDisplayDateTime(message._creationTime)} />
+      meta={
+        <ChatArtifactMeta>
+          <ChatArtifactMetaRow label="From" value={fromLine} />
+          <ChatArtifactMetaRow label="To" value={toLine} />
+          <ChatArtifactMetaRow label="Cc" value={ccLine} />
+          <ChatArtifactMetaRow label="Bcc" value={bccLine} />
+          <ChatArtifactMetaRow label="Time" value={formatDisplayDateTime(message._creationTime)} />
           <EmailHeaderAttachments
             attachments={pendingEmail ? pendingEmail.attachments : message.attachments}
             threadId={message.threadId}
           />
-        </EmailHeaderGrid>
+        </ChatArtifactMeta>
       }
       footer={
         isDraft ? (
@@ -666,6 +633,6 @@ export function EmailThreadSidebar({
       }
     >
       <EmailBodyPreview html={pendingEmail?.renderedHtml} text={previewBody} />
-    </ArtifactSidebar>
+    </ChatArtifact>
   );
 }

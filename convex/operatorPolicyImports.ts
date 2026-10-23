@@ -56,12 +56,7 @@ export async function resolveOperatorPolicySources(
     ctx.db.get(args.threadId),
     ctx.db.get(args.orgId),
   ]);
-  if (
-    !thread ||
-    (thread.ownerUserId !== args.operatorUserId &&
-      thread.visibility !== "shared")
-  )
-    throw new Error("Operator conversation not found");
+  if (!thread) throw new Error("Operator conversation not found");
   if (!client || client.type !== "client") throw new Error("Client not found");
   const count =
     (args.attachmentFileIds?.length ?? 0) + (args.clientFileIds?.length ?? 0);

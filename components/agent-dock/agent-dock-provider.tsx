@@ -217,12 +217,44 @@ export function AgentDockProvider({
         inModal: isInsideModal(event.target),
       });
       if (!shortcut) return;
+      if (shortcut === "closeChat") {
+        if (state.mode === "collapsed" || state.view !== "chat") return;
+        const threadId = state.activeThreadId;
+        if (!threadId) return;
+        event.preventDefault();
+        dispatch({ type: "closeTab", threadId });
+        return;
+      }
+      if (shortcut === "tab1" || shortcut === "tab2" || shortcut === "tab3") {
+        const tab = state.tabs[Number(shortcut.slice(3)) - 1];
+        if (!tab) return;
+        event.preventDefault();
+        run({ type: "openThread", threadId: tab.threadId, now: dayjs().valueOf() });
+        return;
+      }
       event.preventDefault();
-      run({ type: shortcut });
+      if (shortcut === "newChat") {
+        run({ type: "newChat" });
+        setDetachedContextKey(null);
+        window.requestAnimationFrame(() => composerRef.current?.focus());
+        return;
+      }
+      run(
+        shortcut === "showHistory"
+          ? { type: "showHistory" }
+          : { type: shortcut },
+      );
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [run, standaloneOrgId, state.mode]);
+  }, [
+    run,
+    standaloneOrgId,
+    state.activeThreadId,
+    state.mode,
+    state.tabs,
+    state.view,
+  ]);
 
   const value = useMemo<AgentDockContextValue>(
     () => ({
