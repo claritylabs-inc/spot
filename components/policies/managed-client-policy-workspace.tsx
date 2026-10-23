@@ -27,6 +27,7 @@ import { ArchiveRestore, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { usePolicyUpload } from "@/hooks/use-policy-upload";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { normalizeExtractedDate } from "@/convex/lib/valueNormalization";
 import { formatDisplayDate } from "@/lib/date-format";
 import {
@@ -122,7 +123,10 @@ export function ManagedClientPolicyWorkspace({
   const clientOrgId = clientOrgIdProp ?? params.clientOrgId;
   const basePath = basePathProp ?? `/clients/${clientOrgId}/policies`;
   const router = useRouter();
-  const [uploaderOpen, setUploaderOpen] = useState(false);
+  const [uploaderOpen, setUploaderOpen] = useFollowedState(
+    `policy:client:${clientOrgId}:uploader-open`,
+    false,
+  );
   const setActions = onActions ?? clearNode;
   const setRightPanel = onRightPanel ?? clearNode;
   const setBreadcrumbExtra = onBreadcrumb ?? clearText;
@@ -157,7 +161,7 @@ export function ManagedClientPolicyWorkspace({
       ),
     );
     return () => setActions(null);
-  }, [readOnly, setActions, showArchived]);
+  }, [readOnly, setActions, setUploaderOpen, showArchived]);
 
   const policies = useCachedQuery(
     "policies.listForOperator",
@@ -220,6 +224,7 @@ export function ManagedClientPolicyWorkspace({
     handleUpload,
     readOnly,
     setRightPanel,
+    setUploaderOpen,
     showArchived,
     policyPreview,
     uploaderOpen,

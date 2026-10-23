@@ -49,6 +49,7 @@ import {
   type PolicyCertificateRecord,
 } from "@/components/certificates/certificate-workspace";
 import { usePageContext } from "@/hooks/use-page-context";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { PolicyDetailsTab } from "./policy-details-tab";
 import { PolicyCoveragesTab } from "./policy-coverages-tab";
 import {
@@ -365,25 +366,37 @@ export function PolicyDetailBody({
 }: PolicyDetailBodyProps) {
   const viewerOrg = useCachedViewerOrg();
   const searchParams = useSearchParams();
-  const [showCertificateSheet, setShowCertificateSheet] = useState(false);
-  const [showEditExtractedFields, setShowEditExtractedFields] = useState(false);
+  const [showCertificateSheet, setShowCertificateSheet] = useFollowedState(
+    `policy:${id}:certificate-generate-open`,
+    false,
+  );
+  const [showEditExtractedFields, setShowEditExtractedFields] =
+    useFollowedState(`policy:${id}:edit-fields-open`, false);
   const [editingPolicyDetails, setEditingPolicyDetails] =
-    useState<PolicyDetailsEditSection | null>(null);
-  const [selectedCertificate, setSelectedCertificate] =
-    useState<PolicyCertificateRecord | null>(null);
+    useFollowedState<PolicyDetailsEditSection | null>(
+      `policy:${id}:edit-details-section`,
+      null,
+    );
+  const [selectedCertificateId, setSelectedCertificateId] =
+    useFollowedState<Id<"policyCertificates"> | null>(
+      `policy:${id}:selected-certificate`,
+      null,
+    );
   const [reissuingCertificateId, setReissuingCertificateId] =
     useState<Id<"policyCertificates"> | null>(null);
   const [savingCertificateId, setSavingCertificateId] =
     useState<Id<"policyCertificates"> | null>(null);
   const [archivingCertificateId, setArchivingCertificateId] =
     useState<Id<"policyCertificates"> | null>(null);
-  const [activeTab, setActiveTab] = useState<PolicyDetailTab>(() =>
-    parsePolicyDetailTab(
-      searchParams.get("tab"),
-      operatorMode && (searchParams.get("run") || searchParams.get("traceId"))
-        ? "sections"
-        : "details",
-    ),
+  const [activeTab, setActiveTab] = useFollowedState<PolicyDetailTab>(
+    `policy:${id}:tab`,
+    () =>
+      parsePolicyDetailTab(
+        searchParams.get("tab"),
+        operatorMode && (searchParams.get("run") || searchParams.get("traceId"))
+          ? "sections"
+          : "details",
+      ),
   );
   const policySummary = useCachedPolicySummary(id as Id<"policies">);
   const fullPolicy = useCachedPolicyDetail(id as Id<"policies">);
@@ -426,7 +439,10 @@ export function PolicyDetailBody({
 
   const router = useRouter();
   const initialPage = Number(searchParams.get("page")) || undefined;
-  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [showArchiveDialog, setShowArchiveDialog] = useFollowedState(
+    `policy:${id}:archive-dialog`,
+    false,
+  );
   const [archiving, setArchiving] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
@@ -523,20 +539,34 @@ export function PolicyDetailBody({
   const visibleActiveTab = visibleTabs.some((tab) => tab.id === activeTab)
     ? activeTab
     : "details";
+  const selectedCertificate =
+    (certificates as PolicyCertificateRecord[] | undefined)?.find(
+      (row) => row._id === selectedCertificateId,
+    ) ?? null;
   const selectedCertificateForPanel =
     visibleActiveTab === "certificates" &&
     selectedCertificate?.policyId === policy?._id
       ? selectedCertificate
       : null;
+  const selectCertificate = useCallback(
+    (row: PolicyCertificateRecord | null) =>
+      setSelectedCertificateId(row?._id ?? null),
+    [setSelectedCertificateId],
+  );
 
   const openPolicyDetailsEditor = useCallback(
     (section: PolicyDetailsEditSection) => {
       setShowCertificateSheet(false);
       setShowEditExtractedFields(false);
-      setSelectedCertificate(null);
+      setSelectedCertificateId(null);
       setEditingPolicyDetails(section);
     },
-    [],
+    [
+      setShowCertificateSheet,
+      setShowEditExtractedFields,
+      setSelectedCertificateId,
+      setEditingPolicyDetails,
+    ],
   );
 
   const reissueCertificate = useCallback(
@@ -634,7 +664,7 @@ export function PolicyDetailBody({
       setArchivingCertificateId(row._id);
       try {
         await archiveCertificateMutation({ certificateId: row._id });
-        setSelectedCertificate(null);
+        setSelectedCertificateId(null);
         toast.success("Certificate archived");
       } catch (error) {
         toast.error(
@@ -644,7 +674,7 @@ export function PolicyDetailBody({
         setArchivingCertificateId(null);
       }
     },
-    [archiveCertificateMutation],
+    [archiveCertificateMutation, setSelectedCertificateId],
   );
 
   useEffect(() => {
@@ -728,7 +758,7 @@ export function PolicyDetailBody({
                 );
                 return;
               }
-              setSelectedCertificate(null);
+              setSelectedCertificateId(null);
               setShowCertificateSheet(true);
             }}
           >
@@ -750,6 +780,9 @@ export function PolicyDetailBody({
     reextract,
     state,
     fileUrl,
+    setSelectedCertificateId,
+    setShowArchiveDialog,
+    setShowCertificateSheet,
   ]);
 
   useEffect(() => {
@@ -813,7 +846,7 @@ export function PolicyDetailBody({
       onRightPanel(
         <CertificateDetailPanel
           row={selectedCertificateForPanel}
-          onClose={() => setSelectedCertificate(null)}
+          onClose={() => setSelectedCertificateId(null)}
           onReissue={!readOnly ? reissueCertificate : undefined}
           onEditHolder={!readOnly ? editCertificateHolder : undefined}
           onArchive={!readOnly ? archiveCertificate : undefined}
@@ -845,6 +878,10 @@ export function PolicyDetailBody({
     canEditExtractedFields,
     canEditPolicyDetails,
     isArchived,
+    setShowCertificateSheet,
+    setShowEditExtractedFields,
+    setEditingPolicyDetails,
+    setSelectedCertificateId,
   ]);
 
   if (policy === undefined) {
@@ -1059,7 +1096,7 @@ export function PolicyDetailBody({
         <CertificatesTab
           policyId={policy._id}
           selectedCertificateId={selectedCertificateForPanel?._id ?? null}
-          onSelectCertificate={setSelectedCertificate}
+          onSelectCertificate={selectCertificate}
         />
       )}
 

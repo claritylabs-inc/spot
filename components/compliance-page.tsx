@@ -97,6 +97,7 @@ import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { formatDisplayDate } from "@/lib/date-format";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
+import { useFollowedState } from "@/hooks/use-followed-state";
 
 type RequirementScope = "vendors" | "own_org";
 type ComplianceStatus =
@@ -949,7 +950,10 @@ function RequirementDrawer({
   onArchive: (requirementId: Id<"insuranceRequirements">) => void;
   onClose: () => void;
 }) {
-  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useFollowedState(
+    `compliance:requirement:${requirement._id}:confirm-archive`,
+    false,
+  );
   const editRef = useRef<{ save: () => Promise<boolean> }>(null);
   const check = requirement.complianceCheck;
   const policy = check?.matchedPolicy;
@@ -1301,7 +1305,10 @@ function RequirementEditForm({
   onArchive?: () => void;
   ref?: Ref<{ save: () => Promise<boolean> }>;
 }) {
-  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useFollowedState(
+    `compliance:requirement-form:${requirement._id}:confirm-archive`,
+    false,
+  );
   const [title, setTitle] = useState(requirement.title);
   const [lineOfBusiness, setLineOfBusiness] = useState(
     requirement.lineOfBusiness ?? "CGL",
@@ -1664,9 +1671,15 @@ function SourceDrawer({
   const [internalNotes, setInternalNotes] = useState(
     source.internalNotes ?? "",
   );
-  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useFollowedState(
+    `compliance:source:${source._id}:confirm-archive`,
+    false,
+  );
   const [expandedRequirementId, setExpandedRequirementId] =
-    useState<Id<"insuranceRequirements"> | null>(null);
+    useFollowedState<Id<"insuranceRequirements"> | null>(
+      `compliance:source:${source._id}:expanded-requirement`,
+      null,
+    );
 
   const sourceAutoSave = useLocalFirstAutoSave({
     mutationName: `compliance.updateRequirementSource.${source._id}`,
@@ -2363,19 +2376,38 @@ function ComplianceWorkspace({
             : surface === "operator"
               ? "requirements"
               : "overview";
-  const [creationDrawer, setCreationDrawer] = useState<
+  const uiKey = `compliance:${surface}`;
+  const [creationDrawer, setCreationDrawer] = useFollowedState<
     "import" | "manual" | null
-  >(null);
+  >(`${uiKey}:creation-drawer`, null);
   const [requirementScope, setRequirementScope] =
-    useState<RequirementScope>("own_org");
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
-  const [lineFilter, setLineFilter] = useState<LineFilter>("all");
-  const [limitFilter, setLimitFilter] = useState<LimitFilter>("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+    useFollowedState<RequirementScope>(`${uiKey}:scope`, "own_org");
+  const [sourceFilter, setSourceFilter] = useFollowedState<SourceFilter>(
+    `${uiKey}:source-filter`,
+    "all",
+  );
+  const [lineFilter, setLineFilter] = useFollowedState<LineFilter>(
+    `${uiKey}:line-filter`,
+    "all",
+  );
+  const [limitFilter, setLimitFilter] = useFollowedState<LimitFilter>(
+    `${uiKey}:limit-filter`,
+    "all",
+  );
+  const [statusFilter, setStatusFilter] = useFollowedState<StatusFilter>(
+    `${uiKey}:status-filter`,
+    "all",
+  );
   const [selectedRequirementId, setSelectedRequirementId] =
-    useState<Id<"insuranceRequirements"> | null>(null);
+    useFollowedState<Id<"insuranceRequirements"> | null>(
+      `${uiKey}:selected-requirement`,
+      null,
+    );
   const [selectedSourceId, setSelectedSourceId] =
-    useState<Id<"requirementSourceDocuments"> | null>(null);
+    useFollowedState<Id<"requirementSourceDocuments"> | null>(
+      `${uiKey}:selected-source`,
+      null,
+    );
   const [sourceText, setSourceText] = useState("");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [sourceName, setSourceName] = useState("");
@@ -2402,9 +2434,15 @@ function ComplianceWorkspace({
   const [checkingRequirementId, setCheckingRequirementId] =
     useState<Id<"insuranceRequirements"> | null>(null);
   const [certificateSourceId, setCertificateSourceId] =
-    useState<Id<"requirementSourceDocuments"> | null>(null);
+    useFollowedState<Id<"requirementSourceDocuments"> | null>(
+      `${uiKey}:certificate-source`,
+      null,
+    );
   const [certificateRequirementId, setCertificateRequirementId] =
-    useState<Id<"insuranceRequirements"> | null>(null);
+    useFollowedState<Id<"insuranceRequirements"> | null>(
+      `${uiKey}:certificate-requirement`,
+      null,
+    );
   const [certificateTabActions, setCertificateTabActions] =
     useState<ReactNode>(null);
   const [certificateTabRightPanel, setCertificateTabRightPanel] =
@@ -2605,7 +2643,6 @@ function ComplianceWorkspace({
         return;
       }
       // Synchronize the URL selection only after the prior editor has closed.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRequirementScope(requirement.scope);
       setSelectedRequirementId(requirement._id);
       setSelectedSourceId(null);
@@ -2631,6 +2668,9 @@ function ComplianceWorkspace({
     selectedSource,
     creationDrawer,
     certificateSourceId,
+    setRequirementScope,
+    setSelectedRequirementId,
+    setSelectedSourceId,
   ]);
 
   if (isBroker) return null;
