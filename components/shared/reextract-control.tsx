@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useAction, useMutation } from "convex/react";
 import { Loader2, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -32,7 +33,10 @@ export function useReextractControl(policyId: Id<"policies"> | undefined) {
     api.actions.retryExtraction.retryExtraction,
   );
   const cancelExtraction = useMutation(api.policies.cancelExtraction);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useFollowedState(
+    `policy:${policyId}:reextract-confirm`,
+    false,
+  );
   const [starting, setStarting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
@@ -65,7 +69,10 @@ export function useReextractControl(policyId: Id<"policies"> | undefined) {
     }
   }, [cancelExtraction, policyId]);
 
-  const requestReextract = useCallback(() => setConfirming(true), []);
+  const requestReextract = useCallback(
+    () => setConfirming(true),
+    [setConfirming],
+  );
   const control = useMemo(
     () => ({ requestReextract, cancel, cancelling, starting }),
     [requestReextract, cancel, cancelling, starting],

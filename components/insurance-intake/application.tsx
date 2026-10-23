@@ -4,6 +4,11 @@ import { INTAKE_TERMS_VERSION } from "@/lib/intake-terms";
 import { isIntakePercentageQuestion } from "@/lib/intake-percentages";
 import { vehicleRelevanceKey, filterVehicleRelevantQuestions } from "@/lib/intake-vehicle-relevance";
 import { isWorkforceProviderSource, workforceProviderComplete } from "@/lib/intake-workforce-provider";
+import {
+  useFollowedState,
+  useIsFollowing,
+  useLeaderOnly,
+} from "@/hooks/use-followed-state";
 import { workJurisdictionsComplete } from "@/lib/intake-jurisdictions";
 import { payrollAnswerComplete, payrollPages, payrollPageTitle, payrollPageValue, parsePayrollAnswer } from "@/lib/intake-payroll";
 import { cyberDocumentQuestions, cyberDocumentUrlValid, intakeCyberResearchKey, withCyberDocumentQuestions } from "@/lib/intake-cyber-research";
@@ -166,7 +171,16 @@ function IntakeApplicationLoading() {
 
 const isTypedScopeQuestion = (question?: IntakeFollowupQuestion) => isPropertySubsectionQuestion(question) || isVehicleSubsectionQuestion(question) || !!question?.id.startsWith("cyber_document_");
 
+/**
+ * A follower sees the leader's step but never saves; remounting when following
+ * stops drops the paused writes and reloads the follower's own draft.
+ */
 export function InsuranceIntake() {
+  const following = useIsFollowing();
+  return <IntakeApplication key={following ? "following" : "own"} />;
+}
+
+function IntakeApplication() {
   const params = useSearchParams();
   const router = useRouter();
   const requestId = params.get("request") as Id<"procurementRequests"> | null;
@@ -192,9 +206,9 @@ export function InsuranceIntake() {
   );
   const reviewCoverageIndex = Number(params.get("coverageIndex") ?? 0);
   const { isAuthenticated, isLoading } = useConvexAuth();
-  const confirmOwnership = useMutation(
+  const confirmOwnership = useLeaderOnly(useMutation(
     api.requestIntake.confirmVerifiedOwnership,
-  );
+  ));
   const [confirmationError, setConfirmationError] = useState("");
   useEffect(() => {
     if (confirmationError)
@@ -311,13 +325,13 @@ function Application({
   const connection = useConvexConnectionState();
   const data = useQuery(api.requestIntake.get, { requestId });
   const router = useRouter();
-  const save = useMutation(api.requestIntake.save);
-  const suggestIndustry = useAction(api.actions.intakeIndustry.suggestProfile);
-  const suggestRequestCoverages = useAction(api.actions.intakeCoverage.suggest);
+  const save = useLeaderOnly(useMutation(api.requestIntake.save));
+  const suggestIndustry = useLeaderOnly(useAction(api.actions.intakeIndustry.suggestProfile));
+  const suggestRequestCoverages = useLeaderOnly(useAction(api.actions.intakeCoverage.suggest));
   const requestCoverageAttempts = useRef(new Set<string>());
   const scopeCoverageSuggestions = useRef(new Map<string, { ready: boolean; ids: string[] | null }>());
-  const suggestDateInputs = useAction(api.actions.intakeFollowupInputs.dates);
-  const suggestVehicleBodyType = useAction(api.actions.intakeFollowupInputs.vehicleBodyType);
+  const suggestDateInputs = useLeaderOnly(useAction(api.actions.intakeFollowupInputs.dates));
+  const suggestVehicleBodyType = useLeaderOnly(useAction(api.actions.intakeFollowupInputs.vehicleBodyType));
   const vehicleBodyAttempts = useRef(new Set<string>());
   const dateInputAttempts = useRef(new Set<string>());
   const [dateInputHints, setDateInputHints] = useState<Record<string, boolean>>({});
@@ -326,16 +340,16 @@ function Application({
   const industrySelectionVersion = useRef(0);
   const industryRequestVersion = useRef(0);
   useEffect(() => () => { industryRequestVersion.current++; }, [requestId]);
-  const prepareFollowups = useMutation(api.requestIntake.prepareFollowups);
+  const prepareFollowups = useLeaderOnly(useMutation(api.requestIntake.prepareFollowups));
   const preparingFollowups = useRef<string | null>(null);
   const [checkedFollowupEntry, setCheckedFollowupEntry] = useState<string | null>(null);
-  const prepareVerification = useMutation(
+  const prepareVerification = useLeaderOnly(useMutation(
     api.requestIntake.prepareVerification,
-  );
-  const submit = useMutation(api.requestIntake.submit);
-  const removeUploadedFile = useMutation(api.requestIntake.removeFile);
-  const selectNewCompany = useMutation(api.requestIntake.useNewCompany);
-  const selectSavedCompany = useMutation(api.requestIntake.useSavedCompany);
+  ));
+  const submit = useLeaderOnly(useMutation(api.requestIntake.submit));
+  const removeUploadedFile = useLeaderOnly(useMutation(api.requestIntake.removeFile));
+  const selectNewCompany = useLeaderOnly(useMutation(api.requestIntake.useNewCompany));
+  const selectSavedCompany = useLeaderOnly(useMutation(api.requestIntake.useSavedCompany));
   const { signIn } = useAuthActions();
   const { run } = useBackgroundTasks();
   const org = useQuery(api.orgs.viewerOrg, data?.verified ? {} : "skip");
@@ -343,7 +357,7 @@ function Application({
   const isSavings =
     (answers.intakeGoal ?? data?.answers.intakeGoal) === "savings";
   const [details, setDetails] = useState<IntakeDetails>(detailsFromAnswers({}));
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useFollowedState(`intake:${requestId}:step`, 0);
   const followupBatch =
     data?.followupBatches?.[step === 29 ? "acord" : "additional"];
   const followupWaitKey = `${step}:${followupBatch?.token ?? "initial"}`;
@@ -492,9 +506,9 @@ function Application({
     queueMicrotask(()=>{setAnswers(data.answers);setDetails(data.details);});
   },[data]);
 
-  const [showRequirementsPaste, setShowRequirementsPaste] = useState<
+  const [showRequirementsPaste, setShowRequirementsPaste] = useFollowedState<
     boolean | null
-  >(null);
+  >(`intake:${requestId}:requirements-paste`, null);
   const [ready, setReady] = useState(false);
   useEffect(() => {
     if (!ready || ![29, 30].includes(step) || (!data?.submitted && followupBatch?.status !== "ready") || !textQuestionIds) return;
@@ -698,7 +712,7 @@ function Application({
         state.current.dirty ? "Unsaved changes on this device" : "Saved",
       );
     });
-  }, [data, key, reviewStep, reviewCoverageIndex]);
+  }, [data, key, reviewStep, reviewCoverageIndex, setStep]);
   const flush = useCallback(async (): Promise<boolean> => {
     if (running.current) {
       await running.current;

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { PillButton } from "@/components/ui/pill-button";
 import { OutreachStatusTag } from "./procurement-shared";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
@@ -510,6 +511,7 @@ export function useProviderOutreach(
   }
 
   return {
+    requestId,
     // Launch controls read `request.canLaunch`; a sender problem turns it off.
     panel:
       panel && senderBlock && panel.request.canLaunch
@@ -1079,9 +1081,12 @@ export function ProviderOutreachPanel({
   }[];
   readOnly?: boolean;
 }) {
-  const { panel, sender, senderBlock, sending, send, selectedContacts, selectContact } =
+  const { requestId, panel, sender, senderBlock, sending, send, selectedContacts, selectContact } =
     controller;
-  const [othersOpen, setOthersOpen] = useState<boolean | null>(null);
+  const [othersOpen, setOthersOpen] = useFollowedState<boolean | null>(
+    `procurement:${requestId}:provider-others-open`,
+    null,
+  );
   if (!panel && !readOnly) return null;
   const submittedIds = new Set(
     submittedProviders.map((row) => row.brokerOrgId),

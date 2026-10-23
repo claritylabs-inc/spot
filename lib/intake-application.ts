@@ -171,6 +171,10 @@ export function companyApplicationProfile(application: IntakeApplication) {
       ? { mailingSameAsRegistered: source.mailingSameAsRegistered }
       : {}),
     ...(source.revenue ? { revenue: source.revenue } : {}),
+    ...(source.techStack ? { techStack: source.techStack } : {}),
+    ...(source.techStackScanFilledAt
+      ? { techStackScanFilledAt: source.techStackScanFilledAt }
+      : {}),
   };
   return { answers, details, submittedAt: application.submittedAt };
 }

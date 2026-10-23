@@ -28,6 +28,7 @@ import type {
   ViewerOrgData,
 } from "@/components/settings/team-types";
 import { useCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import {
   useCachedQuery,
   useUpdateCachedQuery,
@@ -115,11 +116,25 @@ export function TeamSection({
   const org = orgData?.org;
   const viewerUserId = viewer?._id;
 
-  const [uncontrolledInviteOpen, setUncontrolledInviteOpen] = useState(false);
-  const [selectedInvitation, setSelectedInvitation] =
-    useState<TeamInvitation | null>(null);
+  const [uncontrolledInviteOpen, setUncontrolledInviteOpen] = useFollowedState(
+    `settings:team:${cacheScope}:invite`,
+    false,
+  );
+  const [selectedInvitationId, setSelectedInvitationId] = useFollowedState<
+    TeamInvitation["_id"] | null
+  >(`settings:team:${cacheScope}:invitation`, null);
+  const selectedInvitation =
+    invitations?.find((invitation) => invitation._id === selectedInvitationId) ??
+    null;
   const [cancellingInvitation, setCancellingInvitation] = useState(false);
-  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+  const [editingMemberId, setEditingMemberId] = useFollowedState<
+    TeamMember["membershipId"] | null
+  >(`settings:team:${cacheScope}:edit-member`, null);
+  const editingMember =
+    members?.find((member) => member.membershipId === editingMemberId) ?? null;
+  const [draftMemberId, setDraftMemberId] = useState<
+    TeamMember["membershipId"] | null
+  >(null);
   const [editName, setEditName] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -135,6 +150,18 @@ export function TeamSection({
   const [activationUserId, setActivationUserId] = useState<Id<"users"> | null>(
     null,
   );
+
+  if (editingMember && draftMemberId !== editingMember.membershipId) {
+    setDraftMemberId(editingMember.membershipId);
+    setEditName(editingMember.name ?? "");
+    setEditTitle(editingMember.title ?? "");
+    setEditPhone(editingMember.phone ?? "");
+    setEditRole(editingMember.role);
+    setEditEmail("");
+    setEmailChangeError("");
+  } else if (!editingMember && draftMemberId !== null) {
+    setDraftMemberId(null);
+  }
 
   const {
     setActions: setSettingsActions,
@@ -155,7 +182,7 @@ export function TeamSection({
         setUncontrolledInviteOpen(open);
       }
     },
-    [onInviteOpenChange],
+    [onInviteOpenChange, setUncontrolledInviteOpen],
   );
 
   const patchCachedPrimaryContact = useCallback(
@@ -194,16 +221,13 @@ export function TeamSection({
     [operatorClientOrgId, patchCachedPrimaryContact, setPrimaryContact],
   );
 
-  const openEditMember = useCallback((member: TeamMember) => {
-    setSelectedInvitation(null);
-    setEditingMember(member);
-    setEditName(member.name ?? "");
-    setEditTitle(member.title ?? "");
-    setEditPhone(member.phone ?? "");
-    setEditRole(member.role);
-    setEditEmail("");
-    setEmailChangeError("");
-  }, []);
+  const openEditMember = useCallback(
+    (member: TeamMember) => {
+      setSelectedInvitationId(null);
+      setEditingMemberId(member.membershipId);
+    },
+    [setEditingMemberId, setSelectedInvitationId],
+  );
 
   const removeTeamMember = useCallback(
     async (member: TeamMember) => {
@@ -220,7 +244,7 @@ export function TeamSection({
           result.primaryInsuranceContactId ?? undefined,
         );
         toast.success("Member removed");
-        setEditingMember(null);
+        setEditingMemberId(null);
       } catch (error) {
         toast.error(
           getUserFacingErrorMessage(error, "Failed to remove member"),
@@ -233,6 +257,7 @@ export function TeamSection({
       operatorClientOrgId,
       patchCachedPrimaryContact,
       removeMember,
+      setEditingMemberId,
       teamQueryArgs,
       updateCachedMembers,
     ],
@@ -288,11 +313,6 @@ export function TeamSection({
               : row,
           ),
         );
-        setEditingMember((current) =>
-          current?.membershipId === member.membershipId
-            ? { ...current, role: editRole }
-            : current,
-        );
         toast.success("Role updated");
       } catch (error) {
         toast.error(
@@ -329,11 +349,6 @@ export function TeamSection({
               ? { ...row, pendingEmailChange: undefined }
               : row,
           ),
-        );
-        setEditingMember((current) =>
-          current?.membershipId === member.membershipId
-            ? { ...current, pendingEmailChange: undefined }
-            : current,
         );
         toast.success("Email change cancelled");
       } catch (error) {
@@ -382,11 +397,6 @@ export function TeamSection({
               : row,
           ),
         );
-        setEditingMember((current) =>
-          current?.membershipId === member.membershipId
-            ? { ...current, pendingEmailChange }
-            : current,
-        );
         setEditEmail("");
         toast.success(`Verification code sent to ${result.newEmail}`);
       } catch (error) {
@@ -421,7 +431,7 @@ export function TeamSection({
           current.filter((row) => row._id !== invitation._id),
         );
         toast.success("Invitation cancelled");
-        setSelectedInvitation(null);
+        setSelectedInvitationId(null);
       } catch {
         toast.error("Failed to cancel invitation");
       } finally {
@@ -431,6 +441,7 @@ export function TeamSection({
     [
       cancelInvitation,
       operatorClientOrgId,
+      setSelectedInvitationId,
       teamQueryArgs,
       updateCachedInvitations,
     ],
@@ -516,7 +527,7 @@ export function TeamSection({
           cancellingEmailChange={cancellingEmailChange}
           settingPrimaryContactUserId={settingPrimaryContactUserId}
           onOpenChange={(open) => {
-            if (!open) setEditingMember(null);
+            if (!open) setEditingMemberId(null);
           }}
           onNameChange={setEditName}
           onTitleChange={setEditTitle}
@@ -560,7 +571,7 @@ export function TeamSection({
           open
           title={selectedInvitation.email}
           onOpenChange={(open) => {
-            if (!open) setSelectedInvitation(null);
+            if (!open) setSelectedInvitationId(null);
           }}
           footer={
             <PillButton
@@ -625,8 +636,10 @@ export function TeamSection({
     requestPendingEmailChange,
     saveTeamMember,
     saveTeamMemberRole,
+    setEditingMemberId,
     setInviteOpen,
     setRightPanel,
+    setSelectedInvitationId,
     updatePrimaryContact,
     removeTeamMember,
     viewerUserId,
@@ -669,8 +682,8 @@ export function TeamSection({
         onEditMember={openEditMember}
         onInviteMember={() => setInviteOpen(true)}
         onOpenInvitation={(invitation) => {
-          setEditingMember(null);
-          setSelectedInvitation(invitation);
+          setEditingMemberId(null);
+          setSelectedInvitationId(invitation._id);
         }}
       />
     </div>

@@ -15,6 +15,8 @@ export type PresentationFollowUp = (
 ) => Promise<void>;
 
 export type PresentationContextValue = {
+  /** Prefix for followed UI state, stable for this presentation in every browser. */
+  stateKey: string;
   references: Map<string, PresentationReference>;
   disabled: boolean;
   audience?: "operator" | "client";
@@ -34,3 +36,4 @@ export function usePresentation() {
   if (!context) throw new Error("Chat presentation context is missing");
   return context;
 }
+

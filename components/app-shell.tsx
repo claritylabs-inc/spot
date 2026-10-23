@@ -54,6 +54,7 @@ import {
   useEntityPreview,
 } from "@/hooks/use-entity-preview";
 import { useCurrentOrg } from "@/hooks/use-current-org";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useSpotSync } from "@/lib/sync/spot-sync";
 import { EntityPreviewPanel } from "@/components/entity-preview-panel";
 import {
@@ -187,7 +188,10 @@ function ShellFrame({
   agentEnabled: boolean;
   children: React.ReactNode;
 }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useFollowedState(
+    "shell:mobile-menu",
+    false,
+  );
   const mobileMenuRef = useRef<HTMLButtonElement>(null);
   const pathname = usePathname();
   const { scope } = useSpotSync();
@@ -219,7 +223,7 @@ function ShellFrame({
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMobileOpen(false));
     return () => cancelAnimationFrame(frame);
-  }, [pathname]);
+  }, [pathname, setMobileOpen]);
 
   const sidebarRenderProps = useMemo(
     () => ({

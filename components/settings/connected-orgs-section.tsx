@@ -7,6 +7,7 @@ import type { FunctionReference } from "convex/server";
 import dayjs from "dayjs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
@@ -487,9 +488,18 @@ export function ConnectedOrgsSection({
   const revoke = useMutation(connectedOrgsApi.connectedOrgs.revoke);
   const revokeInvitation = useMutation(api.connectedOrgs.revokeInvitation);
 
-  const [requestOpen, setRequestOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const closeDetails = useCallback(() => setSelectedId(null), []);
+  const [requestOpen, setRequestOpen] = useFollowedState(
+    `settings:connected-orgs:${page}:request`,
+    false,
+  );
+  const [selectedId, setSelectedId] = useFollowedState<string | null>(
+    `settings:connected-orgs:${page}:selected`,
+    null,
+  );
+  const closeDetails = useCallback(
+    () => setSelectedId(null),
+    [setSelectedId],
+  );
   const [vendorEmail, setVendorEmail] = useState("");
   const [relationshipLabel, setRelationshipLabel] = useState("");
   const [note, setNote] = useState("");
@@ -509,7 +519,7 @@ export function ConnectedOrgsSection({
       ) : null,
     );
     return () => setActions(null);
-  }, [page, setActions, canManage]);
+  }, [page, setActions, setRequestOpen, canManage]);
 
   const approveRelationship = useCallback(
     async (id: Id<"connectedOrgRelationships">) => {
@@ -759,6 +769,7 @@ export function ConnectedOrgsSection({
     return () => setRightPanel(null);
   }, [
     currentOrg?.orgId,
+    setRequestOpen,
     selectedRow,
     selectedSummary,
     page,

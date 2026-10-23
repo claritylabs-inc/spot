@@ -17,6 +17,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@claritylabs-inc/ui/components/tabs";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useTabParam } from "@/hooks/use-tab-param";
 import { openOAuthTab } from "@/lib/oauth-tab";
 import {
@@ -467,7 +468,7 @@ function OperatorChannelsContent({
   const [savedIdentity, setSavedIdentity] = useState(profile);
   const [slackUserId, setSlackUserId] = useState(profile.slackUserId ?? "");
   const [googleSettingsDrawerOpen, setGoogleSettingsDrawerOpen] =
-    useState(false);
+    useFollowedState("operator-channels:google-workspace:settings-drawer", false);
   const [busy, setBusy] = useState<"host" | "identity" | null>(null);
   const hostInstallation = hostStatus?.installation;
   const workspaceTeamId = hostStatus?.hostTeamId;

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { ChatPresentationView } from "@/components/chat-presentation/chat-presentation-view";
 import { QuotedContent } from "@/components/conversation-message";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useChatDisplayPreferences } from "@/components/profile/streaming-preference";
 import {
   ProseMarkdown,
@@ -277,6 +278,28 @@ export function ChatAvatar({
   );
 }
 
+function QuotedToggle({ id, text }: { id: string; text: string }) {
+  const [showQuoted, setShowQuoted] = useFollowedState(
+    `chat:${id}:quoted`,
+    false,
+  );
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setShowQuoted(!showQuoted)}
+        className={cn(
+          "mt-1.5 text-muted-foreground/40 transition-colors hover:text-muted-foreground/60",
+          typeStyle("control.buttonCompact"),
+        )}
+      >
+        {showQuoted ? "Hide quoted text ▴" : "Show quoted text ▾"}
+      </button>
+      {showQuoted ? <QuotedContent text={text} /> : null}
+    </>
+  );
+}
+
 /** A person's turn: avatar, sender line, then the bubble or a custom body. */
 export function ChatUserTurn({
   own,
@@ -290,7 +313,7 @@ export function ChatUserTurn({
   isError,
   body,
   attachments,
-  quotedText,
+  quoted,
   customBody = false,
   showSender = true,
   after,
@@ -307,13 +330,12 @@ export function ChatUserTurn({
   isError?: boolean;
   body: ReactNode;
   attachments?: ReactNode;
-  quotedText?: string | null;
+  quoted?: { id: string; text: string } | null;
   customBody?: boolean;
   /** Avatar, name and time; threads with a single sender leave them out. */
   showSender?: boolean;
   after?: ReactNode;
 }) {
-  const [showQuoted, setShowQuoted] = useState(false);
   return (
     <div
       className={cn(
@@ -369,21 +391,7 @@ export function ChatUserTurn({
             isError={isError}
           >
             {body}
-            {quotedText ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowQuoted(!showQuoted)}
-                  className={cn(
-                    "mt-1.5 text-muted-foreground/40 transition-colors hover:text-muted-foreground/60",
-                    typeStyle("control.buttonCompact"),
-                  )}
-                >
-                  {showQuoted ? "Hide quoted text ▴" : "Show quoted text ▾"}
-                </button>
-                {showQuoted ? <QuotedContent text={quotedText} /> : null}
-              </>
-            ) : null}
+            {quoted ? <QuotedToggle id={quoted.id} text={quoted.text} /> : null}
             {attachments}
           </ChatMessageBubble>
         )}

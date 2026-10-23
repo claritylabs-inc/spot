@@ -144,6 +144,7 @@ import {
 } from "@claritylabs-inc/ui/components/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -230,6 +231,18 @@ type EmailThread = {
   latestMessageAt: number;
   messageCount: number;
 };
+
+type RequestPanel =
+  | { kind: "notes" }
+  | { kind: "packet-link" }
+  | { kind: "outreach"; outreachId?: string; proposalId?: string }
+  | {
+      kind: "upload";
+      documentCategory: "requirements" | "policy" | "loss_runs" | "supporting";
+    }
+  | { kind: "file"; fileItemId: string }
+  | { kind: "image"; fileItemId: string }
+  | { kind: "client-composer"; informationFormId?: string };
 
 type RequestDetails = {
   request: RequestSummary;
@@ -931,7 +944,10 @@ function RequestEditor({
   );
   const removeRequest = useMutation(api.procurementRequests.remove);
   const restoreRequest = useMutation(api.procurementRequests.restore);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useFollowedState(
+    `procurement:${request._id}:confirm-delete`,
+    false,
+  );
   const [deleting, setDeleting] = useState(false);
   const updateRequest = useMutation(api.procurementRequests.update);
   const [title, setTitle] = useState(request.title);
@@ -1350,7 +1366,10 @@ function OutreachEditor({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [working, setWorking] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState("pdfs");
+  const [sidebarTab, setSidebarTab] = useFollowedState(
+    `procurement:${requestId}:outreach-sidebar-tab`,
+    "pdfs",
+  );
   const review = proposal?.reviews[0];
   const latestExtraction = proposal?.extraction.latest;
   const [reviewChoice, setReviewChoice] = useState<{
@@ -2021,7 +2040,13 @@ export function ProcurementRequestWorkspace({
   // replaces it, which clears the first.
   const openedEmailId = useRef<string | null>(null);
   const openingEmailId = useRef<string | null>(null);
-  const onRightPanel = useCallback(
+  const [panel, setPanel] = useFollowedState<RequestPanel | null>(
+    `procurement:${requestId}:panel`,
+    null,
+  );
+  const shownPanel = useRef<RequestPanel | null>(null);
+  const composerDraft = useRef<{ text?: string; title?: string }>({});
+  const showPanel = useCallback(
     (node: ReactNode) => {
       openedEmailId.current = null;
       setRightPanelOpen(node !== null);
@@ -2029,8 +2054,19 @@ export function ProcurementRequestWorkspace({
     },
     [setRightPanel],
   );
-  const [applicationSection, setApplicationSection] =
-    useState("Contact details");
+  // Panels that are not driven by `panel` replace it.
+  const onRightPanel = useCallback(
+    (node: ReactNode) => {
+      shownPanel.current = null;
+      setPanel(null);
+      showPanel(node);
+    },
+    [setPanel, showPanel],
+  );
+  const [applicationSection, setApplicationSection] = useFollowedState(
+    `procurement:${requestId}:application-section`,
+    "Contact details",
+  );
   const result = useQuery(api.procurementRequests.get, { requestId });
   const policies = useQuery(api.procurementRequests.listPolicyOptions, {
     clientOrgId,
@@ -2124,30 +2160,8 @@ export function ProcurementRequestWorkspace({
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
     closePdf();
-    const close = async () => {
-      if (packetEditorRef.current && !(await packetEditorRef.current.save()))
-        return;
-      closeRightPanel();
-    };
-    onRightPanel(
-      <SettingsDrawer
-        open
-        title="Internal notes"
-        onOpenChange={(open) => {
-          if (!open) void close();
-        }}
-      >
-        <PacketWorkspace
-          key={requestId}
-          ref={packetEditorRef}
-          readOnly={readOnly}
-          requestId={requestId}
-          filename="private.md"
-          inlineNotes="sidebar"
-        />
-      </SettingsDrawer>,
-    );
-  }, [closePdf, closeRightPanel, onRightPanel, readOnly, requestId]);
+    setPanel({ kind: "notes" });
+  }, [closePdf, setPanel]);
 
   const openPacketLink = useCallback(async () => {
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
@@ -2158,55 +2172,15 @@ export function ProcurementRequestWorkspace({
     )
       return;
     closePdf();
-    onRightPanel(
-      <PacketLinkDrawer
-        requestId={requestId}
-        onClose={closeRightPanel}
-        beforeRegenerate={() =>
-          submissionNotesRef.current?.save() ?? Promise.resolve(true)
-        }
-      />,
-    );
-  }, [closePdf, closeRightPanel, onRightPanel, requestId]);
+    setPanel({ kind: "packet-link" });
+  }, [closePdf, setPanel]);
 
   const openOutreachEditor = useCallback(
     (outreach?: Outreach, proposalId?: Id<"procurementProposals">) => {
       closePdf();
-      onRightPanel(
-        <OutreachEditor
-          key={proposalId ?? outreach?._id ?? "new-outreach"}
-          requestId={requestId}
-          outreach={outreach}
-          proposalId={proposalId}
-          readOnly={readOnly}
-          brokers={brokers ?? []}
-          onClose={() => {
-            const url = new URL(window.location.href);
-            if (
-              proposalId &&
-              url.pathname === `${basePath}/${requestId}` &&
-              url.searchParams.get("proposal") === proposalId
-            ) {
-              url.searchParams.delete("proposal");
-              router.replace(`${url.pathname}${url.search}${url.hash}`, {
-                scroll: false,
-              });
-            }
-            closeRightPanel();
-          }}
-        />,
-      );
+      setPanel({ kind: "outreach", outreachId: outreach?._id, proposalId });
     },
-    [
-      basePath,
-      brokers,
-      closePdf,
-      closeRightPanel,
-      onRightPanel,
-      readOnly,
-      requestId,
-      router,
-    ],
+    [closePdf, setPanel],
   );
 
   useEffect(() => {
@@ -2235,7 +2209,6 @@ export function ProcurementRequestWorkspace({
       return;
     }
     // Route navigation synchronizes the externally owned app-shell drawer.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     openOutreachEditor(outreach, proposal._id);
   }, [
     clientOrgId,
@@ -2258,69 +2231,18 @@ export function ProcurementRequestWorkspace({
         : "supporting",
     ) => {
       closePdf();
-      onRightPanel(
-        <ClientFileUploadPanel
-          clientOrgId={clientOrgId}
-          showBrokerVisibility
-          onClose={closeRightPanel}
-          onUploaded={async (uploaded, visibility) => {
-            await Promise.all(
-              uploaded.map((file) =>
-                createFileItem({
-                  requestId,
-                  clientFileId: file.clientFileId,
-                  label: file.originalName,
-                  documentCategory,
-                  clientVisible: visibility.clientVisible,
-                  brokerRelease: visibility.brokerVisible
-                    ? "attached"
-                    : "hidden",
-                }),
-              ),
-            );
-          }}
-        />,
-      );
+      setPanel({ kind: "upload", documentCategory });
     },
-    [
-      clientOrgId,
-      closePdf,
-      closeRightPanel,
-      createFileItem,
-      onRightPanel,
-      requestId,
-      applicationSection,
-    ],
+    [closePdf, setPanel, applicationSection],
   );
 
   const openFileEditor = useCallback(
     (fileItem: ProcurementFileItem) => {
       if (!details) return;
       closePdf();
-      onRightPanel(
-        <ProcurementFileEditor
-          key={fileItem._id}
-          fileItem={fileItem}
-          readOnly={readOnly}
-          onPreview={(file) => {
-            if (!file.url) return;
-            if (
-              file.contentType === "application/pdf" ||
-              /\.pdf$/i.test(file.name)
-            ) {
-              onRightPanel(null);
-              openWithUrl(file.url);
-            } else {
-              onRightPanel(
-                <ImagePreview file={file} onClose={closeRightPanel} />,
-              );
-            }
-          }}
-          onClose={closeRightPanel}
-        />,
-      );
+      setPanel({ kind: "file", fileItemId: fileItem._id });
     },
-    [closePdf, closeRightPanel, details, onRightPanel, openWithUrl, readOnly],
+    [closePdf, details, setPanel],
   );
 
   const emailDrawerRef = useRef<ProcurementEmailDrawerHandle>(null);
@@ -2395,19 +2317,180 @@ export function ProcurementRequestWorkspace({
   const openClientComposer = useCallback(async (initialText?: string, informationFormId?: Id<"procurementInformationForms">, informationFormTitle?: string) => {
     if (emailDrawerRef.current && !(await emailDrawerRef.current.save())) return;
     closePdf();
+    // The prefilled draft stays with the leader; followers only see which form is open.
+    composerDraft.current = { text: initialText, title: informationFormTitle };
     router.replace(`${basePath}/${requestId}?view=${informationFormId ? `information&form=${informationFormId}` : "email"}`, { scroll: false });
-    onRightPanel(
-      <ClientOutreachComposer
-        key={informationFormId ?? requestId}
-        informationFormId={informationFormId}
-        requestId={requestId}
-        requestTitle={informationFormTitle ?? requestTitle}
-        initialText={initialText}
-        onClose={closeRightPanel}
-        onSent={closeRightPanel}
-      />,
-    );
-  }, [basePath, closePdf, closeRightPanel, onRightPanel, requestId, requestTitle, router]);
+    setPanel({ kind: "client-composer", informationFormId });
+  }, [basePath, closePdf, requestId, router, setPanel]);
+
+  useEffect(() => {
+    if (!panel) {
+      if (shownPanel.current) {
+        shownPanel.current = null;
+        showPanel(null);
+      }
+      return;
+    }
+    let node: ReactNode = null;
+    if (panel.kind === "notes") {
+      const close = async () => {
+        if (packetEditorRef.current && !(await packetEditorRef.current.save()))
+          return;
+        closeRightPanel();
+      };
+      node = (
+        <SettingsDrawer
+          open
+          title="Internal notes"
+          onOpenChange={(open) => {
+            if (!open) void close();
+          }}
+        >
+          <PacketWorkspace
+            key={requestId}
+            ref={packetEditorRef}
+            readOnly={readOnly}
+            requestId={requestId}
+            filename="private.md"
+            inlineNotes="sidebar"
+          />
+        </SettingsDrawer>
+      );
+    } else if (panel.kind === "packet-link") {
+      node = (
+        <PacketLinkDrawer
+          requestId={requestId}
+          onClose={closeRightPanel}
+          beforeRegenerate={() =>
+            submissionNotesRef.current?.save() ?? Promise.resolve(true)
+          }
+        />
+      );
+    } else if (panel.kind === "outreach") {
+      const { proposalId } = panel;
+      const outreach = details?.outreaches.find(
+        (row) => row._id === panel.outreachId,
+      );
+      if (!panel.outreachId || outreach)
+        node = (
+          <OutreachEditor
+            key={proposalId ?? outreach?._id ?? "new-outreach"}
+            requestId={requestId}
+            outreach={outreach}
+            proposalId={proposalId as Id<"procurementProposals"> | undefined}
+            readOnly={readOnly}
+            brokers={brokers ?? []}
+            onClose={() => {
+              const url = new URL(window.location.href);
+              if (
+                proposalId &&
+                url.pathname === `${basePath}/${requestId}` &&
+                url.searchParams.get("proposal") === proposalId
+              ) {
+                url.searchParams.delete("proposal");
+                router.replace(`${url.pathname}${url.search}${url.hash}`, {
+                  scroll: false,
+                });
+              }
+              closeRightPanel();
+            }}
+          />
+        );
+    } else if (panel.kind === "upload") {
+      node = (
+        <ClientFileUploadPanel
+          clientOrgId={clientOrgId}
+          showBrokerVisibility
+          onClose={closeRightPanel}
+          onUploaded={async (uploaded, visibility) => {
+            await Promise.all(
+              uploaded.map((file) =>
+                createFileItem({
+                  requestId,
+                  clientFileId: file.clientFileId,
+                  label: file.originalName,
+                  documentCategory: panel.documentCategory,
+                  clientVisible: visibility.clientVisible,
+                  brokerRelease: visibility.brokerVisible
+                    ? "attached"
+                    : "hidden",
+                }),
+              ),
+            );
+          }}
+        />
+      );
+    } else if (panel.kind === "file") {
+      const fileItem = details?.files.find(
+        (file) => file._id === panel.fileItemId,
+      );
+      if (fileItem)
+        node = (
+          <ProcurementFileEditor
+            key={fileItem._id}
+            fileItem={fileItem}
+            readOnly={readOnly}
+            onPreview={(file) => {
+              if (!file.url) return;
+              if (
+                file.contentType === "application/pdf" ||
+                /\.pdf$/i.test(file.name)
+              ) {
+                onRightPanel(null);
+                openWithUrl(file.url);
+              } else {
+                setPanel({ kind: "image", fileItemId: fileItem._id });
+              }
+            }}
+            onClose={closeRightPanel}
+          />
+        );
+    } else if (panel.kind === "image") {
+      const file = details?.files.find(
+        (row) => row._id === panel.fileItemId,
+      )?.clientFile;
+      if (file?.url)
+        node = <ImagePreview file={file} onClose={closeRightPanel} />;
+    } else {
+      node = (
+        <ClientOutreachComposer
+          key={panel.informationFormId ?? requestId}
+          informationFormId={panel.informationFormId as Id<"procurementInformationForms"> | undefined}
+          requestId={requestId}
+          requestTitle={composerDraft.current.title ?? requestTitle}
+          initialText={composerDraft.current.text}
+          onClose={closeRightPanel}
+          onSent={closeRightPanel}
+        />
+      );
+    }
+    if (!node) {
+      // The record is gone (or another request loaded): drop its stale panel.
+      if (details !== undefined && shownPanel.current) {
+        shownPanel.current = null;
+        showPanel(null);
+      }
+      return;
+    }
+    shownPanel.current = panel;
+    showPanel(node);
+  }, [
+    basePath,
+    brokers,
+    clientOrgId,
+    closeRightPanel,
+    createFileItem,
+    details,
+    onRightPanel,
+    openWithUrl,
+    panel,
+    readOnly,
+    requestId,
+    requestTitle,
+    router,
+    setPanel,
+    showPanel,
+  ]);
 
   const askClientForInformation = useCallback(
     (formId: Id<"procurementInformationForms">, questions: string[], title?: string) => {

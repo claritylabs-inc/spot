@@ -18,6 +18,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { threadPageContext } from "@/convex/lib/threadPageContext";
 import type { PresentationReference } from "@/lib/chat-presentation";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { createClientMutationId } from "@/lib/sync/client-mutation-id";
 import { useMediaQuery } from "@/components/app-sidebar/utils";
@@ -338,9 +339,11 @@ export function UnifiedThreadContent({
     null,
   );
   const [sendingQueuedNow, setSendingQueuedNow] = useState(false);
-  const [openArtifact, setOpenArtifact] = useState<ThreadArtifactRef | null>(
-    null,
-  );
+  const [openArtifact, setOpenArtifact] =
+    useFollowedState<ThreadArtifactRef | null>(
+      `thread:${threadId}:artifact`,
+      null,
+    );
   const openMessage = openArtifact
     ? renderedMessages?.find(
         (message) => message._id === openArtifact.messageId,
@@ -408,7 +411,10 @@ export function UnifiedThreadContent({
     });
   }, [thread, threadId, onMeta, messages, updateTitle]);
 
-  const closeArtifact = useCallback(() => setOpenArtifact(null), []);
+  const closeArtifact = useCallback(
+    () => setOpenArtifact(null),
+    [setOpenArtifact],
+  );
   const artifactPanel =
     !openArtifact || !openMessage ? null : openArtifact.kind === "email" ? (
       <EmailThreadSidebar message={openMessage} onClose={closeArtifact} />
@@ -440,7 +446,7 @@ export function UnifiedThreadContent({
     lastAutoOpenedEmailId.current = null;
     const frame = window.requestAnimationFrame(() => setOpenArtifact(null));
     return () => window.cancelAnimationFrame(frame);
-  }, [threadId]);
+  }, [setOpenArtifact, threadId]);
 
   useEffect(() => {
     const latestDraftEmail = messages
@@ -455,7 +461,7 @@ export function UnifiedThreadContent({
     if (lastAutoOpenedEmailId.current === latestDraftEmail._id) return;
     lastAutoOpenedEmailId.current = latestDraftEmail._id;
     setOpenArtifact({ kind: "email", messageId: latestDraftEmail._id });
-  }, [messages]);
+  }, [messages, setOpenArtifact]);
 
   useEffect(() => {
     if (!messages) return;

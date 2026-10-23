@@ -19,22 +19,17 @@ import {
   AtSign,
   Inbox,
   PenSquare,
-  Search,
   SlidersHorizontal,
 } from "lucide-react";
 
 import { PillButton } from "@/components/ui/pill-button";
+import { ListToolbar, SearchField } from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { ChatAvatar } from "@/components/chat/chat-message";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@claritylabs-inc/ui/components/input-group";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Select,
@@ -56,6 +51,7 @@ import {
   replyingOperators,
   useActiveOperators,
 } from "@/hooks/use-operator-presence";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import {
   useCachedOperatorClients,
@@ -387,12 +383,16 @@ export function TeamInbox({
   const convex = useConvex();
   const requestId = scope.kind === "request" ? scope.requestId : undefined;
   // The team inbox opens on the operator's own mail.
-  const [filter, setFilter] = useState<TeamFilter>(scope.kind === "team" ? "mine" : "all");
-  const [clientOrgId, setClientOrgId] = useState("");
-  const [category, setCategory] = useState(ALL_CATEGORIES);
-  const [archivedView, setArchivedView] = useState(false);
-  const [search, setSearch] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
+  const uiKey = requestId ? `inbox:request:${requestId}` : "inbox:team";
+  const [filter, setFilter] = useFollowedState<TeamFilter>(
+    `${uiKey}:filter`,
+    scope.kind === "team" ? "mine" : "all",
+  );
+  const [clientOrgId, setClientOrgId] = useFollowedState(`${uiKey}:client`, "");
+  const [category, setCategory] = useFollowedState(`${uiKey}:category`, ALL_CATEGORIES);
+  const [archivedView, setArchivedView] = useFollowedState(`${uiKey}:archived`, false);
+  const [search, setSearch] = useFollowedState(`${uiKey}:search`, "");
+  const [showFilters, setShowFilters] = useFollowedState(`${uiKey}:show-filters`, false);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const clients = useCachedOperatorClients();
   // Impersonating operators read mail; every write below is withheld.
@@ -574,21 +574,12 @@ export function TeamInbox({
     setArchivedView(false);
   };
 
-  const searchField = (
-    <InputGroup
-      className={`w-full ${scope.kind === "request" ? "border-transparent bg-transparent" : ""}`}
-    >
-      <InputGroupAddon>
-        <Search className="size-3.5" />
-      </InputGroupAddon>
-      <InputGroupInput
-        aria-label="Search conversations"
-        placeholder="Search mail"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-      />
-    </InputGroup>
-  );
+  const searchProps = {
+    value: search,
+    onChange: setSearch,
+    label: "Search conversations",
+    placeholder: "Search mail",
+  };
   const archivedToggle = (
     <PillButton
       type="button"
@@ -762,7 +753,9 @@ export function TeamInbox({
       <section className="@container space-y-3">
         <OperationalPanel className="flex items-center gap-2 px-2 py-1.5">
           {archivedToggle}
-          <div className="min-w-0 flex-1">{searchField}</div>
+          <div className="min-w-0 flex-1">
+            <SearchField {...searchProps} className="border-transparent bg-transparent" />
+          </div>
           <PillButton
             type="button"
             variant="ghost"
@@ -793,7 +786,6 @@ export function TeamInbox({
     <section className="space-y-3">
       <AppShellPortal slot="actions">
         <div className="flex items-center gap-2">
-          {archivedToggle}
           {onCompose && !readOnly ? (
             <PillButton type="button" size="compact" onClick={onCompose}>
               <PenSquare className="size-3.5" />
@@ -802,29 +794,39 @@ export function TeamInbox({
           ) : null}
         </div>
       </AppShellPortal>
-      <div className="flex flex-wrap items-center gap-2">
-        <Tabs
-          value={filter}
-          onValueChange={(value) => {
-            const next = value as TeamFilter;
-            setFilter(next);
-            // Unlinked mail has no client, so the two cannot combine.
-            if (next === "unlinked") setClientOrgId("");
-          }}
-        >
-          <TabsList variant="pill" aria-label="Show">
-            <TabsTrigger value="mine">Mine</TabsTrigger>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <div className="ml-auto flex items-center gap-2">
-          <div className="w-56">{searchField}</div>
-          {filtersToggle}
-        </div>
-      </div>
+      <ListToolbar
+        tabs={
+          <Tabs
+            value={filter}
+            onValueChange={(value) => {
+              const next = value as TeamFilter;
+              setFilter(next);
+              // Unlinked mail has no client, so the two cannot combine.
+              if (next === "unlinked") setClientOrgId("");
+            }}
+          >
+            <TabsList variant="pill" aria-label="Show">
+              <TabsTrigger value="mine">Mine</TabsTrigger>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        }
+        search={searchProps}
+        actions={filtersToggle}
+      />
       {showFilters ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <PillButton
+            type="button"
+            variant={archivedView ? "secondary" : "ghost"}
+            size="compact"
+            aria-pressed={archivedView}
+            onClick={() => setArchivedView((value) => !value)}
+          >
+            <Archive className="size-3.5" />
+            Archived
+          </PillButton>
           <div className="w-44">
             <SearchableSelect
               ariaLabel="Client"

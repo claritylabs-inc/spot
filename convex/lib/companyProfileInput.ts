@@ -82,6 +82,14 @@ export const companyProfileInputSchema = z
           })
           .strict()
           .optional(),
+        techStack: z
+          .object({
+            paymentProcessors: z.array(z.string().trim().min(1).max(200)).max(30),
+            hostingProviders: z.array(z.string().trim().min(1).max(200)).max(30),
+            dataCountries: z.array(z.string().trim().min(1).max(200)).max(30),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
