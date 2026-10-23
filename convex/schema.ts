@@ -4011,7 +4011,8 @@ export default defineSchema({
     .index("by_eventKey", ["eventKey"])
     .index("by_status_and_nextAttemptAt", ["status", "nextAttemptAt"])
     .index("by_status_and_leaseUntil", ["status", "leaseUntil"])
-    .index("by_category_and_createdAt", ["category", "createdAt"]),
+    .index("by_category_and_createdAt", ["category", "createdAt"])
+    .index("by_category_and_status", ["category", "status"]),
 
   // ── Notifications ──
 

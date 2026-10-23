@@ -1,6 +1,5 @@
 import dayjs from "dayjs";
 import { v, type Infer } from "convex/values";
-import type { FunctionReference } from "convex/server";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, internalQuery, query, type MutationCtx, type QueryCtx } from "./_generated/server";
@@ -26,13 +25,6 @@ export type NotificationSettingsContext = OperatorNotificationHost & {
 };
 export type NotificationPreparation = OperatorNotificationDestination & { attempts: number };
 export type NotificationClaim = OperatorNotificationDestination & { href: string; category: Event["category"] };
-
-const service = (internal as unknown as { operatorNotifications: {
-  recoverInternal: FunctionReference<"mutation", "internal", Record<string, never>, { scheduled: number; unknown: number }>;
-  cancelStaleRoutesInternal: FunctionReference<"mutation", "internal", {
-    category: Event["category"]; cursor: string | null;
-  }, null>;
-} }).operatorNotifications;
 
 async function writableOperator(ctx: QueryCtx | MutationCtx) {
   const operator = await requireOperator(ctx);
@@ -100,7 +92,7 @@ export const saveRouteInternal = internalMutation({
       operatorUserId: operator.userId, type: "setup_write", summary: "Updated operator notification route",
       metadata: { category: args.category, enabled: args.enabled, channelId: patch.channelId, revision: patch.revision },
     });
-    await ctx.scheduler.runAfter(0, service.cancelStaleRoutesInternal, { category: args.category, cursor: null });
+    await ctx.scheduler.runAfter(0, internal.operatorNotifications.cancelStaleRoutesInternal, { category: args.category, cursor: null });
     return null;
   },
 });
@@ -110,7 +102,7 @@ export const cancelStaleRoutesInternal = internalMutation({
   handler: async (ctx, args): Promise<null> => {
     const route = await operatorNotificationRoute(ctx, args.category);
     const page = await ctx.db.query("operatorNotificationEvents")
-      .withIndex("by_category_and_createdAt", q => q.eq("category", args.category))
+      .withIndex("by_category_and_status", q => q.eq("category", args.category).eq("status", "pending"))
       .order("desc").paginate({ cursor: args.cursor, numItems: RECOVERY_PAGE_SIZE });
     for (const event of page.page) {
       if (event.status === "pending" && (!route?.enabled || route.revision !== event.routeRevision))
@@ -119,7 +111,7 @@ export const cancelStaleRoutesInternal = internalMutation({
         });
     }
     if (!page.isDone)
-      await ctx.scheduler.runAfter(0, service.cancelStaleRoutesInternal, { category: args.category, cursor: page.continueCursor });
+      await ctx.scheduler.runAfter(0, internal.operatorNotifications.cancelStaleRoutesInternal, { category: args.category, cursor: page.continueCursor });
     return null;
   },
 });
@@ -213,7 +205,7 @@ export const claimInternal = internalMutation({
       status: "sending", attempts: event.attempts + 1, leaseToken: args.leaseToken,
       leaseUntil, nextAttemptAt: undefined, errorCode: undefined, updatedAt: now,
     });
-    await ctx.scheduler.runAt(leaseUntil, service.recoverInternal, {});
+    await ctx.scheduler.runAt(leaseUntil, internal.operatorNotifications.recoverInternal, {});
     return { teamId: event.teamId!, channelId: event.channelId!, routeRevision: event.routeRevision!, href, category: event.category };
   },
 });

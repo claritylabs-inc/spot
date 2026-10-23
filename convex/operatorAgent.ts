@@ -6326,12 +6326,6 @@ export const requestToolConfirmationInternal = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
-    if (!automatic)
-      await emitOperatorNotification(ctx, {
-        eventKey: `approval:${confirmationId}`,
-        category: "approval",
-        target: { kind: "approval", confirmationId },
-      });
     await ctx.db.insert("agentActionAuditEvents", {
       operatorThreadId: args.threadId,
       operatorMessageId: args.threadMessageId,
@@ -6380,6 +6374,11 @@ export const requestToolConfirmationInternal = internalMutation({
         pendingConfirmationId: confirmationId,
       },
       updatedAt: now,
+    });
+    await emitOperatorNotification(ctx, {
+      eventKey: `approval:${confirmationId}`,
+      category: "approval",
+      target: { kind: "approval", confirmationId },
     });
     return {
       status: "confirmation_required" as const,

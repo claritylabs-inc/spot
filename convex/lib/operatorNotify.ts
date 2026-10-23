@@ -27,26 +27,22 @@ export type OperatorNotificationHost = {
   unavailableReason?: string;
 };
 
-// Typed references let independently integrated modules use the accepted API
-// without committing generated API changes.
-export const deliverOperatorNotificationRef = (internal as unknown as {
-  actions: { operatorNotifications: { deliver: FunctionReference<
-    "action", "internal", { eventId: OperatorNotificationEventId }, null
-  > } };
-}).actions.operatorNotifications.deliver;
+export const deliverOperatorNotificationRef: FunctionReference<
+  "action", "internal", { eventId: OperatorNotificationEventId }, null
+> = internal.actions.operatorNotifications.deliver;
 
 export async function operatorNotificationHost(ctx: ReadCtx): Promise<OperatorNotificationHost> {
   const teamId = process.env.SLACK_CLARITY_TEAM_ID?.trim();
   if (process.env.SLACK_ENABLED !== "true")
-    return { available: false, teamId, unavailableReason: "slack_disabled" };
-  if (!teamId) return { available: false, unavailableReason: "host_not_configured" };
+    return { available: false, teamId, unavailableReason: "Slack is turned off for this environment." };
+  if (!teamId) return { available: false, unavailableReason: "Connect the internal Slack workspace to enable alerts." };
   if (isSlackMockMode()) return { available: true, teamId };
   const installation = await ctx.db.query("slackInstallations")
     .withIndex("team_status", q => q.eq("teamId", teamId).eq("status", "active"))
     .first();
   return installation?.kind === "host" && installation.encryptedBotToken
     ? { available: true, teamId }
-    : { available: false, teamId, unavailableReason: "host_installation_unavailable" };
+    : { available: false, teamId, unavailableReason: "The internal Slack connection needs attention." };
 }
 
 export async function operatorNotificationRoute(ctx: ReadCtx, category: OperatorNotificationInput["category"]) {
