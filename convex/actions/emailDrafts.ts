@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
+import { isOperatorEmailDraft } from "../lib/actionConfirmationFingerprint";
 import { resolveEmailAgentIdentity } from "../lib/emailIdentity";
 import {
   buildEmailToolExecutors,
@@ -48,7 +49,12 @@ async function requireDraft(
   const draft = await ctx.runQuery(internal.pendingEmails.getInternal, {
     id: draftId,
   });
-  if (!draft || draft.orgId !== orgId || draft.status !== "draft") {
+  if (
+    !draft ||
+    draft.orgId !== orgId ||
+    draft.status !== "draft" ||
+    isOperatorEmailDraft(draft)
+  ) {
     throw new Error(`Draft ${draftId} not found`);
   }
   return draft;

@@ -404,7 +404,8 @@ export const resolveSenderInternal = internalQuery({
           "That team thread is not linked to a client. Link it first, or omit the client.",
         );
       }
-      const threadRequestId = thread.requestId ?? thread.addressedRequestId;
+      // `requestId` is the thread's request link; `addressedRequestId` is only where mail was sent.
+      const threadRequestId = thread.requestId;
       if (threadRequestId) {
         if (requestId && requestId !== threadRequestId) {
           throw new Error("That team thread belongs to a different request.");
@@ -588,8 +589,14 @@ export async function operatorDraftBlocker(
     if (draft.directReplyKey && thread.archivedAt) {
       return "The conversation was archived; restore it before replying.";
     }
-    if (thread.clientOrgId && thread.clientOrgId !== draft.orgId) {
-      return "The team email thread is linked to a different client.";
+    // The draft's links must be exactly the thread's now, an absent link included.
+    if (
+      thread.clientOrgId !== draft.orgId ||
+      thread.requestId !== draft.procurementRequestId
+    ) {
+      return redo(
+        "The conversation was linked to a different client or request — update the draft to re-sign.",
+      );
     }
     const plan = await teamThreadReplyPlan(ctx, thread, draft.senderUserId);
     if (!plan.owns && thread.ownerUserId !== draft.senderUserId) {

@@ -9,9 +9,11 @@ import {
 import { pendingEmailDraftFingerprint } from "./actionConfirmationFingerprint";
 import { extractEmailAddress } from "./emailAddress";
 import { escapeHtml } from "./emailTemplate";
-import { requireOperatorForUser } from "./operatorIdentity";
-import { buildOperatorSignature } from "./teamEmail";
-import { resolveTeamThreadId } from "./teamEmailStore";
+import { forwardedCorrespondents } from "./teamEmailForwards";
+import { operatorEmailAliases, requireOperatorForUser } from "./operatorIdentity";
+import { isSpotOutboundAddress } from "./resend";
+import { buildOperatorSignature, teamOwnedDomains } from "./teamEmail";
+import { mappedTeamThread, teamTargetProblem } from "./teamEmailStore";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -59,6 +61,8 @@ export type TeamReplyComposition =
       fields: TeamReplyDraftFields;
       preview: TeamReplyPreview;
       thread: Doc<"teamEmailThreads">;
+      /** The typed reply, trimmed: everything else is derived from it and current state. */
+      message: string;
     }
   | { ok: false; reason: string };
 
@@ -80,6 +84,72 @@ function quoteHtml(header: string, block: string) {
 
 const normalized = (address: string) =>
   (extractEmailAddress(address) ?? address.trim().toLowerCase()).toLowerCase();
+
+/** Mail addresses Spot runs for clients and notifications; never a correspondent to copy. */
+function isMachineAddress(address: string) {
+  const domain = address.split("@")[1] ?? "";
+  return isSpotOutboundAddress(address) && !teamOwnedDomains().includes(domain);
+}
+
+/**
+ * Who a reply goes to: the sender of the latest message and everyone else on
+ * it (reply-all), minus the sender's own address, duplicates, Bcc and Spot's
+ * own machine addresses. A forward the owner sent in answers its original
+ * sender and recipients, read from the forwarded header block (unauthenticated
+ * text, which is why the preview is the approval); a forward whose original
+ * sender cannot be read is refused rather than answered to the forwarder alone.
+ */
+async function replyCorrespondents(
+  ctx: Ctx,
+  thread: Doc<"teamEmailThreads">,
+  latest: Doc<"teamEmailMessages">,
+  ownAddress: string,
+): Promise<{ ok: true; to: string[]; cc: string[] } | { ok: false; reason: string }> {
+  let to: string[];
+  let cc: string[];
+  let forwarder: string[] = [];
+  const owner = thread.ownerUserId ? await ctx.db.get(thread.ownerUserId) : null;
+  const ownerAddresses = owner?.email
+    ? [owner.email.toLowerCase(), ...operatorEmailAliases(owner.email)]
+    : [];
+  const fromOwner =
+    thread.source === "forward" &&
+    latest.direction === "inbound" &&
+    ownerAddresses.includes(normalized(latest.fromEmail));
+  if (fromOwner) {
+    const original = forwardedCorrespondents(latest.forwarded);
+    if (!original?.from) {
+      return {
+        ok: false,
+        reason:
+          "This forwarded email has no readable original sender. Reply from your own mailbox, or ask for it to be forwarded again.",
+      };
+    }
+    to = [original.from];
+    cc = [...original.to, ...original.cc];
+    forwarder = [...ownerAddresses, normalized(latest.fromEmail)];
+  } else if (latest.direction === "inbound") {
+    to = [latest.fromEmail];
+    cc = [...latest.toAddresses, ...latest.ccAddresses];
+  } else {
+    to = latest.toAddresses;
+    cc = latest.ccAddresses;
+  }
+  const keep = (addresses: string[]) =>
+    addresses
+      .map(normalized)
+      .filter(
+        (address) =>
+          extractEmailAddress(address) &&
+          address !== ownAddress &&
+          !forwarder.includes(address) &&
+          !isMachineAddress(address),
+      );
+  const all = [...new Set([...keep(to), ...keep(cc)])];
+  if (!all.length) return { ok: false, reason: "This conversation has no one to reply to." };
+  const primary = keep(to)[0] ?? all[0];
+  return { ok: true, to: [primary], cc: all.filter((address) => address !== primary) };
+}
 
 /**
  * The reply `operatorUserId` would send on a team thread, from their own
@@ -110,6 +180,15 @@ export async function composeTeamReply(
       reason: "This conversation is archived; restore it before replying.",
     };
   }
+  // The client and request must be live; `requestId` alone is the request link.
+  const requestId = thread.requestId;
+  const targetProblem = await teamTargetProblem(ctx, {
+    clientOrgId: thread.clientOrgId,
+    requestId,
+  });
+  if (targetProblem) {
+    return { ok: false, reason: `This conversation's ${targetProblem}.` };
+  }
   let identity: Awaited<ReturnType<typeof operatorSenderIdentity>>;
   try {
     identity = await operatorSenderIdentity(ctx, args.operatorUserId);
@@ -124,17 +203,9 @@ export async function composeTeamReply(
   if (!latest) return { ok: false, reason: "There is no message to reply to yet." };
 
   const ownAddress = identity.teamAddress.toLowerCase();
-  const addressees = [
-    ...new Set(
-      (latest.direction === "inbound" ? [latest.fromEmail] : latest.toAddresses)
-        .map(normalized)
-        .filter((address) => address.includes("@") && address !== ownAddress),
-    ),
-  ];
-  const [recipientEmail, ...otherAddressees] = addressees;
-  if (!recipientEmail) {
-    return { ok: false, reason: "This conversation has no one to reply to." };
-  }
+  const correspondents = await replyCorrespondents(ctx, thread, latest, ownAddress);
+  if (!correspondents.ok) return correspondents;
+  const [recipientEmail] = correspondents.to;
   // Only a reply that is not threaded in the sender's own inbox copies the owner.
   const ownerAddress =
     plan.owns || thread.ownerUserId === args.operatorUserId
@@ -142,7 +213,7 @@ export async function composeTeamReply(
       : await teamThreadOwnerAddress(ctx, thread.ownerUserId);
   const cc = [
     ...new Set(
-      [...otherAddressees, identity.alwaysCc, ownerAddress]
+      [...correspondents.cc, identity.alwaysCc, ownerAddress]
         .filter((address): address is string => Boolean(address))
         .map((address) => address.toLowerCase())
         .filter((address) => address !== recipientEmail && address !== ownAddress),
@@ -155,7 +226,6 @@ export async function composeTeamReply(
   const signature = buildOperatorSignature({ name: identity.name });
   const renderedText = `${message}\n\n${signature.text}${quote ? `\n\n${quote.block}` : ""}`;
   const renderedHtml = `${paragraphsHtml(message)}${signature.html}${quote ? quoteHtml(quote.header, quote.block) : ""}`;
-  const requestId = thread.requestId ?? thread.addressedRequestId;
   const fields: TeamReplyDraftFields = {
     recipientEmail,
     ...(cc.length ? { ccAddresses: cc } : {}),
@@ -176,6 +246,7 @@ export async function composeTeamReply(
     ok: true,
     fields,
     thread,
+    message,
     preview: {
       from: fields.fromHeader,
       to: [recipientEmail],
@@ -196,20 +267,31 @@ export type TeamReplyPreviewResult =
   | { ok: true; preview: TeamReplyPreview; teamEmailThreadId: Id<"teamEmailThreads"> }
   | { ok: false; reason: string };
 
+/** Resolves a team thread id, or a legacy id that is already mapped. Reads only. */
+async function mappedThreadId(ctx: Ctx, value: string) {
+  const current = ctx.db.normalizeId("teamEmailThreads", value);
+  if (current) return current;
+  const legacyId = ctx.db.normalizeId("procurementEmailThreads", value);
+  return legacyId ? ((await mappedTeamThread(ctx, legacyId))?._id ?? null) : null;
+}
+
 /**
  * The preview for an operator-agent reply, usable from any query or mutation
  * (the confirmation preflight runs in one). It requires an active operator and
- * a live, unarchived target, and writes nothing of its own. `teamEmailThreadId`
- * may be a stale generation id; it resolves to the canonical team thread,
- * which is returned so callers bind the approval to the real target.
+ * a live, unarchived target with live client/request, and only reads.
+ * `teamEmailThreadId` may be an older generation id if it is already mapped;
+ * an unmapped one is reported, not migrated (the execution step adopts it). The
+ * canonical thread id is returned so callers bind the approval to the real target.
  */
 export async function previewTeamEmailReply(
   ctx: Ctx,
   args: { operatorUserId: Id<"users">; teamEmailThreadId: string; message: string },
 ): Promise<TeamReplyPreviewResult> {
   await requireOperatorForUser(ctx, args.operatorUserId);
-  const threadId = await resolveTeamThreadId(ctx, args.teamEmailThreadId);
-  if (!threadId) return { ok: false, reason: "Conversation not found." };
+  const threadId = await mappedThreadId(ctx, args.teamEmailThreadId);
+  if (!threadId) {
+    return { ok: false, reason: "Conversation not found, or not migrated to the team inbox yet." };
+  }
   const composed = await composeTeamReply(ctx, {
     operatorUserId: args.operatorUserId,
     threadId,
@@ -218,4 +300,42 @@ export async function previewTeamEmailReply(
   return composed.ok
     ? { ok: true, preview: composed.preview, teamEmailThreadId: threadId }
     : { ok: false, reason: composed.reason };
+}
+
+/**
+ * Why a reply draft can no longer be sent exactly as approved, or null. The
+ * reply is recomposed from its typed message and current state; any change in
+ * recipients, quoted history, threading mode, links or identity changes the
+ * fingerprint, and the approval does not carry over. The typed message is the
+ * browser draft's `directReplyMessage`, or for an agent reply the message in
+ * its confirmation.
+ */
+export async function replyContextProblem(
+  ctx: Ctx,
+  draft: Doc<"pendingEmails">,
+  confirmationId?: Id<"operatorAgentConfirmations">,
+): Promise<string | null> {
+  if (!draft.directReplyKey) return null;
+  if (!draft.teamEmailThreadId || !draft.senderUserId) {
+    return "The reply is missing its conversation — preview it again.";
+  }
+  let message = draft.directReplyMessage;
+  if (message === undefined && confirmationId) {
+    const confirmation = await ctx.db.get(confirmationId);
+    const input =
+      confirmation?.payload.kind === "operator_tool_action"
+        ? (JSON.parse(confirmation.payload.input) as { message?: unknown })
+        : undefined;
+    if (typeof input?.message === "string") message = input.message;
+  }
+  if (message === undefined) return "The reply can no longer be verified — preview it again.";
+  const composed = await composeTeamReply(ctx, {
+    operatorUserId: draft.senderUserId,
+    threadId: draft.teamEmailThreadId,
+    message,
+  });
+  if (!composed.ok) return composed.reason;
+  return composed.preview.fingerprint === (await pendingEmailDraftFingerprint(draft))
+    ? null
+    : "The conversation changed since this reply was previewed — preview it again.";
 }
