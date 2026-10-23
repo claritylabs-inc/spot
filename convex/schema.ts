@@ -5494,6 +5494,8 @@ export default defineSchema({
         selectionEnd: v.number(),
       }),
     ),
+    /** JSON map of the leader's followed UI state (open panels, tabs, filters). */
+    ui: v.optional(v.string()),
     updatedAt: v.number(),
   }).index("by_userId", ["userId"]),
 });

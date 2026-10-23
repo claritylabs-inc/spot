@@ -3,6 +3,10 @@
 import { useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import {
+  publishedUiJson,
+  subscribePublishedUi,
+} from "@/hooks/use-followed-state";
 
 /** Twenty updates a second reads as live without flooding Convex. */
 const PUBLISH_INTERVAL_MS = 50;
@@ -149,6 +153,14 @@ function focusedField() {
   return anchor ? { anchor, ...value } : undefined;
 }
 
+/** Matches the server cap; an oversized map is dropped rather than failing the update. */
+const UI_STATE_LIMIT = 50_000;
+
+function followedUi() {
+  const json = publishedUiJson();
+  return json.length > UI_STATE_LIMIT ? undefined : json;
+}
+
 function currentHref() {
   return `${window.location.pathname}${window.location.search}`;
 }
@@ -184,6 +196,7 @@ export function usePublishOperatorCursor(enabled: boolean) {
         viewportY: at.y / innerHeight,
         visible: visible && pointer !== null,
         field: focusedField(),
+        ui: followedUi(),
       }).catch(() => {});
     };
     const schedule = () => {
@@ -218,6 +231,8 @@ export function usePublishOperatorCursor(enabled: boolean) {
     window.addEventListener("input", schedule, { capture: true });
     window.addEventListener("focusin", schedule, { capture: true });
     window.addEventListener("focusout", schedule, { capture: true });
+    // Panels, tabs and other followed state change without the pointer too.
+    const unsubscribeUi = subscribePublishedUi(schedule);
     // Client navigation has no event; catch route and tab changes by polling.
     const hrefWatch = window.setInterval(() => {
       if (currentHref() !== lastHref) schedule();
@@ -225,6 +240,7 @@ export function usePublishOperatorCursor(enabled: boolean) {
     return () => {
       if (timer !== null) window.clearTimeout(timer);
       window.clearInterval(hrefWatch);
+      unsubscribeUi();
       window.removeEventListener("pointermove", onPointerMove);
       document.removeEventListener("pointerout", onPointerOut);
       window.removeEventListener("scroll", schedule, { capture: true });

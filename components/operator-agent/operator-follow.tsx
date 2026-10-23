@@ -7,6 +7,7 @@ import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { X } from "lucide-react";
 import { api } from "@/convex/_generated/api";
+import { setMirroredUi } from "@/hooks/use-followed-state";
 import type { Id } from "@/convex/_generated/dataModel";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
@@ -117,6 +118,11 @@ export function OperatorFollow({
     cursorRef.current = cursor ?? null;
     pendingScrollRef.current = true;
   }, [cursor]);
+
+  // Show the leader's panels, tabs and filters; keep them when following stops.
+  const ui = cursor ? (cursor.ui ?? "{}") : null;
+  useEffect(() => setMirroredUi(ui), [ui]);
+  useEffect(() => () => setMirroredUi(null), []);
 
   // Position from the latest cursor every frame so layout shifts, loading
   // content and window resizes keep the pointer on its element.

@@ -5,6 +5,7 @@ import { requireOperator } from "./lib/operatorIdentity";
 
 const LEADER_TIMEOUT_MS = 45_000;
 const FIELD_TEXT_LIMIT = 5_000;
+const UI_STATE_LIMIT = 50_000;
 
 const fieldValidator = v.object({
   anchor: v.string(),
@@ -24,12 +25,16 @@ export const move = mutation({
     viewportY: v.number(),
     visible: v.boolean(),
     field: v.optional(fieldValidator),
+    ui: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     // Followers navigate to this, so it must stay an in-app path.
     if (!args.href.startsWith("/") || args.href.startsWith("//")) {
       throw new Error("Cursor href must be an app path");
+    }
+    if (args.ui && args.ui.length > UI_STATE_LIMIT) {
+      throw new Error("Followed UI state is too large");
     }
     const fields = {
       ...args,
@@ -102,6 +107,7 @@ export const get = query({
       viewportY: cursor.viewportY,
       visible: cursor.visible,
       field: cursor.field ?? null,
+      ui: cursor.ui ?? null,
     };
   },
 });
