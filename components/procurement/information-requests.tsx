@@ -54,6 +54,7 @@ import {
   TabsContent,
 } from "@claritylabs-inc/ui/components/tabs";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   Field,
@@ -581,7 +582,7 @@ function InformationFormActions(
           <Mail className="size-3.5" />
           View email
         </PillButton>
-      ) : form.status === "open" && !form.email ? (
+      ) : form.status !== "cancelled" && !form.email ? (
         <PillButton
           onClick={() =>
             props.onAskClient(
@@ -646,16 +647,36 @@ export function InformationFormWorkspace(
     );
   return (
     <div className="space-y-6">
-      {informationCoverageGroups(form.questions).map((group) => (
+      {informationCoverageGroups(form.questions).map((group, index) => (
         <section
           key={group.coverage}
           data-operator-inline-fields
           className="space-y-4"
           aria-label={coverageLabel(group.coverage)}
         >
-          <h3 className={typeStyle("heading.item")}>
-            {coverageLabel(group.coverage)}
-          </h3>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className={typeStyle("heading.item")}>
+              {coverageLabel(group.coverage)}
+            </h3>
+            {index === 0 && (
+              <StatusTag
+                tone={form.status === "submitted" ? "success" : "neutral"}
+                indicator={
+                  form.status === "submitted"
+                    ? "complete"
+                    : form.status === "cancelled"
+                      ? "cancelled"
+                      : "waiting"
+                }
+              >
+                {form.status === "submitted"
+                  ? "Submitted"
+                  : form.status === "cancelled"
+                    ? "Cancelled"
+                    : "Awaiting submission"}
+              </StatusTag>
+            )}
+          </div>
           {group.questions.map((item) => {
             const response = form.responses.find(
               (r) => r.questionId === item.questionId,

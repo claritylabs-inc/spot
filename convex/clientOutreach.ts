@@ -136,7 +136,7 @@ export async function launchClientOutreachByOperator(
   );
   if (!recipient) throw new Error("Choose a current client contact");
   const form = args.informationFormId ? await ctx.db.get(args.informationFormId) : null;
-  if (args.informationFormId && (!form || form.requestId !== request._id || form.status !== "open")) throw new Error("Choose an open form from this request");
+  if (args.informationFormId && (!form || form.requestId !== request._id || form.status === "cancelled")) throw new Error("Choose an available form from this request");
   if (form?.outreachSequenceId) throw new Error("This form already has an email sequence. Open its conversation to follow up.");
   const live = await requestSequences(ctx, request._id, "client");
   if (
@@ -152,7 +152,7 @@ export async function launchClientOutreachByOperator(
     );
 
   const now = dayjs().valueOf();
-  const cadence = { followUpCount, intervalBusinessDays, style: "brief_nudge" as const };
+  const cadence = { followUpCount: form?.status === "submitted" ? 0 : followUpCount, intervalBusinessDays, style: "brief_nudge" as const };
   const { sequenceId, schedule } = await insertOutreachSequence(ctx, {
     request,
     sequence: {

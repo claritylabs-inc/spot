@@ -1640,8 +1640,11 @@ async function checkStepWorld(
   if (isClientSequence(sequence)) {
     if (sequence.informationFormId) {
       const form = await ctx.db.get(sequence.informationFormId);
-      if (!form || form.requestId !== sequence.requestId || form.outreachSequenceId !== sequence._id || form.status !== "open")
+      if (!form || form.requestId !== sequence.requestId || form.outreachSequenceId !== sequence._id || form.status === "cancelled")
         return { kind: "stop", reason: "information_form_unavailable" };
+      // A new email about a submitted form may send once; reminders stop on submission.
+      if (form.status === "submitted" && (step.index > 0 || sequence.createdAt < (form.submittedAt ?? 0)))
+        return { kind: "stop", reason: "information_form_submitted" };
     }
     // The recipient is a snapshot: it must still be a current client contact.
     const recipients = await clientRecipientOptions(ctx, request, client._id);
