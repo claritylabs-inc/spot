@@ -124,7 +124,7 @@ export function OperatorSidebar({
         </div>
       </ScrollArea>
       <div className="space-y-0.5 border-t border-border px-2 py-2">
-        <div className="pb-1.5">
+        <div className="mb-1.5 border-b border-border pb-2">
           <OperatorTestModeAction collapsed={collapsed} />
         </div>
         <SidebarMenuItem
