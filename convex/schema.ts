@@ -5219,6 +5219,7 @@ export default defineSchema({
 
   pendingEmails: defineTable({
     senderUserId: v.optional(v.id("users")),
+    operatorAlwaysCcEmail: v.optional(v.string()),
     transport: v.optional(v.literal("operator_inbox")),
     procurementRequestId: v.optional(v.id("procurementRequests")),
     teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
@@ -5325,6 +5326,7 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
   })
     .index("pending", ["pendingEmailId"])
+    .index("by_pendingEmailId_and_draftFingerprint", ["pendingEmailId", "draftFingerprint"])
     .index("organization", ["orgId"])
     .index("thread", ["threadId"])
     .index("message", ["threadMessageId"])
