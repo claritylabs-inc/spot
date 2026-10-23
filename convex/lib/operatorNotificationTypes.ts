@@ -27,7 +27,7 @@ export const OPERATOR_NOTIFICATION_CATEGORIES = [
   { category: "inbox", label: "Inbox", description: "New incoming team email.", title: "New email in the team inbox", body: "Open the conversation in Spot to review and reply." },
   { category: "approval", label: "Approvals", description: "Agent actions waiting for an operator’s approval.", title: "An action needs approval", body: "Review the requested action in Spot." },
   { category: "intake", label: "Applications", description: "Submitted and resubmitted insurance applications.", title: "An application is ready for review", body: "Open the application in Spot to review the submitted details." },
-  { category: "failure", label: "Failures", description: "Terminal agent and document processing failures.", title: "A task needs attention", body: "Open the record in Spot to review the failure." },
+  { category: "failure", label: "Failures", description: "Terminal agent and policy processing failures.", title: "A task needs attention", body: "Open the record in Spot to review the failure." },
 ] as const satisfies ReadonlyArray<{ category: OperatorNotificationCategory; label: string; description: string; title: string; body: string }>;
 
 export type OperatorNotificationInput = {

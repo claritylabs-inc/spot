@@ -48,26 +48,25 @@ function deliveryText(delivery: NonNullable<Route["latestDelivery"]>) {
   const when = dayjs(delivery.createdAt).format("MMM D, h:mm A");
   switch (delivery.status) {
     case "pending":
-      return `Last alert queued ${when}, waiting to send.`;
+      return `Queued · ${when}`;
     case "sending":
-      return `Last alert is being sent (${when}).`;
+      return `Sending · ${when}`;
     case "sent":
-      return `Last alert sent ${when}.`;
+      return `Sent · ${when}`;
     case "suppressed":
-      return `Last alert not sent ${when}: this category was off or had no channel.`;
+      return null;
     case "cancelled":
-      return `Last alert cancelled ${when} because it was no longer needed or routing changed.`;
+      return null;
     case "failed":
-      return `Last alert could not be delivered ${when}. Check that Spot is still in the channel.`;
+      return `Delivery failed · ${when}. Check Spot’s channel access.`;
     default:
-      return `Last alert ${when}: delivery could not be confirmed. It may or may not have reached Slack, and Spot will not resend it.`;
+      return `Delivery unconfirmed · ${when}. Check Slack.`;
   }
 }
 
 function RouteRow({
   route,
   label,
-  description,
   channels,
   available,
   channelsReady,
@@ -76,7 +75,6 @@ function RouteRow({
 }: {
   route: Route;
   label: string;
-  description: string;
   channels: SlackChannel[];
   available: boolean;
   channelsReady: boolean;
@@ -116,15 +114,11 @@ function RouteRow({
   }
 
   const disabled = readOnly || saving;
+  const delivery = route.latestDelivery && deliveryText(route.latestDelivery);
   return (
     <div className="space-y-3 py-4 first:pt-0 last:pb-0">
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className={typeStyle("body.medium")}>{label}</p>
-          <p className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}>
-            {description}
-          </p>
-        </div>
+        <p className={`min-w-0 ${typeStyle("body.medium")}`}>{label}</p>
         <SettingsSwitch
           label={`${label} alerts`}
           checked={route.enabled}
@@ -175,9 +169,9 @@ function RouteRow({
           ))}
         </SelectContent>
       </Select>
-      {route.latestDelivery ? (
+      {delivery ? (
         <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-          {deliveryText(route.latestDelivery)}
+          {delivery}
         </p>
       ) : null}
     </div>
@@ -226,12 +220,6 @@ export function OperatorNotificationRoutes({
     <OperationalPanel>
       <OperationalPanelHeader title="Slack alerts" />
       <OperationalPanelBody>
-        <p className={`mb-4 text-muted-foreground ${typeStyle("body.default")}`}>
-          Global operator alerts for the whole team, posted to joined channels in
-          the internal Spot workspace. Enabling a category does not resend past
-          events. A saved Applications channel replaces the single alert sent for
-          submitted applications; progress threads are unchanged.
-        </p>
         {!data ? (
           <div className="flex h-24 items-center justify-center">
             <Loader2 className="size-5 animate-spin text-muted-foreground motion-reduce:animate-none" />
@@ -243,21 +231,17 @@ export function OperatorNotificationRoutes({
                 className={`rounded-lg border border-dashed border-border-emphasized px-3 py-4 text-muted-foreground ${typeStyle("body.default")}`}
               >
                 {data.unavailableReason ??
-                  "Operator Slack alerts are not configured for this environment."}{" "}
-                You can still turn alerts off. Turning on alerts and choosing
-                channels needs Slack to be available.
+                  "Connect Slack to enable alerts."}
               </div>
             ) : (
-              <div className="flex items-center justify-between gap-3">
-                <p
-                  className={`${loadError ? "text-destructive" : "text-muted-foreground"} ${typeStyle("caption.default")}`}
-                >
-                  {loadError
-                    ? "Channels could not be loaded. Refresh and try again."
-                    : channelsReady && channels.length === 0
-                      ? "No eligible channels. Add Spot to an internal channel in Slack, then refresh."
-                      : "Only channels Spot has joined are listed."}
-                </p>
+              <div className="flex items-center justify-end gap-3">
+                {loadError || (channelsReady && channels.length === 0) ? (
+                  <p className={`${loadError ? "text-destructive" : "text-muted-foreground"} ${typeStyle("caption.default")}`}>
+                    {loadError
+                      ? "Couldn’t load channels. Try refreshing."
+                      : "Invite Spot to an internal Slack channel, then refresh."}
+                  </p>
+                ) : null}
                 <PillButton
                   variant="secondary"
                   size="small"
@@ -283,7 +267,6 @@ export function OperatorNotificationRoutes({
                     key={`${entry.category}:${route.revision}:${following ? "following" : "own"}`}
                     route={route}
                     label={entry.label}
-                    description={entry.description}
                     channels={channels}
                     available={available}
                     channelsReady={channelsReady}
