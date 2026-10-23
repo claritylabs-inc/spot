@@ -636,8 +636,20 @@ export function buildEmailToolExecutors(
     const blocked = new Set(
       (context.blockedCopyEmails ?? []).map(normalizeEmailAddress),
     );
-    // The signer is never copied on their own email.
-    if (operator) blocked.add(operator.teamAddress.toLowerCase());
+    if (operator) {
+      // The signer is never copied on their own email.
+      blocked.add(operator.teamAddress.toLowerCase());
+      // A standing Always CC belongs to whoever signed it: once the setting
+      // differs (another signer, or it was changed), the old copy is replaced.
+      const stale = existing?.operatorAlwaysCcEmail?.toLowerCase();
+      if (
+        stale &&
+        stale !== operator.alwaysCc?.toLowerCase() &&
+        stale !== operator.teamThread?.ownerAddress?.toLowerCase()
+      ) {
+        blocked.add(stale);
+      }
+    }
     const normalizeCopies = (addresses: string[]) => [
       ...new Set(
         addresses

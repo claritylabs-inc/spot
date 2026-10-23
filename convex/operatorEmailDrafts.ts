@@ -744,7 +744,11 @@ export async function requireSendableOperatorEmailDraft(
   return { draft, summary };
 }
 
-/** The complete email, shown verbatim in the exact-approval prompt. */
+/**
+ * The email as shown in the exact-approval prompt: sender, recipients, scope
+ * and body. The signature is rendered from the signer's name and is covered by
+ * the draft fingerprint, not repeated here.
+ */
 function operatorEmailSendSummary(
   draft: Doc<"pendingEmails">,
   scope: {

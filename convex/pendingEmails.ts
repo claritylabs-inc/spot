@@ -11,6 +11,7 @@ import {
 } from "./lib/access";
 import dayjs from "dayjs";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { isOperatorEmailDraft } from "./lib/actionConfirmationFingerprint";
 import { extractEmailAddress } from "./lib/emailAddress";
 import { normalizeProcurementSubject } from "./lib/procurement";
@@ -450,6 +451,175 @@ export const setOperatorPendingReasonInternal = internalMutation({
   },
 });
 
+const MERGE_MESSAGE_LIMIT = 50;
+const MERGE_LINK_LIMIT = 20;
+const MERGE_READ_LIMIT = 100;
+
+/**
+ * Folds a webhook-created provisional thread into the approved target when the
+ * sent webhook raced ahead of the immediate mirror. Only a provably
+ * provisional conversation qualifies: an unlinked, non-legacy `team` thread
+ * whose messages and link rows all belong to this inbox's one Resend
+ * conversation, with no draft pointing at it and no other thread claiming that
+ * conversation. Anything else throws, which leaves the draft pending for
+ * manual reconciliation instead of splitting or overwriting linkage. Messages
+ * (replies included), links, reads and thread state all move together.
+ */
+async function mergeProvisionalThread(
+  ctx: MutationCtx,
+  args: {
+    provisional: Doc<"teamEmailThreads">;
+    intended: Doc<"teamEmailThreads">;
+    ourMessage: Doc<"teamEmailMessages">;
+    inboxId: string | undefined;
+    senderAddress: string;
+    now: number;
+  },
+) {
+  const { provisional, intended } = args;
+  const unsafe = (why: string) =>
+    new Error(`Team inbox reconciliation needed: ${why}.`);
+  if (
+    provisional.source !== "team" ||
+    provisional.deletedAt !== undefined ||
+    provisional.legacyThreadId ||
+    provisional.outreachId ||
+    provisional.clientOrgId ||
+    provisional.requestId ||
+    provisional.addressedRequestId ||
+    provisional.linkedAt
+  ) {
+    throw unsafe("the webhook thread is linked or not provisional");
+  }
+  const inboxId = args.inboxId;
+  const resendThreadId =
+    args.ourMessage.resendThreadId ?? provisional.resendThreadId;
+  if (!inboxId || !resendThreadId) throw unsafe("the inbox mapping is unknown");
+
+  const [links, mapped, sameConversation, messages, reads, referenced] =
+    await Promise.all([
+      ctx.db
+        .query("teamEmailThreadLinks")
+        .withIndex("by_threadId", (q) => q.eq("threadId", provisional._id))
+        .take(MERGE_LINK_LIMIT + 1),
+      ctx.db
+        .query("teamEmailThreadLinks")
+        .withIndex("by_inboxId_and_resendThreadId", (q) =>
+          q.eq("inboxId", inboxId).eq("resendThreadId", resendThreadId),
+        )
+        .take(5),
+      ctx.db
+        .query("teamEmailThreads")
+        .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", resendThreadId))
+        .take(5),
+      ctx.db
+        .query("teamEmailMessages")
+        .withIndex("by_threadId_and_receivedAt", (q) =>
+          q.eq("threadId", provisional._id),
+        )
+        .take(MERGE_MESSAGE_LIMIT + 1),
+      ctx.db
+        .query("teamInboxReads")
+        .withIndex("by_threadId", (q) => q.eq("threadId", provisional._id))
+        .take(MERGE_READ_LIMIT + 1),
+      ctx.db
+        .query("pendingEmails")
+        .withIndex("by_teamEmailThreadId", (q) =>
+          q.eq("teamEmailThreadId", provisional._id),
+        )
+        .first(),
+    ]);
+  if (
+    links.length > MERGE_LINK_LIMIT ||
+    messages.length > MERGE_MESSAGE_LIMIT ||
+    reads.length > MERGE_READ_LIMIT
+  ) {
+    throw unsafe("the webhook thread is too large to merge safely");
+  }
+  if (
+    links.some(
+      (link) => link.inboxId !== inboxId || link.resendThreadId !== resendThreadId,
+    ) ||
+    messages.some(
+      (message) =>
+        (message.resendThreadId ?? provisional.resendThreadId) !== resendThreadId,
+    ) ||
+    mapped.some(
+      (link) => link.threadId !== provisional._id && link.threadId !== intended._id,
+    ) ||
+    sameConversation.some(
+      (thread) => thread._id !== provisional._id && thread._id !== intended._id,
+    ) ||
+    referenced
+  ) {
+    throw unsafe("the webhook thread mixes other conversations");
+  }
+
+  const targetOrgId = intended.clientOrgId;
+  const targetRequestId = intended.requestId ?? intended.addressedRequestId;
+  for (const message of messages) {
+    await ctx.db.patch(message._id, {
+      threadId: intended._id,
+      ...(targetOrgId && !message.clientOrgId ? { clientOrgId: targetOrgId } : {}),
+      ...(targetRequestId && !message.addressedRequestId
+        ? { addressedRequestId: targetRequestId }
+        : {}),
+    });
+  }
+  const newest = messages.reduce((latest, message) =>
+    message.receivedAt >= latest.receivedAt ? message : latest,
+  );
+  const newestInbound = messages
+    .filter((message) => message.direction === "inbound")
+    .reduce<number | undefined>(
+      (latest, message) => Math.max(latest ?? 0, message.receivedAt),
+      undefined,
+    );
+  const participants = new Set(intended.participantEmails);
+  for (const message of messages) {
+    for (const address of [message.fromEmail, ...message.toAddresses, ...message.ccAddresses]) {
+      participants.add(address.trim().toLowerCase());
+    }
+  }
+  participants.delete(args.senderAddress);
+  const newestIsLatest = newest.receivedAt >= intended.latestMessageAt;
+  await ctx.db.patch(intended._id, {
+    participantEmails: [...participants],
+    messageCount: intended.messageCount + messages.length,
+    latestMessageAt: Math.max(intended.latestMessageAt, newest.receivedAt),
+    ...(newestIsLatest
+      ? {
+          latestDirection: newest.direction,
+          preview: newest.currentText.replace(/\s+/g, " ").trim().slice(0, 200),
+          latestFromName: newest.fromName,
+          latestFromEmail: newest.fromEmail,
+          latestSentByUserId:
+            newest.direction === "outbound" ? newest.sentByUserId : undefined,
+        }
+      : {}),
+    ...(newestInbound
+      ? {
+          latestInboundAt: Math.max(intended.latestInboundAt ?? 0, newestInbound),
+          archivedAt: undefined,
+          archivedByUserId: undefined,
+        }
+      : {}),
+    updatedAt: args.now,
+  });
+  for (const link of links) {
+    await ctx.db.patch(link._id, { threadId: intended._id });
+  }
+  if (!mapped.length && !links.length) {
+    await ctx.db.insert("teamEmailThreadLinks", {
+      threadId: intended._id,
+      inboxId,
+      resendThreadId,
+    });
+  }
+  for (const read of reads) await ctx.db.delete(read._id);
+  await ctx.db.delete(provisional._id);
+}
+
 /**
  * Records an operator inbox send in the team inbox and marks the draft sent in
  * one transaction, so a mirror failure leaves the draft pending (never resent)
@@ -541,66 +711,14 @@ export const recordOperatorInboxSentInternal = internalMutation({
     let threadId: Id<"teamEmailThreads">;
     if (existingMessage && provisional && intended && provisional._id !== intended._id) {
       // The webhook won the race into its own thread: the approved target is authoritative.
-      await ctx.db.patch(existingMessage._id, { threadId: intended._id });
-      await ctx.db.patch(intended._id, {
-        participantEmails: [
-          ...new Set([...intended.participantEmails, ...copied]),
-        ].filter((address) => address !== fromEmail),
-        latestDirection: "outbound",
-        preview,
-        latestFromName: fromName,
-        latestFromEmail: fromEmail,
-        latestSentByUserId: senderUserId,
-        latestMessageAt: Math.max(intended.latestMessageAt, existingMessage.receivedAt),
-        messageCount: intended.messageCount + 1,
-        updatedAt: now,
+      await mergeProvisionalThread(ctx, {
+        provisional,
+        intended,
+        ourMessage: existingMessage,
+        inboxId: attempt.inboxId,
+        senderAddress: fromEmail,
+        now,
       });
-      const remaining = await ctx.db
-        .query("teamEmailMessages")
-        .withIndex("by_threadId_and_receivedAt", (q) =>
-          q.eq("threadId", provisional._id),
-        )
-        .first();
-      const referenced = await ctx.db
-        .query("pendingEmails")
-        .withIndex("by_teamEmailThreadId", (q) =>
-          q.eq("teamEmailThreadId", provisional._id),
-        )
-        .first();
-      if (!remaining && !referenced) {
-        // Only a genuinely empty provisional thread is removed; its Resend
-        // conversation stays reachable through the approved thread.
-        const links = await ctx.db
-          .query("teamEmailThreadLinks")
-          .withIndex("by_threadId", (q) => q.eq("threadId", provisional._id))
-          .take(20);
-        for (const link of links) {
-          await ctx.db.patch(link._id, { threadId: intended._id });
-        }
-        if (provisional.resendThreadId && attempt.inboxId) {
-          const inboxId = attempt.inboxId;
-          const resendThreadId = provisional.resendThreadId;
-          const mapped = await ctx.db
-            .query("teamEmailThreadLinks")
-            .withIndex("by_inboxId_and_resendThreadId", (q) =>
-              q.eq("inboxId", inboxId).eq("resendThreadId", resendThreadId),
-            )
-            .first();
-          if (!mapped) {
-            await ctx.db.insert("teamEmailThreadLinks", {
-              threadId: intended._id,
-              inboxId,
-              resendThreadId,
-            });
-          }
-        }
-        const reads = await ctx.db
-          .query("teamInboxReads")
-          .withIndex("by_threadId", (q) => q.eq("threadId", provisional._id))
-          .take(100);
-        for (const read of reads) await ctx.db.delete(read._id);
-        await ctx.db.delete(provisional._id);
-      }
       threadId = intended._id;
     } else if (existingMessage && provisional) {
       // Same thread, or no approved target: adopt the webhook's thread and fill in the links.
@@ -663,6 +781,12 @@ export const recordOperatorInboxSentInternal = internalMutation({
       await ctx.db.patch(existingMessage._id, {
         sentByUserId: senderUserId,
         pendingEmailId: pending._id,
+        ...(!existingMessage.clientOrgId && pending.orgId
+          ? { clientOrgId: pending.orgId }
+          : {}),
+        ...(!existingMessage.addressedRequestId && pending.procurementRequestId
+          ? { addressedRequestId: pending.procurementRequestId }
+          : {}),
         ...(existingMessage.clientFileIds.length === 0 && clientFileIds.length
           ? { clientFileIds }
           : {}),
