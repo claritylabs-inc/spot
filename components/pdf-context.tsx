@@ -8,6 +8,7 @@ import {
   useMemo,
 } from "react";
 
+import { useFollowedState } from "@/hooks/use-followed-state";
 import type { PdfHighlightBox } from "@claritylabs-inc/ui/components/pdf-viewer";
 export type { PdfHighlightBox } from "@claritylabs-inc/ui/components/pdf-viewer";
 
@@ -43,12 +44,20 @@ export function PdfProvider({
   children: React.ReactNode;
   resetKey?: string;
 }) {
-  const [fileUrl, setFileUrlState] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [fileUrl, setFileUrlState] = useFollowedState<string | null>(
+    "shell:pdf:url",
+    null,
+  );
+  const [currentPage, setCurrentPage] = useFollowedState("shell:pdf:page", 1);
   const [numPages, setNumPages] = useState(0);
-  const [isPdfOpen, setIsPdfOpen] = useState(false);
-  const [highlightedPage, setHighlightedPage] = useState<number | null>(null);
-  const [highlightBoxes, setHighlightBoxes] = useState<PdfHighlightBox[]>([]);
+  const [isPdfOpen, setIsPdfOpen] = useFollowedState("shell:pdf:open", false);
+  const [highlightedPage, setHighlightedPage] = useFollowedState<number | null>(
+    "shell:pdf:highlighted-page",
+    null,
+  );
+  const [highlightBoxes, setHighlightBoxes] = useFollowedState<
+    PdfHighlightBox[]
+  >("shell:pdf:highlight-boxes", []);
   const [appliedResetKey, setAppliedResetKey] = useState(resetKey);
   if (appliedResetKey !== resetKey) {
     setAppliedResetKey(resetKey);
@@ -62,7 +71,7 @@ export function PdfProvider({
 
   const setFileUrl = useCallback((url: string) => {
     setFileUrlState(url);
-  }, []);
+  }, [setFileUrlState]);
 
   const navigateToPage = useCallback(
     (page: number) => {
@@ -73,7 +82,14 @@ export function PdfProvider({
       setHighlightedPage(clamped);
       setHighlightBoxes([]);
     },
-    [fileUrl, numPages],
+    [
+      fileUrl,
+      numPages,
+      setCurrentPage,
+      setHighlightBoxes,
+      setHighlightedPage,
+      setIsPdfOpen,
+    ],
   );
 
   const openWithUrl = useCallback(
@@ -85,12 +101,21 @@ export function PdfProvider({
       setHighlightBoxes(boxes ?? []);
       setNumPages(0);
     },
-    [],
+    [
+      setCurrentPage,
+      setFileUrlState,
+      setHighlightBoxes,
+      setHighlightedPage,
+      setIsPdfOpen,
+    ],
   );
 
-  const togglePdf = useCallback(() => setIsPdfOpen((v) => !v), []);
-  const openPdf = useCallback(() => setIsPdfOpen(true), []);
-  const closePdf = useCallback(() => setIsPdfOpen(false), []);
+  const togglePdf = useCallback(
+    () => setIsPdfOpen((v) => !v),
+    [setIsPdfOpen],
+  );
+  const openPdf = useCallback(() => setIsPdfOpen(true), [setIsPdfOpen]);
+  const closePdf = useCallback(() => setIsPdfOpen(false), [setIsPdfOpen]);
 
   const value = useMemo(
     () => ({

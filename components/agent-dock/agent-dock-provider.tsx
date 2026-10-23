@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
   type ReactNode,
@@ -14,6 +13,10 @@ import {
 import dayjs from "dayjs";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import {
+  useFollowedReducer,
+  useFollowedState,
+} from "@/hooks/use-followed-state";
 import {
   agentDockDeepLink,
   appShellHomeHref,
@@ -86,11 +89,15 @@ export function AgentDockProvider({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [state, dispatch] = useReducer(agentDockReducer, initialAgentDockState);
-  const [height, setHeightState] = useState(AGENT_DOCK_DEFAULT_HEIGHT);
-  const [detachedContextKey, setDetachedContextKey] = useState<string | null>(
-    null,
+  const [state, dispatch] = useFollowedReducer(
+    "shell:agent-dock:state",
+    agentDockReducer,
+    initialAgentDockState,
   );
+  const [height, setHeightState] = useState(AGENT_DOCK_DEFAULT_HEIGHT);
+  const [detachedContextKey, setDetachedContextKey] = useFollowedState<
+    string | null
+  >("shell:agent-dock:detached-context", null);
   const storageKey = userId
     ? standaloneOrgId
       ? `${agentDockStorageKey(surface, userId)}:sidebar:${standaloneOrgId}`
@@ -153,7 +160,7 @@ export function AgentDockProvider({
     params.delete("agentThread");
     const query = params.toString();
     router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
-  }, [pathname, router, search]);
+  }, [dispatch, pathname, router, search]);
 
   // Opening moves focus to the composer; collapsing returns it.
   useEffect(() => {
@@ -189,7 +196,7 @@ export function AgentDockProvider({
       rememberFocus();
       dispatch(action);
     },
-    [rememberFocus],
+    [dispatch, rememberFocus],
   );
 
   const openDeepLink = useCallback(
@@ -248,7 +255,9 @@ export function AgentDockProvider({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
+    dispatch,
     run,
+    setDetachedContextKey,
     standaloneOrgId,
     state.activeThreadId,
     state.mode,
@@ -294,9 +303,11 @@ export function AgentDockProvider({
     }),
     [
       detachedContextKey,
+      dispatch,
       height,
       openDeepLink,
       run,
+      setDetachedContextKey,
       state,
       surface,
     ],

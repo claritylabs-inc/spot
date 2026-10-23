@@ -1,7 +1,7 @@
 "use client";
 
 import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
-import { useRef, useEffect, useMemo, useState } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { X } from "lucide-react";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import {
   useCachedNotifications,
   useNotificationCacheActions,
@@ -69,7 +70,10 @@ export function NotificationsPanel({
   variant = "popover",
 }: NotificationsPanelProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"unread" | "read">("unread");
+  const [activeTab, setActiveTab] = useFollowedState<"unread" | "read">(
+    "shell:notifications:tab",
+    "unread",
+  );
   const unreadNotifications = useCachedNotifications(orgId, "unread") as
     | (Notification & { relatedOrgName?: string })[]
     | undefined;

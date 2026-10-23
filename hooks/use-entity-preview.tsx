@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useState, useCallback, useMemo } from "react";
 
+import { useFollowedState } from "@/hooks/use-followed-state";
+
 export interface EntityPreview {
   type: "policy";
   id: string;
@@ -31,7 +33,10 @@ export function EntityPreviewProvider({
   children: React.ReactNode;
   resetKey?: string;
 }) {
-  const [preview, setPreview] = useState<EntityPreview | null>(null);
+  const [preview, setPreview] = useFollowedState<EntityPreview | null>(
+    "shell:entity-preview",
+    null,
+  );
   const [appliedResetKey, setAppliedResetKey] = useState(resetKey);
   if (appliedResetKey !== resetKey) {
     setAppliedResetKey(resetKey);
@@ -40,11 +45,11 @@ export function EntityPreviewProvider({
 
   const openPreview = useCallback((entity: EntityPreview) => {
     setPreview(entity);
-  }, []);
+  }, [setPreview]);
 
   const closePreview = useCallback(() => {
     setPreview(null);
-  }, []);
+  }, [setPreview]);
 
   const value = useMemo(
     () => ({ preview, openPreview, closePreview }),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,7 @@ import { api } from "@/convex/_generated/api";
 import type { NavItemConfig } from "@/components/app-sidebar/types";
 import { LayoutGroup } from "framer-motion";
 import { useCurrentOrg } from "@/hooks/use-current-org";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useOnboardingCache } from "@/hooks/use-onboarding-cache";
 import { NotificationsPanel } from "@/components/notifications-panel";
 import { MainSidebarContent } from "@/components/app-sidebar/main-sidebar-content";
@@ -125,7 +126,10 @@ export function AppSidebar({
     null,
   );
 
-  const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false);
+  const [notificationsPanelOpen, setNotificationsPanelOpen] = useFollowedState(
+    "shell:sidebar:notifications-open",
+    false,
+  );
   const unreadCount = useCachedQuery(
     "notifications.unreadCount.sidebar",
     api.notifications.unreadCount,
