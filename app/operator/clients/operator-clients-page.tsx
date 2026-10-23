@@ -8,8 +8,9 @@ import { api } from "@/convex/_generated/api";
 import { AppShell } from "@/components/app-shell";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { Input } from "@claritylabs-inc/ui/components/input";
 import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { Input } from "@claritylabs-inc/ui/components/input";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import {
   Table,
@@ -20,7 +21,7 @@ import {
   TableRow,
   TableNameLink,
 } from "@/components/ui/table";
-import { FileSearch, Loader2, LogOut, Plus, Search } from "lucide-react";
+import { FileSearch, Loader2, LogOut, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
@@ -152,38 +153,37 @@ export default function OperatorClientsScreen() {
   return (
     <AppShell actions={actions}>
       <main className="flex w-full flex-col gap-4">
-        <div className="flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="relative w-full max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search clients"
-              aria-label="Search clients"
+        <ListToolbar
+          tabs={
+            <Tabs
+              value={filter}
+              onValueChange={(value) => {
+                if (value) setFilter(value as ClientFilter);
+              }}
+            >
+              <TabsList variant="pill" aria-label="Client status">
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="active">Active</TabsTrigger>
+                <TabsTrigger value="limited">Limited</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          }
+          search={{
+            value: search,
+            onChange: setSearch,
+            label: "Search clients",
+            placeholder: "Search clients",
+          }}
+          actions={
+            <BulkDeleteBar
+              type="client"
+              orgIds={selectedOrgIds}
+              applicationIds={selectedApplicationIds}
+              disabled={readOnly}
+              onClear={selection.clear}
             />
-          </div>
-          <Tabs
-            value={filter}
-            onValueChange={(value) => {
-              if (value) setFilter(value as ClientFilter);
-            }}
-          >
-            <TabsList variant="pill" aria-label="Client status">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="active">Active</TabsTrigger>
-              <TabsTrigger value="limited">Limited</TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <BulkDeleteBar
-            type="client"
-            orgIds={selectedOrgIds}
-            applicationIds={selectedApplicationIds}
-            disabled={readOnly}
-            className="sm:ml-auto"
-            onClear={selection.clear}
-          />
-        </div>
+          }
+        />
         <OperationalPanel data-operator-inline-fields>
           <Table>
             <TableHeader>

@@ -19,22 +19,17 @@ import {
   AtSign,
   Inbox,
   PenSquare,
-  Search,
   SlidersHorizontal,
 } from "lucide-react";
 
 import { PillButton } from "@/components/ui/pill-button";
+import { ListToolbar, SearchField } from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { ChatAvatar } from "@/components/chat/chat-message";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@claritylabs-inc/ui/components/input-group";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Select,
@@ -574,21 +569,12 @@ export function TeamInbox({
     setArchivedView(false);
   };
 
-  const searchField = (
-    <InputGroup
-      className={`w-full ${scope.kind === "request" ? "border-transparent bg-transparent" : ""}`}
-    >
-      <InputGroupAddon>
-        <Search className="size-3.5" />
-      </InputGroupAddon>
-      <InputGroupInput
-        aria-label="Search conversations"
-        placeholder="Search mail"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-      />
-    </InputGroup>
-  );
+  const searchProps = {
+    value: search,
+    onChange: setSearch,
+    label: "Search conversations",
+    placeholder: "Search mail",
+  };
   const archivedToggle = (
     <PillButton
       type="button"
@@ -762,7 +748,9 @@ export function TeamInbox({
       <section className="@container space-y-3">
         <OperationalPanel className="flex items-center gap-2 px-2 py-1.5">
           {archivedToggle}
-          <div className="min-w-0 flex-1">{searchField}</div>
+          <div className="min-w-0 flex-1">
+            <SearchField {...searchProps} className="border-transparent bg-transparent" />
+          </div>
           <PillButton
             type="button"
             variant="ghost"
@@ -801,27 +789,27 @@ export function TeamInbox({
           ) : null}
         </div>
       </AppShellPortal>
-      <div className="flex flex-wrap items-center gap-2">
-        <Tabs
-          value={filter}
-          onValueChange={(value) => {
-            const next = value as TeamFilter;
-            setFilter(next);
-            // Unlinked mail has no client, so the two cannot combine.
-            if (next === "unlinked") setClientOrgId("");
-          }}
-        >
-          <TabsList variant="pill" aria-label="Show">
-            <TabsTrigger value="mine">Mine</TabsTrigger>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <div className="ml-auto flex items-center gap-2">
-          <div className="w-56">{searchField}</div>
-          {filtersToggle}
-        </div>
-      </div>
+      <ListToolbar
+        tabs={
+          <Tabs
+            value={filter}
+            onValueChange={(value) => {
+              const next = value as TeamFilter;
+              setFilter(next);
+              // Unlinked mail has no client, so the two cannot combine.
+              if (next === "unlinked") setClientOrgId("");
+            }}
+          >
+            <TabsList variant="pill" aria-label="Show">
+              <TabsTrigger value="mine">Mine</TabsTrigger>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        }
+        search={searchProps}
+        actions={filtersToggle}
+      />
       {showFilters ? (
         <div className="flex flex-wrap items-center justify-end gap-2">
           <PillButton
