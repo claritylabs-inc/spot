@@ -8,10 +8,10 @@ import {
   useState,
   type Ref,
 } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import dayjs from "dayjs";
-import { FileInput, FolderInput, Loader2, Send } from "lucide-react";
+import { FileInput, FolderInput, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { PresenceAvatars } from "@/components/app-top-bar";
@@ -20,6 +20,7 @@ import {
   LinkSuggestionBar,
   LinkThreadAction,
 } from "@/components/inbox/link-thread-action";
+import { ReplyComposer } from "@/components/inbox/reply-composer";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
@@ -28,7 +29,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@claritylabs-inc/ui/components/popover";
-import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { PillButton } from "@/components/ui/pill-button";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
@@ -647,102 +647,6 @@ function EmailConversation({
   );
 }
 
-// Unsent replies survive switching conversations within the session.
-const replyDrafts = new Map<string, string>();
-
-function ReplyComposer({
-  emailThreadId,
-  recipient,
-  onSendingChange,
-  onReplyingChange,
-}: {
-  emailThreadId: Id<"teamEmailThreads">;
-  recipient: string | null;
-  onSendingChange: (sending: boolean) => void;
-  /** True while the composer is focused with text, for presence. */
-  onReplyingChange: (replying: boolean) => void;
-}) {
-  const reply = useAction(api.actions.providerOutreach.replyToThread);
-  const [text, setText] = useState(() => replyDrafts.get(emailThreadId) ?? "");
-  const [sending, setSending] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const hasText = text.trim().length > 0;
-  useEffect(() => {
-    onReplyingChange(focused && hasText);
-  }, [focused, hasText, onReplyingChange]);
-  useEffect(() => () => onReplyingChange(false), [onReplyingChange]);
-  // One key per draft, so a retried send cannot deliver twice.
-  const sendKey = useRef<string>(crypto.randomUUID());
-
-  function update(value: string) {
-    setText(value);
-    if (value) replyDrafts.set(emailThreadId, value);
-    else replyDrafts.delete(emailThreadId);
-  }
-
-  async function send() {
-    if (!text.trim() || sending) return;
-    setSending(true);
-    onSendingChange(true);
-    try {
-      const result = await reply({
-        emailThreadId,
-        text,
-        idempotencyKey: sendKey.current,
-      });
-      update("");
-      sendKey.current = crypto.randomUUID();
-      toast.success(
-        result.status === "captured"
-          ? "Reply captured locally; nothing was sent"
-          : "Reply sent",
-      );
-    } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Could not send reply"));
-    } finally {
-      setSending(false);
-      onSendingChange(false);
-    }
-  }
-
-  return (
-    <div className="w-full space-y-2">
-      <Textarea
-        aria-label="Reply"
-        placeholder={recipient ? `Reply to ${recipient}` : "Write a reply"}
-        value={text}
-        disabled={sending}
-        onChange={(event) => update(event.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            void send();
-          }
-        }}
-        className="max-h-60 min-h-20 resize-none field-sizing-content"
-      />
-      <div className="flex justify-end">
-        <PillButton
-            size="compact"
-          type="button"
-          title="Send (Ctrl or ⌘ + Enter)"
-          disabled={!text.trim() || sending}
-          onClick={() => void send()}
-        >
-          {sending ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Send className="size-3.5" />
-          )}
-          Send
-        </PillButton>
-      </div>
-    </div>
-  );
-}
-
 function FileQuoteAction({
   emailThreadId,
   readOnly,
@@ -1088,7 +992,11 @@ export function ProcurementEmailDrawer({
         (thread ? thread.canReply : replyable) && !readOnly ? (
           <ReplyComposer
             key={emailThreadId}
-            emailThreadId={emailThreadId}
+            threadId={emailThreadId}
+            latestOutboundAt={
+              thread?.messages.findLast((message) => message.direction === "outbound")
+                ?.receivedAt ?? 0
+            }
             recipient={
               latestInbound?.fromName ??
               latestInbound?.fromEmail ??
