@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { toast } from "sonner";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { api } from "@/convex/_generated/api";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
@@ -42,7 +43,14 @@ export function useMcpSettings(disabled: boolean) {
     url.searchParams.delete("mcp");
     window.history.replaceState(null, "", url.toString());
   }, []);
-  const [selected, setSelected] = useState<Server | "new" | null>(null);
+  const [selectedId, setSelectedId] = useFollowedState<string | null>(
+    "operator:settings:mcp:selected",
+    null,
+  );
+  const selected =
+    selectedId === "new"
+      ? "new"
+      : (servers?.find((server) => server._id === selectedId) ?? null);
   return {
     panel: (
       <OperationalPanel>
@@ -53,7 +61,7 @@ export function useMcpSettings(disabled: boolean) {
               type="button"
               size="compact"
               disabled={disabled}
-              onClick={() => setSelected("new")}
+              onClick={() => setSelectedId("new")}
             >
               Add server
             </PillButton>
@@ -81,7 +89,7 @@ export function useMcpSettings(disabled: boolean) {
                 <button
                   key={server._id}
                   type="button"
-                  onClick={() => setSelected(server)}
+                  onClick={() => setSelectedId(server._id)}
                   className="flex w-full items-center gap-3 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <OrgBrandIcon
@@ -115,7 +123,7 @@ export function useMcpSettings(disabled: boolean) {
         key={selected === "new" ? "new" : selected._id}
         server={selected === "new" ? undefined : selected}
         disabled={disabled}
-        onClose={() => setSelected(null)}
+        onClose={() => setSelectedId(null)}
       />
     ) : null,
   };

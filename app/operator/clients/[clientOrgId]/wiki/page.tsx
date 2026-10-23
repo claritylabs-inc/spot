@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { InlineCollectionActionsContext } from "@/components/ui/inline-fields";
@@ -91,7 +92,10 @@ function LoadedProfile({
 }) {
   const router = useRouter();
   const update = useMutation(api.orgWiki.updateBusinessProfileForOperator);
-  const [profileTab, setProfileTab] = useState("Business details");
+  const [profileTab, setProfileTab] = useFollowedState(
+    `clients:${client._id}:profile:tab`,
+    "Business details",
+  );
   const account = {
     name: support.name,
     website: support.website ?? "",
@@ -112,7 +116,10 @@ function LoadedProfile({
     account,
   });
   const techScan = useWebsiteTechScan(client._id, profileTab === "Tech stack");
-  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useFollowedState(
+    `clients:${client._id}:profile:notes-open`,
+    false,
+  );
   const [notesToolbar, setNotesToolbar] = useState<HTMLDivElement | null>(null);
   const autoSave = useLocalFirstAutoSave({
     mutationName: "orgWiki.updateBusinessProfileForOperator",

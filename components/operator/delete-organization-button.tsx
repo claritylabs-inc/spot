@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation } from "convex/react";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -35,7 +36,10 @@ export function DeleteOrganizationButton({
   onDeleted: () => void;
 }) {
   const typeLabel = type === "broker" ? "provider" : "client";
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useFollowedState(
+    `operator:${type}:${orgId}:delete-open`,
+    false,
+  );
   const [busy, setBusy] = useState(false);
   const remove = useMutation(api.operator.deleteOrganization);
   const removeWithUsers = useMutation(api.operator.deleteClientWithUsers);
