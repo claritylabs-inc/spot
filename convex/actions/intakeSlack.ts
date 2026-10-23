@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { slackWebApi } from "../lib/slackWebApi";
+import { requireSlackMessageId } from "../lib/slackDelivery";
 import { formatSlackAnswerText } from "../lib/slackBlocks";
 import { splitIntakeSlackMessage } from "../lib/intakeSlackContext";
 export const deliver = internalAction({
@@ -21,7 +22,7 @@ export const deliver = internalAction({
         if (summary && index === 0) {
           if (!claim.threadTs) throw new Error("Intake thread is missing");
           const result = await slack.updateMessage({ ...destination, messageTs: claim.threadTs, mrkdwnText: text });
-          messageTs = result.messageId;
+          messageTs = requireSlackMessageId(result);
         } else {
           const result = await slack.sendMessage({
             ...destination,
@@ -29,8 +30,8 @@ export const deliver = internalAction({
             clientMessageId: `intake:${claim.event._id}${index ? `:${index}` : ""}`,
             mrkdwnText: `${index === 0 && claim.event.eventKey.startsWith("submitted:") ? "<!here> " : ""}${text}`,
           });
-          if (result.attachmentFailures.length) throw new Error("Intake message delivery failed");
-          messageTs ??= result.messageId;
+          const sentMessageTs = requireSlackMessageId(result);
+          messageTs ??= sentMessageTs;
         }
       }
       if (!messageTs) throw new Error("Slack did not return a message timestamp");
