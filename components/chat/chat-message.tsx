@@ -128,7 +128,7 @@ export function ChatAssistantTurn({
         />
       )
     ) : (
-      <div className="min-w-0 max-w-[min(max(32rem,80vw),100%)]">
+      <div className="min-w-0 max-w-[min(max(32rem,80cqw),100%)]">
         {body ?? (
           <ChatMessageBubble role="agent" channel={channel} isError={isError}>
             <ChatPresentationView
@@ -317,7 +317,7 @@ export function ChatUserTurn({
   return (
     <div
       className={cn(
-        "w-fit max-w-[min(max(32rem,66.667vw),100%)]",
+        "w-fit max-w-[min(max(32rem,66.667cqw),100%)]",
         own && "ml-auto",
       )}
     >
@@ -337,7 +337,7 @@ export function ChatUserTurn({
                 </span>
                 <p
                   className={cn(
-                    "min-w-0 max-w-[min(24rem,70vw)] truncate text-muted-foreground/50",
+                    "min-w-0 max-w-[min(24rem,70cqw)] truncate text-muted-foreground/50",
                     typeStyle("caption.medium"),
                   )}
                   title={nameTitle ?? name}
