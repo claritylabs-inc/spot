@@ -90,6 +90,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   COMPANY_INTAKE_FIELDS,
+  ENTITY_TYPES,
   INTAKE_FIELDS,
   INTAKE_REASONS,
   SAVINGS_INTAKE_REASON,
@@ -2054,7 +2055,7 @@ function Application({
           className={singleField ? "sr-only" : typeStyle("body.root")}
           htmlFor={`intake-${id}`}
         >
-          {id === "dba" ? "Company name" : INTAKE_FIELDS[id]}
+          {INTAKE_FIELDS[id]}
           {options?.required && " *"}
         </FieldLabel>
         {options?.hint && !singleField && (
@@ -3138,18 +3139,7 @@ function Application({
         )}
         {step === 12 && (
           <>
-            {select("entityType", [
-              "LLC",
-              "Corporation",
-              "S corporation",
-              "Partnership",
-              "Sole proprietor",
-              "Nonprofit",
-              "Trust / estate",
-              "Government",
-              "Other",
-              "Not sure",
-            ])}
+            {select("entityType", [...ENTITY_TYPES])}
             <IntakeRegistration details={details} onChange={changeDetails} />
           </>
         )}

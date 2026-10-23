@@ -10,7 +10,6 @@ import { forwardedCorrespondents } from "./teamEmailForwards";
 import { operatorEmailAliases, requireOperatorForUser } from "./operatorIdentity";
 import { isSpotOutboundAddress } from "./resend";
 import { buildOperatorSignature, teamOwnedDomains } from "./teamEmail";
-import { mappedTeamThreadId } from "./teamEmailLegacy";
 import { teamTargetProblem } from "./teamEmailStore";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -47,6 +46,11 @@ export const normalizeReplyMessage = (message: string) =>
   message.replace(/\r\n/g, "\n").trim();
 
 export const MAX_TEAM_REPLY_CHARS = 20_000;
+
+/** Browser-composed new emails are keyed apart from replies (`browser:`) and agent replies. */
+export const COMPOSE_KEY_PREFIX = "compose:";
+export const isComposeKey = (key: string | undefined) =>
+  Boolean(key?.startsWith(COMPOSE_KEY_PREFIX));
 
 /** Every field of the pending draft a reply becomes; the fingerprint is computed over these. */
 export type TeamReplyDraftFields = {
@@ -110,7 +114,7 @@ export type TeamReplyComposition =
     }
   | { ok: false; reason: string };
 
-function paragraphsHtml(text: string) {
+export function paragraphsHtml(text: string) {
   return text
     .split(/\n{2,}/)
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
@@ -130,7 +134,7 @@ const normalized = (address: string) =>
   (extractEmailAddress(address) ?? address.trim().toLowerCase()).toLowerCase();
 
 /** Mail addresses Spot runs for clients and notifications; never a correspondent to copy. */
-function isMachineAddress(address: string) {
+export function isMachineAddress(address: string) {
   const domain = address.split("@")[1] ?? "";
   return isSpotOutboundAddress(address) && !teamOwnedDomains().includes(domain);
 }
@@ -326,18 +330,16 @@ export type TeamReplyPreviewResult =
  * The preview for an operator-agent reply, usable from any query or mutation
  * (the confirmation preflight runs in one). It requires an active operator and
  * a live, unarchived target with live client/request, and only reads.
- * `teamEmailThreadId` may be an older generation id if it is already mapped;
- * an unmapped one is reported, not migrated (the execution step adopts it). The
- * canonical thread id is returned so callers bind the approval to the real target.
+ * The validated team thread id is returned so callers bind approval to that target.
  */
 export async function previewTeamEmailReply(
   ctx: Ctx,
   args: { operatorUserId: Id<"users">; teamEmailThreadId: string; message: string },
 ): Promise<TeamReplyPreviewResult> {
   await requireOperatorForUser(ctx, args.operatorUserId);
-  const threadId = await mappedTeamThreadId(ctx, args.teamEmailThreadId);
+  const threadId = ctx.db.normalizeId("teamEmailThreads", args.teamEmailThreadId);
   if (!threadId) {
-    return { ok: false, reason: "Conversation not found, or not migrated to the team inbox yet." };
+    return { ok: false, reason: "Conversation not found." };
   }
   const composed = await composeTeamReply(ctx, {
     operatorUserId: args.operatorUserId,
@@ -362,7 +364,9 @@ export async function replyContextProblem(
   draft: Doc<"pendingEmails">,
   confirmationId?: Id<"operatorAgentConfirmations">,
 ): Promise<string | null> {
-  if (!draft.directReplyKey) return null;
+  // A new email has no conversation to recompose against; its sender identity,
+  // Always CC and client link are rechecked by `operatorDraftBlocker`.
+  if (!draft.directReplyKey || isComposeKey(draft.directReplyKey)) return null;
   if (!draft.teamEmailThreadId || !draft.senderUserId) {
     return "The reply is missing its conversation — preview it again.";
   }

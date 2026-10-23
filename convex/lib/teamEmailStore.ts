@@ -39,15 +39,6 @@ export function isOutreachLocked(thread: Pick<TeamThread, "source">) {
   return thread.source === "outreach";
 }
 
-/**
- * Extraction identity is keyed by the legacy thread id when a thread was
- * migrated, so source refs and fingerprints (and the wiki facts filed under
- * them) survive the cutover without re-running extraction.
- */
-export function teamThreadSourceId(thread: Pick<TeamThread, "_id" | "legacyThreadId">) {
-  return String(thread.legacyThreadId ?? thread._id);
-}
-
 export function previewText(text: string) {
   return text.replace(/\s+/g, " ").trim().slice(0, PREVIEW_CHARS);
 }

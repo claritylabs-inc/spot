@@ -47,11 +47,7 @@ import {
   type CoverageId,
   type IntakeDetails,
 } from "@/lib/insurance-intake-details";
-import {
-  intakeCoverageAnswerRows,
-  intakeFollowupAnswerRows,
-} from "@/lib/intake-application";
-import { intakeCatalogCoverage } from "@/lib/intake-acord-questions";
+import { intakeFollowupAnswerRows } from "@/lib/intake-application";
 import { cn } from "@/lib/utils";
 
 export type SectionMenuItem = {
@@ -59,7 +55,6 @@ export type SectionMenuItem = {
   label: string;
   icon: LucideIcon;
   count?: number;
-  attention?: boolean;
   removable?: boolean;
   subtle?: boolean;
 };
@@ -88,10 +83,6 @@ export function applicationSectionGroups(
   details: IntakeDetails,
   { editable }: { editable: boolean },
 ): SectionMenuGroup[] {
-  const coverageIds = details.coverages.map((line) => line.coverage);
-  const coverageAnswers = intakeCoverageAnswerRows(answers, details);
-  const unanswered = (row: (typeof coverageAnswers)[number]) =>
-    !row.answer.trim() && !row.skipped;
   const followups = intakeFollowupAnswerRows(answers, details);
   return [
     {
@@ -107,7 +98,6 @@ export function applicationSectionGroups(
                 label: "Follow-up answers",
                 icon: MessageSquareMore,
                 count: followups.length,
-                attention: followups.some(unanswered),
               },
             ]
           : []),
@@ -121,11 +111,6 @@ export function applicationSectionGroups(
           label: coverageRequestLabel(line),
           icon: COVERAGE_ICONS[line.coverage],
           removable: editable,
-          attention: coverageAnswers.some(
-            (row) =>
-              intakeCatalogCoverage(row, coverageIds) === line.coverage &&
-              unanswered(row),
-          ),
         })),
         ...((["limitsNote", "scopeNote", "additionalNote"] as const).some(
           (key) => details[key]?.trim(),
@@ -211,12 +196,6 @@ export function SectionMenu({
           <>
             {entry.count !== undefined && (
               <span className="text-muted-foreground/60">{entry.count}</span>
-            )}
-            {entry.attention && (
-              <span
-                aria-label="Has unanswered questions"
-                className="size-1.5 shrink-0 rounded-full bg-amber-500"
-              />
             )}
             {entry.removable && onRemove && (
               // Same affordance as the former thread archive action.

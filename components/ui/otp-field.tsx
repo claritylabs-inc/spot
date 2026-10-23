@@ -54,6 +54,8 @@ export function OtpField({
       onValueChange={onValueChange}
       disabled={disabled}
       required={required}
+      // Base UI gives only the first slot autocomplete="one-time-code".
+      data-follow-private=""
       className={cn("ph-no-capture flex gap-2", className)}
     >
       {Array.from({ length }, (_, index) => (

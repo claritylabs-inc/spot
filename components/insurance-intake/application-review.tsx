@@ -55,7 +55,7 @@ export function IntakeApplicationReview({
     ) : section === "followups" ? (
       <IntakeFollowupReview
         details={application.details}
-        businessName={application.answers.legalName || application.answers.dba}
+        businessName={application.answers.dba || application.answers.legalName}
         answers={intakeFollowupAnswerRows(
           application.answers,
           application.details,

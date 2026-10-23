@@ -477,16 +477,19 @@ const READ_ONLY_NOTICE =
  * email changed); Resend then rejects the reused key as a payload mismatch
  * and the delivery fails closed instead of sending a second copy.
  */
-async function sendCommandReply(args: {
-  inbox: { inboxId: string };
-  threadId: string;
-  emailId: string;
-  to: string;
-  subject: string;
-  text: string;
-  key: string;
-}) {
-  const draft = await createDraft({
+async function sendCommandReply(
+  ctx: ActionCtx,
+  args: {
+    inbox: { inboxId: string };
+    threadId: string;
+    emailId: string;
+    to: string;
+    subject: string;
+    text: string;
+    key: string;
+  },
+) {
+  const draft = await createDraft(ctx, null, {
     inboxId: args.inbox.inboxId,
     to: args.to,
     subject: args.subject,
@@ -496,7 +499,7 @@ async function sendCommandReply(args: {
     idempotencyKey: `${args.key}:draft`,
   });
   if (draft.status !== "ok") return;
-  await sendDraft({
+  await sendDraft(ctx, null, {
     inboxId: args.inbox.inboxId,
     draftId: draft.data.id,
     idempotencyKey: `${args.key}:send`,
@@ -553,7 +556,7 @@ export const deliver = internalAction({
         : `Re: ${receipt.subject}`;
       try {
         if (command) {
-          await sendCommandReply({
+          await sendCommandReply(ctx, {
             inbox: command.inbox,
             threadId: command.threadId,
             emailId: command.emailId,
@@ -566,6 +569,8 @@ export const deliver = internalAction({
         const sent = command
           ? { ok: true }
           : await sendResendEmail(
+              ctx,
+              null,
               {
                 from: `Spot Operator <${OPERATOR_EMAIL_ADDRESS}>`,
                 to: receipt.sender,

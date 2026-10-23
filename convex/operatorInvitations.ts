@@ -7,7 +7,7 @@ import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { buildEmailShell, escapeHtml } from "./lib/emailTemplate";
 import { getBrandingContext } from "./lib/branding";
-import { getAuthFromAddress, sendResendEmail } from "./lib/resend";
+import { getAuthFromAddress, type EmailDeliveryCtx, sendResendEmail } from "./lib/resend";
 import { getAuthSiteUrl } from "./lib/domains";
 import {
   EMPLOYEE_OTP_PROVIDER,
@@ -91,7 +91,11 @@ async function createOrAdoptOperator(
   return { email, userId, outcome: "created" as const };
 }
 
-async function sendOperatorInvitationEmail(email: string) {
+async function sendOperatorInvitationEmail(
+  ctx: EmailDeliveryCtx,
+  actorUserId: Id<"users">,
+  email: string,
+) {
   const siteUrl = getAuthSiteUrl();
   const inviteUrl = `${siteUrl.replace(/\/$/, "")}/operator/login?email=${encodeURIComponent(email)}`;
   const subject = "You’re invited to Spot operator access";
@@ -120,8 +124,7 @@ async function sendOperatorInvitationEmail(email: string) {
     branding,
     siteUrl,
   });
-  const result = await sendResendEmail(
-    {
+  const result = await sendResendEmail(ctx, actorUserId, {
       from: getAuthFromAddress("Spot"),
       to: email,
       subject,
@@ -154,7 +157,7 @@ export const inviteOperator = action({
       internal.operatorInvitations.inviteOperatorInternal,
       { email: args.email, invitedByUserId },
     );
-    const emailSent = await sendOperatorInvitationEmail(invitation.email).catch(() => false);
+    const emailSent = await sendOperatorInvitationEmail(ctx, invitedByUserId, invitation.email).catch(() => false);
     return { email: invitation.email, outcome: invitation.outcome, emailSent };
   },
 });
@@ -169,7 +172,7 @@ export const inviteOperatorForAgentInternal = internalAction({
       internal.operatorInvitations.inviteOperatorInternal,
       { email: args.email, invitedByUserId: args.operatorUserId },
     );
-    const emailSent = await sendOperatorInvitationEmail(invitation.email).catch(() => false);
+    const emailSent = await sendOperatorInvitationEmail(ctx, args.operatorUserId, invitation.email).catch(() => false);
     return { email: invitation.email, outcome: invitation.outcome, emailSent };
   },
 });

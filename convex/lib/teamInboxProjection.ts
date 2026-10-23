@@ -3,6 +3,7 @@ import type { PaginationOptions } from "convex/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { operatorPerson, type OperatorPerson } from "./operatorAvatar";
+import { normalizeOperatorEmail, operatorEmailAliases } from "./operatorIdentity";
 import { getAgentDomain } from "./resend";
 import { normalizeProcurementEmail, procurementForwardingAddress, type ProcurementEmailCategory } from "./procurement";
 import { MESSAGE_READ_BYTES, teamTargetProblem, type TeamThread } from "./teamEmailStore";
@@ -41,6 +42,22 @@ async function personFor(
   return person;
 }
 
+/** The active operator who owns a company-domain sender address, if any. */
+async function operatorSenderFor(
+  ctx: Ctx,
+  people: Map<Id<"users">, OperatorPerson>,
+  email: string | undefined | null,
+) {
+  for (const alias of operatorEmailAliases(normalizeOperatorEmail(email))) {
+    const profile = await ctx.db
+      .query("operatorProfiles")
+      .withIndex("email", (q) => q.eq("email", alias))
+      .first();
+    if (profile?.status === "active") return await personFor(ctx, people, profile.userId);
+  }
+  return null;
+}
+
 async function threadSequence(ctx: Ctx, thread: TeamThread) {
   if (thread.source !== "outreach" || !thread.resendThreadId) return null;
   const candidate = await ctx.db
@@ -49,11 +66,7 @@ async function threadSequence(ctx: Ctx, thread: TeamThread) {
     .order("desc")
     .first();
   if (!candidate || candidate.requestId !== thread.requestId) return null;
-  const pointsHere =
-    candidate.teamEmailThreadId === thread._id ||
-    (thread.legacyThreadId !== undefined &&
-      candidate.procurementEmailThreadId === thread.legacyThreadId);
-  return pointsHere ? candidate : null;
+  return candidate.teamEmailThreadId === thread._id ? candidate : null;
 }
 
 async function readAtFor(ctx: Ctx, userId: Id<"users">, threadId: Id<"teamEmailThreads">) {
@@ -100,7 +113,7 @@ export async function teamInboxRow(
   viewerUserId: Id<"users">,
   people: Map<Id<"users">, OperatorPerson>,
 ) {
-  const [sequence, client, request, readAt, owner, sentBy, linkSuggestion] = await Promise.all([
+  const [sequence, client, request, readAt, owner, sentBy, linkSuggestion, fromOperator] = await Promise.all([
     threadSequence(ctx, thread),
     thread.clientOrgId ? ctx.db.get(thread.clientOrgId) : null,
     thread.requestId ? ctx.db.get(thread.requestId) : null,
@@ -108,6 +121,7 @@ export async function teamInboxRow(
     personFor(ctx, people, thread.ownerUserId),
     personFor(ctx, people, thread.latestSentByUserId),
     linkSuggestionFor(ctx, thread),
+    thread.latestDirection === "inbound" ? operatorSenderFor(ctx, people, thread.latestFromEmail) : null,
   ]);
   // A conversation whose client or request is gone is hidden, with its stored
   // linkage left as it is; no deleted target's name is ever returned.
@@ -152,6 +166,7 @@ export async function teamInboxRow(
     unread: isUnread(thread, readAt),
     owner,
     sentBy,
+    fromOperator,
     client: client ? { _id: client._id, name: client.name } : null,
     request: request ? { _id: request._id, title: request.title } : null,
     linkSuggestion,
@@ -424,6 +439,10 @@ export async function getTeamThreadDetails(
     messages.page.reverse().map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
       ...message,
       sentBy: await personFor(ctx, people, message.sentByUserId),
+      fromOperator:
+        message.direction === "inbound"
+          ? await operatorSenderFor(ctx, people, message.fromEmail)
+          : null,
       files: await Promise.all(
         message.clientFileIds.map(async (clientFileId) => {
           const file = await ctx.db.get(clientFileId);

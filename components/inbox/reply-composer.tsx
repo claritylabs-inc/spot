@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAction, useQuery } from "convex/react";
 import dayjs from "dayjs";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Reply, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { PillButton } from "@/components/ui/pill-button";
-import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
@@ -63,13 +62,29 @@ function useDebounced<T>(value: T, delayMs: number) {
   return debounced;
 }
 
-function PreviewLine({ label, value }: { label: string; value: string }) {
+/** A mail-client header row: muted inline label, then the value. */
+function HeaderRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 gap-2">
-      <dt className="w-10 shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 flex-1 break-words text-foreground">{value}</dd>
+    <div className="flex min-h-9 items-center gap-3 border-b border-border px-4 py-1.5">
+      <span className={`w-14 shrink-0 text-muted-foreground ${typeStyle("body.default")}`}>
+        {label}
+      </span>
+      <div className={`flex min-w-0 flex-1 flex-wrap gap-1 ${typeStyle("body.default")}`}>
+        {children}
+      </div>
     </div>
   );
+}
+
+function Recipients({ addresses }: { addresses: string[] }) {
+  return addresses.map((address) => (
+    <span
+      key={address}
+      className="inline-flex max-w-full min-w-0 items-center truncate rounded-full bg-muted px-2.5 py-0.5"
+    >
+      {address}
+    </span>
+  ));
 }
 
 /**
@@ -134,6 +149,11 @@ function OperatorReplyComposer({
   );
   const current = !locked && settled === text && hasText;
   const preview = current && previewResult?.ok ? previewResult.preview : null;
+  // Headers stay put while the next preview loads; Send still needs the current one.
+  const [lastHeaders, setLastHeaders] = useState<typeof preview>(null);
+  if (preview && preview !== lastHeaders) setLastHeaders(preview);
+  const headers = hasText ? (preview ?? lastHeaders) : null;
+  const [open, setOpen] = useState(() => Boolean(readAttempt(id)?.text ?? replyDrafts.get(id)));
   const previewError = current && previewResult && !previewResult.ok ? previewResult.reason : null;
   const previewing = !locked && hasText && !preview && !previewError;
 
@@ -233,78 +253,125 @@ function OperatorReplyComposer({
           </div>
         </div>
       ) : null}
-      <Textarea
-        aria-label="Reply"
-        placeholder={recipient ? `Reply to ${recipient}` : "Write a reply"}
-        value={text}
-        disabled={sending}
-        readOnly={locked}
-        onChange={(event) => update(event.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            void send();
-          }
-        }}
-        className="max-h-60 min-h-20 resize-none field-sizing-content"
-      />
-      {previewing ? (
-        <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>Preparing preview…</p>
-      ) : null}
-      {previewError ? (
-        <p role="alert" className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-          {previewError}
-        </p>
-      ) : null}
-      {preview ? (
-        <div className={`space-y-1.5 rounded-md border border-border p-2.5 ${typeStyle("caption.default")}`}>
-          <dl className="space-y-0.5">
-            <PreviewLine label="From" value={preview.from} />
-            <PreviewLine label="To" value={preview.to.join(", ") || "—"} />
-            {preview.cc.length ? <PreviewLine label="Cc" value={preview.cc.join(", ")} /> : null}
-            {preview.bcc.length ? <PreviewLine label="Bcc" value={preview.bcc.join(", ")} /> : null}
-            <PreviewLine label="Subject" value={preview.subject} />
-          </dl>
-          {preview.copiesOwner ? (
-            <p className="text-muted-foreground">{preview.copiesOwner} is copied as the conversation owner.</p>
+      {open || locked || hasText ? (
+        // Flush with the panel footer: the footer is already the frame.
+        <div className="-mx-4 -my-3">
+          <HeaderRow label="From">
+            <span className="min-w-0 truncate">{headers?.from ?? "You"}</span>
+          </HeaderRow>
+          <HeaderRow label="To">
+            {headers ? (
+              <Recipients addresses={headers.to} />
+            ) : (
+              <span className="min-w-0 truncate text-muted-foreground">
+                {recipient ?? "Everyone on the latest message"}
+              </span>
+            )}
+          </HeaderRow>
+          {headers?.cc.length ? (
+            <HeaderRow label="Cc">
+              <Recipients addresses={headers.cc} />
+            </HeaderRow>
           ) : null}
-          {preview.mode === "standalone" ? (
-            <p className="text-muted-foreground">
-              Sent from your own inbox as a new email; it stays in this conversation.
-            </p>
+          {headers?.bcc.length ? (
+            <HeaderRow label="Bcc">
+              <Recipients addresses={headers.bcc} />
+            </HeaderRow>
           ) : null}
-          {preview.stopsFollowUps ? (
-            <p className="text-muted-foreground">Sending stops this conversation’s automatic follow-ups.</p>
+          {headers ? (
+            <HeaderRow label="Subject">
+              <span className="min-w-0 truncate">{headers.subject}</span>
+            </HeaderRow>
           ) : null}
-          <button
-            type="button"
-            aria-expanded={showFull}
-            onClick={() => setShowFull((value) => !value)}
-            className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-          >
-            {showFull ? "Hide full email" : "Show full email"}
-          </button>
-          {showFull ? (
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-foreground">
-              {preview.text}
-            </pre>
+          <textarea
+            aria-label="Reply"
+            autoFocus={!locked}
+            placeholder={recipient ? `Reply to ${recipient}` : "Write a reply"}
+            value={text}
+            disabled={sending}
+            readOnly={locked}
+            onChange={(event) => update(event.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                void send();
+              }
+              if (event.key === "Escape" && !hasText && !locked) setOpen(false);
+            }}
+            className={`block max-h-72 min-h-28 w-full resize-none bg-transparent px-4 py-2.5 outline-none field-sizing-content placeholder:text-muted-foreground/60 ${typeStyle("body.default")}`}
+          />
+          {previewing || previewError || preview ? (
+            <div className={`space-y-1 px-4 pb-2 text-muted-foreground ${typeStyle("caption.default")}`}>
+              {previewing ? <p>Preparing preview…</p> : null}
+              {previewError ? <p role="alert">{previewError}</p> : null}
+              {preview?.copiesOwner ? (
+                <p>{preview.copiesOwner} is copied as the conversation owner.</p>
+              ) : null}
+              {preview?.mode === "standalone" ? (
+                <p>Sent from your own inbox as a new email; it stays in this conversation.</p>
+              ) : null}
+              {preview?.stopsFollowUps ? (
+                <p>Sending stops this conversation’s automatic follow-ups.</p>
+              ) : null}
+              {preview && showFull ? (
+                <pre className="max-h-48 overflow-auto rounded-md bg-muted/50 p-2 whitespace-pre-wrap break-words text-foreground">
+                  {preview.text}
+                </pre>
+              ) : null}
+            </div>
           ) : null}
+          <div className="flex items-center gap-2 border-t border-border px-4 py-2">
+            <PillButton
+              size="compact"
+              type="button"
+              title="Send (Ctrl or ⌘ + Enter)"
+              disabled={!preview || sending || locked}
+              onClick={() => void send()}
+            >
+              {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+              Send
+            </PillButton>
+            {preview ? (
+              <PillButton
+                size="compact"
+                type="button"
+                variant="ghost"
+                aria-expanded={showFull}
+                onClick={() => setShowFull((value) => !value)}
+              >
+                {showFull ? "Hide full email" : "Show full email"}
+              </PillButton>
+            ) : null}
+            <PillButton
+              size="compact"
+              type="button"
+              variant="ghost"
+              className="ml-auto"
+              label="Discard reply"
+              aria-label="Discard reply"
+              disabled={sending || locked}
+              onClick={() => {
+                update("");
+                setShowFull(false);
+                setOpen(false);
+              }}
+            >
+              <Trash2 className="size-3.5" />
+            </PillButton>
+          </div>
         </div>
-      ) : null}
-      <div className="flex justify-end">
-        <PillButton
-          size="compact"
+      ) : (
+        <button
           type="button"
-          title="Send (Ctrl or ⌘ + Enter)"
-          disabled={!preview || sending || locked}
-          onClick={() => void send()}
+          onClick={() => setOpen(true)}
+          className={`flex h-10 w-full items-center gap-2 rounded-lg border border-border px-3 text-left text-muted-foreground transition-colors hover:bg-muted/50 ${typeStyle("body.default")}`}
         >
-          {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-          Send
-        </PillButton>
-      </div>
+          <Reply className="size-3.5" />
+          {recipient ? `Reply to ${recipient}` : "Reply"}
+        </button>
+      )}
     </div>
   );
 }

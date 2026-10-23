@@ -6,17 +6,35 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import Link from "next/link";
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { toast } from "sonner";
 import type { FunctionReturnType } from "convex/server";
 import dayjs from "dayjs";
-import { Archive, ArchiveRestore, AtSign, Inbox, Search } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  AtSign,
+  Inbox,
+  PenSquare,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 
 import { PillButton } from "@/components/ui/pill-button";
+import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
+import { AppShellPortal } from "@/components/app-shell-slots";
+import { ChatAvatar } from "@/components/chat/chat-message";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@claritylabs-inc/ui/components/input-group";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Select,
@@ -87,6 +105,16 @@ function participant(thread: InboxThread) {
   );
 }
 
+/** Operators show their profile photo; everyone else shows initials. */
+function rowAvatar(thread: InboxThread) {
+  if (thread.latestDirection === "outbound" && thread.sentBy) return thread.sentBy;
+  if (thread.fromOperator) return thread.fromOperator;
+  return {
+    name: (thread.counterpart ?? participant(thread)).replace(/^To /, ""),
+    avatarUrl: null,
+  };
+}
+
 function matches(thread: InboxThread, term: string) {
   if (!term) return true;
   const haystack = [
@@ -118,8 +146,11 @@ function outboxStatus(sequence: ClientSequence) {
 
 function OutboxRow({ sequence }: { sequence: ClientSequence }) {
   return (
-    <div className="flex items-start gap-2.5 px-4 py-2.5 @2xl:items-center">
-      <span className="w-4 shrink-0" />
+    <div className="flex items-start gap-3 px-4 py-2.5 @2xl:items-center">
+      <ChatAvatar
+        name={sequence.recipient.name ?? sequence.recipient.email}
+        className="size-6"
+      />
       <span className="flex min-w-0 flex-1 flex-col @2xl:flex-row @2xl:items-baseline @2xl:gap-4">
         <span
           className={`min-w-0 truncate text-foreground @2xl:w-44 @2xl:shrink-0 ${typeStyle("body.default")}`}
@@ -166,12 +197,13 @@ function ThreadRow({
   onSelect: () => void;
   onIntent: () => void;
 }) {
-  // Unread and unanswered mail reads bold, as in a mail client.
-  const emphasis = thread.unread || thread.needsReply ? "body.medium" : "body.default";
+  // Unread mail reads bold, as in a mail client.
+  const emphasis = thread.unread ? "body.medium" : "body.default";
   const replying = replyingOperators(viewers);
+  const avatar = rowAvatar(thread);
   const tag =
     scope.kind === "team"
-      ? (thread.client?.name ?? "Unlinked")
+      ? (thread.client?.name ?? null)
       : CATEGORY_LABELS[thread.category] && thread.category !== "other"
         ? CATEGORY_LABELS[thread.category]
         : null;
@@ -204,27 +236,25 @@ function ThreadRow({
               ? `${thread.subject}, needs reply`
               : undefined
         }
-        className="flex min-w-0 flex-1 items-start gap-2.5 py-2.5 pr-4 pl-2 text-left outline-none focus-visible:bg-muted @2xl:items-center"
+        className="flex min-w-0 flex-1 items-start gap-3 py-2.5 pr-4 pl-2 text-left outline-none focus-visible:bg-muted @2xl:items-center"
       >
-        <span className="flex min-w-0 flex-1 flex-col @2xl:flex-row @2xl:items-baseline @2xl:gap-4">
-          <span className="flex min-w-0 items-baseline gap-1.5 @2xl:w-48 @2xl:shrink-0">
-            {thread.unread ? (
-              <span
-                aria-hidden="true"
-                className="size-1.5 shrink-0 self-center rounded-full bg-foreground"
-              />
-            ) : null}
+        <span className="relative shrink-0">
+          <ChatAvatar name={avatar.name} imageUrl={avatar.avatarUrl} className="size-6" />
+          {thread.unread ? (
+            <span
+              aria-hidden="true"
+              className="absolute -top-0.5 -left-0.5 size-2 rounded-full border border-background bg-foreground"
+            />
+          ) : null}
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col @2xl:flex-row @2xl:items-center @2xl:gap-4">
+          <span className="flex min-w-0 items-center gap-1.5 @2xl:w-48 @2xl:shrink-0">
             <span className={`min-w-0 truncate text-foreground ${typeStyle(emphasis)}`}>
               {participant(thread)}
             </span>
             {thread.messageCount > 1 ? (
               <span className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}>
                 {thread.messageCount}
-              </span>
-            ) : null}
-            {tag ? (
-              <span className={`min-w-0 truncate text-muted-foreground ${typeStyle("caption.default")}`}>
-                · {tag}
               </span>
             ) : null}
           </span>
@@ -235,6 +265,11 @@ function ThreadRow({
             ) : null}
           </span>
         </span>
+        {tag ? (
+          <Badge variant="outline" className="hidden max-w-36 text-muted-foreground @xl:inline-flex">
+            <span className="truncate">{tag}</span>
+          </Badge>
+        ) : null}
         {viewers?.length ? (
           <span className="flex shrink-0 items-center gap-1.5">
             {replying.length ? (
@@ -260,16 +295,19 @@ function ThreadRow({
 function SuggestedStrip({
   requestId,
   readOnly,
+  framed = false,
 }: {
   requestId: Id<"procurementRequests">;
   readOnly: boolean;
+  /** Shown on its own (no list below), so it brings its own panel. */
+  framed?: boolean;
 }) {
   const suggested = useQuery(api.teamInbox.suggestedForRequest, { requestId });
   const linkThread = useMutation(api.teamInbox.linkThread);
   const [linking, setLinking] = useState<string | null>(null);
   if (!suggested?.threads.length) return null;
-  return (
-    <div className="divide-y divide-border border-b border-border bg-muted/30">
+  const strip = (
+    <div className={`divide-y divide-border bg-muted/30 ${framed ? "" : "border-b border-border"}`}>
       {suggested.threads.map((thread) => (
         <div key={thread._id} className="flex items-center gap-3 py-2 pr-3 pl-4">
           <span className={`min-w-0 flex-1 truncate ${typeStyle("body.default")}`}>
@@ -319,6 +357,7 @@ function SuggestedStrip({
       ) : null}
     </div>
   );
+  return framed ? <OperationalPanel className="overflow-hidden">{strip}</OperationalPanel> : strip;
 }
 
 /**
@@ -332,6 +371,7 @@ export function TeamInbox({
   selectedThreadId,
   onSelect,
   onOpenThread,
+  onCompose,
   fallbackForwardingAddress = null,
 }: {
   scope: TeamInboxScope;
@@ -339,16 +379,20 @@ export function TeamInbox({
   onSelect: (thread: InboxThread | null, options?: { replace?: boolean }) => void;
   /** Called once when the selected conversation first loads in this list. */
   onOpenThread?: (thread: InboxThread) => void;
+  /** Starts a new email; the team inbox shows its button in the top bar. */
+  onCompose?: () => void;
   /** The request's own address, used only if team email is not configured here. */
   fallbackForwardingAddress?: string | null;
 }) {
   const convex = useConvex();
   const requestId = scope.kind === "request" ? scope.requestId : undefined;
-  const [filter, setFilter] = useState<TeamFilter>("all");
+  // The team inbox opens on the operator's own mail.
+  const [filter, setFilter] = useState<TeamFilter>(scope.kind === "team" ? "mine" : "all");
   const [clientOrgId, setClientOrgId] = useState("");
   const [category, setCategory] = useState(ALL_CATEGORIES);
   const [archivedView, setArchivedView] = useState(false);
   const [search, setSearch] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const clients = useCachedOperatorClients();
   // Impersonating operators read mail; every write below is withheld.
@@ -507,163 +551,120 @@ export function TeamInbox({
   }
 
   const clientOptions = useMemo(
-    () => (clients ?? []).map((client) => ({ value: client._id, label: client.name })),
+    () =>
+      (clients ?? []).map((client) => ({
+        value: client._id,
+        label: client.name,
+        icon: (
+          <OrgBrandIcon
+            name={client.name}
+            iconUrl={client.iconUrl}
+            website={client.website}
+            size="xs"
+          />
+        ),
+      })),
     [clients],
   );
   const filtered =
-    filter !== "all" || !!clientOrgId || category !== ALL_CATEGORIES || archivedView;
+    !!clientOrgId || category !== ALL_CATEGORIES || archivedView;
   const resetFilters = () => {
-    setFilter("all");
     setClientOrgId("");
     setCategory(ALL_CATEGORIES);
     setArchivedView(false);
   };
 
-  return (
-    <OperationalPanel as="section" className="@container overflow-hidden">
-      {checkedVisible.length ? (
-        <div className="flex h-10 items-center gap-3 border-b border-border pr-3 pl-4">
-          <Checkbox
-            aria-label="Select all loaded conversations"
-            checked={allChecked}
-            indeterminate={!allChecked}
-            onCheckedChange={(value) =>
-              setChecked(value === true ? new Set(visible.map((thread) => thread._id)) : new Set())
-            }
-          />
-          <span className={`flex-1 text-muted-foreground ${typeStyle("body.default")}`}>
-            {checkedVisible.length} selected
-          </span>
-          <PillButton
-            type="button"
-            variant="ghost"
-            size="compact"
-            onClick={() => void archive(checkedVisible.map((thread) => thread._id), !archivedView)}
-          >
-            {archivedView ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
-            {archivedView ? "Restore" : "Archive"}
-          </PillButton>
-          <PillButton
-            type="button"
-            variant="ghost"
-            size="compact"
-            onClick={() => setChecked(new Set())}
-          >
-            Clear
-          </PillButton>
-        </div>
-      ) : (
-        <>
-          <div className="flex items-center gap-2.5 border-b border-border pr-2 pl-4">
-            <label className="flex min-w-0 flex-1 items-center gap-2.5">
-              <Search className="size-3.5 shrink-0 text-muted-foreground" />
-              <input
-                aria-label="Search conversations"
-                placeholder="Search mail"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className={`h-10 min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground/60 ${typeStyle("control.input")}`}
-              />
-            </label>
-            <PillButton
-              type="button"
-              variant={archivedView ? "secondary" : "ghost"}
-              size="compact"
-              aria-pressed={archivedView}
-              onClick={() => setArchivedView((value) => !value)}
-            >
-              <Archive className="size-3.5" />
-              <span className="hidden @md:inline">Archived</span>
-            </PillButton>
-            <PillButton
-              type="button"
-              variant="ghost"
-              size="compact"
-              disabled={forward.loading || forward.busy}
-              title={
-                forward.address
-                  ? `Forward mail to ${forward.address} to add it here. Click to copy.`
-                  : "Copy your forwarding address"
-              }
-              onClick={() => void forward.copy()}
-            >
-              <AtSign className="size-3.5" />
-              <span className="hidden max-w-56 truncate @md:inline">
-                {forward.busy
-                  ? "Setting up…"
-                  : forward.address
-                    ? `Forward to ${forward.address}`
-                    : "Forwarding address"}
-              </span>
-            </PillButton>
+  const searchField = (
+    <InputGroup
+      className={`w-full ${scope.kind === "request" ? "border-transparent bg-transparent" : ""}`}
+    >
+      <InputGroupAddon>
+        <Search className="size-3.5" />
+      </InputGroupAddon>
+      <InputGroupInput
+        aria-label="Search conversations"
+        placeholder="Search mail"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+      />
+    </InputGroup>
+  );
+  const archivedToggle = (
+    <PillButton
+      type="button"
+      variant={archivedView ? "secondary" : "ghost"}
+      size="compact"
+      iconOnly
+      label={archivedView ? "Back to inbox" : "Archived"}
+      aria-pressed={archivedView}
+      onClick={() => setArchivedView((value) => !value)}
+    >
+      <Archive className="size-3.5" />
+    </PillButton>
+  );
+  const filtersToggle = (
+    <PillButton
+      type="button"
+      variant={showFilters ? "secondary" : "ghost"}
+      size="compact"
+      iconOnly
+      label={showFilters ? "Hide filters" : "Show filters"}
+      aria-pressed={showFilters}
+      onClick={() => setShowFilters((value) => !value)}
+    >
+      <SlidersHorizontal className="size-3.5" />
+    </PillButton>
+  );
+  const selectionBar = checkedVisible.length ? (
+    <div className="flex h-10 items-center gap-3 border-b border-border pr-3 pl-4">
+      <Checkbox
+        aria-label="Select all loaded conversations"
+        checked={allChecked}
+        indeterminate={!allChecked}
+        onCheckedChange={(value) =>
+          setChecked(value === true ? new Set(visible.map((thread) => thread._id)) : new Set())
+        }
+      />
+      <span className={`flex-1 text-muted-foreground ${typeStyle("body.default")}`}>
+        {checkedVisible.length} selected
+      </span>
+      <PillButton
+        type="button"
+        variant="ghost"
+        size="compact"
+        onClick={() => void archive(checkedVisible.map((thread) => thread._id), !archivedView)}
+      >
+        {archivedView ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
+        {archivedView ? "Restore" : "Archive"}
+      </PillButton>
+      <PillButton type="button" variant="ghost" size="compact" onClick={() => setChecked(new Set())}>
+        Clear
+      </PillButton>
+    </div>
+  ) : null;
+  const suggested =
+    requestId && !archivedView ? (
+      <SuggestedStrip requestId={requestId} readOnly={readOnly} />
+    ) : null;
+
+  let list: ReactNode;
+  if (status === "LoadingFirstPage") {
+    list = (
+      <OperationalPanel className="divide-y divide-border overflow-hidden">
+        {suggested}
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className="flex items-center gap-3 px-4 py-3">
+            <Skeleton className="size-6 rounded-full" />
+            <Skeleton className="h-4 w-2/3" />
           </div>
-          {scope.kind === "team" ? (
-            <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-              <Tabs
-                value={filter}
-                onValueChange={(value) => {
-                  const next = value as TeamFilter;
-                  setFilter(next);
-                  // Unlinked mail has no client, so the two cannot combine.
-                  if (next === "unlinked") setClientOrgId("");
-                }}
-              >
-                <TabsList variant="pill" aria-label="Show">
-                  <TabsTrigger value="all">All</TabsTrigger>
-                  <TabsTrigger value="mine">Mine</TabsTrigger>
-                  <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
-                </TabsList>
-              </Tabs>
-              <div className="w-44">
-                <SearchableSelect
-                  ariaLabel="Client"
-                  typographyRole="control.menu"
-                  value={clientOrgId}
-                  options={clientOptions}
-                  onChange={(value) => {
-                    setClientOrgId(value);
-                    if (filter === "unlinked") setFilter("all");
-                  }}
-                  placeholder="Any client"
-                />
-              </div>
-              <Select
-                value={category}
-                items={CATEGORY_ITEMS}
-                onValueChange={(value) => value && setCategory(value)}
-              >
-                <SelectTrigger className="w-40" aria-label="Category">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.entries(CATEGORY_ITEMS).map(([value, label]) => (
-                    <SelectItem key={value} value={value}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {filtered ? (
-                <PillButton type="button" variant="ghost" size="compact" onClick={resetFilters}>
-                  Clear filters
-                </PillButton>
-              ) : null}
-            </div>
-          ) : null}
-        </>
-      )}
-      {requestId && !archivedView ? (
-        <SuggestedStrip requestId={requestId} readOnly={readOnly} />
-      ) : null}
-      {status === "LoadingFirstPage" ? (
-        <div className="divide-y divide-border">
-          {Array.from({ length: 4 }, (_, index) => (
-            <div key={index} className="px-4 py-3">
-              <Skeleton className="h-4 w-2/3" />
-            </div>
-          ))}
-        </div>
-      ) : visible.length || (!term && outbox.length) ? (
+        ))}
+      </OperationalPanel>
+    );
+  } else if (visible.length || (!term && outbox.length)) {
+    list = (
+      <OperationalPanel className="@container overflow-hidden">
+        {selectionBar}
+        {suggested}
         <div
           role="group"
           aria-label="Conversations"
@@ -699,19 +700,43 @@ export function TeamInbox({
             />
           ))}
         </div>
-      ) : exhausted && !inboxThreads.length ? (
+        {canLoadMore || status === "LoadingMore" ? (
+          <div className="flex justify-center border-t border-border px-4 py-2">
+            <PillButton
+              type="button"
+              variant="ghost"
+              disabled={status === "LoadingMore"}
+              onClick={() => loadMore(PAGE_SIZE)}
+            >
+              {status === "LoadingMore" ? "Loading…" : "Load older mail"}
+            </PillButton>
+          </div>
+        ) : null}
+      </OperationalPanel>
+    );
+  } else if (exhausted && !inboxThreads.length) {
+    list = (
+      <>
+        {requestId && !archivedView ? (
+          <SuggestedStrip requestId={requestId} readOnly={readOnly} framed />
+        ) : null}
         <EmptyStateCard
           title={archivedView ? "No archived conversations" : "No conversations"}
           description={
             scope.kind === "request"
-              ? "Emails to the client, provider outreach, replies and forwarded mail for this request appear here."
-              : filtered
+              ? "Client emails, provider outreach, replies and forwarded mail for this request show up here."
+              : filtered || filter !== "all"
                 ? "Nothing matches these filters."
-                : "Team email, provider outreach, replies and forwarded mail appear here."
+                : "Team email, provider outreach, replies and forwarded mail show up here."
           }
           icon={<Inbox className="size-6" />}
         />
-      ) : (
+      </>
+    );
+  } else {
+    list = (
+      <OperationalPanel className="overflow-hidden">
+        {suggested}
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
             {term
@@ -722,21 +747,121 @@ export function TeamInbox({
             <PillButton type="button" variant="ghost" onClick={() => setSearch("")}>
               Clear
             </PillButton>
+          ) : canLoadMore ? (
+            <PillButton type="button" variant="ghost" onClick={() => loadMore(PAGE_SIZE)}>
+              Load older mail
+            </PillButton>
           ) : null}
         </div>
-      )}
-      {canLoadMore || status === "LoadingMore" ? (
-        <div className="flex justify-center border-t border-border px-4 py-2">
+      </OperationalPanel>
+    );
+  }
+
+  if (scope.kind === "request")
+    return (
+      <section className="@container space-y-3">
+        <OperationalPanel className="flex items-center gap-2 px-2 py-1.5">
+          {archivedToggle}
+          <div className="min-w-0 flex-1">{searchField}</div>
           <PillButton
             type="button"
             variant="ghost"
-            disabled={status === "LoadingMore"}
-            onClick={() => loadMore(PAGE_SIZE)}
+            size="compact"
+            disabled={forward.loading || forward.busy}
+            title={
+              forward.address
+                ? `Forward mail to ${forward.address} to add it here. Click to copy.`
+                : "Copy your forwarding address"
+            }
+            onClick={() => void forward.copy()}
           >
-            {status === "LoadingMore" ? "Loading…" : "Load older mail"}
+            <AtSign className="size-3.5" />
+            <span className="hidden max-w-56 truncate @md:inline">
+              {forward.busy
+                ? "Setting up…"
+                : forward.address
+                  ? `Forward to ${forward.address}`
+                  : "Forwarding address"}
+            </span>
           </PillButton>
+        </OperationalPanel>
+        {list}
+      </section>
+    );
+
+  return (
+    <section className="space-y-3">
+      <AppShellPortal slot="actions">
+        <div className="flex items-center gap-2">
+          {archivedToggle}
+          {onCompose && !readOnly ? (
+            <PillButton type="button" size="compact" onClick={onCompose}>
+              <PenSquare className="size-3.5" />
+              New email
+            </PillButton>
+          ) : null}
+        </div>
+      </AppShellPortal>
+      <div className="flex flex-wrap items-center gap-2">
+        <Tabs
+          value={filter}
+          onValueChange={(value) => {
+            const next = value as TeamFilter;
+            setFilter(next);
+            // Unlinked mail has no client, so the two cannot combine.
+            if (next === "unlinked") setClientOrgId("");
+          }}
+        >
+          <TabsList variant="pill" aria-label="Show">
+            <TabsTrigger value="mine">Mine</TabsTrigger>
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="w-56">{searchField}</div>
+          {filtersToggle}
+        </div>
+      </div>
+      {showFilters ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="w-44">
+            <SearchableSelect
+              ariaLabel="Client"
+              typographyRole="control.menu"
+              value={clientOrgId}
+              options={clientOptions}
+              onChange={(value) => {
+                setClientOrgId(value);
+                if (filter === "unlinked") setFilter("all");
+              }}
+              placeholder="Any client"
+            />
+          </div>
+          <Select
+            value={category}
+            items={CATEGORY_ITEMS}
+            onValueChange={(value) => value && setCategory(value)}
+          >
+            <SelectTrigger className="w-40" aria-label="Category">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(CATEGORY_ITEMS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {filtered ? (
+            <PillButton type="button" variant="ghost" size="compact" onClick={resetFilters}>
+              Clear filters
+            </PillButton>
+          ) : null}
         </div>
       ) : null}
-    </OperationalPanel>
+      {list}
+    </section>
   );
 }

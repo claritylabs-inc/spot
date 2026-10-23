@@ -7,6 +7,7 @@ export type OperatorNavSection =
   | "channels"
   | "logs"
   | "usage"
+  | "audit"
   | "profile"
   | "settings";
 
@@ -58,6 +59,7 @@ function operatorActiveSection(
     case "channels":
     case "logs":
     case "usage":
+    case "audit":
     case "profile":
     case "settings":
       return area;

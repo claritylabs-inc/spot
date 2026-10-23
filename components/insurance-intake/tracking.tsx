@@ -410,7 +410,7 @@ export function IntakeTracking({
               >
                 <IntakeFollowupReview
                   details={data.details}
-                  businessName={a.legalName || a.dba}
+                  businessName={a.dba || a.legalName}
                   answers={rows}
                 />
               </ReviewSection>

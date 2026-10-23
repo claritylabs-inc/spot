@@ -23,6 +23,23 @@ emails were sent. Evidence: `.context/qa/information-requests/`.
 No unit tests or migrations were added. Deleted-request and impersonation guards
 were reviewed in code; separate browser exercises are not claimed.
 
+## Operator UI polish (inbox, reader, settings) — October 23, 2026
+
+Local Conductor stack, synthetic operator via email OTP + TOTP enrollment, and
+synthetic team threads (a forward from an operator alias, a linked client
+thread with a second message). Screenshots in `.context/qa/nitpicks/`.
+
+| Workflow | Status | Evidence / remaining check |
+| --- | --- | --- |
+| Inbox defaults to Mine; filters on top; search and Archived in the top bar | Passed locally | `01-inbox-mine.png`, `02-inbox-all.png` |
+| Row avatars (operator photo for operator-domain senders), unread-only bold, client tag only when linked | Passed locally | `02-inbox-all.png` |
+| Reader opens at the wide width; circular avatars; avatar collapses an open message | Passed locally | `03-reader-forward.png`, `05-reader-collapsed.png` |
+| Forwarded message card and compact attachment chips | Passed locally (forward); attachments not exercised with real files | `03-reader-forward.png` |
+| Mail-style reply compose (From/To/Cc/Subject from the server preview) | Passed locally up to preview; no send exercised | `06-reply-compose.png` |
+| Request Inbox: search/Archived/forward bar separate from the list or empty state | Passed locally | `14-request-email.png` |
+| Settings Team lists all operators; Clients rows link to Procurement | Passed locally | `08-settings-team.png`, `10-clients.png` |
+| New email from the Inbox: compose, server preview (From, Always CC, signature), exact-fingerprint send, new conversation opens | Passed locally in capture mode | `20-compose.png`, `21-sent-thread.png`; live Resend delivery not exercised |
+| Inline field cards fit the label column; website value aligns; operator-size dropdown search | Passed locally | `13-request.png`, `15-client-business.png`, `16-dropdown.png` |
 
 ## Operator team email — October 23, 2026
 
@@ -2608,3 +2625,48 @@ applicability, parent/child form selection, and partial/oversized/capped review
 warnings. No external emails were sent. Temporary fixture API removed afterward;
 local sync/codegen, focused ESLint, TypeScript and whitespace checks passed.
 No database migrations or permanent unit tests were written.
+
+## Team email production rollout and legacy schema removal — 2026-10-23
+
+Authorized live rollout on Spot `merry-platypus-82`: all nine migration steps
+completed without errors; full readback returned complete=true and ok=true.
+Terry's personal team inbox and the shared command inbox were provisioned through
+Spot. The existing production inbox webhook was enabled with its endpoint,
+events and secret preserved; the development inbox webhook remains disabled.
+
+Terry sent a harmless test to Zac with Terry CC. Correct From/signature and Gmail
+receipt were verified, and Zac's actual reply remained in the same shared Inbox
+conversation. A forwarded test arrived unlinked with its original `.eml`; parsing
+the saved attachment confirmed the nested text attachment's exact bytes. Resend
+showed all six test webhook deliveries successful; inspected receipt/response
+records returned HTTP 200 on their first attempt.
+
+Command transport and private routing passed, but “Reply with ‘team email check
+complete’. Do not change anything.” created an unintended draft. The draft was
+cancelled without sending. The local fix explains automatic command-response
+delivery to family selection and generation, and reserves outbound tools for
+separately requested email actions. Production behavior of this fix remains
+unverified until the code is deployed.
+
+At Terry's direction, outreach-sequence live QA was skipped for the upcoming test
+mode, no Amy operator was provisioned, and no Linear issues were created. Hosted
+development migration/live verification was not run. Terry then explicitly
+requested removal of the legacy schema in code. The cleanup removes legacy
+storage, migration fields/functions and runtime adoption, preserves established
+extraction source references, and corrects outreach reply classification to read
+the team message table. Local Convex accepted the schema change.
+
+Evidence: `.context/email-rollout/rollout-report.md`, `migrations.png`,
+`readback.png`, `terry-profile.png`, `zac-reply.png`, `forward-attachment.png`,
+`forwarded-source.eml`, `webhook-success.png`, `command-unintended-draft.png`,
+and `command-draft-cancelled.png`.
+
+Validation: root TypeScript, Convex typecheck, touched-file ESLint and 44 existing
+operator-identity/email/approval tests passed. The local command replay used
+capture delivery and initially found no operator model route; after selecting
+`openai/gpt-5.6-terra` locally, the router rejected its local job callback
+(`router_rejected`: “The job callback is not permitted.”). The command-response
+correction therefore remains unverified through inference; this is not a passing
+end-to-end replay. Evidence: `local-command.json`, `local-command-retry.json`,
+`typecheck-root.log`, `typecheck-convex.log`, `lint.log`, and `tests.log` in the
+same evidence directory. No production code deployment or manual table purge ran.

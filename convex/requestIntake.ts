@@ -24,8 +24,11 @@ import {
   submittedIntakeApplication,
 } from "../lib/intake-application";
 import {
+  fillRequestFromClientProfile,
+  hashIntakeToken,
   readIntakeBusinessProfile,
   saveIntakeBusinessProfile,
+  submissionContent,
 } from "./lib/intakeApplication";
 import { queueIntakeSlack } from "./intakeSlack";
 import { intakeDetailsValidator } from "./lib/intakeDetailsSchema";
@@ -69,59 +72,6 @@ import { publicResearchUrl } from "./lib/companyResearch";
 import { scheduleCompanyResearch } from "./companyResearch";
 import { scheduleWebsiteTechScan } from "./websiteTech";
 
-export async function hashIntakeToken(token: string) {
-  const hash = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(token),
-  );
-  return Array.from(new Uint8Array(hash), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join("");
-}
-export function submissionContent(
-  answers: IntakeAnswers,
-  details: IntakeDetails,
-  fileIds: string[],
-) {
-  const uiKeys = new Set([
-    "companyConfirmed",
-    "prefilled",
-    "coverageIndex",
-    "revenueStep",
-    "mailingAddressStep",
-    "dateInput",
-    "dateParts",
-    "companyResearchSource",
-    "prefillSourceIds",
-    "declinedRequirementCoverages",
-    "operatingLocationPrefilled",
-    "activitiesPrefilled",
-    "followupProgress",
-    "payrollPage",
-    "sectionIntroductions",
-    "subsectionIntroductions",
-    "driverIndex",
-    "autoVehicleIndex",
-    "collectSensitiveDriverDetails",
-  ]);
-  const normalize = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(normalize);
-    if (value && typeof value === "object")
-      return Object.fromEntries(
-        Object.entries(value)
-          .filter(
-            ([key, item]) =>
-              !uiKeys.has(key) && item !== undefined && item !== "",
-          )
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([key, item]) => [key, normalize(item)]),
-      );
-    return value;
-  };
-  return JSON.stringify(
-    normalize({ answers, details: activeIntakeDetails(details,answers.intakeGoal), files: [...fileIds].sort() }),
-  );
-}
 function validateContact(name: string, email: string, phone: string, validatePhone = true) {
   const contact = {
     name: name.trim(),
@@ -194,10 +144,10 @@ async function createIntakeClient(
   answers: IntakeAnswers,
   draftRequestId?: Id<"procurementRequests">,
 ) {
-  const legalName = answers.legalName?.trim();
+  const companyName = answers.dba?.trim() || answers.legalName?.trim();
   const website = answers.website?.trim() || undefined;
   const orgId = await ctx.db.insert("organizations", {
-    name: legalName || placeholderCompanyName(await ctx.db.get(userId)),
+    name: companyName || placeholderCompanyName(await ctx.db.get(userId)),
     website,
     type: "client",
     primaryInsuranceContactId: userId,
@@ -205,7 +155,7 @@ async function createIntakeClient(
     intakeDraftRequestId: draftRequestId,
   });
   await ctx.db.insert("orgMemberships", { orgId, userId, role: "admin" });
-  if (legalName) await scheduleCompanyResearch(ctx, orgId);
+  if (companyName) await scheduleCompanyResearch(ctx, orgId);
   if (website)
     await ctx.scheduler.runAfter(
       0,
@@ -232,7 +182,8 @@ async function syncDraftClient(
   org: Doc<"organizations">,
   answers: IntakeAnswers,
 ) {
-  const name = answers.legalName?.trim() || org.name;
+  const name =
+    answers.dba?.trim() || answers.legalName?.trim() || org.name;
   const website = answers.website?.trim() || undefined;
   if (name === org.name && website === org.website) return;
   await ctx.db.patch(org._id, { name, website });
@@ -718,7 +669,7 @@ export const drafts = query({
       )
       .map((r) => ({
         id: r._id,
-        title: r.intakeAnswers?.legalName || r.title,
+        title: r.intakeAnswers?.dba || r.intakeAnswers?.legalName || r.title,
         coverage:
           r.intakeAnswers?.intakeGoal === "savings"
             ? "Policy savings review"
@@ -768,7 +719,7 @@ export const submitted = query({
           if (!org || org.deletedAt !== undefined || !membership) return null;
           return {
             id: r._id,
-            title: r.intakeAnswers?.legalName || r.title,
+            title: r.intakeAnswers?.dba || r.intakeAnswers?.legalName || r.title,
             coverage:
               r.intakeAnswers?.intakeGoal === "savings"
                 ? "Policy savings review"
@@ -1043,7 +994,7 @@ export const save = mutation({
         : {}),
 
       title: answers.coverage
-        ? `${answers.coverage} — ${answers.legalName || "Insurance request"}`.slice(
+        ? `${answers.coverage} — ${answers.dba || answers.legalName || "Insurance request"}`.slice(
             0,
             200,
           )
@@ -1541,6 +1492,7 @@ export const submit = mutation({
 
           updatedAt: dayjs().valueOf(),
         });
+        await fillRequestFromClientProfile(ctx, (await ctx.db.get(request._id))!);
         await ctx.scheduler.runAfter(0, internal.requestIntake.preparePremiumEstimateInternal, { requestId: request._id });
         if (request.clientOrgId)
           await saveIntakeBusinessProfile(
@@ -1622,6 +1574,7 @@ export const submit = mutation({
 
       updatedAt: now,
     });
+    await fillRequestFromClientProfile(ctx, (await ctx.db.get(request._id))!);
     if (savings) {
       if (writeCompanyProfile)
         await saveIntakeBusinessProfile(

@@ -18,7 +18,6 @@ import {
   previewTeamEmailReply,
   teamReplyError,
 } from "./lib/teamEmailReply";
-import { mappedTeamThreadId } from "./lib/teamEmailLegacy";
 import { REPLY_TOOL_NAMES, agentReplyKey } from "./operatorEmailDrafts";
 
 /**
@@ -94,7 +93,6 @@ export const preview = query({
 export const previewInternal = internalQuery({
   args: {
     operatorUserId: v.id("users"),
-    /** A team thread id, or a legacy procurement thread id that resolves to one. */
     teamEmailThreadId: v.string(),
     message: v.string(),
   },
@@ -188,15 +186,13 @@ export const prepareAgentReplyInternal = internalMutation({
       throw new Error("A completed approval for this reply is required.");
     }
     const input = JSON.parse(confirmation.payload.input) as Record<string, unknown>;
-    // The approved input may name the thread by an older id generation: compare
-    // what each id resolves to, not the raw strings.
+    // Both supported tool argument names must identify the exact approved thread.
     const named = [input.teamEmailThreadId, input.procurementEmailThreadId].filter(
       (id): id is string => typeof id === "string" && id.length > 0,
     );
-    const resolved = await Promise.all(named.map((id) => mappedTeamThreadId(ctx, id)));
     if (
       !named.length ||
-      resolved.some((id) => id !== args.teamEmailThreadId) ||
+      named.some((id) => id !== args.teamEmailThreadId) ||
       input.message !== args.message
     ) {
       throw new Error("The reply does not match what was approved.");

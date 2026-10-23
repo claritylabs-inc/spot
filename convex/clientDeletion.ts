@@ -117,10 +117,6 @@ const ORG_ROOTS: Node[] = [
       child("emailDraftReviewLinks", "draft_channel", "pendingEmailId"),
     ]),
   ]),
-  // Legacy copies stay until the tables are dropped after the cutover readback.
-  child("procurementEmailThreads", "organization", "clientOrgId", undefined, [
-    child("procurementEmailMessages", "thread", "threadId"),
-  ]),
   child("procurementBrokerOutreaches", "organization", "clientOrgId"),
   child("threads", "organization", "orgId", undefined, threadChildren),
   child(

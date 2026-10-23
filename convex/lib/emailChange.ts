@@ -1,6 +1,6 @@
 import { buildEmailChangeOtpEmail } from "./emailTemplate";
 import { getAuthSiteUrl } from "./domains";
-import { getAuthFromAddress, sendResendEmail } from "./resend";
+import { getAuthFromAddress, sendAuthCodeEmail } from "./resend";
 
 export const EMAIL_CHANGE_PROVIDER = "resend-otp";
 export const EMAIL_CHANGE_TTL_MS = 15 * 60 * 1000;
@@ -17,7 +17,7 @@ export async function sendEmailChangeVerificationEmail({
   code: string;
 }) {
   const { html, text } = buildEmailChangeOtpEmail(code, getAuthSiteUrl());
-  return sendResendEmail(
+  return sendAuthCodeEmail(
     {
       from: getAuthFromAddress(),
       to,

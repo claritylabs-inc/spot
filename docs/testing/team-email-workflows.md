@@ -9,8 +9,8 @@ Use two synthetic active operators, Terry QA and Amy QA, in separate Chrome
 profiles. Sign in through email OTP capture and normal second-factor enrollment.
 Create two synthetic clients, requests, a provider contact, and a small attachment
 whose bytes are known. Record fixture IDs in gitignored `.context/qa/team-inbox/`.
-The migration fixture includes old threads/messages, file associations, a sequence,
-an extraction, organization fact provenance, a pending approval, and an old draft.
+Include team threads/messages, file associations, a sequence, an extraction with
+an established source reference, organization fact provenance, and pending drafts.
 
 ## Workflows
 
@@ -52,19 +52,21 @@ an extraction, organization fact provenance, a pending approval, and an old draf
    block does not establish coverage of actual Gmail forwarding.
 7. **Command email.** A verified command to the configured agent inbox creates a
    private operator conversation keyed by Resend thread ID. A second email reuses
-   it and receives a response from Spot. Known agent mail must not enter the team
+   it and receives a response from Spot. Send “Reply with team email check complete.
+   Do not change anything.” Verify the exact response and no saved draft or other
+   business write. Separately request a draft to a named test recipient and verify
+   that explicit drafting still works. Known agent mail must not enter the team
    inbox. Unavailable raw MIME limits the run to reads and reply prose; every
    attempted write, send and external MCP call remains blocked after resume.
    An explicit DKIM failure is rejected, never downgraded. Replies must not leak
    data to an unverified Reply-To. Legacy operator addresses remain authenticated
    and routable across supported agent domains.
-8. **Migration and authorization.** Run migration pages and readback locally,
-   rerun them, and compare source/mapped counts and every migrated reference.
-   Verify provenance fingerprints and historical approvals are preserved, pending
-   approvals are invalidated, and no new writer touches legacy tables. Every
-   readback page must complete before reporting success. Client/provider accounts
-   cannot access team mail; impersonating operators cannot change it. Keep legacy
-   tables until a separate cleanup follows verified readback on deployed targets.
+8. **Team storage and authorization.** Verify file associations, outreach reply
+   classification, notifications and extraction use team IDs only. Retain an
+   existing extraction source reference and applied fingerprint when claiming an
+   unchanged conversation; new mail must still trigger extraction. Old storage
+   IDs must not resolve or gain write authorization. Client/provider accounts
+   cannot access team mail; impersonating operators cannot change it.
 
 For the profile, inbox, reader, linking action and draft card, exercise keyboard
 navigation, a narrow viewport, light and dark themes, and loading, empty and failed

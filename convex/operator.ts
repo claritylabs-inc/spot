@@ -280,7 +280,10 @@ async function listOperatorClientRows(ctx: QueryCtx) {
       return {
         _id: client._id,
         name: client.name,
-        dba: client.profileFacts?.dba?.value.trim() || undefined,
+        dba:
+          client.profileFacts?.dba?.value.trim() ||
+          client.intakeBusinessProfile?.answers?.dba?.trim() ||
+          undefined,
         ...(await orgBrandFields(ctx, client)),
         agentHandle: client.agentHandle,
         clientAccessStatus: clientAccessStatus(client),
@@ -305,6 +308,30 @@ export const listClients = query({
   handler: async (ctx) => {
     await requireOperator(ctx);
     return await listOperatorClientRows(ctx);
+  },
+});
+
+/** Everyone with operator access, owners first, for the Team settings page. */
+export const listOperators = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireOperator(ctx);
+    const profiles = await ctx.db.query("operatorProfiles").take(200);
+    const rows = await Promise.all(
+      profiles.map(async (profile) => ({
+        ...(await operatorPerson(ctx, profile.userId)),
+        email: profile.email,
+        role: profile.role,
+        status: profile.status,
+        createdAt: profile.createdAt,
+      })),
+    );
+    return rows.sort(
+      (a, b) =>
+        Number(a.status === "disabled") - Number(b.status === "disabled") ||
+        Number(b.role === "owner") - Number(a.role === "owner") ||
+        a.name.localeCompare(b.name),
+    );
   },
 });
 
@@ -828,6 +855,8 @@ export const launchSoloClient = action({
     const html = buildEmailShell({ title: subject, bodyHtml, siteUrl });
     const text = `Your Spot workspace for ${launch.name} is ready.\n\nOpen Spot:\n${loginUrl}\n\nSign in with ${launch.adminEmail}.`;
     const result = await sendResendEmail(
+      ctx,
+      userId,
       {
         from: getAuthFromAddress("Spot"),
         to: launch.adminName

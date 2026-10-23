@@ -114,6 +114,7 @@ import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
 import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
+import { DateField } from "@claritylabs-inc/ui/components/date-field";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import {
   OperationalItem,
@@ -212,7 +213,7 @@ type Outreach = {
 type ProcurementFileItem = {
   _id: Id<"procurementFileItems">;
   clientFileId?: Id<"clientFiles">;
-  sourceEmailMessageId?: Id<"teamEmailMessages"> | Id<"procurementEmailMessages">;
+  sourceEmailMessageId?: Id<"teamEmailMessages">;
   intakeCategory?: "requirements" | "policy" | "loss_runs" | "supporting";
   label: string;
   brokerRelease?: "hidden" | "listed" | "attached";
@@ -1088,11 +1089,12 @@ function RequestEditor({
         />
       </InlineFieldRow>
       <InlineFieldRow label="Target effective date">
-        <Input
-          aria-label="Target effective date"
-          type="date"
+        <DateField
+          id="request-effective-date"
+          label="Target effective date"
+          hideLabel
           value={targetEffectiveDate}
-          onChange={(event) => setTargetEffectiveDate(event.target.value)}
+          onChange={setTargetEffectiveDate}
         />
       </InlineFieldRow>
       <InlineFieldRow label="Status">
@@ -2639,8 +2641,17 @@ export function ProcurementRequestWorkspace({
         editable: !readOnly,
       })
     : [];
+  const notesItem = {
+    key: SUBMISSION_NOTES_SECTION,
+    label: SUBMISSION_NOTES_SECTION,
+    icon: PROVIDER_ICONS.notes,
+  };
   const menuGroups = [
-    ...applicationGroups,
+    ...applicationGroups.map((group) =>
+      group.label === "Application"
+        ? { ...group, items: [...group.items, notesItem] }
+        : group,
+    ),
     {
       label: "Information needed",
       items: [
@@ -2660,11 +2671,6 @@ export function ProcurementRequestWorkspace({
     {
       label: "Outreach",
       items: [
-        {
-          key: SUBMISSION_NOTES_SECTION,
-          label: SUBMISSION_NOTES_SECTION,
-          icon: PROVIDER_ICONS.notes,
-        },
         {
           key: "providers",
           label: "Providers",

@@ -1,12 +1,54 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 export const InlineFieldsContext = createContext(false);
 /** Question-length labels get half the row; narrow panels stack label over value. */
 type InlineFieldLayout = "default" | "wide" | "stacked";
 const InlineFieldLayoutContext = createContext<InlineFieldLayout>("default");
 export const InlineCollectionActionsContext = createContext(false);
 import { typeStyle } from "@/lib/typography";
+
+/**
+ * Sizes the card's label column to its longest label (at most half the row),
+ * so short labels leave room for values and long ones wrap as little as possible.
+ */
+function useFittedLabelColumn() {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const card = ref.current;
+    if (!card) return;
+    let frame = 0;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        let widest = 0;
+        for (const label of card.querySelectorAll<HTMLElement>("[data-inline-field-label]")) {
+          if (label.closest("[data-inline-field-card]") !== card) continue;
+          label.style.width = "max-content";
+          widest = Math.max(widest, label.getBoundingClientRect().width);
+          label.style.width = "";
+        }
+        if (widest) card.style.setProperty("--inline-label-width", `min(${Math.ceil(widest)}px, 50%)`);
+        else card.style.removeProperty("--inline-label-width");
+      });
+    };
+    measure();
+    const observer = new MutationObserver(measure);
+    observer.observe(card, { childList: true, subtree: true, characterData: true });
+    void document.fonts?.ready.then(measure);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, []);
+  return ref;
+}
 
 /** Readable field rows whose controls are always live; persistence stays with their owner. */
 export function InlineFieldCard({
@@ -20,9 +62,11 @@ export function InlineFieldCard({
   actions?: ReactNode;
   wideLabels?: boolean;
 }) {
+  const ref = useFittedLabelColumn();
   return (
     <InlineFieldLayoutContext.Provider value={wideLabels ? "wide" : "default"}>
     <div
+      ref={ref}
       data-inline-field-card
       className="overflow-hidden rounded-lg border border-border divide-y divide-border"
     >
@@ -59,9 +103,12 @@ export function InlineFieldRow({
     <div
       data-inline-field-row
       data-row-layout={layout === "default" ? undefined : layout}
-      className={`grid min-w-0 items-center gap-2 px-4 py-1 ${layout === "stacked" ? "grid-cols-1 gap-y-0.5 py-2" : layout === "wide" ? "grid-cols-1 gap-y-1 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:py-1" : "grid-cols-[minmax(0,0.35fr)_minmax(0,0.65fr)] sm:grid-cols-[minmax(0,min(35%,20rem))_minmax(0,1fr)]"} sm:gap-4 [&_input]:h-9! [&_input]:min-h-9! [&_[data-slot=select-trigger]]:h-9! [&_[data-slot=select-trigger]]:min-h-9! [&_[data-slot=select-trigger]]:items-center! [&_[data-slot=select-trigger]]:py-1! [&_input]:text-left! [&_textarea]:text-left! [&_textarea]:field-sizing-content! [&_textarea]:min-h-9! [&_textarea]:h-auto! [&_textarea]:py-[7px]! [&_textarea]:resize-none! [&:has(textarea)]:items-start [&:has(textarea)>:first-child]:pt-2 [&:has([data-inline-multiline])]:items-start [&:has([data-inline-multiline])>:first-child]:pt-2 [&_[data-slot=select-trigger]]:text-left! [&_[data-slot=select-value]]:text-left! [&_[data-slot=select-trigger]]:whitespace-normal! [&_[data-slot=select-value]]:line-clamp-none! [&_[data-slot=select-value]]:flex! [&_[data-slot=select-value]]:items-center! [&_[data-slot=select-trigger]>svg:last-child]:opacity-0 [&_[data-slot=select-trigger]:focus-visible>svg:last-child]:opacity-100 [&_[data-slot=select-trigger][aria-expanded=true]>svg:last-child]:opacity-100 ${typeStyle("body.default")}`}
+      className={`grid min-w-0 items-center gap-2 px-4 py-1 ${layout === "stacked" ? "grid-cols-1 gap-y-0.5 py-2" : layout === "wide" ? "grid-cols-1 gap-y-1 py-2 sm:grid-cols-[minmax(0,var(--inline-label-width,1fr))_minmax(0,1fr)] sm:py-1" : "grid-cols-[minmax(0,0.35fr)_minmax(0,0.65fr)] sm:grid-cols-[minmax(0,var(--inline-label-width,min(35%,20rem)))_minmax(0,1fr)]"} sm:gap-4 [&_input]:h-9! [&_input]:min-h-9! [&_[data-slot=select-trigger]]:h-9! [&_[data-slot=select-trigger]]:min-h-9! [&_[data-slot=select-trigger]]:items-center! [&_[data-slot=select-trigger]]:py-1! [&_input]:text-left! [&_textarea]:text-left! [&_textarea]:field-sizing-content! [&_textarea]:min-h-9! [&_textarea]:h-auto! [&_textarea]:py-[7px]! [&_textarea]:resize-none! [&:has(textarea)]:items-start [&:has(textarea)>:first-child]:pt-2 [&:has([data-inline-multiline])]:items-start [&:has([data-inline-multiline])>:first-child]:pt-2 [&_[data-slot=select-trigger]]:text-left! [&_[data-slot=select-value]]:text-left! [&_[data-slot=select-trigger]]:whitespace-normal! [&_[data-slot=select-value]]:line-clamp-none! [&_[data-slot=select-value]]:flex! [&_[data-slot=select-value]]:items-center! [&_[data-slot=select-trigger]>svg:last-child]:opacity-0 [&_[data-slot=select-trigger]:focus-visible>svg:last-child]:opacity-100 [&_[data-slot=select-trigger][aria-expanded=true]>svg:last-child]:opacity-100 ${typeStyle("body.default")}`}
     >
-      <div className={`text-muted-foreground ${typeStyle("body.default")}`}>
+      <div
+        data-inline-field-label={layout === "stacked" ? undefined : ""}
+        className={`text-muted-foreground ${typeStyle("body.default")}`}
+      >
         {label}
       </div>
       <div

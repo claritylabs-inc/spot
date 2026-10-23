@@ -3,7 +3,6 @@ import { getClientOutreachPanel, launchClientOutreachByOperator } from "./client
 import { NoWriteInputError } from "./lib/noWriteInputError";
 import { operatorTeamAddressFor } from "./lib/teamEmail";
 import { ensureOperatorInbox } from "./lib/operatorInbox";
-import { adoptTeamThreadId, mappedTeamThreadId } from "./lib/teamEmailLegacy";
 import { listTeamInbox, getTeamThreadDetails, linkTeamEmailThreadByOperator } from "./teamInbox";
 import {
   operatorPlanningAssessmentValidator,
@@ -507,7 +506,7 @@ async function referenceDisplayName(
     return row?.label?.trim() || DISPLAY_REFERENCE_FALLBACKS[key];
   }
   if (key === "procurementEmailThreadId" || key === "teamEmailThreadId") {
-    const id = await mappedTeamThreadId(ctx, value);
+    const id = ctx.db.normalizeId("teamEmailThreads", value);
     const row = id ? await ctx.db.get(id) : null;
     return row?.subject?.trim() || DISPLAY_REFERENCE_FALLBACKS[key];
   }
@@ -1135,19 +1134,11 @@ const invalidEmailThreadId = () =>
     "Invalid procurement email thread ID",
   );
 
-/** Read-only: a legacy id works only once its thread has been copied. */
 async function normalizeProcurementEmailThreadId(
   ctx: QueryCtx | MutationCtx,
   value: unknown,
 ) {
-  const id = await mappedTeamThreadId(ctx, emailThreadIdInput(value));
-  if (!id) throw invalidEmailThreadId();
-  return id;
-}
-
-/** For write tools that must act on a legacy thread that may not be copied yet. */
-async function adoptProcurementEmailThreadId(ctx: MutationCtx, value: unknown) {
-  const id = await adoptTeamThreadId(ctx, emailThreadIdInput(value));
+  const id = ctx.db.normalizeId("teamEmailThreads", emailThreadIdInput(value));
   if (!id) throw invalidEmailThreadId();
   return id;
 }
@@ -1488,6 +1479,7 @@ export async function enqueueOperatorMessage(
     requireUploadIntent?: boolean;
     /** Operator asked for a plan before acting (plan mode). */
     planRequested?: boolean;
+    mcpClientId?: string;
   },
 ) {
   const thread = await requireOperatorThread(
@@ -1677,6 +1669,7 @@ export async function enqueueOperatorMessage(
     agentMessageId,
     executionKind: "goal",
     objective: content,
+    mcpClientId: args.mcpClientId,
     ...(args.channel === "email" && args.emailReadOnly ? { emailReadOnly: true } : {}),
     status: "queued",
     ...(args.planRequested ? { planRequested: true } : {}),
@@ -2263,7 +2256,7 @@ async function executeToolDomain(
   if (toolName === "link_team_inbox_thread") {
     return await linkTeamEmailThreadByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      threadId: await adoptProcurementEmailThreadId(ctx, input.teamEmailThreadId),
+      threadId: await normalizeProcurementEmailThreadId(ctx, input.teamEmailThreadId),
       clientOrgId: input.clientOrgId ? normalizeOrganizationId(ctx, input.clientOrgId) : undefined,
       requestId: input.procurementRequestId ? normalizeProcurementRequestId(ctx, input.procurementRequestId) : undefined,
       source: "agent",
@@ -2784,7 +2777,7 @@ async function executeToolDomain(
   if (toolName === "file_procurement_email_quote") {
     return await fileProcurementEmailQuoteByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      emailThreadId: await adoptProcurementEmailThreadId(
+      emailThreadId: await normalizeProcurementEmailThreadId(
         ctx,
         input.procurementEmailThreadId,
       ),
@@ -2941,6 +2934,7 @@ async function executeToolDomain(
     return await getProviderOutreachPanel(
       ctx,
       normalizeProcurementRequestId(ctx, input.procurementRequestId),
+      args.operatorUserId,
     );
   }
 
@@ -3075,7 +3069,7 @@ async function executeToolDomain(
   if (toolName === "update_procurement_email_thread") {
     return await updateProcurementEmailThreadByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      emailThreadId: await adoptProcurementEmailThreadId(
+      emailThreadId: await normalizeProcurementEmailThreadId(
         ctx,
         input.procurementEmailThreadId,
       ),
@@ -5317,6 +5311,7 @@ export const enqueueMessageInternal = internalMutation({
     operatorUserId: v.id("users"),
     threadId: v.id("operatorAgentThreads"),
     channel: operatorChannelValidator,
+    mcpClientId: v.optional(v.string()),
     content: v.string(),
     dedupeKey: v.string(),
     slackThreadContext: v.optional(slackThreadContextSnapshotValidator),
@@ -5480,6 +5475,7 @@ export const prepareDirectToolInvocationInternal = internalMutation({
     threadId: v.optional(v.id("operatorAgentThreads")),
     conversationKey: v.optional(v.string()),
     channel: operatorChannelValidator,
+    mcpClientId: v.optional(v.string()),
     toolName: v.string(),
     summary: v.string(),
     input: v.any(),
@@ -5585,6 +5581,7 @@ export const prepareDirectToolInvocationInternal = internalMutation({
       agentMessageId,
       executionKind: "direct_tool",
       objective: summary,
+      mcpClientId: args.mcpClientId,
       status: "running",
       checkpoint: { iteration: 0, executionCount: 0 },
       startedAt: now,
@@ -5813,6 +5810,7 @@ export const invokeRegisteredToolInternal = internalAction({
     threadId: v.optional(v.id("operatorAgentThreads")),
     conversationKey: v.optional(v.string()),
     channel: operatorChannelValidator,
+    mcpClientId: v.optional(v.string()),
     toolName: v.string(),
     input: v.any(),
     idempotencyKey: v.string(),
@@ -5836,6 +5834,7 @@ export const invokeRegisteredToolInternal = internalAction({
         threadId: args.threadId,
         conversationKey: args.conversationKey,
         channel: args.channel,
+        mcpClientId: args.mcpClientId,
         toolName: args.toolName,
         summary,
         input,

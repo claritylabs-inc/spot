@@ -121,6 +121,7 @@ export function MapboxPlaceSelect({
           className="isolate z-50"
         >
           <Combobox.Popup
+            data-typography-role="control.input"
             className={`z-50 w-max max-w-(--available-width) min-w-(--anchor-width) overflow-hidden rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-border-emphasized outline-hidden ${typeStyle("control.input")}`}
           >
             <div className="border-b border-border p-1.5">

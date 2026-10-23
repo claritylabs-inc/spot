@@ -7,7 +7,10 @@ import {
   INTAKE_FIELDS,
 } from "./insurance-intake";
 import {
+  addressText,
+  detailsAnswers,
   detailsFromAnswers,
+  type IntakeAddress,
   type IntakeDetails,
 } from "./insurance-intake-details";
 import { hasCommercialAuto } from "./intake-drivers";
@@ -170,6 +173,61 @@ export function companyApplicationProfile(application: IntakeApplication) {
     ...(source.revenue ? { revenue: source.revenue } : {}),
   };
   return { answers, details, submittedAt: application.submittedAt };
+}
+
+/**
+ * An application with the company facts it left blank (mailing address,
+ * locations, registration) filled from the client profile. Each fact falls back
+ * on its own and its answer text follows it. Returns the same object when the
+ * profile adds nothing.
+ */
+export function withCompanyProfileFacts<
+  T extends { answers: IntakeAnswers; details: IntakeDetails },
+>(application: T, profile: IntakeDetails | null | undefined): T {
+  if (!profile) return application;
+  const known = (address?: IntakeAddress) =>
+    !!address && !!addressText(address).trim();
+  const registrationKnown = (details: IntakeDetails) =>
+    known(details.registrationAddress) ||
+    !!details.registrationCountry?.trim() ||
+    !!details.registrationState?.trim();
+  const { details } = application;
+  const patch: Partial<IntakeDetails> = {};
+  const answerKeys: (keyof IntakeAnswers)[] = [];
+  if (!known(details.mailingAddress) && known(profile.mailingAddress)) {
+    patch.mailingAddress = profile.mailingAddress;
+    answerKeys.push("mailingAddress");
+  }
+  const hasLocation = (row: IntakeDetails) =>
+    row.locations.some((location) => known(location.address));
+  if (!hasLocation(details) && hasLocation(profile)) {
+    patch.locations = profile.locations;
+    answerKeys.push("locations");
+  }
+  if (!registrationKnown(details) && registrationKnown(profile)) {
+    for (const key of [
+      "registrationAddress",
+      "registrationCountry",
+      "registrationState",
+    ] as const)
+      if (profile[key] !== undefined) Object.assign(patch, { [key]: profile[key] });
+    answerKeys.push("registeredAddress", "formation");
+  }
+  if (!answerKeys.length) return application;
+  const filled = { ...details, ...patch };
+  const derived = detailsAnswers(filled);
+  return {
+    ...application,
+    details: filled,
+    answers: {
+      ...application.answers,
+      ...Object.fromEntries(
+        answerKeys.flatMap((key) =>
+          derived[key] !== undefined ? [[key, derived[key]]] : [],
+        ),
+      ),
+    },
+  };
 }
 
 export function companyNotesMarkdown(

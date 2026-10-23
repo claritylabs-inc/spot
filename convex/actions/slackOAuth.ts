@@ -195,6 +195,8 @@ export const sendInstallInvite = action({
       siteUrl: getAuthSiteUrl(),
     });
     const result = await sendResendEmail(
+      ctx,
+      userId,
       {
         from: getAuthFromAddress(),
         to: recipientEmail,

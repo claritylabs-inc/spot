@@ -7,7 +7,11 @@ import { internal as internalApi } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { getOrgAccess, requireAuth } from "./lib/access";
-import { sendResendEmail, getAuthFromAddress } from "./lib/resend";
+import {
+  type EmailDeliveryCtx,
+  sendResendEmail,
+  getAuthFromAddress,
+} from "./lib/resend";
 import { buildEmailShell } from "./lib/emailTemplate";
 import { getBrandingContext } from "./lib/branding";
 import { getAuthSiteUrl } from "./lib/domains";
@@ -75,12 +79,15 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-async function sendVendorRequestEmail(args: {
-  vendorEmail: string;
-  clientName: string;
-  note?: string;
-  requestUrl: string;
-}) {
+async function sendVendorRequestEmail(
+  ctx: EmailDeliveryCtx,
+  args: {
+    vendorEmail: string;
+    clientName: string;
+    note?: string;
+    requestUrl: string;
+  },
+) {
   const subject = `${args.clientName} invited you to share vendor insurance records`;
   const noteBlock = args.note
     ? `\n\nMessage from ${args.clientName}:\n${args.note}`
@@ -113,6 +120,8 @@ ${safeNote ? `<tr><td style="padding:12px 40px 0 40px;"><p class="cl-email-text-
 </td></tr>`;
 
   const send = await sendResendEmail(
+    ctx,
+    null,
     {
       from: getAuthFromAddress("Spot"),
       to: args.vendorEmail,
@@ -349,7 +358,7 @@ export const requestVendorAccessByEmail = action({
     const siteUrl = getAuthSiteUrl();
     const requestUrl = `${siteUrl}/connect/request/${rawToken}`;
     const clientName = result.clientOrgName ?? "A client";
-    await sendVendorRequestEmail({
+    await sendVendorRequestEmail(ctx, {
       vendorEmail,
       clientName,
       note: args.note,
@@ -386,7 +395,7 @@ export const requestVendorAccessByEmailInternal = internalAction({
     const siteUrl = getAuthSiteUrl();
     const requestUrl = `${siteUrl}/connect/request/${rawToken}`;
     const clientName = result.clientOrgName ?? "A client";
-    await sendVendorRequestEmail({
+    await sendVendorRequestEmail(ctx, {
       vendorEmail,
       clientName,
       note: args.note,
@@ -417,7 +426,7 @@ export const resendVendorInvitation = action({
     );
 
     const siteUrl = getAuthSiteUrl();
-    await sendVendorRequestEmail({
+    await sendVendorRequestEmail(ctx, {
       vendorEmail: result.vendorEmail,
       clientName: result.clientOrgName ?? "A client",
       note: result.note,

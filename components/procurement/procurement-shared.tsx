@@ -16,6 +16,7 @@ import { toast } from "sonner";
 
 import { PresenceAvatars } from "@/components/app-top-bar";
 import { ChatAvatar } from "@/components/chat/chat-message";
+import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import {
   LinkSuggestionBar,
   LinkThreadAction,
@@ -31,7 +32,6 @@ import {
 } from "@claritylabs-inc/ui/components/popover";
 import { PillButton } from "@/components/ui/pill-button";
 import { LogoIcon } from "@/components/ui/logo-icon";
-import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import {
@@ -322,49 +322,102 @@ type ProcurementEmailThreadData = NonNullable<
 export type ProcurementEmailMessageData =
   ProcurementEmailThreadData["messages"][number];
 
+function ForwardedEmailCard({ email }: { email: NonNullable<ForwardedEmail["email"]> }) {
+  const rows = [
+    ["From", mailboxLabel(email.from)],
+    ["To", mailboxList(email.to)],
+    ["Cc", mailboxList(email.cc)],
+    ["Date", email.date && dayjs(email.date).isValid() ? formatDisplayDateTime(dayjs(email.date).valueOf(), email.date) : email.date],
+    ["Subject", email.subject],
+  ].filter((row): row is [string, string] => Boolean(row[1]));
+  return (
+    <div className="overflow-hidden rounded-lg border border-border">
+      <div className={`space-y-0.5 bg-muted/40 px-3 py-2 ${typeStyle("caption.default")}`}>
+        <p className="text-muted-foreground">Forwarded message</p>
+        <dl className="space-y-0.5">
+          {rows.map(([label, value]) => (
+            <div key={label} className="flex min-w-0 gap-2">
+              <dt className="w-12 shrink-0 text-muted-foreground">{label}</dt>
+              <dd className="min-w-0 flex-1 break-words text-foreground">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      {email.body ? (
+        <p
+          className={`whitespace-pre-wrap break-words border-t border-border px-3 py-2.5 text-foreground ${typeStyle("body.default")}`}
+        >
+          {email.body}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * One stored message, laid out like a mail client: sender, recipients and
  * date in the header, then the body, forwarded history and files. Collapsed
- * messages show a single line until opened.
+ * messages show a single line until opened; the avatar collapses an open one.
  */
 export function ProcurementEmailMessage({
   message,
   fromSpot,
   collapsed,
-  onExpand,
+  onToggle,
 }: {
   message: ProcurementEmailMessageData;
   fromSpot: boolean;
   collapsed: boolean;
-  onExpand: () => void;
+  onToggle: () => void;
 }) {
   const forwardedEmail = (message.forwarded as ForwardedEmail | undefined)
     ?.email;
   // Mail we sent is shown as the operator who sent it, not as the sender address.
+  const person = fromSpot ? message.sentBy : message.fromOperator;
   const sender = fromSpot
     ? (message.sentBy?.name ?? "Spot")
-    : (message.fromName ?? message.fromEmail);
-  const files = message.files.flatMap((file) => (file?.url ? [file] : []));
-  const unfiledFiles = message.unfiledFiles.flatMap((file) =>
-    file.url ? [{ ...file, url: file.url }] : [],
-  );
+    : (message.fromName ?? person?.name ?? message.fromEmail);
+  const attachments = [
+    ...message.files.flatMap((file) =>
+      file?.url
+        ? [{ key: String(file.clientFileId), name: file.name, contentType: file.contentType, url: file.url }]
+        : [],
+    ),
+    ...message.unfiledFiles.flatMap((file) =>
+      file.url
+        ? [{ key: String(file.storageId), name: file.name, contentType: file.contentType, url: file.url }]
+        : [],
+    ),
+  ];
   const body =
     message.currentText ||
     (forwardedEmail ? "" : "(No message text)");
+  const avatar =
+    fromSpot && !person ? (
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-background">
+        <LogoIcon size={16} />
+      </span>
+    ) : (
+      <ChatAvatar
+        name={person?.name ?? sender}
+        imageUrl={person?.avatarUrl}
+        className="size-8 shrink-0"
+      />
+    );
   const header = (
     <div className="flex min-w-0 items-start gap-3">
-      {fromSpot && message.sentBy ? (
-        <ChatAvatar
-          name={message.sentBy.name}
-          imageUrl={message.sentBy.avatarUrl}
-          className="mt-0.5 size-8 shrink-0"
-        />
-      ) : fromSpot ? (
-        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-background">
-          <LogoIcon size={18} />
-        </span>
+      {collapsed ? (
+        <span className="mt-0.5">{avatar}</span>
       ) : (
-        <OrgBrandIcon name={sender} size="lg" className="mt-0.5 shrink-0" />
+        <button
+          type="button"
+          aria-label="Collapse message"
+          title="Collapse"
+          onClick={onToggle}
+          className="mt-0.5 shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {avatar}
+        </button>
       )}
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3">
@@ -372,7 +425,7 @@ export function ProcurementEmailMessage({
             <span className={`text-foreground ${typeStyle("body.medium")}`}>
               {sender}
             </span>
-            {message.fromName && !collapsed && !fromSpot ? (
+            {!collapsed && !fromSpot && sender !== message.fromEmail ? (
               <span
                 className={`ml-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
               >
@@ -409,7 +462,7 @@ export function ProcurementEmailMessage({
     return (
       <button
         type="button"
-        onClick={onExpand}
+        onClick={onToggle}
         className="block w-full px-4 py-3 text-left outline-none hover:bg-muted/50 focus-visible:bg-muted"
       >
         {header}
@@ -427,63 +480,16 @@ export function ProcurementEmailMessage({
             {body}
           </p>
         ) : null}
-        {forwardedEmail ? (
-          <blockquote className="space-y-2 border-l-2 border-border pl-3">
-            <div
-              className={`text-muted-foreground ${typeStyle("caption.default")}`}
-            >
-              <p>Forwarded message</p>
-              {mailboxLabel(forwardedEmail.from) ? (
-                <p>From: {mailboxLabel(forwardedEmail.from)}</p>
-              ) : null}
-              {mailboxList(forwardedEmail.to) ? (
-                <p>To: {mailboxList(forwardedEmail.to)}</p>
-              ) : null}
-              {mailboxList(forwardedEmail.cc) ? (
-                <p>Cc: {mailboxList(forwardedEmail.cc)}</p>
-              ) : null}
-              {forwardedEmail.subject ? (
-                <p>Subject: {forwardedEmail.subject}</p>
-              ) : null}
-            </div>
-            {forwardedEmail.body ? (
-              <p
-                className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
-              >
-                {forwardedEmail.body}
-              </p>
-            ) : null}
-          </blockquote>
-        ) : null}
-        {files.length ? (
-          <div className="flex flex-wrap gap-2">
-            {files.map((file) => (
-              <FileDownloadButton
-                key={file.clientFileId}
-                href={file.url!}
-                fileName={file.name}
-              >
-                {file.name}
-              </FileDownloadButton>
+        {forwardedEmail ? <ForwardedEmailCard email={forwardedEmail} /> : null}
+        {attachments.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {attachments.map((file) => (
+              <ChatAttachmentChip
+                key={file.key}
+                attachment={{ filename: file.name, contentType: file.contentType }}
+                url={file.url}
+              />
             ))}
-          </div>
-        ) : null}
-        {unfiledFiles.length ? (
-          <div className="space-y-1">
-            <div className="flex flex-wrap gap-2">
-              {unfiledFiles.map((file) => (
-                <FileDownloadButton
-                  key={file.storageId}
-                  href={file.url}
-                  fileName={file.name}
-                >
-                  {file.name}
-                </FileDownloadButton>
-              ))}
-            </div>
-            <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-              Not filed yet. Link this conversation to a client to file them.
-            </p>
           </div>
         ) : null}
       </div>
@@ -563,15 +569,16 @@ function ConversationContext({
     : hiddenDrafts > 0
       ? `+${hiddenDrafts} more draft${hiddenDrafts === 1 ? "" : "s"}`
       : null;
-  const filedUnder = thread.client
-    ? [thread.client.name, thread.request?.title].filter(Boolean).join(" · ")
-    : "Unlinked";
-  if (!showFiledUnder && !viewers.length && !drafts.length && !moreDrafts) return null;
+  const filedUnder =
+    showFiledUnder && thread.client
+      ? [thread.client.name, thread.request?.title].filter(Boolean).join(" · ")
+      : "";
+  if (!filedUnder && !viewers.length && !drafts.length && !moreDrafts) return null;
   return (
     <div className="space-y-1 bg-muted/30 px-4 py-2">
       <div className="flex min-w-0 items-center justify-between gap-3">
         <p className={`min-w-0 truncate text-muted-foreground ${typeStyle("caption.default")}`}>
-          {showFiledUnder ? filedUnder : ""}
+          {filedUnder}
         </p>
         {viewers.length ? (
           <span className="flex shrink-0 items-center gap-2">
@@ -613,7 +620,8 @@ function EmailConversation({
   readOnly: boolean;
   requestScoped: boolean;
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  // Messages flipped from their default: the newest opens, earlier ones start collapsed.
+  const [toggled, setToggled] = useState<Set<string>>(() => new Set());
   const lastId = thread.messages.at(-1)?._id;
   return (
     <div className="-mx-4 -my-4 divide-y divide-border">
@@ -637,9 +645,13 @@ function EmailConversation({
           key={message._id}
           message={message}
           fromSpot={message.direction === "outbound"}
-          collapsed={message._id !== lastId && !expanded.has(message._id)}
-          onExpand={() =>
-            setExpanded((current) => new Set(current).add(message._id))
+          collapsed={(message._id === lastId) === toggled.has(message._id)}
+          onToggle={() =>
+            setToggled((current) => {
+              const next = new Set(current);
+              if (!next.delete(message._id)) next.add(message._id);
+              return next;
+            })
           }
         />
       ))}
