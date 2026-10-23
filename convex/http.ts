@@ -970,6 +970,7 @@ type OperatorMcpIdentity = {
   operatorRole: "operator" | "owner";
   scopes?: ("read" | "write")[];
   tokenId?: string;
+  clientId?: string;
 };
 
 type McpIdentity = OrganizationMcpIdentity | OperatorMcpIdentity;
@@ -1063,6 +1064,7 @@ async function requireMcpAuth(
         userId: result.userId,
         operatorRole: result.operatorRole,
         tokenId: result.tokenId,
+        clientId: result.clientId,
         scopes: result.scopes ?? ["read"],
       };
     }
@@ -1487,6 +1489,7 @@ async function handleOperatorMcpToolCall(
         operatorUserId,
         conversationKey: `mcp:${identity.tokenId ?? identity.userId}`,
         channel: "mcp",
+        mcpClientId: identity.clientId,
         toolName: name,
         input: args,
         idempotencyKey: requestKey,
@@ -1531,6 +1534,7 @@ async function handleOperatorMcpToolCall(
           operatorUserId,
           threadId,
           channel: "mcp",
+          mcpClientId: identity.clientId,
           content: objective,
           dedupeKey: requestKey,
           attachments: attachments.length ? attachments : undefined,
