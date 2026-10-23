@@ -84,19 +84,22 @@ async function forwardTarget(
     thread.ownerUserId !== inbox.userId
   )
     return { ok: false as const, reason: "not_eligible" as const };
-  const attempt = thread.forwardLinkAttempt;
-  // Before the claim any attempt blocks; the finishing write needs its own open claim.
-  const attemptBlocks =
-    options.claimed === undefined
-      ? attempt !== undefined
-      : attempt?.status !== "claimed" || attempt.startedAt !== options.claimed;
-  if (attemptBlocks) return { ok: false as const, reason: "already_attempted" as const };
   const message = await ctx.db
     .query("teamEmailMessages")
     .withIndex("by_resendInboxEmailId", (q) => q.eq("resendInboxEmailId", args.emailId))
     .first();
   if (!message || message.threadId !== thread._id || message.direction !== "inbound")
     return { ok: false as const, reason: "message_mismatch" as const };
+  const attempt = thread.forwardLinkAttempt;
+  // Before the claim any attempt blocks; the finishing write needs its own open
+  // claim, made for this exact message.
+  const attemptBlocks =
+    options.claimed === undefined
+      ? attempt !== undefined
+      : attempt?.status !== "claimed" ||
+        attempt.startedAt !== options.claimed ||
+        attempt.messageId !== message._id;
+  if (attemptBlocks) return { ok: false as const, reason: "already_attempted" as const };
   let owner;
   try {
     owner = await requireOperatorForUser(ctx, inbox.userId);
@@ -120,6 +123,10 @@ export const forwardContext = internalQuery({
       ok: true as const,
       ownerUserId: target.owner.userId,
       inboxAddress: target.inbox.emailAddress.toLowerCase(),
+      /** The mirrored From is one of the owner's login aliases: the only mail that can be a forward. */
+      fromIsOwner: operatorEmailAliases(target.owner.user.email).includes(
+        normalizeProcurementEmail(target.message.fromEmail),
+      ),
       /** The forwarder's own addresses: never original correspondents. */
       ownerAddresses: [
         ...operatorEmailAliases(target.owner.user.email),
@@ -155,6 +162,8 @@ async function evaluateRequest(
   if (
     !clientOrgId ||
     request.deletedAt ||
+    // Policy savings reviews are not company requests: the canonical link
+    // writer (`requireRequest` -> `requireCompanyRequest`) rejects them.
     request.intakeAnswers?.intakeGoal === "savings" ||
     request.status === "completed" ||
     request.status === "cancelled" ||
