@@ -2326,6 +2326,7 @@ export function ProcurementRequestWorkspace({
           subject={thread.subject}
           replyable={thread.source === "outreach"}
           requestId={requestId}
+          includeArchived={Boolean(thread.archivedAt)}
           requests={requestOptions}
           readOnly={readOnly}
           onClose={closeEmail}
