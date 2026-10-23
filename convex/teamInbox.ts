@@ -6,6 +6,7 @@ import { internalQuery, mutation, query, type MutationCtx } from "./_generated/s
 import { requireOperator } from "./lib/operatorIdentity";
 import {
   getTeamThreadDetails,
+  listSuggestedTeamThreads,
   listTeamInbox,
   teamInboxUnreadCount,
 } from "./lib/teamEmailStore";
@@ -21,7 +22,12 @@ export {
   linkTeamEmailThreadByOperator,
   setTeamThreadsArchivedByOperator,
 } from "./procurementRequests";
-export { listTeamInbox, getTeamThreadDetails, teamInboxUnreadCount } from "./lib/teamEmailStore";
+export {
+  getTeamThreadDetails,
+  listSuggestedTeamThreads,
+  listTeamInbox,
+  teamInboxUnreadCount,
+} from "./lib/teamEmailStore";
 
 /**
  * Records that `userId` has read everything in the thread up to its newest
@@ -74,11 +80,31 @@ export const list = query({
   },
 });
 
+/**
+ * Unlinked conversations suggested for one request (its Email tab "Suggested"
+ * strip). Accept with `linkThread({threadId, requestId})`, which re-checks the
+ * live target. `limited` means the bounded scan did not cover every unlinked
+ * thread.
+ */
+export const suggestedForRequest = query({
+  args: { requestId: v.id("procurementRequests") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await requireRequest(ctx, args.requestId);
+    return await listSuggestedTeamThreads(ctx, {
+      viewerUserId: operator.userId,
+      requestId: args.requestId,
+    });
+  },
+});
+
 /** One conversation, unlinked or linked; null when missing, deleted or outside `requestId`. */
 export const getThread = query({
   args: {
     threadId: v.id("teamEmailThreads"),
     requestId: v.optional(v.id("procurementRequests")),
+    /** Inside a request scope, also open archived conversations (the archive view). */
+    includeArchived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);

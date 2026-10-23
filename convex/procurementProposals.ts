@@ -846,6 +846,8 @@ export async function fileProcurementProposalByOperator(
   };
 }
 
+const MAX_QUOTE_THREAD_MESSAGES = 300;
+
 export async function fileProcurementEmailQuoteByOperator(
   ctx: MutationCtx,
   args: {
@@ -868,7 +870,12 @@ export async function fileProcurementEmailQuoteByOperator(
   const messages = await ctx.db
     .query("teamEmailMessages")
     .withIndex("by_threadId_and_receivedAt", (query) => query.eq("threadId", thread._id))
-    .take(300);
+    .take(MAX_QUOTE_THREAD_MESSAGES + 1);
+  // Filing covers the whole thread or nothing: a bounded read cannot imply full coverage.
+  if (messages.length > MAX_QUOTE_THREAD_MESSAGES)
+    throw new Error(
+      `Filing a quote from an email thread supports at most ${MAX_QUOTE_THREAD_MESSAGES} messages; this thread has more.`,
+    );
   const clientFileIds = [
     ...new Set(messages.flatMap((message) => message.clientFileIds)),
   ];

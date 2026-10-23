@@ -24,7 +24,6 @@ import {
 const EXTRACTION_LEASE_MS = 2 * 60 * 1_000;
 const MAX_EXTRACTION_ATTEMPTS = 3;
 const MAX_ACTIVE_EXTRACTIONS_PER_ORG = 500;
-const MAX_REMOVED_THREAD_MESSAGES = 300;
 const extractClientFileRef = makeFunctionReference<
   "action",
   { clientFileId: Id<"clientFiles"> }
@@ -504,13 +503,15 @@ export async function removeEmailThreadCompanyInformation(
   const extraction = await extractionForTeamThread(ctx, emailThreadId);
   if (extraction) await ctx.db.delete(extraction._id);
 
-  const messages = await ctx.db
+  const clientFileIds = new Set<Id<"clientFiles">>();
+  let hasMessages = false;
+  for await (const message of ctx.db
     .query("teamEmailMessages")
-    .withIndex("by_threadId_and_receivedAt", (index) => index.eq("threadId", emailThreadId))
-    .take(MAX_REMOVED_THREAD_MESSAGES);
-  for (const clientFileId of new Set(
-    messages.flatMap((message) => message.clientFileIds),
-  )) {
+    .withIndex("by_threadId_and_receivedAt", (index) => index.eq("threadId", emailThreadId))) {
+    hasMessages = true;
+    for (const clientFileId of message.clientFileIds) clientFileIds.add(clientFileId);
+  }
+  for (const clientFileId of clientFileIds) {
     const fileExtraction = await ctx.db
       .query("companyInformationExtractions")
       .withIndex("file", (index) => index.eq("clientFileId", clientFileId))
@@ -519,7 +520,7 @@ export async function removeEmailThreadCompanyInformation(
   }
   const orgId = extraction?.orgId ?? thread?.clientOrgId;
   if (orgId) await reconcileCompanyInformation(ctx, orgId);
-  return Boolean(extraction || messages.length > 0);
+  return Boolean(extraction || hasMessages);
 }
 
 export async function scheduleEmailThreadCompanyInformation(

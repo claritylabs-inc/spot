@@ -1,18 +1,21 @@
 import dayjs from "dayjs";
 import { Migrations } from "@convex-dev/migrations";
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
 
 import { components, internal } from "./_generated/api";
 import type { DataModel, Doc, Id } from "./_generated/dataModel";
 import {
   internalAction,
+  internalMutation,
   internalQuery,
   type ActionCtx,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
+import { cancelActiveRunsForThread } from "./operatorAgent";
 import {
   copyLegacyMessage,
+  copyLegacyMessagesPage,
   copyLegacyThread,
   teamThreadForSequence,
 } from "./lib/teamEmailStore";
@@ -42,9 +45,11 @@ const SENDER_CHANGED = "Sender changed — update draft to re-sign.";
 
 type Ctx = QueryCtx | MutationCtx;
 
+// Batch sizes follow row weight, not row count: a message body can reach ~300 KB
+// and a copy reads the original and writes its twin in one transaction.
 export const copyThreads = migrations.define({
   table: "procurementEmailThreads",
-  batchSize: 50,
+  batchSize: 20,
   migrateOne: async (ctx, legacy) => {
     await copyLegacyThread(ctx, legacy);
   },
@@ -64,7 +69,7 @@ async function teamMessageForLegacy(
 
 export const copyMessages = migrations.define({
   table: "procurementEmailMessages",
-  batchSize: 50,
+  batchSize: 10,
   migrateOne: async (ctx, legacy) => {
     await teamMessageForLegacy(ctx, legacy);
   },
@@ -155,7 +160,7 @@ async function repointFactSources(
 /** Organization profile facts whose source is a procurement email thread. */
 export const repointOrganizationFactSources = migrations.define({
   table: "organizations",
-  batchSize: 50,
+  batchSize: 10,
   migrateOne: async (ctx, organization) => {
     if (!organization.profileFacts) return;
     const walked = await repointFactSources(ctx, organization.profileFacts);
@@ -202,24 +207,51 @@ function approvalInputThreadId(input: string) {
  */
 export const staleLegacyEmailThreadApprovals = migrations.define({
   table: "operatorAgentConfirmations",
-  batchSize: 100,
+  batchSize: 25,
   migrateOne: async (ctx, confirmation) => {
     if (confirmation.status !== "pending" || !APPROVAL_TOOLS.has(confirmation.payload.toolName))
       return;
     const threadId = approvalInputThreadId(confirmation.payload.input);
     if (!threadId || !ctx.db.normalizeId("procurementEmailThreads", threadId)) return;
+    const now = dayjs().valueOf();
     await ctx.db.patch(confirmation._id, {
       status: "stale",
-      invalidatedAt: dayjs().valueOf(),
+      invalidatedAt: now,
       invalidationReason: "email_thread_migrated",
+      updatedAt: now,
     });
+    // The run that asked is waiting on this approval: end it (and only it), so it
+    // does not wait forever or leave the assistant message processing.
+    await cancelActiveRunsForThread(
+      ctx,
+      confirmation.threadId,
+      "email_thread_migrated",
+      confirmation.payload.runId,
+    );
+  },
+});
+
+/** Copies the rest of a long adopted thread, one bounded page per transaction. */
+export const copyThreadMessagesInternal = internalMutation({
+  args: { legacyThreadId: v.id("procurementEmailThreads"), cursor: v.string() },
+  handler: async (ctx, args): Promise<{ done: boolean }> => {
+    const legacy = await ctx.db.get(args.legacyThreadId);
+    if (!legacy) return { done: true };
+    const thread = await copyLegacyThread(ctx, legacy);
+    const page = await copyLegacyMessagesPage(ctx, legacy, thread, args.cursor);
+    if (!page.isDone)
+      await ctx.scheduler.runAfter(0, internal.teamInboxMigrations.copyThreadMessagesInternal, {
+        legacyThreadId: args.legacyThreadId,
+        cursor: page.continueCursor,
+      });
+    return { done: page.isDone };
   },
 });
 
 /** Operator drafts written under the client agent identity must be re-signed by a person before sending. */
 export const blockLegacyOperatorDrafts = migrations.define({
   table: "pendingEmails",
-  batchSize: 100,
+  batchSize: 25,
   migrateOne: async (ctx, draft) => {
     if (
       !draft.operatorThreadId ||
@@ -253,8 +285,22 @@ const READBACK_CHECKS = [
 type ReadbackCheck = (typeof READBACK_CHECKS)[number];
 const readbackCheckValidator = v.union(...READBACK_CHECKS.map((name) => v.literal(name)));
 
-const PAGE_SIZE = 100;
-/** Pages one action run reads before it returns a cursor to resume from. */
+/**
+ * Rows per readback page. Heavy rows (message bodies, whole organization
+ * documents) get small pages so one query stays far under the read limit.
+ */
+const PAGE_SIZES: Record<ReadbackCheck, number> = {
+  threads: 50,
+  messages: 10,
+  fileItems: 100,
+  sequences: 50,
+  extractions: 25,
+  organizations: 10,
+  notifications: 100,
+  approvals: 50,
+  operatorDrafts: 25,
+};
+/** Pages one action run reads before it returns the accumulated reports to resume from. */
 const MAX_PAGES_PER_RUN = 150;
 const MAX_SAMPLES = 10;
 
@@ -387,7 +433,7 @@ export const readbackPage = internalQuery({
   handler: async (ctx, args) => {
     const page = await ctx.db
       .query(CHECK_TABLE[args.check])
-      .paginate({ cursor: args.cursor, numItems: PAGE_SIZE });
+      .paginate({ cursor: args.cursor, numItems: PAGE_SIZES[args.check] });
     const problems: { id: string; reason: string }[] = [];
     let unresolved = 0;
     for (const doc of page.page) {
@@ -410,72 +456,76 @@ export const readbackPage = internalQuery({
   },
 });
 
-type CheckReport = {
-  check: ReadbackCheck;
-  scanned: number;
-  unresolved: number;
-  samples: { id: string; reason: string }[];
-  /** Resume point when the run stopped before the table ended; null when finished. */
-  cursor: string | null;
-  complete: boolean;
-};
+const checkReportValidator = v.object({
+  check: readbackCheckValidator,
+  scanned: v.number(),
+  unresolved: v.number(),
+  samples: v.array(v.object({ id: v.string(), reason: v.string() })),
+  /** Resume point when the check stopped before the table ended; null when finished or not started. */
+  cursor: v.union(v.string(), v.null()),
+  complete: v.boolean(),
+});
+type CheckReport = Infer<typeof checkReportValidator>;
 
 /**
  * Cutover readback. Reads every source table page by page and reports, per
- * check, how many documents were scanned and which do not resolve. `ok` is true
- * only when every check finished (`complete`) with nothing unresolved: a run
- * that stops at its page budget returns `cursor`s, passed back as `cursors`, and
- * is never reported as success. `scanned` for the thread and message checks is
- * the legacy row count.
+ * check, how many documents were scanned and which do not resolve. Counts are
+ * cumulative: a run that stops at its page budget returns `resumeWith.reports`,
+ * which is passed back as `reports` and continues each unfinished check from its
+ * cursor with its earlier scanned/unresolved/samples carried forward. `ok` is
+ * true only when ALL checks are accounted for, complete, with nothing
+ * unresolved, so a run limited to some `checks`, or a resumed run missing earlier
+ * reports, can never report a green cutover. `scanned` for the thread and
+ * message checks is the legacy row count.
  */
 export const readback = internalAction({
   args: {
     checks: v.optional(v.array(readbackCheckValidator)),
-    cursors: v.optional(v.record(v.string(), v.union(v.string(), v.null()))),
+    reports: v.optional(v.array(checkReportValidator)),
   },
   handler: async (ctx, args) => {
-    const reports: CheckReport[] = [];
+    const byCheck = new Map<ReadbackCheck, CheckReport>(
+      (args.reports ?? []).map((report) => [report.check, report]),
+    );
     let pagesLeft = MAX_PAGES_PER_RUN;
     for (const check of args.checks ?? READBACK_CHECKS) {
-      let cursor: string | null = args.cursors?.[check] ?? null;
-      const report: CheckReport = {
-        check,
-        scanned: 0,
-        unresolved: 0,
-        samples: [],
-        cursor: null,
-        complete: false,
-      };
+      const prior = byCheck.get(check);
+      if (prior?.complete) continue;
+      const report: CheckReport = prior
+        ? { ...prior, samples: [...prior.samples] }
+        : { check, scanned: 0, unresolved: 0, samples: [], cursor: null, complete: false };
       while (pagesLeft > 0) {
         pagesLeft -= 1;
-        const page: ReadbackPage = await readOnePage(ctx, check, cursor);
+        const page: ReadbackPage = await readOnePage(ctx, check, report.cursor);
         report.scanned += page.scanned;
         report.unresolved += page.unresolved;
-        report.samples.push(...page.samples.slice(0, MAX_SAMPLES - report.samples.length));
-        cursor = page.cursor;
+        report.samples.push(...page.samples.slice(0, Math.max(0, MAX_SAMPLES - report.samples.length)));
+        report.cursor = page.cursor;
         if (page.isDone) {
           report.complete = true;
           break;
         }
       }
-      report.cursor = report.complete ? null : cursor;
-      reports.push(report);
+      byCheck.set(check, report);
     }
+    const reports: CheckReport[] = READBACK_CHECKS.map(
+      (check) =>
+        byCheck.get(check) ?? {
+          check,
+          scanned: 0,
+          unresolved: 0,
+          samples: [],
+          cursor: null,
+          complete: false,
+        },
+    );
     const complete = reports.every((report) => report.complete);
     return {
       ok: complete && reports.every((report) => report.unresolved === 0),
       complete,
       reports,
-      resumeWith: complete
-        ? null
-        : {
-            checks: reports.filter((report) => !report.complete).map((report) => report.check),
-            cursors: Object.fromEntries(
-              reports
-                .filter((report) => !report.complete)
-                .map((report) => [report.check, report.cursor]),
-            ),
-          },
+      /** Pass as `reports` to continue; null when every check finished. */
+      resumeWith: complete ? null : { reports },
       readAt: dayjs().valueOf(),
     };
   },

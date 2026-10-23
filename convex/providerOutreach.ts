@@ -2834,10 +2834,12 @@ async function mirrorInboxEmail(
     direction: args.inbound ? "inbound" : "outbound",
     attachments: args.attachments,
     resendThreadId: args.resendThreadId,
+    inboxId: sequence.inboxId,
     sentByUserId: args.inbound ? undefined : (args.sentByUserId ?? sequence.senderUserId),
     extraParticipants: [sequence.recipient.email],
     now: args.now,
   });
+  if ("rejected" in mirrored) throw new Error(`Outreach conversation unavailable: ${mirrored.reason}`);
   if (sequence.teamEmailThreadId !== mirrored.threadId || sequence.procurementEmailThreadId)
     await ctx.db.patch(sequence._id, {
       teamEmailThreadId: mirrored.threadId,
@@ -3018,35 +3020,6 @@ export const applyInboundInboxEmailInternal = internalMutation({
 });
 
 /**
- * Makes later mail in this inbox thread map to the conversation: the first
- * inbox thread becomes the conversation's `resendThreadId`, any other (a second
- * operator's reply, a CC delivered to another inbox) gets a link row.
- */
-async function bindInboxThread(
-  ctx: MutationCtx,
-  args: { threadId: Id<"teamEmailThreads">; inboxId: string; resendThreadId: string },
-) {
-  const thread = await ctx.db.get(args.threadId);
-  if (!thread || thread.resendThreadId === args.resendThreadId) return;
-  if (!thread.resendThreadId) {
-    await ctx.db.patch(thread._id, { resendThreadId: args.resendThreadId });
-    return;
-  }
-  const link = await ctx.db
-    .query("teamEmailThreadLinks")
-    .withIndex("by_inboxId_and_resendThreadId", (q) =>
-      q.eq("inboxId", args.inboxId).eq("resendThreadId", args.resendThreadId),
-    )
-    .first();
-  if (!link)
-    await ctx.db.insert("teamEmailThreadLinks", {
-      threadId: thread._id,
-      inboxId: args.inboxId,
-      resendThreadId: args.resendThreadId,
-    });
-}
-
-/**
  * `inbox.email.received` / `inbox.email.sent` for mail no outreach sequence
  * owns: mirrors it into its team conversation (found by thread id, link, or
  * the send it was bound from) or into a new unlinked conversation owned by the
@@ -3133,14 +3106,15 @@ export const applyTeamInboxEmailInternal = internalMutation({
       direction: inbound ? "inbound" : "outbound",
       attachments,
       resendThreadId: event.threadId,
+      inboxId: event.inboxId,
       sentByUserId: inbound ? undefined : inbox.userId,
       now,
     });
-    await bindInboxThread(ctx, {
-      threadId: mirrored.threadId,
-      inboxId: event.inboxId,
-      resendThreadId: event.threadId,
-    });
+    // A dead client/request target takes nothing (uploads already deleted); the event is final.
+    if ("rejected" in mirrored) {
+      await finishEvent(ctx, event, now, mirrored.reason);
+      return { applied: false as const, reason: mirrored.reason };
+    }
     let notifyOwner = false;
     if (inbound && !mirrored.duplicate) {
       const thread = (await ctx.db.get(mirrored.threadId))!;
