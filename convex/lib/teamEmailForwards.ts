@@ -179,7 +179,9 @@ export function planForwardLink<Candidate>(scan: {
   complete: boolean;
 }): ForwardPlan<Candidate> {
   const { candidates, complete } = scan;
-  if (candidates.length === 0) return { kind: "none", reason: "no_candidates" };
+  // An incomplete scan never implies absence.
+  if (candidates.length === 0)
+    return { kind: "none", reason: complete ? "no_candidates" : "incomplete_scan" };
   if (candidates.length > MAX_FORWARD_CANDIDATES)
     return { kind: "none", reason: "too_many_candidates" };
   if (!complete)

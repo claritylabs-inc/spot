@@ -49,7 +49,21 @@ export type ForwardSkipReason =
   | "raw_rejected"
   | "authentication_failed"
   | "mismatched_email"
+  | "not_forward_sender"
   | "not_forward";
+
+/** Ordinary outcomes for mail that is simply not a forward to link; not worth a warning. */
+const QUIET_SKIPS: ReadonlySet<ForwardSkipReason> = new Set([
+  "not_forward_sender",
+  "not_forward",
+  "already_attempted",
+  "not_eligible",
+  "thread_unavailable",
+  "captured",
+]);
+
+/** Pre-claim retries when the raw message is not available (yet): delays by round. */
+const RAW_RETRY_DELAYS_MS = [30_000, 120_000] as const;
 
 /**
  * Result contract for `internal.actions.teamEmailForwarding.process`.
@@ -63,7 +77,9 @@ export type ForwardSkipReason =
  *   or unconfident choice, `candidate_unavailable`, or `failed`).
  * - `skipped`: nothing was claimed or changed. `retryable` is true only when
  *   the raw message was not available (yet) or could not be verified because of
- *   an outage; the dispatcher may call again later. Mail stays visible either way.
+ *   an outage. For those reasons `process` also schedules up to two bounded
+ *   retries of itself (30s, then 2m; `retryScheduled`), always before the claim;
+ *   the dispatcher need not retry. Mail stays visible either way.
  *
  * Once an authenticated forward is claimed the thread carries
  * `forwardLinkAttempt`, and no later call (retry, duplicate event) repeats the
@@ -78,11 +94,24 @@ export type ForwardProcessResult =
       via: "deterministic" | "model";
     }
   | { status: "unlinked"; reason: string }
-  | { status: "skipped"; reason: ForwardSkipReason; retryable: boolean };
+  | {
+      status: "skipped";
+      reason: ForwardSkipReason;
+      retryable: boolean;
+      retryScheduled: boolean;
+    };
 
-function skipped(reason: ForwardSkipReason, retryable = false): ForwardProcessResult {
-  console.warn(`Team email forward skipped (${reason})`);
-  return { status: "skipped", reason, retryable };
+function skipped(
+  reason: ForwardSkipReason,
+  options: { retryable?: boolean; retryScheduled?: boolean } = {},
+): ForwardProcessResult {
+  if (!QUIET_SKIPS.has(reason)) console.warn(`Team email forward skipped (${reason})`);
+  return {
+    status: "skipped",
+    reason,
+    retryable: options.retryable ?? false,
+    retryScheduled: options.retryScheduled ?? false,
+  };
 }
 
 const bareMessageId = (value: string | null | undefined) =>
@@ -104,7 +133,7 @@ async function authenticatedRaw(
     if (attempt) await wait(RAW_RETRY_MS * attempt);
     try {
       const raw = await fetchReceivedEmailRaw(emailId, MAX_OPERATOR_EMAIL_RAW_BYTES);
-      if (raw.status === "unavailable") return skipped("raw_unavailable", true);
+      if (raw.status === "unavailable") return skipped("raw_unavailable", { retryable: true });
       return {
         mail: await authenticateOperatorEmail(raw.raw, {
           commandInboxAddress: inboxAddress,
@@ -118,7 +147,7 @@ async function authenticatedRaw(
       // Anything else is an outage or a temporary DKIM lookup failure.
     }
   }
-  return skipped("raw_temporarily_unavailable", true);
+  return skipped("raw_temporarily_unavailable", { retryable: true });
 }
 
 type Candidate = {
@@ -173,16 +202,42 @@ export const process = internalAction({
     threadId: v.id("teamEmailThreads"),
     inboxId: v.string(),
     emailId: v.string(),
+    /** Internal retry round (0-2); the dispatcher omits it. */
+    round: v.optional(v.number()),
   },
-  handler: async (ctx, args): Promise<ForwardProcessResult> => {
+  handler: async (ctx, { round, ...args }): Promise<ForwardProcessResult> => {
     if (![args.inboxId, args.emailId].every((id) => RESEND_ID.test(id)))
       return skipped("invalid_ids");
     if (getEmailDeliveryMode() === "capture") return skipped("captured");
     const context = await ctx.runQuery(internal.teamEmailForwarding.forwardContext, args);
     if (!context.ok) return skipped(context.reason);
+    // Only the owner's own forwards qualify: ordinary client and broker mail stops here.
+    if (!context.fromIsOwner) return skipped("not_forward_sender");
 
     const authenticated = await authenticatedRaw(args.emailId, context.inboxAddress);
-    if (!("mail" in authenticated)) return authenticated;
+    if (!("mail" in authenticated)) {
+      // An absent round is the first call; anything out of range counts as the last.
+      const current =
+        round === undefined
+          ? 0
+          : Number.isInteger(round) && round >= 0
+            ? round
+            : RAW_RETRY_DELAYS_MS.length;
+      const nextRound = current + 1;
+      if (
+        authenticated.status === "skipped" &&
+        authenticated.retryable &&
+        nextRound <= RAW_RETRY_DELAYS_MS.length
+      ) {
+        await ctx.scheduler.runAfter(
+          RAW_RETRY_DELAYS_MS[nextRound - 1],
+          internal.actions.teamEmailForwarding.process,
+          { ...args, round: nextRound },
+        );
+        return { ...authenticated, retryScheduled: true };
+      }
+      return authenticated;
+    }
     const { mail } = authenticated;
     const sender = mail.from!.value[0].address!.toLowerCase();
     const reportedMessageId = bareMessageId(context.message.rfcMessageId);
@@ -350,11 +405,12 @@ export const process = internalAction({
         ? { status: "suggested", requestId, confidence, via: "model" }
         : { status: "unlinked", reason: result.reason };
     } catch (error) {
-      console.error("Team email forward linking failed", error);
+      // Provider and router errors can carry payloads: record only a stable code.
+      console.error("Team email forward linking failed:", error instanceof Error ? error.name : "unknown");
       await ctx.runMutation(internal.teamEmailForwarding.failForward, {
         threadId: args.threadId,
         startedAt,
-        reason: error instanceof Error ? error.message : "failed",
+        reason: "linking_failed",
       });
       return { status: "unlinked", reason: "failed" };
     }
