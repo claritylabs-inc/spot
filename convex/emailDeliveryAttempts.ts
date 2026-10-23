@@ -153,10 +153,11 @@ export const getOperatorAttemptInternal = internalQuery({
   },
 });
 
+/** Without `confirmationId` the draft's own browser-reply approval is the grant. */
 export const claimOperatorInboxSendInternal = internalMutation({
   args: {
     pendingEmailId: v.id("pendingEmails"),
-    confirmationId: v.id("operatorAgentConfirmations"),
+    confirmationId: v.optional(v.id("operatorAgentConfirmations")),
   },
   handler: async (ctx, args) => {
     const draft = await ctx.db.get(args.pendingEmailId);
@@ -303,7 +304,6 @@ export const beginOperatorInboxSendingInternal = internalMutation({
       !attempt ||
       attempt.source !== "operator_inbox" ||
       !attempt.pendingEmailId ||
-      !attempt.operatorConfirmationId ||
       !attempt.senderUserId ||
       (attempt.operatorStage !== "claimed" &&
         attempt.operatorStage !== "draft_created")
@@ -332,21 +332,24 @@ export const beginOperatorInboxSendingInternal = internalMutation({
     } catch {
       return refuse("Email cannot be sent while impersonating a client.");
     }
-    const confirmation = await ctx.db.get(attempt.operatorConfirmationId);
-    const run =
-      confirmation?.payload.kind === "operator_tool_action"
-        ? await ctx.db.get(confirmation.payload.runId)
-        : null;
-    if (
-      !run ||
-      run.operatorUserId !== attempt.senderUserId ||
-      run.status !== "running" ||
-      run.cancellationRequestedAt
-    ) {
-      return refuse("The approving operator run is no longer active.");
-    }
-    if (run.emailReadOnly) {
-      return refuse("Email sends are disabled for this run.");
+    // A browser reply has no run; an agent send needs its live, writable run.
+    if (attempt.operatorConfirmationId) {
+      const confirmation = await ctx.db.get(attempt.operatorConfirmationId);
+      const run =
+        confirmation?.payload.kind === "operator_tool_action"
+          ? await ctx.db.get(confirmation.payload.runId)
+          : null;
+      if (
+        !run ||
+        run.operatorUserId !== attempt.senderUserId ||
+        run.status !== "running" ||
+        run.cancellationRequestedAt
+      ) {
+        return refuse("The approving operator run is no longer active.");
+      }
+      if (run.emailReadOnly) {
+        return refuse("Email sends are disabled for this run.");
+      }
     }
     await ctx.db.patch(attempt._id, { operatorStage: "sending" });
     return { ok: true } as const;

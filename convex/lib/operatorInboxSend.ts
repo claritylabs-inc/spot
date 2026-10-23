@@ -251,7 +251,8 @@ export async function sendOperatorInboxDraft(
   ctx: ActionCtx,
   args: {
     pendingEmailId: Id<"pendingEmails">;
-    confirmationId: Id<"operatorAgentConfirmations">;
+    /** An agent's exact confirmation; absent for a browser reply approved on the draft itself. */
+    confirmationId?: Id<"operatorAgentConfirmations">;
   },
 ): Promise<{ recipientEmail: string }> {
   const claim = await ctx.runMutation(
@@ -369,6 +370,17 @@ export async function sendOperatorInboxDraft(
     { attemptId },
   );
   if (!begun.ok) return await fail(new Error(begun.reason));
+  if (pending.directReplyKey && pending.teamEmailThreadId) {
+    // A person is answering: automated follow-ups on this conversation stop now.
+    try {
+      await ctx.runMutation(
+        internal.providerOutreach.stopFollowUpsForOperatorReplyInternal,
+        { teamEmailThreadId: pending.teamEmailThreadId },
+      );
+    } catch (error) {
+      return await fail(error);
+    }
+  }
   let emailId: string;
   try {
     const sent = await withBoundedRetry(
