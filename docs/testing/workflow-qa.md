@@ -2355,3 +2355,49 @@ Helium at localhost:3207 verified the submitted HUB row has View details without
 Helium at localhost:3207 verified shared searchable state/province, ACORD coverage-line and status filters. Restricted returned only BLIS; adding Ontario showed the empty state and disabled Select all. Ontario + Prospect + CYBER returned 27 providers, including recorded nationwide providers. Selecting KBD and clearing filters cleared the bulk selection and restored all three defaults. An empty Create provider row placed its name and status under the correct headers; Escape dismissed it without creating a provider. The status trigger's extra left padding is removed. Service-area text includes countries and explicit nationwide exceptions; the filter reuses `brokerAreaFit`, so exclusions override nationwide service. Shared Table, Select/SearchableSelect, OperationalPanel and PillButton primitives are retained.
 
 Root TypeScript, touched-file ESLint and whitespace checks passed. No tests or database migrations were written. Evidence: `.context/provider-expansion/provider-filters.png`, `provider-draft-alignment.png`, `provider-filters-ontario-cyber-prospect.txt`, and `types-provider-filters.log`. No outreach was sent or stopped during this review.
+
+
+## Team email production rollout and legacy schema removal — 2026-10-23
+
+Authorized live rollout on Spot `merry-platypus-82`: all nine migration steps
+completed without errors; full readback returned complete=true and ok=true.
+Terry's personal team inbox and the shared command inbox were provisioned through
+Spot. The existing production inbox webhook was enabled with its endpoint,
+events and secret preserved; the development inbox webhook remains disabled.
+
+Terry sent a harmless test to Zac with Terry CC. Correct From/signature and Gmail
+receipt were verified, and Zac's actual reply remained in the same shared Inbox
+conversation. A forwarded test arrived unlinked with its original `.eml`; parsing
+the saved attachment confirmed the nested text attachment's exact bytes. Resend
+showed all six test webhook deliveries successful; inspected receipt/response
+records returned HTTP 200 on their first attempt.
+
+Command transport and private routing passed, but “Reply with ‘team email check
+complete’. Do not change anything.” created an unintended draft. The draft was
+cancelled without sending. The local fix explains automatic command-response
+delivery to family selection and generation, and reserves outbound tools for
+separately requested email actions. Production behavior of this fix remains
+unverified until the code is deployed.
+
+At Terry's direction, outreach-sequence live QA was skipped for the upcoming test
+mode, no Amy operator was provisioned, and no Linear issues were created. Hosted
+development migration/live verification was not run. Terry then explicitly
+requested removal of the legacy schema in code. The cleanup removes legacy
+storage, migration fields/functions and runtime adoption, preserves established
+extraction source references, and corrects outreach reply classification to read
+the team message table. Local Convex accepted the schema change.
+
+Evidence: `.context/email-rollout/rollout-report.md`, `migrations.png`,
+`readback.png`, `terry-profile.png`, `zac-reply.png`, `forward-attachment.png`,
+`forwarded-source.eml`, `webhook-success.png`, `command-unintended-draft.png`,
+and `command-draft-cancelled.png`.
+
+Validation: root TypeScript, Convex typecheck, touched-file ESLint and 44 existing
+operator-identity/email/approval tests passed. The local command replay used
+capture delivery and initially found no operator model route; after selecting
+`openai/gpt-5.6-terra` locally, the router rejected its local job callback
+(`router_rejected`: “The job callback is not permitted.”). The command-response
+correction therefore remains unverified through inference; this is not a passing
+end-to-end replay. Evidence: `local-command.json`, `local-command-retry.json`,
+`typecheck-root.log`, `typecheck-convex.log`, `lint.log`, and `tests.log` in the
+same evidence directory. No production code deployment or manual table purge ran.

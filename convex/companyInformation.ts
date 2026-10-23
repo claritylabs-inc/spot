@@ -15,8 +15,6 @@ import {
   type CompanyInformationExtraction,
 } from "./lib/companyInformationExtraction";
 import { reconcileExtractedCompanyFacts } from "./orgWiki";
-import { adoptTeamThreadId } from "./lib/teamEmailLegacy";
-import { teamThreadSourceId, type TeamMessage } from "./lib/teamEmailStore";
 
 const EXTRACTION_LEASE_MS = 2 * 60 * 1_000;
 const MAX_EXTRACTION_ATTEMPTS = 3;
@@ -64,21 +62,6 @@ async function fallbackOperatorUserId(ctx: QueryCtx | MutationCtx) {
   return profile?.userId;
 }
 
-/** A file item's source message of either generation (legacy ids until repointed). */
-async function resolveEmailMessage(
-  ctx: QueryCtx | MutationCtx,
-  id: Id<"procurementEmailMessages"> | Id<"teamEmailMessages">,
-): Promise<TeamMessage | null> {
-  const current = ctx.db.normalizeId("teamEmailMessages", id);
-  if (current) return await ctx.db.get(current);
-  const legacyId = ctx.db.normalizeId("procurementEmailMessages", id);
-  if (!legacyId) return null;
-  return await ctx.db
-    .query("teamEmailMessages")
-    .withIndex("by_legacyMessageId", (q) => q.eq("legacyMessageId", legacyId))
-    .first();
-}
-
 async function resolveClientFileSource(
   ctx: QueryCtx | MutationCtx,
   clientFileId: Id<"clientFiles">,
@@ -104,7 +87,7 @@ async function resolveClientFileSource(
   let observedAt = file.createdAt;
   if (file.uploadedBySide === "procurement_email") {
     if (!emailFileItem?.sourceEmailMessageId) return null;
-    const message = await resolveEmailMessage(ctx, emailFileItem.sourceEmailMessageId);
+    const message = await ctx.db.get(emailFileItem.sourceEmailMessageId);
     const thread = message ? await ctx.db.get(message.threadId) : null;
     if (!message || !thread || !isActiveSource(thread) || !thread.requestId) return null;
     const request = await ctx.db.get(thread.requestId);
@@ -161,16 +144,16 @@ async function resolveEmailThreadSource(
     return null;
   }
   const messages = messagesDescending.reverse();
-  // Migrated threads keep their legacy id in the ref and fingerprint, so stored
-  // facts and applied fingerprints survive the cutover.
-  const sourceId = teamThreadSourceId(thread);
+  // Preserve the established extraction identity and wiki provenance.
+  const existing = await extractionForTeamThread(ctx, thread._id);
+  const sourceRef = existing?.sourceRef ?? `procurement-email-thread:${thread._id}`;
   return {
     orgId: thread.clientOrgId,
     organizationName: organization.name,
     sourceKind: "procurement_email_thread" as const,
     emailThreadId: thread._id,
-    sourceRef: `procurement-email-thread:${sourceId}`,
-    sourceFingerprint: `${COMPANY_INFORMATION_EXTRACTION_VERSION}:procurement-email-thread:${sourceId}:${thread.requestId}:${thread.messageCount}:${thread.updatedAt}`,
+    sourceRef,
+    sourceFingerprint: `${COMPANY_INFORMATION_EXTRACTION_VERSION}:${sourceRef}:${thread.requestId}:${thread.messageCount}:${thread.updatedAt}`,
     actorUserId: request.updatedByUserId ?? request.createdByUserId,
     requestId: request._id,
     observedAt: thread.latestMessageAt,
@@ -273,9 +256,6 @@ async function claimSource(ctx: MutationCtx, source: ResolvedSource) {
     sourceRef: source.sourceRef,
     clientFileId:
       source.sourceKind === "client_file" ? source.clientFileId : undefined,
-    // Rows claimed before the cutover carry the legacy pointer; it is cleared as
-    // the team pointer is written.
-    procurementEmailThreadId: undefined,
     teamEmailThreadId:
       source.sourceKind === "procurement_email_thread"
         ? source.emailThreadId
@@ -321,19 +301,14 @@ export const claimClientFileInternal = internalMutation({
   },
 });
 
-const emailThreadIdValidator = v.union(
-  v.id("teamEmailThreads"),
-  v.id("procurementEmailThreads"),
-);
+const emailThreadIdValidator = v.id("teamEmailThreads");
 
 export const claimEmailThreadInternal = internalMutation({
-  // Jobs scheduled before the cutover still carry a legacy id.
   args: { emailThreadId: emailThreadIdValidator },
   handler: async (ctx, args) => {
-    const teamThreadId = await adoptTeamThreadId(ctx, args.emailThreadId);
-    const source = teamThreadId ? await resolveEmailThreadSource(ctx, teamThreadId) : null;
+    const source = await resolveEmailThreadSource(ctx, args.emailThreadId);
     if (!source) {
-      const extraction = teamThreadId ? await extractionForTeamThread(ctx, teamThreadId) : null;
+      const extraction = await extractionForTeamThread(ctx, args.emailThreadId);
       await removeExtraction(ctx, extraction);
       return { status: "inactive" as const };
     }
@@ -342,20 +317,15 @@ export const claimEmailThreadInternal = internalMutation({
   },
 });
 
-/** The extraction row for a thread: by team pointer, else by its (legacy-keyed) source ref. */
+/** The extraction row owns the stable source reference for this conversation. */
 async function extractionForTeamThread(
   ctx: QueryCtx | MutationCtx,
   teamThreadId: Id<"teamEmailThreads">,
 ) {
-  const byPointer = await ctx.db
+  return await ctx.db
     .query("companyInformationExtractions")
     .withIndex("team_email", (index) => index.eq("teamEmailThreadId", teamThreadId))
     .unique();
-  if (byPointer) return byPointer;
-  const thread = await ctx.db.get(teamThreadId);
-  return thread
-    ? await extractionBySource(ctx, `procurement-email-thread:${teamThreadSourceId(thread)}`)
-    : null;
 }
 
 async function completeSource(
@@ -435,11 +405,9 @@ export const completeEmailThreadInternal = internalMutation({
     organizationFacts: v.array(companyInformationOrganizationFactValidator),
   },
   handler: async (ctx, args) => {
-    const emailThreadId = await adoptTeamThreadId(ctx, args.emailThreadId);
-    if (!emailThreadId) return { status: "stale" as const };
     return await completeSource(ctx, {
       sourceKind: "procurement_email_thread",
-      emailThreadId,
+      emailThreadId: args.emailThreadId,
       sourceFingerprint: args.sourceFingerprint,
       extraction: {
         organizationFacts: args.organizationFacts,

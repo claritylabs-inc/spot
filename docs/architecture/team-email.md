@@ -24,7 +24,6 @@ addresses. The shared command address is `agent@<TEAM_EMAIL_DOMAIN>`.
 | Command ingress, DKIM, private command threads and responses | `convex/operatorEmail.ts`, `convex/actions/handleInboundOperatorEmail.ts`, `convex/lib/operatorEmailAuthentication.ts` |
 | Receiving raw MIME and attachments | `convex/lib/receivingEmail.ts` |
 | Authenticated forward matching and suggestions | `convex/teamEmailForwarding.ts`, `convex/actions/teamEmailForwarding.ts` |
-| Legacy copy and reference migration | `convex/lib/teamEmailLegacy.ts`, `convex/teamInboxMigrations.ts` |
 
 The transport contains no operator naming policy. Profile changes reserve an
 address before provisioning, and activation rechecks the reservation. A changed
@@ -95,6 +94,12 @@ replaced while their outcome is unresolved.
 
 ## Command email
 
+The runner tells both tool-family selection and response generation that the
+final answer is delivered automatically to the authenticated operator. A request
+to reply in this conversation needs response prose, not a separate saved draft.
+Explicit requests to prepare or send another email still use the existing tools
+and authorization checks. A no-change request excludes saved drafts.
+
 The `kind: agent` inbox is separate from team correspondence. It maps Resend thread
 ids to private operator agent conversations and requires the same operator on every
 message. Original MIME comes from the Receiving API. Authentication requires an
@@ -116,28 +121,20 @@ from switching delivery strategies. Email text cannot approve exact writes. Lega
 
 ## Cutover and release
 
-Keep the legacy tables until a separate cleanup follows verified readback on every
-deployed target. The cutover stops old writers and switches readers together. Run the bounded
-thread/message copy and catch-up pass before accepting the release; legacy data
-not yet copied is absent from team inbox lists until its migration completes. Mapping ids make copies idempotent.
-Repoint file items, sequences, extractions, organization fact sources and
-notifications. Preserve extraction source keys and historical approval payloads;
-mark pending legacy approvals stale and cancel only the runs they affect. Old operator
-drafts require re-signing.
+The legacy `procurementEmailThreads` and `procurementEmailMessages` schema,
+copy/adoption code, migration functions, and mapping fields are removed. All
+readers and writers use the team tables, including outreach reply classification.
+Procurement forwarding addresses and tool argument aliases remain supported, but
+only team-thread IDs resolve. Existing extraction rows own their stable source
+references, preserving fingerprints and company-wiki provenance after removal of
+the migration fields.
 
-Run the migration series through `teamInboxMigrations:run`, then the paged
-`teamInboxMigrations:readback`. A subset or unfinished readback cannot establish
-cutover success. Keep cumulative counts and unresolved references across resumes.
-Local CLI calls must unset both inherited Convex credentials and use the local
-selection:
-
-```sh
-env -u CONVEX_DEPLOY_KEY -u CONVEX_DEPLOYMENT_TOKEN npx convex run teamInboxMigrations:readback '{}'
-```
-
-Agents do not deploy. Production changes run through CI. The release owner must
-select the intended hosted target explicitly before hosted migration work; a local
-pass does not authorize production cleanup.
+Production migration and complete readback passed on 2026-10-23 before this
+cleanup. Hosted development was not verified in that rollout. A deployment with
+unmigrated legacy data must use the pre-cleanup revision to migrate it and clear
+the retired mapping fields before upgrading. Removing a table from Convex schema
+does not purge its stored documents.
+Agents do not deploy; production changes run through CI.
 
 Each environment needs `AUTH_RESEND_KEY`, `TEAM_EMAIL_DOMAIN`, and
 `RESEND_INBOX_WEBHOOK_SECRET`, verified sending/receiving DNS, and a webhook for

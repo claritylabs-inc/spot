@@ -49,11 +49,7 @@ async function threadSequence(ctx: Ctx, thread: TeamThread) {
     .order("desc")
     .first();
   if (!candidate || candidate.requestId !== thread.requestId) return null;
-  const pointsHere =
-    candidate.teamEmailThreadId === thread._id ||
-    (thread.legacyThreadId !== undefined &&
-      candidate.procurementEmailThreadId === thread.legacyThreadId);
-  return pointsHere ? candidate : null;
+  return candidate.teamEmailThreadId === thread._id ? candidate : null;
 }
 
 async function readAtFor(ctx: Ctx, userId: Id<"users">, threadId: Id<"teamEmailThreads">) {

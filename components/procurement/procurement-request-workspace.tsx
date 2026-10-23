@@ -210,7 +210,7 @@ type Outreach = {
 type ProcurementFileItem = {
   _id: Id<"procurementFileItems">;
   clientFileId?: Id<"clientFiles">;
-  sourceEmailMessageId?: Id<"teamEmailMessages"> | Id<"procurementEmailMessages">;
+  sourceEmailMessageId?: Id<"teamEmailMessages">;
   intakeCategory?: "requirements" | "policy" | "loss_runs" | "supporting";
   label: string;
   brokerRelease?: "hidden" | "listed" | "attached";

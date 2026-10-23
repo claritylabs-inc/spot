@@ -5,7 +5,6 @@ import type { Id } from "./_generated/dataModel";
 import { internalQuery, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireOperator } from "./lib/operatorIdentity";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
-import { mappedTeamThreadId } from "./lib/teamEmailLegacy";
 import { teamTargetProblem } from "./lib/teamEmailStore";
 import {
   getTeamThreadDetails,
@@ -117,12 +116,12 @@ export const getThread = query({
   },
 });
 
-/** Resolve saved links across the migration without writing on navigation. */
+/** Validate saved team Inbox links without writing on navigation. */
 export const resolveThreadId = query({
   args: { threadId: v.string(), requestId: v.optional(v.id("procurementRequests")) },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
-    const id = await mappedTeamThreadId(ctx, args.threadId);
+    const id = ctx.db.normalizeId("teamEmailThreads", args.threadId);
     const thread = id ? await ctx.db.get(id) : null;
     if (!thread || thread.deletedAt ||
       (args.requestId && thread.requestId !== args.requestId) ||
