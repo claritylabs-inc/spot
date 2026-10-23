@@ -4,6 +4,14 @@ import { mutation, query } from "./_generated/server";
 import { requireOperator } from "./lib/operatorIdentity";
 
 const LEADER_TIMEOUT_MS = 45_000;
+const FIELD_TEXT_LIMIT = 5_000;
+
+const fieldValidator = v.object({
+  anchor: v.string(),
+  text: v.string(),
+  selectionStart: v.number(),
+  selectionEnd: v.number(),
+});
 
 /** Publishes this operator's pointer while someone follows them. */
 export const move = mutation({
@@ -15,6 +23,7 @@ export const move = mutation({
     viewportX: v.number(),
     viewportY: v.number(),
     visible: v.boolean(),
+    field: v.optional(fieldValidator),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -26,6 +35,12 @@ export const move = mutation({
       ...args,
       href: args.href.slice(0, 1000),
       anchor: args.anchor?.slice(0, 2000),
+      field: args.field && {
+        anchor: args.field.anchor.slice(0, 2000),
+        text: args.field.text.slice(0, FIELD_TEXT_LIMIT),
+        selectionStart: Math.min(args.field.selectionStart, FIELD_TEXT_LIMIT),
+        selectionEnd: Math.min(args.field.selectionEnd, FIELD_TEXT_LIMIT),
+      },
       updatedAt: dayjs().valueOf(),
     };
     const existing = await ctx.db
@@ -86,6 +101,7 @@ export const get = query({
       viewportX: cursor.viewportX,
       viewportY: cursor.viewportY,
       visible: cursor.visible,
+      field: cursor.field ?? null,
     };
   },
 });

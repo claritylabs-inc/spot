@@ -5485,6 +5485,15 @@ export default defineSchema({
     viewportX: v.number(),
     viewportY: v.number(),
     visible: v.boolean(),
+    /** Text field the leader is typing in, mirrored read-only for followers. */
+    field: v.optional(
+      v.object({
+        anchor: v.string(),
+        text: v.string(),
+        selectionStart: v.number(),
+        selectionEnd: v.number(),
+      }),
+    ),
     updatedAt: v.number(),
   }).index("by_userId", ["userId"]),
 });
