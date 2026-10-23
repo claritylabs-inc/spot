@@ -91,7 +91,7 @@ export function OperatorClientImpersonationAction({
       variant="secondary"
       label={label}
       disabled={disabled || busy}
-      className="h-8 w-full"
+      className="w-full"
       onClick={() => void toggleImpersonation()}
     >
       <Icon className={busy ? "size-3.5 animate-spin" : "size-3.5"} />
