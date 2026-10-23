@@ -11,6 +11,7 @@ import {
 import { createClRouterLanguageModel } from "./lib/clRouterLanguageModel";
 import { mapSpotCallToClRouterPrimitive } from "./lib/clRouterPrimitive";
 import { executeDurableRouterRequest } from "./lib/routerJobClient";
+import { generateAgentTextForPublicTask } from "./lib/models";
 import contractFixtures from "../contracts/cl-router/fixtures.v1.json";
 const modules = import.meta.glob("./**/*.ts");
 afterEach(() => {
@@ -636,6 +637,79 @@ test("terminal jobs never replace the final reply with delayed progress", async 
   expect((await t.run((ctx) => ctx.db.get(target)))?.content).toBe("");
   await t.finishAllScheduledFunctions(vi.runAllTimers);
 });
+
+// A returned model is evidence; a routing preference is not. Replayed responses
+// must not duplicate rows, and cancelled messages must not gain new activity.
+test.each(["processing", "cancelled"] as const)(
+  "records the executed model only for a %s message",
+  async (status) => {
+    const { t, args, row } = await fixture();
+    const target = await t.run(async (ctx) => {
+      const orgId = await ctx.db.insert("organizations", { name: "Client" });
+      const userId = await ctx.db.insert("users", { name: "Viewer" });
+      const threadId = await ctx.db.insert("threads", {
+        orgId,
+        createdBy: userId,
+        title: "Chat",
+        lastMessageAt: 0,
+      });
+      return ctx.db.insert("threadMessages", {
+        orgId,
+        threadId,
+        channel: "chat",
+        role: "agent",
+        content: "",
+        status,
+      });
+    });
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(new Blob([JSON.stringify(generation)])),
+    );
+    await t.mutation(internal.routerJobs.finish, {
+      id: row._id,
+      tokenHash: args.resultTokenHash,
+      jobId: "router-model",
+      invocationKey: args.invocationKey,
+      fingerprint: args.fingerprint,
+      status: "succeeded",
+      storageId,
+    });
+    for (let replay = 0; replay < 2; replay += 1) {
+      await t.action(async (ctx) => {
+        await generateAgentTextForPublicTask(
+          ctx,
+          "chat",
+          { prompt: "Hello" },
+          {
+            taskKind: "operator_agent",
+            streamTarget: target,
+            durable: { invocationKey: "test:run:step" },
+            sessionKey: "model-activity",
+            trace: {
+              traceId: "model-activity",
+              label: "model-activity",
+              phase: "test",
+              channel: "web",
+            },
+          },
+        );
+      });
+    }
+    const message = await t.run((ctx) => ctx.db.get(target));
+    expect(message?.activity?.stages ?? []).toEqual(
+      status === "cancelled"
+        ? []
+        : [
+            {
+              stageId: `model:${generation.requestId}`,
+              stage: "selecting_model",
+              status: "completed",
+              detail: "openai · fixture-live-model",
+            },
+          ],
+    );
+  },
+);
 
 test("operator streaming survives durable polling yields but fences approval waits and old checkpoints", async () => {
   const { t, args, row } = await fixture();

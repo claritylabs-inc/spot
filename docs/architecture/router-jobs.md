@@ -137,6 +137,11 @@ audit history. The renderer stops unresolved indicators when a turn settles and
 does not infer successful execution from an unfinished activity entry. Approvals and task artifacts remain independent
 of these display preferences. Non-web channel delivery stays terminal-only.
 
+After a web agent response, `models.ts` records the returned provider and model
+as the selection outcome. A configured pin or automatic-routing preference is
+not evidence of the executed model. Response request IDs keep replayed outcomes
+from duplicating activity, and existing message/run guards reject stale writes.
+
 These preferences control presentation only; turning streaming off does not stop
 router progress callbacks. A transport rollback must deploy a Spot consumer that
 omits `stream: true` and drain in-flight jobs before removing router support.

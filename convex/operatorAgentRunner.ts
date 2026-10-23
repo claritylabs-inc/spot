@@ -616,16 +616,9 @@ export const run = internalAction({
         });
       }
       const route =
-        (await traceStage(
-          recordActivity,
-          `${stagePrefix}:model`,
-          "selecting_model",
-          () =>
-            ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {}),
-          (selected) =>
-            selected
-              ? `${selected.provider} · ${selected.model}`
-              : "Automatic router selection",
+        (await ctx.runQuery(
+          internal.modelSettings.resolveOperatorAgentRoute,
+          {},
         )) ?? undefined;
       pendingFamilies = familySelection.families;
       const offeredToolNames = operatorAgentToolNamesForFamilies(
@@ -1032,6 +1025,14 @@ export const run = internalAction({
         },
         {
           taskKind: "operator_agent",
+          ...(traceChannel === "web"
+            ? { activityTarget: run.agentMessageId }
+            : {}),
+          activityOperatorRun: {
+            runId: run._id,
+            expectedRunnerAttempt,
+            expectedCheckpointIteration,
+          },
           // While a failure is unresolved no reply can become the final
           // answer (a tool call continues, a bare reply is held back or
           // replaced by the blocker report), so it must not stream.

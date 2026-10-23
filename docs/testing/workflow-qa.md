@@ -2684,3 +2684,23 @@ The temporary internal QA fixture was removed. External email receipt, real mode
 Artifacts: `.context/notifications/{runtime-results.json,boundary-results.json,settings-final.png,settings-mobile-clean.png,settings-offline.png,service-review.md}`. Existing Slack/intake/operator identity/confirmation tests passed (17 tests in four files). No new unit tests, Vercel previews, or production deployment.
 
 Final root and Convex TypeScript checks, touched-file ESLint and `git diff --check` passed. Local Convex accepted the generated API and schema after fixture removal.
+
+## Selected model activity — 2026-10-23
+
+The agent activity disclosure now records the actual provider/model returned by
+cl-router after each web model step. Resolving an optional pin no longer creates
+a completed model-selection row. The shared response callback covers client and
+operator web chats; operator metadata can still be recorded when recovery holds
+back response streaming, with the existing run/checkpoint guards.
+
+- Integration: `npx vitest run convex/routerJobs.test.ts` uses a completed durable
+  router response to verify the exact model label, replay deduplication and no
+  new activity on a cancelled message. Full suite: 145 tests passed.
+- Browser: `.context/model-selection-qa/run.mjs` renders the real
+  `ThinkingSummary` component with representative returned metadata. Desktop
+  (1000px) and mobile (390px) show two distinct selected models, hide generic
+  model rows, fit without horizontal overflow and report no uncaught browser errors.
+- Screenshots: `.context/model-selection-qa/{desktop,mobile}.png`.
+- Scope: isolated component browser QA plus the mocked durable integration;
+  no live inference or deployment mutation was run. Existing saved messages
+  are not rewritten.
