@@ -15,11 +15,8 @@ import {
   type CompanyInformationExtraction,
 } from "./lib/companyInformationExtraction";
 import { reconcileExtractedCompanyFacts } from "./orgWiki";
-import {
-  resolveTeamThreadId,
-  teamThreadSourceId,
-  type TeamMessage,
-} from "./lib/teamEmailStore";
+import { adoptTeamThreadId } from "./lib/teamEmailLegacy";
+import { teamThreadSourceId, type TeamMessage } from "./lib/teamEmailStore";
 
 const EXTRACTION_LEASE_MS = 2 * 60 * 1_000;
 const MAX_EXTRACTION_ATTEMPTS = 3;
@@ -333,7 +330,7 @@ export const claimEmailThreadInternal = internalMutation({
   // Jobs scheduled before the cutover still carry a legacy id.
   args: { emailThreadId: emailThreadIdValidator },
   handler: async (ctx, args) => {
-    const teamThreadId = await resolveTeamThreadId(ctx, args.emailThreadId);
+    const teamThreadId = await adoptTeamThreadId(ctx, args.emailThreadId);
     const source = teamThreadId ? await resolveEmailThreadSource(ctx, teamThreadId) : null;
     if (!source) {
       const extraction = teamThreadId ? await extractionForTeamThread(ctx, teamThreadId) : null;
@@ -438,7 +435,7 @@ export const completeEmailThreadInternal = internalMutation({
     organizationFacts: v.array(companyInformationOrganizationFactValidator),
   },
   handler: async (ctx, args) => {
-    const emailThreadId = await resolveTeamThreadId(ctx, args.emailThreadId);
+    const emailThreadId = await adoptTeamThreadId(ctx, args.emailThreadId);
     if (!emailThreadId) return { status: "stale" as const };
     return await completeSource(ctx, {
       sourceKind: "procurement_email_thread",

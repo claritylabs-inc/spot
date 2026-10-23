@@ -1,12 +1,8 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import {
-  operatorSenderIdentity,
-  quotedHistory,
-  teamThreadOwnerAddress,
-  teamThreadReplyPlan,
-} from "../operatorEmailDrafts";
+import { operatorSenderIdentity } from "./outreachIdentity";
+import { quotedHistory, teamThreadOwnerAddress, teamThreadReplyPlan } from "./teamThreadReply";
 import { pendingEmailDraftFingerprint } from "./actionConfirmationFingerprint";
 import { extractEmailAddress } from "./emailAddress";
 import { escapeHtml } from "./emailTemplate";
@@ -14,7 +10,8 @@ import { forwardedCorrespondents } from "./teamEmailForwards";
 import { operatorEmailAliases, requireOperatorForUser } from "./operatorIdentity";
 import { isSpotOutboundAddress } from "./resend";
 import { buildOperatorSignature, teamOwnedDomains } from "./teamEmail";
-import { mappedTeamThread, teamTargetProblem } from "./teamEmailStore";
+import { mappedTeamThreadId } from "./teamEmailLegacy";
+import { teamTargetProblem } from "./teamEmailStore";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -325,14 +322,6 @@ export type TeamReplyPreviewResult =
   | { ok: true; preview: TeamReplyPreview; teamEmailThreadId: Id<"teamEmailThreads"> }
   | { ok: false; reason: string };
 
-/** Resolves a team thread id, or a legacy id that is already mapped. Reads only. */
-async function mappedThreadId(ctx: Ctx, value: string) {
-  const current = ctx.db.normalizeId("teamEmailThreads", value);
-  if (current) return current;
-  const legacyId = ctx.db.normalizeId("procurementEmailThreads", value);
-  return legacyId ? ((await mappedTeamThread(ctx, legacyId))?._id ?? null) : null;
-}
-
 /**
  * The preview for an operator-agent reply, usable from any query or mutation
  * (the confirmation preflight runs in one). It requires an active operator and
@@ -346,7 +335,7 @@ export async function previewTeamEmailReply(
   args: { operatorUserId: Id<"users">; teamEmailThreadId: string; message: string },
 ): Promise<TeamReplyPreviewResult> {
   await requireOperatorForUser(ctx, args.operatorUserId);
-  const threadId = await mappedThreadId(ctx, args.teamEmailThreadId);
+  const threadId = await mappedTeamThreadId(ctx, args.teamEmailThreadId);
   if (!threadId) {
     return { ok: false, reason: "Conversation not found, or not migrated to the team inbox yet." };
   }

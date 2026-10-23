@@ -87,12 +87,8 @@ import {
   createProcurementOutreachByOperator,
   requireDirectOperatorWrite,
 } from "./procurementRequests";
-import {
-  mirrorTeamEmail,
-  teamThreadForSequence,
-  type NewTeamThread,
-  type TeamThread,
-} from "./lib/teamEmailStore";
+import { teamThreadForSequence } from "./lib/teamEmailLegacy";
+import { mirrorTeamEmail, type NewTeamThread, type TeamThread } from "./lib/teamEmailStore";
 import { mintPacketLinkForOperator, previewBrokerPacket } from "./procurementPacket";
 
 type Ctx = QueryCtx | MutationCtx;

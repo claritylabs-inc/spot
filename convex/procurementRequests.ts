@@ -55,19 +55,18 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
+import { adoptLegacyThread } from "./lib/teamEmailLegacy";
 import {
   activeTeamThread,
-  adoptLegacyThread,
   insertProcurementEmailFileItems,
   isOutreachLocked,
   storeProcurementEmailAttachments,
   threadSummaryPatch,
-  type ProcurementEmailAttachment,
-  getTeamThreadDetails,
-  listTeamInbox,
   teamTargetProblem,
+  type ProcurementEmailAttachment,
   type TeamThread,
 } from "./lib/teamEmailStore";
+import { getTeamThreadDetails, listTeamInbox } from "./lib/teamInboxProjection";
 import {
   requireOperator,
   requireOperatorForUser,
