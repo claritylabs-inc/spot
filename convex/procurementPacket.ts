@@ -414,6 +414,9 @@ export const listLinks = query({
   args: { requestId: v.id("procurementRequests") },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
+    // A preview can still be open for a moment after its request is deleted.
+    const request = await ctx.db.get(args.requestId);
+    if (!request || request.deletedAt) return [];
     return await listPacketLinksForOperator(ctx, args.requestId, true);
   },
 });

@@ -137,6 +137,15 @@ export function agentDockReducer(
     case "setHistoryArchived":
       return { ...state, historyArchived: action.archived };
     case "markSeen":
+      // No-op unless a tab changes: a follower's synthesized tab for the
+      // leader's thread is not in its own tabs, and a fresh state each time
+      // would re-run the seen effect forever.
+      if (
+        !state.tabs.some(
+          (tab) => tab.threadId === action.threadId && tab.seenAt < action.at,
+        )
+      )
+        return state;
       return {
         ...state,
         tabs: state.tabs.map((tab) =>
