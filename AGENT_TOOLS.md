@@ -73,7 +73,7 @@ list only the owning actor's origin/scope/expiry and allow revocation. See
 
 ## Operator agent registry
 
-Operator steps use the shared family selector with the existing 14-family catalog (including `outbound_email`). Starter intents keep their shortcuts; resumed durable steps offer all available families, and tools used or expanded earlier in the run remain loaded. Operator MCP continues to expose its complete authorized catalog. The `expand_tools` control exposes additional families on demand and is not a business write; the registry still rechecks role, integration, exact target, and approval at execution.
+Operator steps use the shared family selector with the existing 14-family catalog (including `outbound_email`). Starter intents keep their shortcuts; resumed durable steps offer all available families, and tools used or expanded earlier in the run remain loaded. Operator MCP continues to expose its complete authorized catalog. The `expand_tools` control exposes additional families on demand and is not a business write; the registry still rechecks role, integration, exact target, and approval at execution. Command email without available raw-message authentication carries a durable `emailReadOnly` restriction: only read tools are selected, external MCP is excluded, and every execution path rechecks the restriction. The reply may draft wording, but cannot create saved drafts or perform writes and sends.
 
 The [operator activity icon inventory](docs/design/operator-tool-icons.md) groups
 every operator tool by its browser activity icon. Web research records a bounded

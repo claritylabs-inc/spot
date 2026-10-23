@@ -2430,6 +2430,7 @@ export function operatorToolRoleAllowed(
 export function availableOperatorAgentToolNames(access: {
   role: OperatorToolRole;
   impersonating: boolean;
+  emailReadOnly?: boolean;
   integrations: Record<OperatorToolIntegration, boolean>;
 }): OperatorAgentToolName[] {
   return (
@@ -2438,6 +2439,7 @@ export function availableOperatorAgentToolNames(access: {
     const spec = OPERATOR_AGENT_TOOL_REGISTRY[name];
     return (
       operatorToolRoleAllowed(access.role, spec.requiredRole) &&
+      (!access.emailReadOnly || operatorToolAllowsReadOnlyEmail(spec)) &&
       (!access.impersonating ||
         (spec.effect === "read" && spec.integration !== "mcp")) &&
       (!spec.integration || access.integrations[spec.integration])
@@ -2507,9 +2509,28 @@ export type ResolvedOperatorToolSpec = {
   requiredRole: OperatorToolRole;
   confirmation: "none" | "exact";
   execution: OperatorToolExecution;
+  integration?: OperatorToolIntegration;
   target: (input: Record<string, unknown>) => OperatorToolTarget;
   summarize: (input: Record<string, unknown>) => string;
 };
+
+function operatorToolAllowsReadOnlyEmail(spec: {
+  effect: OperatorToolEffect;
+  integration?: OperatorToolIntegration;
+}) {
+  return spec.effect === "read" && spec.integration !== "mcp";
+}
+
+export function assertOperatorEmailToolAccess(
+  run: { emailReadOnly?: boolean },
+  spec: ResolvedOperatorToolSpec,
+) {
+  if (run.emailReadOnly && !operatorToolAllowsReadOnlyEmail(spec)) {
+    throw new Error(
+      "Permission denied: this email could not be authenticated. Only read tools are available; use operator chat for changes or sending.",
+    );
+  }
+}
 
 export function isOperatorAgentToolName(
   value: string,

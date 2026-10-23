@@ -4689,6 +4689,10 @@ export default defineSchema({
 
   operatorEmailReceipts: defineTable({
     providerId: v.string(),
+    inboxId: v.optional(v.string()),
+    resendThreadId: v.optional(v.string()),
+    resendInboxEmailId: v.optional(v.string()),
+    emailReadOnly: v.optional(v.boolean()),
     messageId: v.string(),
     operatorUserId: v.id("users"),
     sender: v.string(),
@@ -5014,6 +5018,7 @@ export default defineSchema({
 
   operatorAgentRuns: defineTable({
     threadId: v.id("operatorAgentThreads"),
+    emailReadOnly: v.optional(v.boolean()),
     operatorUserId: v.id("users"),
     userMessageId: v.id("operatorAgentMessages"),
     agentMessageId: v.id("operatorAgentMessages"),
