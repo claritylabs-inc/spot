@@ -105,14 +105,20 @@ export function useOperatorPresenceHeartbeat({
         activity,
       }).catch(() => {});
     };
+    // A hidden tab stops beating, so remove its row now; otherwise others keep
+    // seeing its last activity (such as "replying") until the TTL lapses.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") beat();
+      else void leave().catch(() => {});
+    };
     beat();
     const interval = window.setInterval(beat, HEARTBEAT_INTERVAL_MS);
-    document.addEventListener("visibilitychange", beat);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", beat);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [heartbeat, pathname, threadId, emailThreadId, activity]);
+  }, [heartbeat, leave, pathname, threadId, emailThreadId, activity]);
 
   useEffect(() => {
     const onPageHide = () => void leave().catch(() => {});
