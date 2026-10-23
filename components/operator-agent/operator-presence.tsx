@@ -45,7 +45,7 @@ export function OperatorThreadPeople({
     (operator) => !operator.self && operator.threadId === threadId,
   );
   return (
-    <span className="flex items-center gap-2">
+    <span className="mr-3 flex items-center gap-2">
       {viewers.length ? (
         <PresenceAvatars users={viewers} max={3} size="sm" />
       ) : null}
