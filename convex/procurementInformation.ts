@@ -1616,7 +1616,7 @@ export const finishExtraction = internalMutation({
             question: q.question,
           })),
         ).map((q) => q.questionId);
-        for (const proposed of emailAnswers.toSorted(
+        for (const proposed of [...emailAnswers].sort(
           (a, b) =>
             orderedIds.indexOf(a.questionId) - orderedIds.indexOf(b.questionId),
         )) {

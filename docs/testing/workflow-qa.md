@@ -1,5 +1,9 @@
 # Platform workflow QA
 
+## Information extraction after main merge — October 23, 2026
+
+Main `20802f6a` integrated; full lint, root/Convex type checks and 133 existing tests passed. Five fresh extraction cases and duplicate redelivery passed through the merged inbox/storage path, including 25/25 questions, conditional dependencies, a long-body tail request, and a visible partial hold. Details: [reliability report](provider-email-extraction-reliability-2026-10-23.md). No live email was sent; hosted durable callbacks remain unverified.
+
 ## Procurement information requests — October 23, 2026
 
 The repeatable workflow and results are in

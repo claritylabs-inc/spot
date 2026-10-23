@@ -48,3 +48,9 @@ Raw source/parsed bodies, proposal scopes, conditions, confirmation results, sto
 Screenshots: `conditional-yes.png`, `conditional-batch.png`, `partial-review-visible.png`, `oversized-review-visible.png`, `question-cap-review-visible.png`. The temporary local fixture endpoint was archived there and removed from Convex, followed by local sync/codegen.
 
 These runs used the production parser, email-storage helper, scheduled routing, extraction and persistence owners with real cl-router inference, on native-local Convex. Local inline generation was selected before submission, with the existing text-only 3,000-token bound retained. The hosted durable-job path, actual Receiving webhook authentication and live email transport were not exercised; no external email was sent. Previously processed messages were not automatically replayed or migrated. There is no schema/data migration; new stored proposal dependency fields and extraction review reasons are optional for compatibility.
+
+## Verification after merging main
+
+Merged main at `20802f6a` into the feature branch. Full repository ESLint, root TypeScript, Convex TypeScript, and all 133 existing tests (20 files) passed. Convex's ES2022 target exposed an unsupported `toSorted` call; copying the array before `sort` preserves nonmutating prerequisite order and passes both type checks.
+
+Five fresh synthetic deliveries exercised the merged inbox/storage path: basic extraction (1/1), a 25-question email (25/25), conditional parent and child (2/2), partial ambiguous scope (one retained, one held), and a long-body tail request (1/1). Duplicate redelivery retained one extraction. Evidence is in gitignored `.context/qa/email-extraction-merged/`. The temporary fixture endpoint was removed after verification. No external email was sent.
