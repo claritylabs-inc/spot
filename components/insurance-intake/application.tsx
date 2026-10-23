@@ -1,4 +1,5 @@
 "use client";
+import { ClientInformationForms } from "./information-form";
 import { INTAKE_TERMS_VERSION } from "@/lib/intake-terms";
 import { isIntakePercentageQuestion } from "@/lib/intake-percentages";
 import { vehicleRelevanceKey, filterVehicleRelevantQuestions } from "@/lib/intake-vehicle-relevance";
@@ -283,7 +284,7 @@ function IntakeApplication() {
             : "Confirming your saved application…"}
         </p>
         {confirmationError && (
-          <PillButton href={withQuoteProvider("/signup", params.get("provider"))}>Find my drafts</PillButton>
+          <PillButton size="large" href={withQuoteProvider("/signup", params.get("provider"))}>Find my drafts</PillButton>
         )}
       </IntakeFrame>
     );
@@ -292,7 +293,7 @@ function IntakeApplication() {
     return (
       <IntakeFrame>
         <p>Please reopen your saved application.</p>
-        <PillButton href={withQuoteProvider("/signup", params.get("provider"))}>Find my drafts</PillButton>
+        <PillButton size="large" href={withQuoteProvider("/signup", params.get("provider"))}>Find my drafts</PillButton>
       </IntakeFrame>
     );
   if (!recovered)
@@ -2531,7 +2532,9 @@ function Application({
           ) : undefined
         }
         banner={
-          data.submitted && !data.verified ? (
+          <>
+          {data.submitted && <ClientInformationForms requestId={requestId} />}
+          {data.submitted && !data.verified ? (
             <Card
               className="mb-6 border border-border ring-0"
               aria-label="Confirm your email"
@@ -2625,7 +2628,8 @@ function Application({
                 </ul>
               </CardContent>
             </Card>
-          ) : undefined
+          ) : undefined}
+          </>
         }
         footer={
           isSavings && data.submitted ? (

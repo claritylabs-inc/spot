@@ -116,6 +116,9 @@ async function requestDto(ctx: QueryCtx, request: Doc<"procurementRequests">) {
         };
       }),
   );
+  const informationForms = await ctx.db.query("procurementInformationForms")
+    .withIndex("by_requestId", q => q.eq("requestId", request._id)).take(201);
+  const needsInformation = informationForms.some(form => form.status === "open");
   const markdown = assemblePacketMarkdown(packetSections, {
     audience: "client",
   });
@@ -134,7 +137,7 @@ async function requestDto(ctx: QueryCtx, request: Doc<"procurementRequests">) {
       markdown:
         application && block ? markdown.replace(block, "").trim() : markdown,
     },
-    status: clientStatus(request.status),
+    status: needsInformation && !["completed", "cancelled"].includes(request.status) ? "information_needed" as const : clientStatus(request.status),
     createdAt: request.createdAt,
     updatedAt: request.updatedAt,
     targetEffectiveDate: request.targetEffectiveDate,
@@ -297,6 +300,17 @@ export const attachFile = mutation({
       ctx,
       args.requestId,
     );
+    return await attachClientRequestFile(ctx, args, request, access.userId);
+  },
+});
+
+/** Caller owns request authorization; shared by request detail and supplementary forms. */
+export async function attachClientRequestFile(
+  ctx: MutationCtx,
+  args: {storageId: Id<"_storage">; fileName: string; contentType: string; size: number},
+  request: Doc<"procurementRequests"> & {clientOrgId: Id<"organizations">},
+  userId: Id<"users">,
+) {
     const metadata = await ctx.db.system.get("_storage", args.storageId);
     if (!metadata) throw new Error("Uploaded file not found");
     const createdAt = dayjs().valueOf();
@@ -317,7 +331,7 @@ export const attachFile = mutation({
           size: metadata.size,
           sha256,
           clientVisible: true,
-          uploadedByUserId: access.userId,
+          uploadedByUserId: userId,
           uploadedBySide: "client",
           nameSource: "original",
           nameStatus: "ready",
@@ -334,10 +348,11 @@ export const attachFile = mutation({
     }
     const existingItems = await ctx.db
       .query("procurementFileItems")
-      .withIndex("file", (query) => query.eq("clientFileId", clientFileId))
-      .collect();
+      .withIndex("by_requestId_and_clientFileId", (query) => query.eq("requestId", request._id).eq("clientFileId", clientFileId))
+      .take(201);
+    if (existingItems.length > 200) throw new Error("Request file association limit reached");
     const existingItem = existingItems.find(
-      (item) => item.requestId === request._id && item.clientVisible === true,
+      (item) => item.requestId === request._id && item.clientVisible === true && !item.removedAt,
     );
     if (existingItem) return { clientFileId, fileItemId: existingItem._id };
     const fileItemId = await ctx.db.insert("procurementFileItems", {
@@ -347,11 +362,11 @@ export const attachFile = mutation({
       label: fileName,
       clientVisible: true,
       brokerRelease: "attached",
-      createdByUserId: access.userId,
-      updatedByUserId: access.userId,
+      createdByUserId: userId,
+      updatedByUserId: userId,
       createdAt,
       updatedAt: createdAt,
     });
+    await ctx.db.patch(request._id, {packetRevision:(request.packetRevision??0)+1, updatedAt:createdAt, updatedByUserId:userId});
     return { clientFileId, fileItemId };
-  },
-});
+}

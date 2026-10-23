@@ -1,4 +1,5 @@
 "use client";
+import type { ReactNode } from "react";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { Field, FieldLabel, FieldTitle, FieldDescription } from "@claritylabs-inc/ui/components/field";
 import { INTAKE_TERMS_URL } from "@/lib/intake-terms";
@@ -25,7 +26,11 @@ export function IntakeSectionIntroduction({
   content: suppliedContent,
   applicantName,
   termsConsent,
+  continueLabel = "Let’s begin",
+  showSteps,
 }: {
+  continueLabel?: string;
+  showSteps?: boolean;
   section: number;
   savings: boolean;
   status: string;
@@ -33,7 +38,7 @@ export function IntakeSectionIntroduction({
   onContinue: () => void;
   onBack: () => void;
   onSection: (step: number) => void;
-  content?: { title: string; description: string; topics: string[] };
+  content?: { title: string; description: string; topics: (string | {label: string; icon: ReactNode})[] };
   applicantName?: string;
   termsConsent?: { checked: boolean; onCheckedChange: (checked: boolean) => void };
 }) {
@@ -63,7 +68,7 @@ export function IntakeSectionIntroduction({
     <IntakeFrame
       introduction
       section={section}
-      showSteps={!savings}
+      showSteps={showSteps ?? !savings}
       status={status}
       disabled={disabled}
       onSection={termsConsent && !termsConsent.checked ? undefined : onSection}
@@ -85,7 +90,7 @@ export function IntakeSectionIntroduction({
             )}
           </PillButton>
           <PillButton size="large" disabled={disabled || (!!termsConsent && !termsConsent.checked)} onClick={onContinue}>
-            Let’s begin
+            {continueLabel}
             <ArrowRight aria-hidden="true" className="size-4" />
           </PillButton>
         </>
@@ -106,7 +111,8 @@ export function IntakeSectionIntroduction({
               : content.title}
           </h1>
           <p
-            className={`max-w-xl text-pretty text-muted-foreground ${typeStyle("body.root")}`}
+            className={`w-full text-pretty text-muted-foreground ${typeStyle("body.root")}`}
+            style={{ textWrap: "pretty" }}
           >
             {content.description}
           </p>
@@ -121,14 +127,11 @@ export function IntakeSectionIntroduction({
             <ul className="divide-y">
               {content.topics.map((topic) => (
                 <li
-                  key={topic}
+                  key={typeof topic === "string" ? topic : topic.label}
                   className={`flex items-start gap-3 py-4 first:pt-0 last:pb-0 sm:py-5 ${typeStyle("body.root")}`}
                 >
-                  <span
-                    aria-hidden="true"
-                    className="mt-2 size-1.5 shrink-0 rounded-full bg-muted-foreground/50"
-                  />
-                  <span>{topic}</span>
+                  {typeof topic === "string" ? <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-muted-foreground/50" /> : topic.icon}
+                  <span>{typeof topic === "string" ? topic : topic.label}</span>
                 </li>
               ))}
             </ul>

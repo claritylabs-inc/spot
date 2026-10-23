@@ -2400,6 +2400,8 @@ async function fileLinkedThreadBatch(
         clientFileIds,
         now,
       });
+    if (args.requestId && message.direction === "inbound")
+      await ctx.scheduler.runAfter(0, internal.procurementInformationEmail.queueEmail, {messageId:message._id});
   }
   if (page.isDone) {
     await scheduleEmailThreadCompanyInformation(ctx, thread._id);
@@ -2610,6 +2612,7 @@ export const ingestEmailInternal = internalMutation({
       now,
     });
     await scheduleEmailThreadCompanyInformation(ctx, threadId);
+    await ctx.scheduler.runAfter(0, internal.procurementInformationEmail.queueEmail, {messageId:emailMessageId});
     for (const clientFileId of restoredClientFileIds) {
       await scheduleClientFileCompanyInformation(ctx, clientFileId);
     }
