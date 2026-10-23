@@ -948,7 +948,12 @@ export const handleInboxEvent = internalAction({
       });
 
     try {
-      // No sequence owns this thread (after the backend's mapping window).
+      // The command-channel inbox is reserved for its own routing, never imported as mail.
+      if (route.kind === "agent") {
+        await complete();
+        return { status: "agent_inbox_reserved" as const };
+      }
+      // Unknown inbox (the webhook is account-wide): nothing to import.
       if (route.kind === "unmatched") {
         if (event.eventType === "inbox.email.received")
           await labelThread(target, event.threadId, "needsReply");
@@ -993,6 +998,30 @@ export const handleInboxEvent = internalAction({
           : { stored: [], ids: new Set<string>() };
       uploaded = downloads.stored;
       const email = toInboxEmail(fetched.data, downloads.ids);
+
+      if (route.kind !== "sequence") {
+        const applied = await ctx.runMutation(
+          internal.providerOutreach.applyTeamInboxEmailInternal,
+          {
+            eventId,
+            leaseToken,
+            email,
+            attachments: downloads.stored,
+          },
+        );
+        uploaded = [];
+        if (
+          applied.applied &&
+          !applied.duplicate &&
+          event.eventType === "inbox.email.received"
+        )
+          await labelThread(target, event.threadId, "needsReply");
+        return {
+          status: applied.applied
+            ? ("team_mirrored" as const)
+            : ("team_not_applied" as const),
+        };
+      }
 
       if (event.eventType === "inbox.email.sent") {
         const applied = await ctx.runMutation(
@@ -1143,7 +1172,7 @@ const MAX_REPLY_CHARS = 20_000;
 type ThreadReplyArgs = {
   operatorUserId: Id<"users">;
   requestId?: Id<"procurementRequests">;
-  emailThreadId: Id<"procurementEmailThreads">;
+  emailThreadId: Id<"teamEmailThreads">;
   text: string;
   idempotencyKey: string;
 };
@@ -1208,7 +1237,7 @@ async function sendThreadReply(
 
 export const replyToThread = action({
   args: {
-    emailThreadId: v.id("procurementEmailThreads"),
+    emailThreadId: v.id("teamEmailThreads"),
     text: v.string(),
     idempotencyKey: v.string(),
   },
@@ -1227,7 +1256,7 @@ export const replyToThreadInternal = internalAction({
   args: {
     operatorUserId: v.id("users"),
     requestId: v.id("procurementRequests"),
-    emailThreadId: v.id("procurementEmailThreads"),
+    emailThreadId: v.id("teamEmailThreads"),
     text: v.string(),
     idempotencyKey: v.string(),
   },
