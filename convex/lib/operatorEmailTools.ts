@@ -79,7 +79,14 @@ export async function runOperatorEmailTool(
   if (args.toolName === "send_email_draft" && !args.confirmationId) {
     throw new Error("Exact operator confirmation is required");
   }
-  // `clientOrgId` is accepted as an alias of `orgId`.
+  // `clientOrgId` is an alias of `orgId`; naming two different clients is an error.
+  if (
+    typeof input.orgId === "string" &&
+    typeof input.clientOrgId === "string" &&
+    input.orgId !== input.clientOrgId
+  ) {
+    throw new Error("orgId and clientOrgId name different clients; use one.");
+  }
   const clientOrgId =
     typeof input.orgId === "string"
       ? input.orgId

@@ -1,6 +1,7 @@
 "use node";
 
 import type { FunctionArgs } from "convex/server";
+import dayjs from "dayjs";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -10,6 +11,8 @@ import { ensureOperatorInbox } from "./operatorInbox";
 import {
   capturedResourceId,
   createDraft,
+  getDraft,
+  isCapturedResourceId,
   isResendInboxError,
   sendDraft,
   type ResendInboxError,
@@ -17,12 +20,24 @@ import {
 
 /**
  * Sends an approved operator draft from the signing operator's own Resend
- * inbox. The claim (`claimOperatorInboxSendInternal`) is the only gate: it
- * rechecks the exact approval, the approver being the signer, and the draft
- * fingerprint, and records every stage so nothing is replayed after an
- * unknown outcome. Capture mode makes no Resend call but still records the
- * attempt and the local team-inbox message.
+ * inbox. The claim records the attempt against the exact approval and draft
+ * fingerprint; `beginOperatorInboxSendingInternal` rechecks everything once
+ * more immediately before Resend is asked to send. Every stage is recorded so
+ * nothing is replayed after an unknown outcome: that is only resolved by a
+ * read-only look at the stored Resend draft. Capture mode makes no Resend call
+ * but still records the attempt and the local team-inbox message.
  */
+
+/** Delays between bounded read-only retries of an unknown outcome and of a failed record. */
+const RECONCILE_DELAYS_MS = [30_000, 120_000, 600_000, 3_600_000, 21_600_000];
+const FINALIZE_DELAYS_MS = [15_000, 60_000, 300_000, 1_800_000, 7_200_000];
+/** An unsent Resend draft only proves "not sent" once an in-flight send would have landed. */
+const MIN_AGE_TO_RELEASE_MS = 30_000;
+
+const FINALIZING_REASON =
+  "Email delivered; recording it in the team inbox is being retried automatically. It will not be sent again.";
+const UNVERIFIED_REASON =
+  "Delivery status could not be verified. Check the team inbox; this email stays locked and is never resent automatically.";
 
 const MAX_TRANSIENT_RETRIES = 2;
 const MAX_RETRY_DELAY_MS = 5_000;
@@ -64,6 +79,31 @@ function describeFailure(error: unknown): string {
   return error instanceof Error ? error.message : "Delivery failed.";
 }
 
+async function tryRecordSent(
+  ctx: ActionCtx,
+  args: {
+    pendingEmailId: Id<"pendingEmails">;
+    attemptId: Id<"emailDeliveryAttempts">;
+    emailId: string;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.runMutation(internal.pendingEmails.recordOperatorInboxSentInternal, {
+      id: args.pendingEmailId,
+      attemptId: args.attemptId,
+      emailId: args.emailId,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Records a delivered email. The email already left, so a failed record is
+ * retried in the background (never by sending again) and the locked draft
+ * says so.
+ */
 async function recordSent(
   ctx: ActionCtx,
   args: {
@@ -72,17 +112,144 @@ async function recordSent(
     emailId: string;
   },
 ) {
-  try {
-    await ctx.runMutation(internal.pendingEmails.recordOperatorInboxSentInternal, {
+  if (await tryRecordSent(ctx, args)) return;
+  await ctx
+    .runMutation(internal.pendingEmails.setOperatorPendingReasonInternal, {
       id: args.pendingEmailId,
-      attemptId: args.attemptId,
-      emailId: args.emailId,
-    });
-  } catch {
-    // The email left; a retry of the send finishes this record and never resends.
-    throw new Error(
-      "The email was sent, but recording it in the team inbox failed. Send it again to finish recording; it will not be delivered twice.",
+      reason: FINALIZING_REASON,
+    })
+    .catch(() => null);
+  await ctx.scheduler.runAfter(
+    FINALIZE_DELAYS_MS[0],
+    internal.actions.sendPendingEmail.finalizeOperatorSend,
+    { attemptId: args.attemptId, round: 1 },
+  );
+  throw new Error(
+    "The email was sent. Recording it in the team inbox failed and is being retried automatically; it will not be sent again.",
+  );
+}
+
+/** Background finish of a delivered email's record. Never sends. */
+export async function finalizeOperatorAttempt(
+  ctx: ActionCtx,
+  args: { attemptId: Id<"emailDeliveryAttempts">; round: number },
+) {
+  const attempt = await ctx.runQuery(
+    internal.emailDeliveryAttempts.getOperatorAttemptInternal,
+    { attemptId: args.attemptId },
+  );
+  if (
+    !attempt ||
+    attempt.operatorStage !== "sent" ||
+    !attempt.pendingEmailId ||
+    !attempt.resendEmailId
+  ) {
+    return;
+  }
+  if (
+    await tryRecordSent(ctx, {
+      pendingEmailId: attempt.pendingEmailId,
+      attemptId: attempt._id,
+      emailId: attempt.resendEmailId,
+    })
+  ) {
+    return;
+  }
+  const delay = FINALIZE_DELAYS_MS[args.round];
+  if (delay !== undefined) {
+    await ctx.scheduler.runAfter(
+      delay,
+      internal.actions.sendPendingEmail.finalizeOperatorSend,
+      { attemptId: attempt._id, round: args.round + 1 },
     );
+  }
+}
+
+type ReconcileOutcome = "sent" | "released" | "pending";
+
+/**
+ * Settles an attempt whose send may have died, using only reads. An expired
+ * pre-send claim is released. For an unknown outcome the stored Resend draft
+ * says whether it was sent (record it) or verifiably was not (release it);
+ * anything else stays locked and is retried a bounded number of times.
+ */
+export async function reconcileOperatorAttempt(
+  ctx: ActionCtx,
+  args: { attemptId: Id<"emailDeliveryAttempts">; round: number },
+): Promise<ReconcileOutcome> {
+  const state = await ctx.runMutation(
+    internal.emailDeliveryAttempts.settleOperatorAttemptInternal,
+    { attemptId: args.attemptId },
+  );
+  const attempt = await ctx.runQuery(
+    internal.emailDeliveryAttempts.getOperatorAttemptInternal,
+    { attemptId: args.attemptId },
+  );
+  if (!attempt || !attempt.pendingEmailId) return "pending";
+  if (state === "failed") return "released";
+  if (state === "active") return "pending";
+  if (state === "sent") {
+    if (attempt.resendEmailId) {
+      await finalizeOperatorAttempt(ctx, { attemptId: attempt._id, round: 0 });
+    }
+    return "sent";
+  }
+
+  const pendingEmailId = attempt.pendingEmailId;
+  const retry = async (): Promise<"pending"> => {
+    const delay = RECONCILE_DELAYS_MS[args.round];
+    if (delay !== undefined) {
+      await ctx.scheduler.runAfter(
+        delay,
+        internal.actions.sendPendingEmail.reconcileOperatorSend,
+        { attemptId: attempt._id, round: args.round + 1 },
+      );
+    } else {
+      await ctx.runMutation(internal.pendingEmails.setOperatorPendingReasonInternal, {
+        id: pendingEmailId,
+        reason: UNVERIFIED_REASON,
+      });
+    }
+    return "pending";
+  };
+  if (
+    !attempt.inboxId ||
+    !attempt.draftId ||
+    isCapturedResourceId(attempt.inboxId) ||
+    isCapturedResourceId(attempt.draftId)
+  ) {
+    return await retry();
+  }
+  try {
+    const read = await getDraft(attempt.inboxId, attempt.draftId);
+    if (read.status !== "ok") return await retry();
+    if (read.data.emailId) {
+      await ctx.runMutation(
+        internal.emailDeliveryAttempts.advanceOperatorInboxAttemptInternal,
+        {
+          attemptId: attempt._id,
+          stage: "sent",
+          resendEmailId: read.data.emailId,
+        },
+      );
+      await finalizeOperatorAttempt(ctx, { attemptId: attempt._id, round: 0 });
+      return "sent";
+    }
+    if (dayjs().valueOf() - (attempt.completedAt ?? 0) < MIN_AGE_TO_RELEASE_MS) {
+      return await retry();
+    }
+    // The draft exists and was never sent: it is safe to offer it for editing or a fresh send.
+    await ctx.runMutation(
+      internal.emailDeliveryAttempts.advanceOperatorInboxAttemptInternal,
+      {
+        attemptId: attempt._id,
+        stage: "failed",
+        error: "Verified with Resend: the email was not sent.",
+      },
+    );
+    return "released";
+  } catch {
+    return await retry();
   }
 }
 
@@ -105,8 +272,19 @@ export async function sendOperatorInboxDraft(
 
   switch (claim.kind) {
     case "rejected":
-    case "unknown":
       throw new Error(claim.reason);
+    case "unknown": {
+      const outcome = await reconcileOperatorAttempt(ctx, {
+        attemptId: claim.attemptId,
+        round: 0,
+      });
+      if (outcome === "sent") return result;
+      throw new Error(
+        outcome === "released"
+          ? "The earlier send was verified as not sent and the draft is editable again. Ask to send it again for a fresh approval."
+          : claim.reason,
+      );
+    }
     case "in_progress":
       throw new Error("This email is already being sent.");
     case "sent":
@@ -192,7 +370,11 @@ export async function sendOperatorInboxDraft(
     return await fail(error);
   }
 
-  await advance({ stage: "sending" });
+  const begun = await ctx.runMutation(
+    internal.emailDeliveryAttempts.beginOperatorInboxSendingInternal,
+    { attemptId },
+  );
+  if (!begun.ok) return await fail(new Error(begun.reason));
   let emailId: string;
   try {
     const sent = await withBoundedRetry(
@@ -221,15 +403,19 @@ export async function sendOperatorInboxDraft(
     // No response or a server error on the send itself: it may have gone out.
     await advance({ stage: "unknown", error: describeFailure(error) });
     throw new Error(
-      "Delivery outcome unknown — check the team inbox before sending this email again.",
+      "Delivery outcome unknown. The draft stays locked while Spot verifies with Resend; it will not be sent again unless it is confirmed not sent.",
     );
   }
 
   try {
     await advance({ stage: "sent", resendEmailId: emailId });
   } catch {
+    // Remote sent but the stage did not persist: hand it to read-only reconciliation.
+    await advance({ stage: "unknown", error: "Sent, but the stage was not saved." }).catch(
+      () => null,
+    );
     throw new Error(
-      "The email was sent, but its delivery could not be recorded. Check the team inbox before sending again.",
+      "The email was sent, but its delivery could not be recorded. Spot is verifying it and will not send it again.",
     );
   }
   await recordSent(ctx, {

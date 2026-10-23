@@ -41,6 +41,7 @@ type FingerprintedDraft = Pick<
   | "replyTo"
   | "orgId"
   | "senderUserId"
+  | "operatorAlwaysCcEmail"
   | "fromHeader"
   | "transport"
   | "procurementRequestId"
@@ -65,7 +66,7 @@ export function isOperatorEmailDraft(
 
 /**
  * Binds an approval to the exact draft. Operator drafts also bind the signing
- * operator, From header, transport, link targets, threading headers and the
+ * operator, From header, Always CC snapshot, transport, link targets, threading headers and the
  * rendered payload; client fingerprints are unchanged.
  */
 export async function pendingEmailDraftFingerprint(
@@ -77,6 +78,7 @@ export async function pendingEmailDraftFingerprint(
           operator: {
             senderUserId: draft.senderUserId ? String(draft.senderUserId) : null,
             fromHeader: draft.fromHeader ?? null,
+            alwaysCc: draft.operatorAlwaysCcEmail?.toLowerCase() ?? null,
             transport: draft.transport ?? null,
             orgId: draft.orgId ? String(draft.orgId) : null,
             procurementRequestId: draft.procurementRequestId
