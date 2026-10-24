@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useAction, useQuery } from "convex/react";
+import { Mail as MailIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
   StatusTag,
@@ -184,8 +185,8 @@ export function OperatorEmailDraftCards({
 }
 
 /**
- * Full draft review in the right-hand artifact panel. Operators can revise or
- * cancel it by hand; sending still goes through the agent's exact approval.
+ * Full draft review in the right-hand artifact panel. The signing operator can
+ * revise, cancel or send it by hand; Send approves the exact draft shown.
  */
 export function OperatorEmailDraftPanel({
   draft,
@@ -198,18 +199,34 @@ export function OperatorEmailDraftPanel({
 }) {
   const updateDraft = useAction(api.actions.operatorEmailDrafts.update);
   const cancelDraft = useAction(api.actions.operatorEmailDrafts.cancel);
-  const [cancelling, setCancelling] = useState(false);
+  const sendDraft = useAction(api.actions.operatorEmailDrafts.send);
+  const [busy, setBusy] = useState<"cancel" | "send" | null>(null);
   const draftId = draft.id as Id<"pendingEmails">;
 
+  async function send() {
+    setBusy("send");
+    try {
+      const result = await sendDraft({
+        draftId,
+        expectedFingerprint: draft.fingerprint,
+      });
+      toast.success(`Email sent to ${result.recipientEmail}`);
+    } catch (error) {
+      toast.error(getUserFacingErrorMessage(error, "Failed to send email"));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function cancel() {
-    setCancelling(true);
+    setBusy("cancel");
     try {
       await cancelDraft({ draftId });
       toast.success("Email draft cancelled");
     } catch (error) {
       toast.error(getUserFacingErrorMessage(error, "Failed to cancel email"));
     } finally {
-      setCancelling(false);
+      setBusy(null);
     }
   }
 
@@ -233,16 +250,31 @@ export function OperatorEmailDraftPanel({
       note={draft.status === "draft" ? draft.sendBlockedReason : undefined}
       actions={
         draft.status === "draft" ? (
-          <ActionPill
-            type="button"
-            size="compact"
-            variant="ghost"
-            disabled={cancelling}
-            busy={cancelling}
-            onClick={() => void cancel()}
-          >
-            Cancel draft
-          </ActionPill>
+          <>
+            <ActionPill
+              type="button"
+              size="compact"
+              variant="ghost"
+              disabled={busy !== null}
+              busy={busy === "cancel"}
+              onClick={() => void cancel()}
+            >
+              Cancel draft
+            </ActionPill>
+            {draft.editable && !draft.sendBlockedReason ? (
+              <ActionPill
+                type="button"
+                size="compact"
+                variant="primary"
+                disabled={busy !== null}
+                busy={busy === "send"}
+                icon={MailIcon}
+                onClick={() => void send()}
+              >
+                Send
+              </ActionPill>
+            ) : null}
+          </>
         ) : draft.status === "sent" && draft.teamEmailThreadId ? (
           <PillButton
             variant="secondary"

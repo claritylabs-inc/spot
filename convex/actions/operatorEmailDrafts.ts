@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { action } from "../_generated/server";
 import { runOperatorEmailTool } from "../lib/operatorEmailTools";
+import { sendOperatorInboxDraft } from "../lib/operatorInboxSend";
 
 /**
  * Hand edits from the operator chat's draft artifact. They run the same
@@ -57,5 +58,18 @@ export const cancel = action({
       input: { draftId },
     });
     return null;
+  },
+});
+
+/**
+ * Sends a chat draft from its artifact as the signed-in signing operator: the
+ * click approves the exact draft shown, then the same claimed delivery as an
+ * inbox reply sends it once.
+ */
+export const send = action({
+  args: { draftId: v.id("pendingEmails"), expectedFingerprint: v.string() },
+  handler: async (ctx, args): Promise<{ recipientEmail: string }> => {
+    await ctx.runMutation(internal.operatorEmailDrafts.approveSendInternal, args);
+    return await sendOperatorInboxDraft(ctx, { pendingEmailId: args.draftId });
   },
 });

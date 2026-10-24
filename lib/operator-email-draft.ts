@@ -27,5 +27,7 @@ export type OperatorEmailDraftView = {
   /** Set once the sent message is in the team inbox. */
   teamEmailThreadId?: string;
   sendBlockedReason?: string;
+  /** The exact content an operator approves by sending from the artifact. */
+  fingerprint: string;
   updatedAt: number;
 };
