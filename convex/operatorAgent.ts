@@ -179,7 +179,10 @@ import {
   slackThreadContextSnapshotValidator,
   type SlackThreadContextSnapshot,
 } from "./lib/slackThreadContext";
-import { threadPageContext } from "./lib/threadPageContext";
+import {
+  normalizeOperatorPageContext,
+  threadPageContext,
+} from "./lib/threadPageContext";
 import { operatorPeople } from "./lib/operatorAvatar";
 
 const operatorChannelValidator = v.union(
@@ -989,36 +992,6 @@ function applicantContactFromAnswers(...sources: unknown[]) {
     if (contact.name || contact.email || contact.phone) return contact;
   }
   return null;
-}
-
-export function normalizeOperatorPageContext(
-  context:
-    | { pageType: string; entityId?: string; summary?: string; href?: string }
-    | undefined,
-) {
-  if (!context) return undefined;
-  const pageType = context.pageType.trim();
-  const entityId = context.entityId?.trim() || undefined;
-  const summary = context.summary?.trim() || undefined;
-  const href = context.href?.trim() || undefined;
-  if (!pageType || pageType.length > 100) {
-    throw new Error("Operator page type must be 1–100 characters");
-  }
-  if (entityId && entityId.length > 200) {
-    throw new Error("Operator page entity ID must be at most 200 characters");
-  }
-  if (summary && summary.length > 500) {
-    throw new Error("Operator page summary must be at most 500 characters");
-  }
-  if (href && href.length > 2000) {
-    throw new Error("Operator page URL must be at most 2000 characters");
-  }
-  return {
-    pageType,
-    ...(entityId ? { entityId } : {}),
-    ...(summary ? { summary } : {}),
-    ...(href ? { href } : {}),
-  };
 }
 
 function normalizeOperatorConversationKey(value: string) {

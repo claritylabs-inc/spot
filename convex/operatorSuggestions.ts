@@ -8,6 +8,7 @@ import {
   query,
 } from "./_generated/server";
 import { requireOperator } from "./lib/operatorIdentity";
+import { normalizeOperatorPageContext } from "./lib/threadPageContext";
 import {
   isOperatorSuggestionRankingStale,
   isOperatorSuggestionRefreshPending,
@@ -18,7 +19,6 @@ import {
   orderOperatorSuggestions,
 } from "./lib/operatorSuggestionRanking";
 import type { OperatorSuggestionList } from "./lib/operatorSuggestionTypes";
-import { normalizeOperatorPageContext } from "./operatorAgent";
 
 export const list = query({
   args: { pageContext: v.optional(operatorSuggestionPageContextValidator) },
