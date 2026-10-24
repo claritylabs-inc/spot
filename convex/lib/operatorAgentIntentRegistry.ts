@@ -126,12 +126,17 @@ export function listOperatorAgentIntents(context?: PageContext) {
   return selected.map(({ id, label }) => ({ id, label }));
 }
 
-/** Static intents offered when live suggestions run short. */
+/** Static intents offered when live suggestions run short: page intents, then general ones. */
 export function listOperatorAgentFallbackIntents(context?: PageContext) {
-  return listOperatorAgentIntents(context).filter(
-    ({ id }) =>
-      !OPERATOR_AGENT_INTENTS.find((intent) => intent.id === id)?.liveOnly,
-  );
+  const contextual = context?.entityId
+    ? OPERATOR_AGENT_INTENTS.filter((intent) =>
+        intent.pageTypes?.includes(context.pageType),
+      )
+    : [];
+  const general = OPERATOR_AGENT_INTENTS.filter((intent) => !intent.pageTypes);
+  return [...contextual, ...general]
+    .filter((intent) => !intent.liveOnly)
+    .map(({ id, label }) => ({ id, label }));
 }
 
 export function resolveOperatorAgentIntent(
