@@ -60,6 +60,7 @@ function AgentThinkingBubble({ label }: { label: string }) {
  */
 export function ChatAssistantTurn({
   working,
+  turnActive = working,
   tools,
   toolCalls,
   activity,
@@ -87,6 +88,11 @@ export function ChatAssistantTurn({
   children,
 }: Omit<ComponentProps<typeof ChatPresentationView>, "answer" | "disabled"> & {
   working: boolean;
+  /**
+   * Whether the turn is still running, for the activity summary. Differs from
+   * `working` when the thinking indicator pauses, e.g. awaiting approval.
+   */
+  turnActive?: boolean;
   tools?: string[];
   toolCalls?: { name: string; input?: string }[];
   /** Observed stages and tool status; retained as evidence once settled. */
@@ -195,7 +201,7 @@ export function ChatAssistantTurn({
           tools={tools}
           toolCalls={toolCalls}
           activity={activity}
-          working={working}
+          working={turnActive}
         />
       ) : null}
       {aside ? (

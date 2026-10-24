@@ -6,7 +6,11 @@ import { ChevronRight } from "lucide-react";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
-/** Shared activity disclosure; active turns stay expanded until completion. */
+/**
+ * Shared activity disclosure. While `working` it is forced open. When work
+ * finishes in this session it stays open so the trace does not vanish; the
+ * user can then collapse it. Disclosures that mount idle start collapsed.
+ */
 export function ChatDisclosure({
   summary,
   working = false,
@@ -28,7 +32,7 @@ export function ChatDisclosure({
   const [wasWorking, setWasWorking] = useState(working);
   if (wasWorking !== working) {
     setWasWorking(working);
-    setExpanded(false);
+    if (!working) setExpanded(true);
   }
   const open = working || expanded;
 
