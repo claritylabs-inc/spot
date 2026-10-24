@@ -166,9 +166,11 @@ export function renderSlackMrkdwn(markdown: string): string {
 
 export function renderAgentMarkdownHtml(markdown: string): string {
   const rendered = String(
+    // Single line breaks are kept: hand-edited drafts and "•" lists rely on them.
     marked.parse(cleanAgentMarkdownForTransport(markdown), {
       async: false,
       gfm: true,
+      breaks: true,
     }),
   );
   return sanitizeHtml(rendered, {

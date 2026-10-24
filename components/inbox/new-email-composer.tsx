@@ -6,6 +6,12 @@ import dayjs from "dayjs";
 import { Loader2, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  EmailComposeInput,
+  EmailComposeMessage,
+  EmailComposeRow,
+  parseEmailAddressList,
+} from "@/components/email/compose-fields";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { PillButton } from "@/components/ui/pill-button";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
@@ -83,37 +89,17 @@ function useDebounced<T>(value: T, delayMs: number) {
   return debounced;
 }
 
-const list = (value: string) =>
-  value
-    .split(/[,;\n]/)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-
 function composeArgs(draft: Draft) {
   return {
     to: draft.to.trim(),
-    cc: list(draft.cc),
-    bcc: list(draft.bcc),
+    cc: parseEmailAddressList(draft.cc),
+    bcc: parseEmailAddressList(draft.bcc),
     subject: draft.subject,
     message: draft.message,
     ...(draft.clientOrgId ? { clientOrgId: draft.clientOrgId as Id<"organizations"> } : {}),
     ...(draft.requestId ? { requestId: draft.requestId as Id<"procurementRequests"> } : {}),
   };
 }
-
-/** A mail-client header row: muted inline label, borderless value. */
-function HeaderRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex min-h-11 items-center gap-3 border-b border-border px-4">
-      <span className={`w-14 shrink-0 text-muted-foreground ${typeStyle("body.default")}`}>
-        {label}
-      </span>
-      <div className="flex min-w-0 flex-1 items-center gap-2">{children}</div>
-    </div>
-  );
-}
-
-const fieldClass = `h-10 w-full min-w-0 bg-transparent outline-none placeholder:text-muted-foreground/60 ${typeStyle("control.input")}`;
 
 /**
  * A new email from the signed-in operator's team address. The server composes
@@ -317,13 +303,13 @@ function OperatorNewEmailComposer({
             )}
           </div>
         ) : null}
-        <HeaderRow label="From">
+        <EmailComposeRow label="From">
           <p className={`truncate ${typeStyle("body.default")}`}>
             {preview?.from ?? "Your team address"}
           </p>
-        </HeaderRow>
-        <HeaderRow label="To">
-          <input
+        </EmailComposeRow>
+        <EmailComposeRow label="To">
+          <EmailComposeInput
             aria-label="To"
             type="email"
             autoFocus
@@ -331,7 +317,6 @@ function OperatorNewEmailComposer({
             value={draft.to}
             disabled={disabled}
             onChange={(event) => update({ to: event.target.value })}
-            className={fieldClass}
           />
           {providerContacts?.length ? (
             <Select
@@ -377,49 +362,46 @@ function OperatorNewEmailComposer({
               Cc Bcc
             </PillButton>
           )}
-        </HeaderRow>
+        </EmailComposeRow>
         {draft.showCopies || preview?.cc.length ? (
-          <HeaderRow label="Cc">
-            <input
+          <EmailComposeRow label="Cc">
+            <EmailComposeInput
               aria-label="Cc"
               placeholder={preview?.cc.length ? preview.cc.join(", ") : "Separate addresses with commas"}
               value={draft.cc}
               disabled={disabled}
               onChange={(event) => update({ cc: event.target.value, showCopies: true })}
-              className={fieldClass}
             />
-          </HeaderRow>
+          </EmailComposeRow>
         ) : null}
         {draft.showCopies ? (
-          <HeaderRow label="Bcc">
-            <input
+          <EmailComposeRow label="Bcc">
+            <EmailComposeInput
               aria-label="Bcc"
               placeholder="Separate addresses with commas"
               value={draft.bcc}
               disabled={disabled}
               onChange={(event) => update({ bcc: event.target.value })}
-              className={fieldClass}
             />
-          </HeaderRow>
+          </EmailComposeRow>
         ) : null}
-        <HeaderRow label="Subject">
-          <input
+        <EmailComposeRow label="Subject">
+          <EmailComposeInput
             aria-label="Subject"
             maxLength={200}
             value={draft.subject}
             disabled={disabled}
             onChange={(event) => update({ subject: event.target.value })}
-            className={fieldClass}
           />
-        </HeaderRow>
+        </EmailComposeRow>
         {draft.requestId ? (
-          <HeaderRow label="Request">
+          <EmailComposeRow label="Request">
             <p className={`truncate ${typeStyle("body.default")}`}>
               {preview?.request?.title ?? request?.title ?? "This request"}
             </p>
-          </HeaderRow>
+          </EmailComposeRow>
         ) : (
-        <HeaderRow label="Client">
+        <EmailComposeRow label="Client">
           <div className="w-full [&_button[role=combobox]]:border-transparent! [&_button[role=combobox]]:bg-transparent! [&_button[role=combobox]]:px-0!">
             <SearchableSelect
               ariaLabel="Client"
@@ -431,15 +413,15 @@ function OperatorNewEmailComposer({
               placeholder="Not linked"
             />
           </div>
-        </HeaderRow>
+        </EmailComposeRow>
         )}
-        <textarea
+        <EmailComposeMessage
           aria-label="Message"
           placeholder="Write your email…"
           value={draft.message}
           disabled={disabled}
           onChange={(event) => update({ message: event.target.value })}
-          className={`min-h-64 w-full flex-1 resize-none bg-transparent px-4 py-4 outline-none field-sizing-content placeholder:text-muted-foreground/60 ${typeStyle("body.default")}`}
+          className="min-h-64 flex-1 py-4"
         />
         {preview ? (
           <p className={`px-4 pb-4 whitespace-pre-line text-muted-foreground ${typeStyle("caption.default")}`}>

@@ -50,6 +50,7 @@ import type * as actions_modelCallLogs from "../actions/modelCallLogs.js";
 import type * as actions_operationalRouterSmoke from "../actions/operationalRouterSmoke.js";
 import type * as actions_operatorAgentRichTools from "../actions/operatorAgentRichTools.js";
 import type * as actions_operatorChannelDelivery from "../actions/operatorChannelDelivery.js";
+import type * as actions_operatorEmailDrafts from "../actions/operatorEmailDrafts.js";
 import type * as actions_operatorGoogleWorkspace from "../actions/operatorGoogleWorkspace.js";
 import type * as actions_operatorMcp from "../actions/operatorMcp.js";
 import type * as actions_operatorMcpOAuth from "../actions/operatorMcpOAuth.js";
@@ -585,6 +586,7 @@ declare const fullApi: ApiFromModules<{
   "actions/operationalRouterSmoke": typeof actions_operationalRouterSmoke;
   "actions/operatorAgentRichTools": typeof actions_operatorAgentRichTools;
   "actions/operatorChannelDelivery": typeof actions_operatorChannelDelivery;
+  "actions/operatorEmailDrafts": typeof actions_operatorEmailDrafts;
   "actions/operatorGoogleWorkspace": typeof actions_operatorGoogleWorkspace;
   "actions/operatorMcp": typeof actions_operatorMcp;
   "actions/operatorMcpOAuth": typeof actions_operatorMcpOAuth;

@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { useAction, useMutation } from "convex/react";
-import { Mail as MailIcon, RotateCcw } from "lucide-react";
+import { Mail as MailIcon, Pencil, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { api } from "@/convex/_generated/api";
@@ -13,6 +13,11 @@ import {
   type StatusPresentation,
 } from "@claritylabs-inc/ui/components/status-tag";
 import { ChatAttachmentList } from "@/components/chat/attachment-chip";
+import {
+  EmailComposeInput,
+  EmailComposeMessage,
+  EmailComposeRow,
+} from "@/components/email/compose-fields";
 import {
   useCachedQuery,
   useUpdateCachedQuery,
@@ -522,6 +527,246 @@ export function EmailStackCard({
   );
 }
 
+export type EmailArtifactDraft = {
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  body: string;
+};
+
+/**
+ * One email in the chat artifact panel: subject and status, mail headers, the
+ * rendered body, and actions. With `edit`, the draft can be revised by hand in
+ * the shared compose fields; the server re-renders it on save.
+ */
+export function EmailArtifact({
+  eyebrow,
+  subject,
+  status,
+  closeLabel,
+  onClose,
+  from,
+  to,
+  cc,
+  bcc,
+  replyTo,
+  time,
+  attachments,
+  threadId,
+  operatorThreadId,
+  html,
+  text,
+  note,
+  actions,
+  edit,
+}: {
+  eyebrow?: ReactNode;
+  subject: string;
+  status: { label: string } & StatusPresentation;
+  closeLabel: string;
+  onClose: () => void;
+  from?: string | null;
+  to?: string[];
+  cc?: string[];
+  bcc?: string[];
+  replyTo?: string[];
+  time: { label: string; value: number };
+  attachments?: ComponentProps<typeof EmailHeaderAttachments>["attachments"];
+  threadId?: Id<"threads">;
+  operatorThreadId?: string;
+  html?: string;
+  text: string;
+  /** Muted line at the start of the action bar, e.g. why a draft cannot be sent. */
+  note?: ReactNode;
+  actions?: ReactNode;
+  edit?: {
+    draft: EmailArtifactDraft;
+    onSave: (draft: EmailArtifactDraft) => Promise<void>;
+  };
+}) {
+  const [editing, setEditing] = useState<EmailArtifactDraft | null>(null);
+  const [saving, setSaving] = useState(false);
+  const update = (patch: Partial<EmailArtifactDraft>) =>
+    setEditing((current) => (current ? { ...current, ...patch } : current));
+
+  async function save() {
+    if (!edit || !editing) return;
+    setSaving(true);
+    try {
+      await edit.onSave(editing);
+      setEditing(null);
+      toast.success("Draft saved");
+    } catch (error) {
+      toast.error(getUserFacingErrorMessage(error, "Failed to save draft"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const header = {
+    eyebrow,
+    title: editing ? editing.subject || "(no subject)" : subject,
+    status: (
+      <StatusTag
+        indicator={status.indicator}
+        tone={status.tone}
+        className="shrink-0"
+      >
+        {status.label}
+      </StatusTag>
+    ),
+    closeLabel,
+    onClose,
+  };
+
+  if (editing) {
+    return (
+      <ChatArtifact
+        {...header}
+        bodyClassName="p-0"
+        footer={
+          <>
+            <PillButton
+              type="button"
+              size="compact"
+              variant="ghost"
+              disabled={saving}
+              onClick={() => setEditing(null)}
+            >
+              Discard changes
+            </PillButton>
+            <ActionPill
+              type="button"
+              size="compact"
+              variant="primary"
+              disabled={saving || !editing.to.trim()}
+              busy={saving}
+              onClick={() => void save()}
+            >
+              Save
+            </ActionPill>
+          </>
+        }
+      >
+        <div
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              void save();
+            }
+          }}
+        >
+          {from ? (
+            <EmailComposeRow label="From">
+              <span className="min-w-0 truncate">{from}</span>
+            </EmailComposeRow>
+          ) : null}
+          <EmailComposeRow label="To">
+            <EmailComposeInput
+              aria-label="To"
+              type="email"
+              value={editing.to}
+              disabled={saving}
+              onChange={(event) => update({ to: event.target.value })}
+            />
+          </EmailComposeRow>
+          <EmailComposeRow label="Cc">
+            <EmailComposeInput
+              aria-label="Cc"
+              placeholder="Separate addresses with commas"
+              value={editing.cc}
+              disabled={saving}
+              onChange={(event) => update({ cc: event.target.value })}
+            />
+          </EmailComposeRow>
+          <EmailComposeRow label="Bcc">
+            <EmailComposeInput
+              aria-label="Bcc"
+              placeholder="Separate addresses with commas"
+              value={editing.bcc}
+              disabled={saving}
+              onChange={(event) => update({ bcc: event.target.value })}
+            />
+          </EmailComposeRow>
+          <EmailComposeRow label="Subject">
+            <EmailComposeInput
+              aria-label="Subject"
+              maxLength={200}
+              value={editing.subject}
+              disabled={saving}
+              onChange={(event) => update({ subject: event.target.value })}
+            />
+          </EmailComposeRow>
+          <EmailComposeMessage
+            aria-label="Message"
+            autoFocus
+            value={editing.body}
+            disabled={saving}
+            onChange={(event) => update({ body: event.target.value })}
+            className="min-h-64 py-4"
+          />
+        </div>
+      </ChatArtifact>
+    );
+  }
+
+  const footer =
+    note || actions || edit ? (
+      <>
+        {note ? (
+          <p
+            className={`mr-auto min-w-0 text-muted-foreground/60 ${typeStyle("caption.default")}`}
+          >
+            {note}
+          </p>
+        ) : null}
+        {actions}
+        {edit ? (
+          <PillButton
+            type="button"
+            size="compact"
+            variant="secondary"
+            onClick={() => setEditing(edit.draft)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </PillButton>
+        ) : null}
+      </>
+    ) : null;
+
+  return (
+    <ChatArtifact
+      {...header}
+      meta={
+        <ChatArtifactMeta>
+          <ChatArtifactMetaRow label="From" value={from} />
+          <ChatArtifactMetaRow label="To" value={formatEmailAddressList(to)} />
+          <ChatArtifactMetaRow label="Cc" value={formatEmailAddressList(cc)} />
+          <ChatArtifactMetaRow label="Bcc" value={formatEmailAddressList(bcc)} />
+          <ChatArtifactMetaRow
+            label="Reply-To"
+            value={formatEmailAddressList(replyTo)}
+          />
+          <ChatArtifactMetaRow
+            label={time.label}
+            value={formatDisplayDateTime(time.value)}
+          />
+          <EmailHeaderAttachments
+            attachments={attachments}
+            threadId={threadId}
+            operatorThreadId={operatorThreadId}
+          />
+        </ChatArtifactMeta>
+      }
+      footer={footer}
+    >
+      <EmailBodyPreview html={html} text={text} />
+    </ChatArtifact>
+  );
+}
+
 export function EmailThreadSidebar({
   message,
   onClose,
@@ -552,44 +797,26 @@ export function EmailThreadSidebar({
         ? `${message.fromName} <${message.fromEmail}>`
         : message.fromEmail
       : null);
-  const toLine = pendingEmail
-    ? pendingEmail.recipientEmail
-    : formatEmailAddressList(message.toAddresses);
-  const ccLine = formatEmailAddressList(
-    pendingEmail ? pendingEmail.ccAddresses : message.ccAddresses,
-  );
-  const bccLine = formatEmailAddressList(
-    pendingEmail ? pendingEmail.bccAddresses : message.bccAddresses,
-  );
-  const previewBody = pendingEmail?.renderedText ?? pendingEmail?.emailBody ?? message.content;
 
   return (
-    <ChatArtifact
-      title={
+    <EmailArtifact
+      subject={
         pendingEmail?.subject || message.subject ||
           (message.role === "agent" ? "Sent email" : "Received email")
       }
-      status={
-        <StatusTag indicator={status.indicator} tone={status.tone} className="shrink-0">
-          {status.label}
-        </StatusTag>
-      }
+      status={status}
       closeLabel="Close email"
       onClose={onClose}
-      meta={
-        <ChatArtifactMeta>
-          <ChatArtifactMetaRow label="From" value={fromLine} />
-          <ChatArtifactMetaRow label="To" value={toLine} />
-          <ChatArtifactMetaRow label="Cc" value={ccLine} />
-          <ChatArtifactMetaRow label="Bcc" value={bccLine} />
-          <ChatArtifactMetaRow label="Time" value={formatDisplayDateTime(message._creationTime)} />
-          <EmailHeaderAttachments
-            attachments={pendingEmail ? pendingEmail.attachments : message.attachments}
-            threadId={message.threadId}
-          />
-        </ChatArtifactMeta>
-      }
-      footer={
+      from={fromLine}
+      to={pendingEmail ? [pendingEmail.recipientEmail] : message.toAddresses}
+      cc={pendingEmail ? pendingEmail.ccAddresses : message.ccAddresses}
+      bcc={pendingEmail ? pendingEmail.bccAddresses : message.bccAddresses}
+      time={{ label: "Time", value: message._creationTime }}
+      attachments={pendingEmail ? pendingEmail.attachments : message.attachments}
+      threadId={message.threadId}
+      html={pendingEmail?.renderedHtml}
+      text={pendingEmail?.renderedText ?? pendingEmail?.emailBody ?? message.content}
+      actions={
         isDraft ? (
           <>
             <ActionPill
@@ -631,8 +858,6 @@ export function EmailThreadSidebar({
           </ActionPill>
         ) : null
       }
-    >
-      <EmailBodyPreview html={pendingEmail?.renderedHtml} text={previewBody} />
-    </ChatArtifact>
+    />
   );
 }

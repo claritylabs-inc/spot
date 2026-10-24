@@ -22,6 +22,7 @@ import {
   quotedHistory,
   teamThreadOwnerAddress,
   teamThreadReplyPlan,
+  withoutQuotedHistory,
   type TeamThreadDraftContext,
 } from "./lib/teamThreadReply";
 
@@ -66,6 +67,8 @@ function toDraftView(
     from: draft.fromHeader,
     html: draft.renderedHtml,
     text: draft.renderedText || draft.emailBody,
+    body: withoutQuotedHistory(draft.emailBody),
+    editable: draft.status === "draft" && !draft.directReplyKey,
     attachments: (draft.attachments ?? []).map(({ filename }) => ({
       filename,
     })),
@@ -114,6 +117,23 @@ export const listForMessages = query({
       if (views.length) result[messageId] = views;
     }
     return result;
+  },
+});
+
+/** The signed-in operator and owning thread for a hand edit of an operator draft. */
+export const editTargetInternal = internalQuery({
+  args: { draftId: v.id("pendingEmails") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    const draft = await ctx.db.get(args.draftId);
+    if (!draft?.operatorThreadId) throw new Error("Draft not found");
+    return {
+      operatorUserId: operator.userId,
+      threadId: draft.operatorThreadId,
+      attachmentFileIds: (draft.attachments ?? []).map(({ fileId }) =>
+        String(fileId),
+      ),
+    };
   },
 });
 
