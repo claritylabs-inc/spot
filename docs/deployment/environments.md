@@ -50,14 +50,23 @@ completion has been verified on all deployed targets.
 ## Production releases
 
 Vercel deploys Convex as part of the production build. `vercel.json` sets the
-build command to `npx convex deploy --cmd 'npm run build'` when
-`VERCEL_ENV=production` and to `npm run build` otherwise, so preview builds
-never touch production Convex. The Spot Vercel project's Production
+build command to `npx convex deploy --typecheck=disable --cmd 'npm run build'`
+when `VERCEL_ENV=production` and to `npm run build` otherwise, so preview
+builds never touch production Convex. The Spot Vercel project's Production
 environment holds the production `CONVEX_DEPLOY_KEY`. `convex deploy` runs the
-Next.js build first, then typechecks and pushes the Convex functions; a failure
-in either step fails the Vercel build and nothing is promoted. There is no
-GitHub release workflow and no Vercel Deployment Check. PR CI runs lint,
-typechecks and tests.
+Next.js build first, then pushes the Convex functions; a failure in either step
+fails the Vercel build and nothing is promoted. Neither step typechecks:
+`next.config.ts` sets `typescript.ignoreBuildErrors` and the deploy passes
+`--typecheck=disable`, because CI already runs `npx tsc --noEmit` (the root
+tsconfig covers `convex/`), and the "main: require CI" ruleset requires the
+`root` CI check to pass on a branch that is up to date with `main`. There is no
+GitHub release workflow and no Vercel Deployment Check.
+
+`.github/workflows/ci.yml` runs on pull requests and on pushes to `main`. Lint,
+typecheck and tests run as parallel jobs, and `root` passes only when all of
+them pass. Jobs reuse cached `node_modules` (keyed on `package-lock.json` and
+`patches/`), and the ESLint and `tsc` incremental caches fall back to the
+latest `main` run, so pushes to `main` keep PR caches warm.
 
 `.github/workflows/publish-cli.yml` runs only when `cli/` or `operator-cli/`
 changes on `main` and publishes a package only when its version is not yet in
