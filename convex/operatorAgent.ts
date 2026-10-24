@@ -4102,6 +4102,7 @@ export const listIntents = query({
 export const startIntent = mutation({
   args: {
     intentId: v.string(),
+    suggestionKey: v.optional(v.string()),
     pageContext: v.optional(pageContextValidator),
     emptyThreadId: v.optional(v.id("operatorAgentThreads")),
   },
