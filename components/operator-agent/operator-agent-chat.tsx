@@ -121,14 +121,9 @@ export function OperatorAgentChat({
     ? operatorPageContextKey(displayedPageContext)
     : "global";
   const suggestionsStale = suggestions?.stale === true;
-  const refreshedSuggestionsKey = useRef<string | null>(null);
+  // Cached query results don't re-evaluate as time passes, so ask once per page
+  // (the server checks staleness) and again whenever the result reports stale.
   useEffect(() => {
-    if (!suggestionsStale) {
-      refreshedSuggestionsKey.current = null;
-      return;
-    }
-    if (refreshedSuggestionsKey.current === suggestionsContextKey) return;
-    refreshedSuggestionsKey.current = suggestionsContextKey;
     void refreshSuggestions(
       displayedPageContext ? { pageContext: displayedPageContext } : {},
     ).catch(() => undefined);
