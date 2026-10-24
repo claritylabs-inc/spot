@@ -24,6 +24,7 @@ const REPLY_WINDOW_DAYS = 14;
 const REPLY_GRACE_HOURS = 2;
 /** Mirrors `list_extraction_issues`: an expired lease this old is stuck. */
 const EXTRACTION_STUCK_AFTER_MS = 5 * 60 * 1000;
+const ROUTING_SAMPLE_LIMIT = 200;
 const ROUTING_DEGRADED_MIN_ERRORS = 3;
 const ROUTING_DEGRADED_ERROR_RATE = 0.25;
 const OPEN_REQUEST_STATUSES = new Set<Doc<"procurementRequests">["status"]>([
@@ -58,10 +59,24 @@ function isoTime(timestamp: number) {
   return dayjs(timestamp).toISOString();
 }
 
-/** "in the last hour" / "in the last 5 hours", from the earliest event. */
-function withinPhrase(earliest: number, now: number) {
-  const hours = dayjs(now).diff(earliest, "hour") + 1;
-  return hours <= 1 ? "in the last hour" : `in the last ${hours} hours`;
+/** Minutes below an hour, otherwise hours, rounded up. */
+function span(since: number, now: number) {
+  const minutes = Math.max(1, Math.ceil(dayjs(now).diff(since, "minute", true)));
+  return minutes < 60
+    ? { value: minutes, unit: "minute", short: "m" }
+    : { value: Math.ceil(minutes / 60), unit: "hour", short: "h" };
+}
+
+/** "in the last 40 minutes" / "in the last hour" / "in the last 5 hours". */
+function withinPhrase(since: number, now: number) {
+  const { value, unit } = span(since, now);
+  return value === 1 ? `in the last ${unit}` : `in the last ${value} ${unit}s`;
+}
+
+/** "40m" / "5h", for labels that state two windows. */
+function shortSpan(since: number, now: number) {
+  const { value, short } = span(since, now);
+  return `${value}${short}`;
 }
 
 /** "3 hours" / "2 days", for how long something has waited. */
@@ -158,13 +173,23 @@ async function readPolicyExtractionIssues(
     ctx.db
       .query("policyExtractionRuns")
       .withIndex("status_updated", (q) =>
-        q.eq("pipelineStatus", "error").gt("updatedAt", issueSince),
+        q
+          .eq("pipelineStatus", "error")
+          .gt("updatedAt", issueSince)
+          .lte("updatedAt", now),
       )
       .order("desc")
       .take(40),
     ctx.db
       .query("policyExtractionRuns")
-      .withIndex("status_updated", (q) => q.eq("pipelineStatus", "running"))
+      // A stuck run's expired lease means it has not been written for at
+      // least the stuck threshold, so healthy runs' frequent checkpoint writes
+      // stay outside this range.
+      .withIndex("status_updated", (q) =>
+        q
+          .eq("pipelineStatus", "running")
+          .lte("updatedAt", now - EXTRACTION_STUCK_AFTER_MS),
+      )
       .order("desc")
       .take(20),
   ]);
@@ -219,7 +244,9 @@ async function readRecentProposalExtractionErrors(
   const since = dayjs(now).subtract(24, "hour").valueOf();
   const jobs = await ctx.db
     .query("procurementProposalExtractionJobs")
-    .withIndex("status", (q) => q.eq("status", "failed").gt("updatedAt", since))
+    .withIndex("status", (q) =>
+      q.eq("status", "failed").gt("updatedAt", since).lte("updatedAt", now),
+    )
     .order("desc")
     .take(20);
   const failures: number[] = [];
@@ -235,30 +262,32 @@ async function readRecentProposalExtractionErrors(
   return failures;
 }
 
-/** Recent routed model calls, with errors in the last 24 hours and last hour. */
+/**
+ * Routed model calls in the hour before `now`. There is no status index, so a
+ * full page covers less than the hour; `coveredSince` is the oldest call read
+ * and every count is stated for that span only.
+ */
 async function readRoutingFailures(ctx: QueryCtx, now: number) {
-  const since = dayjs(now).subtract(24, "hour").valueOf();
   const hourAgo = dayjs(now).subtract(1, "hour").valueOf();
   const calls = await ctx.db
     .query("modelRoutingEvents")
-    .withIndex("kind_time", (q) => q.eq("kind", "call").gt("timestamp", since))
+    .withIndex("kind_time", (q) =>
+      q.eq("kind", "call").gt("timestamp", hourAgo).lte("timestamp", now),
+    )
     .order("desc")
-    .take(200);
-  const isFailure = (call: Doc<"modelRoutingEvents">) =>
-    call.status === "error" || call.status === "unknown";
-  const failures = calls.filter(isFailure);
-  const lastHour = calls.filter((call) => call.timestamp >= hourAgo);
-  const lastHourFailures = lastHour.filter(isFailure);
-  const tasks = [...new Set(failures.map((call) => call.task))];
+    .take(ROUTING_SAMPLE_LIMIT);
+  const failures = calls.filter(
+    (call) => call.status === "error" || call.status === "unknown",
+  );
   return {
-    failures: failures.map((call) => call.timestamp),
-    tasks,
-    sampled: calls.length,
+    failures: failures.length,
+    calls: calls.length,
+    coveredSince:
+      calls.length === ROUTING_SAMPLE_LIMIT ? calls[calls.length - 1].timestamp : hourAgo,
+    tasks: [...new Set(failures.map((call) => call.task))],
     degraded:
-      lastHourFailures.length >= ROUTING_DEGRADED_MIN_ERRORS &&
-      lastHourFailures.length / lastHour.length >= ROUTING_DEGRADED_ERROR_RATE,
-    lastHourFailures: lastHourFailures.length,
-    lastHourCalls: lastHour.length,
+      failures.length >= ROUTING_DEGRADED_MIN_ERRORS &&
+      failures.length / calls.length >= ROUTING_DEGRADED_ERROR_RATE,
   };
 }
 
@@ -266,6 +295,7 @@ async function systemHealthCandidate(
   ctx: QueryCtx,
   readOrganization: ReadOrganization,
   routing: Awaited<ReturnType<typeof readRoutingFailures>>,
+  now: number,
 ): Promise<Candidate | null> {
   const [connections, bindings, emailAccounts] = await Promise.all([
     ctx.db
@@ -313,7 +343,7 @@ async function systemHealthCandidate(
   if (problems.length > 1) {
     label = `${problems.length} integrations need attention`;
   } else if (routing.degraded) {
-    label = `Model routing failing (${routing.lastHourFailures} errors this hour)`;
+    label = `Model routing failing (${routing.failures} errors ${withinPhrase(routing.coveredSince, now)})`;
   } else if (slackCount > 0) {
     label =
       slackOwners.length === 1
@@ -333,7 +363,7 @@ async function systemHealthCandidate(
       ? `Connected email accounts in error: ${failingEmail.length} (${emailOwners.slice(0, 5).join(", ")}).`
       : null,
     routing.degraded
-      ? `Model routing: ${routing.lastHourFailures} of ${routing.lastHourCalls} calls failed in the last hour.`
+      ? `Model routing: ${routing.failures} of ${routing.calls} calls since ${isoTime(routing.coveredSince)} errored or ended unknown.`
       : null,
   ].filter((fact): fact is string => fact !== null);
   return {
@@ -359,24 +389,24 @@ function recentFailuresCandidate(
   now: number,
 ): Candidate | null {
   const extractionCount = policyErrors.length + proposalErrors.length;
-  const routingCount = routing.failures.length;
+  const routingCount = routing.failures;
   const total = extractionCount + routingCount;
   if (total === 0) return null;
-  const earliest = Math.min(...policyErrors, ...proposalErrors, ...routing.failures);
-  const within = withinPhrase(earliest, now);
+  // Extraction counts span from the earliest failure read; routing counts only
+  // the window actually read.
+  const earliestExtraction = Math.min(...policyErrors, ...proposalErrors);
   const label =
     routingCount === 0
-      ? `${plural(extractionCount, "extraction")} failed ${within}`
+      ? `${plural(extractionCount, "extraction")} failed ${withinPhrase(earliestExtraction, now)}`
       : extractionCount === 0
-        ? `${plural(routingCount, "model call")} failed ${within}`
-        : `${plural(total, "failure")} ${within}`;
+        ? `${plural(routingCount, "model call")} failed ${withinPhrase(routing.coveredSince, now)}`
+        : `${plural(extractionCount, "extraction failure")} in ${shortSpan(earliestExtraction, now)}, ${plural(routingCount, "model error")} in ${shortSpan(routing.coveredSince, now)}`;
   const facts = [
-    `Failures in the last 24 hours, earliest at ${isoTime(earliest)}.`,
     extractionCount > 0
-      ? `Extractions: ${policyErrors.length} policy, ${proposalErrors.length} proposal.`
+      ? `Extraction failures in the last 24 hours: ${policyErrors.length} policy, ${proposalErrors.length} proposal; earliest at ${isoTime(earliestExtraction)}.`
       : null,
     routingCount > 0
-      ? `Model calls: ${routingCount} errored or unknown of the latest ${routing.sampled} sampled; tasks ${routing.tasks.slice(0, 5).join(", ")}.`
+      ? `Model calls: ${routingCount} of ${routing.calls} since ${isoTime(routing.coveredSince)} errored or ended unknown; tasks ${routing.tasks.slice(0, 5).join(", ")}.`
       : null,
   ].filter((fact): fact is string => fact !== null);
   return {
@@ -389,7 +419,9 @@ function recentFailuresCandidate(
     evidence: {
       extractionFailures: extractionCount,
       routingFailures: routingCount,
-      hoursSinceEarliest: dayjs(now).diff(earliest, "hour"),
+      hoursSinceEarliestExtraction:
+        extractionCount > 0 ? dayjs(now).diff(earliestExtraction, "hour") : null,
+      routingWindowMinutes: Math.ceil(dayjs(now).diff(routing.coveredSince, "minute", true)),
     },
   };
 }
@@ -475,7 +507,9 @@ async function renewalCandidates(
       years.map((year) =>
         ctx.db
           .query("policies")
-          .withIndex("year", (q) => q.eq("policyYear", year))
+          .withIndex("year", (q) =>
+            q.eq("policyYear", year).lte("_creationTime", now),
+          )
           .order("desc")
           .take(100),
       ),
@@ -564,7 +598,9 @@ async function newProposalCandidates(
   const since = dayjs(now).subtract(NEW_PROPOSAL_WINDOW_DAYS, "day").valueOf();
   const jobs = await ctx.db
     .query("procurementProposalExtractionJobs")
-    .withIndex("status", (q) => q.eq("status", "complete").gt("updatedAt", since))
+    .withIndex("status", (q) =>
+      q.eq("status", "complete").gt("updatedAt", since).lte("updatedAt", now),
+    )
     .order("desc")
     .take(25);
   const byRequest = new Map<
@@ -703,16 +739,16 @@ async function awaitingReplyCandidates(
   const threads = await ctx.db
     .query("teamEmailThreads")
     .withIndex("by_archivedAt_and_latestInboundAt", (q) =>
-      q.eq("archivedAt", undefined).gt("latestInboundAt", since),
+      q
+        .eq("archivedAt", undefined)
+        .gt("latestInboundAt", since)
+        .lte("latestInboundAt", graceCutoff),
     )
     .order("desc")
     .take(30);
   const waiting = threads.filter(
     (thread) =>
-      thread.deletedAt === undefined &&
-      thread.latestDirection === "inbound" &&
-      thread.latestInboundAt !== undefined &&
-      thread.latestInboundAt <= graceCutoff,
+      thread.deletedAt === undefined && thread.latestDirection === "inbound",
   );
   const people = new Map<Id<"users">, OperatorPerson>();
   const rows: Array<{ row: InboxRow; inboundAt: number }> = [];
@@ -732,7 +768,7 @@ async function awaitingReplyCandidates(
       const counterpart = counterpartOf(row);
       return {
         key: `email_reply:${row._id}`,
-        intentId: "search_company_email",
+        intentId: "reply_team_email",
         label: clip(
           `Reply owed to ${clip(counterpart, 28)}, waiting ${agePhrase(inboundAt, now)}`,
           60,
@@ -763,7 +799,7 @@ async function awaitingReplyCandidates(
   return [
     {
       key: "email_replies",
-      intentId: "search_company_email",
+      intentId: "reply_team_email",
       label: `${rows.length}${waiting.length > inspected.length ? "+" : ""} team emails await a reply`,
       focus: clip(
         `Team inbox threads with an unanswered inbound message, oldest from ${isoTime(oldest)}: ${rows
@@ -794,7 +830,7 @@ export const collectGlobalSuggestionCandidates: CollectGlobalSuggestionCandidate
         awaitingReplyCandidates(ctx, operatorUserId, readOrganization, now),
       ]);
     const [health, stalled] = await Promise.all([
-      systemHealthCandidate(ctx, readOrganization, routing),
+      systemHealthCandidate(ctx, readOrganization, routing, now),
       stalledRequestCandidates(
         ctx,
         readOrganization,
