@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import dayjs from "dayjs";
 import { Loader2, Reply, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  EmailComposeMessage,
+  EmailComposeRow,
+} from "@/components/email/compose-fields";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -61,20 +65,6 @@ function useDebounced<T>(value: T, delayMs: number) {
     return () => window.clearTimeout(timer);
   }, [value, delayMs]);
   return debounced;
-}
-
-/** A mail-client header row: muted inline label, then the value. */
-function HeaderRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex min-h-9 items-center gap-3 border-b border-border px-4 py-1.5">
-      <span className={`w-14 shrink-0 text-muted-foreground ${typeStyle("body.default")}`}>
-        {label}
-      </span>
-      <div className={`flex min-w-0 flex-1 flex-wrap gap-1 ${typeStyle("body.default")}`}>
-        {children}
-      </div>
-    </div>
-  );
 }
 
 function Recipients({ addresses }: { addresses: string[] }) {
@@ -257,10 +247,10 @@ function OperatorReplyComposer({
       {open || locked || hasText ? (
         // Flush with the panel footer: the footer is already the frame.
         <div className="-mx-4 -my-3">
-          <HeaderRow label="From">
+          <EmailComposeRow label="From">
             <span className="min-w-0 truncate">{headers?.from ?? "You"}</span>
-          </HeaderRow>
-          <HeaderRow label="To">
+          </EmailComposeRow>
+          <EmailComposeRow label="To">
             {headers ? (
               <Recipients addresses={headers.to} />
             ) : (
@@ -268,23 +258,23 @@ function OperatorReplyComposer({
                 {recipient ?? "Everyone on the latest message"}
               </span>
             )}
-          </HeaderRow>
+          </EmailComposeRow>
           {headers?.cc.length ? (
-            <HeaderRow label="Cc">
+            <EmailComposeRow label="Cc">
               <Recipients addresses={headers.cc} />
-            </HeaderRow>
+            </EmailComposeRow>
           ) : null}
           {headers?.bcc.length ? (
-            <HeaderRow label="Bcc">
+            <EmailComposeRow label="Bcc">
               <Recipients addresses={headers.bcc} />
-            </HeaderRow>
+            </EmailComposeRow>
           ) : null}
           {headers ? (
-            <HeaderRow label="Subject">
+            <EmailComposeRow label="Subject">
               <span className="min-w-0 truncate">{headers.subject}</span>
-            </HeaderRow>
+            </EmailComposeRow>
           ) : null}
-          <textarea
+          <EmailComposeMessage
             aria-label="Reply"
             autoFocus={!locked}
             placeholder={recipient ? `Reply to ${recipient}` : "Write a reply"}
@@ -301,7 +291,7 @@ function OperatorReplyComposer({
               }
               if (event.key === "Escape" && !hasText && !locked) setOpen(false);
             }}
-            className={`block max-h-72 min-h-28 w-full resize-none bg-transparent px-4 py-2.5 outline-none field-sizing-content placeholder:text-muted-foreground/60 ${typeStyle("body.default")}`}
+            className="block max-h-72 min-h-28"
           />
           {previewing || previewError || preview ? (
             <div className={`space-y-1 px-4 pb-2 text-muted-foreground ${typeStyle("caption.default")}`}>
