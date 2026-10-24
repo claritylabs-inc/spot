@@ -449,9 +449,11 @@ and every failure after a successful step all fail closed at the consumer
 boundary. Chat preserves the first successful router route pin across later
 steps and never replays completed business tools after visible output.
 
-`/operator/logs` shows 30-day Spot `modelRoutingEvents` call history with
-router-owned request IDs, the router's selection summary, sanitized failed
-provider attempts, cost, and usage. The retired rating and router feedback paths are not used.
+Model-call auditing and usage live in the [Clarity admin router portal](https://admin.toolsforenlightenment.org/router/logs).
+Spot's former Usage and Logs pages are retired. Policy extraction sections link
+to the portal's logs list; the portal does not currently accept Spot trace-ID
+filters. Spot retains `modelRoutingEvents` telemetry, durable job state, and its
+separate operator business Audit log.
 
 The production router health URL is configured through
 `SPOT_PRODUCTION_CL_ROUTER_HEALTH_URL`. The normal deployment audit includes
@@ -463,7 +465,7 @@ AGENT_HEALTH_ATTEMPTS=1 npm run check:agent-health -- --env=production
 
 The router must report the matching environment and a live database.
 Spot no longer calls `/admin/policy`, `/admin/rollups`, `/admin/score`, or
-`/admin/freeze`. Call history lives in Spot. Operator model and web retrieval route settings have no UI; the retired overrides are cleared by the post-deploy checklist.
+`/admin/freeze`. Model-call history is inspected in the Clarity admin portal. Operator model and web retrieval route settings have no UI; the retired overrides are cleared by the post-deploy checklist.
 
 Local health checks skip cl-router unless `SPOT_CL_ROUTER_HEALTH_URL` is set,
 because the default Conductor template does not start the separate repository.

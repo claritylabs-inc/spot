@@ -9,9 +9,7 @@ import {
   Inbox,
   LogOut,
   MessageSquare,
-  ScrollText,
   Settings,
-  ChartNoAxesColumn,
   Radio,
   User,
   Users,
@@ -33,9 +31,7 @@ export function OperatorSidebar({
   collapsed,
   onToggleCollapse,
   active,
-  onOpenLogFilters,
 }: {
-  onOpenLogFilters?: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
   active: OperatorNavSection | null;
@@ -103,22 +99,6 @@ export function OperatorSidebar({
               label="Channels"
               icon={Radio}
               active={active === "channels"}
-              collapsed={collapsed}
-            />
-            <SidebarMenuItem
-              href="/operator/usage"
-              label="Usage"
-              icon={ChartNoAxesColumn}
-              active={active === "usage"}
-              collapsed={collapsed}
-            />
-            <SidebarMenuItem
-              {...(onOpenLogFilters
-                ? { onClick: onOpenLogFilters }
-                : { href: "/operator/logs" })}
-              label="Logs"
-              icon={ScrollText}
-              active={active === "logs"}
               collapsed={collapsed}
             />
             <SidebarMenuItem
