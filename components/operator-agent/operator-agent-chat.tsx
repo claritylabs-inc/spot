@@ -12,7 +12,6 @@ import {
   AgentDockPlanToggle,
 } from "@/components/agent-dock/agent-dock-context-chip";
 import { useAgentDock } from "@/components/agent-dock/agent-dock-provider";
-import { pageSuggestions } from "@/components/agent-dock/page-suggestions";
 import type { AgentDockChatProps } from "@/components/agent-dock/types";
 import type { ChatApprovalDecision } from "@/components/chat/approval-card";
 import {
@@ -20,6 +19,7 @@ import {
   type ChatComposerHandle,
 } from "@/components/chat/chat-composer";
 import { useChatAction } from "@/components/chat/use-chat-action";
+import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePageContext } from "@/hooks/use-page-context";
 import {
@@ -67,9 +67,9 @@ export function OperatorAgentChat({
   const [confirmationBusyId, setConfirmationBusyId] = useState<string | null>(
     null,
   );
-  const [launchingIntentId, setLaunchingIntentId] = useState<string | null>(
-    null,
-  );
+  const [launchingSuggestionKey, setLaunchingSuggestionKey] = useState<
+    string | null
+  >(null);
   const rawThread = useQuery(
     operatorAgentApi.getThread,
     activeThreadId ? { threadId: activeThreadId } : "skip",
@@ -93,7 +93,7 @@ export function OperatorAgentChat({
   const sendMessage = useMutation(operatorAgentApi.sendMessage);
   const cancelRun = useMutation(operatorAgentApi.cancelRun);
   const confirmAction = useMutation(operatorAgentApi.confirmAction);
-  const startIntent = useMutation(operatorAgentApi.startIntent);
+  const startIntent = useMutation(api.operatorAgent.startIntent);
   const clearThreadContext = useMutation(operatorAgentApi.clearThreadContext);
   const currentPageContext = useMemo(() => {
     const context =
@@ -112,14 +112,29 @@ export function OperatorAgentChat({
   const activeThread = detail.thread;
   const retainedThreadContext = activeThread?.pageContext ?? null;
   const displayedPageContext = retainedThreadContext ?? availablePageContext;
-  const intents = useQuery(
-    operatorAgentApi.listIntents,
+  const suggestions = useQuery(
+    api.operatorSuggestions.list,
     displayedPageContext ? { pageContext: displayedPageContext } : {},
   );
-  const prompts = useMemo(
-    () => pageSuggestions(displayedPageContext, "operator"),
-    [displayedPageContext],
-  );
+  const refreshSuggestions = useMutation(api.operatorSuggestions.refresh);
+  const suggestionsContextKey = displayedPageContext
+    ? operatorPageContextKey(displayedPageContext)
+    : "global";
+  const suggestionsStale = suggestions?.stale === true;
+  const refreshedSuggestionsKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!suggestionsStale) {
+      refreshedSuggestionsKey.current = null;
+      return;
+    }
+    if (refreshedSuggestionsKey.current === suggestionsContextKey) return;
+    refreshedSuggestionsKey.current = suggestionsContextKey;
+    void refreshSuggestions(
+      displayedPageContext ? { pageContext: displayedPageContext } : {},
+    ).catch(() => undefined);
+    // Keyed on the context key so href-only changes don't refire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshSuggestions, suggestionsContextKey, suggestionsStale]);
   const [planMode, setPlanMode] = useState(false);
   const running = detail.activeRun || submitting;
   const toggleContext = () => {
@@ -151,27 +166,28 @@ export function OperatorAgentChat({
   }, [availablePageContext, createThread, onThreadCreated]);
 
   const launchIntent = useCallback(
-    async (intentId: string) => {
-      if (launchingIntentId) return;
-      setLaunchingIntentId(intentId);
+    async (suggestion: { key: string; intentId: string }) => {
+      if (launchingSuggestionKey) return;
+      setLaunchingSuggestionKey(suggestion.key);
       await startIntent({
-        intentId,
+        intentId: suggestion.intentId,
+        suggestionKey: suggestion.key,
         ...(displayedPageContext
           ? { pageContext: displayedPageContext }
           : {}),
         ...(activeThreadId && detail.messages.length === 0
-          ? { emptyThreadId: activeThreadId }
+          ? { emptyThreadId: activeThreadId as Id<"operatorAgentThreads"> }
           : {}),
       })
         .then((result) => onThreadCreated(result.threadId))
         .catch(reportError("Could not start the operator task"))
-        .finally(() => setLaunchingIntentId(null));
+        .finally(() => setLaunchingSuggestionKey(null));
     },
     [
       activeThreadId,
       detail.messages.length,
       displayedPageContext,
-      launchingIntentId,
+      launchingSuggestionKey,
       onThreadCreated,
       startIntent,
     ],
@@ -284,14 +300,13 @@ export function OperatorAgentChat({
       activeThreadId={activeThreadId}
       loading={Boolean(activeThreadId && rawThread === undefined)}
       detail={detail}
-      intents={intents}
-      prompts={prompts}
-      launchingIntentId={launchingIntentId}
+      suggestions={suggestions?.suggestions}
+      launchingSuggestionKey={launchingSuggestionKey}
       confirmationBusyId={confirmationBusyId}
       presentationDisabled={
         running ||
         Boolean(confirmationBusyId) ||
-        Boolean(launchingIntentId) ||
+        Boolean(launchingSuggestionKey) ||
         Boolean(activeThread?.archivedAt)
       }
       onFollowUp={async (text) => {
@@ -299,14 +314,13 @@ export function OperatorAgentChat({
           running ||
           isSubmitting() ||
           confirmationBusyId ||
-          launchingIntentId ||
+          launchingSuggestionKey ||
           activeThread?.archivedAt
         )
           throw new Error("Wait for the current task to finish.");
         await submit({ text, files: [] });
       }}
-      onSelectIntent={(intentId) => void launchIntent(intentId)}
-      onSelectPrompt={(prompt) => composerRef.current?.setValueAndFocus(prompt)}
+      onSelectSuggestion={(suggestion) => void launchIntent(suggestion)}
       onDecision={(confirmation, decision) =>
         void decide(confirmation, decision)
       }
