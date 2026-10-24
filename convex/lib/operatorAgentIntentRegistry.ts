@@ -11,6 +11,8 @@ export type OperatorAgentIntent = {
   version: number;
   label: string;
   pageTypes?: readonly string[];
+  /** Suggested only when live data shows a problem, never as a static fallback. */
+  liveOnly?: true;
   objective: string;
 };
 
@@ -25,6 +27,7 @@ export const OPERATOR_AGENT_INTENTS: readonly OperatorAgentIntent[] = [
   {
     id: "check_system_health",
     version: 1,
+    liveOnly: true,
     label: "Check system health",
     objective:
       "Check current platform health. Inspect the operator overview, channel health, routing status, and active extraction issues, then report only actionable problems in priority order. Do not make changes unless I ask.",
@@ -39,6 +42,7 @@ export const OPERATOR_AGENT_INTENTS: readonly OperatorAgentIntent[] = [
   {
     id: "investigate_recent_failures",
     version: 1,
+    liveOnly: true,
     label: "Investigate recent failures",
     objective:
       "Investigate recent operational failures across routing and extraction. Identify the affected human-readable records, explain likely causes from current evidence, and recommend the safest recovery. Do not retry or mutate anything unless I approve the exact action.",
@@ -112,6 +116,14 @@ export function listOperatorAgentIntents(context?: PageContext) {
       ? contextual
       : OPERATOR_AGENT_INTENTS.filter((intent) => !intent.pageTypes);
   return selected.map(({ id, label }) => ({ id, label }));
+}
+
+/** Static intents offered when live suggestions run short. */
+export function listOperatorAgentFallbackIntents(context?: PageContext) {
+  return listOperatorAgentIntents(context).filter(
+    ({ id }) =>
+      !OPERATOR_AGENT_INTENTS.find((intent) => intent.id === id)?.liveOnly,
+  );
 }
 
 export function resolveOperatorAgentIntent(

@@ -94,6 +94,8 @@ import {
   listOperatorAgentIntents,
   resolveOperatorAgentIntent,
 } from "./lib/operatorAgentIntentRegistry";
+import { collectOperatorSuggestionCandidates } from "./lib/operatorSuggestionRanking";
+import type { OperatorSuggestionCandidate } from "./lib/operatorSuggestionTypes";
 import { buildOperatorRunCheckpointSummary } from "./lib/operatorAgentContinuation";
 import { googleWorkspaceCredentialEnvelope } from "./lib/googleWorkspaceCredentials";
 import { lookupMapboxAddress } from "./lib/mapboxAddress";
@@ -989,7 +991,7 @@ function applicantContactFromAnswers(...sources: unknown[]) {
   return null;
 }
 
-function normalizeOperatorPageContext(
+export function normalizeOperatorPageContext(
   context:
     | { pageType: string; entityId?: string; summary?: string; href?: string }
     | undefined,
@@ -4111,23 +4113,44 @@ export const startIntent = mutation({
     const emptyThread = args.emptyThreadId
       ? await findEmptyChatThread(ctx, args.emptyThreadId, operator.userId)
       : null;
+    // Live suggestions are re-derived from current data; client text is never trusted.
+    let suggestion: OperatorSuggestionCandidate | undefined;
+    if (args.suggestionKey && !args.suggestionKey.startsWith("intent:")) {
+      const candidates = await collectOperatorSuggestionCandidates(ctx, {
+        operatorUserId: operator.userId,
+        pageContext: normalizeOperatorPageContext(args.pageContext),
+        now: dayjs().valueOf(),
+      });
+      suggestion = candidates.find(
+        (candidate) => candidate.key === args.suggestionKey,
+      );
+      if (suggestion?.intentId !== args.intentId) {
+        throw new Error("This suggestion is no longer available");
+      }
+    }
+    const suggestionContext = normalizeOperatorPageContext(
+      suggestion?.pageContext,
+    );
     const pageContext =
+      suggestionContext ??
       (emptyThread ? threadPageContext(emptyThread) : undefined) ??
       normalizeOperatorPageContext(args.pageContext);
     const intent = resolveOperatorAgentIntent(args.intentId, pageContext);
+    const title = suggestion?.label ?? intent.label;
 
     let threadId: Id<"operatorAgentThreads">;
     if (emptyThread) {
       threadId = emptyThread._id;
       await ctx.db.patch(threadId, {
-        title: normalizeOperatorThreadTitle(intent.label),
+        title: normalizeOperatorThreadTitle(title),
+        ...(suggestionContext ? { pageContext: suggestionContext } : {}),
         updatedAt: dayjs().valueOf(),
       });
     } else {
       threadId = await insertOperatorThread(ctx, {
         operatorUserId: operator.userId,
         channel: "chat",
-        title: intent.label,
+        title,
         initialContext: pageContext,
       });
     }
@@ -4136,7 +4159,9 @@ export const startIntent = mutation({
       operatorUserId: operator.userId,
       threadId,
       channel: "chat",
-      content: intent.objective,
+      content: suggestion
+        ? `${intent.objective}\n\nFocus: ${suggestion.focus}`
+        : intent.objective,
       pageContext,
       toolArtifacts: [
         {
