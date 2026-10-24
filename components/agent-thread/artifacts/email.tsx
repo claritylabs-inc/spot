@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import { useAction, useMutation } from "convex/react";
-import { Mail as MailIcon, Pencil, RotateCcw } from "lucide-react";
+import { Mail as MailIcon, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { api } from "@/convex/_generated/api";
@@ -537,8 +537,9 @@ export type EmailArtifactDraft = {
 
 /**
  * One email in the chat artifact panel: subject and status, mail headers, the
- * rendered body, and actions. With `edit`, the draft can be revised by hand in
- * the shared compose fields; the server re-renders it on save.
+ * body, and actions. With `edit`, the draft is shown directly in the shared
+ * compose fields; local changes save through `onSave` and the server
+ * re-renders the draft.
  */
 export function EmailArtifact({
   eyebrow,
@@ -585,17 +586,19 @@ export function EmailArtifact({
     onSave: (draft: EmailArtifactDraft) => Promise<void>;
   };
 }) {
-  const [editing, setEditing] = useState<EmailArtifactDraft | null>(null);
+  // Unsaved local changes; null shows the saved draft as is.
+  const [changes, setChanges] = useState<EmailArtifactDraft | null>(null);
   const [saving, setSaving] = useState(false);
+  const draft = edit ? (changes ?? edit.draft) : null;
   const update = (patch: Partial<EmailArtifactDraft>) =>
-    setEditing((current) => (current ? { ...current, ...patch } : current));
+    setChanges((current) => ({ ...(current ?? edit!.draft), ...patch }));
 
   async function save() {
-    if (!edit || !editing) return;
+    if (!edit || !changes || saving) return;
     setSaving(true);
     try {
-      await edit.onSave(editing);
-      setEditing(null);
+      await edit.onSave(changes);
+      setChanges(null);
       toast.success("Draft saved");
     } catch (error) {
       toast.error(getUserFacingErrorMessage(error, "Failed to save draft"));
@@ -604,9 +607,47 @@ export function EmailArtifact({
     }
   }
 
+  const footer =
+    note || actions || changes ? (
+      <>
+        {note ? (
+          <p
+            className={`mr-auto min-w-0 text-muted-foreground/60 ${typeStyle("caption.default")}`}
+          >
+            {note}
+          </p>
+        ) : null}
+        {changes ? (
+          <>
+            <PillButton
+              type="button"
+              size="compact"
+              variant="ghost"
+              disabled={saving}
+              onClick={() => setChanges(null)}
+            >
+              Discard changes
+            </PillButton>
+            <ActionPill
+              type="button"
+              size="compact"
+              variant="primary"
+              disabled={saving || !changes.to.trim()}
+              busy={saving}
+              onClick={() => void save()}
+            >
+              Save
+            </ActionPill>
+          </>
+        ) : (
+          actions
+        )}
+      </>
+    ) : null;
+
   const header = {
     eyebrow,
-    title: editing ? editing.subject || "(no subject)" : subject,
+    title: draft ? draft.subject || "(no subject)" : subject,
     status: (
       <StatusTag
         indicator={status.indicator}
@@ -618,37 +659,12 @@ export function EmailArtifact({
     ),
     closeLabel,
     onClose,
+    footer,
   };
 
-  if (editing) {
+  if (draft) {
     return (
-      <ChatArtifact
-        {...header}
-        bodyClassName="p-0"
-        footer={
-          <>
-            <PillButton
-              type="button"
-              size="compact"
-              variant="ghost"
-              disabled={saving}
-              onClick={() => setEditing(null)}
-            >
-              Discard changes
-            </PillButton>
-            <ActionPill
-              type="button"
-              size="compact"
-              variant="primary"
-              disabled={saving || !editing.to.trim()}
-              busy={saving}
-              onClick={() => void save()}
-            >
-              Save
-            </ActionPill>
-          </>
-        }
-      >
+      <ChatArtifact {...header} bodyClassName="p-0">
         <div
           onKeyDown={(event) => {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
@@ -666,7 +682,7 @@ export function EmailArtifact({
             <EmailComposeInput
               aria-label="To"
               type="email"
-              value={editing.to}
+              value={draft.to}
               disabled={saving}
               onChange={(event) => update({ to: event.target.value })}
             />
@@ -675,7 +691,7 @@ export function EmailArtifact({
             <EmailComposeInput
               aria-label="Cc"
               placeholder="Separate addresses with commas"
-              value={editing.cc}
+              value={draft.cc}
               disabled={saving}
               onChange={(event) => update({ cc: event.target.value })}
             />
@@ -684,7 +700,7 @@ export function EmailArtifact({
             <EmailComposeInput
               aria-label="Bcc"
               placeholder="Separate addresses with commas"
-              value={editing.bcc}
+              value={draft.bcc}
               disabled={saving}
               onChange={(event) => update({ bcc: event.target.value })}
             />
@@ -693,15 +709,25 @@ export function EmailArtifact({
             <EmailComposeInput
               aria-label="Subject"
               maxLength={200}
-              value={editing.subject}
+              value={draft.subject}
               disabled={saving}
               onChange={(event) => update({ subject: event.target.value })}
             />
           </EmailComposeRow>
+          {attachments?.length ? (
+            <EmailComposeRow label="Files">
+              <ChatAttachmentList
+                attachments={attachments}
+                threadId={threadId}
+                operatorThreadId={operatorThreadId}
+                size="compact"
+                collapseAfter={2}
+              />
+            </EmailComposeRow>
+          ) : null}
           <EmailComposeMessage
             aria-label="Message"
-            autoFocus
-            value={editing.body}
+            value={draft.body}
             disabled={saving}
             onChange={(event) => update({ body: event.target.value })}
             className="min-h-64 py-4"
@@ -710,31 +736,6 @@ export function EmailArtifact({
       </ChatArtifact>
     );
   }
-
-  const footer =
-    note || actions || edit ? (
-      <>
-        {note ? (
-          <p
-            className={`mr-auto min-w-0 text-muted-foreground/60 ${typeStyle("caption.default")}`}
-          >
-            {note}
-          </p>
-        ) : null}
-        {actions}
-        {edit ? (
-          <PillButton
-            type="button"
-            size="compact"
-            variant="secondary"
-            onClick={() => setEditing(edit.draft)}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            Edit
-          </PillButton>
-        ) : null}
-      </>
-    ) : null;
 
   return (
     <ChatArtifact
@@ -760,7 +761,6 @@ export function EmailArtifact({
           />
         </ChatArtifactMeta>
       }
-      footer={footer}
     >
       <EmailBodyPreview html={html} text={text} />
     </ChatArtifact>
