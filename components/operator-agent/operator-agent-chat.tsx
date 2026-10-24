@@ -123,10 +123,14 @@ export function OperatorAgentChat({
   const suggestionsStale = suggestions?.stale === true;
   // Cached query results don't re-evaluate as time passes, so ask once per page
   // (the server checks staleness) and again whenever the result reports stale.
+  // The delay skips the pathname-derived context a page replaces on mount.
   useEffect(() => {
-    void refreshSuggestions(
-      displayedPageContext ? { pageContext: displayedPageContext } : {},
-    ).catch(() => undefined);
+    const timeout = setTimeout(() => {
+      void refreshSuggestions(
+        displayedPageContext ? { pageContext: displayedPageContext } : {},
+      ).catch(() => undefined);
+    }, 500);
+    return () => clearTimeout(timeout);
     // Keyed on the context key so href-only changes don't refire.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshSuggestions, suggestionsContextKey, suggestionsStale]);

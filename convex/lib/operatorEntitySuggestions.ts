@@ -74,6 +74,10 @@ function fit(text: string, max: number) {
   return clean.length <= max ? clean : `${clean.slice(0, max - 1).trimEnd()}…`;
 }
 
+function possessive(name: string) {
+  return name.endsWith("s") ? `${name}'` : `${name}'s`;
+}
+
 function plural(count: number, one: string, many = `${one}s`) {
   return `${count} ${count === 1 ? one : many}`;
 }
@@ -311,7 +315,7 @@ async function clientStateCandidates(scope: Scope) {
       build(scope, {
         signal: "missing_profile",
         intentId: "update_client",
-        label: `Complete ${org.name}'s business profile`,
+        label: `Complete ${possessive(org.name)} business profile`,
         focus: `${org.name} has no business profile: no submitted application, operations description, or company research is on record. Research public facts and fill the profile.`,
         urgency: 0.5,
         evidence: {
@@ -330,7 +334,7 @@ async function clientStateCandidates(scope: Scope) {
       build(scope, {
         signal: "empty_wiki",
         intentId: onWiki ? "review_client_knowledge" : "update_client",
-        label: `${org.name}'s company wiki is empty`,
+        label: `${possessive(org.name)} company wiki is empty`,
         focus: `${org.name} has no company wiki content yet. Build it from the profile, policies, and public research.`,
         urgency: 0.45,
         evidence: { wikiEmpty: true, hasBusinessProfile: hasProfile },
@@ -342,7 +346,7 @@ async function clientStateCandidates(scope: Scope) {
         signal: "wiki_proposals",
         intentId: "review_client_knowledge",
         label: `${plural(pendingProposals, "wiki suggestion")} to review`,
-        focus: `${org.name}'s company wiki has ${plural(pendingProposals, "pending source-grounded suggestion")} waiting for review.`,
+        focus: `${possessive(org.name)} company wiki has ${plural(pendingProposals, "pending source-grounded suggestion")} waiting for review.`,
         urgency: 0.55,
         evidence: { pendingWikiProposals: pendingProposals },
       }),
@@ -512,7 +516,7 @@ async function procurementRequestCandidates(scope: Scope) {
         label:
           names.length > 1
             ? `Compare ${nameList(names, MAX_LABEL - "Compare ".length)}`
-            : `Review ${names[0]}'s proposal`,
+            : `Review ${possessive(names[0])} proposal`,
         focus: `${summary}: ${plural(received.length, "proposal")} received from ${names.join(", ")}; ${unreviewed} awaiting review. Compare the proposals and recommend the best next step.`,
         urgency: unreviewed > 0 ? 0.85 : 0.6,
         evidence: {
