@@ -1,0 +1,203 @@
+{
+  "baseline": "a951770943f96b2c37d034d0718e98dee813dc06",
+  "branch": "terry/op-suggestions-qa (artifacts only; no product code changes)",
+  "environment": {
+    "stack": "npm run conductor:setup:cloud then npm run conductor:dev (local anonymous Convex :8083, Next :8080)",
+    "operator": "synthetic suggestions-qa-<ts>@spot.insure, email OTP + TOTP enrollment (flow copied from scripts/operator-second-factor-e2e.mjs, which has no exports)",
+    "seed": "temporary internal mutation convex/qaSeedTmp.ts (deleted; not committed): Coastal Foods (CGL expiring in 20 days, no request); Bolt Logistics (proposal_review request 'Fleet auto renewal', 2 review_ready proposals from Harbor Specialty Brokers + Northline Underwriting with complete extraction jobs; policy BL-GL-4471 with failed extraction run ~3h ago + 2 pending review questions); team inbox thread from Dana Whitfield, inbound 1 day old, no reply. The setup script's own fixture (Cove, Maple Logistics, Brightside Dental, Foundry Robotics) also exists.",
+    "agent_runs": "Every operator agent run (suggestion-launched and plain chat) fails with 'The job callback is not permitted. (router_rejected)'. Environmental (local callback URL refused by the router), same for a plain typed message; not attributable to this change."
+  },
+  "steps": {
+    "1_stack_and_signin": {
+      "result": "PASS"
+    },
+    "2_seed": {
+      "result": "PASS",
+      "note": "temp mutation seeded via convex run; removed afterwards, api.d.ts regenerated clean"
+    },
+    "3_dock_labels": {
+      "result": "PASS",
+      "pages": {
+        "global /operator/clients": [
+          "Coastal Foods renews in 20 days",
+          "Bolt Logistics BL-GL-4471 extraction failed",
+          "Reply owed to Dana Whitfield, waiting 1 day",
+          "1 extraction failed in the last 4 hours",
+          "2 proposals ready on Bolt Logistics' request"
+        ],
+        "global /operator": "identical to /operator/clients",
+        "Coastal Foods client page (/operator/clients/<id>, pageType operator_client_wiki)": [
+          "General Liability renews in 20 days",
+          "Coastal Foods's company wiki is empty",
+          "Complete Coastal Foods's business profile",
+          "Bolt Logistics BL-GL-4471 extraction failed",
+          "Reply owed to Dana Whitfield, waiting 1 day"
+        ],
+        "Bolt policies section": [
+          "1 policy has unreviewed issues",
+          "Bolt Logistics BL-GL-4471 extraction failed",
+          "1 extraction failed in the last 4 hours",
+          "Reply owed to Dana Whitfield, waiting 1 day"
+        ],
+        "failed policy page": [
+          "General Liability extraction failed",
+          "Review 2 uncertain limits",
+          "1 extraction failed in the last 4 hours",
+          "Reply owed to Dana Whitfield, waiting 1 day",
+          "Coastal Foods renews in 20 days"
+        ],
+        "procurement request page": [
+          "Compare Northline Underwriting, Harbor Specialty Brokers",
+          "Bolt Logistics BL-GL-4471 extraction failed",
+          "1 extraction failed in the last 4 hours",
+          "Reply owed to Dana Whitfield, waiting 1 day",
+          "Coastal Foods renews in 20 days"
+        ],
+        "Coastal files section (nothing notable)": [
+          "Coastal Foods renews in 20 days",
+          "1 extraction failed in the last 4 hours",
+          "Bolt Logistics BL-GL-4471 extraction failed",
+          "Reply owed to Dana Whitfield, waiting 1 day"
+        ]
+      },
+      "notes": [
+        "Static 'Check system health' / 'Find an account or policy' no longer appear while live candidates exist.",
+        "Entity candidates dedupe global ones for the same intent+entity (Coastal page shows 'General Liability renews', not 'Coastal Foods renews').",
+        "System-health candidate (degraded Slack/email/routing) was not seeded, so not exercised."
+      ]
+    },
+    "4_ranking": {
+      "result": "PASS",
+      "evidence": "operatorSuggestionRankings gets a row per operator+page context; modelRoutingEvents shows 16 task=operator_suggestion_ranking calls, model jev-1.14.0, all status complete. Real Jev reached (CL_ROUTER_* configured locally).",
+      "order_change": {
+        "urgency_order_first_paint": [
+          "2 proposals ready on Bolt Logistics' request",
+          "Coastal Foods renews in 20 days",
+          "Reply owed to Dana Whitfield, waiting 1 day",
+          "Bolt Logistics BL-GL-4471 extraction failed",
+          "1 extraction failed in the last 4 hours"
+        ],
+        "after_jev_at_~2.3s": [
+          "Bolt Logistics BL-GL-4471 extraction failed",
+          "1 extraction failed in the last 4 hours",
+          "Reply owed to Dana Whitfield, waiting 1 day",
+          "Coastal Foods renews in 20 days"
+        ],
+        "note": "Jev demoted and then dropped (<0.7 threshold) the proposals suggestion on that page"
+      },
+      "global_jev_scores_operator_1": {
+        "renewal": 0.8875,
+        "extraction_issue": 0.805,
+        "email_reply": 0.78,
+        "recent_failures": 0.7675,
+        "new_proposals": 0.76
+      }
+    },
+    "5_launch": {
+      "result": "PASS",
+      "global": {
+        "label": "Coastal Foods renews in 20 days",
+        "thread_title": "Coastal Foods renews in 20 days",
+        "first_user_message_tail": "Focus: Policy CF-GL-2025-0192 (Pacific Guard Insurance; CGL) for Coastal Foods expires 2026-11-13, in 20 days. policyId <id>. The client has no open procurement request.",
+        "thread_initialContext": {
+          "pageType": "operator_client",
+          "entityId": "<Coastal Foods org id>",
+          "summary": "Coastal Foods"
+        }
+      },
+      "entity": {
+        "page": "failed policy",
+        "label": "Review 2 uncertain limits",
+        "thread_title": "Review 2 uncertain limits",
+        "first_user_message_tail": "Focus: Meridian Mutual #BL-GL-4471 for Bolt Logistics: 2 extracted values awaiting review, covering General Aggregate, Products-Completed Operations. Check each against the source document.",
+        "thread_initialContext": {
+          "pageType": "policy",
+          "entityId": "<failed policy id>"
+        }
+      }
+    },
+    "6_stale_key": {
+      "result": "PASS",
+      "method": "websocket server frames buffered so the dock still showed the suggestion; created an open request for Coastal; clicked 'Coastal Foods renews in 20 days'",
+      "outcome": "toast 'This suggestion is no longer available'; no thread created; list refreshed after reconnect",
+      "caveat": "Local deployment exposes the Error message. A hosted deployment redacts plain Error messages to 'Server Error' and lib/user-facing-error.ts then falls back to 'Could not start the operator task' (not verifiable locally)."
+    },
+    "7_health": {
+      "result": "PASS with notes",
+      "typing": "composer accepts and clears text; suggestions stay visible while typing",
+      "existing_chat": "plain message sends and renders with page-context chip; persisted tabs restore; history lists label-titled threads; agent reply fails with router_rejected (environmental, same as suggestion runs)",
+      "console": [
+        "404 /api/favicon?domain=*.example and gravatar (fixture domains; unrelated)",
+        "React 'key prop spread into JSX' from SidebarNavItem on procurement page (components/app-sidebar/nav-item.tsx; unrelated)",
+        "motion 'translateY(var(--fade-in-distance))' warning (unrelated)",
+        "Expected [CONVEX M(operatorAgent:startIntent)] 'Uncaught Error: This suggestion is no longer available' on the stale click"
+      ]
+    },
+    "fallback_check": {
+      "result": "FAIL (does not fill to 3)",
+      "method": "hid all client orgs (smokeMarker) and archived the inbox thread so no live candidates exist",
+      "observed": {
+        "global /operator/clients": [
+          "Find an account or policy",
+          "Find company correspondence"
+        ],
+        "Coastal files": [
+          "Review client knowledge"
+        ],
+        "Coastal compliance": [
+          "Prepare a certificate"
+        ]
+      },
+      "note": "With the seeded data every page has >=3 live candidates (global ones merge into entity pages), so the fallback can only be seen in a data-empty state."
+    }
+  },
+  "findings": [
+    {
+      "id": 1,
+      "severity": "medium",
+      "title": "Static fallback cannot fill to 3",
+      "repro": "No live data (or hide all client orgs): open dock on /operator/clients -> 2 suggestions; on /operator/clients/<id>/files -> 1; on /compliance -> 1.",
+      "suspect": "convex/lib/operatorAgentIntentRegistry.ts:117-134 (listOperatorAgentIntents returns only page-typed intents when any exist, global statics are not mixed in; liveOnly removes 3 of 5 global intents) used by convex/lib/operatorSuggestionRanking.ts:180-186 (MIN_SUGGESTIONS = 3)"
+    },
+    {
+      "id": 2,
+      "severity": "low",
+      "title": "Transient pathname-derived page context is ranked (extra Jev call + ranking row per entity navigation)",
+      "repro": "Load /operator/clients/<id> or /procurement/<requestId> with dock mounted; operatorSuggestionRankings gets operator_clients:<id> (never a real registered page type) in the same second as the real context, e.g. operator_clients:<coastal>, operator_clients:<bolt>. 16 Jev calls for 15 rows.",
+      "suspect": "components/operator-agent/operator-agent-chat.tsx:97-125 (refresh effect keyed on suggestionsContextKey fires for the operatorPageContextFromPathname fallback before the page registers its context)"
+    },
+    {
+      "id": 3,
+      "severity": "low",
+      "title": "Entity-page casing: possessive on names ending in s",
+      "repro": "Coastal Foods profile page: 'Coastal Foods's company wiki is empty', 'Complete Coastal Foods's business profile' (global labels use possessive() and render \"Bolt Logistics' request\").",
+      "suspect": "convex/lib/operatorEntitySuggestions.ts:332-334, 313"
+    },
+    {
+      "id": 4,
+      "severity": "low",
+      "title": "First paint shows urgency order, then reorders/drops after Jev (~2s)",
+      "repro": "Visit a never-ranked page context with dock open; labels change at ~2.3s (proposals suggestion removed).",
+      "suspect": "by design (orderOperatorSuggestions unscored fallback); UX flicker"
+    },
+    {
+      "id": 5,
+      "severity": "low",
+      "title": "'in the last 4 hours' for a 3h failure (ceil rounding) and three overlapping suggestions for one incident on the Bolt policies page",
+      "repro": "Failure ~3h old -> '1 extraction failed in the last 4 hours'; policies page shows '1 policy has unreviewed issues', 'Bolt Logistics BL-GL-4471 extraction failed', and '1 extraction failed in the last 4 hours'.",
+      "suspect": "convex/lib/operatorGlobalSuggestions.ts:63-73 (span ceil); dedupe key in operatorSuggestionRanking.ts:60-92 only matches same intent+entity"
+    },
+    {
+      "id": 6,
+      "severity": "info",
+      "title": "Stale-key message likely redacted on hosted deployments",
+      "suspect": "convex/operatorAgent.ts:4100-4102 throws plain Error; lib/user-facing-error.ts:128-135 falls back on 'Server Error'. Consider ConvexError/userFacingError."
+    },
+    {
+      "id": 7,
+      "severity": "info",
+      "title": "Jev can drop the page's own most relevant candidate depending on recent threads",
+      "repro": "Procurement request page: 'Compare Northline\u2026, Harbor\u2026' scored 0.80 for operator 1 (no recent threads) but 0.63 (<0.7) for operator 2 after launching two threads, replaced by static 'Advance this placement'."
+    }
+  ]
+}

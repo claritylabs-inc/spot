@@ -1,0 +1,42 @@
+// Step 6: stale suggestion key. Server->client websocket frames are buffered while the underlying
+// data is resolved, so the dock still shows the (now stale) suggestion when it is clicked.
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { launch, base, ids, wait, labels, OUT } from "./lib.mjs";
+const [, , path, label, mutation, mutationArgs, shot] = process.argv;
+const { browser, page, consoleLog } = await launch();
+let frozen = false;
+const queue = [];
+await page.routeWebSocket(/\/sync/, (ws) => {
+  const server = ws.connectToServer();
+  ws.onMessage((m) => server.send(m));
+  server.onMessage((m) => { if (frozen) queue.push(m); else ws.send(m); });
+  page.__flush = () => { frozen = false; while (queue.length) ws.send(queue.shift()); };
+});
+await page.goto(`${base}${path}`, { waitUntil: "domcontentloaded" });
+await wait(2500);
+await page.getByRole("button", { name: /Ask anything/ }).first().click().catch(() => {});
+await page.locator('ul[aria-label="Suggested prompts"]').waitFor({ timeout: 20000 });
+await wait(3000);
+const before = await labels(page);
+console.log("before:", JSON.stringify(before));
+const target = page.locator('ul[aria-label="Suggested prompts"] li button', { hasText: label }).first();
+await target.waitFor();
+frozen = true;
+const out = execFileSync("env", ["-u", "CONVEX_DEPLOY_KEY", "-u", "CONVEX_DEPLOYMENT_TOKEN", "CONVEX_AGENT_MODE=anonymous", "npx", "convex", "run", mutation, mutationArgs], { encoding: "utf8" });
+console.log("data change:", mutation, out.trim().slice(0, 100));
+await wait(2000);
+const during = await labels(page);
+console.log("during freeze (UI still stale?):", JSON.stringify(during));
+await target.click();
+await wait(1500);
+await page.screenshot({ path: `${OUT}/${shot}-during.png` });
+page.__flush();
+await wait(1500);
+const toasts = await page.locator("[data-sonner-toast]").allInnerTexts();
+console.log("toasts:", JSON.stringify(toasts));
+console.log("alerts:", JSON.stringify(await page.locator('[role="alert"], [role="status"]').allInnerTexts()));
+await page.screenshot({ path: `${OUT}/${shot}.png` });
+console.log("after:", JSON.stringify(await labels(page)));
+writeFileSync(`.context/qa/stale-${shot}.json`, JSON.stringify({ before, during, toasts, consoleLog }, null, 2));
+await browser.close();
