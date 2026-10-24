@@ -3,6 +3,10 @@ import { companyProfileInputSchema } from "./companyProfileInput";
 import { completionOutcomeSchema } from "./procurementCompletionOutcome";
 import { z } from "zod";
 import {
+  COVERAGE_OPTIONS,
+  type CoverageId,
+} from "../../lib/insurance-intake-details";
+import {
   activeAgentToolNames,
   agentToolFamiliesOf,
   expandToolsSpec,
@@ -50,7 +54,7 @@ export type OperatorToolIntegration =
  */
 export const OPERATOR_TOOL_FAMILIES = {
   procurement:
-    "insurance application intake drafts and submissions, requested coverage, procurement requests, provider packets and packet links, provider outreach, proposals and proposal reviews, procurement files and procurement email threads",
+    "insurance application intake drafts and submissions, requested coverage, procurement requests, provider packets and packet links, provider outreach, supplementary client information questions and client information forms, proposals and proposal reviews, procurement files and procurement email threads",
   organizations:
     "creating client organizations and updating structured business fields from documents (read get_organization first), changing an organization's profile, lifecycle status, feature flags or public company research",
   broker_network:
@@ -2056,11 +2060,152 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `List client email contacts and sequences for ${input.procurementRequestId}`,
   }),
+  list_procurement_information: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Read a procurement request's supplementary information: provider outreaches that can own questions, every question with its scope, answer and provider requirements, whether it is ready for a new client form, and existing client forms with status and fill-in URL.",
+    inputSchema: z.object({ procurementRequestId }),
+    capability: "operator.procurement.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) => ({
+      kind: "procurement_request",
+      id: input.procurementRequestId,
+    }),
+    summarize: (input) =>
+      `Read supplementary information for ${input.procurementRequestId}`,
+  }),
+  add_procurement_information_questions: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Record questions a provider needs the client to answer for a procurement request. Each question belongs to one provider outreach from list_procurement_information; an identical question and scope is reused, so a question asked by several providers is asked of the client once. Nothing is sent. Ask in plain client-facing words.",
+    inputSchema: z.object({
+      procurementRequestId,
+      procurementOutreachId: procurementOutreachId.describe(
+        "Provider outreach that needs these answers, from list_procurement_information",
+      ),
+      questions: z
+        .array(
+          z.object({
+            label: z.string().trim().min(1).max(500),
+            kind: z.enum([
+              "short_text",
+              "long_text",
+              "yes_no",
+              "number",
+              "currency",
+              "date",
+              "dropdown",
+              "routes",
+            ]),
+            options: omittable(
+              z.array(z.string().trim().min(1).max(200)).max(30),
+            ).describe("Choices, required for dropdown only"),
+            coverage: z
+              .enum(
+                COVERAGE_OPTIONS.map((c) => c.id) as [
+                  CoverageId,
+                  ...CoverageId[],
+                ],
+              )
+              .describe(
+                "Coverage line the question is for; use unknown when it applies generally",
+              ),
+            subject: omittable(z.string().trim().min(1).max(200)).describe(
+              'Who or what the answer is about; defaults to "company"',
+            ),
+            period: omittable(z.string().trim().min(1).max(200)).describe(
+              'Reporting period, such as "current" (default), "last 12 months" or "2025"',
+            ),
+            currency: omittable(
+              z.enum(["USD", "CAD", "EUR", "GBP", "AUD", "NZD", "CHF", "JPY"]),
+            ).describe(
+              "Currency questions only; defaults to the client's registration country",
+            ),
+            carrier: omittable(z.string().trim().min(1).max(200)).describe(
+              "Carrier the provider is asking on behalf of, when known",
+            ),
+            condition: omittable(
+              z.object({
+                questionId: z
+                  .string()
+                  .min(1)
+                  .describe("Existing yes/no question ID"),
+                answer: z.enum(["Yes", "No"]),
+              }),
+            ).describe(
+              "Ask only when an existing yes/no question has this answer",
+            ),
+          }),
+        )
+        .min(1)
+        .max(20),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) => ({
+      kind: "procurement_request",
+      id: input.procurementRequestId,
+    }),
+    summarize: (input) =>
+      `Add ${input.questions.length} information question${input.questions.length === 1 ? "" : "s"} to ${input.procurementRequestId}`,
+  }),
+  create_procurement_information_form: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Create a client information form (an easy fill-in questionnaire link) for unanswered questions on a procurement request without emailing anyone. Omit questionIds to include every question ready for a form; prerequisite yes/no questions are added automatically, and an identical open form is returned instead of a duplicate. The client portal also lists open forms. Share the returned url in draft_email, or pass informationFormId to send_procurement_client_email so reminders stop when the client submits.",
+    inputSchema: z.object({
+      procurementRequestId,
+      questionIds: omittable(
+        z.array(z.string().min(1)).min(1).max(40),
+      ).describe("Exact question IDs from list_procurement_information"),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) => ({
+      kind: "procurement_request",
+      id: input.procurementRequestId,
+    }),
+    summarize: (input) =>
+      `Create a client information form for ${input.procurementRequestId} with ${input.questionIds ? `${input.questionIds.length} questions` : "every ready question"}`,
+  }),
+  cancel_procurement_information_form: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Cancel an open client information form so its link stops accepting answers and its email reminders stop. Submitted answers are kept.",
+    inputSchema: z.object({
+      informationFormId: z
+        .string()
+        .min(1)
+        .describe(
+          "Exact information form ID from list_procurement_information",
+        ),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) => ({
+      kind: "procurement_information_form",
+      id: input.informationFormId,
+    }),
+    summarize: (input) =>
+      `Cancel client information form ${input.informationFormId}`,
+  }),
   send_procurement_client_email: defineOperatorTool({
     family: "procurement",
-    version: 2,
+    version: 3,
     description:
-      "Send from your team address with your full-name signature and Always CC. Exact approval includes the signed email and sender identity; changed identity holds unsent mail. Email a client contact to request information for a procurement request, then send automated nudges on the same thread until the client replies. First list client outreach and use an exact listed recipient email. The first email is exactly the subject and message given (greeting and operator signature are added); replies and attachments land in the request Inbox. Stops when the request closes, the recipient stops being a client contact, or follow-ups are stopped.",
+      "Send from your team address with your full-name signature and Always CC. Exact approval includes the signed email and sender identity; changed identity holds unsent mail. Email a client contact to request information for a procurement request, then send automated nudges on the same thread until the client replies. First list client outreach and use an exact listed recipient email. The first email is exactly the subject and message given (greeting and operator signature are added); replies and attachments land in the request Inbox. Stops when the request closes, the recipient stops being a client contact, the linked information form is submitted or cancelled, or follow-ups are stopped. To prepare a questionnaire without emailing, use create_procurement_information_form.",
     inputSchema: z.object({
       procurementRequestId,
       recipientEmail: emailAddress.describe(
@@ -2073,6 +2218,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         .min(1)
         .max(8_000)
         .describe("Plain-text body without greeting or signature"),
+      informationFormId: omittable(z.string().min(1)).describe(
+        "Client information form this email asks the client to complete; include its url in the message",
+      ),
       cadence: z.object({
         followUpCount: z.number().int().min(0).max(4),
         intervalBusinessDays: z.union([

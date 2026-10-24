@@ -46,6 +46,8 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "launch_procurement_provider_outreach",
   "stop_procurement_provider_outreach",
   "send_procurement_client_email",
+  "create_procurement_information_form",
+  "cancel_procurement_information_form",
   "reply_procurement_email_thread",
   "reply_email_thread",
   "link_team_inbox_thread",
@@ -1029,6 +1031,24 @@ export async function preflightOperatorToolConfirmation(
       const recipients = await clientRecipientOptions(ctx, request, client._id);
       if (!recipients.some((option) => option.email === email))
         throw new Error("Recipient is not a current client contact");
+      if (args.input.informationFormId != null) {
+        const form = await requireDocument(ctx, "procurementInformationForms", args.input.informationFormId, "Information form");
+        if (form.requestId !== request._id || form.status === "cancelled")
+          throw new Error("Choose an available form from this request");
+        if (form.outreachSequenceId)
+          throw new Error("This form already has an email sequence. Open its conversation to follow up.");
+      }
+      return;
+    }
+    case "create_procurement_information_form":
+      await requireProcurementRequest(ctx, args.input.procurementRequestId);
+      if (Array.isArray(args.input.questionIds))
+        for (const id of args.input.questionIds)
+          exactId(ctx, "procurementInformationQuestions", id, "Question");
+      return;
+    case "cancel_procurement_information_form": {
+      const form = await requireDocument(ctx, "procurementInformationForms", args.input.informationFormId, "Information form");
+      if (form.status !== "open") throw new Error("Only open forms can be cancelled");
       return;
     }
     case "reply_procurement_email_thread":

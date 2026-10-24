@@ -367,6 +367,7 @@ import type * as lib_procurementCompletionOutcome from "../lib/procurementComple
 import type * as lib_procurementInformationAccess from "../lib/procurementInformationAccess.js";
 import type * as lib_procurementInformationClientExtraction from "../lib/procurementInformationClientExtraction.js";
 import type * as lib_procurementInformationDecisions from "../lib/procurementInformationDecisions.js";
+import type * as lib_procurementInformationOperator from "../lib/procurementInformationOperator.js";
 import type * as lib_procurementInformationProviderExtraction from "../lib/procurementInformationProviderExtraction.js";
 import type * as lib_procurementInformationRequirements from "../lib/procurementInformationRequirements.js";
 import type * as lib_procurementInformationSchema from "../lib/procurementInformationSchema.js";
@@ -901,6 +902,7 @@ declare const fullApi: ApiFromModules<{
   "lib/procurementInformationAccess": typeof lib_procurementInformationAccess;
   "lib/procurementInformationClientExtraction": typeof lib_procurementInformationClientExtraction;
   "lib/procurementInformationDecisions": typeof lib_procurementInformationDecisions;
+  "lib/procurementInformationOperator": typeof lib_procurementInformationOperator;
   "lib/procurementInformationProviderExtraction": typeof lib_procurementInformationProviderExtraction;
   "lib/procurementInformationRequirements": typeof lib_procurementInformationRequirements;
   "lib/procurementInformationSchema": typeof lib_procurementInformationSchema;

@@ -52,9 +52,7 @@ export const ChatMessageBubble = memo(function ChatMessageBubble({
       className={cn(
         "text-foreground",
         role === "user" && "rounded-lg px-3.5 py-2.5",
-        channel === "imessage"
-          ? typeStyle("body.large")
-          : typeStyle("body.default"),
+        typeStyle("body.default"),
         role === "user" && (channel === "email"
           ? [
               "border border-border",

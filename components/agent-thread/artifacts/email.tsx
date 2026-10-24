@@ -240,7 +240,7 @@ export function EmailCardSummary({
         <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.medium")}`}>
           {label}
         </span>
-        <span className={`block truncate text-foreground/90 ${typeStyle("body.large")}`}>
+        <span className={`block truncate text-foreground/90 ${typeStyle("body.default")}`}>
           {subject}
         </span>
         <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}>
@@ -265,7 +265,7 @@ export function EmailStackFrame({
   return (
     <div className="w-full max-w-md overflow-hidden rounded-md border border-input bg-card">
       <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
-        <p className={`min-w-0 truncate text-foreground/90 ${typeStyle("body.large")}`}>
+        <p className={`min-w-0 truncate text-foreground/90 ${typeStyle("body.default")}`}>
           {label}
         </p>
         {action}
@@ -300,7 +300,7 @@ export function EmailStackRow({
     >
       <span className="flex min-w-0 items-start justify-between gap-3">
         <span className="min-w-0">
-          <span className={`block truncate text-foreground/90 ${typeStyle("body.large")}`}>
+          <span className={`block truncate text-foreground/90 ${typeStyle("body.default")}`}>
             {subject}
           </span>
           <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}>

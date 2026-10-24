@@ -7,7 +7,9 @@ import {
 import dayjs from "dayjs";
 import { intakeCurrency } from "../lib/intake-money";
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, type MutationCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { getClientPortalUrl } from "./lib/domains";
 import { attachClientRequestFile } from "./clientProcurementRequests";
 import { recordImpersonatedWrite } from "./lib/operatorIdentity";
 import { informationResponseValidator } from "./lib/procurementInformationSchema";
@@ -30,6 +32,145 @@ import {
   businessNameForRequest,
 } from "./lib/procurementInformationAccess";
 
+export const informationFormUrl = (formId: Id<"procurementInformationForms">) =>
+  `${getClientPortalUrl()}/intake/information/${formId}`;
+
+/** Publish a client form for unanswered questions; reuses an identical open form. Never emails. */
+export async function publishInformationForm(
+  ctx: MutationCtx,
+  request: Doc<"procurementRequests">,
+  operatorUserId: Id<"users">,
+  questionIds?: Id<"procurementInformationQuestions">[],
+) {
+  const forms = await bounded(
+    ctx.db
+      .query("procurementInformationForms")
+      .withIndex("by_requestId", (q) => q.eq("requestId", request._id))
+      .take(MAX + 1),
+  );
+  if (forms.length >= MAX) throw new Error("Maximum 200 forms per request");
+  const facts = await requestFacts(ctx, request._id);
+  const requirements = await bounded(
+    ctx.db
+      .query("procurementInformationRequirements")
+      .withIndex("by_requestId", (q) => q.eq("requestId", request._id))
+      .take(MAX + 1),
+  );
+  const available = neededInformationQuestions(facts, requirements);
+  const ids =
+    questionIds ??
+    available
+      .filter(
+        (q) =>
+          !forms.some(
+            (form) =>
+              form.status === "open" &&
+              form.questions.some((item) => item.questionId === q._id),
+          ),
+      )
+      .map((q) => q._id);
+  if (!ids.length || ids.length > 40 || new Set(ids).size !== ids.length)
+    throw new Error("Choose 1 to 40 unanswered questions");
+  const selected = new Set<string>();
+  const collect = (id: string) => {
+    if (selected.has(id)) return;
+    const q = available.find((q) => q._id === id);
+    if (!q)
+      throw new Error(
+        "A selected question is answered, unavailable or belongs to another request. Refresh the batch.",
+      );
+    selected.add(id);
+    for (const condition of q.question.conditions ?? []) {
+      const parent = facts.find((q) => q._id === condition.questionId);
+      if (!parent?.answer || parent.answer.unsure)
+        collect(condition.questionId);
+    }
+  };
+  ids.forEach(collect);
+  const needed = available.filter((q) => selected.has(q._id));
+  if (!needed.length)
+    throw new Error("Choose unanswered questions for this batch.");
+  if (needed.length > 40)
+    throw new Error(
+      "This batch has more than 40 questions including prerequisites. Choose a smaller batch.",
+    );
+  const neededIds = new Set(needed.map((q) => String(q._id)));
+  const ancestorIds = new Set<string>();
+  const visitAncestors = (id: string) => {
+    if (ancestorIds.has(id)) return;
+    ancestorIds.add(id);
+    for (const condition of facts.find((q) => q._id === id)?.question
+      .conditions ?? [])
+      visitAncestors(condition.questionId);
+  };
+  for (const q of needed)
+    for (const condition of q.question.conditions ?? [])
+      visitAncestors(condition.questionId);
+  const prerequisites = facts
+    .filter(
+      (q) => !neededIds.has(q._id) && q.answerId && ancestorIds.has(q._id),
+    )
+    .map((q) => ({ questionId: q._id, answerId: q.answerId! }));
+  const questions = needed.map((q) => ({
+    questionId: q._id,
+    answerIdAtPublish: q.answerId,
+    question: {
+      ...q.question,
+      id: String(q._id),
+      conditions: q.question.conditions?.filter((c) =>
+        neededIds.has(c.questionId),
+      ),
+    },
+    scope: q.scope,
+  }));
+  const matching = forms.find(
+    (form) =>
+      form.status === "open" &&
+      form.questions.length === questions.length &&
+      form.questions.every((item) =>
+        questions.some(
+          (q) =>
+            q.questionId === item.questionId &&
+            q.answerIdAtPublish === item.answerIdAtPublish,
+        ),
+      ) &&
+      (form.prerequisites ?? []).every((parent) =>
+        facts.some(
+          (q) => q._id === parent.questionId && q.answerId === parent.answerId,
+        ),
+      ),
+  );
+  if (matching) return matching._id;
+  if (
+    forms.some(
+      (form) =>
+        form.status === "open" &&
+        form.questions.some((q) => neededIds.has(q.questionId)),
+    )
+  )
+    throw new Error(
+      "A selected question or its prerequisite is already in an open form. Finish or cancel that batch first.",
+    );
+  const createdAt = dayjs().valueOf();
+  const id = await ctx.db.insert("procurementInformationForms", {
+    requestId: request._id,
+    title: informationFormTitle({ _id: "new", createdAt }, forms),
+    questions: orderInformationQuestions(questions),
+    prerequisites,
+    responses: [],
+    revision: 0,
+    status: "open",
+    createdByUserId: operatorUserId,
+    createdAt,
+  });
+  await audit(
+    ctx,
+    operatorUserId,
+    request,
+    "Published supplementary information form",
+  );
+  return id;
+}
 export const publishForm = mutation({
   args: {
     requestId: v.id("procurementRequests"),
@@ -38,155 +179,40 @@ export const publishForm = mutation({
   },
   handler: async (ctx, args) => {
     const { operator, request } = await operatorWrite(ctx, args.requestId);
-    const forms = await bounded(
-      ctx.db
-        .query("procurementInformationForms")
-        .withIndex("by_requestId", (q) => q.eq("requestId", request._id))
-        .take(MAX + 1),
-    );
-    if (forms.length >= MAX) throw new Error("Maximum 200 forms per request");
-    const facts = await requestFacts(ctx, request._id);
-    const requirements = await bounded(
-      ctx.db
-        .query("procurementInformationRequirements")
-        .withIndex("by_requestId", (q) => q.eq("requestId", request._id))
-        .take(MAX + 1),
-    );
-    const available = neededInformationQuestions(facts, requirements);
-    const ids =
-      args.questionIds ??
-      available
-        .filter(
-          (q) =>
-            !forms.some(
-              (form) =>
-                form.status === "open" &&
-                form.questions.some((item) => item.questionId === q._id),
-            ),
-        )
-        .map((q) => q._id);
-    if (!ids.length || ids.length > 40 || new Set(ids).size !== ids.length)
-      throw new Error("Choose 1 to 40 unanswered questions");
-    const selected = new Set<string>();
-    const collect = (id: string) => {
-      if (selected.has(id)) return;
-      const q = available.find((q) => q._id === id);
-      if (!q)
-        throw new Error(
-          "A selected question is answered, unavailable or belongs to another request. Refresh the batch.",
-        );
-      selected.add(id);
-      for (const condition of q.question.conditions ?? []) {
-        const parent = facts.find((q) => q._id === condition.questionId);
-        if (!parent?.answer || parent.answer.unsure)
-          collect(condition.questionId);
-      }
-    };
-    ids.forEach(collect);
-    const needed = available.filter((q) => selected.has(q._id));
-    if (!needed.length)
-      throw new Error("Choose unanswered questions for this batch.");
-    if (needed.length > 40)
-      throw new Error(
-        "This batch has more than 40 questions including prerequisites. Choose a smaller batch.",
-      );
-    const neededIds = new Set(needed.map((q) => String(q._id)));
-    const ancestorIds = new Set<string>();
-    const visitAncestors = (id: string) => {
-      if (ancestorIds.has(id)) return;
-      ancestorIds.add(id);
-      for (const condition of facts.find((q) => q._id === id)?.question
-        .conditions ?? [])
-        visitAncestors(condition.questionId);
-    };
-    for (const q of needed)
-      for (const condition of q.question.conditions ?? [])
-        visitAncestors(condition.questionId);
-    const prerequisites = facts
-      .filter(
-        (q) => !neededIds.has(q._id) && q.answerId && ancestorIds.has(q._id),
-      )
-      .map((q) => ({ questionId: q._id, answerId: q.answerId! }));
-    const questions = needed.map((q) => ({
-      questionId: q._id,
-      answerIdAtPublish: q.answerId,
-      question: {
-        ...q.question,
-        id: String(q._id),
-        conditions: q.question.conditions?.filter((c) =>
-          neededIds.has(c.questionId),
-        ),
-      },
-      scope: q.scope,
-    }));
-    const matching = forms.find(
-      (form) =>
-        form.status === "open" &&
-        form.questions.length === questions.length &&
-        form.questions.every((item) =>
-          questions.some(
-            (q) =>
-              q.questionId === item.questionId &&
-              q.answerIdAtPublish === item.answerIdAtPublish,
-          ),
-        ) &&
-        (form.prerequisites ?? []).every((parent) =>
-          facts.some(
-            (q) =>
-              q._id === parent.questionId && q.answerId === parent.answerId,
-          ),
-        ),
-    );
-    if (matching) return matching._id;
-    if (
-      forms.some(
-        (form) =>
-          form.status === "open" &&
-          form.questions.some((q) => neededIds.has(q.questionId)),
-      )
-    )
-      throw new Error(
-        "A selected question or its prerequisite is already in an open form. Finish or cancel that batch first.",
-      );
-    const createdAt = dayjs().valueOf();
-    const id = await ctx.db.insert("procurementInformationForms", {
-      requestId: request._id,
-      title: informationFormTitle({ _id: "new", createdAt }, forms),
-      questions: orderInformationQuestions(questions),
-      prerequisites,
-      responses: [],
-      revision: 0,
-      status: "open",
-      createdByUserId: operator.user._id,
-      createdAt,
-    });
-    await audit(
+    return publishInformationForm(
       ctx,
-      operator.user._id,
       request,
-      "Published supplementary information form",
+      operator.user._id,
+      args.questionIds,
     );
-    return id;
   },
 });
+export async function cancelInformationForm(
+  ctx: MutationCtx,
+  form: Doc<"procurementInformationForms">,
+  request: Doc<"procurementRequests">,
+  operatorUserId: Id<"users">,
+) {
+  if (form.status !== "open")
+    throw new Error("Only open forms can be cancelled");
+  await ctx.db.patch(form._id, {
+    status: "cancelled",
+    revision: form.revision + 1,
+  });
+  await audit(
+    ctx,
+    operatorUserId,
+    request,
+    "Cancelled supplementary information form",
+  );
+}
 export const cancelForm = mutation({
   args: { formId: v.id("procurementInformationForms") },
   handler: async (ctx, { formId }) => {
     const form = await ctx.db.get(formId);
     if (!form) throw new Error("Form not found");
     const { operator, request } = await operatorWrite(ctx, form.requestId);
-    if (form.status !== "open")
-      throw new Error("Only open forms can be cancelled");
-    await ctx.db.patch(formId, {
-      status: "cancelled",
-      revision: form.revision + 1,
-    });
-    await audit(
-      ctx,
-      operator.user._id,
-      request,
-      "Cancelled supplementary information form",
-    );
+    await cancelInformationForm(ctx, form, request, operator.user._id);
   },
 });
 export const clientForms = query({
