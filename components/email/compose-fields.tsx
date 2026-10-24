@@ -40,7 +40,7 @@ export function EmailComposeInput({
     <input
       className={cn(
         "h-9 min-w-32 flex-1 bg-transparent outline-none placeholder:text-muted-foreground/60",
-        typeStyle("control.input"),
+        typeStyle("body.default"),
         className,
       )}
       {...props}
