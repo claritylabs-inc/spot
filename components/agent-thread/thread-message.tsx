@@ -273,7 +273,7 @@ function AssistantMessageFooter({
 
 const MARKDOWN_STYLES = "[&_a]:text-primary-light [&_a]:underline";
 const IMESSAGE_MARKDOWN_STYLES =
-  `${MARKDOWN_STYLES} ${typeStyle("body.large")} ` +
+  `${MARKDOWN_STYLES} ${typeStyle("body.default")} ` +
   "[&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-4 [&_ol]:pl-4 " +
   `[&_li]:my-0.5 ${typeStyle("prose.default")}`;
 
