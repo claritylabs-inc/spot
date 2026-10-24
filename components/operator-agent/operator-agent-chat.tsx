@@ -93,7 +93,7 @@ export function OperatorAgentChat({
   const sendMessage = useMutation(operatorAgentApi.sendMessage);
   const cancelRun = useMutation(operatorAgentApi.cancelRun);
   const confirmAction = useMutation(operatorAgentApi.confirmAction);
-  const startIntent = useMutation(api.operatorAgent.startIntent);
+  const startIntent = useMutation(operatorAgentApi.startIntent);
   const clearThreadContext = useMutation(operatorAgentApi.clearThreadContext);
   const currentPageContext = useMemo(() => {
     const context =
@@ -176,7 +176,7 @@ export function OperatorAgentChat({
           ? { pageContext: displayedPageContext }
           : {}),
         ...(activeThreadId && detail.messages.length === 0
-          ? { emptyThreadId: activeThreadId as Id<"operatorAgentThreads"> }
+          ? { emptyThreadId: activeThreadId }
           : {}),
       })
         .then((result) => onThreadCreated(result.threadId))
