@@ -4,6 +4,7 @@ import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { modelCallContext, modelCallResult } from "./modelCallTelemetry";
 import { parseRouterModels, type RouterModelEntry } from "./routerCapabilities";
+import type { RouterJobFailure } from "./routerJobFailure";
 
 import {
   DIFFICULTIES,
@@ -1689,6 +1690,22 @@ export function isUnknownClRouterRouteFailure(
     /not in (?:the )?model registry|unknown (?:model|route)|(?:model|route).*(?:not found|not available in (?:the )?(?:model )?registry)/i.test(
       message,
     )
+  );
+}
+
+/**
+ * Whether Spot should retry a failed router job step. Beyond the router's own
+ * verdict, `router_candidates_exhausted` is retried even after execution
+ * started: no candidate produced a result, and callers key retries by step so
+ * a repeat is idempotent. Failures carry no streamed-output signal, so this
+ * relies on the router reporting candidates_exhausted only when every attempt
+ * failed (attempt outcomes are only ever "error" or "timeout").
+ */
+export function isRetryableClRouterJobFailure(
+  failure: Pick<RouterJobFailure, "code" | "retryable"> | undefined,
+): boolean {
+  return Boolean(
+    failure?.retryable || failure?.code === "router_candidates_exhausted",
   );
 }
 

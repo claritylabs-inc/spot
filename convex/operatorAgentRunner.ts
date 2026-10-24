@@ -78,7 +78,10 @@ import {
   type OperatorToolFamily,
   type OperatorToolFamilySelection,
 } from "./lib/operatorAgentToolRegistry";
-import type { ClRouterClientOptions } from "./lib/clRouterClient";
+import {
+  isRetryableClRouterJobFailure,
+  type ClRouterClientOptions,
+} from "./lib/clRouterClient";
 import {
   assembleFamilyGuidance,
   selectAgentToolFamilies,
@@ -108,7 +111,8 @@ import {
 
 const OPERATOR_AGENT_MAX_OUTPUT_TOKENS = 8_192;
 const OPERATOR_AGENT_MAX_STEPS = 1;
-// Retries of one step after cl-router reports a retryable failure.
+// Retries of one step after a retryable cl-router failure, including
+// candidates_exhausted (see isRetryableClRouterJobFailure).
 const OPERATOR_ROUTER_MAX_RETRIES = 5;
 // Corrective retries after a reply that wrote a tool call as visible text.
 const OPERATOR_LEAKED_CALL_MAX_RETRIES = 2;
@@ -1194,7 +1198,7 @@ export const run = internalAction({
       }
       if (
         error instanceof RouterJobFailed &&
-        error.failure?.retryable &&
+        isRetryableClRouterJobFailure(error.failure) &&
         expectedCheckpointIteration !== undefined &&
         routerRetryCount < OPERATOR_ROUTER_MAX_RETRIES
       ) {

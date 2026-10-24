@@ -245,6 +245,7 @@ function OperatorMessageRow({
   message,
   viewerUserId,
   working,
+  turnActive,
   showSender,
   onFollowUp,
   presentationDisabled,
@@ -256,6 +257,8 @@ function OperatorMessageRow({
   message: OperatorAgentMessage;
   viewerUserId: string | null;
   working: boolean;
+  /** True while the turn runs, including pauses for approval. */
+  turnActive: boolean;
   showSender: boolean;
   onFollowUp: (message: string) => Promise<void>;
   presentationDisabled: boolean;
@@ -292,6 +295,7 @@ function OperatorMessageRow({
     return (
       <ChatAssistantTurn
         working={working}
+        turnActive={turnActive}
         tools={message.usedTools}
         toolCalls={message.toolCalls}
         activity={message.activity}
@@ -578,6 +582,7 @@ export function OperatorConversation({
                   working={
                     message.status === "processing" && !hasPendingConfirmation
                   }
+                  turnActive={message.status === "processing"}
                 />
               )}
               {settledAnswer ? (
