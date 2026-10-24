@@ -100,19 +100,6 @@ function formatPages(section: ExtractionRunSectionView) {
     : `pp. ${section.pageStart}–${section.pageEnd}`;
 }
 
-/** The model-call log for one run, using the log page's search and range filters. */
-function modelCallsHref(run: ExtractionRunView) {
-  if (!run.traceId) return undefined;
-  const from = run.startedAt - 60_000;
-  const to = (run.finishedAt ?? run.startedAt + 86_400_000) + 60_000;
-  const params = new URLSearchParams({
-    search: run.traceId,
-    from: String(from),
-    to: String(Math.min(to, from + 30 * 86_400_000)),
-  });
-  return `/operator/logs?${params}`;
-}
-
 function StatusCell({ status }: { status: StatusPresentation & { label: string } }) {
   const { label, ...presentation } = status;
   return <StatusTag {...presentation}>{label}</StatusTag>;
@@ -294,7 +281,6 @@ function RunDetail({
   const selectedSection = run.sections?.find(
     (section) => section.sectionId === selectedSectionId,
   );
-  const logsHref = modelCallsHref(run);
   // Section timing and cost are not recorded yet; hide empty columns.
   const showTiming = run.sections?.some(
     (section) =>
@@ -312,11 +298,15 @@ function RunDetail({
         <OperationalPanelHeader
           title="Sections"
           action={
-            logsHref ? (
-              <PillButton size="compact" variant="secondary" href={logsHref}>
-                View model calls
-              </PillButton>
-            ) : undefined
+            <PillButton
+              size="compact"
+              variant="secondary"
+              href="https://admin.toolsforenlightenment.org/router/logs"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open router logs
+            </PillButton>
           }
         />
         {run.sections === null ? (
