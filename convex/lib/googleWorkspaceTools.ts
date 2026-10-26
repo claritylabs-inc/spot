@@ -171,6 +171,7 @@ export function parseGoogleWorkspaceToolInput(
         dateFrom: optionalString(input.dateFrom, "Scan start date"),
         dateTo: optionalString(input.dateTo, "Scan end date"),
         limit: optionalLimit(input.limit),
+        cursor: optionalCursor(input.cursor),
       },
     };
   }
@@ -178,6 +179,8 @@ export function parseGoogleWorkspaceToolInput(
 }
 
 type ListCursorState = { offset?: number; pageToken?: string };
+/** The date window is pinned so later pages cover the same range across midnight. */
+type ScanCursorState = { start?: number; end?: number; pageToken?: string };
 type SearchCursorState = {
   mailboxes: string[];
   mailboxIndex: number;
@@ -297,6 +300,19 @@ function assertListCursorState(state: ListCursorState) {
   if (
     (state.offset !== undefined &&
       (!Number.isInteger(state.offset) || state.offset < 0)) ||
+    !validOptionalToken(state.pageToken)
+  ) {
+    throw new Error("Google Workspace cursor is invalid.");
+  }
+}
+
+function assertScanCursorState(state: ScanCursorState) {
+  const validTime = (value: number | undefined) =>
+    value === undefined || (Number.isInteger(value) && value >= 0);
+  if (
+    !validTime(state.start) ||
+    !validTime(state.end) ||
+    (state.start === undefined) !== (state.end === undefined) ||
     !validOptionalToken(state.pageToken)
   ) {
     throw new Error("Google Workspace cursor is invalid.");
@@ -1366,14 +1382,36 @@ export async function scanWorkspaceMailbox(
       `Mailbox scan limit must be between 1 and ${GOOGLE_WORKSPACE_LIMITS.maxScanCandidates}.`,
     );
   }
-  const { start, end } = scanRange(input);
   const requested = input.mailbox ?? dependencies.operatorMailbox;
   if (!requested) throw new Error("Choose a company mailbox to scan.");
+  const requestFingerprint = hashJson({
+    terms,
+    requested,
+    dateFrom: input.dateFrom,
+    dateTo: input.dateTo,
+    limit,
+  });
+  const state = decodeCursor<ScanCursorState>(
+    dependencies.cursorSecret,
+    input.cursor,
+    {
+      tool: "scan_workspace_mailbox",
+      configUpdatedAt: config.updatedAt,
+      requestFingerprint,
+    },
+    {},
+  );
+  assertScanCursorState(state);
+  const { start, end } =
+    state.start !== undefined && state.end !== undefined
+      ? { start: state.start, end: state.end }
+      : scanRange(input);
   const mailbox = await resolveMailbox(provider, config, requested);
   const query = `(${terms}) -in:drafts after:${start / 1000} before:${(end + DAY_MS) / 1000}`;
   const page = await provider.listMessages({
     mailbox,
     query,
+    pageToken: state.pageToken,
     maxResults: limit,
   });
   const deadline = dayjs().valueOf() + TOOL_WORK_BUDGET_MS;
@@ -1436,6 +1474,15 @@ export async function scanWorkspaceMailbox(
     candidates,
     errors,
     hasMoreMatches: Boolean(page.nextPageToken) || page.messages.length > limit,
+    nextCursor: page.nextPageToken
+      ? encodeCursor(
+          dependencies.cursorSecret,
+          "scan_workspace_mailbox",
+          config.updatedAt,
+          requestFingerprint,
+          { start, end, pageToken: page.nextPageToken } satisfies ScanCursorState,
+        )
+      : null,
     completeness:
       page.nextPageToken || page.messages.length > limit || errors.length
         ? "partial"
