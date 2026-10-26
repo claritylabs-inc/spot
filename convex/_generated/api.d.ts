@@ -320,6 +320,8 @@ import type * as lib_operatorAgentToolRegistry from "../lib/operatorAgentToolReg
 import type * as lib_operatorAvatar from "../lib/operatorAvatar.js";
 import type * as lib_operatorBatch from "../lib/operatorBatch.js";
 import type * as lib_operatorClientBatch from "../lib/operatorClientBatch.js";
+import type * as lib_operatorBrokerInputs from "../lib/operatorBrokerInputs.js";
+import type * as lib_operatorBrokerProfiles from "../lib/operatorBrokerProfiles.js";
 import type * as lib_operatorEmailAddress from "../lib/operatorEmailAddress.js";
 import type * as lib_operatorEmailAuthentication from "../lib/operatorEmailAuthentication.js";
 import type * as lib_operatorEmailTools from "../lib/operatorEmailTools.js";
@@ -480,6 +482,7 @@ import type * as operatorAgent from "../operatorAgent.js";
 import type * as operatorAgentRunner from "../operatorAgentRunner.js";
 import type * as operatorAudit from "../operatorAudit.js";
 import type * as operatorClientBatchWrites from "../operatorClientBatchWrites.js";
+import type * as operatorBrokerBatches from "../operatorBrokerBatches.js";
 import type * as operatorCursors from "../operatorCursors.js";
 import type * as operatorEmail from "../operatorEmail.js";
 import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
@@ -868,6 +871,8 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorAvatar": typeof lib_operatorAvatar;
   "lib/operatorBatch": typeof lib_operatorBatch;
   "lib/operatorClientBatch": typeof lib_operatorClientBatch;
+  "lib/operatorBrokerInputs": typeof lib_operatorBrokerInputs;
+  "lib/operatorBrokerProfiles": typeof lib_operatorBrokerProfiles;
   "lib/operatorEmailAddress": typeof lib_operatorEmailAddress;
   "lib/operatorEmailAuthentication": typeof lib_operatorEmailAuthentication;
   "lib/operatorEmailTools": typeof lib_operatorEmailTools;
@@ -1028,6 +1033,7 @@ declare const fullApi: ApiFromModules<{
   operatorAgentRunner: typeof operatorAgentRunner;
   operatorAudit: typeof operatorAudit;
   operatorClientBatchWrites: typeof operatorClientBatchWrites;
+  operatorBrokerBatches: typeof operatorBrokerBatches;
   operatorCursors: typeof operatorCursors;
   operatorEmail: typeof operatorEmail;
   operatorEmailDrafts: typeof operatorEmailDrafts;

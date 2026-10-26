@@ -153,7 +153,7 @@ Operator command email uses the shared `agent@team.spot.insure` inbox. Its Resen
 | `get_procurement_request` | v3: core identity/status, edit revision and accepted application summary; include application/files/emailThreads/outreach/proposals/timeline/audit on demand. Signed URLs require include files. view full retains legacy detail fields. Unlinked intake remains diagnostic-only. | `operator.procurement.read` | read | operator | none | mutation |
 | `list_procurement_proposals` | v2: page private provider/premium/status/review summaries; view full opts into legacy offer/document/review rows (10/page). | `operator.procurement.read` | read | operator | none | mutation |
 | `get_procurement_proposal`                 | Read one private proposal, its extracted Markdown, packet-bound reviews, and evidence.                                  | `operator.procurement.read`     | read             | operator | none         | mutation  |
-| `list_broker_network_profiles`             | Search supplier providers by status, including blacklisted, writing state, or exact ACORD LOBCd.                          | `operator.organizations.read`   | read             | operator | none         | mutation  |
+| `list_broker_network_profiles`             | Cursor-paginated compact provider search; optional queries/domains batches (1–20 each) return per-input groups. Follow nextCursor; bounded pages cannot prove absence.                          | `operator.organizations.read`   | read             | operator | none         | mutation  |
 | `get_broker_network_profile`               | Read one provider's profile, portal contacts, operator-only networkContacts with roles, coverage context, notes and sources, market history, and persisted research evidence/outcome.                                                | `operator.organizations.read`   | read             | operator | none         | mutation  |
 | `get_procurement_forwarding_address` | Get or provision the caller's team forwarding address and return the request's legacy address as a fallback. | `operator.email.write` | reversible write | operator | none | action |
 | `list_procurement_email_threads` | Read bounded shared team conversations linked to one procurement request. | `operator.procurement.read` | read | operator | none | mutation |
@@ -194,6 +194,8 @@ Operator command email uses the shared `agent@team.spot.insure` inbox. Its Resen
 | `confirm_procurement_proposal_review`      | Confirm or override a review bound to the current packet and extraction fingerprint.                                    | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `select_procurement_proposal`              | Select a proposal with a current packet-bound, staff-confirmed passing review.                                          | `operator.procurement.write`    | reversible write | operator | exact        | mutation  |
 | `create_broker_network_profile`            | Register a supplier-network provider without users/invites and queue public enrichment.                                        | `operator.organizations.write`  | reversible write | operator | exact        | mutation  |
+| `ensure_broker_network_profiles` | Match/create 1–50 external providers by normalized domain then exact name; optionally attach request tracking rows without sending. Atomic, per-write audits; created providers queue enrichment. | `operator.organizations.write` | reversible write | operator | exact | mutation |
+| `update_broker_network_profiles` | Atomically update 1–50 `{orgId, patch}` items with full per-item preflight and audits; one exact batch approval. | `operator.organizations.write` | reversible write | operator | exact | mutation |
 | `update_broker_network_profile`            | Update a provider profile; explicit edits override research, while identity changes queue fresh enrichment. | `operator.organizations.write`  | reversible write | operator | exact        | mutation  |
 | `list_procurement_provider_matches` | Read bounded provider appetite matches, recipients, cadence, and sequences for a request. | `operator.procurement.read` | read | operator | none | mutation |
 | `launch_procurement_provider_outreach` | Send from the calling operator’s team address with their full-name signature and Always CC; initial emails introduce the accepted applicant by full name, use bounded application-summary bullets and a separate packet section. Exact approval binds the sender identity and selected providers/cadence. Use per-provider packet links. | `operator.procurement.write` | external send | operator | exact | mutation |
@@ -548,3 +550,22 @@ selection and exclusions; exclusions apply only within nationwide countries and
 override included regions. Geography edits retain manual precedence. These fields
 share the existing operator role, exact approval and impersonation boundaries;
 there is no new send or scheduling capability.
+
+Provider tool contracts: single create/update remain supported (v7); country,
+US/Canadian region and ACORD inputs are strings with server normalization and
+validation, including closest-code suggestions on rejection. Provider list v4
+retains `query`/filters/`profiles` and adds `queries`, `domains`, `cursor`,
+`groups` (each query/domain plus matching `orgIds`), `nextCursor`, `scanned` and
+an honest `bounded` flag. The top-level `profiles` list deduplicates grouped
+results. Its limit bounds scanned providers, so filtered pages may be empty. Profile/contact/activity and
+research details are available through `get_broker_network_profile`.
+
+Provider batch tools accept at most 50 homogeneous reversible writes. Every item
+is validated before approval and revalidated in a child mutation, which rolls
+back all profile/outreach/audit writes and research scheduling on failure.
+Summaries enumerate all items and patches. Ensure does not edit matched profiles;
+it reuses existing request/provider outreach and returns each input, outcome,
+orgId and optional outreachId. New profiles retain the single-create enrichment
+semantics; matched providers need a separate `research_broker` approval to rerun
+research. Identity matching scans at most 5,000 active provider organizations and
+fails closed if the bound is exceeded. No schema/index changes are required.

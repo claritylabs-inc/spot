@@ -70,6 +70,8 @@ const operatorToolCategories = {
   get_broker_network_profile: "brokers",
   list_broker_network_profiles: "brokers",
   create_broker_network_profile: "brokers",
+  ensure_broker_network_profiles: "brokers",
+  update_broker_network_profiles: "brokers",
   update_broker_network_profile: "brokers",
   list_procurement_provider_matches: "brokers",
   launch_procurement_provider_outreach: "send",
