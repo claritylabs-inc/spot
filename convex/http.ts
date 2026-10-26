@@ -1557,7 +1557,7 @@ async function handleOperatorMcpToolCall(
         : undefined;
     if (!runId) throw new Error("Missing run_id parameter");
     const result = await ctx.runQuery(
-      (internal as any).operatorAgent.getRunResultForOperatorInternal,
+      (internal as any).operatorAgent.getRunViewForOperatorInternal,
       { operatorUserId, runId },
     );
     return mcpTextResult(result);

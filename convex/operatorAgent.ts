@@ -1709,6 +1709,79 @@ export async function enqueueOperatorMessage(
   return { messageId: userMessageId, runId, duplicate: false };
 }
 
+const OPERATOR_CONVERSATION_FAILURE_WINDOW = 20;
+const OPERATOR_CONVERSATION_MAX_TOOL_CALLS = 40;
+const OPERATOR_CONVERSATION_INPUT_PREVIEW = 200;
+
+function operatorChannelFilter(value: unknown): OperatorChannel | undefined {
+  return value === "chat" ||
+    value === "slack" ||
+    value === "imessage" ||
+    value === "email" ||
+    value === "mcp"
+    ? value
+    : undefined;
+}
+
+/**
+ * Compact execution trace of one agent message for conversation reads: tool
+ * names, truncated inputs (never outputs), failure and the run that produced
+ * it, so a caller can follow up with get_operator_run.
+ */
+async function operatorConversationAgentTrace(
+  ctx: QueryCtx | MutationCtx,
+  message: Doc<"operatorAgentMessages">,
+) {
+  const candidates = message.replyToMessageId
+    ? await ctx.db
+        .query("operatorAgentRuns")
+        .withIndex("message", (q) =>
+          q.eq("userMessageId", message.replyToMessageId!),
+        )
+        .take(5)
+    : [];
+  const run = candidates.find(
+    (candidate) => candidate.agentMessageId === message._id,
+  );
+  const toolCalls = message.toolCalls ?? [];
+  const usedTools =
+    message.usedTools ??
+    (message.activity
+      ? [...new Set(message.activity.tools.map((tool) => tool.toolName))]
+      : undefined);
+  return {
+    status: message.status,
+    runId: run?._id,
+    run: run
+      ? {
+          status: run.status,
+          iteration: run.checkpoint?.iteration,
+          executionCount: run.checkpoint?.executionCount,
+          lastToolName: run.checkpoint?.lastToolName,
+        }
+      : undefined,
+    usedTools,
+    toolCalls: toolCalls.length
+      ? toolCalls
+          .slice(-OPERATOR_CONVERSATION_MAX_TOOL_CALLS)
+          .map((call) => ({
+            name: call.name,
+            input: call.input?.slice(0, OPERATOR_CONVERSATION_INPUT_PREVIEW),
+          }))
+      : undefined,
+    toolCallCount: toolCalls.length || undefined,
+    failure:
+      message.failure || message.status === "error"
+        ? {
+            category: message.failure?.code ?? "error",
+            message: message.error?.slice(0, 300),
+            retryable: message.failure?.retryable,
+            executionStarted: message.failure?.executionStarted,
+          }
+        : undefined,
+  };
+}
+
 async function executeToolDomain(
   ctx: MutationCtx,
   args: {
@@ -1723,30 +1796,78 @@ async function executeToolDomain(
   const { toolName, input } = args;
   if (toolName === "list_operator_conversations") {
     const archived = input.archived === true;
+    const archiveState = archived ? "archived" : undefined;
+    const channel = operatorChannelFilter(input.channel);
+    const sinceMs =
+      typeof input.since === "string"
+        ? dayjs(`${input.since}T00:00:00Z`).valueOf()
+        : undefined;
     const threads =
       input.scope === "all"
-        ? ctx.db
-            .query("operatorAgentThreads")
-            .withIndex("archive_last_message", (q) =>
-              q.eq("archiveState", archived ? "archived" : undefined),
-            )
+        ? channel
+          ? ctx.db
+              .query("operatorAgentThreads")
+              .withIndex("archive_channel_last_message", (q) => {
+                const channelScope = q
+                  .eq("archiveState", archiveState)
+                  .eq("channel", channel);
+                return sinceMs === undefined
+                  ? channelScope
+                  : channelScope.gte("lastMessageAt", sinceMs);
+              })
+          : ctx.db
+              .query("operatorAgentThreads")
+              .withIndex("archive_last_message", (q) => {
+                const archiveScope = q.eq("archiveState", archiveState);
+                return sinceMs === undefined
+                  ? archiveScope
+                  : archiveScope.gte("lastMessageAt", sinceMs);
+              })
         : ctx.db
             .query("operatorAgentThreads")
-            .withIndex("owner_archive", (q) =>
-              q
+            .withIndex("owner_archive", (q) => {
+              const ownerScope = q
                 .eq("ownerUserId", args.operatorUserId)
-                .eq("archiveState", archived ? "archived" : undefined),
+                .eq("archiveState", archiveState);
+              return sinceMs === undefined
+                ? ownerScope
+                : ownerScope.gte("lastMessageAt", sinceMs);
+            })
+            .filter((q) =>
+              channel ? q.eq(q.field("channel"), channel) : true,
             );
     const page = await threads.order("desc").paginate({
       cursor: typeof input.cursor === "string" ? input.cursor : null,
       numItems: typeof input.limit === "number" ? input.limit : 15,
     });
+    const wantFailure =
+      typeof input.hasFailure === "boolean" ? input.hasFailure : undefined;
+    const failureFlags =
+      wantFailure === undefined
+        ? undefined
+        : await Promise.all(
+            page.page.map(async (thread) => {
+              const recent = await ctx.db
+                .query("operatorAgentMessages")
+                .withIndex("thread", (q) => q.eq("threadId", thread._id))
+                .order("desc")
+                .take(OPERATOR_CONVERSATION_FAILURE_WINDOW);
+              return recent.some(
+                (message) =>
+                  message.role === "agent" &&
+                  (message.status === "error" || Boolean(message.failure)),
+              );
+            }),
+          );
+    const visible = failureFlags
+      ? page.page.filter((_thread, index) => failureFlags[index] === wantFailure)
+      : page.page;
     const people = await operatorPeople(
       ctx,
-      page.page.map((thread) => thread.ownerUserId),
+      visible.map((thread) => thread.ownerUserId),
     );
     return {
-      conversations: page.page.map((thread) => ({
+      conversations: visible.map((thread) => ({
         threadId: thread._id,
         title: thread.title,
         channel: thread.channel,
@@ -1778,10 +1899,8 @@ async function executeToolDomain(
         cursor: typeof input.cursor === "string" ? input.cursor : null,
         numItems: typeof input.limit === "number" ? input.limit : 5,
       });
-    return {
-      threadId,
-      title: thread.title,
-      messages: page.page.map((message) => ({
+    const messages = await Promise.all(
+      page.page.map(async (message) => ({
         messageId: message._id,
         role: message.role,
         author: message.userName,
@@ -1795,7 +1914,15 @@ async function executeToolDomain(
             size,
           }),
         ),
+        ...(message.role === "agent"
+          ? await operatorConversationAgentTrace(ctx, message)
+          : {}),
       })),
+    );
+    return {
+      threadId,
+      title: thread.title,
+      messages,
       nextCursor: page.isDone ? null : page.continueCursor,
       isDone: page.isDone,
     };
@@ -5515,33 +5642,99 @@ export const enqueueMessageInternal = internalMutation({
   },
 });
 
+function ownerRunResponse(response: Doc<"operatorAgentMessages"> | null) {
+  return response
+    ? {
+        messageId: response._id,
+        content: response.content,
+        status: response.status,
+        attachments: response.attachments,
+        usedTools: response.usedTools,
+        toolCalls: response.toolCalls,
+      }
+    : undefined;
+}
+
+async function loadOperatorRunResult(
+  ctx: QueryCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    runId: Id<"operatorAgentRuns">;
+    anyOperator?: boolean;
+  },
+) {
+  await requireOperatorForUser(ctx, args.operatorUserId);
+  const run = await ctx.db.get(args.runId);
+  const owner = run?.operatorUserId === args.operatorUserId;
+  if (!run || (!owner && !args.anyOperator)) {
+    throw new Error("Operator agent run not found");
+  }
+  await requireOperatorThread(ctx, run.threadId, args.operatorUserId, {
+    anyOperator: true,
+  });
+  const response = await ctx.db.get(run.agentMessageId);
+  const progress = {
+    runId: run._id,
+    threadId: run.threadId,
+    status: run.status,
+    iteration: run.checkpoint?.iteration,
+    executionCount: run.checkpoint?.executionCount,
+    lastToolName: run.checkpoint?.lastToolName,
+    steps: response?.toolCalls?.map((call) => call.name),
+    failure: response
+      ? (await operatorConversationAgentTrace(ctx, response)).failure
+      : undefined,
+  };
+  return { run, owner, response, progress };
+}
+
 export const getRunResultForOperatorInternal = internalQuery({
   args: {
     operatorUserId: v.id("users"),
     runId: v.id("operatorAgentRuns"),
   },
   handler: async (ctx, args) => {
-    await requireOperatorForUser(ctx, args.operatorUserId);
-    const run = await ctx.db.get(args.runId);
-    if (!run || run.operatorUserId !== args.operatorUserId) {
-      throw new Error("Operator agent run not found");
-    }
-    await requireOperatorThread(ctx, run.threadId, args.operatorUserId, {
-      anyOperator: true,
-    });
-    const response = await ctx.db.get(run.agentMessageId);
+    const { run, response, progress } = await loadOperatorRunResult(ctx, args);
     return {
       run,
-      response: response
-        ? {
-            messageId: response._id,
-            content: response.content,
-            status: response.status,
-            attachments: response.attachments,
-            usedTools: response.usedTools,
-            toolCalls: response.toolCalls,
-          }
-        : undefined,
+      progress,
+      response: ownerRunResponse(response),
+    };
+  },
+});
+
+/**
+ * get_operator_run view that follows a runId surfaced by any operator's
+ * conversation: the owner gets the full run, other operators a compact view
+ * without tool outputs or the stored run document.
+ */
+export const getRunViewForOperatorInternal = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    runId: v.id("operatorAgentRuns"),
+  },
+  handler: async (ctx, args) => {
+    const { run, owner, response, progress } = await loadOperatorRunResult(
+      ctx,
+      { ...args, anyOperator: true },
+    );
+    if (!owner) {
+      return {
+        progress,
+        response: response
+          ? {
+              messageId: response._id,
+              content: response.content,
+              status: response.status,
+              usedTools: response.usedTools,
+            }
+          : undefined,
+      };
+    }
+    return {
+      run,
+      progress,
+      response: ownerRunResponse(response),
     };
   },
 });
