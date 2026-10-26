@@ -22,7 +22,7 @@ export function estimateOperatorInputTokens(
   );
 }
 
-export function operatorContextBudget(
+export function operatorContextHardLimit(
   capabilities?: RouterCapabilities,
   route?: ModelRoute,
 ) {
@@ -34,8 +34,14 @@ export function operatorContextBudget(
         entry.provider === route.provider &&
         entry.model === route.model,
     );
-  const window =
-    model?.capabilities.maxInputTokens ?? OPERATOR_CONTEXT_FALLBACK_TOKENS;
+  return model?.capabilities.maxInputTokens ?? OPERATOR_CONTEXT_FALLBACK_TOKENS;
+}
+
+export function operatorContextBudget(
+  capabilities?: RouterCapabilities,
+  route?: ModelRoute,
+) {
+  const window = operatorContextHardLimit(capabilities, route);
   const override = Number(process.env.OPERATOR_CONTEXT_COMPACTION_TOKENS);
   return Number.isSafeInteger(override) && override >= 4_096
     ? Math.min(override, Math.floor(window * 0.6))
@@ -146,10 +152,13 @@ export function operatorWorkingNotes(
   summary: string,
   references: Reference[],
   objective?: string,
+  state?: { checkpoint?: unknown; focus?: string },
 ): ModelMessage {
   return {
     role: "user",
-    content: NOTES_PREFIX + JSON.stringify({ objective, summary, references }),
+    content:
+      NOTES_PREFIX +
+      JSON.stringify({ objective, summary, references, ...state }),
   };
 }
 

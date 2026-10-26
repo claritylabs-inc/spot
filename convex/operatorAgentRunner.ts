@@ -120,6 +120,7 @@ import { compactOperatorContext } from "./lib/operatorContextCompactionRunner";
 import {
   estimateOperatorInputTokens,
   operatorContextBudget,
+  operatorContextHardLimit,
 } from "./lib/operatorContextCompaction";
 
 const OPERATOR_AGENT_MAX_OUTPUT_TOKENS = 8_192;
@@ -1111,6 +1112,7 @@ export const run = internalAction({
         ? await clRouterCapabilities().catch(() => undefined)
         : undefined;
       const budget = operatorContextBudget(capabilities, route);
+      const hardLimit = operatorContextHardLimit(capabilities, route);
       if (
         !executionJobStarted &&
         (tokensBefore > budget || continuation?.compactionRequest) &&
@@ -1120,62 +1122,75 @@ export const run = internalAction({
           recordActivity,
           `${stagePrefix}:compaction`,
           "preparing_context",
-          () =>
-            compactOperatorContext(ctx, {
+          async () => {
+            const result = await compactOperatorContext(ctx, {
               run,
               messages,
               invocationKey,
               maxHistoryTokens: budget - estimate([]),
               ...continuation?.compactionRequest,
-            }),
-          (history) =>
-            `Context compacted: ${tokensBefore} → ${estimate(history)} estimated tokens`,
+            });
+            if (estimate(result.messages) > hardLimit) {
+              if (tokensBefore > hardLimit)
+                throw new Error(
+                  "[context_compaction_failed] Neither deterministic notes nor original context fits the hard input limit",
+                );
+              console.warn(
+                "Operator context compaction skipped; original input fits hard limit",
+                {
+                  runId: run._id,
+                  tokensBefore,
+                  hardLimit,
+                },
+              );
+              return { messages, mode: "deterministic" as const, skipped: true };
+            }
+            return { ...result, skipped: result.messages === messages };
+          },
+          (result) =>
+            `Context ${result.skipped ? "retained" : "compacted"} (${result.mode}): ${tokensBefore} → ${estimate(result.messages)} estimated tokens`,
         );
-        if (compacted !== messages) {
-          const tokensAfter = estimate(compacted);
-          if (tokensAfter > budget)
-            throw new Error(
-              "[context_compaction_failed] Working notes and recent steps exceed the context budget",
-            );
-          const storageId = await ctx.storage.store(
-            new Blob(
-              [
-                JSON.stringify({
-                  ...continuation,
-                  messages: compacted,
-                  threadSummary,
-                  compactionRequest: undefined,
-                }),
-              ],
-              { type: "application/json" },
-            ),
-          );
-          const installed = await ctx.runMutation(
-            internal.operatorContext.installCompactedContinuation,
-            {
-              runId: run._id,
-              expectedRunnerAttempt,
-              expectedCheckpointIteration,
-              expectedStorageId: run.modelContinuationStorageId,
-              storageId,
-              tokensBefore,
-              tokensAfter,
-            },
-          );
-          if (!installed) return { status: "superseded" };
-          messages = compacted;
-          run.modelContinuationStorageId = storageId;
-          run.checkpoint = {
-            iteration: 0,
-            executionCount: 0,
-            ...run.checkpoint,
-            compaction: installed,
-          };
-        }
+        const tokensAfter = estimate(compacted.messages);
+        const storageId = await ctx.storage.store(
+          new Blob(
+            [
+              JSON.stringify({
+                ...continuation,
+                messages: compacted.messages,
+                threadSummary,
+                compactionRequest: undefined,
+              }),
+            ],
+            { type: "application/json" },
+          ),
+        );
+        const installed = await ctx.runMutation(
+          internal.operatorContext.installCompactedContinuation,
+          {
+            runId: run._id,
+            expectedRunnerAttempt,
+            expectedCheckpointIteration,
+            expectedStorageId: run.modelContinuationStorageId,
+            storageId,
+            mode: compacted.mode,
+            skipped: compacted.skipped,
+            tokensBefore,
+            tokensAfter,
+          },
+        );
+        if (!installed) return { status: "superseded" };
+        messages = compacted.messages;
+        run.modelContinuationStorageId = storageId;
+        run.checkpoint = {
+          iteration: 0,
+          executionCount: 0,
+          ...run.checkpoint,
+          compaction: installed,
+        };
       }
-      if (!executionJobStarted && estimate(messages) > budget) {
+      if (!executionJobStarted && estimate(messages) > hardLimit) {
         throw new Error(
-          "[context_compaction_failed] Context cannot fit after retaining complete recent tool steps",
+          "[context_compaction_failed] Context exceeds the hard input limit after compaction",
         );
       }
       const modelTask = modelMessagesHaveRichInput(messages)

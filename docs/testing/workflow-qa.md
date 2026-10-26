@@ -2826,3 +2826,12 @@ No test files were added.
 | Direct MCP `compact_context`, then exact idempotent replay | Passed locally | Existing authorized read path returns `not_applicable`; replay retains run, message IDs and input hash. |
 | Completed turn schedules rolling summary; rejected inference preserves watermark | Passed locally | Local 60-message fixture creates context state, records router failure, and does not advance summary watermark. |
 | Live automatic/proactive compaction, approval resume and later-turn summary injection | Blocked locally | cl-router rejects the local callback URL: `The job callback is not permitted. (router_rejected)`. Requires a router-approved callback environment. |
+
+W12 manager-review follow-up: real local runner with a router HTTP stub verified
+automatic deterministic fallback (49,062 → 18,327 estimated tokens), manual
+routed-summary rejection (10,369 → 9,573), and original-history retention when
+the deterministic ledger exceeds the hard limit (43,736 unchanged). Pending
+summary reconnect and empty-result fallback also completed with count 1.
+Checkpoint mode/skipped metadata and the web activity detail were verified.
+Execution responses were stubbed; live provider inference is not claimed. See
+the correction section in the linked workflow report.

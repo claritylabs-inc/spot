@@ -28,17 +28,33 @@ the run iteration; a resumed job returns its stored result. Working notes
 separate completed work, remaining work, decisions and errors. A deterministic
 reference ledger retains IDs, names, cursors, input hashes, statuses and error
 codes from older exchanges without asking generation to reproduce them.
-Repeated compaction carries that ledger forward. Large ledgers or irreducibly
-large recent input fail with `context_compaction_failed` rather than silently
-losing references. Raw provider failures remain internal.
+Repeated compaction carries that ledger forward. Summary errors, empty output,
+oversized summary input, or notes that miss the soft target fall back to
+model-free deterministic notes with the objective, exact references, tool names
+and statuses, checkpoint confirmation state and recent complete exchanges.
+`RouterJobPending` still yields and reconnects to the same summary job.
+
+The 60% threshold is a soft optimization target. The hard input ceiling is the
+model's `maxInputTokens`, or 128,000 when unknown. If deterministic notes with
+one retained exchange exceed that ceiling but the original input still fits,
+the runner logs a skipped compaction and continues with the original history.
+Only when neither fits does it fail with `context_compaction_failed`. This also
+applies to manual `compact_context` requests. Raw provider failures remain
+internal. Local QA can force a summary failure with
+`OPERATOR_CONTEXT_COMPACTION_FORCE_FAILURE=true`; the override is honored only
+when `SPOT_ENV=local`.
 
 `operatorContext.installCompactedContinuation` installs a new blob only for the
 current running attempt, iteration and source storage ID. It does not advance
-the iteration. The checkpoint records compaction count, iteration, and estimated
-tokens before/after; existing checkpoint replacements preserve these fields.
-Only one install can succeed per iteration. Compaction is skipped once that
+the iteration. The checkpoint records compaction count, iteration, `mode` (`model` or
+`deterministic`), and estimated tokens before/after; existing checkpoint
+replacements preserve these fields. Retaining the original input records
+`skipped: true` and clears the pending compaction request in a new blob too.
+The count includes these skipped attempts. Only one install can succeed per
+iteration, regardless of mode. Compaction is skipped once that
 iteration's execution router job exists, so replay uses the submitted context.
-The activity trace records a context-preparation stage with before/after counts.
+The activity trace records a context-preparation stage with the mode,
+before/after counts, and whether the original context was retained.
 Continuation metadata retains recovery state, leaked-call retry counts and
 parent request IDs. Approval payloads, exact input hashes and execution audit
 rows remain in their existing server-owned records; notes cannot approve or
