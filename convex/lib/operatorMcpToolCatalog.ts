@@ -121,7 +121,7 @@ export function buildOperatorMcpToolCatalog(args: {
       name: "get_operator_run",
       title: "Get an operator task result",
       description:
-        "Read the current state, response, checkpoint, and pending confirmation for an operator run.",
+        "Read an operator run: status, iteration, executionCount, lastToolName, step tool names, failure, response and checkpoint. Accepts the runId surfaced by read_operator_conversation; other operators' runs return a compact view without tool outputs.",
       inputSchema: {
         type: "object" as const,
         properties: {

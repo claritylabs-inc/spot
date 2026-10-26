@@ -123,8 +123,8 @@ Operator command email uses the shared `agent@team.spot.insure` inbox. Its Resen
 | `attach_policy_document`                   | Attach a final policy's original PDF to the operator response.                                                          | `operator.policies.read`        | read             | operator | none         | action    |
 | `confirm_policy_fact`                      | Confirm a source-backed policy fact; always ground the claimed fact plus each field, accepting support from any bounded evidence chunk, and report rejectedFields.                                                | `operator.policies.write`       | reversible write | operator | exact        | action    |
 | `lookup_compliance_requirements`           | Retrieve saved insurance requirements and typed saved compliance findings for one client.                                                                   | `operator.compliance.read`      | read             | operator | none         | action    |
-| `list_operator_conversations` | Page through your own or every operator conversation (all are visible to operators), with creators, including archived conversations. | `operator.threads.read` | read | operator | none | mutation |
-| `read_operator_conversation` | Read complete newest-first message pages from another accessible operator conversation. | `operator.threads.read` | read | operator | none | mutation |
+| `list_operator_conversations` | Page through your own or every operator conversation (all are visible to operators), with creators, including archived conversations; filter by channel, since date, or recent failure. | `operator.threads.read` | read | operator | none | mutation |
+| `read_operator_conversation` | Read newest-first message pages (up to 25) from an accessible operator conversation; agent messages carry runId, usedTools, truncated toolCalls inputs (no outputs) and failure. | `operator.threads.read` | read | operator | none | mutation |
 | `search_thread_history`                    | Search older messages in the current operator conversation.                                                             | `operator.threads.read`         | read             | operator | none         | action    |
 | `read_thread_attachment`                   | Reopen an attachment returned by operator thread-history search.                                                        | `operator.threads.read`         | read             | operator | none         | action    |
 | `list_client_files`                        | List a client's files, provenance, visibility, and policy links.                                                        | `operator.client_files.read`    | read             | operator | none         | mutation  |
@@ -251,7 +251,7 @@ An operator conversation permits one live exact confirmation at a time. A compet
 | Tool                      | Purpose                                                                            | Availability        |
 | ------------------------- | ---------------------------------------------------------------------------------- | ------------------- |
 | `run_operator_task`       | Start or continue a durable multi-step operator task, optionally with attachments. | write scope         |
-| `get_operator_run`        | Read an operator run, checkpoint, response, and pending confirmation.              | read or write scope |
+| `get_operator_run`        | Read an operator run: progress (iteration, executionCount, lastToolName, step tool names, failure), checkpoint, response, pending confirmation. Other operators' runs return a compact view without tool outputs. | read or write scope |
 | `cancel_operator_run`     | Request cancellation of a queued or active operator run.                           | write scope         |
 | `confirm_operator_action` | Approve or reject one exact pending operator action.                               | write scope         |
 
