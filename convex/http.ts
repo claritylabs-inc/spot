@@ -76,6 +76,8 @@ import {
 import { OPERATOR_AGENT_TOOL_REGISTRY } from "./lib/operatorAgentToolRegistry";
 import { decodeOperatorMcpAttachments } from "./lib/operatorMcpAttachments";
 import { buildOperatorMcpToolCatalog } from "./lib/operatorMcpToolCatalog";
+import { operatorRunFailureReason } from "./lib/operatorAgentToolFailure";
+import { sanitizeOperatorReply } from "./lib/operatorToolOutput";
 import { buildTenantMcpToolCatalog, resolveTenantMcpToolCall, tenantMcpToolAccess } from "./lib/tenantMcpToolCatalog";
 import { observeHttp, provisionHttp } from "./employeeProvisioning";
 const http = httpRouter();
@@ -1253,10 +1255,15 @@ function policyFileUnavailableMessage(policy: Record<string, unknown>) {
 // ── MCP Streamable HTTP Transport ──
 // Single endpoint implementing MCP protocol over HTTP for remote clients (Claude.ai, etc.)
 
-function operatorMcpTools(identity: OperatorMcpIdentity) {
+async function operatorMcpTools(ctx: McpToolContext, identity: OperatorMcpIdentity) {
+  const toolNames = await ctx.runQuery(
+    internal.operatorToolDiscovery.availableToolNames,
+    { operatorUserId: identity.userId as Id<"users"> },
+  );
   return buildOperatorMcpToolCatalog({
     canWrite: mcpCanWrite(identity),
     operatorRole: identity.operatorRole,
+    toolNames,
   });
 }
 
@@ -1484,7 +1491,9 @@ async function handleOperatorMcpToolCall(
       ];
     if (spec.effect !== "read") requireMcpWriteScope(identity);
     const result = await ctx.runAction(
-      (internal as any).operatorAgent.invokeRegisteredToolInternal,
+      spec.effect === "read"
+        ? internal.operatorMcpReadCalls.invoke
+        : internal.operatorAgent.invokeRegisteredToolInternal,
       {
         operatorUserId,
         conversationKey: `mcp:${identity.tokenId ?? identity.userId}`,
@@ -1560,6 +1569,18 @@ async function handleOperatorMcpToolCall(
       (internal as any).operatorAgent.getRunViewForOperatorInternal,
       { operatorUserId, runId },
     );
+    if (result?.response)
+      result.response.content = sanitizeOperatorReply(result.response.content);
+    if (result?.run?.status === "failed") {
+      const failure = operatorRunFailureReason(
+        new Error(result.run.lastError ?? ""),
+      );
+      return mcpTextResult({
+        ...result,
+        run: { ...result.run, lastError: undefined },
+        failure,
+      });
+    }
     return mcpTextResult(result);
   }
 
@@ -1914,7 +1935,7 @@ http.route({
                 )) as "client" | "broker");
           const catalog: SpotCatalogTool[] =
             identity.principalKind === "operator"
-              ? operatorMcpTools(identity)
+              ? await operatorMcpTools(ctx, identity)
               : buildTenantMcpToolCatalog();
           return jsonRpcResponse(id, {
             ...MCP_PRIVATE_CACHE,
