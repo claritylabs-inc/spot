@@ -8,7 +8,7 @@ Spot adopts the shared compact navbar tabs (`@claritylabs-inc/ui` `TabsList vari
 - `components/ui/folder-tabs.tsx`: `PageTabs` (Tabs root, `gap-0`), `PageTabsList` (portals a shared `TabsList variant="navbar"` into the top bar through the existing `AppShellPortal` slot `folderRail`; Base UI context follows the portal), `PageTabsRail` (a `display: contents` root for pages whose body is ordinary content, so it adds no spacing inside `space-y`/`gap` containers) and `SectionTabs*` (local `variant="folder"`, 36px, inline in a page or drawer; never claims the top bar).
 - `ShellFrame` renders the portal target (`<div ref>` passed through Spot's `AppTopBar` `tabs` prop) only while a page owns `folderRail`, so leaving a tab page clears `data-tabs` and the target.
 - Panels are plain `TabsContent` inside the shell's own content gutters: no negative margins and no compensating padding.
-- `ListToolbar` takes `tabsPlacement="navbar"` for page-level tabs that render in the top bar and stay out of the filter row; the default `inline` is unchanged.
+- `ListToolbar` order is fixed: search first (left), then inline filter chips and the Filters menu, then Clear; the selected view's action buttons sit right-aligned with whitespace only, no divider. Search uses the shared `FilterBar` `leading`, actions its `trailing`. Page-level tabs (`tabsPlacement="navbar"`) render in the top bar; inline tabs (`tabsPlacement="inline"`, team inbox mailbox) get their own row above the toolbar and are never placed between search and filters. Below `sm` the search takes a full row and the chips wrap beneath it.
 - Optional previous/next lives in the shared top bar `navigation` slot. Only `OperatorClientSwitcher` fills it (operator client record routes), through the shared `PageNavigation`; its client callbacks, section preservation, disabled boundaries and `j`/`k` shortcuts are unchanged.
 - `app/globals.css`: operator form density rules skip `[data-slot="tabs-trigger"]` so tabs inside forms keep the shared geometry.
 - Loading skeletons show only the page body: tabs arrive with the page, so there is no placeholder rail.
@@ -52,7 +52,8 @@ Local sheets (`SectionTabs`): application detail and review field groups. Both c
 
 ## Known limits
 
-- Dense pages squeeze the breadcrumb. The shared bar caps the tab list at 65% but lets the context column shrink to nothing: the 7-tab client profile plus Notes and Delete client leaves the breadcrumb about 200px at 1440px, about 64px (overlapping the first tab) at 960px, and about 3px (arrows only) at 1024px. Stacking starts only at a 48rem main pane. This is a shared-contract decision (tab cap, context minimum, or stacking threshold), not a Spot page fix.
+- Dense pages: with the shared navbar fix (clarity-ui `3f34a44`, styles only) the context column keeps 12rem and the tab list shrinks and scrolls, so the 7-tab client profile no longer overlaps at 1440, 1100, 1024 or 960px. On client records that 12rem includes the previous/next arrows, leaving the breadcrumb about 124px (truncated to "Clients / Ma… / P…" at 1024px).
+- When a tab list overflows, it can open scrolled away from the active tab: at 1024px the profile list loads at `scrollLeft` 351 and "Business" is out of view until another tab is chosen. The shared list does not scroll the active tab into view; that belongs in the shared primitive.
 - The local `variant="folder"` field tabs (`SectionTabs`, application detail and review) have no live caller, so their 36px geometry was not exercised in the browser.
 - Files and policies lists render tabs only when Shared/Archived views exist; the seeded fixtures have none, so those two tab lists were not exercised.
 - Dark theme was not exercised.
@@ -74,4 +75,6 @@ Local Conductor stack (`npm run conductor:dev`, Convex deploy credentials unset)
 | Keyboard: arrow keys move between tabs; underline only for keyboard focus | Passed |
 | Profile Tech stack / Related entities / Locations actions in their panels; Notes, Delete client stay in the bar | Passed |
 | Compliance Requirements and Certificates actions beside the view heading | Passed |
+| `ListToolbar` order at 1440 (clients with a selected row, procurement, inbox) and 390: search left of filters, selection actions right, inline inbox tabs in their own row above, chips wrap under a full-width search, no horizontal overflow | Passed |
+| Search narrows clients and requests; the Filters menu opens; no divider beside the actions | Passed |
 | `npx tsc --noEmit`, `eslint` on changed files | Clean |
