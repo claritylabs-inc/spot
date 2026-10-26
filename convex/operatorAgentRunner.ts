@@ -1105,8 +1105,11 @@ export const run = internalAction({
             expectedRunnerAttempt,
             expectedCheckpointIteration,
           },
-          // Persist only the sanitized final reply. Activity still streams;
-          // provisional text can contain raw JSON tool envelopes.
+          // Progress sanitizes provisional text before persisting it. Recovery
+          // replies still stay private until their failure is resolved.
+          ...(traceChannel === "web" && recovery.pending.length === 0
+            ? { streamTarget: run.agentMessageId }
+            : {}),
           durable: {
             invocationKey,
             route,
