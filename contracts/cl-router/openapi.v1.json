@@ -1367,10 +1367,7 @@
         "properties": {
           "provider": {
             "type": "string",
-            "enum": [
-              "browserbase",
-              "sandbox"
-            ]
+            "minLength": 1
           },
           "model": {
             "type": "string"
@@ -1578,16 +1575,7 @@
               "properties": {
                 "provider": {
                   "type": "string",
-                  "enum": [
-                    "openai",
-                    "anthropic",
-                    "xai",
-                    "mistral",
-                    "cohere",
-                    "fireworks",
-                    "deepseek",
-                    "abliteration"
-                  ]
+                  "minLength": 1
                 },
                 "configured": {
                   "type": "boolean"
@@ -1662,16 +1650,7 @@
               "properties": {
                 "provider": {
                   "type": "string",
-                  "enum": [
-                    "openai",
-                    "anthropic",
-                    "xai",
-                    "mistral",
-                    "cohere",
-                    "fireworks",
-                    "deepseek",
-                    "abliteration"
-                  ]
+                  "minLength": 1
                 },
                 "model": {
                   "type": "string"
@@ -1762,13 +1741,7 @@
                   "properties": {
                     "provider": {
                       "type": "string",
-                      "enum": [
-                        "parallel",
-                        "exa",
-                        "openai",
-                        "anthropic",
-                        "xai"
-                      ]
+                      "minLength": 1
                     },
                     "label": {
                       "type": "string"
@@ -2041,10 +2014,7 @@
         "properties": {
           "provider": {
             "type": "string",
-            "enum": [
-              "browserbase",
-              "sandbox"
-            ]
+            "minLength": 1
           },
           "model": {
             "type": "string"
@@ -2384,16 +2354,7 @@
             "properties": {
               "provider": {
                 "type": "string",
-                "enum": [
-                  "openai",
-                  "anthropic",
-                  "xai",
-                  "mistral",
-                  "cohere",
-                  "fireworks",
-                  "deepseek",
-                  "abliteration"
-                ]
+                "minLength": 1
               },
               "model": {
                 "type": "string",
@@ -2471,16 +2432,7 @@
                 "properties": {
                   "provider": {
                     "type": "string",
-                    "enum": [
-                      "openai",
-                      "anthropic",
-                      "xai",
-                      "mistral",
-                      "cohere",
-                      "fireworks",
-                      "deepseek",
-                      "abliteration"
-                    ]
+                    "minLength": 1
                   },
                   "model": {
                     "type": "string",
@@ -3222,16 +3174,7 @@
             "properties": {
               "provider": {
                 "type": "string",
-                "enum": [
-                  "openai",
-                  "anthropic",
-                  "xai",
-                  "mistral",
-                  "cohere",
-                  "fireworks",
-                  "deepseek",
-                  "abliteration"
-                ]
+                "minLength": 1
               },
               "model": {
                 "type": "string",
@@ -3309,16 +3252,7 @@
                 "properties": {
                   "provider": {
                     "type": "string",
-                    "enum": [
-                      "openai",
-                      "anthropic",
-                      "xai",
-                      "mistral",
-                      "cohere",
-                      "fireworks",
-                      "deepseek",
-                      "abliteration"
-                    ]
+                    "minLength": 1
                   },
                   "model": {
                     "type": "string",
@@ -4176,14 +4110,7 @@
         "properties": {
           "provider": {
             "type": "string",
-            "enum": [
-              "parallel",
-              "exa",
-              "model_default",
-              "openai",
-              "anthropic",
-              "xai"
-            ]
+            "minLength": 1
           },
           "attempts": {
             "type": "array",
@@ -4192,14 +4119,7 @@
               "properties": {
                 "provider": {
                   "type": "string",
-                  "enum": [
-                    "parallel",
-                    "exa",
-                    "model_default",
-                    "openai",
-                    "anthropic",
-                    "xai"
-                  ]
+                  "minLength": 1
                 },
                 "ok": {
                   "type": "boolean"
@@ -4484,16 +4404,7 @@
                 "properties": {
                   "provider": {
                     "type": "string",
-                    "enum": [
-                      "openai",
-                      "anthropic",
-                      "xai",
-                      "mistral",
-                      "cohere",
-                      "fireworks",
-                      "deepseek",
-                      "abliteration"
-                    ]
+                    "minLength": 1
                   },
                   "model": {
                     "type": "string",
@@ -4571,16 +4482,7 @@
                     "properties": {
                       "provider": {
                         "type": "string",
-                        "enum": [
-                          "openai",
-                          "anthropic",
-                          "xai",
-                          "mistral",
-                          "cohere",
-                          "fireworks",
-                          "deepseek",
-                          "abliteration"
-                        ]
+                        "minLength": 1
                       },
                       "model": {
                         "type": "string",
@@ -4675,16 +4577,7 @@
                       "properties": {
                         "provider": {
                           "type": "string",
-                          "enum": [
-                            "openai",
-                            "anthropic",
-                            "xai",
-                            "mistral",
-                            "cohere",
-                            "fireworks",
-                            "deepseek",
-                            "abliteration"
-                          ]
+                          "minLength": 1
                         },
                         "model": {
                           "type": "string",
@@ -4963,16 +4856,7 @@
             "properties": {
               "provider": {
                 "type": "string",
-                "enum": [
-                  "openai",
-                  "anthropic",
-                  "xai",
-                  "mistral",
-                  "cohere",
-                  "fireworks",
-                  "deepseek",
-                  "abliteration"
-                ]
+                "minLength": 1
               },
               "model": {
                 "type": "string",
@@ -5050,16 +4934,7 @@
                 "properties": {
                   "provider": {
                     "type": "string",
-                    "enum": [
-                      "openai",
-                      "anthropic",
-                      "xai",
-                      "mistral",
-                      "cohere",
-                      "fireworks",
-                      "deepseek",
-                      "abliteration"
-                    ]
+                    "minLength": 1
                   },
                   "model": {
                     "type": "string",
