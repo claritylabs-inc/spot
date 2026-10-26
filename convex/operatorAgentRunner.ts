@@ -171,7 +171,7 @@ const OPERATOR_GUIDANCE_MODULES: ReadonlyArray<{
   },
   {
     families: ["policies"],
-    text: "To add bound policies to a client's library, use import_policy_files with PDFs attached to this conversation or existing client files. For company email, retrieve the original PDFs with get_company_email_attachment first, then import the returned attachment file IDs. Resolve the target client and inspect the documents before requesting confirmation. Combine only PDFs for the same policy; otherwise use separate. Filing a client file alone does not import a policy. Report extraction as queued until get_policy_status confirms completion; route quotes to procurement proposals.",
+    text: "To add bound policies to a client's library, use import_policy_files with PDFs attached to this conversation or existing client files. For company email, retrieve the original PDFs with attach_to_conversation (source emailAttachment) first, then import the returned attachment file IDs. Resolve the target client and inspect the documents before requesting confirmation. Combine only PDFs for the same policy; otherwise use separate. Filing a client file alone does not import a policy. Report extraction as queued until get_policy_status confirms completion; route quotes to procurement proposals.",
   },
   {
     families: ["broker_network"],
