@@ -13,17 +13,7 @@ import { requireOperator } from "./lib/operatorIdentity";
 
 const RETENTION_DAYS = 30;
 
-const modelProviderValidator = v.union(
-  v.literal("openai"),
-  v.literal("anthropic"),
-  v.literal("google"),
-  v.literal("xai"),
-  v.literal("mistral"),
-  v.literal("cohere"),
-  v.literal("fireworks"),
-  v.literal("moonshot"),
-  v.literal("deepseek"),
-);
+const modelProviderValidator = v.string();
 
 const runValidator = v.object({
   runId: v.string(),

@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { toast } from "sonner";
+import { BsOpenai } from "react-icons/bs";
 import { SiClaude } from "react-icons/si";
 import {
   Check,
@@ -26,7 +27,6 @@ import { PillButton } from "@/components/ui/pill-button";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useSettingsActions } from "@/components/settings/settings-actions-context";
-import { ModelProviderLogo } from "@/components/model-provider-logo";
 import {
   useCachedQuery,
   useUpdateCachedQuery,
@@ -214,7 +214,7 @@ export function ConnectionsSection() {
         <ClientSetup
           name="ChatGPT"
           icon={
-            <ModelProviderLogo provider="openai" size={17} className="dark:invert" />
+            <BsOpenai aria-hidden="true" className="size-[17px] text-black dark:text-white" />
           }
           action={
             <PillButton

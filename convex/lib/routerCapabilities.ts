@@ -1,5 +1,10 @@
-import { DIRECT_MODEL_PROVIDERS } from "../../contracts/cl-router/policy";
-import type { DirectModelProvider, Primitive } from "../../contracts/cl-router/policy";
+import type { ModelProvider } from "./modelCatalog";
+
+/**
+ * GET /v1/capabilities is the only source of provider and model identifiers.
+ * Parsing validates each entry's shape, never membership in a Spot-owned list,
+ * so router catalog changes never invalidate the whole response.
+ */
 
 export type RouterModelCapabilities = {
   vision: boolean;
@@ -14,25 +19,45 @@ export type RouterModelCapabilities = {
 };
 
 export type RouterModelEntry = {
-  provider: DirectModelProvider;
+  provider: ModelProvider;
   model: string;
-  primitives: Primitive[];
+  primitives: string[];
   configured: boolean;
   capabilities: RouterModelCapabilities;
 };
 
-const DIRECT_PROVIDER_SET = new Set<string>(DIRECT_MODEL_PROVIDERS);
-const PRIMITIVE_SET = new Set<string>([
-  "text",
-  "reasoning",
-  "multimodal",
-  "tool_use",
-  "embedding",
-  "transcription",
-]);
+export type RouterProviderLogo = {
+  viewBox: string;
+  paths: Array<{ d: string; fillRule?: "evenodd" | "nonzero" }>;
+};
+
+/**
+ * Display fields are optional: older routers omit them and malformed values
+ * are dropped, so display metadata never invalidates the catalog.
+ */
+export type RouterProviderEntry = {
+  provider: string;
+  configured: boolean;
+  label?: string;
+  brandColor?: string;
+  monogram?: string;
+  logo?: RouterProviderLogo | null;
+};
+
+export type RouterCapabilities = {
+  apiVersion: "v1";
+  credentialMode: "router";
+  providers: RouterProviderEntry[];
+  models?: RouterModelEntry[];
+  webRetrieval: { providers: RouterProviderEntry[] };
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isIdentifier(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 function optionalTokenCount(value: unknown): number | undefined {
@@ -73,27 +98,74 @@ function parseModelCapabilities(value: unknown): RouterModelCapabilities | null 
   };
 }
 
+function parseLogo(value: unknown): RouterProviderLogo | null | undefined {
+  if (value === null) return null;
+  if (
+    !isRecord(value) ||
+    !isIdentifier(value.viewBox) ||
+    !Array.isArray(value.paths) ||
+    !value.paths.every(
+      (path) =>
+        isRecord(path) &&
+        isIdentifier(path.d) &&
+        (path.fillRule === undefined ||
+          path.fillRule === "evenodd" ||
+          path.fillRule === "nonzero"),
+    )
+  ) {
+    return undefined;
+  }
+  return {
+    viewBox: value.viewBox,
+    paths: value.paths.map(({ d, fillRule }) => ({
+      d,
+      ...(fillRule ? { fillRule } : {}),
+    })),
+  };
+}
+
+function parseProviders(value: unknown): RouterProviderEntry[] | null {
+  if (!Array.isArray(value)) return null;
+  const providers: RouterProviderEntry[] = [];
+  for (const item of value) {
+    if (
+      !isRecord(item) ||
+      !isIdentifier(item.provider) ||
+      typeof item.configured !== "boolean"
+    ) {
+      return null;
+    }
+    const logo = parseLogo(item.logo);
+    providers.push({
+      provider: item.provider,
+      configured: item.configured,
+      ...(isIdentifier(item.label) ? { label: item.label } : {}),
+      ...(isIdentifier(item.brandColor) ? { brandColor: item.brandColor } : {}),
+      ...(isIdentifier(item.monogram) ? { monogram: item.monogram } : {}),
+      ...(logo !== undefined ? { logo } : {}),
+    });
+  }
+  return providers;
+}
+
 /**
- * Parse the optional `models` array from GET /v1/capabilities.
- * Missing `models` (older router) returns null. Malformed `models` is invalid.
+ * Parse the optional `models` array. Missing `models` (older router) returns
+ * null; a malformed entry returns undefined.
  */
-export function parseRouterModels(value: unknown): RouterModelEntry[] | null | undefined {
+function parseRouterModels(
+  value: unknown,
+): RouterModelEntry[] | null | undefined {
   if (value === undefined) return null;
   if (!Array.isArray(value)) return undefined;
   const models: RouterModelEntry[] = [];
   for (const item of value) {
     if (
       !isRecord(item) ||
-      typeof item.provider !== "string" ||
-      !DIRECT_PROVIDER_SET.has(item.provider) ||
-      typeof item.model !== "string" ||
-      item.model.length === 0 ||
+      !isIdentifier(item.provider) ||
+      !isIdentifier(item.model) ||
       !Array.isArray(item.primitives) ||
       item.primitives.length === 0 ||
-      !item.primitives.every(
-        (primitive) =>
-          typeof primitive === "string" && PRIMITIVE_SET.has(primitive),
-      ) ||
+      !item.primitives.every(isIdentifier) ||
       typeof item.configured !== "boolean"
     ) {
       return undefined;
@@ -101,12 +173,37 @@ export function parseRouterModels(value: unknown): RouterModelEntry[] | null | u
     const capabilities = parseModelCapabilities(item.capabilities);
     if (!capabilities) return undefined;
     models.push({
-      provider: item.provider as DirectModelProvider,
+      provider: item.provider,
       model: item.model,
-      primitives: item.primitives as Primitive[],
+      primitives: item.primitives,
       configured: item.configured,
       capabilities,
     });
   }
   return models;
+}
+
+/** Returns null when the response is not a valid v1 capabilities payload. */
+export function parseRouterCapabilities(
+  value: unknown,
+): RouterCapabilities | null {
+  if (
+    !isRecord(value) ||
+    value.apiVersion !== "v1" ||
+    value.credentialMode !== "router" ||
+    !isRecord(value.webRetrieval)
+  ) {
+    return null;
+  }
+  const providers = parseProviders(value.providers);
+  const webRetrievalProviders = parseProviders(value.webRetrieval.providers);
+  const models = parseRouterModels(value.models);
+  if (!providers || !webRetrievalProviders || models === undefined) return null;
+  return {
+    apiVersion: "v1",
+    credentialMode: "router",
+    providers,
+    webRetrieval: { providers: webRetrievalProviders },
+    ...(models ? { models } : {}),
+  };
 }
