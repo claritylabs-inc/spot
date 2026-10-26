@@ -483,7 +483,7 @@ export const attachPolicyDocument = tool({
 });
 
 export const GENERATE_COI_DESCRIPTION =
-  "Generate certificate PDFs in exactly one mode; never combine them. Policy mode: policyId plus a holder, covering all available policy coverages (call lookup_address first when given an address). Requirements mode: requirementSourceDocumentId or one requirementId; the saved source supplies the holder and Spot makes the needed certificates from matching policies with only the relevant coverages. Additional-insured, waiver, primary/non-contributory, loss payee and mortgagee requests issue only when policy evidence supports them; otherwise the certificate is gated and a provider email is drafted.";
+  "Generate certificate PDFs in exactly one mode. Policy mode: policyId plus a holder (lookup_address first for an address). Requirements mode: requirementSourceDocumentId or one requirementId; the saved source supplies the holder. Endorsements issue only with policy evidence; otherwise gated and a provider email is drafted.";
 
 const coiText = (description?: string) => {
   const schema = z.string().optional();
@@ -514,14 +514,12 @@ export const generateCoiInputSchema = z.object({
   country: coiText(),
   requestText: coiText("The user's full certificate request"),
   descriptionOfOperations: coiText(
-    "Wording for the description box, only when the user supplied it or policy facts clearly support it. Never invent; not for summaries, limits, terms or endorsement status",
+    "Description-box wording; only if user-supplied or clearly policy-supported. Never invent",
   ),
   requestedEndorsements: z
     .array(z.string())
     .optional()
-    .describe(
-      "Only endorsements the user explicitly asked for (additional insured, waiver of subrogation, primary and non-contributory, loss payee, mortgagee)",
-    ),
+    .describe("Only endorsements the user explicitly asked for"),
   additionalInsuredName: coiText("Additional insured to show, when requested"),
   explicitReissue: z
     .boolean()
