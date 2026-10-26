@@ -39,6 +39,22 @@ Sequences move from active to completed after the final step, stopped on lifecyc
 
 Steps are scheduled, leased for sending, and then sent, captured, failed or cancelled. Drafts are persisted before sending. Inference start markers prevent automatic replay after an unknown generation outcome; a deterministic template can supply the fallback. Delivery retries reuse the saved draft and exact step idempotency keys. Unknown delivery can retry only within the provider's idempotency window (conservatively 23 hours); later recovery fails as delivery_unknown. Claims and finalization use lease fencing. Request closure, deletion, outreach status change or proposal filing cancels future steps.
 
+Initial provider emails use a deterministic applicant-first layout: greeting,
+“I’m reaching out on behalf of” the accepted application's full name (or “our
+client” when absent), bounded bullet facts, a separate Submission packet section,
+the appetite/quote question, and the authenticated operator's existing signature.
+`providerOutreachSummary.ts` projects only published application facts: business
+activities, request details, up to three vehicle year/make/model descriptions
+(no VIN), applicant-reported claims/insurance history and up to six visible,
+answered additional follow-ups. Draft answers, internal notes, identifiers and
+file contents are not summary inputs. Values are bounded and HTML-escaped;
+bullets render as an HTML list and plain-text list with equivalent contents.
+Regions and effective dates are human-readable. Initial composition makes no
+model call; follow-ups retain generation with the applicant name and the existing
+fallback, lease, identity, packet authorization and retry behavior. Already saved
+drafts remain immutable. The UI still initiates sending immediately; it does not
+offer an editable provider-email preview.
+
 Cadence suggestions use one Jev call with independent choices for count, business-day interval and style. Each field independently passes the shared confidence threshold or falls back to two follow-ups, three business days, brief nudge. Operator overrides remain explicit. Schedules skip weekends, respect effective-date/deadline cutoffs and a 30-day maximum, and derive subsequent due times from observed send time.
 
 ## Team inbox and request mail

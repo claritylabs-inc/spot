@@ -6,16 +6,19 @@ import type { ClRouterTraceInput } from "./clRouterClient";
 import { generateObjectForOrg } from "./models";
 import { buildOperatorSignature } from "./teamEmail";
 import type { OutreachStyle } from "./providerOutreachSchedule";
+import type { OutreachSummaryItem } from "./providerOutreachSummary";
+import dayjs from "dayjs";
 
 /**
  * Provider outreach email composition.
  *
  * Generation (`generateOutreachDraftText`) and composition
  * (`composeOutreachEmail`) are separate on purpose. The caller persists an
- * inference-start marker, makes the single generation call, and never repeats
+ * inference-start marker, makes a single follow-up generation call, and never repeats
  * it after an unknown outcome. Composition is pure and deterministic: it adds
- * the greeting, packet-link paragraph and operator signature in code, escapes
- * HTML, and has a deterministic template fallback.
+ * the greeting, packet section and operator signature in code and escapes HTML.
+ * Initial emails use the deterministic applicant summary; follow-ups retain a
+ * deterministic template fallback.
  */
 
 export type OutreachEmailKind = "initial" | "follow_up";
@@ -52,6 +55,7 @@ export type OutreachEmailInput = {
   /** Explicit client summary. Never pass `private.md`, notes or raw files. */
   client: {
     name: string;
+    applicantName?: string;
     industry?: string;
     summary?: string;
   };
@@ -63,6 +67,7 @@ export type OutreachEmailInput = {
     responseDeadline?: string;
     isRenewal?: boolean;
     packetFileCount?: number;
+    summaryItems?: OutreachSummaryItem[];
   };
   /**
    * Subject of the initial email, so follow-ups read as `Re: …`. Omit for the
@@ -103,7 +108,7 @@ function boundedContext(input: OutreachEmailInput) {
     provider: { name: clean(input.providerName, LIMITS.contextItem) },
     recipientFirstName: firstName(input.recipientName),
     client: {
-      name: clean(client.name, LIMITS.contextItem),
+      name: clean(client.applicantName ?? client.name, LIMITS.contextItem),
       industry: clean(client.industry, LIMITS.contextItem),
       summary: clean(client.summary, LIMITS.contextText),
     },
@@ -280,7 +285,7 @@ function templateSubject(input: OutreachEmailInput): string {
       : `Re: ${input.initialSubject}`;
   }
   const lines = cleanList(input.request.coverageLines);
-  const base = `${clean(input.client.name, LIMITS.contextItem) ?? "Client"} submission`;
+  const base = `${clean(input.client.applicantName, LIMITS.contextItem) ?? "Client"} submission`;
   return clean(
     lines.length ? `${base}: ${joinList(lines)}` : base,
     LIMITS.subjectChars,
@@ -289,7 +294,7 @@ function templateSubject(input: OutreachEmailInput): string {
 
 function templateBody(input: OutreachEmailInput): string {
   const { client, request } = input;
-  const name = clean(client.name, LIMITS.contextItem) ?? "our client";
+  const name = clean(client.applicantName, LIMITS.contextItem) ?? "our client";
   const lines = joinList(cleanList(request.coverageLines));
   const regions = joinList(cleanList(request.regions));
   const effective = clean(request.effectiveDate, 40);
@@ -309,8 +314,13 @@ function templateBody(input: OutreachEmailInput): string {
     : "";
 
   if (input.kind === "initial") {
-    const renewal = request.isRenewal ? " This is a renewal." : "";
-    return `I'm reaching out about ${name}, which is looking for ${subject}.${renewal}${datesSentence}\n\nThe full submission is available through the secure link below. ${ask}`;
+    const bullets = [
+      lines ? `- Coverage requested: ${lines}` : "",
+      regions ? `- Location: ${regions}` : "",
+      effective ? `- Requested effective date: ${dayjs(effective).isValid() ? dayjs(effective).format("MMMM D, YYYY") : effective}` : "",
+      ...summaryItems(input).map((item) => `- ${item.label}: ${item.value}`),
+    ].filter(Boolean).join("\n");
+    return [`I’m reaching out on behalf of ${name}, who is looking for insurance options.`, bullets].filter(Boolean).join("\n\n");
   }
   if (input.style === "brief_nudge") {
     return `Following up on my earlier note about ${name}. ${ask}${closer}`;
@@ -326,6 +336,30 @@ function templateBody(input: OutreachEmailInput): string {
     deadline ? `Response requested by: ${deadline}` : "",
   ].filter(Boolean);
   return `Following up on my earlier note. A short recap of the submission:\n\n${detail.join("\n")}\n\nThe full submission is at the secure link below. ${ask}${closer}`;
+}
+
+function summaryItems(input: OutreachEmailInput): OutreachSummaryItem[] {
+  return (input.request.summaryItems ?? []).slice(0, 12).flatMap((item) => {
+    const label = clean(item.label, 180);
+    const value = clean(item.value, 500);
+    return label && value ? [{ label, value }] : [];
+  });
+}
+
+/** Initial summaries are deterministic; HTML and plain text carry the same facts. */
+function bodyHtml(body: string): string {
+  return body.split(/\n{2,}/).map((block) => {
+    const lines = block.split("\n");
+    return lines.every((line) => line.startsWith("- "))
+      ? `<ul style="margin:0 0 16px;padding-left:24px">${lines.map((line) => {
+          const separator = line.indexOf(": ", 2);
+          const content = separator > 2
+            ? `<strong>${escapeHtml(line.slice(2, separator + 1))}</strong> ${escapeHtml(line.slice(separator + 2))}`
+            : escapeHtml(line.slice(2));
+          return `<li style="margin:0 0 8px">${content}</li>`;
+        }).join("")}</ul>`
+      : `<p style="margin:0 0 16px">${escapeHtml(block).replace(/\n/g, "<br>")}</p>`;
+  }).join("");
 }
 
 /** Deterministic subject and body used when generation fails or is invalid. */
@@ -364,22 +398,27 @@ export function composeOutreachEmail(
   generated?: Extract<OutreachGenerationResult, { ok: true }>,
 ): ComposedOutreachEmail {
   const template = templateOutreachText(input);
-  const source: OutreachDraftSource = generated ? "llm" : "template";
-  const body = generated?.body ?? template.body;
+  const source: OutreachDraftSource = generated && input.kind !== "initial" ? "llm" : "template";
+  const body = input.kind === "initial" ? template.body : (generated?.body ?? template.body);
   const subject =
     input.kind === "initial"
-      ? (generated?.subject ?? template.subject)
+      ? template.subject
       : template.subject;
 
-  const greeting = `Hi ${firstName(input.recipientName) ?? "there"},`;
+  const greeting = input.kind === "initial"
+    ? "Hi there,"
+    : `Hi ${firstName(input.recipientName) ?? "there"},`;
   const link = assertHttpsUrl(packetUrl);
-  const linkIntro = "Secure submission packet:";
+  const linkIntro = "Submission packet";
+  const packetDescription = "The application and released supporting documents are available here:";
+  const initialAsk = "Could you let me know whether this fits your appetite and what additional information you need to quote? A quick pass or referral to the appropriate desk would also be helpful.";
   const signature = buildOperatorSignature(input.operator);
 
   const text = [
     greeting,
     body,
-    `${linkIntro} ${link}`,
+    `${linkIntro}\n\n${packetDescription}\n${link}`,
+    ...(input.kind === "initial" ? [initialAsk] : []),
     "Thanks,",
     signature.text,
   ].join("\n\n");
@@ -388,8 +427,10 @@ export function composeOutreachEmail(
     `<p style="margin:0 0 16px">${escapeHtml(value).replace(/\n/g, "<br>")}</p>`;
   const html = [
     paragraph(greeting),
-    ...body.split(/\n{2,}/).map(paragraph),
-    `<p style="margin:0 0 16px">${escapeHtml(linkIntro)} <a href="${escapeHtml(link)}">${escapeHtml(link)}</a></p>`,
+    bodyHtml(body),
+    `<p style="margin:0 0 8px"><strong>${linkIntro}</strong></p>`,
+    `<p style="margin:0 0 16px">${packetDescription}<br><a href="${escapeHtml(link)}">View secure submission packet</a></p>`,
+    ...(input.kind === "initial" ? [paragraph(initialAsk)] : []),
     paragraph("Thanks,"),
     signature.html,
   ].join("");

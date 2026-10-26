@@ -388,6 +388,7 @@ import type * as lib_providerOutreachEmail from "../lib/providerOutreachEmail.js
 import type * as lib_providerOutreachLifecycle from "../lib/providerOutreachLifecycle.js";
 import type * as lib_providerOutreachMatch from "../lib/providerOutreachMatch.js";
 import type * as lib_providerOutreachSchedule from "../lib/providerOutreachSchedule.js";
+import type * as lib_providerOutreachSummary from "../lib/providerOutreachSummary.js";
 import type * as lib_providerOutreachValidators from "../lib/providerOutreachValidators.js";
 import type * as lib_quoWebhook from "../lib/quoWebhook.js";
 import type * as lib_receivingEmail from "../lib/receivingEmail.js";
@@ -930,6 +931,7 @@ declare const fullApi: ApiFromModules<{
   "lib/providerOutreachLifecycle": typeof lib_providerOutreachLifecycle;
   "lib/providerOutreachMatch": typeof lib_providerOutreachMatch;
   "lib/providerOutreachSchedule": typeof lib_providerOutreachSchedule;
+  "lib/providerOutreachSummary": typeof lib_providerOutreachSummary;
   "lib/providerOutreachValidators": typeof lib_providerOutreachValidators;
   "lib/quoWebhook": typeof lib_quoWebhook;
   "lib/receivingEmail": typeof lib_receivingEmail;
