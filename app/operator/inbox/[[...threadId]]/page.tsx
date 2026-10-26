@@ -29,7 +29,8 @@ export default function OperatorInboxPage() {
 
   const select = useCallback(
     (thread: InboxThread | null, options?: { replace?: boolean }) => {
-      const href = thread ? `/operator/inbox/${thread._id}` : "/operator/inbox";
+      const path = thread ? `/operator/inbox/${thread._id}` : "/operator/inbox";
+      const href = `${path}${window.location.search}`;
       if (options?.replace) router.replace(href, { scroll: false });
       else router.push(href, { scroll: false });
     },
@@ -44,7 +45,7 @@ export default function OperatorInboxPage() {
   // A saved link with a legacy id moves to the current id.
   useEffect(() => {
     if (resolved.status === "ready" && resolved.redirected)
-      router.replace(`/operator/inbox/${resolved.threadId}`, { scroll: false });
+      router.replace(`/operator/inbox/${resolved.threadId}${window.location.search}`, { scroll: false });
   }, [resolved, router]);
 
   return (
@@ -57,7 +58,7 @@ export default function OperatorInboxPage() {
             onClose={() => setComposing(false)}
             onSent={(threadId) => {
               setComposing(false);
-              if (threadId) router.push(`/operator/inbox/${threadId}`, { scroll: false });
+              if (threadId) router.push(`/operator/inbox/${threadId}?mailbox=sent`, { scroll: false });
             }}
           />
         ) : resolved.status === "unavailable" ? (
@@ -78,7 +79,7 @@ export default function OperatorInboxPage() {
         selectedThreadId={resolved.threadId ?? selectedId}
         onSelect={select}
         onCompose={() => {
-          if (selectedId) router.push("/operator/inbox", { scroll: false });
+          if (selectedId) router.push(`/operator/inbox${window.location.search}`, { scroll: false });
           setComposing(true);
         }}
       />

@@ -2844,3 +2844,19 @@ summary reconnect and empty-result fallback also completed with count 1.
 Checkpoint mode/skipped metadata and the web activity detail were verified.
 Execution responses were stubbed; live provider inference is not claimed. See
 the correction section in the linked workflow report.
+
+## Incoming and Sent mailbox views — 2026-10-26
+
+On `zac/inbox-sent-tabs`, native Helium exercised the shared main and request
+Inbox against the local backend: incoming-only Inbox, outgoing-only Sent,
+URL-preserved mailbox/scope across opening a conversation, reader persistence
+when switching mailbox, unread/needs-reply presentation, and the existing Reply
+editor with the expected recipient (discarded without sending). A synthetic
+outgoing thread/message was appended to the existing local roundtrip request;
+archiving removed it from Sent, Archived showed it, and Restore returned it to
+Sent. No existing fixture records were replaced. Artifacts are ignored under
+`.context/qa/inbox-sent-20261026/` (`01-team-sent.png`, `02-request-sent.png`,
+`03-request-inbox-reply.png`). Root and Convex TypeScript, focused ESLint and
+all 145 existing tests passed. No tests or data migrations were written, and
+browser QA sent no email. Live reply arrival and a real reply send were not
+simulated; existing mirroring supplies the latest direction used by the indexes.

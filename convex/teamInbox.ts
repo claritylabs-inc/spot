@@ -75,6 +75,7 @@ export const list = query({
     requestId: v.optional(v.id("procurementRequests")),
     category: v.optional(emailCategoryValidator),
     archived: v.optional(v.boolean()),
+    mailbox: v.optional(v.union(v.literal("inbox"), v.literal("sent"))),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);

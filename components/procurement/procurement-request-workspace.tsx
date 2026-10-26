@@ -2497,7 +2497,11 @@ export function ProcurementRequestWorkspace({
   const selectInboxThread = useCallback(
     (thread: InboxThread | null, options?: { replace?: boolean }) => {
       if (!thread) closeRightPanel();
-      const href = `${basePath}/${requestId}?view=email${thread ? `&thread=${thread._id}` : ""}`;
+      const query = new URLSearchParams(window.location.search);
+      query.set("view", "email");
+      if (thread) query.set("thread", thread._id);
+      else query.delete("thread");
+      const href = `${basePath}/${requestId}?${query}`;
       if (options?.replace) router.replace(href, { scroll: false });
       else router.push(href, { scroll: false });
     },

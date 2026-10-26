@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { toast } from "sonner";
 import type { FunctionReturnType } from "convex/server";
@@ -44,7 +45,7 @@ import {
   replyingOperators,
   useActiveOperators,
 } from "@/hooks/use-operator-presence";
-import { useFollowedState } from "@/hooks/use-followed-state";
+import { useFollowedState, useFollowedValue } from "@/hooks/use-followed-state";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import {
   useCachedOperatorClients,
@@ -63,6 +64,7 @@ type ClientSequence = NonNullable<
   FunctionReturnType<typeof api.clientOutreach.getPanel>
 >["sequences"][number];
 type TeamFilter = "all" | "mine" | "unlinked";
+type Mailbox = "inbox" | "sent" | "all" | "archived";
 type Category = NonNullable<InboxThread["category"]>;
 
 const PAGE_SIZE = 40;
@@ -106,6 +108,7 @@ function matches(thread: InboxThread, term: string) {
     thread.preview,
     thread.fromName,
     thread.fromEmail,
+    thread.counterpart,
     thread.client?.name,
     ...thread.participantEmails,
   ]
@@ -249,6 +252,9 @@ function ThreadRow({
             ) : null}
           </span>
         </span>
+        {thread.needsReply ? (
+          <Badge variant="outline" className="shrink-0">Needs reply</Badge>
+        ) : null}
         {tag ? (
           <Badge variant="outline" className="hidden max-w-36 text-muted-foreground @xl:inline-flex">
             <span className="truncate">{tag}</span>
@@ -369,13 +375,35 @@ export function TeamInbox({
   const requestId = scope.kind === "request" ? scope.requestId : undefined;
   // The team inbox opens on the operator's own mail.
   const uiKey = requestId ? `inbox:request:${requestId}` : "inbox:team";
-  const [filter, setFilter] = useFollowedState<TeamFilter>(
+  const params = useSearchParams();
+  const scopeParam = params.get("mailScope");
+  const initialFilter = scope.kind === "team" ? "mine" : "all";
+  const filter = useFollowedValue<TeamFilter>(
     `${uiKey}:filter`,
-    scope.kind === "team" ? "mine" : "all",
+    scopeParam === "all" || scopeParam === "mine" || scopeParam === "unlinked"
+      ? scopeParam : initialFilter,
+    initialFilter,
   );
+  function setFilter(value: TeamFilter) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("mailScope", value);
+    window.history.replaceState(null, "", url.toString());
+  }
   const [clientOrgId, setClientOrgId] = useFollowedState(`${uiKey}:client`, "");
   const [category, setCategory] = useFollowedState(`${uiKey}:category`, ALL_CATEGORIES);
-  const [archivedView, setArchivedView] = useFollowedState(`${uiKey}:archived`, false);
+  const mailboxParam = params.get("mailbox");
+  const mailbox = useFollowedValue<Mailbox>(
+    `${uiKey}:mailbox`,
+    mailboxParam === "sent" || mailboxParam === "all" || mailboxParam === "archived"
+      ? mailboxParam : "inbox",
+    "inbox",
+  );
+  function setMailbox(value: Mailbox) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("mailbox", value);
+    window.history.replaceState(null, "", url.toString());
+  }
+  const archivedView = mailbox === "archived";
   const [search, setSearch] = useFollowedState(`${uiKey}:search`, "");
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const clients = useCachedOperatorClients();
@@ -389,6 +417,7 @@ export function TeamInbox({
             requestId,
             ...(category !== ALL_CATEGORIES ? { category: category as Category } : {}),
             ...(archivedView ? { archived: true } : {}),
+            ...(mailbox === "inbox" || mailbox === "sent" ? { mailbox } : {}),
           }
         : {
             ...(filter === "mine" ? { mine: true } : {}),
@@ -396,8 +425,9 @@ export function TeamInbox({
             ...(clientOrgId ? { clientOrgId: clientOrgId as Id<"organizations"> } : {}),
             ...(category !== ALL_CATEGORIES ? { category: category as Category } : {}),
             ...(archivedView ? { archived: true } : {}),
+            ...(mailbox === "inbox" || mailbox === "sent" ? { mailbox } : {}),
           },
-    [requestId, filter, clientOrgId, category, archivedView],
+    [requestId, filter, clientOrgId, category, archivedView, mailbox],
   );
   const {
     results: threads,
@@ -412,7 +442,7 @@ export function TeamInbox({
     requestId ? { requestId } : "skip",
   );
   // Client emails show here until their first message mirrors into a conversation.
-  const outbox = (clientPanel?.sequences ?? []).filter(
+  const outbox = (mailbox === "sent" || mailbox === "all" ? clientPanel?.sequences ?? [] : []).filter(
     (sequence) =>
       !sequence.teamEmailThreadId &&
       (sequence.status === "active" ||
@@ -426,10 +456,8 @@ export function TeamInbox({
     api.procurementRequests.setEmailThreadsArchived,
   );
   const people = groupEmailThreadPeople(useActiveOperators());
-  const lastLoadedSelection = useRef<string | null>(null);
   const selected =
     inboxThreads.find((thread) => thread._id === selectedThreadId) ?? null;
-  const selectionLoaded = selected !== null;
 
   // Deep links open once the thread loads; clicks open the reader directly.
   const openedRef = useRef<string | null>(null);
@@ -442,22 +470,8 @@ export function TeamInbox({
     openedRef.current = selected._id;
     onOpenThread?.(selected);
   }, [selected, selectedThreadId, onOpenThread]);
-  // Request lists clear a conversation that was in the list and then left it
-  // (for example, moved to another request). A deep-linked conversation that
-  // was never loaded stays: the reader loads it by id. The team list never
-  // clears, since a filter can hide the open conversation.
-  useEffect(() => {
-    if (scope.kind !== "request") return;
-    if (selectionLoaded) {
-      lastLoadedSelection.current = selectedThreadId;
-    } else if (
-      status !== "LoadingFirstPage" &&
-      selectedThreadId &&
-      lastLoadedSelection.current === selectedThreadId
-    ) {
-      onSelect(null, { replace: true });
-    }
-  }, [scope.kind, selectionLoaded, selectedThreadId, status, onSelect]);
+  // Keep the reader open when a reply or a mailbox/filter switch moves its
+  // conversation out of this list. The reader independently authorizes its id.
 
   // Subscribe ahead of a click so the reader opens with its data in place.
   function prewarm(thread: InboxThread) {
@@ -553,10 +567,10 @@ export function TeamInbox({
       })),
     [clients],
   );
-  // Request mail has Inbox/Archived tabs, so only the category is a filter there.
+  // Mailbox tabs are shared by team and request views; ownership is a filter.
   const filtered =
     category !== ALL_CATEGORIES ||
-    (scope.kind === "team" && (!!clientOrgId || archivedView));
+    (scope.kind === "team" && !!clientOrgId);
   const filters: FilterDefinition[] = [
     ...(scope.kind === "team"
       ? [
@@ -587,17 +601,22 @@ export function TeamInbox({
       })),
     },
     ...(scope.kind === "team"
-      ? [
-          {
-            id: "mailbox",
-            label: "Mailbox",
-            icon: <Archive />,
-            allLabel: "Inbox",
-            value: archivedView ? ["archived"] : [],
-            onChange: (value: string[]) => setArchivedView(value.length > 0),
-            options: [{ value: "archived", label: "Archived" }],
+      ? [{
+          id: "scope",
+          label: "Scope",
+          inline: true,
+          allLabel: "All team",
+          value: filter === "all" ? [] : [filter],
+          onChange: (value: string[]) => {
+            const next = (value[0] ?? "all") as TeamFilter;
+            setFilter(next);
+            if (next === "unlinked") setClientOrgId("");
           },
-        ]
+          options: [
+            { value: "mine", label: "Mine" },
+            { value: "unlinked", label: "Unlinked" },
+          ],
+        }]
       : []),
   ];
 
@@ -635,7 +654,7 @@ export function TeamInbox({
     </div>
   ) : null;
   const suggested =
-    requestId && !archivedView ? (
+    requestId && (mailbox === "inbox" || mailbox === "all") ? (
       <SuggestedStrip requestId={requestId} readOnly={readOnly} />
     ) : null;
 
@@ -709,17 +728,19 @@ export function TeamInbox({
   } else if (exhausted && !inboxThreads.length) {
     list = (
       <>
-        {requestId && !archivedView ? (
+        {requestId && (mailbox === "inbox" || mailbox === "all") ? (
           <SuggestedStrip requestId={requestId} readOnly={readOnly} framed />
         ) : null}
         <EmptyStateCard
-          title={archivedView ? "No archived conversations" : "No conversations"}
+          title={archivedView ? "No archived conversations" : mailbox === "sent" ? "No sent conversations" : mailbox === "inbox" ? "Inbox is clear" : "No conversations"}
           description={
-            scope.kind === "request"
-              ? "Client emails, provider outreach, replies and forwarded mail for this request show up here."
-              : filtered || filter !== "all"
-                ? "Nothing matches these filters."
-                : "Team email, provider outreach, replies and forwarded mail show up here."
+            filtered || (scope.kind === "team" && filter !== "all")
+              ? "Nothing matches these filters."
+              : mailbox === "inbox"
+                ? "Incoming mail and new replies appear here. Find outgoing conversations in Sent."
+                : mailbox === "sent"
+                  ? "Outgoing conversations appear here until a reply arrives in Inbox."
+                  : "Client emails, provider outreach, replies and forwarded mail show up here."
           }
           icon={<Inbox className="size-6" />}
         />
@@ -749,34 +770,19 @@ export function TeamInbox({
     );
   }
 
-  const tabs =
-    scope.kind === "request" ? (
-      <Tabs
-        value={archivedView ? "archived" : "inbox"}
-        onValueChange={(value) => setArchivedView(value === "archived")}
-      >
-        <TabsList variant="pill" aria-label="Show">
-          <TabsTrigger value="inbox">Inbox</TabsTrigger>
-          <TabsTrigger value="archived">Archived</TabsTrigger>
-        </TabsList>
-      </Tabs>
-    ) : (
-      <Tabs
-        value={filter}
-        onValueChange={(value) => {
-          const next = value as TeamFilter;
-          setFilter(next);
-          // Unlinked mail has no client, so the two cannot combine.
-          if (next === "unlinked") setClientOrgId("");
-        }}
-      >
-        <TabsList variant="pill" aria-label="Show">
-          <TabsTrigger value="mine">Mine</TabsTrigger>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
-        </TabsList>
-      </Tabs>
-    );
+  const tabs = (
+    <Tabs value={mailbox} onValueChange={(value) => {
+      setMailbox(value as Mailbox);
+      setChecked(new Set());
+    }}>
+      <TabsList variant="pill" aria-label="Mailbox">
+        <TabsTrigger value="inbox">Inbox</TabsTrigger>
+        <TabsTrigger value="sent">Sent</TabsTrigger>
+        <TabsTrigger value="all">All mail</TabsTrigger>
+        <TabsTrigger value="archived">Archived</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
 
   return (
     <section className="@container space-y-3">

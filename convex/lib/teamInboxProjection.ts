@@ -27,6 +27,7 @@ type InboxFilters = {
   requestId?: Id<"procurementRequests">;
   category?: ProcurementEmailCategory;
   archived?: boolean;
+  mailbox?: "inbox" | "sent";
 };
 
 async function personFor(
@@ -130,7 +131,8 @@ export async function teamInboxRow(
   let counterpart: string | null = null;
   if (latestDirection === "outbound") {
     if (sequence) {
-      counterpart = `To ${sequence.recipient.name ?? sequence.recipient.email}`;
+      const provider = sequence.brokerOrgId ? await ctx.db.get(sequence.brokerOrgId) : null;
+      counterpart = `To ${provider && !provider.deletedAt ? provider.name : sequence.recipient.email}`;
     } else {
       const latest = await ctx.db
         .query("teamEmailMessages")
@@ -190,6 +192,8 @@ export async function listTeamInbox(
 ) {
   const { viewerUserId, mine, unlinked, category, requestId } = args;
   const archived = args.archived === true;
+  if (archived && args.mailbox) throw new Error("Archived mail cannot be combined with Inbox or Sent");
+  const direction = args.mailbox === "inbox" ? "inbound" : args.mailbox === "sent" ? "outbound" : undefined;
   let clientOrgId = args.clientOrgId;
   if (unlinked && (clientOrgId || requestId))
     throw new Error("Unlinked cannot be combined with a client or request");
@@ -205,7 +209,30 @@ export async function listTeamInbox(
     numItems: Math.max(1, Math.min(INBOX_PAGE_LIMIT, args.paginationOpts.numItems)),
   };
   const table = () => ctx.db.query("teamEmailThreads");
-  const result = requestId
+  // Separate direction indexes keep incoming mail reachable even after a large
+  // outbound campaign. Additional filters still narrow one bounded page.
+  const directional = direction
+    ? requestId
+      ? table().withIndex("by_requestId_latestDirection_archivedAt_latestMessageAt", (q) =>
+          q.eq("requestId", requestId).eq("latestDirection", direction).eq("archivedAt", undefined))
+      : clientOrgId
+        ? table().withIndex("by_clientOrgId_latestDirection_archivedAt_latestMessageAt", (q) =>
+            q.eq("clientOrgId", clientOrgId).eq("latestDirection", direction).eq("archivedAt", undefined))
+        : mine
+          ? table().withIndex("by_ownerUserId_latestDirection_archivedAt_latestMessageAt", (q) =>
+              q.eq("ownerUserId", viewerUserId).eq("latestDirection", direction).eq("archivedAt", undefined))
+          : category
+            ? table().withIndex("by_category_latestDirection_archivedAt_latestMessageAt", (q) =>
+                q.eq("category", category).eq("latestDirection", direction).eq("archivedAt", undefined))
+            : unlinked
+              ? table().withIndex("by_clientOrgId_latestDirection_archivedAt_latestMessageAt", (q) =>
+                  q.eq("clientOrgId", undefined).eq("latestDirection", direction).eq("archivedAt", undefined))
+              : table().withIndex("by_latestDirection_archivedAt_latestMessageAt", (q) =>
+                  q.eq("latestDirection", direction).eq("archivedAt", undefined))
+    : null;
+  const result = directional
+    ? await directional.order("desc").paginate(opts)
+    : requestId
     ? await table()
         .withIndex("by_requestId_and_archivedAt_and_latestMessageAt", (q) =>
           archived
@@ -260,6 +287,7 @@ export async function listTeamInbox(
     (thread) =>
       !thread.deletedAt &&
       Boolean(thread.archivedAt) === archived &&
+      (!direction || thread.latestDirection === direction) &&
       (!mine || thread.ownerUserId === viewerUserId) &&
       (!unlinked || !thread.clientOrgId) &&
       (!clientOrgId || thread.clientOrgId === clientOrgId) &&
