@@ -1,5 +1,6 @@
 "use node";
 
+import dayjs from "dayjs";
 import { NoWriteInputError } from "../lib/noWriteInputError";
 
 import { v } from "convex/values";
@@ -325,16 +326,36 @@ export const runInternal = internalAction({
 
     if (args.toolName === "search_thread_history") {
       const input = args.input as Record<string, unknown>;
-      return {
-        result: await ctx.runQuery(
+      const limit = typeof input.limit === "number" ? input.limit : 5;
+      const dayStart = (date: unknown) =>
+        typeof date === "string" ? dayjs(`${date}T00:00:00Z`).valueOf() : undefined;
+      const fromTime = dayStart(input.dateFrom);
+      const lastDay = dayStart(input.dateTo);
+      const toTime = lastDay === undefined ? undefined : lastDay + 24 * 60 * 60 * 1000;
+      const matches: unknown[] = [];
+      let cursor = typeof input.cursor === "string" ? input.cursor : undefined;
+      let more = true;
+      // A date range filters inside each page, so keep paging until the page
+      // is filled or the search is exhausted (bounded attempts).
+      for (let attempt = 0; attempt < 5 && more && matches.length < limit; attempt++) {
+        const page = await ctx.runQuery(
           internal.operatorAgent.searchThreadHistoryInternal,
           {
             operatorUserId: args.operatorUserId,
             threadId: args.threadId,
             query: String(input.query),
-            limit: typeof input.limit === "number" ? input.limit : undefined,
+            limit: limit - matches.length,
+            cursor,
+            fromTime,
+            toTime,
           },
-        ),
+        );
+        matches.push(...page.matches);
+        cursor = page.nextCursor ?? undefined;
+        more = page.nextCursor !== null;
+      }
+      return {
+        result: { matches, nextCursor: more ? (cursor ?? null) : null, bounded: more },
       };
     }
 

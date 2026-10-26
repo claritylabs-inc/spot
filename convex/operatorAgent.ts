@@ -209,6 +209,7 @@ import {
   organizationIncludeSet,
   organizationRow,
 } from "./lib/operatorOrganizationReads";
+import { compactProposal, compactTeamThread, readMany, uniqueIds } from "./lib/operatorReadViews";
 
 const operatorChannelValidator = v.union(
   v.literal("chat"),
@@ -394,7 +395,12 @@ function serializedOperatorActionOutput(toolName: string, result: unknown) {
     isClientBatchToolName(toolName) ||
     toolName === "list_broker_network_profiles" ||
     toolName === "ensure_broker_network_profiles" ||
-    toolName === "update_broker_network_profiles"
+    toolName === "update_broker_network_profiles" ||
+    toolName === "get_procurement_proposal" ||
+    toolName === "list_procurement_provider_matches" ||
+    toolName === "get_channel_health" ||
+    toolName === "list_email_drafts" ||
+    toolName === "search_thread_history"
     ? JSON.stringify(result)
     : boundedJson(result);
 }
@@ -1850,6 +1856,18 @@ async function operatorConversationAgentTrace(
   };
 }
 
+/** Reads a thread detail in its own function run; the read paginates and a function may paginate once. */
+async function readTeamThreadOwnRun(
+  ctx: MutationCtx,
+  threadId: Id<"teamEmailThreads">,
+  viewerUserId: Id<"users">,
+): Promise<Awaited<ReturnType<typeof getTeamThreadDetails>>> {
+  return await ctx.runQuery(internal.operatorBulkReads.teamThreadDetailsInternal, {
+    threadId,
+    viewerUserId,
+  });
+}
+
 async function executeToolDomain(
   ctx: MutationCtx,
   args: {
@@ -2778,13 +2796,26 @@ async function executeToolDomain(
   }
 
   if (toolName === "get_procurement_proposal") {
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.get_procurement_proposal.inputSchema.parse(input);
+    const view = parsed.view ?? (parsed.procurementProposalIds ? "compact" : "full");
+    const present = (proposal: NonNullable<Awaited<ReturnType<typeof getProcurementProposalDetails>>>) => ({
+      ...(view === "compact" ? compactProposal(proposal) : proposal),
+      private: true,
+    });
+    if (parsed.procurementProposalIds)
+      return await readMany(uniqueIds(parsed.procurementProposalIds), async (id) => {
+        const proposalId = ctx.db.normalizeId("procurementProposals", id);
+        const proposal = proposalId ? await getProcurementProposalDetails(ctx, proposalId) : null;
+        return proposal ? present(proposal) : null;
+      });
     const proposalId = normalizeProcurementProposalId(
       ctx,
-      input.procurementProposalId,
+      parsed.procurementProposalId,
     );
     const proposal = await getProcurementProposalDetails(ctx, proposalId);
     if (!proposal) throw new Error("Procurement proposal not found");
-    return { ...proposal, private: true };
+    return present(proposal);
   }
 
   if (toolName === "get_broker_network_profile") {
@@ -2817,10 +2848,22 @@ async function executeToolDomain(
   }
 
   if (toolName === "get_team_inbox_thread") {
-    const thread = await getTeamThreadDetails(ctx, {
-      threadId: await normalizeProcurementEmailThreadId(ctx, input.teamEmailThreadId),
-      viewerUserId: args.operatorUserId,
-    });
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.get_team_inbox_thread.inputSchema.parse(input);
+    const view = parsed.view ?? (parsed.teamEmailThreadIds ? "compact" : "full");
+    const present = <T extends Parameters<typeof compactTeamThread>[0]>(thread: T | null) =>
+      thread && view === "compact" ? compactTeamThread(thread) : thread;
+    if (parsed.teamEmailThreadIds)
+      return await readMany(uniqueIds(parsed.teamEmailThreadIds), async (id) => {
+        const threadId = ctx.db.normalizeId("teamEmailThreads", id);
+        return threadId ? present(await readTeamThreadOwnRun(ctx, threadId, args.operatorUserId)) : null;
+      });
+    const thread = present(
+      await getTeamThreadDetails(ctx, {
+        threadId: await normalizeProcurementEmailThreadId(ctx, parsed.teamEmailThreadId),
+        viewerUserId: args.operatorUserId,
+      }),
+    );
     if (!thread) throw new Error("Email conversation not found");
     return thread;
   }
@@ -2852,11 +2895,24 @@ async function executeToolDomain(
   }
 
   if (toolName === "get_procurement_email_thread") {
-    const emailThreadId = await normalizeProcurementEmailThreadId(
-      ctx,
-      input.procurementEmailThreadId,
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.get_procurement_email_thread.inputSchema.parse(input);
+    const view = parsed.view ?? (parsed.procurementEmailThreadIds ? "compact" : "full");
+    const present = <T extends Parameters<typeof compactTeamThread>[0]>(thread: T | null) =>
+      thread && view === "compact" ? compactTeamThread(thread) : thread;
+    if (parsed.procurementEmailThreadIds)
+      return await readMany(uniqueIds(parsed.procurementEmailThreadIds), async (id) => {
+        const emailThreadId = ctx.db.normalizeId("teamEmailThreads", id);
+        return emailThreadId ? present(await readTeamThreadOwnRun(ctx, emailThreadId, args.operatorUserId)) : null;
+      });
+    const thread = present(
+      await getProcurementEmailThreadDetails(
+        ctx,
+        await normalizeProcurementEmailThreadId(ctx, parsed.procurementEmailThreadId),
+        undefined,
+        args.operatorUserId,
+      ),
     );
-    const thread = await getProcurementEmailThreadDetails(ctx, emailThreadId, undefined, args.operatorUserId);
     if (!thread) throw new Error("Procurement email thread not found");
     return thread;
   }
@@ -3101,12 +3157,99 @@ async function executeToolDomain(
   }
 
   if (toolName === "get_channel_health") {
-    const orgId = input.orgId
-      ? normalizeOrganizationId(ctx, input.orgId)
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.get_channel_health.inputSchema.parse(input);
+    const orgId = parsed.orgId
+      ? normalizeOrganizationId(ctx, parsed.orgId)
       : undefined;
     if (orgId && !(await ctx.db.get(orgId))) {
       throw new Error("Organization not found");
     }
+    const problemsOnly = parsed.problemsOnly === true;
+    // Problem rows mirror the platform health suggestion.
+    const connectionRow = (connection: Doc<"slackWorkspaceConnections">) => ({
+      connectionId: connection._id,
+      clientOrgId: connection.clientOrgId,
+      teamName: connection.teamName,
+      status: connection.status,
+      healthStatus: connection.healthStatus,
+      healthReason: connection.healthReason,
+      lastVerifiedAt: connection.lastVerifiedAt,
+    });
+    const bindingRow = (binding: Doc<"slackChannelBindings">) => ({
+      bindingId: binding._id,
+      clientOrgId: binding.clientOrgId,
+      channelName: binding.channelName,
+      status: binding.status,
+      healthStatus: binding.healthStatus,
+      unavailableReason: binding.unavailableReason,
+      lastVerifiedAt: binding.lastVerifiedAt,
+    });
+    const emailRow = (account: Doc<"connectedEmailAccounts">) => ({
+      accountId: account._id,
+      orgId: account.orgId,
+      label: account.label,
+      status: account.status,
+      lastError: account.lastError,
+      lastTestedAt: account.lastTestedAt,
+      updatedAt: account.updatedAt,
+    });
+    const connectionProblem = (connection: Doc<"slackWorkspaceConnections">) =>
+      connection.status === "active" && connection.healthStatus === "degraded";
+    const bindingProblem = (binding: Doc<"slackChannelBindings">) =>
+      binding.status === "unavailable" ||
+      (binding.status === "active" && binding.healthStatus === "degraded");
+    const emailProblem = (account: Doc<"connectedEmailAccounts">) =>
+      account.status === "error";
+
+    if (parsed.section) {
+      const paginationOpts = {
+        cursor: parsed.cursor ?? null,
+        numItems: parsed.limit ?? 50,
+      };
+      const page =
+        parsed.section === "slack_connections"
+          ? await (orgId
+              ? ctx.db
+                  .query("slackWorkspaceConnections")
+                  .withIndex("client_status", (index) => index.eq("clientOrgId", orgId))
+              : ctx.db.query("slackWorkspaceConnections")
+            ).paginate(paginationOpts)
+          : parsed.section === "slack_bindings"
+            ? await (orgId
+                ? ctx.db
+                    .query("slackChannelBindings")
+                    .withIndex("client_status", (index) => index.eq("clientOrgId", orgId))
+                : ctx.db.query("slackChannelBindings")
+              ).paginate(paginationOpts)
+            : await (orgId
+                ? ctx.db
+                    .query("connectedEmailAccounts")
+                    .withIndex("organization", (index) => index.eq("orgId", orgId))
+                : ctx.db.query("connectedEmailAccounts")
+              ).paginate(paginationOpts);
+      // Problem filtering happens inside the page, so a page may hold fewer rows than the limit.
+      const rows =
+        parsed.section === "slack_connections"
+          ? (page.page as Doc<"slackWorkspaceConnections">[])
+              .filter((row) => !problemsOnly || connectionProblem(row))
+              .map(connectionRow)
+          : parsed.section === "slack_bindings"
+            ? (page.page as Doc<"slackChannelBindings">[])
+                .filter((row) => !problemsOnly || bindingProblem(row))
+                .map(bindingRow)
+            : (page.page as Doc<"connectedEmailAccounts">[])
+                .filter((row) => !problemsOnly || emailProblem(row))
+                .map(emailRow);
+      return {
+        orgId,
+        section: parsed.section,
+        rows,
+        nextCursor: page.isDone ? null : page.continueCursor,
+        bounded: !page.isDone,
+      };
+    }
+
     const [settings, connections, bindings, emailAccounts, hostInstalls] =
       await Promise.all([
         orgId
@@ -3152,26 +3295,18 @@ async function executeToolDomain(
           }
         : undefined,
       slack: {
-        connections: connections.map((connection) => ({
-          connectionId: connection._id,
-          clientOrgId: connection.clientOrgId,
-          teamName: connection.teamName,
-          status: connection.status,
-          healthStatus: connection.healthStatus,
-          healthReason: connection.healthReason,
-          lastVerifiedAt: connection.lastVerifiedAt,
-        })),
-        bindings: bindings.map((binding) => ({
-          bindingId: binding._id,
-          clientOrgId: binding.clientOrgId,
-          channelName: binding.channelName,
-          status: binding.status,
-          healthStatus: binding.healthStatus,
-          unavailableReason: binding.unavailableReason,
-          lastVerifiedAt: binding.lastVerifiedAt,
-        })),
+        connections: connections
+          .filter((row) => !problemsOnly || connectionProblem(row))
+          .map(connectionRow),
+        bindings: bindings
+          .filter((row) => !problemsOnly || bindingProblem(row))
+          .map(bindingRow),
         hostInstallations: hostInstalls
-          .filter((installation) => installation.kind === "host")
+          .filter(
+            (installation) =>
+              installation.kind === "host" &&
+              (!problemsOnly || installation.status !== "active"),
+          )
           .map((installation) => ({
             installationId: installation._id,
             teamName: installation.teamName,
@@ -3179,15 +3314,10 @@ async function executeToolDomain(
             updatedAt: installation.updatedAt,
           })),
       },
-      email: emailAccounts.map((account) => ({
-        accountId: account._id,
-        orgId: account.orgId,
-        label: account.label,
-        status: account.status,
-        lastError: account.lastError,
-        lastTestedAt: account.lastTestedAt,
-        updatedAt: account.updatedAt,
-      })),
+      email: emailAccounts
+        .filter((row) => !problemsOnly || emailProblem(row))
+        .map(emailRow),
+      // Whether the unfiltered scan hit its cap, so rows may be missing.
       bounded: {
         connections: connections.length >= (orgId ? 25 : 250),
         bindings: bindings.length >= (orgId ? 25 : 250),
@@ -3514,11 +3644,39 @@ async function executeToolDomain(
   }
 
   if (toolName === "list_procurement_provider_matches") {
-    return await getProviderOutreachPanel(
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.list_procurement_provider_matches.inputSchema.parse(input);
+    const panel = await getProviderOutreachPanel(
       ctx,
-      normalizeProcurementRequestId(ctx, input.procurementRequestId),
+      normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
       args.operatorUserId,
+      {
+        cursor: parsed.cursor,
+        limit: parsed.limit ?? 20,
+        verdict: parsed.verdict,
+        coverage: parsed.coverage,
+        state: parsed.state,
+        role: parsed.role,
+      },
     );
+    if (!panel) return null;
+    const { paging, candidates, ...context } = panel;
+    const compact = (rows: typeof candidates.matched) =>
+      rows.map(({ iconUrl: _iconUrl, ...row }) => row);
+    const next = {
+      candidates: {
+        matched: compact(candidates.matched),
+        unknown: compact(candidates.unknown),
+        excluded: compact(candidates.excluded),
+      },
+      total: paging?.total ?? 0,
+      nextCursor: paging?.nextCursor ?? null,
+      bounded: panel.providersBounded || Boolean(paging?.nextCursor),
+    };
+    // Request context and sequences are sent once, on the first page.
+    return parsed.cursor
+      ? { providersBounded: panel.providersBounded, ...next }
+      : { ...context, ...next };
   }
 
   if (toolName === "launch_procurement_provider_outreach") {
@@ -7069,6 +7227,10 @@ export const searchThreadHistoryInternal = internalQuery({
     threadId: v.id("operatorAgentThreads"),
     query: v.string(),
     limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+    /** Inclusive start and exclusive end of the message creation time. */
+    fromTime: v.optional(v.number()),
+    toTime: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
@@ -7076,24 +7238,33 @@ export const searchThreadHistoryInternal = internalQuery({
       anyOperator: true,
     });
     const limit = Math.max(1, Math.min(args.limit ?? 5, 8));
-    const messages = await ctx.db
+    const page = await ctx.db
       .query("operatorAgentMessages")
       .withSearchIndex("content", (index) =>
         index.search("content", args.query).eq("threadId", args.threadId),
       )
-      .take(limit);
-    return messages.map((message) => ({
-      messageId: message._id,
-      role: message.role,
-      userName: message.userName,
-      content: message.content.slice(0, 2_000),
-      attachments: (message.attachments ?? []).map((attachment) => ({
-        filename: attachment.filename,
-        contentType: attachment.contentType,
-        size: attachment.size,
-      })),
-      createdAt: message.createdAt,
-    }));
+      .paginate({ cursor: args.cursor ?? null, numItems: limit });
+    return {
+      matches: page.page
+        .filter(
+          (message) =>
+            (args.fromTime === undefined || message.createdAt >= args.fromTime) &&
+            (args.toTime === undefined || message.createdAt < args.toTime),
+        )
+        .map((message) => ({
+          messageId: message._id,
+          role: message.role,
+          userName: message.userName,
+          content: message.content.slice(0, 2_000),
+          attachments: (message.attachments ?? []).map((attachment) => ({
+            filename: attachment.filename,
+            contentType: attachment.contentType,
+            size: attachment.size,
+          })),
+          createdAt: message.createdAt,
+        })),
+      nextCursor: page.isDone ? null : page.continueCursor,
+    };
   },
 });
 

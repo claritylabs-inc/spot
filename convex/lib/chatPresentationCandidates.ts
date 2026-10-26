@@ -923,7 +923,9 @@ function addProposals(builder: Candidates, name: string, output: unknown) {
   const proposals = (
     name === "list_procurement_proposals"
       ? collection(output, "proposals")
-      : [record(output)]
+      : Array.isArray(record(output).items)
+        ? collection(output, "items")
+        : [record(output)]
   ).slice(0, 6);
   const resolved = proposals.flatMap((proposal) => {
     const id = identifier(proposal._id);
