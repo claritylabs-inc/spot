@@ -225,6 +225,11 @@ export function operatorRunFailureReason(
       : undefined;
   const code = record?.failure?.code ?? record?.routerCode ?? "";
   const match = `${code} ${detail}`;
+  if (/\[context_compaction_failed\]/.test(match)) return {
+    code: "context_compaction_failed",
+    message: "The task's working context could not be compacted safely.",
+    nextStep: "Check completed actions, then continue the remaining items in a smaller request.",
+  };
   if (
     /payload_too_large|context.{0,20}(?:limit|length|window)|maximum.{0,20}tokens|too many tokens|request.{0,20}too large/i.test(
       match,

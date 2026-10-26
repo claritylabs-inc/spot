@@ -518,6 +518,20 @@ function optionalExactId(description: string) {
 }
 
 export const OPERATOR_AGENT_TOOL_REGISTRY = {
+  compact_context: defineOperatorTool({
+    version: 1,
+    description: "Compact this run's older working context before large multi-item work or near its context limit. Keeps recent complete tool steps and exact references; does not change records or approvals. Direct MCP calls have no model context to compact.",
+    inputSchema: z.object({
+      keepRecentSteps: omittable(z.number().int().min(1).max(12)),
+      focus: omittable(z.string().max(1_000)),
+    }),
+    capability: "operator.threads.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: () => ({ kind: "context" }),
+    summarize: () => "Compact working context",
+  }),
   list_mcp_tools: defineOperatorTool({
     family: "mcp",
     integration: "mcp",

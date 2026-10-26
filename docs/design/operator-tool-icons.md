@@ -15,7 +15,7 @@ Collapsed activity shows each represented category icon once, in first-use order
 | Files and attachments | `Paperclip` | `get_company_email_attachment`, `read_thread_attachment`, `attach_policy_pdf_to_draft`, `attach_client_file_to_draft`, `list_client_files`, `read_client_file`, `attach_client_file`, `add_client_file`, `update_client_file`, `create_procurement_file_item`, `update_procurement_file_item`, `add_client_files`, `update_client_files`, `create_procurement_file_items`, `update_procurement_file_items` |
 | Policies and coverage | `Shield` | `list_policies`, `lookup_policy`, `compare_coverages`, `lookup_policy_section`, `attach_policy_document`, `confirm_policy_fact`, `get_policy_status`, `import_policy_files` |
 | Compliance and certificates | `ClipboardCheck` | `lookup_compliance_requirements`, `generate_coi` |
-| Conversations | `MessagesSquare` | `search_thread_history`, `list_operator_conversations`, `read_operator_conversation` |
+| Conversations | `MessagesSquare` | `compact_context`, `search_thread_history`, `list_operator_conversations`, `read_operator_conversation` |
 | Company notes | `NotebookPen` | `lookup_client_wiki`, `update_client_wiki` |
 | Procurement packets | `FileText` | `lookup_procurement_packet`, `preview_broker_packet`, `update_procurement_packet` |
 | Procurement requests | `ClipboardList` | `list_procurement_requests`, `get_client_attention`, `get_procurement_request`, `create_procurement_request`, `update_procurement_request`, `update_procurement_requests`, `update_procurement_application`, `add_procurement_information_questions` |

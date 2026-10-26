@@ -2814,3 +2814,15 @@ Use a separate conversation for subsequent writes while this approval is pending
 Every Convex CLI call must unset the two deployment credentials as documented in
 AGENTS.md and explicitly target the local backend. No production or live sends
 were used.
+
+## Operator context compaction — October 26, 2026
+
+See [operator-context-compaction-workflow.md](operator-context-compaction-workflow.md).
+No test files were added.
+
+| Workflow | Status | Evidence / remaining check |
+| --- | --- | --- |
+| Synthetic 180-step continuation: bounded results, safe exchange retention, exact references | Passed locally | 66,630 → 22,585 estimated history tokens; four recent pairs, 352 reference entries, no dangling calls. Illustrative fixed notes; no live inference claimed. |
+| Direct MCP `compact_context`, then exact idempotent replay | Passed locally | Existing authorized read path returns `not_applicable`; replay retains run, message IDs and input hash. |
+| Completed turn schedules rolling summary; rejected inference preserves watermark | Passed locally | Local 60-message fixture creates context state, records router failure, and does not advance summary watermark. |
+| Live automatic/proactive compaction, approval resume and later-turn summary injection | Blocked locally | cl-router rejects the local callback URL: `The job callback is not permitted. (router_rejected)`. Requires a router-approved callback environment. |

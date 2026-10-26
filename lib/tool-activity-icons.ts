@@ -48,6 +48,7 @@ const toolActivityCategories = {
 } as const;
 
 const operatorToolCategories = {
+  compact_context: "conversations",
   list_mcp_tools: "settings",
   call_mcp_tool: "settings",
   web_search: "web",

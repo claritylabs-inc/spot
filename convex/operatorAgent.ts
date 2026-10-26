@@ -58,6 +58,7 @@ import {
   procurementApplicationSummary,
 } from "./lib/operatorProcurementReads";
 import dayjs from "dayjs";
+import { scheduleOperatorHistoryCompaction } from "./operatorAgentHistory";
 import { operatorEmailContentValidator } from "./lib/threadMessageValidators";
 import {
   assertExternalBrokerIdentity,
@@ -1884,6 +1885,7 @@ async function readTeamThreadOwnRun(
 async function executeToolDomain(
   ctx: MutationCtx,
   args: {
+    runId?: Id<"operatorAgentRuns">;
     operatorUserId: Id<"users">;
     threadId: Id<"operatorAgentThreads">;
     channel: OperatorChannel;
@@ -1893,6 +1895,12 @@ async function executeToolDomain(
   },
 ) {
   const { toolName, input } = args;
+  if (toolName === "compact_context") {
+    const run = args.runId ? await ctx.db.get(args.runId) : null;
+    return run?.executionKind === "direct_tool"
+      ? { status: "not_applicable", note: "Direct MCP tools have no model working context. Use compact_context inside run_operator_task." }
+      : { status: "compaction_requested", ...input };
+  }
   if (toolName === "list_operator_conversations") {
     const archived = input.archived === true;
     const archiveState = archived ? "archived" : undefined;
@@ -4881,6 +4889,7 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
 
   try {
     const result = await executeToolDomain(ctx, {
+      runId: args.runId,
       operatorUserId: args.operatorUserId,
       threadId: args.threadId,
       channel: args.channel,
@@ -5660,6 +5669,7 @@ async function confirmOperatorAction(
       await ctx.db.patch(run._id, {
         status: "queued",
         checkpoint: {
+          compaction: run.checkpoint?.compaction,
           iteration: run.checkpoint?.iteration ?? 0,
           executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
           // The resumed step reuses this iteration's router invocation key.
@@ -5842,6 +5852,7 @@ async function confirmOperatorAction(
     await ctx.db.patch(run._id, {
       status: "running",
       checkpoint: {
+        compaction: run.checkpoint?.compaction,
         iteration: run.checkpoint?.iteration ?? 0,
         executionCount: run.checkpoint?.executionCount ?? 0,
         summary: run.checkpoint?.summary,
@@ -6160,6 +6171,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
         lastError: error,
         completedAt: now,
         checkpoint: {
+          compaction: run.checkpoint?.compaction,
           iteration: run.checkpoint?.iteration ?? 0,
           executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
           summary: content.slice(0, 1_000),
@@ -6181,6 +6193,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
       await ctx.db.patch(run._id, {
         status: "queued",
         checkpoint: {
+          compaction: run.checkpoint?.compaction,
           iteration: run.checkpoint?.iteration ?? 0,
           executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
           // The resumed step reuses this iteration's router invocation key.
@@ -6216,6 +6229,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
       status: "completed",
       completedAt: now,
       checkpoint: {
+        compaction: run.checkpoint?.compaction,
         iteration: run.checkpoint?.iteration ?? 0,
         executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
         summary: content,
@@ -7636,6 +7650,7 @@ export const requestToolConfirmationInternal = internalMutation({
     await ctx.db.patch(args.runId, {
       status: "waiting_confirmation",
       checkpoint: {
+        compaction: run.checkpoint?.compaction,
         iteration: (run.checkpoint?.iteration ?? 0) + 1,
         executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
         summary:
@@ -7771,6 +7786,7 @@ export const completeRunInternal = internalMutation({
         modelContinuationStorageId: undefined,
         completedAt: now,
         checkpoint: {
+          compaction: run.checkpoint?.compaction,
           iteration: (run.checkpoint?.iteration ?? 0) + 1,
           executionCount:
             (run.checkpoint?.executionCount ?? 0) + args.toolCalls.length,
@@ -7780,6 +7796,7 @@ export const completeRunInternal = internalMutation({
         updatedAt: now,
       });
     }
+    if (!waiting) await scheduleOperatorHistoryCompaction(ctx, run.threadId);
     if (!waiting && run.executionKind !== "direct_tool") {
       const message = await ctx.db.get(run.agentMessageId);
       if (message) {
@@ -8036,6 +8053,7 @@ export const continueRunInternal = internalMutation({
         ? { modelContinuationStorageId: args.modelContinuationStorageId }
         : {}),
       checkpoint: {
+        compaction: run.checkpoint?.compaction,
         iteration: (run.checkpoint?.iteration ?? 0) + 1,
         executionCount:
           (run.checkpoint?.executionCount ?? 0) + args.toolCalls.length,
@@ -8131,6 +8149,7 @@ export const failRunInternal = internalMutation({
       completedAt: now,
       checkpoint: run.checkpoint
         ? {
+            compaction: run.checkpoint.compaction,
             iteration: run.checkpoint.iteration,
             executionCount: run.checkpoint.executionCount,
             summary: "Operator run failed",
