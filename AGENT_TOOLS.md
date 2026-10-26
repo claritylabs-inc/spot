@@ -619,8 +619,11 @@ request working-context compaction on the next durable iteration. It retains
 complete recent call/result exchanges and exact reference metadata. Direct MCP
 invocations return `not_applicable` because they have no model working context;
 use the tool inside `run_operator_task`. Notes cannot authorize writes or change
-confirmation hashes. Automatic compaction estimates the full system, offered
-schemas and messages; checkpoints retain count and before/after estimates.
+confirmation hashes. Summary failures fall back to deterministic notes; if those
+do not fit the hard limit, the original context is retained when it still fits.
+Only when neither fits does the run fail. Automatic compaction estimates the
+full system, offered schemas and messages; checkpoints retain mode, count,
+before/after estimates and skipped-attempt status.
 Completed operator turns schedule a bounded rolling conversation summary,
 using the existing `summary` model task and thread-continuity helpers. See
 [operator context compaction](docs/architecture/operator-context-compaction.md).

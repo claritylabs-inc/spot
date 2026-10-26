@@ -9,6 +9,8 @@ export const installCompactedContinuation = internalMutation({
     expectedCheckpointIteration: v.number(),
     expectedStorageId: v.optional(v.id("_storage")),
     storageId: v.id("_storage"),
+    mode: v.union(v.literal("model"), v.literal("deterministic")),
+    skipped: v.optional(v.boolean()),
     tokensBefore: v.number(),
     tokensAfter: v.number(),
   },
@@ -38,6 +40,8 @@ export const installCompactedContinuation = internalMutation({
       return null;
     }
     const compaction = {
+      mode: args.mode,
+      ...(args.skipped ? { skipped: true } : {}),
       count: (run.checkpoint?.compaction?.count ?? 0) + 1,
       iteration: args.expectedCheckpointIteration,
       tokensBefore: args.tokensBefore,

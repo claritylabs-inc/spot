@@ -5211,6 +5211,8 @@ export default defineSchema({
         pendingConfirmationId: v.optional(v.id("operatorAgentConfirmations")),
         routerRetryCount: v.optional(v.number()),
         compaction: v.optional(v.object({
+          mode: v.optional(v.union(v.literal("model"), v.literal("deterministic"))),
+          skipped: v.optional(v.boolean()),
           count: v.number(),
           iteration: v.number(),
           tokensBefore: v.number(),
