@@ -333,6 +333,7 @@ import type * as lib_operatorMcpToolCatalog from "../lib/operatorMcpToolCatalog.
 import type * as lib_operatorNotificationTypes from "../lib/operatorNotificationTypes.js";
 import type * as lib_operatorNotify from "../lib/operatorNotify.js";
 import type * as lib_operatorPlanning from "../lib/operatorPlanning.js";
+import type * as lib_operatorReadViews from "../lib/operatorReadViews.js";
 import type * as lib_operatorRunPlan from "../lib/operatorRunPlan.js";
 import type * as lib_operatorSecondFactor from "../lib/operatorSecondFactor.js";
 import type * as lib_operatorSlackBlocks from "../lib/operatorSlackBlocks.js";
@@ -475,6 +476,7 @@ import type * as operator from "../operator.js";
 import type * as operatorAgent from "../operatorAgent.js";
 import type * as operatorAgentRunner from "../operatorAgentRunner.js";
 import type * as operatorAudit from "../operatorAudit.js";
+import type * as operatorBulkReads from "../operatorBulkReads.js";
 import type * as operatorCursors from "../operatorCursors.js";
 import type * as operatorEmail from "../operatorEmail.js";
 import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
@@ -876,6 +878,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorNotificationTypes": typeof lib_operatorNotificationTypes;
   "lib/operatorNotify": typeof lib_operatorNotify;
   "lib/operatorPlanning": typeof lib_operatorPlanning;
+  "lib/operatorReadViews": typeof lib_operatorReadViews;
   "lib/operatorRunPlan": typeof lib_operatorRunPlan;
   "lib/operatorSecondFactor": typeof lib_operatorSecondFactor;
   "lib/operatorSlackBlocks": typeof lib_operatorSlackBlocks;
@@ -1018,6 +1021,7 @@ declare const fullApi: ApiFromModules<{
   operatorAgent: typeof operatorAgent;
   operatorAgentRunner: typeof operatorAgentRunner;
   operatorAudit: typeof operatorAudit;
+  operatorBulkReads: typeof operatorBulkReads;
   operatorCursors: typeof operatorCursors;
   operatorEmail: typeof operatorEmail;
   operatorEmailDrafts: typeof operatorEmailDrafts;
