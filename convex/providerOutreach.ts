@@ -1232,7 +1232,12 @@ export async function previewProviderOutreachLaunch(
   const seen = new Set<Id<"organizations">>();
   for (const requestedId of args.brokerOrgIds) {
     if (seen.has(requestedId)) {
-      providers.push({ brokerOrgId: requestedId, brokerName: null, willSend: false, reason: "duplicate_selection" });
+      providers.push({
+        brokerOrgId: requestedId,
+        brokerName: eligibleProviderOrg(await ctx.db.get(requestedId))?.name ?? null,
+        willSend: false,
+        reason: "duplicate_selection",
+      });
       continue;
     }
     seen.add(requestedId);
