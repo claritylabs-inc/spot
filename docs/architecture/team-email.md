@@ -56,6 +56,20 @@ linking files them. A repeated webhook must not delete storage already owned by 
 file or draft. `teamInboxReads` tracks each operator's read position; only inbound
 mail advances unread state. Bounded queries expose continuation or limit metadata.
 
+The shared request and main Inbox use Inbox, Sent, All mail and Archived pill
+tabs. Inbox contains conversations whose latest message is inbound; Sent contains
+those whose latest message is outbound, so a new reply returns a conversation to
+Inbox and an operator response moves it to Sent. All mail retains both directions
+and legacy threads without direction metadata. Archived remains separate. Five
+direction/scope indexes keep incoming mail reachable after large outbound batches
+without scanning past sent mail. Secondary filters still narrow bounded pages.
+Mailbox and main-inbox ownership scope are URL-backed and followed; opening or
+closing a reader retains them. Readers remain open when live activity changes the
+list. Provider outreach rows use the provider name instead of generic contact
+labels; search includes that name. Unread styling and the existing needs-reply
+projection distinguish incoming conversations requiring attention. Pending or
+captured client sends appear only in Sent and All mail.
+
 The inbox webhook verifies Svix before recording work and rejects inbox ids not
 recorded by this deployment. Routing checks the command inbox separately, then
 sequence ownership, a known conversation, an inbox/thread link, and a sent message

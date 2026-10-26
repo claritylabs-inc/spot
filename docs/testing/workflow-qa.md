@@ -2785,3 +2785,19 @@ No new tests, dev migrations, production writes or deployment.
 Story: Providers Send → durable claim → accepted application summary → persisted plain-text/HTML email → existing dynamic operator inbox and scoped packet link.
 
 Local review on `zac/provider-outreach-summary`: root and Convex TypeScript passed; ESLint passed with existing warnings; all 145 existing tests passed with two workers (an earlier parallel run had an auth-fixture timeout). No tests or migrations were added. Helium rendered the real composer output using synthetic Riley QA Applicant / Alex QA Operator: applicant-first subject/introduction, HTML bullets, readable Ontario/date labels, separate packet section and dynamic signature were visible. Local artifact: ignored `.context/qa/provider-summary-20261026/initial-email.html`; screenshot `01-email-layout-preview.png`. This render checks composition, not actual email delivery. Production deployment and live outreach remain pending at the time of this entry.
+
+## Incoming and Sent mailbox views — 2026-10-26
+
+On `zac/inbox-sent-tabs`, native Helium exercised the shared main and request
+Inbox against the local backend: incoming-only Inbox, outgoing-only Sent,
+URL-preserved mailbox/scope across opening a conversation, reader persistence
+when switching mailbox, unread/needs-reply presentation, and the existing Reply
+editor with the expected recipient (discarded without sending). A synthetic
+outgoing thread/message was appended to the existing local roundtrip request;
+archiving removed it from Sent, Archived showed it, and Restore returned it to
+Sent. No existing fixture records were replaced. Artifacts are ignored under
+`.context/qa/inbox-sent-20261026/` (`01-team-sent.png`, `02-request-sent.png`,
+`03-request-inbox-reply.png`). Root and Convex TypeScript, focused ESLint and
+all 145 existing tests passed. No tests or data migrations were written, and
+browser QA sent no email. Live reply arrival and a real reply send were not
+simulated; existing mirroring supplies the latest direction used by the indexes.
