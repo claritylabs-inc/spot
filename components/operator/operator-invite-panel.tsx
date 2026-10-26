@@ -92,7 +92,7 @@ export function useOperatorInvite(disabled: boolean) {
             </p>
           </OperationalPanelBody>
         ) : (
-          <Table className="table-fixed">
+          <Table storageKey="spot:operators:columns" className="table-fixed">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <SortableTableHead

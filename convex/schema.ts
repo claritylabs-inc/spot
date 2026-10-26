@@ -501,6 +501,8 @@ export default defineSchema({
   organizations: defineTable({
     intakeBusinessProfile: v.optional(intakeBusinessProfileValidator),
     clientAccessStatus: v.optional(clientAccessStatusValidator),
+    // Operator responsible for this client.
+    assignedOperatorUserId: v.optional(v.id("users")),
     // Unsubmitted intake draft that created this client; its identity follows the draft until submission.
     intakeDraftRequestId: v.optional(v.id("procurementRequests")),
     name: v.string(),
@@ -988,6 +990,7 @@ export default defineSchema({
       v.literal("broker_launch_email_sent"),
       v.literal("client_created"),
       v.literal("client_status_changed"),
+      v.literal("client_operator_assigned"),
       v.literal("client_launch_email_sent"),
       v.literal("impersonation_started"),
       v.literal("impersonation_stopped"),

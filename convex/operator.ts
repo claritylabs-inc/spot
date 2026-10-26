@@ -288,6 +288,7 @@ async function listOperatorClientRows(ctx: QueryCtx) {
         ...(await orgBrandFields(ctx, client)),
         agentHandle: client.agentHandle,
         clientAccessStatus: clientAccessStatus(client),
+        assignedOperatorUserId: client.assignedOperatorUserId,
         onboardingComplete: client.onboardingComplete,
         primaryContactName: client.primaryContactName,
         primaryContactEmail: client.primaryContactEmail,
@@ -692,6 +693,47 @@ export const setSoloClientStatus = mutation({
       targetOrgId: args.clientOrgId,
       summary: `${client.name} changed from ${previous} to ${args.status}`,
       metadata: { previous, next: args.status },
+    });
+  },
+});
+
+/** Assigns an active operator to a client, or clears the assignment. */
+export const setClientAssignedOperator = mutation({
+  args: {
+    clientOrgId: v.id("organizations"),
+    operatorUserId: v.union(v.id("users"), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
+    const client = await ctx.db.get(args.clientOrgId);
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
+      throw new Error("Client not found");
+    const previous = client.assignedOperatorUserId ?? null;
+    if (previous === args.operatorUserId) return;
+    if (args.operatorUserId) {
+      const userId = args.operatorUserId;
+      const profile = await ctx.db
+        .query("operatorProfiles")
+        .withIndex("user", (q) => q.eq("userId", userId))
+        .first();
+      if (profile?.status !== "active") throw new Error("Operator not found");
+    }
+    await ctx.db.patch(args.clientOrgId, {
+      assignedOperatorUserId: args.operatorUserId ?? undefined,
+    });
+    const [from, to] = await Promise.all(
+      [previous, args.operatorUserId].map(async (userId) =>
+        userId ? (await operatorPerson(ctx, userId)).name : "Unassigned",
+      ),
+    );
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "client_operator_assigned",
+      targetOrgId: args.clientOrgId,
+      targetUserId: args.operatorUserId ?? undefined,
+      summary: `${client.name} operator changed from ${from} to ${to}`,
+      metadata: { previous, next: args.operatorUserId },
     });
   },
 });

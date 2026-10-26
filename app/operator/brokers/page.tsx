@@ -291,7 +291,7 @@ export default function OperatorBrokersPage() {
           onClear={selection.clear}
         />
         <OperationalPanel data-operator-inline-fields>
-          <Table className="min-w-[800px] table-fixed">
+          <Table storageKey="spot:brokers:list:columns" className="min-w-[800px] table-fixed">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-11 pl-4 pr-0">

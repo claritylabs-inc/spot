@@ -287,7 +287,7 @@ export default function OperatorAuditPage() {
           ]}
         />
         <OperationalPanel>
-          <Table>
+          <Table storageKey="spot:audit:columns">
             <TableHeader>
               <TableRow>
                 {(

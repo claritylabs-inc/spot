@@ -89,6 +89,7 @@ export function useOperatorClientCacheActions() {
         iconUrl: null,
         agentHandle: undefined,
         clientAccessStatus: "limited",
+        assignedOperatorUserId: undefined,
         onboardingComplete: true,
         primaryContactName: input.adminName,
         primaryContactEmail: input.adminEmail,
@@ -139,6 +140,7 @@ export function useOperatorClientCacheActions() {
           | "featureFlags"
           | "adminName"
           | "adminPhone"
+          | "assignedOperatorUserId"
         >
       >,
     ) => {

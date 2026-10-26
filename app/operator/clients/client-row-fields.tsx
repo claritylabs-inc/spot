@@ -6,7 +6,11 @@ import { Input } from "@claritylabs-inc/ui/components/input";
 import { useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { toast } from "sonner";
+import { UserRound } from "lucide-react";
+import { ChatAvatar } from "@/components/chat/chat-message";
+import { cn } from "@/lib/utils";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import {
   Select,
   SelectContent,
@@ -128,6 +132,120 @@ export function ClientStatusField({
         )}
       </SelectContent>
     </Select>
+  );
+}
+
+const UNASSIGNED = "unassigned";
+
+type AssignableOperator = {
+  userId: Id<"users">;
+  name: string;
+  avatarUrl: string | null;
+};
+
+function OperatorOption({
+  operator,
+  compact,
+}: {
+  operator: AssignableOperator | undefined;
+  /** Avatar only until the column is wide enough to fit the name. */
+  compact?: boolean;
+}) {
+  const name = operator?.name ?? "Unassigned";
+  return (
+    <span className="flex min-w-0 items-center gap-2" title={name}>
+      <ChatAvatar
+        name={name}
+        imageUrl={operator?.avatarUrl}
+        className={cn(
+          "size-5",
+          !operator &&
+            "border border-dashed border-muted-foreground/50 bg-transparent text-muted-foreground",
+        )}
+      >
+        {operator ? undefined : <UserRound className="size-3" />}
+      </ChatAvatar>
+      <span
+        className={cn(
+          "truncate",
+          !operator && "text-muted-foreground",
+          compact && "hidden @[6.5rem]:inline",
+        )}
+      >
+        {name}
+      </span>
+    </span>
+  );
+}
+
+export function ClientOperatorField({
+  client,
+  operators,
+  disabled,
+}: {
+  client: OperatorClientRow;
+  operators: AssignableOperator[];
+  disabled?: boolean;
+}) {
+  const assign = useMutation(api.operator.setClientAssignedOperator);
+  const { patchClientSettings } = useOperatorClientCacheActions();
+  const byId = new Map(operators.map((operator) => [operator.userId, operator]));
+  const items: Record<string, string> = {
+    [UNASSIGNED]: "Unassigned",
+    ...Object.fromEntries(operators.map(({ userId, name }) => [userId, name])),
+  };
+  const assigned = client.assignedOperatorUserId
+    ? byId.get(client.assignedOperatorUserId)
+    : undefined;
+
+  async function change(value: string) {
+    const previous = client.assignedOperatorUserId;
+    const next = value === UNASSIGNED ? undefined : (value as Id<"users">);
+    if (next === previous) return;
+    await patchClientSettings(client._id, { assignedOperatorUserId: next });
+    try {
+      await assign({ clientOrgId: client._id, operatorUserId: next ?? null });
+    } catch (error) {
+      await patchClientSettings(client._id, {
+        assignedOperatorUserId: previous,
+      });
+      toast.error(
+        getUserFacingErrorMessage(error, "Could not assign the operator"),
+      );
+    }
+  }
+
+  return (
+    <div className="@container">
+      <Select
+        value={client.assignedOperatorUserId ?? UNASSIGNED}
+        items={items}
+        disabled={disabled}
+        onValueChange={(value) => {
+          if (value && value in items) void change(value);
+        }}
+      >
+        <SelectTrigger
+          // Avatar-only columns drop the chevron so the avatar fits.
+          className="-ml-[13px] w-[calc(100%+13px)] @max-[6.5rem]:[&_.lucide-chevron-down]:hidden"
+          aria-label={`Operator for ${client.name}`}
+        >
+          <SelectValue>
+            <OperatorOption operator={assigned} compact />
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={UNASSIGNED}>
+            <OperatorOption operator={undefined} />
+          </SelectItem>
+          {operators.map((operator) => (
+            <SelectItem key={operator.userId} value={operator.userId}>
+              <OperatorOption operator={operator} />
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 

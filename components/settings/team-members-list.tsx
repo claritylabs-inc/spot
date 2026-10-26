@@ -94,7 +94,7 @@ export function TeamMembersList({
 
   return (
     <OperationalPanel>
-      <Table className="table-fixed">
+      <Table storageKey="spot:team-members:columns" className="table-fixed">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <SortableTableHead
