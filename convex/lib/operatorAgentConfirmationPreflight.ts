@@ -1,3 +1,4 @@
+import { resolveOperatorToolDispatch } from "./operatorToolConsolidation";
 import {
   prepareEnsureProviders,
   prepareUpdateProviders,
@@ -69,6 +70,8 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "link_team_inbox_threads",
   "update_procurement_broker_outreach",
   "update_procurement_broker_outreaches",
+  "manage_broker_packet_link",
+  "control_proposal_extraction",
   "file_procurement_proposal",
   "file_procurement_email_quote",
   "archive_procurement_proposal",
@@ -901,6 +904,7 @@ export async function preflightOperatorToolConfirmation(
   ctx: MutationCtx,
   args: PreflightArgs,
 ) {
+  args = { ...args, ...resolveOperatorToolDispatch(args.toolName, args.input) };
   if (
     !new Set<OperatorAgentToolName>(
       OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES,

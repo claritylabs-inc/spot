@@ -15,7 +15,7 @@ import {
 } from "./agentToolSelection";
 export { EXPAND_TOOLS_NAME } from "./agentToolSelection";
 
-import { EMAIL_FAMILY_GUIDANCE } from "./channelStyle";
+import { COI_DISCLAIMER, NO_OPEN_ENDED_OFFERS, NO_SIGN_OFF } from "./channelStyle";
 import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
 import {
   normalizeBrokerLineOfBusinessCodes,
@@ -89,16 +89,22 @@ export const OPERATOR_TOOL_FAMILIES = {
 
 export type OperatorToolFamily = keyof typeof OPERATOR_TOOL_FAMILIES;
 
-const OUTBOUND_EMAIL_GUIDANCE = `${EMAIL_FAMILY_GUIDANCE}
+const OUTBOUND_EMAIL_GUIDANCE = `EMAIL DRAFTS AND DELIVERY:
+Use save_email_draft to create or revise the saved draft, adding requested clientFileIds or policyIds in the same call. On edits, omitted fields and attachments are preserved; use explicit empty arrays to clear copies or retained attachments. Every edit invalidates prior send approval. send_email_draft requires a current affirmative send request; draft-only, negated, advisory and uncertain requests remain drafts.
+Attach only requested documents. For a COI request, include only the generated COI unless an original policy PDF was separately requested. Each recipient receives only their own COI; a bundle of several COIs needs exact recipient and attachment confirmation. Never claim a file is attached before the tool succeeds, and do not reattach files already on the draft.
+${COI_DISCLAIMER}
+Use concise professional formatting: 1–3 short paragraphs or a short bullet list. Include only policy facts useful to the recipient unless a detailed memo was requested.
+${NO_OPEN_ENDED_OFFERS}
+${NO_SIGN_OFF}
 
 OPERATOR OUTBOUND EMAIL:
 These tools draft and send from your personal team address, signed with your full name and Spot. Write in first person as the operator. Your saved Always CC is included in the displayed draft and exact approval. Replies return to the shared team inbox. Always pass the recipient's exact address in "to".
 These tools are for separately requested emails. A direct answer to the operator belongs in your final response; command email delivers that response automatically. A request for no changes does not authorize saving a draft.
 Ad hoc email needs no client organization. When it concerns a known client or request, pass its exact orgId or procurementRequestId so it is filed correctly. For a reply, pass teamEmailThreadId. Revisions re-sign as the current operator and invalidate earlier approval. Read an existing thread before replying, and use only its verified recipients.
-Attachments: attach_policy_pdf_to_draft for an explicitly requested original policy PDF, and attach_client_file_to_draft for an exact stored client file (list_client_files). To send a certificate of insurance, first call generate_coi (it needs the operator's exact approval); its result gives each certificate's clientFileId, then attach that file with attach_client_file_to_draft. Do not describe a certificate or file as attached until the tool returns.
+Attachments: use save_email_draft policyIds for explicitly requested original policy PDFs, or clientFileIds for exact stored client files (list_client_files). To send a certificate of insurance, first call generate_coi (it needs the operator's exact approval); its result gives each certificate's clientFileId, then add its clientFileId with save_email_draft. Do not describe a certificate or file as attached until the tool returns.
 Resolve recipients and the target organization from records, never from memory. For the applicant on a procurement request use applicantContact (name, email, phone) from get_procurement_request; for a provider use its recorded contact. Pass the request's client organization ID as orgId. If no address is on record, ask the operator for it. Never invent an address, and never leave placeholders such as [Contact Name], [Your Name] or bracketed fields in a draft; use the real name from the record or leave the greeting generic.
 When asked to request missing information, read the request and application first, then ask only for what is actually missing, short and prioritized (the few items that unblock the work most, grouped and in plain words). Do not restate what we already have.
-Draft first. "Let me see it", "before you send" or any review wording means call draft_email only; send_email_draft requires an explicit current instruction to send. The operator sees the draft below your reply, so summarize it in a sentence (recipient, subject, what it asks) instead of repeating the body, and revise with update_email_draft when asked. send_email_draft asks the operator to approve the complete email; report it as sent only when the tool returns status "sent".`;
+Draft first. "Let me see it", "before you send" or any review wording means call save_email_draft only; send_email_draft requires an explicit current instruction to send. The operator sees the draft below your reply, so summarize it in a sentence (recipient, subject, what it asks) instead of repeating the body, and revise with save_email_draft when asked. send_email_draft asks the operator to approve the complete email; report it as sent only when the tool returns status "sent".`;
 
 export type OperatorToolTarget = {
   kind?: string;
@@ -106,6 +112,8 @@ export type OperatorToolTarget = {
 };
 
 type OperatorToolSpec<TSchema extends z.ZodType> = {
+  /** Compatibility entries remain executable but are absent from discovery. */
+  offered?: boolean;
   version: number;
   description: string;
   inputSchema: TSchema;
@@ -126,6 +134,7 @@ function defineOperatorTool<TSchema extends z.ZodType>(
 ) {
   return {
     ...spec,
+    offered: spec.offered ?? true,
     execution: spec.execution ?? "mutation",
     openWorld: spec.openWorld ?? false,
     integration: spec.integration,
@@ -695,7 +704,28 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: () => ({}),
     summarize: (input) => `Describe ${input.record} fields`,
   }),
+  get_platform_status: defineOperatorTool({
+    version: 1,
+    description: "Read compact platform counts by default. Select overview, routing (call logs, no content) or channels (Slack/email health). Channel section/cursor/limit preserves paging; problemsOnly filters unhealthy rows. Bounded reads cannot prove absence.",
+    inputSchema: z.object({
+      sections: omittable(z.array(z.enum(["overview", "routing", "channels"])).min(1).max(3)),
+      callId: omittable(z.string().min(1).max(100)),
+      task: omittable(z.string().min(1).max(100)),
+      orgId: omittable(organizationId),
+      problemsOnly: omittable(z.boolean()),
+      section: omittable(z.enum(["slack_connections", "slack_bindings", "email_accounts"])),
+      cursor: omittable(z.string().max(4_000)),
+      limit: omittable(z.number().int().min(1).max(100)),
+    }),
+    capability: "operator.platform.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: () => ({ kind: "platform", id: "spot" }),
+    summarize: (input) => `Read platform status: ${(input.sections ?? ["overview"]).join(", ")}`,
+  }),
   get_operator_overview: defineOperatorTool({
+    offered: false,
     version: 1,
     description:
       "Get a compact platform overview with organization, policy, extraction, and operator-agent run counts.",
@@ -851,6 +881,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) => `Read ${input.threads.length} email conversations`,
   }),
   get_company_email_attachment: defineOperatorTool({
+    offered: false,
     family: "company_email",
     integration: "google_workspace",
     version: 1,
@@ -998,7 +1029,39 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: (input) => ({ kind: "policy", id: input.policyId }),
     summarize: (input) => `Search source evidence for policy ${input.policyId}`,
   }),
+  attach_to_conversation: defineOperatorTool({
+    family: "threads",
+    version: 1,
+    description:
+      "Attach an original policy PDF, stored client file, older conversation attachment or Gmail attachment privately to this conversation. Use exact source IDs; this neither files nor sends. Email sources require connected Workspace access.",
+    inputSchema: z.object({
+      source: z.enum(["policy", "clientFile", "threadAttachment", "emailAttachment"]),
+      orgId: omittable(organizationId),
+      policyId: omittable(policyId),
+      clientFileId: omittable(clientFileId),
+      messageId: omittable(z.string().min(1).max(200)),
+      filename: omittable(z.string().min(1).max(500)),
+      mailbox: omittable(emailAddress),
+      attachmentId: omittable(z.string().min(1).max(4000)),
+    }).refine((input) => {
+      switch (input.source) {
+        case "policy": return !!input.orgId && !!input.policyId;
+        case "clientFile": return !!input.clientFileId;
+        case "threadAttachment": return !!input.messageId && !!input.filename;
+        case "emailAttachment": return !!input.mailbox && !!input.messageId && !!input.attachmentId;
+      }
+    }, "Provide the exact IDs required by source: policy (orgId, policyId), clientFile (clientFileId), threadAttachment (messageId, filename), emailAttachment (mailbox, messageId, attachmentId)"),
+    capability: "operator.threads.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    openWorld: true,
+    target: (input) => ({ kind: input.source, id: input.policyId ?? input.clientFileId ?? input.messageId }),
+    summarize: (input) => `Attach ${input.source} ${input.policyId ?? input.clientFileId ?? input.filename ?? input.attachmentId}`,
+  }),
   attach_policy_document: defineOperatorTool({
+    offered: false,
     family: "policies",
     version: 1,
     description:
@@ -1131,6 +1194,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: () => "Read an accessible operator conversation",
   }),
   read_thread_attachment: defineOperatorTool({
+    offered: false,
     family: "threads",
     version: 1,
     description:
@@ -1200,6 +1264,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         : `Read ${input.clientFileIds?.length ?? 0} client files`,
   }),
   attach_client_file: defineOperatorTool({
+    offered: false,
     family: "client_files",
     version: 1,
     description:
@@ -1255,7 +1320,20 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `${input.mode === "append" ? "Append to" : "Update"} company Markdown for organization ${input.orgId}`,
   }),
+  get_procurement_packet: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description: "Read request Markdown and revisions (internal, default), or preview shared provider content and released files (provider). No link is created.",
+    inputSchema: z.object({ procurementRequestId, view: omittable(z.enum(["internal", "provider"])) }),
+    capability: "operator.procurement.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) => ({ kind: "procurement_request", id: input.procurementRequestId }),
+    summarize: (input) => `Read ${input.view ?? "internal"} packet for ${input.procurementRequestId}`,
+  }),
   lookup_procurement_packet: defineOperatorTool({
+    offered: false,
     family: "procurement",
     version: 2,
     description:
@@ -1275,6 +1353,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Read the packet for procurement request ${input.procurementRequestId}`,
   }),
   preview_broker_packet: defineOperatorTool({
+    offered: false,
     family: "procurement",
     version: 2,
     description:
@@ -1532,6 +1611,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Get your team forwarding address for procurement request ${input.procurementRequestId}`,
   }),
   list_procurement_email_threads: defineOperatorTool({
+    offered: false,
     family: "procurement",
     version: 1,
     description:
@@ -1742,6 +1822,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `List ${input.status ?? "problematic"} ${input.domain ?? "all-domain"} extraction work${input.orgId ? ` for organization ${input.orgId}` : ""}`,
   }),
   get_routing_status: defineOperatorTool({
+    offered: false,
     family: "platform",
     version: 2,
     description:
@@ -1760,6 +1841,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Read recent model routing status${input.task ? ` for ${input.task}` : ""}`,
   }),
   get_channel_health: defineOperatorTool({
+    offered: false,
     family: "platform",
     version: 2,
     description:
@@ -1815,7 +1897,42 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `Send a Slack direct message to ${input.recipientEmail}`,
   }),
+  save_email_draft: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description: "Create a team email draft, or edit draftId in this conversation. Never sends. Omitted fields and existing attachments are preserved on edits; [] clears copies or retained attachments. Every edit re-signs and invalidates send approval. clientFileIds adds exact files from the draft's client; policyIds requires an explicit request for original PDFs. Real recipients and complete placeholder-free subject/body are required on creation. A new draft to the same recipient replaces the earlier draft.",
+    inputSchema: z.object({
+      draftId: omittable(z.string().trim().min(1)),
+      orgId: omittable(organizationId),
+      clientOrgId: omittable(organizationId),
+      teamEmailThreadId: omittable(teamEmailThreadId),
+      procurementRequestId: omittable(procurementRequestId),
+      to: omittable(operatorEmailAddress),
+      cc: omittable(z.array(operatorEmailAddress).max(10)),
+      bcc: omittable(z.array(operatorEmailAddress).max(10)),
+      subject: omittable(z.string().trim().min(1).max(300)),
+      body: omittable(z.string().trim().min(1).max(10_000)),
+      attachmentFileIds: omittable(z.array(z.string().min(1)).max(10)),
+      clientFileIds: omittable(z.array(clientFileId).max(10)),
+      policyIds: omittable(z.array(policyId).max(10)),
+      explicitArtifactRequest: omittable(z.literal("original_policy_document")),
+      intentEvidence: omittable(z.string().trim().min(1).max(1_000)),
+    }).refine((input) => !!input.draftId || (!!input.to && !!input.subject && !!input.body),
+      "Creating a draft requires to, subject and body; edits require draftId")
+      .refine((input) => !input.policyIds?.length || (!!input.explicitArtifactRequest && !!input.intentEvidence),
+        "policyIds requires explicitArtifactRequest original_policy_document and the operator's intentEvidence")
+      .refine((input) => !!input.draftId || !input.attachmentFileIds?.length,
+        "attachmentFileIds can only retain attachments on an existing draft"),
+    capability: "operator.email.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: (input) => ({ kind: input.draftId ? "email_draft" : "organization", id: input.draftId ?? input.orgId ?? input.clientOrgId }),
+    summarize: (input) => input.draftId ? `Save email draft ${input.draftId}` : `Draft an email to ${input.to}`,
+  }),
   draft_email: defineOperatorTool({
+    offered: false,
     family: "outbound_email",
     version: 2,
     description:
@@ -1844,6 +1961,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) => `Draft an email to ${input.to}`,
   }),
   update_email_draft: defineOperatorTool({
+    offered: false,
     family: "outbound_email",
     version: 2,
     description:
@@ -1874,6 +1992,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) => `Update email draft ${input.draftId}`,
   }),
   attach_policy_pdf_to_draft: defineOperatorTool({
+    offered: false,
     family: "outbound_email",
     version: 2,
     description:
@@ -1898,6 +2017,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Attach original policy ${input.policyId} to email draft ${input.draftId}`,
   }),
   attach_client_file_to_draft: defineOperatorTool({
+    offered: false,
     family: "outbound_email",
     version: 2,
     description:
@@ -2220,12 +2340,13 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   file_procurement_proposal: defineOperatorTool({
     family: "procurement",
-    version: 1,
+    version: 2,
     description:
-      "Atomically file one provider quote from existing client artifacts, procurement file items, or attachments in this Spot-agent conversation. The command reuses one active proposal per outreach, deduplicates documents by content, creates canonical artifact associations, queues extraction, and safely converges when replayed.",
+      "Atomically file a provider quote from exact client files, request files, conversation attachments, or procurementEmailThreadId. Email source preserves provenance; omit clientFileIds to file all active email attachments. Reuses the active outreach proposal, deduplicates content and queues extraction under exact approval.",
     inputSchema: z
       .object({
-        procurementRequestId,
+        procurementRequestId: omittable(procurementRequestId),
+        procurementEmailThreadId: omittable(procurementEmailThreadId),
         procurementOutreachId,
         clientFileIds: omittable(z.array(clientFileId).max(20)),
         procurementFileItemIds: omittable(
@@ -2244,24 +2365,28 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       })
       .refine(
         (input) =>
-          (input.clientFileIds?.length ?? 0) +
+          !!input.procurementEmailThreadId || (input.clientFileIds?.length ?? 0) +
             (input.procurementFileItemIds?.length ?? 0) +
             (input.attachmentFileIds?.length ?? 0) >
           0,
-        "At least one proposal artifact or conversation attachment is required",
-      ),
+        "At least one proposal artifact, email thread or conversation attachment is required",
+      ).refine((input) => !!input.procurementEmailThreadId || !!input.procurementRequestId,
+        "Artifact sources require procurementRequestId")
+        .refine((input) => !input.procurementEmailThreadId || (!input.procurementRequestId && !input.procurementFileItemIds?.length && !input.attachmentFileIds?.length && !input.procurementProposalId),
+          "Email source accepts procurementEmailThreadId, procurementOutreachId, optional clientFileIds and supersedesProposalId only"),
     capability: "operator.procurement.write",
     effect: "reversible_write",
     requiredRole: "operator",
     confirmation: "exact",
     target: (input) => ({
-      kind: "procurement_request",
-      id: input.procurementRequestId,
+      kind: input.procurementEmailThreadId ? "procurement_email_thread" : "procurement_request",
+      id: input.procurementEmailThreadId ?? input.procurementRequestId,
     }),
     summarize: (input) =>
-      `File a private proposal for outreach ${input.procurementOutreachId} on request ${input.procurementRequestId}`,
+      `File a private proposal for outreach ${input.procurementOutreachId} from ${input.procurementEmailThreadId ? `email thread ${input.procurementEmailThreadId}` : `request ${input.procurementRequestId}`}`,
   }),
   file_procurement_email_quote: defineOperatorTool({
+    offered: false,
     family: "procurement",
     version: 1,
     description:
@@ -2322,7 +2447,20 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: () => ({ kind: "batch", id: "archive_procurement_proposals" }),
     summarize: (input) => `archive procurement proposals (${input.items.length} items)`,
   }),
+  control_proposal_extraction: defineOperatorTool({
+    family: "extraction",
+    version: 1,
+    description: "Retry a draft, failed, stuck or review-ready proposal extraction, or cancel pending/running extraction back to draft. Prior attempt history is retained. Requires exact approval.",
+    inputSchema: z.object({ action: z.enum(["retry", "cancel"]), procurementProposalId }),
+    capability: "operator.extractions.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) => ({ kind: "procurement_proposal", id: input.procurementProposalId }),
+    summarize: (input) => `${input.action === "retry" ? "Retry" : "Cancel"} extraction for proposal ${input.procurementProposalId}`,
+  }),
   retry_procurement_proposal_extraction: defineOperatorTool({
+    offered: false,
     family: "extraction",
     version: 1,
     description:
@@ -2340,6 +2478,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Retry extraction for procurement proposal ${input.procurementProposalId}`,
   }),
   cancel_procurement_proposal_extraction: defineOperatorTool({
+    offered: false,
     family: "extraction",
     version: 1,
     description:
@@ -2374,7 +2513,28 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `Generate a packet review for procurement proposal ${input.procurementProposalId}`,
   }),
+  manage_broker_packet_link: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description: "Create, rotate or revoke the live shared provider packet link under exact approval. Create needs procurementRequestId; rotate/revoke need procurementPacketLinkId. New URLs are shown once and never emailed. Links stay valid until revoked/replaced unless expiresInDays is set; saved content updates do not need rotation.",
+    inputSchema: z.object({
+      action: z.enum(["create", "rotate", "revoke"]),
+      procurementRequestId: omittable(procurementRequestId),
+      procurementPacketLinkId: omittable(procurementPacketLinkId),
+      expiresInDays: omittable(z.number().int().min(1)),
+    }).refine((input) => input.action === "create" ? !!input.procurementRequestId && !input.procurementPacketLinkId : !!input.procurementPacketLinkId && !input.procurementRequestId,
+      "Create requires only procurementRequestId; rotate/revoke require only procurementPacketLinkId")
+      .refine((input) => input.action !== "revoke" || input.expiresInDays === undefined,
+        "Revoke does not accept expiresInDays"),
+    capability: "operator.procurement.write",
+    effect: "access_change",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) => ({ kind: input.action === "create" ? "procurement_request" : "procurement_packet_link", id: input.procurementRequestId ?? input.procurementPacketLinkId }),
+    summarize: (input) => `${input.action === "create" ? "Create shared provider packet link for request" : input.action === "rotate" ? "Rotate provider packet link" : "Revoke provider packet link"} ${input.procurementRequestId ?? input.procurementPacketLinkId}${input.expiresInDays ? ` (expires in ${input.expiresInDays} days)` : ""}`,
+  }),
   create_broker_packet_link: defineOperatorTool({
+    offered: false,
     family: "procurement",
     version: 4,
     description:
@@ -2395,6 +2555,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Create the shared provider packet link for request ${input.procurementRequestId}`,
   }),
   rotate_broker_packet_link: defineOperatorTool({
+    offered: false,
     family: "procurement",
     version: 3,
     description:
@@ -2415,6 +2576,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Rotate provider packet link ${input.procurementPacketLinkId}`,
   }),
   revoke_broker_packet_link: defineOperatorTool({
+    offered: false,
     family: "procurement",
     version: 1,
     description:
@@ -2601,6 +2763,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Send outreach to ${input.brokerOrgIds.length} providers for ${input.procurementRequestId}, with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days (${input.cadence.style})`,
   }),
   list_procurement_client_outreach: defineOperatorTool({
+    offered: false,
     family: "procurement",
     version: 1,
     description:
@@ -2617,7 +2780,20 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `List client email contacts and sequences for ${input.procurementRequestId}`,
   }),
+  get_procurement_information: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description: "Read provider summaries and question/form counts by default. Include information for supplementary questions/answers, requirements and client forms; clientOutreach for contacts and bounded email sequences. Select both when needed. Does not send.",
+    inputSchema: z.object({ procurementRequestId, include: omittable(z.array(z.enum(["information", "clientOutreach"])).min(1).max(2)) }),
+    capability: "operator.procurement.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) => ({ kind: "procurement_request", id: input.procurementRequestId }),
+    summarize: (input) => `Read procurement information for ${input.procurementRequestId}`,
+  }),
   list_procurement_information: defineOperatorTool({
+    offered: false,
     family: "procurement",
     version: 1,
     description:
@@ -2799,6 +2975,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   // Kept callable for existing MCP clients; the shorter description steers models to reply_email_thread.
   reply_procurement_email_thread: {
     ...replyEmailThreadSpec,
+    offered: false,
     description:
       "Alias of reply_email_thread, kept for compatibility. Prefer reply_email_thread.",
   },
@@ -3349,6 +3526,7 @@ export function availableOperatorAgentToolNames(access: {
   ).filter((name) => {
     const spec = OPERATOR_AGENT_TOOL_REGISTRY[name];
     return (
+      spec.offered &&
       operatorToolRoleAllowed(access.role, spec.requiredRole) &&
       (!access.emailReadOnly || operatorToolAllowsReadOnlyEmail(spec)) &&
       (!access.impersonating ||
@@ -3372,7 +3550,9 @@ export const OPERATOR_TOOL_FAMILY_CATALOG = Object.fromEntries<
             ? PROCUREMENT_FAMILY_GUIDANCE
             : undefined,
       tools: Object.entries(OPERATOR_AGENT_TOOL_REGISTRY)
-        .filter(([, spec]) => spec.family === family)
+        .filter(([name, spec]) => spec.offered && (spec.family === family ||
+          (name === "attach_to_conversation" && ["policies", "client_files", "company_email"].includes(family)) ||
+          (name === "list_team_inbox_threads" && family === "procurement")))
         .map(([name]) => name),
     },
   ]),
@@ -3404,7 +3584,7 @@ export function operatorAgentToolNamesForFamilies(
 ): OperatorAgentToolName[] {
   return activeAgentToolNames(
     OPERATOR_TOOL_FAMILY_CATALOG,
-    toolNames,
+    toolNames.filter((name) => OPERATOR_AGENT_TOOL_REGISTRY[name].offered),
     families,
   );
 }
@@ -3566,7 +3746,7 @@ export function parseOperatorAgentToolInput(
 }
 
 export function operatorAgentToolCatalog() {
-  return Object.entries(OPERATOR_AGENT_TOOL_REGISTRY).map(([name, spec]) => ({
+  return Object.entries(OPERATOR_AGENT_TOOL_REGISTRY).filter(([, spec]) => spec.offered).map(([name, spec]) => ({
     name: name as OperatorAgentToolName,
     version: spec.version,
     description: spec.description,
@@ -3579,7 +3759,7 @@ export function operatorAgentToolCatalog() {
 }
 
 export function operatorAgentToolJsonCatalog() {
-  return Object.entries(OPERATOR_AGENT_TOOL_REGISTRY).map(([name, spec]) => ({
+  return Object.entries(OPERATOR_AGENT_TOOL_REGISTRY).filter(([, spec]) => spec.offered).map(([name, spec]) => ({
     name: name as OperatorAgentToolName,
     version: spec.version,
     description: spec.description,

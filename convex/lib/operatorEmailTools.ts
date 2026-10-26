@@ -18,6 +18,7 @@ import {
  * operator's completed exact approval.
  */
 export const OPERATOR_EMAIL_TOOL_NAMES = new Set([
+  "save_email_draft",
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
@@ -147,6 +148,24 @@ export async function runOperatorEmailTool(
     );
     input = { ...input, draftId: String(input.draftId).trim(), [field]: checked.reference };
   }
+  if (args.toolName === "save_email_draft" && typeof input.draftId === "string") {
+    const draftId = input.draftId;
+    for (const [field, toolName] of [
+      ["clientFileIds", "attach_client_file_to_draft"],
+      ["policyIds", "attach_policy_pdf_to_draft"],
+    ] as const) {
+      if (!Array.isArray(input[field])) continue;
+      const checkedIds: string[] = [];
+      for (const reference of input[field]) {
+        const checked = await ctx.runQuery(internal.operatorEmailDrafts.checkAttachmentInputInternal, {
+          operatorUserId: args.operatorUserId, threadId: args.threadId,
+          toolName, draftId, reference: String(reference),
+        });
+        checkedIds.push(checked.reference);
+      }
+      input = { ...input, [field]: checkedIds };
+    }
+  }
   // `clientOrgId` is an alias of `orgId`; naming two different clients is an error.
   if (
     typeof input.orgId === "string" &&
@@ -211,6 +230,8 @@ export async function runOperatorEmailTool(
   } = input;
   const result = await (async (): Promise<EmailToolResult> => {
     switch (args.toolName) {
+      case "save_email_draft":
+        return executors.save_email_draft.execute(fields as never);
       case "draft_email":
         return executors.draft_email.execute({
           ...fields,

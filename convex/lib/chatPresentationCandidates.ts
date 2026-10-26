@@ -73,6 +73,7 @@ function unknownValue(value: unknown) {
 
 /** Email draft tools whose unsent-draft metadata (never the body) is retained as evidence. */
 export const EMAIL_DRAFT_EVIDENCE_TOOLS = new Set([
+  "save_email_draft",
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
@@ -1392,6 +1393,7 @@ export function buildPresentationCandidates(evidence: PresentationEvidence): {
         "list_procurement_requests",
         "get_procurement_request",
         "preview_broker_packet",
+        "get_procurement_packet",
       ].includes(tool.name)
     )
       addRequests(builder, tool.name, output);
