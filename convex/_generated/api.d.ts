@@ -341,6 +341,7 @@ import type * as lib_operatorOrganizationReads from "../lib/operatorOrganization
 import type * as lib_operatorPlanning from "../lib/operatorPlanning.js";
 import type * as lib_operatorProcurementReads from "../lib/operatorProcurementReads.js";
 import type * as lib_operatorReadViews from "../lib/operatorReadViews.js";
+import type * as lib_operatorRecordFieldCatalog from "../lib/operatorRecordFieldCatalog.js";
 import type * as lib_operatorRemainingBatch from "../lib/operatorRemainingBatch.js";
 import type * as lib_operatorRunPlan from "../lib/operatorRunPlan.js";
 import type * as lib_operatorSecondFactor from "../lib/operatorSecondFactor.js";
@@ -348,6 +349,7 @@ import type * as lib_operatorSlackBlocks from "../lib/operatorSlackBlocks.js";
 import type * as lib_operatorSlackConfig from "../lib/operatorSlackConfig.js";
 import type * as lib_operatorSuggestionRanking from "../lib/operatorSuggestionRanking.js";
 import type * as lib_operatorSuggestionTypes from "../lib/operatorSuggestionTypes.js";
+import type * as lib_operatorToolFieldCatalog from "../lib/operatorToolFieldCatalog.js";
 import type * as lib_operatorToolOutput from "../lib/operatorToolOutput.js";
 import type * as lib_operatorToolRecovery from "../lib/operatorToolRecovery.js";
 import type * as lib_orgBranding from "../lib/orgBranding.js";
@@ -901,6 +903,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorPlanning": typeof lib_operatorPlanning;
   "lib/operatorProcurementReads": typeof lib_operatorProcurementReads;
   "lib/operatorReadViews": typeof lib_operatorReadViews;
+  "lib/operatorRecordFieldCatalog": typeof lib_operatorRecordFieldCatalog;
   "lib/operatorRemainingBatch": typeof lib_operatorRemainingBatch;
   "lib/operatorRunPlan": typeof lib_operatorRunPlan;
   "lib/operatorSecondFactor": typeof lib_operatorSecondFactor;
@@ -908,6 +911,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorSlackConfig": typeof lib_operatorSlackConfig;
   "lib/operatorSuggestionRanking": typeof lib_operatorSuggestionRanking;
   "lib/operatorSuggestionTypes": typeof lib_operatorSuggestionTypes;
+  "lib/operatorToolFieldCatalog": typeof lib_operatorToolFieldCatalog;
   "lib/operatorToolOutput": typeof lib_operatorToolOutput;
   "lib/operatorToolRecovery": typeof lib_operatorToolRecovery;
   "lib/orgBranding": typeof lib_orgBranding;

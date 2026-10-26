@@ -173,6 +173,10 @@ import { isRemainingBatchToolName, remainingBatchConfirmationSummary, REMAINING_
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { preflightOperatorToolConfirmation, prepareRemainingBatchForConfirmation } from "./lib/operatorAgentConfirmationPreflight";
 import { clientBatchConfirmationSummary, isClientBatchToolName, type ClientBatchResult } from "./lib/operatorClientBatch";
+import {
+  describeOperatorRecordFields,
+  type OperatorDescribableRecord,
+} from "./lib/operatorRecordFieldCatalog";
 import { previewTeamEmailReply } from "./lib/teamEmailReply";
 import { assertOutreachIdentity } from "./lib/outreachIdentity";
 import { composeClientOutreachEmail } from "./lib/clientOutreachEmail";
@@ -2333,6 +2337,12 @@ async function executeToolDomain(
       operators: operators.sort((a, b) => a.name.localeCompare(b.name)),
       bounded: profiles.length === 200,
     };
+  }
+
+  if (toolName === "describe_record_fields") {
+    return describeOperatorRecordFields(
+      input.record as OperatorDescribableRecord,
+    );
   }
 
   if (toolName === "get_operator_overview") {

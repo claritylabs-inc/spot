@@ -67,6 +67,7 @@ const operatorToolCategories = {
   update_organization_profile: "organizations",
   update_organization_profiles: "organizations",
   update_client_business_profile: "organizations",
+  describe_record_fields: "organizations",
   set_client_access_status: "organizations",
   set_client_access_statuses: "organizations",
   get_client_assignees: "organizations",

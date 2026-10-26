@@ -1,5 +1,6 @@
-import { procurementApplicationInputSchema } from "./procurementApplicationInput";
-import { companyProfileInputSchema } from "./companyProfileInput";
+import { procurementApplicationToolInputSchema } from "./procurementApplicationInput";
+import { companyProfileToolInputSchema } from "./companyProfileInput";
+import { OPERATOR_DESCRIBABLE_RECORDS } from "./operatorRecordFieldCatalog";
 import { completionOutcomeSchema } from "./procurementCompletionOutcome";
 import { z } from "zod";
 import {
@@ -502,6 +503,18 @@ const linkTeamInboxThreadInputSchema = z
 const cancelEmailDraftInputSchema = z.object({
   draftId: z.string().min(1).describe("Exact draft ID"),
 });
+/**
+ * Optional exact-ID input: null, blank and "none"-style placeholders all mean
+ * "not provided", so a model that fills an unused ID slot cannot fail approval.
+ */
+function optionalExactId(description: string) {
+  return omittable(z.string().trim().describe(description)).transform(
+    (value) =>
+      value && !/^(?:none|null|undefined|n\/a)$/i.test(value)
+        ? value
+        : undefined,
+  );
+}
 
 export const OPERATOR_AGENT_TOOL_REGISTRY = {
   list_mcp_tools: defineOperatorTool({
@@ -654,6 +667,18 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     confirmation: "none",
     target: () => ({ kind: "platform", id: "organizations" }),
     summarize: (input) => `Read ${input.orgIds.length} organizations`,
+  }),
+  describe_record_fields: defineOperatorTool({
+    version: 1,
+    description:
+      "Field catalog for update_procurement_application or update_client_business_profile: allowed answers keys with labels, details shapes, coverage limit keys and edit rules. Read it once before composing a structured update.",
+    inputSchema: z.object({ record: z.enum(OPERATOR_DESCRIBABLE_RECORDS) }),
+    capability: "operator.organizations.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: () => ({}),
+    summarize: (input) => `Describe ${input.record} fields`,
   }),
   get_operator_overview: defineOperatorTool({
     version: 1,
@@ -1270,9 +1295,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   update_procurement_packet: defineOperatorTool({
     family: "procurement",
-    version: 3,
+    version: 4,
     description:
-      "Replace one of the request’s two Markdown files: private.md for internal work or public.md for shared content. Use matching visibility: private or shared in YAML front matter. Read lookup_procurement_packet first, preserve existing content, and pass the returned expectedRevision. Put intake, notes, provider outreach history, and follow-ups in these files. Saving public.md immediately updates every active packet link. Prose in public.md outside the generated application block is the request’s Submission notes, shown to providers ahead of the application and visible to the client; keep added context, provider questions, and request details there. Use descriptive Markdown headings with a logical hierarchy; avoid adjacent headings that repeat the same topic. Use GFM tables for comparable coverage terms, locations, quotes, or status items, lists for independent facts or next steps, and short paragraphs for context. Choose structure to fit the content, preserve sourced facts and manual prose, and do not impose fixed sections.",
+      "Replace one of the request’s two Markdown files: private.md (internal work) or public.md (shared content). YAML front matter visibility must match: private or shared. Read lookup_procurement_packet first, preserve existing content and pass its revision as expectedRevision. Saving public.md immediately updates every active packet link and is visible to the client and providers. Use clear headings and GFM tables for comparable facts; preserve sourced facts and manual prose.",
     inputSchema: z.object({
       procurementRequestId,
       filename: z.enum(["private.md", "public.md"]),
@@ -1835,20 +1860,18 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   attach_policy_pdf_to_draft: defineOperatorTool({
     family: "outbound_email",
-    version: 1,
+    version: 2,
     description:
-      "Attach the original full policy PDF to an unsent draft, only when the operator explicitly asked to send the original policy document. Policy access and original-file availability are checked.",
+      "Attach the original full policy PDF to an unsent draft linked to that policy's client, only when the operator explicitly asked to send the original policy document. Wrong, foreign or file-less policy IDs are rejected with the reason.",
     inputSchema: z.object({
-      draftId: z.string().min(1).describe("Exact draft ID"),
-      policyId,
+      draftId: z.string().trim().min(1).describe("Exact draft ID"),
+      policyId: z.string().trim().min(1).describe("Exact policy ID"),
       explicitArtifactRequest: z.literal("original_policy_document"),
       intentEvidence: z
         .string()
         .min(1)
         .max(1_000)
-        .describe(
-          "The operator's explicit request for the original/full policy PDF",
-        ),
+        .describe("The operator's explicit request for the original policy PDF"),
     }),
     capability: "operator.email.write",
     effect: "reversible_write",
@@ -1861,12 +1884,12 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   attach_client_file_to_draft: defineOperatorTool({
     family: "outbound_email",
-    version: 1,
+    version: 2,
     description:
-      "Attach one exact stored client file (from list_client_files, or the clientFileId returned by generate_coi) to an unsent draft. The file must belong to the draft's client organization. Attachment size and duplicate checks apply.",
+      "Attach one stored client file to an unsent draft linked to the same client. Use a clientFileId from list_client_files or the one generate_coi returns (not its storage fileId). Wrong, foreign or archived files are rejected with the reason; size and duplicate checks apply.",
     inputSchema: z.object({
-      draftId: z.string().min(1).describe("Exact draft ID"),
-      clientFileId,
+      draftId: z.string().trim().min(1).describe("Exact draft ID"),
+      clientFileId: z.string().trim().min(1).describe("Exact client file ID"),
     }),
     capability: "operator.email.write",
     effect: "reversible_write",
@@ -1961,9 +1984,15 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   generate_coi: defineOperatorTool({
     family: "compliance",
-    version: 1,
+    version: 2,
     description: GENERATE_COI_DESCRIPTION,
-    inputSchema: generateCoiInputSchema,
+    inputSchema: generateCoiInputSchema.extend({
+      policyId: optionalExactId("Policy mode only: exact policy ID"),
+      requirementSourceDocumentId: optionalExactId(
+        "Requirements mode: source ID from lookup_compliance_requirements",
+      ),
+      requirementId: optionalExactId("Requirements mode: exact requirement ID"),
+    }),
     capability: "operator.certificates.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -2086,9 +2115,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   create_procurement_request: defineOperatorTool({
     family: "procurement",
     // Invalidates pending confirmations created against the retired fields.
-    version: 5,
+    version: 6,
     description:
-      "Create a new-policy procurement request for an exact client and generate its unique forwarding address and initial shared packet link. The narrative is the client's own words and initializes public.md, or private.md when its front matter explicitly sets visibility: private. Resolve exact policy IDs first when linking a policy being replaced or a resulting policy.",
+      "Create a new-policy procurement request for an exact client, with its forwarding address and initial shared packet link. The narrative is the client's own words and initializes public.md, or private.md when its front matter sets visibility: private. Resolve exact policy IDs with a policy read before linking one; unknown or foreign policy IDs are rejected before approval.",
     inputSchema: z.object({
       orgId: organizationId,
       title: z.string().min(1).max(200),
@@ -2097,11 +2126,11 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       status: omittable(procurementRequestStatus),
       completionOutcome: omittable(completionOutcomeSchema),
       clientVisible: omittable(z.boolean()),
-      replacingPolicyId: omittable(policyId).describe(
-        "Exact existing policy ID returned by a policy read tool. Omit it or send null for a new purchase or when no policy is being replaced; never use an organization ID.",
+      replacingPolicyId: optionalExactId(
+        "Exact ID of the policy being replaced, from a policy read. Omit for a new purchase; never an organization ID",
       ),
-      resultingPolicyId: omittable(policyId).describe(
-        "Exact bound policy ID returned by a policy read tool. Omit it or send null until this procurement request has produced a policy; never use an organization ID.",
+      resultingPolicyId: optionalExactId(
+        "Exact ID of the policy this request produced, from a policy read. Omit until one exists",
       ),
     }),
     capability: "operator.procurement.write",
@@ -2123,10 +2152,10 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   update_procurement_application: defineOperatorTool({
     family: "procurement",
-    version: 1,
+    version: 2,
     description:
-      "Update actual structured procurement application fields: applicant contact, request reason and requirements, effective date, company facts, coverage lines and limits, insured property/vehicles, business locations, revenue and insurance history. Prefer this for application edits and importing facts from documents; use update_procurement_packet only for authored notes. First read get_procurement_request for the application, intakeRevision (0 if absent), and updatedAt; supply those as expectedRevision and expectedUpdatedAt. Supply only changed answers/details. Typed details own coverage, limits, scope, addresses, locations and revenue: change those in details, not their derived answer strings. Supplied nested objects and arrays replace that entire field: preserve existing entries and amounts. Corrections are operator-authored and do not manufacture applicant consent. Workflow/title/status changes use update_procurement_request.",
-    inputSchema: procurementApplicationInputSchema,
+      "Correct structured application fields: applicant contact, request reason and requirements, effective date, company facts, coverage lines and limits, insured property/vehicles, locations, revenue and insurance history. Prefer this over update_procurement_packet (prose only), including for document imports. Read get_procurement_request first and pass its intakeRevision (0 if absent) and updatedAt as expectedRevision and expectedUpdatedAt. Send only changed keys; a supplied details key replaces its whole value. Field shapes and coverage limit keys: describe_record_fields. Invalid fields are rejected before approval with the allowed keys. Title, status and policy links: update_procurement_request.",
+    inputSchema: procurementApplicationToolInputSchema,
     capability: "operator.procurement.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -2528,9 +2557,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   launch_procurement_provider_outreach: defineOperatorTool({
     family: "procurement",
-    version: 2,
+    version: 3,
     description:
-      "Send from your team address with your full-name signature and Always CC. Exact approval binds the current sender identity; changed identity holds unsent mail. Send provider outreach immediately and schedule the exact approved follow-up cadence. First list matches and explicitly name at most 50 providers. Unknown-fit providers require individual selection; excluded providers cannot receive outreach. Existing active or responded sequences are skipped. The email shares the provider-scoped packet link.",
+      "Email the named providers now from your team address and schedule the approved follow-up cadence. Externally visible; needs exact approval, which lists every provider and whether it will send. Name at most 50 providers from list_procurement_provider_matches. Unknown-fit providers need individual selection, excluded providers cannot receive outreach, and providers with a live or responded sequence are skipped. Each email shares a provider-scoped packet link.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgIds: z.array(organizationId).min(1).max(50),
@@ -2592,14 +2621,16 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   add_procurement_information_questions: defineOperatorTool({
     family: "procurement",
-    version: 1,
+    version: 2,
     description:
-      "Record questions a provider needs the client to answer for a procurement request. Each question belongs to one provider outreach from list_procurement_information; an identical question and scope is reused, so a question asked by several providers is asked of the client once. Nothing is sent. Ask in plain client-facing words.",
+      "Record questions a provider needs the client to answer, in plain client-facing words. Each belongs to one provider outreach from list_procurement_information; an identical question and scope is reused, so a question several providers ask is asked of the client once. All questions save together or none do. Nothing is sent.",
     inputSchema: z.object({
       procurementRequestId,
-      procurementOutreachId: procurementOutreachId.describe(
-        "Provider outreach that needs these answers, from list_procurement_information",
-      ),
+      procurementOutreachId: z
+        .string()
+        .trim()
+        .min(1)
+        .describe("Provider outreach ID from list_procurement_information"),
       questions: z
         .array(
           z.object({
@@ -2616,7 +2647,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
             ]),
             options: omittable(
               z.array(z.string().trim().min(1).max(200)).max(30),
-            ).describe("Choices, required for dropdown only"),
+            ).describe("Dropdown choices; required for dropdown only"),
             coverage: z
               .enum(
                 COVERAGE_OPTIONS.map((c) => c.id) as [
@@ -2624,34 +2655,29 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
                   ...CoverageId[],
                 ],
               )
-              .describe(
-                "Coverage line the question is for; use unknown when it applies generally",
-              ),
+              .describe("Coverage line; unknown when general"),
             subject: omittable(z.string().trim().min(1).max(200)).describe(
-              'Who or what the answer is about; defaults to "company"',
+              'Who or what it is about; default "company"',
             ),
             period: omittable(z.string().trim().min(1).max(200)).describe(
-              'Reporting period, such as "current" (default), "last 12 months" or "2025"',
+              'Reporting period; default "current"',
             ),
             currency: omittable(
               z.enum(["USD", "CAD", "EUR", "GBP", "AUD", "NZD", "CHF", "JPY"]),
-            ).describe(
-              "Currency questions only; defaults to the client's registration country",
-            ),
+            ).describe("Currency questions only; default from client country"),
             carrier: omittable(z.string().trim().min(1).max(200)).describe(
-              "Carrier the provider is asking on behalf of, when known",
+              "Carrier the provider asks for, if known",
             ),
             condition: omittable(
               z.object({
                 questionId: z
                   .string()
+                  .trim()
                   .min(1)
                   .describe("Existing yes/no question ID"),
                 answer: z.enum(["Yes", "No"]),
               }),
-            ).describe(
-              "Ask only when an existing yes/no question has this answer",
-            ),
+            ).describe("Ask only when that yes/no question has this answer"),
           }),
         )
         .min(1)
@@ -2716,13 +2742,13 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   send_procurement_client_email: defineOperatorTool({
     family: "procurement",
-    version: 3,
+    version: 4,
     description:
-      "Send from your team address with your full-name signature and Always CC. Exact approval includes the signed email and sender identity; changed identity holds unsent mail. Email a client contact to request information for a procurement request, then send automated nudges on the same thread until the client replies. First list client outreach and use an exact listed recipient email. The first email is exactly the subject and message given (greeting and operator signature are added); replies and attachments land in the request Inbox. Stops when the request closes, the recipient stops being a client contact, the linked information form is submitted or cancelled, or follow-ups are stopped. To prepare a questionnaire without emailing, use create_procurement_information_form.",
+      "Email one client contact to request information for a procurement request, then send automated same-thread nudges until they reply. Externally visible; needs exact approval of the complete signed email. List client outreach first and use an exact listed recipient email. The first email is exactly the subject and message given (greeting and signature are added); replies and attachments land in the request Inbox. Follow-ups stop when the request closes, the recipient stops being a client contact, the linked form is submitted or cancelled, or follow-ups are stopped. To prepare a questionnaire without emailing, use create_procurement_information_form.",
     inputSchema: z.object({
       procurementRequestId,
       recipientEmail: emailAddress.describe(
-        "Exact recipient email from list_procurement_client_outreach",
+        "Exact email from list_procurement_client_outreach",
       ),
       subject: z.string().trim().min(1).max(200),
       message: z
@@ -2731,8 +2757,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         .min(1)
         .max(8_000)
         .describe("Plain-text body without greeting or signature"),
-      informationFormId: omittable(z.string().min(1)).describe(
-        "Client information form this email asks the client to complete; include its url in the message",
+      informationFormId: optionalExactId(
+        "Client information form this email asks them to complete; include its url in the message",
       ),
       cadence: z.object({
         followUpCount: z.number().int().min(0).max(4),
@@ -2995,10 +3021,10 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   update_client_business_profile: defineOperatorTool({
     family: "organizations",
-    version: 1,
+    version: 2,
     description:
-      "Update actual structured client business fields: legal name, website, DBA, entity type, tax IDs, industry, operations, staffing, addresses, locations, related entities and revenue. Prefer this tool for client profile edits and document imports. First read get_organization or lookup_client_wiki for businessProfile and its submittedAt version (use 0 if absent). Supply expectedVersion and only changed fields. Address and revenue objects and lists replace that whole field; preserve existing values. Use update_client_wiki only for supplementary notes, source context and unresolved conflicts. Never change confirmed facts to conflicting research without operator instruction. Does not alter submitted request snapshots.",
-    inputSchema: companyProfileInputSchema,
+      "Update structured client business fields: legal name, website, DBA, entity type, tax IDs, industry, operations, staffing, addresses, locations, related entities and revenue. Prefer this over update_client_wiki (supplementary notes, source context, unresolved conflicts), including for document imports. Read get_organization or lookup_client_wiki for businessProfile and pass its submittedAt as expectedVersion (0 if absent). Send only changed keys; a supplied details key replaces its whole value. Field shapes: describe_record_fields. Never replace confirmed facts with conflicting research without operator instruction. Does not alter submitted request snapshots.",
+    inputSchema: companyProfileToolInputSchema,
     capability: "operator.organizations.write",
     effect: "reversible_write",
     requiredRole: "operator",
