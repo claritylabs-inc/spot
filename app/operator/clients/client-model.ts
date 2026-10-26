@@ -12,6 +12,11 @@ export const OPERATOR_CLIENT_STATUSES = {
     tone: "warning",
     indicator: "progress",
   },
+  archived: {
+    label: "Archived",
+    tone: "neutral",
+    indicator: "pending",
+  },
   active: {
     label: "Active",
     tone: "success",

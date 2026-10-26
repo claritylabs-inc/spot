@@ -3266,7 +3266,7 @@ async function executeToolDomain(
     )
       throw new Error("Client organization not found");
     const next = input.status;
-    if (next !== "limited" && next !== "active")
+    if (next !== "limited" && next !== "active" && next !== "archived")
       throw new Error("Invalid client access status");
     const previous = clientAccessStatus(organization);
     await ctx.db.patch(orgId, { clientAccessStatus: next });

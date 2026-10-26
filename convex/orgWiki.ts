@@ -1,5 +1,9 @@
 import { companyProfileInputSchema } from "./lib/companyProfileInput";
-import { clientAccessStatus } from "./lib/clientAccess";
+import {
+  clientAccessStatus,
+  clientAccessStatusValidator,
+  type ClientAccessStatus,
+} from "./lib/clientAccess";
 import dayjs from "dayjs";
 import { updateClientSettingsForOperator } from "./operator";
 import { intakeAnswersValidator } from "./lib/insuranceIntakeSchema";
@@ -501,7 +505,7 @@ export const updateBusinessProfileForOperator = mutation({
     expectedStatus: v.string(),
     name: v.string(),
     website: v.string(),
-    status: v.union(v.literal("limited"), v.literal("active")),
+    status: clientAccessStatusValidator,
     answers: intakeAnswersValidator,
     details: intakeDetailsValidator,
   },
@@ -522,7 +526,7 @@ export async function updateBusinessProfileByOperator(
     expectedStatus: string;
     name: string;
     website: string;
-    status: "limited" | "active";
+    status: ClientAccessStatus;
     answers: import("../lib/insurance-intake").IntakeAnswers;
     details: import("../lib/insurance-intake-details").IntakeDetails;
   },
