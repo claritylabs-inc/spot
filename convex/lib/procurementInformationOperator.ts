@@ -6,6 +6,7 @@ import {
 import type { IntakeFollowupQuestion } from "../../lib/intake-followups";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { NoWriteInputError } from "./noWriteInputError";
 import {
   requireDirectOperatorWrite,
   requireRequest,
@@ -129,8 +130,15 @@ export async function addInformationQuestionsByOperator(
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const request = await liveRequest(ctx, args.requestId);
+  const outreach = await ctx.db.get(args.outreachId);
+  if (!outreach || outreach.requestId !== request._id)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "procurementOutreachId does not belong to this request. Use an ID from list_procurement_information outreaches. Nothing was saved.",
+    );
   const added = [];
-  for (const q of args.questions) {
+  for (const [index, q] of args.questions.entries()) {
+    // The mutation rolls back as a whole, so a rejected question saves nothing.
     const requirementId = await addRequirementForRequest(
       ctx,
       {
@@ -154,7 +162,12 @@ export async function addInformationQuestionsByOperator(
       },
       request,
       args.operatorUserId,
-    );
+    ).catch((error: unknown) => {
+      throw new NoWriteInputError(
+        "invalid_question",
+        `Question ${index + 1} (${JSON.stringify(q.label.slice(0, 60))}) was rejected: ${error instanceof Error ? error.message : String(error)}. Nothing was saved.`,
+      );
+    });
     const requirement = await ctx.db.get(requirementId);
     added.push({
       questionId: requirement!.questionId,

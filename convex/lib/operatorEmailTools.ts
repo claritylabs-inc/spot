@@ -62,7 +62,7 @@ export async function runOperatorEmailTool(
     confirmationId?: Id<"operatorAgentConfirmations">;
   },
 ) {
-  const { input } = args;
+  let { input } = args;
   if (args.toolName === "list_email_drafts") {
     const drafts = await ctx.runQuery(
       internal.operatorEmailDrafts.listForThreadInternal,
@@ -78,6 +78,27 @@ export async function runOperatorEmailTool(
 
   if (args.toolName === "send_email_draft" && !args.confirmationId) {
     throw new Error("Exact operator confirmation is required");
+  }
+  // Attachment IDs are trimmed and verified against the draft's client first.
+  if (
+    args.toolName === "attach_client_file_to_draft" ||
+    args.toolName === "attach_policy_pdf_to_draft"
+  ) {
+    const field =
+      args.toolName === "attach_client_file_to_draft"
+        ? "clientFileId"
+        : "policyId";
+    const checked = await ctx.runQuery(
+      internal.operatorEmailDrafts.checkAttachmentInputInternal,
+      {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        toolName: args.toolName,
+        draftId: String(input.draftId ?? ""),
+        reference: String(input[field] ?? ""),
+      },
+    );
+    input = { ...input, draftId: String(input.draftId).trim(), [field]: checked.reference };
   }
   // `clientOrgId` is an alias of `orgId`; naming two different clients is an error.
   if (

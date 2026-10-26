@@ -1,11 +1,18 @@
 import { prepareApplicationToolUpdate } from "../procurementRequests";
 import { prepareBusinessProfileToolUpdate } from "../orgWiki";
 import { getMarkdownDocument } from "../markdownDocuments";
+import { preparePacketDocumentUpdate } from "../procurementPacket";
 import { requireCompanyRequest } from "./companyRequest";
-import { clientRecipientOptions } from "./clientOutreach";
-import { parseMarkdownDocument } from "./markdownDocument";
+import { validateClientOutreachLaunch } from "../clientOutreach";
+import { previewProviderOutreachLaunch } from "../providerOutreach";
+import { operatorNoWriteCode } from "./operatorAgentToolFailure";
+import {
+  parseDocumentVisibility,
+  parseMarkdownDocument,
+} from "./markdownDocument";
 import { clientIdentity, clientIdentityMatches } from "./clientProfile";
 import dayjs from "dayjs";
+import { normalizeCompletionOutcome } from "./procurementCompletionOutcome";
 
 import type { Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
@@ -382,6 +389,14 @@ async function preflightGenerateCoi(
     );
     if (!policy.orgId || policy.deletedAt) throw new Error("Policy not found");
     await requireClientOrganization(ctx, policy.orgId);
+    // Generation refuses policies whose extraction is not complete and final.
+    if (
+      policy.pipelineStatus !== "complete" ||
+      policy.extractionDataStage !== "final"
+    )
+      throw new Error(
+        "The selected policy is not ready for certificate generation: extraction must be complete and final",
+      );
     const holderName = normalizedText(input.certificateHolder)
       ?.split(/\r?\n/)[0]
       ?.trim();
@@ -914,14 +929,17 @@ export async function preflightOperatorToolConfirmation(
       return;
     }
     case "update_procurement_packet": {
-      const request = await requireDocument(
+      const request = await requireProcurementRequest(
         ctx,
-        "procurementRequests",
         args.input.procurementRequestId,
-        "Procurement request",
       );
-      await requireClientOrganization(ctx, request.clientOrgId);
-      parseMarkdownDocument(String(args.input.markdown));
+      await preparePacketDocumentUpdate(ctx, {
+        operatorUserId: args.operatorUserId,
+        requestId: request._id,
+        filename: String(args.input.filename),
+        markdown: String(args.input.markdown),
+        expectedRevision: Number(args.input.expectedRevision),
+      });
       return;
     }
     case "retry_failed_policy_extraction": {
@@ -958,14 +976,21 @@ export async function preflightOperatorToolConfirmation(
         args.input.orgId,
         "Client organization",
       );
+      const narrative =
+        typeof args.input.narrative === "string" ? args.input.narrative : "";
+      // Seeding the packet parses the narrative's front matter after approval.
+      parseMarkdownDocument(narrative);
+      parseDocumentVisibility(narrative, "shared");
       await validateProcurementRequestCreateByOperator(ctx, {
         operatorUserId: args.operatorUserId,
         clientOrgId,
         title: typeof args.input.title === "string" ? args.input.title : "",
-        narrative:
-          typeof args.input.narrative === "string" ? args.input.narrative : "",
+        narrative,
         targetEffectiveDate: normalizedText(args.input.targetEffectiveDate),
         status: writableProcurementRequestStatus(args.input.status),
+        completionOutcome: args.input.completionOutcome
+          ? normalizeCompletionOutcome(args.input.completionOutcome)
+          : undefined,
         replacingPolicyId: optionalProcurementPolicyReference(
           ctx,
           args.input.replacingPolicyId,
@@ -1005,10 +1030,35 @@ export async function preflightOperatorToolConfirmation(
         args.input.brokerOrgIds.length > 50
       )
         throw new Error("Select one to 50 providers");
+      const invalid: string[] = [];
       for (const brokerOrgId of args.input.brokerOrgIds) {
-        const broker = await requireBrokerOrganization(ctx, brokerOrgId);
-        if (!broker || broker.deletedAt) throw new Error("Provider not found");
+        const broker = await requireBrokerOrganization(ctx, brokerOrgId).catch(
+          (error: unknown) => {
+            if (operatorNoWriteCode(error)) throw error;
+            invalid.push(String(brokerOrgId));
+            return null;
+          },
+        );
+        if (broker?.deletedAt) invalid.push(String(brokerOrgId));
       }
+      if (invalid.length)
+        throw new Error(
+          `Provider not found for ${invalid.join(", ")}. Use brokerOrgId values from list_procurement_provider_matches or list_broker_network_profiles.`,
+        );
+      const providers = await previewProviderOutreachLaunch(ctx, {
+        operatorUserId: args.operatorUserId,
+        requestId: request._id,
+        brokerOrgIds: args.input.brokerOrgIds as Id<"organizations">[],
+      });
+      if (!providers.some((provider) => provider.willSend))
+        throw new Error(
+          `None of the selected providers can receive outreach: ${providers
+            .map(
+              (provider) =>
+                `${provider.brokerName ?? provider.brokerOrgId} (${provider.reason ?? "unavailable"})`,
+            )
+            .join(", ")}`,
+        );
       return;
     }
     case "send_procurement_client_email": {
@@ -1017,28 +1067,26 @@ export async function preflightOperatorToolConfirmation(
         ctx,
         args.input.procurementRequestId,
       );
-      requireCompanyRequest(request);
-      if (
-        request.deletedAt ||
-        request.status === "completed" ||
-        request.status === "cancelled"
-      )
-        throw new Error("Procurement request is closed");
-      const client = await requireClientOrganization(ctx, request.clientOrgId);
-      const email =
-        typeof args.input.recipientEmail === "string"
-          ? args.input.recipientEmail.trim().toLowerCase()
-          : "";
-      const recipients = await clientRecipientOptions(ctx, request, client._id);
-      if (!recipients.some((option) => option.email === email))
-        throw new Error("Recipient is not a current client contact");
-      if (args.input.informationFormId != null) {
-        const form = await requireDocument(ctx, "procurementInformationForms", args.input.informationFormId, "Information form");
-        if (form.requestId !== request._id || form.status === "cancelled")
-          throw new Error("Choose an available form from this request");
-        if (form.outreachSequenceId)
-          throw new Error("This form already has an email sequence. Open its conversation to follow up.");
-      }
+      const cadence = args.input.cadence as {
+        followUpCount: number;
+        intervalBusinessDays: number;
+      };
+      await validateClientOutreachLaunch(ctx, {
+        requestId: request._id,
+        recipientEmail: String(args.input.recipientEmail ?? ""),
+        subject: String(args.input.subject ?? ""),
+        text: String(args.input.message ?? ""),
+        cadence: { ...cadence, style: "brief_nudge" },
+        informationFormId:
+          args.input.informationFormId == null
+            ? undefined
+            : (await requireDocument(
+                ctx,
+                "procurementInformationForms",
+                args.input.informationFormId,
+                "Information form",
+              ))._id,
+      });
       return;
     }
     case "create_procurement_information_form":
@@ -1246,4 +1294,34 @@ export async function preflightOperatorToolConfirmation(
         `Missing confirmation preflight for exact-confirmed tool ${args.toolName}`,
       );
   }
+}
+
+/** Approval-card lines naming every provider and what launch would do for it. */
+export async function providerLaunchApprovalLines(
+  ctx: MutationCtx,
+  args: { operatorUserId: Id<"users">; input: Record<string, unknown> },
+) {
+  const providers = await previewProviderOutreachLaunch(ctx, {
+    operatorUserId: args.operatorUserId,
+    requestId: exactId(
+      ctx,
+      "procurementRequests",
+      args.input.procurementRequestId,
+      "Procurement request",
+    ),
+    brokerOrgIds: (args.input.brokerOrgIds as unknown[]).map((id) =>
+      exactId(ctx, "organizations", id, "Provider organization"),
+    ),
+  });
+  const label = (provider: (typeof providers)[number]) =>
+    (provider.brokerName ?? String(provider.brokerOrgId)).slice(0, 45);
+  const lines = (withRecipient: boolean) => [
+    `Providers (${providers.filter((provider) => provider.willSend).length} will send of ${providers.length} named):`,
+    ...providers.map((provider) =>
+      provider.willSend
+        ? `- ${label(provider)}${withRecipient ? ` <${provider.recipientEmail}>` : ""}`
+        : `- ${label(provider)}: skipped (${(provider.reason ?? "unavailable").replaceAll("_", " ")})`,
+    ),
+  ];
+  return lines(true).join("\n").length > 2_800 ? lines(false) : lines(true);
 }

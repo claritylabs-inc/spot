@@ -153,7 +153,10 @@ import {
   updatePacketDocumentByOperator,
 } from "./procurementPacket";
 import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
-import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmationPreflight";
+import {
+  preflightOperatorToolConfirmation,
+  providerLaunchApprovalLines,
+} from "./lib/operatorAgentConfirmationPreflight";
 import {
   describeOperatorRecordFields,
   type OperatorDescribableRecord,
@@ -573,6 +576,15 @@ async function operatorConfirmationSummary(
       `From: ${identity.fromHeader}`,
       `Always CC: ${identity.alwaysCc ?? "None"}`,
     ];
+    if (toolName === "launch_procurement_provider_outreach") {
+      lines.push(
+        "",
+        ...(await providerLaunchApprovalLines(ctx, {
+          operatorUserId: context.operatorUserId,
+          input,
+        })),
+      );
+    }
     if (toolName === "send_procurement_client_email") {
       const panel = await getClientOutreachPanel(ctx, normalizeProcurementRequestId(ctx, input.procurementRequestId));
       const recipient = panel?.recipients.find((person) => person.email === input.recipientEmail);

@@ -17,6 +17,7 @@ import {
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { extractEmailAddress, parseReplyToAddresses } from "./lib/emailAddress";
 import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
+import { NoWriteInputError } from "./lib/noWriteInputError";
 import { isComposeKey } from "./lib/teamEmailReply";
 import { operatorSenderIdentity, type OperatorSenderIdentity } from "./lib/outreachIdentity";
 import {
@@ -769,3 +770,69 @@ export async function operatorEmailSendConfirmation(
   const { draft, summary } = await requireSendableOperatorEmailDraft(ctx, args);
   return { summary, fingerprint: await pendingEmailDraftFingerprint(draft) };
 }
+
+/**
+ * Exact-ID checks for the draft attachment tools, run before they execute so a
+ * wrong ID fails with the reason and the read to use instead of a generic
+ * not-found. Returns the normalized IDs; it never writes.
+ */
+export const checkAttachmentInputInternal = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    threadId: v.id("operatorAgentThreads"),
+    toolName: v.union(
+      v.literal("attach_client_file_to_draft"),
+      v.literal("attach_policy_pdf_to_draft"),
+    ),
+    draftId: v.string(),
+    reference: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    await requireOperatorEmailThread(ctx, args.threadId);
+    const reference = args.reference.trim();
+    const fail = (message: string): never => {
+      throw new NoWriteInputError("invalid_identifier", message);
+    };
+    const draftId = ctx.db.normalizeId("pendingEmails", args.draftId.trim());
+    const draft = draftId ? await ctx.db.get(draftId) : null;
+    if (!draft || draft.operatorThreadId !== args.threadId)
+      return fail(
+        "Draft not found. Use an exact draftId returned by draft_email or list_email_drafts.",
+      );
+    if (draft.status !== "draft")
+      return fail("Only unsent drafts can receive attachments.");
+    if (!draft.orgId)
+      return fail(
+        "This draft is not linked to a client. Revise it with update_email_draft and the client's orgId before attaching files or policies.",
+      );
+    if (args.toolName === "attach_client_file_to_draft") {
+      const clientFileId = ctx.db.normalizeId("clientFiles", reference);
+      if (!clientFileId)
+        return fail(
+          ctx.db.system.normalizeId("_storage", reference)
+            ? "That is a storage file ID, not a client file ID. Use the clientFileId from list_client_files or generate_coi."
+            : "clientFileId must be an exact ID from list_client_files (or the clientFileId returned by generate_coi).",
+        );
+      const file = await ctx.db.get(clientFileId);
+      if (!file) return fail("Client file not found. List the client's files again.");
+      if (file.orgId !== draft.orgId)
+        return fail("That file belongs to a different client than this draft.");
+      if (file.archivedAt || file.deletedAt)
+        return fail("That client file is archived or deleted.");
+      return { reference: clientFileId };
+    }
+    const policyId = ctx.db.normalizeId("policies", reference);
+    if (!policyId)
+      return fail(
+        "policyId must be an exact policy ID from list_policies or lookup_policy, not a policy number or file name.",
+      );
+    const policy = await ctx.db.get(policyId);
+    if (!policy || policy.deletedAt) return fail("Policy not found.");
+    if (policy.orgId !== draft.orgId)
+      return fail("That policy belongs to a different client than this draft.");
+    if (!policy.fileId)
+      return fail("That policy has no original PDF available to attach.");
+    return { reference: policyId };
+  },
+});
