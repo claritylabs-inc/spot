@@ -64,7 +64,7 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
-import { getOperatorAgentSettings } from "./operator";
+import { setClientAssigneeForOperator, getOperatorAgentSettings } from "./operator";
 import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
 import {
   MAX_AGENT_ATTACHMENT_AGGREGATE_BYTES,
@@ -183,7 +183,7 @@ import {
   normalizeOperatorPageContext,
   threadPageContext,
 } from "./lib/threadPageContext";
-import { operatorPeople } from "./lib/operatorAvatar";
+import { operatorPeople, operatorPerson } from "./lib/operatorAvatar";
 
 const operatorChannelValidator = v.union(
   v.literal("chat"),
@@ -1903,7 +1903,12 @@ async function executeToolDomain(
           ? "spot"
           : (organization.type ?? "client"),
       ...(organization.type === "client"
-        ? { clientAccessStatus: clientAccessStatus(organization) }
+        ? {
+            clientAccessStatus: clientAccessStatus(organization),
+            assignee: organization.assignedOperatorUserId
+              ? await operatorPerson(ctx, organization.assignedOperatorUserId)
+              : null,
+          }
         : {}),
       slug: organization.slug,
       website: organization.website,
@@ -1932,6 +1937,93 @@ async function executeToolDomain(
         .filter((policy) => policy.deletedAt).length,
       countsAreLowerBounds:
         memberships.length > 5_000 || policies.length > 5_000,
+    };
+  }
+
+  if (toolName === "get_client_assignees") {
+    const assigneeFilter =
+      input.assigneeUserId === undefined
+        ? undefined
+        : typeof input.assigneeUserId === "string"
+          ? ctx.db.normalizeId("users", input.assigneeUserId)
+          : null;
+    if (assigneeFilter === null)
+      throw new NoWriteInputError(
+        "invalid_identifier",
+        "Invalid assignee user ID",
+      );
+    const notFound: string[] = [];
+    let clients: Doc<"organizations">[];
+    let bounded = false;
+    if (Array.isArray(input.orgIds)) {
+      const loaded = await Promise.all(
+        input.orgIds.map(async (value: unknown) => {
+          const orgId =
+            typeof value === "string"
+              ? ctx.db.normalizeId("organizations", value)
+              : null;
+          const organization = orgId ? await ctx.db.get(orgId) : null;
+          if (
+            !organization ||
+            organization.deletedAt !== undefined ||
+            organization.type !== "client"
+          ) {
+            notFound.push(String(value));
+            return null;
+          }
+          return organization;
+        }),
+      );
+      clients = loaded.filter((organization) => organization !== null);
+    } else {
+      clients = await ctx.db
+        .query("organizations")
+        .withIndex("deletion_type", (q) =>
+          q.eq("deletedAt", undefined).eq("type", "client"),
+        )
+        .take(501);
+      bounded = clients.length > 500;
+      clients = clients.slice(0, 500);
+    }
+    if (assigneeFilter)
+      clients = clients.filter(
+        (organization) => organization.assignedOperatorUserId === assigneeFilter,
+      );
+    const people = await operatorPeople(
+      ctx,
+      clients.flatMap((organization) =>
+        organization.assignedOperatorUserId
+          ? [organization.assignedOperatorUserId]
+          : [],
+      ),
+    );
+    return {
+      clients: clients.map((organization) => ({
+        orgId: organization._id,
+        clientName: organization.name,
+        assignee: organization.assignedOperatorUserId
+          ? (people.get(organization.assignedOperatorUserId) ?? null)
+          : null,
+      })),
+      notFound,
+      bounded,
+    };
+  }
+
+  if (toolName === "list_operators") {
+    const profiles = await ctx.db.query("operatorProfiles").take(200);
+    const operators = await Promise.all(
+      profiles.map(async (profile) => ({
+        userId: profile.userId,
+        name: (await operatorPerson(ctx, profile.userId)).name,
+        email: profile.email,
+        role: profile.role,
+        status: profile.status,
+      })),
+    );
+    return {
+      operators: operators.sort((a, b) => a.name.localeCompare(b.name)),
+      bounded: profiles.length === 200,
     };
   }
 
@@ -3278,6 +3370,29 @@ async function executeToolDomain(
       metadata: { previous, next, domain: "operator_agent" },
     });
     return { status: "updated", orgId, previous, next };
+  }
+
+  if (toolName === "set_client_assignee") {
+    const orgId = normalizeOrganizationId(ctx, input.orgId);
+    let assigneeUserId: Id<"users"> | null = null;
+    if (input.assigneeUserId !== null) {
+      assigneeUserId =
+        typeof input.assigneeUserId === "string"
+          ? ctx.db.normalizeId("users", input.assigneeUserId)
+          : null;
+      if (!assigneeUserId)
+        throw new NoWriteInputError(
+          "invalid_identifier",
+          "Invalid assignee user ID",
+        );
+    }
+    const result = await setClientAssigneeForOperator(ctx, {
+      actorUserId: args.operatorUserId,
+      clientOrgId: orgId,
+      assigneeUserId,
+      domain: "operator_agent",
+    });
+    return { ...result, orgId };
   }
 
   if (toolName === "set_client_feature_flag") {
