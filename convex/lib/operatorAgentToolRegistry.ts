@@ -3024,7 +3024,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 2,
     description:
-      "Update structured client business fields: legal name, website, DBA, entity type, tax IDs, industry, operations, staffing, addresses, locations, related entities and revenue. Prefer this over update_client_wiki (supplementary notes, source context, unresolved conflicts), including for document imports. Read get_organization with include ["businessProfile"] (or lookup_client_wiki) and pass businessProfile.submittedAt as expectedVersion (0 if absent). Send only changed keys; a supplied details key replaces its whole value. Field shapes: describe_record_fields. Never replace confirmed facts with conflicting research without operator instruction. Does not alter submitted request snapshots.",
+      "Update structured client business fields: legal name, website, DBA, entity type, tax IDs, industry, operations, staffing, addresses, locations, related entities and revenue. Prefer this over update_client_wiki (supplementary notes, source context, unresolved conflicts), including for document imports. Read get_organization with include businessProfile (or lookup_client_wiki) and pass businessProfile.submittedAt as expectedVersion (0 if absent). Send only changed keys; a supplied details key replaces its whole value. Field shapes: describe_record_fields. Never replace confirmed facts with conflicting research without operator instruction. Does not alter submitted request snapshots.",
     inputSchema: companyProfileToolInputSchema,
     capability: "operator.organizations.write",
     effect: "reversible_write",
