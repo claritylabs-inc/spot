@@ -10,6 +10,7 @@ import {
   TableCell,
   TableCaption,
   TableNameLink as BaseTableNameLink,
+  SortableTableHead,
 } from "@claritylabs-inc/ui/components/table";
 
 type BaseTableNameLinkProps = React.ComponentProps<typeof BaseTableNameLink>;
@@ -35,4 +36,5 @@ export {
   TableCell,
   TableCaption,
   TableNameLink,
+  SortableTableHead,
 };

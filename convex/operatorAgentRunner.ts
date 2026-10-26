@@ -20,7 +20,6 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { RouterJobFailed, RouterJobPending } from "./lib/routerJobClient";
-import type { ModelRoute } from "./lib/modelCatalog";
 import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
 import {
   buildAgentAttachmentParts,
@@ -79,7 +78,10 @@ import {
   type OperatorToolFamily,
   type OperatorToolFamilySelection,
 } from "./lib/operatorAgentToolRegistry";
-import type { ClRouterClientOptions } from "./lib/clRouterClient";
+import {
+  isRetryableClRouterJobFailure,
+  type ClRouterClientOptions,
+} from "./lib/clRouterClient";
 import {
   assembleFamilyGuidance,
   selectAgentToolFamilies,
@@ -109,7 +111,8 @@ import {
 
 const OPERATOR_AGENT_MAX_OUTPUT_TOKENS = 8_192;
 const OPERATOR_AGENT_MAX_STEPS = 1;
-// Retries of one step after cl-router reports a retryable failure.
+// Retries of one step after a retryable cl-router failure, including
+// candidates_exhausted (see isRetryableClRouterJobFailure).
 const OPERATOR_ROUTER_MAX_RETRIES = 5;
 // Corrective retries after a reply that wrote a tool call as visible text.
 const OPERATOR_LEAKED_CALL_MAX_RETRIES = 2;
@@ -484,7 +487,6 @@ export const run = internalAction({
           const continuation = continuationBlob
             ? (JSON.parse(await continuationBlob.text()) as {
                 messages: ModelMessage[];
-                route: ModelRoute;
                 parentRequestId?: string;
                 recovery?: unknown;
                 leakedCallRetries?: number;
@@ -535,6 +537,9 @@ export const run = internalAction({
       const executionJobStarted =
         (await ctx.runQuery(internal.routerJobs.get, {
           invocationKey: `${invocationKey}:0`,
+        })) !== null ||
+        (await ctx.runQuery(internal.routerJobs.get, {
+          invocationKey: `${invocationKey}:0:routed`,
         })) !== null;
       const resumed = !intentFamilies && executionJobStarted;
       const selectFamilies = () =>
@@ -614,19 +619,11 @@ export const run = internalAction({
                   .join(", "),
         });
       }
-      // The operator model is fixed configuration, not a Jev decision. A
-      // continuation reuses its pinned route; a failed lookup is left to the
-      // model client, which re-resolves it with its own failure telemetry.
-      const route: ModelRoute | undefined =
-        continuation?.route ??
-        (await traceStage(
-          recordActivity,
-          `${stagePrefix}:model`,
-          "selecting_model",
-          (): Promise<ModelRoute> =>
-            ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {}),
-          (selected) => `${selected.provider} · ${selected.model}`,
-        ).catch(() => undefined));
+      const route =
+        (await ctx.runQuery(
+          internal.modelSettings.resolveOperatorAgentRoute,
+          {},
+        )) ?? undefined;
       pendingFamilies = familySelection.families;
       const offeredToolNames = operatorAgentToolNamesForFamilies(
         context.toolNames,
@@ -1032,6 +1029,14 @@ export const run = internalAction({
         },
         {
           taskKind: "operator_agent",
+          ...(traceChannel === "web"
+            ? { activityTarget: run.agentMessageId }
+            : {}),
+          activityOperatorRun: {
+            runId: run._id,
+            expectedRunnerAttempt,
+            expectedCheckpointIteration,
+          },
           // While a failure is unresolved no reply can become the final
           // answer (a tool call continues, a bare reply is held back or
           // replaced by the blocker report), so it must not stream.
@@ -1102,7 +1107,6 @@ export const run = internalAction({
                             },
                           ]
                         : [...messages, ...result.response.messages],
-                    route: result.route,
                     parentRequestId: result.clRouter?.requestId,
                     recovery: nextRecovery,
                     leakedCallRetries: leakContinues
@@ -1194,7 +1198,7 @@ export const run = internalAction({
       }
       if (
         error instanceof RouterJobFailed &&
-        error.failure?.retryable &&
+        isRetryableClRouterJobFailure(error.failure) &&
         expectedCheckpointIteration !== undefined &&
         routerRetryCount < OPERATOR_ROUTER_MAX_RETRIES
       ) {

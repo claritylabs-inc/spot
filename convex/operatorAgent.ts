@@ -1,5 +1,11 @@
 import { getProviderOutreachPanel, launchProviderOutreachByOperator, stopProviderOutreachByOperator } from "./providerOutreach";
 import { getClientOutreachPanel, launchClientOutreachByOperator } from "./clientOutreach";
+import {
+  addInformationQuestionsByOperator,
+  cancelInformationFormByOperator,
+  createInformationFormByOperator,
+  procurementInformationOverview,
+} from "./lib/procurementInformationOperator";
 import { NoWriteInputError } from "./lib/noWriteInputError";
 import { operatorTeamAddressFor } from "./lib/teamEmail";
 import { ensureOperatorInbox } from "./lib/operatorInbox";
@@ -96,6 +102,7 @@ import {
   requireOperatorForUser,
   writeOperatorAudit,
 } from "./lib/operatorIdentity";
+import { emitOperatorNotification } from "./lib/operatorNotify";
 import {
   createClientFileFromOperatorAttachment,
   updateClientFileByOperator,
@@ -1080,6 +1087,35 @@ function normalizeProcurementRequestId(
   return requestId;
 }
 
+function normalizeInformationQuestionId(
+  ctx: QueryCtx | MutationCtx,
+  value: string,
+) {
+  const id = ctx.db.normalizeId("procurementInformationQuestions", value);
+  if (!id)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Use an exact information question ID from list_procurement_information",
+    );
+  return id;
+}
+
+function normalizeInformationFormId(
+  ctx: QueryCtx | MutationCtx,
+  value: unknown,
+) {
+  const id =
+    typeof value === "string"
+      ? ctx.db.normalizeId("procurementInformationForms", value)
+      : null;
+  if (!id)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Use an exact information form ID from list_procurement_information",
+    );
+  return id;
+}
+
 function normalizeProcurementOutreachId(
   ctx: QueryCtx | MutationCtx,
   value: unknown,
@@ -1390,7 +1426,7 @@ export async function cancelActiveRunsForThread(
     const invocationKeys = [
       `operator:${String(run._id)}:${run.checkpoint?.iteration ?? 0}${retry}:0`,
       `operator:${String(run._id)}:plan${retry}:0`,
-    ];
+    ].flatMap((key) => [key, `${key}:routed`]);
     for (const invocationKey of invocationKeys) {
       await cancelRouterJobForInvocation(ctx, invocationKey);
       await ctx.scheduler.runAfter(0, internal.actions.routerJobs.cancel, {
@@ -2958,6 +2994,45 @@ async function executeToolDomain(
     );
   }
 
+  if (toolName === "list_procurement_information") {
+    return await procurementInformationOverview(
+      ctx,
+      normalizeProcurementRequestId(ctx, input.procurementRequestId),
+    );
+  }
+
+  if (toolName === "add_procurement_information_questions") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.add_procurement_information_questions.inputSchema.parse(input);
+    return await addInformationQuestionsByOperator(ctx, {
+      operatorUserId: args.operatorUserId,
+      requestId: normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
+      outreachId: normalizeProcurementOutreachId(ctx, parsed.procurementOutreachId),
+      questions: parsed.questions.map(({ condition, ...question }) => ({
+        ...question,
+        condition: condition && {
+          questionId: normalizeInformationQuestionId(ctx, condition.questionId),
+          answer: condition.answer,
+        },
+      })),
+    });
+  }
+
+  if (toolName === "create_procurement_information_form") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.create_procurement_information_form.inputSchema.parse(input);
+    return await createInformationFormByOperator(ctx, {
+      operatorUserId: args.operatorUserId,
+      requestId: normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
+      questionIds: parsed.questionIds?.map((id) => normalizeInformationQuestionId(ctx, id)),
+    });
+  }
+
+  if (toolName === "cancel_procurement_information_form") {
+    return await cancelInformationFormByOperator(ctx, {
+      operatorUserId: args.operatorUserId,
+      formId: normalizeInformationFormId(ctx, input.informationFormId),
+    });
+  }
+
   if (toolName === "send_procurement_client_email") {
     const parsed = OPERATOR_AGENT_TOOL_REGISTRY.send_procurement_client_email.inputSchema.parse(input);
     if (!args.sourceFingerprint) throw new Error("Request a fresh sender approval before sending this email.");
@@ -2968,6 +3043,9 @@ async function executeToolDomain(
       subject: parsed.subject,
       text: parsed.message,
       cadence: { ...parsed.cadence, style: "brief_nudge" },
+      informationFormId: parsed.informationFormId
+        ? normalizeInformationFormId(ctx, parsed.informationFormId)
+        : undefined,
       expectedIdentityFingerprint: args.sourceFingerprint,
     });
   }
@@ -6374,6 +6452,11 @@ export const requestToolConfirmationInternal = internalMutation({
       },
       updatedAt: now,
     });
+    await emitOperatorNotification(ctx, {
+      eventKey: `approval:${confirmationId}`,
+      category: "approval",
+      target: { kind: "approval", confirmationId },
+    });
     return {
       status: "confirmation_required" as const,
       confirmationId,
@@ -6873,6 +6956,12 @@ export const failRunInternal = internalMutation({
       updatedAt: now,
     });
     await ctx.db.patch(run.threadId, { lastMessageAt: now, updatedAt: now });
+    if (run.status !== "failed" && run.status !== "completed")
+      await emitOperatorNotification(ctx, {
+        eventKey: `operator_run_failed:${run._id}`,
+        category: "failure",
+        target: { kind: "operator_run", runId: run._id },
+      });
   },
 });
 

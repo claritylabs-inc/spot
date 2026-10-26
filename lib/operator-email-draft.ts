@@ -17,11 +17,17 @@ export type OperatorEmailDraftView = {
   from?: string;
   html?: string;
   text: string;
+  /** The editable message, without signature or quoted history. */
+  body: string;
+  /** Operators can revise it by hand: an unsent draft that is not an approved inbox reply. */
+  editable: boolean;
   attachments: Array<{ filename: string }>;
   /** Absent when the draft is not linked to a client. */
   organizationName?: string;
   /** Set once the sent message is in the team inbox. */
   teamEmailThreadId?: string;
   sendBlockedReason?: string;
+  /** The exact content an operator approves by sending from the artifact. */
+  fingerprint: string;
   updatedAt: number;
 };

@@ -12,6 +12,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useAgentDock } from "./agent-dock-provider";
 import {
   formatAgentDockRelativeTime,
@@ -119,7 +120,10 @@ export function AgentDockHistory({ adapter }: { adapter: AgentDockAdapter }) {
   const dock = useAgentDock();
   const views = adapter.historyViews ?? DEFAULT_VIEWS;
   // Archived lives in dock state (deep links open it); other tabs are local.
-  const [liveView, setLiveView] = useState<AgentDockHistoryView>("recent");
+  const [liveView, setLiveView] = useFollowedState<AgentDockHistoryView>(
+    "shell:agent-dock:history-view",
+    "recent",
+  );
   const archived = dock.historyArchived;
   const view: AgentDockHistoryView = archived ? "archived" : liveView;
   const threads = adapter.useThreads(view);

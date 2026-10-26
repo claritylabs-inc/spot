@@ -24,17 +24,13 @@ import {
   type ClRouterUsage,
   type ClRouterTraceInput,
 } from "./clRouterClient";
-import {
-  clRouterMessagesHaveVision,
-  mapSpotCallToClRouterPrimitive,
-} from "./clRouterPrimitive";
+import { mapSpotCallToClRouterPrimitive } from "./clRouterPrimitive";
 import {
   createClRouterLanguageModel,
   type ClRouterLanguageModelOptions,
 } from "./clRouterLanguageModel";
 import {
   WEB_RETRIEVAL_DEFAULT,
-  WEB_RETRIEVAL_DEFAULT_ROUTES,
   type ModelProvider,
   type ModelRoute,
   type ModelTask,
@@ -50,7 +46,6 @@ import {
 
 export {
   WEB_RETRIEVAL_DEFAULT,
-  WEB_RETRIEVAL_DEFAULT_ROUTES,
   type ModelProvider,
   type ModelRoute,
   type ModelTask,
@@ -125,6 +120,12 @@ class AgentIncompleteOutputError extends Error {
 }
 export type AgentModelRunOptions = {
   streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
+  activityTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
+  activityOperatorRun?: {
+    runId: Id<"operatorAgentRuns">;
+    expectedRunnerAttempt: number;
+    expectedCheckpointIteration: number;
+  };
   durable?: { invocationKey: string; route?: ModelRoute };
   sessionKey: string;
   taskKind: ModelCallTaskKind;
@@ -339,8 +340,6 @@ function spotGenerateRequest(options: {
   const mapping = mapSpotCallToClRouterPrimitive({
     task: options.task,
     taskKind: options.taskKind,
-    hasStructuredOutput: Boolean(options.schema),
-    hasVision: clRouterMessagesHaveVision(options.input.messages),
   });
   const trace = normalizeClRouterTrace({
     ...options.trace,
@@ -350,7 +349,6 @@ function spotGenerateRequest(options: {
   });
   return {
     primitive: mapping.primitive,
-    ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
     ...(options.orgId ? { orgId: options.orgId } : {}),
     ...options.input,
     ...(options.schema
@@ -803,10 +801,6 @@ function agentLanguageModel(
         },
       },
       ...(resolved.route ? { initialRoutePin: resolved.route } : {}),
-      // The operator runner offers only the tool families it selected.
-      ...(run.taskKind === "operator_agent"
-        ? { toolSelection: "caller" as const }
-        : {}),
       assetStager: async (asset) => {
         const staged = await createSignedActionRouterAsset(ctx, {
           ...asset,
@@ -823,6 +817,22 @@ function agentLanguageModel(
       },
       onResponse: async (response, step) => {
         routerResponses.push(response);
+        const activityTarget = run.activityTarget ?? run.streamTarget;
+        if (activityTarget) {
+          await ctx.runMutation(internal.routerJobs.recordActivity, {
+            target: activityTarget,
+            ...(run.activityOperatorRun
+              ? { operatorRun: run.activityOperatorRun }
+              : {}),
+            update: {
+              kind: "stage",
+              stageId: `model:${response.requestId}`,
+              stage: "selecting_model",
+              status: "completed",
+              detail: `${response.model.provider} · ${response.model.model}`,
+            },
+          });
+        }
         await run.onResponse?.(response, step);
       },
     }),
@@ -1229,7 +1239,7 @@ export async function getAgentLanguageModelForOperatorTask(
   run: AgentModelRunOptions,
 ): Promise<ResolvedAgentLanguageModel> {
   assertAgentModelRunOptions(run);
-  const route: ModelRoute =
+  const route =
     run.durable?.route ??
     (await ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {}));
   return agentLanguageModel(
@@ -1237,15 +1247,14 @@ export async function getAgentLanguageModelForOperatorTask(
     task,
     undefined,
     {
-      route,
-      routeSource: "global",
+      ...(route ? { route, routeSource: "global" } : {}),
       transport: "cl-router",
     },
     withAgentRoutingTelemetry(ctx, undefined, task, run),
   );
 }
 
-/** Operator inference pins the selected route for the complete router-owned loop. */
+/** Operator inference routes each step unless an explicit pin is configured. */
 export async function generateAgentTextForOperatorTask(
   ctx: ActionCtx,
   task: Extract<ModelTask, "chat" | "chat_vision">,

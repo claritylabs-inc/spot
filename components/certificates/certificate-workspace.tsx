@@ -26,10 +26,11 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 
@@ -290,17 +291,41 @@ function certificateContactSummary(row: PolicyCertificateRecord) {
   return { primary, secondary };
 }
 
+function certificateIssuedAt(row: PolicyCertificateRecord) {
+  return (
+    row.lastIssuedAt ??
+    row.currentVersion?.issuedAt ??
+    row.currentVersion?.createdAt
+  );
+}
+
+const CERTIFICATE_SORT_COLUMNS = {
+  holder: (row: PolicyCertificateRecord) => row.holder?.displayName,
+  address: (row: PolicyCertificateRecord) =>
+    certificateHolderAddressDisplay(row).street,
+  contact: (row: PolicyCertificateRecord) => {
+    const { primary } = certificateContactSummary(row);
+    return primary === "No contact" ? undefined : primary;
+  },
+  policy: (row: PolicyCertificateRecord) => row.policy?.policyNumber,
+  issued: certificateIssuedAt,
+};
+
 export function CertificatesTable({
   rows,
   selectedCertificateId,
   onSelectCertificate,
   showPolicyColumn = true,
+  sortKey,
 }: {
   rows: PolicyCertificateRecord[];
   selectedCertificateId?: Id<"policyCertificates"> | null;
   onSelectCertificate: (row: PolicyCertificateRecord) => void;
   showPolicyColumn?: boolean;
+  /** Followed-state key for the column sort. */
+  sortKey: string;
 }) {
+  const tableSort = useTableSort(sortKey, rows, CERTIFICATE_SORT_COLUMNS);
   return (
     <OperationalPanel as="div" className={CERTIFICATE_PANEL_CONTAINER_CLASS}>
       <Table
@@ -308,37 +333,47 @@ export function CertificatesTable({
       >
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead
+            <SortableTableHead
               className={`${showPolicyColumn ? "w-[22%]" : "w-[25%]"} px-4`}
+              {...tableSort.head("holder")}
             >
               Holder
-            </TableHead>
-            <TableHead className={showPolicyColumn ? "w-[24%]" : "w-[30%]"}>
+            </SortableTableHead>
+            <SortableTableHead
+              className={showPolicyColumn ? "w-[24%]" : "w-[30%]"}
+              {...tableSort.head("address")}
+            >
               Address
-            </TableHead>
-            <TableHead className={showPolicyColumn ? "w-[18%]" : "w-[25%]"}>
+            </SortableTableHead>
+            <SortableTableHead
+              className={showPolicyColumn ? "w-[18%]" : "w-[25%]"}
+              {...tableSort.head("contact")}
+            >
               Contact
-            </TableHead>
+            </SortableTableHead>
             {showPolicyColumn ? (
-              <TableHead className="w-[24%]">Policy</TableHead>
+              <SortableTableHead
+                className="w-[24%]"
+                {...tableSort.head("policy")}
+              >
+                Policy
+              </SortableTableHead>
             ) : null}
-            <TableHead
+            <SortableTableHead
               className={`${showPolicyColumn ? "w-[12%]" : "w-[20%]"} px-4`}
+              {...tableSort.head("issued")}
             >
               Issued
-            </TableHead>
+            </SortableTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((row) => {
+          {tableSort.rows.map((row) => {
             const contact = certificateContactSummary(row);
             const address = certificateHolderAddressDisplay(row);
             const currentVersion = row.currentVersion;
             const selected = row._id === selectedCertificateId;
-            const issuedAt =
-              row.lastIssuedAt ??
-              currentVersion?.issuedAt ??
-              currentVersion?.createdAt;
+            const issuedAt = certificateIssuedAt(row);
             const carrier = certificateCarrier(row);
 
             return (

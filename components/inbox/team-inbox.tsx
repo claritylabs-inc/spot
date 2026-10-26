@@ -16,38 +16,26 @@ import dayjs from "dayjs";
 import {
   Archive,
   ArchiveRestore,
-  AtSign,
   Inbox,
   PenSquare,
-  Search,
-  SlidersHorizontal,
+  Tag,
 } from "lucide-react";
 
 import { PillButton } from "@/components/ui/pill-button";
+import {
+  ListToolbar,
+  type FilterDefinition,
+} from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { ChatAvatar } from "@/components/chat/chat-message";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@claritylabs-inc/ui/components/input-group";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@claritylabs-inc/ui/components/select";
-import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { PresenceAvatars } from "@/components/app-top-bar";
-import { useForwardingCopy } from "@/components/inbox/forwarding-address";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -56,6 +44,7 @@ import {
   replyingOperators,
   useActiveOperators,
 } from "@/hooks/use-operator-presence";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import {
   useCachedOperatorClients,
@@ -85,11 +74,6 @@ const CATEGORY_LABELS: Record<Category, string> = {
   mixed: "Mixed",
   other: "Other",
 };
-const CATEGORY_ITEMS: Record<string, string> = {
-  [ALL_CATEGORIES]: "All categories",
-  ...CATEGORY_LABELS,
-};
-
 function listTime(value: number) {
   const date = dayjs(value);
   return date.isSame(dayjs(), "day") ? date.format("h:mm A") : date.format("MMM D");
@@ -372,7 +356,6 @@ export function TeamInbox({
   onSelect,
   onOpenThread,
   onCompose,
-  fallbackForwardingAddress = null,
 }: {
   scope: TeamInboxScope;
   selectedThreadId: string | null;
@@ -381,28 +364,32 @@ export function TeamInbox({
   onOpenThread?: (thread: InboxThread) => void;
   /** Starts a new email; the team inbox shows its button in the top bar. */
   onCompose?: () => void;
-  /** The request's own address, used only if team email is not configured here. */
-  fallbackForwardingAddress?: string | null;
 }) {
   const convex = useConvex();
   const requestId = scope.kind === "request" ? scope.requestId : undefined;
   // The team inbox opens on the operator's own mail.
-  const [filter, setFilter] = useState<TeamFilter>(scope.kind === "team" ? "mine" : "all");
-  const [clientOrgId, setClientOrgId] = useState("");
-  const [category, setCategory] = useState(ALL_CATEGORIES);
-  const [archivedView, setArchivedView] = useState(false);
-  const [search, setSearch] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
+  const uiKey = requestId ? `inbox:request:${requestId}` : "inbox:team";
+  const [filter, setFilter] = useFollowedState<TeamFilter>(
+    `${uiKey}:filter`,
+    scope.kind === "team" ? "mine" : "all",
+  );
+  const [clientOrgId, setClientOrgId] = useFollowedState(`${uiKey}:client`, "");
+  const [category, setCategory] = useFollowedState(`${uiKey}:category`, ALL_CATEGORIES);
+  const [archivedView, setArchivedView] = useFollowedState(`${uiKey}:archived`, false);
+  const [search, setSearch] = useFollowedState(`${uiKey}:search`, "");
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   const clients = useCachedOperatorClients();
   // Impersonating operators read mail; every write below is withheld.
   const readOnly = Boolean(useCachedOperatorCurrent()?.activeImpersonation);
-  const forward = useForwardingCopy(fallbackForwardingAddress, readOnly);
 
   const queryArgs = useMemo(
     () =>
       requestId
-        ? { requestId, ...(archivedView ? { archived: true } : {}) }
+        ? {
+            requestId,
+            ...(category !== ALL_CATEGORIES ? { category: category as Category } : {}),
+            ...(archivedView ? { archived: true } : {}),
+          }
         : {
             ...(filter === "mine" ? { mine: true } : {}),
             ...(filter === "unlinked" ? { unlinked: true } : {}),
@@ -566,55 +553,60 @@ export function TeamInbox({
       })),
     [clients],
   );
+  // Request mail has Inbox/Archived tabs, so only the category is a filter there.
   const filtered =
-    !!clientOrgId || category !== ALL_CATEGORIES || archivedView;
-  const resetFilters = () => {
-    setClientOrgId("");
-    setCategory(ALL_CATEGORIES);
-    setArchivedView(false);
-  };
+    category !== ALL_CATEGORIES ||
+    (scope.kind === "team" && (!!clientOrgId || archivedView));
+  const filters: FilterDefinition[] = [
+    ...(scope.kind === "team"
+      ? [
+          {
+            id: "client",
+            label: "Client",
+            inline: true,
+            allLabel: "Any",
+            value: clientOrgId ? [clientOrgId] : [],
+            onChange: (value: string[]) => {
+              setClientOrgId(value[0] ?? "");
+              // Unlinked mail has no client, so the two cannot combine.
+              if (value.length && filter === "unlinked") setFilter("all");
+            },
+            options: clientOptions,
+          },
+        ]
+      : []),
+    {
+      id: "category",
+      label: "Category",
+      icon: <Tag />,
+      value: category === ALL_CATEGORIES ? [] : [category],
+      onChange: (value) => setCategory(value[0] ?? ALL_CATEGORIES),
+      options: Object.entries(CATEGORY_LABELS).map(([value, label]) => ({
+        value,
+        label,
+      })),
+    },
+    ...(scope.kind === "team"
+      ? [
+          {
+            id: "mailbox",
+            label: "Mailbox",
+            icon: <Archive />,
+            allLabel: "Inbox",
+            value: archivedView ? ["archived"] : [],
+            onChange: (value: string[]) => setArchivedView(value.length > 0),
+            options: [{ value: "archived", label: "Archived" }],
+          },
+        ]
+      : []),
+  ];
 
-  const searchField = (
-    <InputGroup
-      className={`w-full ${scope.kind === "request" ? "border-transparent bg-transparent" : ""}`}
-    >
-      <InputGroupAddon>
-        <Search className="size-3.5" />
-      </InputGroupAddon>
-      <InputGroupInput
-        aria-label="Search conversations"
-        placeholder="Search mail"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-      />
-    </InputGroup>
-  );
-  const archivedToggle = (
-    <PillButton
-      type="button"
-      variant={archivedView ? "secondary" : "ghost"}
-      size="compact"
-      iconOnly
-      label={archivedView ? "Back to inbox" : "Archived"}
-      aria-pressed={archivedView}
-      onClick={() => setArchivedView((value) => !value)}
-    >
-      <Archive className="size-3.5" />
-    </PillButton>
-  );
-  const filtersToggle = (
-    <PillButton
-      type="button"
-      variant={showFilters ? "secondary" : "ghost"}
-      size="compact"
-      iconOnly
-      label={showFilters ? "Hide filters" : "Show filters"}
-      aria-pressed={showFilters}
-      onClick={() => setShowFilters((value) => !value)}
-    >
-      <SlidersHorizontal className="size-3.5" />
-    </PillButton>
-  );
+  const searchProps = {
+    value: search,
+    onChange: setSearch,
+    label: "Search conversations",
+    placeholder: "Search mail",
+  };
   const selectionBar = checkedVisible.length ? (
     <div className="flex h-10 items-center gap-3 border-b border-border pr-3 pl-4">
       <Checkbox
@@ -757,110 +749,55 @@ export function TeamInbox({
     );
   }
 
-  if (scope.kind === "request")
-    return (
-      <section className="@container space-y-3">
-        <OperationalPanel className="flex items-center gap-2 px-2 py-1.5">
-          {archivedToggle}
-          <div className="min-w-0 flex-1">{searchField}</div>
-          <PillButton
-            type="button"
-            variant="ghost"
-            size="compact"
-            disabled={forward.loading || forward.busy}
-            title={
-              forward.address
-                ? `Forward mail to ${forward.address} to add it here. Click to copy.`
-                : "Copy your forwarding address"
-            }
-            onClick={() => void forward.copy()}
-          >
-            <AtSign className="size-3.5" />
-            <span className="hidden max-w-56 truncate @md:inline">
-              {forward.busy
-                ? "Setting up…"
-                : forward.address
-                  ? `Forward to ${forward.address}`
-                  : "Forwarding address"}
-            </span>
-          </PillButton>
-        </OperationalPanel>
-        {list}
-      </section>
+  const tabs =
+    scope.kind === "request" ? (
+      <Tabs
+        value={archivedView ? "archived" : "inbox"}
+        onValueChange={(value) => setArchivedView(value === "archived")}
+      >
+        <TabsList variant="pill" aria-label="Show">
+          <TabsTrigger value="inbox">Inbox</TabsTrigger>
+          <TabsTrigger value="archived">Archived</TabsTrigger>
+        </TabsList>
+      </Tabs>
+    ) : (
+      <Tabs
+        value={filter}
+        onValueChange={(value) => {
+          const next = value as TeamFilter;
+          setFilter(next);
+          // Unlinked mail has no client, so the two cannot combine.
+          if (next === "unlinked") setClientOrgId("");
+        }}
+      >
+        <TabsList variant="pill" aria-label="Show">
+          <TabsTrigger value="mine">Mine</TabsTrigger>
+          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
+        </TabsList>
+      </Tabs>
     );
 
   return (
-    <section className="space-y-3">
-      <AppShellPortal slot="actions">
-        <div className="flex items-center gap-2">
-          {archivedToggle}
-          {onCompose && !readOnly ? (
-            <PillButton type="button" size="compact" onClick={onCompose}>
-              <PenSquare className="size-3.5" />
-              New email
-            </PillButton>
-          ) : null}
-        </div>
-      </AppShellPortal>
-      <div className="flex flex-wrap items-center gap-2">
-        <Tabs
-          value={filter}
-          onValueChange={(value) => {
-            const next = value as TeamFilter;
-            setFilter(next);
-            // Unlinked mail has no client, so the two cannot combine.
-            if (next === "unlinked") setClientOrgId("");
-          }}
-        >
-          <TabsList variant="pill" aria-label="Show">
-            <TabsTrigger value="mine">Mine</TabsTrigger>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="unlinked">Unlinked</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <div className="ml-auto flex items-center gap-2">
-          <div className="w-56">{searchField}</div>
-          {filtersToggle}
-        </div>
-      </div>
-      {showFilters ? (
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <div className="w-44">
-            <SearchableSelect
-              ariaLabel="Client"
-              typographyRole="control.menu"
-              value={clientOrgId}
-              options={clientOptions}
-              onChange={(value) => {
-                setClientOrgId(value);
-                if (filter === "unlinked") setFilter("all");
-              }}
-              placeholder="Any client"
-            />
+    <section className="@container space-y-3">
+      {scope.kind === "team" ? (
+        <AppShellPortal slot="actions">
+          <div className="flex items-center gap-2">
+            {onCompose && !readOnly ? (
+              <PillButton type="button" size="compact" onClick={onCompose}>
+                <PenSquare className="size-3.5" />
+                New email
+              </PillButton>
+            ) : null}
           </div>
-          <Select
-            value={category}
-            items={CATEGORY_ITEMS}
-            onValueChange={(value) => value && setCategory(value)}
-          >
-            <SelectTrigger className="w-40" aria-label="Category">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(CATEGORY_ITEMS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {filtered ? (
-            <PillButton type="button" variant="ghost" size="compact" onClick={resetFilters}>
-              Clear filters
-            </PillButton>
-          ) : null}
-        </div>
+        </AppShellPortal>
       ) : null}
+      <ListToolbar
+        followKey={uiKey}
+        tabs={tabs}
+        filters={filters}
+        search={searchProps}
+      />
       {list}
     </section>
   );

@@ -211,8 +211,6 @@ export async function runSectionJob(
   const mapping = mapSpotCallToClRouterPrimitive({
     task: "extraction",
     taskKind: SECTION_TASK_KIND,
-    hasStructuredOutput: true,
-    hasVision: true,
   });
   const staged: RouterAssetCleanup[] = [];
   try {
@@ -242,7 +240,6 @@ export async function runSectionJob(
     const response = await clRouterGenerateMaybeManual(
       {
         primitive: mapping.primitive,
-        ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
         orgId: String(args.orgId),
         system,
         messages: [{ role: "user", content }],
@@ -346,14 +343,11 @@ export async function runProposalQuoteTermsJob(
   const mapping = mapSpotCallToClRouterPrimitive({
     task: "extraction",
     taskKind: PROPOSAL_QUOTE_TERMS_TASK_KIND,
-    hasStructuredOutput: true,
-    hasVision: false,
   });
   try {
     const response = await clRouterGenerateMaybeManual(
       {
         primitive: mapping.primitive,
-        ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
         orgId: String(args.orgId),
         system,
         messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],

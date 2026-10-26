@@ -1,6 +1,6 @@
 "use client";
 import { ChevronRight, Plus } from "lucide-react";
-import type { KeyboardEvent, ReactNode } from "react";
+import { useMemo, type KeyboardEvent, type ReactNode } from "react";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import {
@@ -19,10 +19,11 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
+import { useTableSort, type TableSortValue } from "@/hooks/use-table-sort";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import type { IntakeAnswers } from "@/lib/insurance-intake";
 import {
@@ -48,7 +49,10 @@ import { intakeApplicantQuestion } from "@/lib/intake-applicant-wording";
 import { vehicleUnderwritingValues } from "@/lib/intake-vehicle-underwriting";
 import { vehicleMakeLabel } from "@/lib/vehicle-display";
 import { typeStyle } from "@/lib/typography";
-import { IntakeDriverRows, IntakeFollowupRows } from "./application-quote-fields";
+import {
+  IntakeDriverRows,
+  IntakeFollowupRows,
+} from "./application-quote-fields";
 import {
   IntakeCoverageLimits,
   IntakeCoverageScope,
@@ -109,23 +113,40 @@ function rowKeyboard(event: KeyboardEvent, open: () => void) {
   open();
 }
 
+type ItemRow = {
+  key: string;
+  label: string;
+  cells: ReactNode[];
+  /** What each cell sorts by, in column order. */
+  sortValues: TableSortValue[];
+  selected: boolean;
+  open: () => void;
+};
+
 function ItemTable({
+  followKey,
   title,
   empty,
   columns,
   rows,
 }: {
+  followKey: string;
   title: string;
   empty: string;
   columns: string[];
-  rows: {
-    key: string;
-    label: string;
-    cells: ReactNode[];
-    selected: boolean;
-    open: () => void;
-  }[];
+  rows: ItemRow[];
 }) {
+  const sortColumns = useMemo(
+    () =>
+      Object.fromEntries(
+        columns.map((column, index) => [
+          column,
+          (row: ItemRow) => row.sortValues[index],
+        ]),
+      ),
+    [columns],
+  );
+  const tableSort = useTableSort(followKey, rows, sortColumns);
   return (
     <InlineFieldCard
       title={title}
@@ -140,12 +161,14 @@ function ItemTable({
           <TableHeader>
             <TableRow>
               {columns.map((column) => (
-                <TableHead key={column}>{column}</TableHead>
+                <SortableTableHead key={column} {...tableSort.head(column)}>
+                  {column}
+                </SortableTableHead>
               ))}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => (
+            {tableSort.rows.map((row) => (
               <TableRow
                 key={row.key}
                 tabIndex={0}
@@ -178,7 +201,9 @@ function ItemTable({
           </TableBody>
         </Table>
       ) : (
-        <p className={`px-4 py-2.5 text-muted-foreground ${typeStyle("body.default")}`}>
+        <p
+          className={`px-4 py-2.5 text-muted-foreground ${typeStyle("body.default")}`}
+        >
           {empty}
         </p>
       )}
@@ -186,8 +211,16 @@ function ItemTable({
   );
 }
 
+const VEHICLE_COLUMNS = ["Vehicle", "VIN", "Use", "Approximate value"];
+const DRIVER_COLUMNS = ["Driver", "License", "Experience", "History"];
+const LOCATION_COLUMNS = ["Location", "Address", "Owned or leased", "Staff"];
+
 const missing = (value?: string) =>
-  value?.trim() ? value : <span className="text-muted-foreground">Not provided</span>;
+  value?.trim() ? (
+    value
+  ) : (
+    <span className="text-muted-foreground">Not provided</span>
+  );
 
 /** One requested coverage: terms in a card, collections as tables opening panels. */
 export function IntakeCoverageSection({
@@ -226,10 +259,7 @@ export function IntakeCoverageSection({
   const selected = (target: CoveragePanelTarget) =>
     JSON.stringify(panel) === JSON.stringify(target);
   return (
-    <section
-      aria-label={coverageRequestLabel(line)}
-      className="space-y-5"
-    >
+    <section aria-label={coverageRequestLabel(line)} className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className={typeStyle("heading.item")}>
           {coverageRequestLabel(line)}
@@ -373,11 +403,16 @@ export function IntakeCoverageSection({
         {routes.map((row) => (
           <InlineFieldRow
             key={row.id}
-            label={intakeApplicantQuestion(row, answers.industry, details.followups).title}
+            label={
+              intakeApplicantQuestion(row, answers.industry, details.followups)
+                .title
+            }
           >
             <button
               type="button"
-              onClick={() => onOpenPanel({ kind: "routes", questionId: row.id })}
+              onClick={() =>
+                onOpenPanel({ kind: "routes", questionId: row.id })
+              }
               aria-label={`Edit routes: ${formatIntakeFollowupAnswer(row) || "Not provided"}`}
               className={`flex min-h-9 w-full items-center justify-between gap-2 rounded-md px-3 py-1.5 text-left transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none ${selected({ kind: "routes", questionId: row.id }) ? "bg-muted" : ""}`}
             >
@@ -396,12 +431,18 @@ export function IntakeCoverageSection({
       </InlineFieldCard>
       {auto && (
         <ItemTable
+          followKey={`intake:coverage:${line.coverage}:vehicles`}
           title="Vehicles"
           empty="No vehicles added"
-          columns={["Vehicle", "VIN", "Use", "Approximate value"]}
+          columns={VEHICLE_COLUMNS}
           rows={vehicles.map((vehicle, index) => {
             const target = { kind: "vehicle" as const, coverageIndex, index };
             const label = vehicleName(vehicle, index);
+            const use = vehicleUnderwritingValues(
+              vehicle,
+              index,
+              details.followups,
+            ).use;
             return {
               key: String(index),
               label,
@@ -410,11 +451,17 @@ export function IntakeCoverageSection({
               cells: [
                 label,
                 missing(vehicle.vin),
-                missing(
-                  vehicleUnderwritingValues(vehicle, index, details.followups)
-                    .use,
-                ),
+                missing(use),
                 missing(vehicle.estimatedValue && `$${vehicle.estimatedValue}`),
+              ],
+              sortValues: [
+                label,
+                vehicle.vin,
+                use,
+                vehicle.estimatedValue
+                  ? Number(vehicle.estimatedValue.replace(/[^\d.]/g, "")) ||
+                    undefined
+                  : undefined,
               ],
             };
           })}
@@ -422,9 +469,10 @@ export function IntakeCoverageSection({
       )}
       {auto && (
         <ItemTable
+          followKey={`intake:coverage:${line.coverage}:drivers`}
           title="Drivers"
           empty="No drivers added"
-          columns={["Driver", "License", "Experience", "History"]}
+          columns={DRIVER_COLUMNS}
           rows={drivers.map((driver, index) => {
             const target = { kind: "driver" as const, index };
             const label = driver.name.trim() || `Driver ${index + 1}`;
@@ -432,6 +480,13 @@ export function IntakeCoverageSection({
               driver.accidents === "yes" ? "Accidents" : "",
               driver.violations === "yes" ? "Violations" : "",
             ].filter(Boolean);
+            const license = [driver.licenseJurisdiction, driver.licenseClass]
+              .filter(Boolean)
+              .join(" · ");
+            const historyText =
+              driver.accidents === "no" && driver.violations === "no"
+                ? "None reported"
+                : history.join(", ");
             return {
               key: driver.id,
               label,
@@ -441,18 +496,22 @@ export function IntakeCoverageSection({
                 <span key="name" className="ph-no-capture">
                   {label}
                 </span>,
-                missing(
-                  [driver.licenseJurisdiction, driver.licenseClass]
-                    .filter(Boolean)
-                    .join(" · "),
-                ),
+                missing(license),
                 missing(
                   driver.yearsExperience &&
                     `${driver.yearsExperience} ${Number(driver.yearsExperience) === 1 ? "year" : "years"}`,
                 ),
-                driver.accidents === "no" && driver.violations === "no"
-                  ? "None reported"
-                  : missing(history.join(", ")),
+                historyText === "None reported"
+                  ? historyText
+                  : missing(historyText),
+              ],
+              sortValues: [
+                label,
+                license,
+                driver.yearsExperience
+                  ? Number(driver.yearsExperience) || undefined
+                  : undefined,
+                historyText,
               ],
             };
           })}
@@ -460,12 +519,22 @@ export function IntakeCoverageSection({
       )}
       {line.coverage === "property" && (
         <ItemTable
+          followKey={`intake:coverage:${line.coverage}:locations`}
           title="Locations"
           empty="No locations added"
-          columns={["Location", "Address", "Owned or leased", "Staff"]}
+          columns={LOCATION_COLUMNS}
           rows={properties.map((property, index) => {
             const target = { kind: "location" as const, coverageIndex, index };
             const label = property.name?.trim() || `Location ${index + 1}`;
+            const address = addressText(property.address);
+            const ownership =
+              property.ownership === "owned"
+                ? "Owned"
+                : property.ownership === "leased"
+                  ? "Leased"
+                  : property.ownership === "unknown"
+                    ? "I'm not sure"
+                    : undefined;
             return {
               key: String(index),
               label,
@@ -473,18 +542,11 @@ export function IntakeCoverageSection({
               open: () => onOpenPanel(target),
               cells: [
                 label,
-                missing(addressText(property.address)),
-                missing(
-                  property.ownership === "owned"
-                    ? "Owned"
-                    : property.ownership === "leased"
-                      ? "Leased"
-                      : property.ownership === "unknown"
-                        ? "I'm not sure"
-                        : undefined,
-                ),
+                missing(address),
+                missing(ownership),
                 missing(property.staff),
               ],
+              sortValues: [label, address, ownership, property.staff],
             };
           })}
         />
@@ -548,11 +610,7 @@ export function IntakeCoveragePanel({
         />
       </PanelBlock>
     ) : null;
-  const drawer = (
-    title: ReactNode,
-    body: ReactNode,
-    footer?: ReactNode,
-  ) => (
+  const drawer = (title: ReactNode, body: ReactNode, footer?: ReactNode) => (
     <SettingsDrawer
       open
       title={title}
@@ -569,9 +627,10 @@ export function IntakeCoveragePanel({
     </SettingsDrawer>
   );
   if (target.kind === "routes") {
-    const row = (details.followups ?? []).find(
-      (answer) => answer.id === target.questionId,
-    ) ??
+    const row =
+      (details.followups ?? []).find(
+        (answer) => answer.id === target.questionId,
+      ) ??
       intakeCoverageAnswerRows(answers, details).find(
         (answer) => answer.id === target.questionId,
       );

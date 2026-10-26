@@ -33,10 +33,7 @@ import {
   type ClRouterToolDefinition,
   type ClRouterUsage,
 } from "./clRouterClient";
-import {
-  clRouterContentHasVision,
-  mapSpotCallToClRouterPrimitive,
-} from "./clRouterPrimitive";
+import { mapSpotCallToClRouterPrimitive } from "./clRouterPrimitive";
 import type { ModelRoute, ModelTask } from "./modelCatalog";
 import { settleRouterAssetCleanups } from "../actions/routerAssets";
 
@@ -58,7 +55,6 @@ export type ClRouterLanguageModelOptions = {
   sessionKey: string;
   trace?: ClRouterGenerateRequest["trace"];
   initialRoutePin?: ModelRoute;
-  toolSelection?: ClRouterGenerateRequest["toolSelection"];
   assetStager?: (asset: {
     bytes: Uint8Array;
     mediaType: string;
@@ -343,13 +339,6 @@ async function requestForCall(
   const mapping = mapSpotCallToClRouterPrimitive({
     task: adapter.task,
     taskKind: adapter.taskKind,
-    hasTools: tools.length > 0,
-    hasVision: clRouterContentHasVision(
-      messages.flatMap((message) =>
-        Array.isArray(message.content) ? message.content : [],
-      ),
-    ),
-    hasStructuredOutput: Boolean(schema),
   });
   const trace = normalizeClRouterTrace({
     ...adapter.trace,
@@ -359,7 +348,6 @@ async function requestForCall(
   });
   return {
     primitive: mapping.primitive,
-    ...(mapping.requirements ? { requirements: mapping.requirements } : {}),
     ...(adapter.orgId ? { orgId: adapter.orgId } : {}),
     messages,
     ...(schema
@@ -371,9 +359,6 @@ async function requestForCall(
       : {}),
     ...(options.maxOutputTokens ? { maxTokens: options.maxOutputTokens } : {}),
     ...(tools.length > 0 ? { tools } : {}),
-    ...(tools.length > 0 && adapter.toolSelection
-      ? { toolSelection: adapter.toolSelection }
-      : {}),
     ...(trace ? { trace } : {}),
   };
 }
@@ -602,7 +587,7 @@ export function createClRouterLanguageModel(
   adapter: ClRouterLanguageModelOptions,
 ): LanguageModelV3 {
   let parentRequestId = adapter.trace?.parentRequestId;
-  let selectedRoute: ModelRoute | undefined = adapter.initialRoutePin;
+  const selectedRoute = adapter.initialRoutePin;
   let successfulRouterSteps = 0;
   const clientOptions = (
     abortSignal: AbortSignal | undefined,
@@ -661,7 +646,6 @@ export function createClRouterLanguageModel(
           throw failureWithResponseContext(error, response);
         }
         parentRequestId = response.requestId;
-        selectedRoute = response.model;
         successfulRouterSteps += 1;
         const rawFinishReason = response.finishReason ?? "stop";
         await notifyResponse(
@@ -784,7 +768,6 @@ export function createClRouterLanguageModel(
                   } else {
                     receivedDone = true;
                     parentRequestId = event.requestId;
-                    selectedRoute = event.model;
                     successfulRouterSteps += 1;
                     await notifyResponse(event, {
                       ...step,

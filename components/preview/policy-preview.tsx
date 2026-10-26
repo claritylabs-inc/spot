@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -14,6 +14,7 @@ import {
   OperationalLabelValueList,
   OperationalLabelValueRow,
 } from "@claritylabs-inc/ui/components/operational-panel";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { usePdf } from "@/components/pdf-context";
 import { useCachedPolicyDetail } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
@@ -270,6 +271,7 @@ export function PolicyPreview({
       )}
 
       <CoverageListPreview
+        policyId={id}
         breakdown={coverageBreakdown}
         fileUrl={fileUrl}
         sourceNodes={coverageSourceNodes}
@@ -382,17 +384,22 @@ function visibleCoveragePreviewGroups(
 }
 
 function CoverageListPreview({
+  policyId,
   breakdown,
   fileUrl,
   sourceNodes,
   sourceSpans,
 }: {
+  policyId: string;
   breakdown: CoverageBreakdown;
   fileUrl?: string | null;
   sourceNodes?: SourceNodeEvidenceDoc[];
   sourceSpans?: SourceSpanDoc[];
 }) {
-  const [showAllCoverages, setShowAllCoverages] = useState(false);
+  const [showAllCoverages, setShowAllCoverages] = useFollowedState(
+    `preview:policy:${policyId}:all-coverages`,
+    false,
+  );
   const groups = coveragePreviewGroups(breakdown);
   const totalRows = breakdown.all.length;
   const visibleGroups = showAllCoverages

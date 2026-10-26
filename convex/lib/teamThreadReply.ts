@@ -98,6 +98,15 @@ export async function teamThreadOwnerAddress(
 
 const QUOTE_MAX_CHARS = 700;
 
+/** A trailing "On <date> UTC, <sender> wrote:" block of "> " lines, as written by `quotedHistory`. */
+const QUOTED_HISTORY_PATTERN =
+  /\n*On [^\n]+ UTC, [^\n]+ wrote:\n\n(?:>[^\n]*(?:\n|$))*$/;
+
+/** A draft body without the team-thread quote appended to it. */
+export function withoutQuotedHistory(body: string) {
+  return body.replace(QUOTED_HISTORY_PATTERN, "").trimEnd();
+}
+
 export function quotedHistory(message: Doc<"teamEmailMessages">) {
   const who = message.fromName
     ? `${message.fromName} <${message.fromEmail}>`

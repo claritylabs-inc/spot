@@ -3,6 +3,10 @@
 import { useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import {
+  publishedUiJson,
+  subscribePublishedUi,
+} from "@/hooks/use-followed-state";
 
 /** Twenty updates a second reads as live without flooding Convex. */
 const PUBLISH_INTERVAL_MS = 50;
@@ -149,6 +153,10 @@ function focusedField() {
   return anchor ? { anchor, ...value } : undefined;
 }
 
+/** Matches the server cap; an oversized map is skipped rather than failing. */
+const UI_STATE_LIMIT = 50_000;
+const UI_PUBLISH_DELAY_MS = 50;
+
 function currentHref() {
   return `${window.location.pathname}${window.location.search}`;
 }
@@ -157,6 +165,30 @@ function currentHref() {
 export function usePublishOperatorCursor(enabled: boolean) {
   const move = useMutation(api.operatorCursors.move);
   const clear = useMutation(api.operatorCursors.clear);
+  const publishUi = useMutation(api.operatorCursors.publishUi);
+
+  // Followed UI state goes on its own row, sent only when it changes.
+  useEffect(() => {
+    if (!enabled) return;
+    let sent: string | null = null;
+    let timer: number | null = null;
+    const send = () => {
+      timer = null;
+      const ui = publishedUiJson();
+      if (ui === sent || ui.length > UI_STATE_LIMIT) return;
+      sent = ui;
+      void publishUi({ ui }).catch(() => {});
+    };
+    const schedule = () => {
+      timer ??= window.setTimeout(send, UI_PUBLISH_DELAY_MS);
+    };
+    send();
+    const unsubscribe = subscribePublishedUi(schedule);
+    return () => {
+      unsubscribe();
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [enabled, publishUi]);
 
   useEffect(() => {
     if (!enabled) return;

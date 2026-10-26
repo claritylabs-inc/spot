@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -22,11 +22,14 @@ import {
   TableHeader,
   TableRow,
   TableNameLink,
+  SortableTableHead,
 } from "@/components/ui/table";
 import { ArchiveRestore, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { usePolicyUpload } from "@/hooks/use-policy-upload";
+import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { normalizeExtractedDate } from "@/convex/lib/valueNormalization";
 import { formatDisplayDate } from "@/lib/date-format";
 import {
@@ -95,6 +98,28 @@ function displayUploadedBy(side?: ClientPolicyRow["uploadedBySide"]) {
   return "Unknown";
 }
 
+function sortableDate(value?: string | null) {
+  const cleaned = cleanField(value);
+  return cleaned ? (normalizeExtractedDate(cleaned) ?? cleaned) : undefined;
+}
+
+function sortablePremium(value?: string | null) {
+  const digits = cleanField(value)?.replace(/[^\d.]/g, "");
+  return digits ? Number(digits) : undefined;
+}
+
+const POLICY_SORT_COLUMNS = {
+  carrier: (policy: ClientPolicyRow) => cleanField(policy.carrier),
+  policyNumber: (policy: ClientPolicyRow) => cleanField(policy.policyNumber),
+  term: (policy: ClientPolicyRow) => sortableDate(policy.effectiveDate),
+  premium: (policy: ClientPolicyRow) => sortablePremium(policy.premium),
+  uploadedBy: (policy: ClientPolicyRow) =>
+    displayUploadedBy(policy.uploadedBySide),
+  status: (policy: ClientPolicyRow) =>
+    policy.isDemo ? "demo" : EXTRACTION_STATUS[extractionState(policy).kind].label,
+  file: (policy: ClientPolicyRow) => cleanField(policy.fileName),
+};
+
 export type ManagedClientPolicyWorkspaceProps = {
   clientOrgId?: string;
   basePath?: string;
@@ -122,7 +147,10 @@ export function ManagedClientPolicyWorkspace({
   const clientOrgId = clientOrgIdProp ?? params.clientOrgId;
   const basePath = basePathProp ?? `/clients/${clientOrgId}/policies`;
   const router = useRouter();
-  const [uploaderOpen, setUploaderOpen] = useState(false);
+  const [uploaderOpen, setUploaderOpen] = useFollowedState(
+    `policy:client:${clientOrgId}:uploader-open`,
+    false,
+  );
   const setActions = onActions ?? clearNode;
   const setRightPanel = onRightPanel ?? clearNode;
   const setBreadcrumbExtra = onBreadcrumb ?? clearText;
@@ -157,7 +185,7 @@ export function ManagedClientPolicyWorkspace({
       ),
     );
     return () => setActions(null);
-  }, [readOnly, setActions, showArchived]);
+  }, [readOnly, setActions, setUploaderOpen, showArchived]);
 
   const policies = useCachedQuery(
     "policies.listForOperator",
@@ -220,6 +248,7 @@ export function ManagedClientPolicyWorkspace({
     handleUpload,
     readOnly,
     setRightPanel,
+    setUploaderOpen,
     showArchived,
     policyPreview,
     uploaderOpen,
@@ -227,7 +256,15 @@ export function ManagedClientPolicyWorkspace({
   ]);
 
   const isLoading = policies === undefined;
-  const rows = (policies ?? []) as ClientPolicyRow[];
+  const rows = useMemo(
+    () => (policies ?? []) as ClientPolicyRow[],
+    [policies],
+  );
+  const tableSort = useTableSort(
+    `policy:client:${clientOrgId}:${showArchived ? "archived" : "active"}`,
+    rows,
+    POLICY_SORT_COLUMNS,
+  );
 
   return (
     <div className="space-y-4">
@@ -250,41 +287,48 @@ export function ManagedClientPolicyWorkspace({
           <Table className="min-w-[900px]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead
+                <SortableTableHead
                   className={`w-[22%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("carrier")}
                 >
                   Carrier
-                </TableHead>
-                <TableHead
+                </SortableTableHead>
+                <SortableTableHead
                   className={`w-[16%] text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("policyNumber")}
                 >
                   Policy no.
-                </TableHead>
-                <TableHead
+                </SortableTableHead>
+                <SortableTableHead
                   className={`w-[20%] text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("term")}
                 >
                   Term
-                </TableHead>
-                <TableHead
+                </SortableTableHead>
+                <SortableTableHead
                   className={`w-[12%] text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("premium")}
                 >
                   Premium
-                </TableHead>
-                <TableHead
+                </SortableTableHead>
+                <SortableTableHead
                   className={`w-[12%] text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("uploadedBy")}
                 >
                   Uploaded by
-                </TableHead>
-                <TableHead
+                </SortableTableHead>
+                <SortableTableHead
                   className={`w-[10%] text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("status")}
                 >
                   Status
-                </TableHead>
-                <TableHead
+                </SortableTableHead>
+                <SortableTableHead
                   className={`w-[18%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("file")}
                 >
                   File
-                </TableHead>
+                </SortableTableHead>
                 {showArchived && !readOnly ? (
                   <TableHead
                     className={`w-28 px-4 text-right text-muted-foreground ${typeStyle("label.table")}`}
@@ -295,7 +339,7 @@ export function ManagedClientPolicyWorkspace({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((policy) => {
+              {tableSort.rows.map((policy) => {
                 const carrier = cleanField(policy.carrier) ?? "Untitled policy";
                 const policyNumber =
                   cleanField(policy.policyNumber) ?? "No policy number";

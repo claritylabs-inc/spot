@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import dayjs from "dayjs";
 import { ChevronRight, Loader2, Mail, Plus } from "lucide-react";
 
@@ -26,6 +26,7 @@ import {
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { useCurrentOrg } from "@/hooks/use-current-org";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import {
   useCachedQuery,
   useUpdateCachedQuery,
@@ -52,9 +53,15 @@ export function EmailConnectionsSection() {
     { orgId: Id<"organizations"> }
   >("connectedEmail.list");
   const { setActions, setRightPanel } = useSettingsActions();
-  const [addMailboxOpen, setAddMailboxOpen] = useState(false);
+  const [addMailboxOpen, setAddMailboxOpen] = useFollowedState(
+    "settings:email:add-mailbox",
+    false,
+  );
   const [selectedAccountId, setSelectedAccountId] =
-    useState<Id<"connectedEmailAccounts"> | null>(null);
+    useFollowedState<Id<"connectedEmailAccounts"> | null>(
+      "settings:email:selected-account",
+      null,
+    );
   const mailboxSaveBarrierRef = useRef<(() => Promise<boolean>) | null>(null);
 
   const selectedAccount = connectedEmailAccounts?.find(
@@ -126,7 +133,7 @@ export function EmailConnectionsSection() {
       if (barrier && !(await barrier())) return;
       setSelectedAccountId(accountId);
     },
-    [selectedAccountId],
+    [selectedAccountId, setSelectedAccountId],
   );
 
   const openAddMailbox = useCallback(async () => {
@@ -134,7 +141,7 @@ export function EmailConnectionsSection() {
     if (barrier && !(await barrier())) return;
     setSelectedAccountId(null);
     setAddMailboxOpen(true);
-  }, []);
+  }, [setAddMailboxOpen, setSelectedAccountId]);
 
   useEffect(() => {
     setActions(
@@ -188,7 +195,9 @@ export function EmailConnectionsSection() {
     removeConnectedAccount,
     saveConnectedAccount,
     selectedAccount,
+    setAddMailboxOpen,
     setMailboxSaveBarrier,
+    setSelectedAccountId,
     setRightPanel,
     viewer?._id,
   ]);

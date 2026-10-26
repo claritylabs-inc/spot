@@ -2,7 +2,10 @@
 
 import { useState, type FormEvent } from "react";
 import { useAction, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { toast } from "sonner";
+import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { api } from "@/convex/_generated/api";
 import { ChatAvatar } from "@/components/chat/chat-message";
 import { PillButton } from "@/components/ui/pill-button";
@@ -14,9 +17,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
@@ -24,11 +27,24 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const inputClasses = `h-9 w-full rounded-lg border border-input bg-popover px-3 placeholder:text-muted-foreground/40 focus:border-border-focus focus:outline-none focus:ring-1 focus:ring-input ${typeStyle("control.input")}`;
 
+type OperatorRow = FunctionReturnType<typeof api.operator.listOperators>[number];
+
+const OPERATOR_SORT_COLUMNS = {
+  name: (operator: OperatorRow) => operator.name,
+  email: (operator: OperatorRow) => operator.email,
+  access: (operator: OperatorRow) => operator.role,
+};
+
 export function useOperatorInvite(disabled: boolean) {
   const inviteOperator = useAction(api.operatorInvitations.inviteOperator);
   const operators = useQuery(api.operator.listOperators);
   const viewerUserId = useCachedOperatorCurrent()?.user._id;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useFollowedState("operator:invite:drawer-open", false);
+  const tableSort = useTableSort(
+    "operator:invite:operators",
+    operators ?? [],
+    OPERATOR_SORT_COLUMNS,
+  );
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -79,19 +95,28 @@ export function useOperatorInvite(disabled: boolean) {
           <Table className="table-fixed">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className={`w-[35%] px-5 text-muted-foreground ${typeStyle("label.table")}`}>
+                <SortableTableHead
+                  className={`w-[35%] px-5 text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("name")}
+                >
                   Operator
-                </TableHead>
-                <TableHead className={`w-[40%] text-muted-foreground ${typeStyle("label.table")}`}>
+                </SortableTableHead>
+                <SortableTableHead
+                  className={`w-[40%] text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("email")}
+                >
                   Email
-                </TableHead>
-                <TableHead className={`w-[25%] px-5 text-muted-foreground ${typeStyle("label.table")}`}>
+                </SortableTableHead>
+                <SortableTableHead
+                  className={`w-[25%] px-5 text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("access")}
+                >
                   Access
-                </TableHead>
+                </SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {operators.map((operator) => (
+              {tableSort.rows.map((operator) => (
                 <TableRow key={operator.userId} className="hover:bg-transparent">
                   <TableCell className="px-5 py-3">
                     <div className="flex min-w-0 items-center gap-3">

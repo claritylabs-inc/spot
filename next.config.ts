@@ -24,6 +24,8 @@ const analyticsRewrites = [
 
 const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
+  // PR CI runs `tsc --noEmit`; skip the duplicate check in `next build`.
+  typescript: { ignoreBuildErrors: true },
   experimental:
     process.env.CONDUCTOR_IS_LOCAL === "0" &&
     process.env.NODE_ENV === "development"

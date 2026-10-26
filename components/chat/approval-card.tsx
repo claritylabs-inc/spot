@@ -43,7 +43,7 @@ export function ChatApprovalCard({
           <p
             className={cn(
               "min-w-0 flex-1 basis-48 break-words text-foreground",
-              typeStyle("body.large"),
+              typeStyle("body.default"),
             )}
           >
             {summary}
@@ -53,7 +53,7 @@ export function ChatApprovalCard({
           <p
             className={cn(
               "mt-2 whitespace-pre-line break-words text-foreground",
-              typeStyle("body.large"),
+              typeStyle("body.default"),
             )}
           >
             {details.join("\n")}

@@ -23,6 +23,7 @@ import {
   OperationalSkeletonList,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import {
   Select,
   SelectContent,
@@ -34,12 +35,13 @@ import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs
 import { useCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { usePageContext } from "@/hooks/use-page-context";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { usePdf } from "@/components/pdf-context";
 import { typeStyle } from "@/lib/typography";
 import { CertificateGeneratePanel } from "@/components/certificates/certificate-generate-panel";
 
 type CertificateWorkspaceTab = "active" | "archived";
-type CertificatePolicyFilter = "all" | `policy:${string}`;
+type CertificatePolicyFilter = `policy:${string}`;
 
 type CertificatesWorkspaceShellArgs = {
   actions: ReactNode;
@@ -73,58 +75,8 @@ function certificatePolicyFilterOptions(rows: PolicyCertificateRecord[]) {
   for (const row of rows) {
     byValue.set(certificatePolicyFilterValue(row), certificatePolicyLabel(row.policy));
   }
-  return [
-    { value: "all" as const, label: "All policies" },
-    ...Array.from(byValue, ([value, label]) => ({ value, label }))
-      .sort((left, right) => left.label.localeCompare(right.label)),
-  ];
-}
-
-function filterCertificates({
-  rows,
-  policyFilter,
-}: {
-  rows: PolicyCertificateRecord[];
-  policyFilter: CertificatePolicyFilter;
-}) {
-  return rows.filter((row) =>
-    policyFilter === "all" || certificatePolicyFilterValue(row) === policyFilter,
-  );
-}
-
-function CertificatesPolicyFilter({
-  value,
-  label,
-  options,
-  onValueChange,
-}: {
-  value: CertificatePolicyFilter;
-  label: string;
-  options: Array<{ value: CertificatePolicyFilter; label: string }>;
-  onValueChange: (value: CertificatePolicyFilter) => void;
-}) {
-  return (
-    <label className={`flex min-w-0 max-w-xl flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}>
-      Policy
-      <Select
-        value={value}
-        onValueChange={(next) => next && onValueChange(next as CertificatePolicyFilter)}
-      >
-        <SelectTrigger className="w-full">
-          <SelectValue>{label}</SelectValue>
-        </SelectTrigger>
-        <SelectContent className="w-auto min-w-(--anchor-width) max-w-[36rem]">
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              <span className="block max-w-[32rem] truncate">
-                {option.label}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </label>
-  );
+  return Array.from(byValue, ([value, label]) => ({ value, label }))
+    .sort((left, right) => left.label.localeCompare(right.label));
 }
 
 function CertificateEmptyPanel({
@@ -178,14 +130,15 @@ export function CertificatesWorkspace({
   const archiveCertificateMutation = useMutation(api.certificateLifecycle.archive);
   const unarchiveCertificateMutation = useMutation(api.certificateLifecycle.unarchive);
   const { openWithUrl } = usePdf();
-  const [tab, setTab] = useState<CertificateWorkspaceTab>("active");
-  const [generateOpen, setGenerateOpen] = useState(false);
-  const [selectedCertificateId, setSelectedCertificateId] = useState<Id<"policyCertificates"> | null>(null);
+  const uiKey = `certificates:${orgIdOverride ?? "own"}`;
+  const [tab, setTab] = useFollowedState<CertificateWorkspaceTab>(`${uiKey}:tab`, "active");
+  const [generateOpen, setGenerateOpen] = useFollowedState(`${uiKey}:generate-open`, false);
+  const [selectedCertificateId, setSelectedCertificateId] = useFollowedState<Id<"policyCertificates"> | null>(`${uiKey}:selected`, null);
   const [reissuingCertificateId, setReissuingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
   const [savingCertificateId, setSavingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
   const [archivingCertificateId, setArchivingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
   const [unarchivingCertificateId, setUnarchivingCertificateId] = useState<Id<"policyCertificates"> | null>(null);
-  const [policyFilter, setPolicyFilter] = useState<CertificatePolicyFilter>("all");
+  const [policyFilter, setPolicyFilter] = useFollowedState<string[]>(`${uiKey}:policy-filters`, []);
   const viewerOrg = useCachedViewerOrg();
   const orgId =
     orgIdOverride ??
@@ -232,17 +185,16 @@ export function CertificatesWorkspace({
     () => certificatePolicyFilterOptions(tableCertificates),
     [tableCertificates],
   );
-  const effectivePolicyFilter = policyFilters.some((option) => option.value === policyFilter)
-    ? policyFilter
-    : "all";
-  const policyFilterLabel = policyFilters.find((option) => option.value === effectivePolicyFilter)?.label ??
-    "All policies";
+  const effectivePolicyFilter = policyFilter.filter((value) =>
+    policyFilters.some((option) => option.value === value),
+  );
   const visibleCertificates = useMemo(
     () =>
-      filterCertificates({
-        rows: tableCertificates,
-        policyFilter: effectivePolicyFilter,
-      }),
+      tableCertificates.filter(
+        (row) =>
+          effectivePolicyFilter.length === 0 ||
+          effectivePolicyFilter.includes(certificatePolicyFilterValue(row)),
+      ),
     [effectivePolicyFilter, tableCertificates],
   );
 
@@ -262,7 +214,7 @@ export function CertificatesWorkspace({
     } finally {
       setArchivingCertificateId(null);
     }
-  }, [archiveCertificateMutation]);
+  }, [archiveCertificateMutation, setTab]);
 
   const unarchiveCertificate = useCallback(async (row: PolicyCertificateRecord) => {
     setUnarchivingCertificateId(row._id);
@@ -277,7 +229,7 @@ export function CertificatesWorkspace({
     } finally {
       setUnarchivingCertificateId(null);
     }
-  }, [unarchiveCertificateMutation]);
+  }, [unarchiveCertificateMutation, setTab]);
 
   const reissueCertificate = useCallback(async (row: PolicyCertificateRecord) => {
     const holder = row.holder;
@@ -370,6 +322,7 @@ export function CertificatesWorkspace({
       reissuingCertificateId,
       savingCertificateId,
       selectedCertificate,
+      setSelectedCertificateId,
       unarchiveCertificate,
       unarchivingCertificateId,
     ]);
@@ -379,7 +332,7 @@ export function CertificatesWorkspace({
         onOpenChange={setGenerateOpen}
         orgId={orgId}
       />
-    ) : null, [generateOpen, orgId]);
+    ) : null, [generateOpen, orgId, setGenerateOpen]);
   const rightPanel = generateOpen ? generatePanel : certificateDetailPanel;
   const actions = useMemo(() => !readOnly && orgId ? (
       <PillButton
@@ -394,7 +347,7 @@ export function CertificatesWorkspace({
         <BadgeCheck className="size-3.5" />
         Generate certificate
       </PillButton>
-    ) : null, [orgId, readOnly]);
+    ) : null, [orgId, readOnly, setGenerateOpen, setSelectedCertificateId]);
   const toolbar = visibleTabs.length > 1 ? (
     <Select
       value={visibleTab}
@@ -422,38 +375,55 @@ export function CertificatesWorkspace({
     <>
       <CertificatesPageContext activeCount={activeCertificates.length} />
       <div className="space-y-4">
-        {!renderShell && visibleTabs.length > 1 ? (
-          <Tabs
-            value={visibleTab}
-            onValueChange={(value) =>
-              setTab(value as CertificateWorkspaceTab)
+        {(!renderShell && visibleTabs.length > 1) ||
+        (!isLoading && tableCertificates.length > 0) ? (
+          <ListToolbar
+            followKey={uiKey}
+            tabs={
+              !renderShell && visibleTabs.length > 1 ? (
+                <Tabs
+                  value={visibleTab}
+                  onValueChange={(value) =>
+                    setTab(value as CertificateWorkspaceTab)
+                  }
+                >
+                  <TabsList variant="pill">
+                    {visibleTabs.map((item) => (
+                      <TabsTrigger key={item.value} value={item.value}>
+                        {item.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+              ) : undefined
             }
-          >
-            <TabsList variant="pill">
-              {visibleTabs.map((item) => (
-                <TabsTrigger key={item.value} value={item.value}>
-                  {item.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+            filters={
+              !isLoading && tableCertificates.length > 0
+                ? [
+                    {
+                      id: "policy",
+                      label: "Policy",
+                      inline: true,
+                      multiple: true,
+                      allLabel: "All policies",
+                      value: effectivePolicyFilter,
+                      onChange: setPolicyFilter,
+                      options: policyFilters,
+                    },
+                  ]
+                : []
+            }
+          />
         ) : null}
 
         {isLoading ? (
           <OperationalSkeletonList rows={4} />
         ) : tableCertificates.length > 0 ? (
           <>
-            <div>
-              <CertificatesPolicyFilter
-                value={effectivePolicyFilter}
-                label={policyFilterLabel}
-                options={policyFilters}
-                onValueChange={setPolicyFilter}
-              />
-            </div>
             {visibleCertificates.length > 0 ? (
               <CertificatesTable
                 rows={visibleCertificates}
+                sortKey={`${uiKey}:${tab}`}
                 selectedCertificateId={selectedCertificateId}
                 onSelectCertificate={(row) => setSelectedCertificateId(row._id)}
               />

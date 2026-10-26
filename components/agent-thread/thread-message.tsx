@@ -38,6 +38,7 @@ import { ProseMarkdown } from "@/components/prose-markdown";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import { stripConfidenceMarkers } from "@/lib/confidence";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useCachedAgentTargets } from "@/lib/sync/spot-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import {
@@ -130,12 +131,23 @@ function AssistantMessageFooter({
   openArtifact: ThreadArtifactRef | null;
   onOpenArtifact: (ref: ThreadArtifactRef) => void;
 }) {
-  const [isMailboxExpanded, setIsMailboxExpanded] = useState(false);
-  const [isSourcesExpanded, setIsSourcesExpanded] = useState(true);
+  const [isMailboxExpanded, setIsMailboxExpanded] = useFollowedState(
+    `thread:${msg._id}:mailbox-expanded`,
+    false,
+  );
+  const [isSourcesExpanded, setIsSourcesExpanded] = useFollowedState(
+    `thread:${msg._id}:sources-expanded`,
+    true,
+  );
   // Policy references are intentional presentation selections, not retrieval evidence.
   const policyIds = [...new Set(msg.referencedPolicyIds ?? [])];
   const attachments = msg.attachments ?? [];
-  const files = useChatAttachments(attachments, msg.threadId, "mt-1.5 w-full");
+  const files = useChatAttachments(
+    msg._id,
+    attachments,
+    msg.threadId,
+    "mt-1.5 w-full",
+  );
   const mailboxTasks = (msg.toolArtifacts ?? [])
     .filter((artifact) => artifact.type === "mailbox_task")
     .map((artifact, index) => ({ index, task: normalizeMailboxTask(artifact.data) }));
@@ -261,7 +273,7 @@ function AssistantMessageFooter({
 
 const MARKDOWN_STYLES = "[&_a]:text-primary-light [&_a]:underline";
 const IMESSAGE_MARKDOWN_STYLES =
-  `${MARKDOWN_STYLES} ${typeStyle("body.large")} ` +
+  `${MARKDOWN_STYLES} ${typeStyle("body.default")} ` +
   "[&_p]:my-2 [&_ul]:my-2 [&_ol]:my-2 [&_ul]:pl-4 [&_ol]:pl-4 " +
   `[&_li]:my-0.5 ${typeStyle("prose.default")}`;
 
@@ -358,7 +370,11 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
   onPresentationFollowUp?: PresentationFollowUp;
   presentationDisabled?: boolean;
 }) {
-  const userFiles = useChatAttachments(msg.role === "user" ? (msg.attachments ?? []) : [], msg.threadId);
+  const userFiles = useChatAttachments(
+    msg._id,
+    msg.role === "user" ? (msg.attachments ?? []) : [],
+    msg.threadId,
+  );
   const agentTargets = useCachedAgentTargets(msg.orgId);
   const promptReferences = useMemo(
     () => messagePromptReferences(msg, agentTargets, threadContext),
@@ -558,7 +574,11 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
           />
         </span>
       )}
-      quotedText={isEmail ? (msg.emailContent?.quotedText ?? null) : null}
+      quoted={
+        isEmail && msg.emailContent?.quotedText
+          ? { id: msg._id, text: msg.emailContent.quotedText }
+          : null
+      }
       attachments={msg.attachments?.length ? (
         <div className="mt-2">
           {userFiles.trigger}

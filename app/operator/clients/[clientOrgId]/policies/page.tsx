@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { ManagedClientPolicyWorkspace } from "@/components/policies/managed-client-policy-workspace";
 import { AppShell } from "@/components/app-shell";
 import {
@@ -32,9 +33,11 @@ export default function OperatorClientPoliciesPage() {
   const client = clients?.find((row) => row._id === clientOrgId) ?? null;
   const [workspaceActions, setWorkspaceActions] = useState<ReactNode>(null);
   const [rightPanel, setRightPanel] = useState<ReactNode>(null);
-  const [previewPolicyId, setPreviewPolicyId] = useState<Id<"policies"> | null>(
-    null,
-  );
+  const [previewPolicyId, setPreviewPolicyId] =
+    useFollowedState<Id<"policies"> | null>(
+      `clients:${clientOrgId}:policies:preview`,
+      null,
+    );
   const activeImpersonation = current?.activeImpersonation ?? null;
   const basePath = `/operator/clients/${clientOrgId}/policies`;
   const archivedPolicies = useCachedQuery(
@@ -63,7 +66,7 @@ export default function OperatorClientPoliciesPage() {
           onClose={() => setPreviewPolicyId(null)}
         />
       ) : null,
-    [clientOrgId, previewPolicyId],
+    [clientOrgId, previewPolicyId, setPreviewPolicyId],
   );
 
   const statusNavigation = (

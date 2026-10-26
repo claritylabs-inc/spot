@@ -1,34 +1,32 @@
 "use client";
 
-import { useMemo } from "react";
-import { useQuery } from "convex/react";
+import { useMemo, useState } from "react";
+import { useAction, useQuery } from "convex/react";
+import { Mail as MailIcon } from "lucide-react";
+import { toast } from "sonner";
 import {
   StatusTag,
   type StatusPresentation,
 } from "@claritylabs-inc/ui/components/status-tag";
 import {
-  EmailBodyPreview,
+  EmailArtifact,
   EmailCardFrame,
-  EmailHeaderAttachments,
   EmailStackFrame,
   EmailStackRow,
   formatEmailAddressList,
 } from "@/components/agent-thread/artifacts/email";
-import {
-  ChatArtifact,
-  ChatArtifactMeta,
-  ChatArtifactMetaRow,
-} from "@/components/chat/artifact";
+import { ActionPill } from "@/components/agent-thread/artifacts/shell";
 import { ChatAttachmentList } from "@/components/chat/attachment-chip";
+import { parseEmailAddressList } from "@/components/email/compose-fields";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { formatDisplayDateTime } from "@/lib/date-format";
 import type {
   OperatorEmailDraftStatus,
   OperatorEmailDraftView,
 } from "@/lib/operator-email-draft";
 import { typeStyle } from "@/lib/typography";
+import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import type { OperatorAgentMessage } from "@/lib/operator-agent-api";
 
 const MAX_DRAFT_MESSAGES = 50;
@@ -186,7 +184,10 @@ export function OperatorEmailDraftCards({
   );
 }
 
-/** Full draft review in the right-hand artifact panel. Sending goes through approval. */
+/**
+ * Full draft review in the right-hand artifact panel. The signing operator can
+ * revise, cancel or send it by hand; Send approves the exact draft shown.
+ */
 export function OperatorEmailDraftPanel({
   draft,
   threadId,
@@ -196,49 +197,84 @@ export function OperatorEmailDraftPanel({
   threadId: string;
   onClose: () => void;
 }) {
-  const status = draftStatus(draft);
+  const updateDraft = useAction(api.actions.operatorEmailDrafts.update);
+  const cancelDraft = useAction(api.actions.operatorEmailDrafts.cancel);
+  const sendDraft = useAction(api.actions.operatorEmailDrafts.send);
+  const [busy, setBusy] = useState<"cancel" | "send" | null>(null);
+  const draftId = draft.id as Id<"pendingEmails">;
+
+  async function send() {
+    setBusy("send");
+    try {
+      const result = await sendDraft({
+        draftId,
+        expectedFingerprint: draft.fingerprint,
+      });
+      toast.success(`Email sent to ${result.recipientEmail}`);
+    } catch (error) {
+      toast.error(getUserFacingErrorMessage(error, "Failed to send email"));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function cancel() {
+    setBusy("cancel");
+    try {
+      await cancelDraft({ draftId });
+      toast.success("Email draft cancelled");
+    } catch (error) {
+      toast.error(getUserFacingErrorMessage(error, "Failed to cancel email"));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
-    <ChatArtifact
+    <EmailArtifact
       eyebrow={draft.organizationName ?? "Not linked to a client"}
-      title={draft.subject || "(no subject)"}
-      status={
-        <StatusTag
-          indicator={status.indicator}
-          tone={status.tone}
-          className="shrink-0"
-        >
-          {status.label}
-        </StatusTag>
-      }
+      subject={draft.subject || "(no subject)"}
+      status={draftStatus(draft)}
       closeLabel="Close email draft"
       onClose={onClose}
-      meta={
-        <ChatArtifactMeta>
-          <ChatArtifactMetaRow label="From" value={draft.from ?? null} />
-          <ChatArtifactMetaRow label="To" value={formatEmailAddressList(draft.to)} />
-          <ChatArtifactMetaRow label="Cc" value={formatEmailAddressList(draft.cc)} />
-          <ChatArtifactMetaRow label="Bcc" value={formatEmailAddressList(draft.bcc)} />
-          <ChatArtifactMetaRow
-            label="Reply-To"
-            value={formatEmailAddressList(draft.replyTo)}
-          />
-          <ChatArtifactMetaRow
-            label="Updated"
-            value={formatDisplayDateTime(draft.updatedAt)}
-          />
-          <EmailHeaderAttachments
-            attachments={draft.attachments}
-            operatorThreadId={threadId}
-          />
-        </ChatArtifactMeta>
-      }
-      footer={
-        draft.status === "draft" && draft.sendBlockedReason ? (
-          <p
-            className={`min-w-0 text-muted-foreground/60 ${typeStyle("caption.default")}`}
-          >
-            {draft.sendBlockedReason}
-          </p>
+      from={draft.from}
+      to={draft.to}
+      cc={draft.cc}
+      bcc={draft.bcc}
+      replyTo={draft.replyTo}
+      time={{ label: "Created", value: draft.updatedAt }}
+      attachments={draft.attachments}
+      operatorThreadId={threadId}
+      html={draft.html}
+      text={draft.text}
+      note={draft.status === "draft" ? draft.sendBlockedReason : undefined}
+      actions={
+        draft.status === "draft" ? (
+          <>
+            <ActionPill
+              type="button"
+              size="compact"
+              variant="ghost"
+              disabled={busy !== null}
+              busy={busy === "cancel"}
+              onClick={() => void cancel()}
+            >
+              Cancel draft
+            </ActionPill>
+            {draft.editable && !draft.sendBlockedReason ? (
+              <ActionPill
+                type="button"
+                size="compact"
+                variant="primary"
+                disabled={busy !== null}
+                busy={busy === "send"}
+                icon={MailIcon}
+                onClick={() => void send()}
+              >
+                Send
+              </ActionPill>
+            ) : null}
+          </>
         ) : draft.status === "sent" && draft.teamEmailThreadId ? (
           <PillButton
             variant="secondary"
@@ -249,8 +285,29 @@ export function OperatorEmailDraftPanel({
           </PillButton>
         ) : null
       }
-    >
-      <EmailBodyPreview html={draft.html} text={draft.text} />
-    </ChatArtifact>
+      edit={
+        draft.editable
+          ? {
+              draft: {
+                to: draft.to.join(", "),
+                cc: draft.cc.join(", "),
+                bcc: draft.bcc.join(", "),
+                subject: draft.subject,
+                body: draft.body,
+              },
+              onSave: async (edited) => {
+                await updateDraft({
+                  draftId,
+                  to: edited.to.trim(),
+                  cc: parseEmailAddressList(edited.cc),
+                  bcc: parseEmailAddressList(edited.bcc),
+                  subject: edited.subject,
+                  body: edited.body,
+                });
+              },
+            }
+          : undefined
+      }
+    />
   );
 }

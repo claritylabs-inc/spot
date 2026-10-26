@@ -19,8 +19,10 @@ import {
   ChevronDown,
   ChevronRight,
   FileSearch,
+  FileText,
   FileUp,
   Plus,
+  Scale,
   BadgeCheck,
   Trash2,
   TriangleAlert,
@@ -30,10 +32,13 @@ import { AppShell } from "@/components/app-shell";
 import { PolicyCitation } from "@/components/context-reference-card";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { ActionSurface } from "@/components/ui/action-surface";
+import {
+  ListToolbar,
+  type FilterDefinition,
+} from "@/components/ui/list-toolbar";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import {
   StatusTag,
-  StatusLabel,
   type StatusTagTone,
 } from "@claritylabs-inc/ui/components/status-tag";
 import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
@@ -56,9 +61,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
 import {
   Tabs,
@@ -97,6 +102,8 @@ import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { formatDisplayDate } from "@/lib/date-format";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
+import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort } from "@/hooks/use-table-sort";
 
 type RequirementScope = "vendors" | "own_org";
 type ComplianceStatus =
@@ -457,10 +464,9 @@ function statusFilterValue(requirement: Requirement): StatusFilter {
   return requirement.complianceCheck?.status ?? "defined";
 }
 
-function ComplianceFilterLabel({ value }: { value: StatusFilter }) {
+function statusFilterLabel(value: StatusFilter) {
   if (value === "all") return "All statuses";
-  const meta = statusMeta(value === "defined" ? undefined : value);
-  return <StatusLabel tone={meta.tone}>{meta.label}</StatusLabel>;
+  return statusMeta(value === "defined" ? undefined : value).label;
 }
 
 function pageLabel(requirement: Requirement) {
@@ -760,33 +766,75 @@ function OverviewTab({
   );
 }
 
+const COMPLIANCE_STATUS_ORDER: Record<ComplianceStatus, number> = {
+  met: 0,
+  expiring_soon: 1,
+  unverified: 2,
+  not_met: 3,
+  expired: 4,
+};
+
+const REQUIREMENT_SORT_COLUMNS = {
+  line: (requirement: Requirement) =>
+    lineDisplayLabel(requirement.lineOfBusiness),
+  source: (requirement: Requirement) => requirementSourcePrimary(requirement),
+  limit: (requirement: Requirement) => requirement.limits?.[0]?.amount,
+  limitType: (requirement: Requirement) =>
+    requirement.limits?.[0]
+      ? limitKindLabel(requirement.limits[0].kind)
+      : (requirement.provisions ?? []).length > 0
+        ? "Provisions"
+        : undefined,
+  status: (requirement: Requirement) =>
+    requirement.complianceCheck
+      ? COMPLIANCE_STATUS_ORDER[requirement.complianceCheck.status]
+      : undefined,
+};
+
 function RequirementsTable({
+  followKey,
   requirements,
   onSelect,
 }: {
+  followKey: string;
   requirements: Requirement[];
   onSelect: (requirementId: Id<"insuranceRequirements">) => void;
 }) {
-  const sorted = [...requirements].sort((a, b) => {
-    const lobCompare = (a.lineOfBusiness ?? "ZZ").localeCompare(
-      b.lineOfBusiness ?? "ZZ",
-    );
-    return lobCompare !== 0 ? lobCompare : a.title.localeCompare(b.title);
-  });
+  const sorted = useMemo(
+    () =>
+      [...requirements].sort((a, b) => {
+        const lobCompare = (a.lineOfBusiness ?? "ZZ").localeCompare(
+          b.lineOfBusiness ?? "ZZ",
+        );
+        return lobCompare !== 0 ? lobCompare : a.title.localeCompare(b.title);
+      }),
+    [requirements],
+  );
+  const tableSort = useTableSort(followKey, sorted, REQUIREMENT_SORT_COLUMNS);
   return (
     <OperationalPanel as="div">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead>Line</TableHead>
-            <TableHead>Source</TableHead>
-            <TableHead>Limit</TableHead>
-            <TableHead>Limit type</TableHead>
-            <TableHead>Status</TableHead>
+            <SortableTableHead {...tableSort.head("line")}>
+              Line
+            </SortableTableHead>
+            <SortableTableHead {...tableSort.head("source")}>
+              Source
+            </SortableTableHead>
+            <SortableTableHead {...tableSort.head("limit")}>
+              Limit
+            </SortableTableHead>
+            <SortableTableHead {...tableSort.head("limitType")}>
+              Limit type
+            </SortableTableHead>
+            <SortableTableHead {...tableSort.head("status")}>
+              Status
+            </SortableTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sorted.map((requirement) => {
+          {tableSort.rows.map((requirement) => {
             const limits = requirement.limits ?? [];
             const sourceSecondary =
               requirementTableSourceSecondary(requirement);
@@ -867,37 +915,6 @@ function RequirementsTable({
   );
 }
 
-function RequirementsFilterSelect({
-  label,
-  value,
-  valueLabel,
-  onValueChange,
-  children,
-}: {
-  label: string;
-  value: string;
-  valueLabel: ReactNode;
-  onValueChange: (value: string) => void;
-  children: ReactNode;
-}) {
-  return (
-    <label
-      className={`flex min-w-0 flex-col gap-1.5 text-muted-foreground ${typeStyle("label.field")}`}
-    >
-      {label}
-      <Select
-        value={value}
-        onValueChange={(next) => next && onValueChange(next)}
-      >
-        <SelectTrigger className="w-full">
-          <SelectValue>{valueLabel}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>{children}</SelectContent>
-      </Select>
-    </label>
-  );
-}
-
 function DrawerDetail({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div
@@ -949,7 +966,10 @@ function RequirementDrawer({
   onArchive: (requirementId: Id<"insuranceRequirements">) => void;
   onClose: () => void;
 }) {
-  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useFollowedState(
+    `compliance:requirement:${requirement._id}:confirm-archive`,
+    false,
+  );
   const editRef = useRef<{ save: () => Promise<boolean> }>(null);
   const check = requirement.complianceCheck;
   const policy = check?.matchedPolicy;
@@ -1301,7 +1321,10 @@ function RequirementEditForm({
   onArchive?: () => void;
   ref?: Ref<{ save: () => Promise<boolean> }>;
 }) {
-  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useFollowedState(
+    `compliance:requirement-form:${requirement._id}:confirm-archive`,
+    false,
+  );
   const [title, setTitle] = useState(requirement.title);
   const [lineOfBusiness, setLineOfBusiness] = useState(
     requirement.lineOfBusiness ?? "CGL",
@@ -1664,9 +1687,15 @@ function SourceDrawer({
   const [internalNotes, setInternalNotes] = useState(
     source.internalNotes ?? "",
   );
-  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useFollowedState(
+    `compliance:source:${source._id}:confirm-archive`,
+    false,
+  );
   const [expandedRequirementId, setExpandedRequirementId] =
-    useState<Id<"insuranceRequirements"> | null>(null);
+    useFollowedState<Id<"insuranceRequirements"> | null>(
+      `compliance:source:${source._id}:expanded-requirement`,
+      null,
+    );
 
   const sourceAutoSave = useLocalFirstAutoSave({
     mutationName: `compliance.updateRequirementSource.${source._id}`,
@@ -2181,13 +2210,24 @@ function SourceDrawer({
   );
 }
 
+const SOURCE_SORT_COLUMNS = {
+  name: (source: RequirementSource) => source.title,
+  sourceType: (source: RequirementSource) =>
+    REQUIREMENT_SOURCE_TYPE_LABELS[source.sourceType],
+  requirements: (source: RequirementSource) => source.requirementCount,
+  added: (source: RequirementSource) => source.createdAt,
+};
+
 function RequirementSourcesTable({
+  followKey,
   sources,
   onSelect,
 }: {
+  followKey: string;
   sources: RequirementSource[];
   onSelect: (sourceId: Id<"requirementSourceDocuments">) => void;
 }) {
+  const tableSort = useTableSort(followKey, sources, SOURCE_SORT_COLUMNS);
   if (sources.length === 0) {
     return (
       <OperationalPanel as="div" className="p-5">
@@ -2209,14 +2249,34 @@ function RequirementSourcesTable({
       <Table className="min-w-[840px]">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-[44%] px-4">Name</TableHead>
-            <TableHead className="w-[22%]">Source type</TableHead>
-            <TableHead className="w-[14%]">Requirements</TableHead>
-            <TableHead className="w-[20%] px-4">Added</TableHead>
+            <SortableTableHead
+              className="w-[44%] px-4"
+              {...tableSort.head("name")}
+            >
+              Name
+            </SortableTableHead>
+            <SortableTableHead
+              className="w-[22%]"
+              {...tableSort.head("sourceType")}
+            >
+              Source type
+            </SortableTableHead>
+            <SortableTableHead
+              className="w-[14%]"
+              {...tableSort.head("requirements")}
+            >
+              Requirements
+            </SortableTableHead>
+            <SortableTableHead
+              className="w-[20%] px-4"
+              {...tableSort.head("added")}
+            >
+              Added
+            </SortableTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sources.map((source) => (
+          {tableSort.rows.map((source) => (
             <TableRow
               key={source._id}
               className="cursor-pointer"
@@ -2363,19 +2423,38 @@ function ComplianceWorkspace({
             : surface === "operator"
               ? "requirements"
               : "overview";
-  const [creationDrawer, setCreationDrawer] = useState<
+  const uiKey = `compliance:${surface}`;
+  const [creationDrawer, setCreationDrawer] = useFollowedState<
     "import" | "manual" | null
-  >(null);
+  >(`${uiKey}:creation-drawer`, null);
   const [requirementScope, setRequirementScope] =
-    useState<RequirementScope>("own_org");
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
-  const [lineFilter, setLineFilter] = useState<LineFilter>("all");
-  const [limitFilter, setLimitFilter] = useState<LimitFilter>("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+    useFollowedState<RequirementScope>(`${uiKey}:scope`, "own_org");
+  const [sourceFilter, setSourceFilter] = useFollowedState<string[]>(
+    `${uiKey}:source-filters`,
+    [],
+  );
+  const [lineFilter, setLineFilter] = useFollowedState<string[]>(
+    `${uiKey}:line-filters`,
+    [],
+  );
+  const [limitFilter, setLimitFilter] = useFollowedState<string[]>(
+    `${uiKey}:limit-filters`,
+    [],
+  );
+  const [statusFilter, setStatusFilter] = useFollowedState<string[]>(
+    `${uiKey}:status-filters`,
+    [],
+  );
   const [selectedRequirementId, setSelectedRequirementId] =
-    useState<Id<"insuranceRequirements"> | null>(null);
+    useFollowedState<Id<"insuranceRequirements"> | null>(
+      `${uiKey}:selected-requirement`,
+      null,
+    );
   const [selectedSourceId, setSelectedSourceId] =
-    useState<Id<"requirementSourceDocuments"> | null>(null);
+    useFollowedState<Id<"requirementSourceDocuments"> | null>(
+      `${uiKey}:selected-source`,
+      null,
+    );
   const [sourceText, setSourceText] = useState("");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [sourceName, setSourceName] = useState("");
@@ -2402,9 +2481,15 @@ function ComplianceWorkspace({
   const [checkingRequirementId, setCheckingRequirementId] =
     useState<Id<"insuranceRequirements"> | null>(null);
   const [certificateSourceId, setCertificateSourceId] =
-    useState<Id<"requirementSourceDocuments"> | null>(null);
+    useFollowedState<Id<"requirementSourceDocuments"> | null>(
+      `${uiKey}:certificate-source`,
+      null,
+    );
   const [certificateRequirementId, setCertificateRequirementId] =
-    useState<Id<"insuranceRequirements"> | null>(null);
+    useFollowedState<Id<"insuranceRequirements"> | null>(
+      `${uiKey}:certificate-requirement`,
+      null,
+    );
   const [certificateTabActions, setCertificateTabActions] =
     useState<ReactNode>(null);
   const [certificateTabRightPanel, setCertificateTabRightPanel] =
@@ -2475,12 +2560,10 @@ function ComplianceWorkspace({
       ),
     [activeRequirementScope, requirements],
   );
-  const sourceFilters = useMemo(() => {
-    const present = Array.from(
-      new Set(scopedRequirements.map(requirementSourceFilter)),
-    );
-    return ["all", ...present] as SourceFilter[];
-  }, [scopedRequirements]);
+  const sourceFilters = useMemo(
+    () => Array.from(new Set(scopedRequirements.map(requirementSourceFilter))),
+    [scopedRequirements],
+  );
   const lineFilters = useMemo(() => {
     const present = Array.from(
       new Set(
@@ -2489,13 +2572,13 @@ function ComplianceWorkspace({
         ),
       ),
     ).sort((a, b) => lineFilterLabel(a).localeCompare(lineFilterLabel(b)));
-    return ["all", ...present] as LineFilter[];
+    return present;
   }, [scopedRequirements]);
   const limitFilters = useMemo(() => {
     const present = Array.from(
       new Set(scopedRequirements.flatMap(requirementLimitFilters)),
     ).sort((a, b) => limitFilterLabel(a).localeCompare(limitFilterLabel(b)));
-    return ["all", ...present] as LimitFilter[];
+    return present;
   }, [scopedRequirements]);
   const statusFilters = useMemo(() => {
     const order: StatusFilter[] = [
@@ -2507,39 +2590,89 @@ function ComplianceWorkspace({
       "defined",
     ];
     const present = new Set(scopedRequirements.map(statusFilterValue));
-    return [
-      "all",
-      ...order.filter((status) => present.has(status)),
-    ] as StatusFilter[];
+    return order.filter((status) => present.has(status));
   }, [scopedRequirements]);
-  const effectiveSourceFilter = sourceFilters.includes(sourceFilter)
-    ? sourceFilter
-    : "all";
-  const effectiveLineFilter = lineFilters.includes(lineFilter)
-    ? lineFilter
-    : "all";
-  const effectiveLimitFilter = limitFilters.includes(limitFilter)
-    ? limitFilter
-    : "all";
-  const effectiveStatusFilter = statusFilters.includes(statusFilter)
-    ? statusFilter
-    : "all";
+  // Ignore selections that no longer match any requirement in this scope.
+  const effectiveSourceFilter = sourceFilter.filter((value) =>
+    (sourceFilters as string[]).includes(value),
+  );
+  const effectiveLineFilter = lineFilter.filter((value) =>
+    (lineFilters as string[]).includes(value),
+  );
+  const effectiveLimitFilter = limitFilter.filter((value) =>
+    (limitFilters as string[]).includes(value),
+  );
+  const effectiveStatusFilter = statusFilter.filter((value) =>
+    (statusFilters as string[]).includes(value),
+  );
+  const requirementFilters: FilterDefinition[] = [
+    {
+      id: "status",
+      label: "Status",
+      inline: true,
+      multiple: true,
+      value: effectiveStatusFilter,
+      onChange: setStatusFilter,
+      options: statusFilters.map((value) => ({
+        value,
+        label: statusFilterLabel(value),
+      })),
+    },
+    {
+      id: "line",
+      label: "Line",
+      inline: true,
+      multiple: true,
+      value: effectiveLineFilter,
+      onChange: setLineFilter,
+      options: lineFilters.map((value) => ({
+        value,
+        label: lineFilterLabel(value),
+      })),
+    },
+    {
+      id: "source",
+      label: "Source",
+      icon: <FileText />,
+      multiple: true,
+      value: effectiveSourceFilter,
+      onChange: setSourceFilter,
+      options: sourceFilters.map((value) => ({
+        value,
+        label: sourceLabel(value, scopedRequirements),
+      })),
+    },
+    {
+      id: "limit",
+      label: "Limit type",
+      icon: <Scale />,
+      multiple: true,
+      value: effectiveLimitFilter,
+      onChange: setLimitFilter,
+      options: limitFilters.map((value) => ({
+        value,
+        label: limitFilterLabel(value),
+      })),
+    },
+  ];
+  const matchesAny = (selected: string[], values: string[]) =>
+    selected.length === 0 || values.some((value) => selected.includes(value));
   const visibleRequirements =
     surface === "operator"
       ? scopedRequirements
       : scopedRequirements.filter(
           (requirement) =>
-            (effectiveSourceFilter === "all" ||
-              requirementSourceFilter(requirement) === effectiveSourceFilter) &&
-            (effectiveLineFilter === "all" ||
-              lineFilterValue(requirement.lineOfBusiness) ===
-                effectiveLineFilter) &&
-            (effectiveLimitFilter === "all" ||
-              requirementLimitFilters(requirement).includes(
-                effectiveLimitFilter,
-              )) &&
-            (effectiveStatusFilter === "all" ||
-              statusFilterValue(requirement) === effectiveStatusFilter),
+            matchesAny(effectiveSourceFilter, [
+              requirementSourceFilter(requirement),
+            ]) &&
+            matchesAny(effectiveLineFilter, [
+              lineFilterValue(requirement.lineOfBusiness),
+            ]) &&
+            matchesAny(
+              effectiveLimitFilter,
+              requirementLimitFilters(requirement),
+            ) &&
+            matchesAny(effectiveStatusFilter, [statusFilterValue(requirement)]),
         );
   const selectedRequirement =
     (requirements ?? []).find(
@@ -2605,7 +2738,6 @@ function ComplianceWorkspace({
         return;
       }
       // Synchronize the URL selection only after the prior editor has closed.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRequirementScope(requirement.scope);
       setSelectedRequirementId(requirement._id);
       setSelectedSourceId(null);
@@ -2631,6 +2763,9 @@ function ComplianceWorkspace({
     selectedSource,
     creationDrawer,
     certificateSourceId,
+    setRequirementScope,
+    setSelectedRequirementId,
+    setSelectedSourceId,
   ]);
 
   if (isBroker) return null;
@@ -3561,6 +3696,7 @@ function ComplianceWorkspace({
           <RequirementsLoadingSkeleton />
         ) : (
           <RequirementSourcesTable
+            followKey={`${uiKey}:sources`}
             sources={requirementSources}
             onSelect={(sourceId) => {
               setSelectedSourceId(sourceId);
@@ -3577,10 +3713,10 @@ function ComplianceWorkspace({
         <OverviewTab
           requirements={requirements}
           onOpenRequirements={(line) => {
-            setSourceFilter("all");
-            setLineFilter(lineFilterValue(line));
-            setLimitFilter("all");
-            setStatusFilter("all");
+            setSourceFilter([]);
+            setLineFilter([lineFilterValue(line)]);
+            setLimitFilter([]);
+            setStatusFilter([]);
             changeNavigation(
               showConnectFeatures ? activeRequirementScope : "requirements",
             );
@@ -3589,70 +3725,16 @@ function ComplianceWorkspace({
       ) : (
         <>
           {surface !== "operator" ? (
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              <RequirementsFilterSelect
-                label="Source"
-                value={effectiveSourceFilter}
-                valueLabel={sourceLabel(
-                  effectiveSourceFilter,
-                  scopedRequirements,
-                )}
-                onValueChange={(value) =>
-                  setSourceFilter(value as SourceFilter)
-                }
-              >
-                {sourceFilters.map((filter) => (
-                  <SelectItem key={filter} value={filter}>
-                    {sourceLabel(filter, scopedRequirements)}
-                  </SelectItem>
-                ))}
-              </RequirementsFilterSelect>
-              <RequirementsFilterSelect
-                label="Line"
-                value={effectiveLineFilter}
-                valueLabel={lineFilterLabel(effectiveLineFilter)}
-                onValueChange={(value) => setLineFilter(value as LineFilter)}
-              >
-                {lineFilters.map((filter) => (
-                  <SelectItem key={filter} value={filter}>
-                    {lineFilterLabel(filter)}
-                  </SelectItem>
-                ))}
-              </RequirementsFilterSelect>
-              <RequirementsFilterSelect
-                label="Limit type"
-                value={effectiveLimitFilter}
-                valueLabel={limitFilterLabel(effectiveLimitFilter)}
-                onValueChange={(value) => setLimitFilter(value as LimitFilter)}
-              >
-                {limitFilters.map((filter) => (
-                  <SelectItem key={filter} value={filter}>
-                    {limitFilterLabel(filter)}
-                  </SelectItem>
-                ))}
-              </RequirementsFilterSelect>
-              <RequirementsFilterSelect
-                label="Status"
-                value={effectiveStatusFilter}
-                valueLabel={
-                  <ComplianceFilterLabel value={effectiveStatusFilter} />
-                }
-                onValueChange={(value) =>
-                  setStatusFilter(value as StatusFilter)
-                }
-              >
-                {statusFilters.map((filter) => (
-                  <SelectItem key={filter} value={filter}>
-                    <ComplianceFilterLabel value={filter} />
-                  </SelectItem>
-                ))}
-              </RequirementsFilterSelect>
-            </div>
+            <ListToolbar
+              followKey={`${uiKey}:requirements`}
+              filters={requirementFilters}
+            />
           ) : null}
           {visibleRequirements.length === 0 ? (
             <EmptyState />
           ) : (
             <RequirementsTable
+              followKey={`${uiKey}:requirements`}
               requirements={visibleRequirements}
               onSelect={(requirementId) => {
                 setSelectedRequirementId(requirementId);

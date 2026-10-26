@@ -135,6 +135,13 @@ type RelatedEntity = {
   relationship: string;
   insured: "" | "include" | "exclude" | "unsure";
 };
+/** Operator-confirmed vendors and countries; one entry per value. */
+export type IntakeTechStack = {
+  paymentProcessors: string[];
+  hostingProviders: string[];
+  dataCountries: string[];
+};
+
 export type IntakeDetails = {
   termsAcceptedVersion?: string;
   cyberDocuments?: { privacyPolicyUrl?: string; termsUrl?: string };
@@ -174,6 +181,9 @@ export type IntakeDetails = {
   dateInput?: string;
   dateParts: { year: string; month: string; day: string };
   revenueStep?: "annual" | "projected";
+  techStack?: IntakeTechStack;
+  /** Completion time of the website scan last merged into techStack, so removed values stay removed. */
+  techStackScanFilledAt?: number;
   revenue?: {
     annualPeriod: string;
     annualAmount: string;
@@ -396,6 +406,8 @@ export function validateIntakeDetails(details: IntakeDetails) {
     throw new Error("Invalid section introduction state");
   if(details.declinedRequirementCoverages && (details.declinedRequirementCoverages.length>COVERAGE_OPTIONS.length || new Set(details.declinedRequirementCoverages).size!==details.declinedRequirementCoverages.length || details.declinedRequirementCoverages.some(id=>!COVERAGE_OPTIONS.some(option=>option.id===id))))throw new Error("Invalid declined coverage list");
   validateFollowupAnswers(details.followups);
+  if (details.techStack && Object.values(details.techStack).some(list => list.length > 30 || list.some(value => value.length > 200)))
+    throw new Error("Keep tech stack lists within 30 entries of 200 characters");
   for(const line of details.coverages)for(const vehicle of line.vehicles ?? [])validateVehicleUnderwriting(vehicle.underwriting);
   if ((details.freightHauled?.length??0)>2000 || (details.noCurrentInsuranceReason?.length??0)>2000 ||
       (details.autoVehicleIndex!==undefined && (!Number.isInteger(details.autoVehicleIndex)||details.autoVehicleIndex<0||details.autoVehicleIndex>29)) ||

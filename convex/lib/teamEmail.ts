@@ -254,7 +254,7 @@ export function buildOperatorSignature(operator: { name: string | null | undefin
   const name = requirePersonName(operator.name).slice(0, MAX_SIGNATURE_NAME_LENGTH);
   const text = `${name}\nSpot`;
   const lines = [
-    `<strong style="color:#111111;font-weight:600">${escapeHtml(name)}</strong>`,
+    `<strong style="font-weight:600">${escapeHtml(name)}</strong>`,
     `<span style="color:#6b6b6b">Spot</span>`,
   ];
   const html = `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 0;border-collapse:collapse"><tr><td style="padding:2px 10px 0 0;vertical-align:top">${buildSpotEmailIconHtml({ size: 32, borderRadius: 8 })}</td><td style="font-size:13px;line-height:19px;vertical-align:top">${lines.join("<br>")}</td></tr></table>`;

@@ -26,6 +26,7 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import {
   AUTOMATION_ENABLED,
   AutomationToggleRows,
@@ -474,8 +475,14 @@ export function MailboxSettingsDrawer({
   const [scope, setScope] = useState(account.scope);
   const [automation, setAutomation] = useState(initialAutomation);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
-  const [scanDialogOpen, setScanDialogOpen] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useFollowedState(
+    `settings:email:${account._id}:confirm-disconnect`,
+    false,
+  );
+  const [scanDialogOpen, setScanDialogOpen] = useFollowedState(
+    `settings:email:${account._id}:scan-dialog`,
+    false,
+  );
   const [scanFrom, setScanFrom] = useState(() =>
     dayjs().subtract(30, "day").format("YYYY-MM-DD"),
   );

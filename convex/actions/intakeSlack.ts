@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { slackWebApi } from "../lib/slackWebApi";
+import { assertSlackAttachmentsDelivered } from "../lib/slackDelivery";
 import { formatSlackAnswerText } from "../lib/slackBlocks";
 import { splitIntakeSlackMessage } from "../lib/intakeSlackContext";
 export const deliver = internalAction({
@@ -29,7 +30,7 @@ export const deliver = internalAction({
             clientMessageId: `intake:${claim.event._id}${index ? `:${index}` : ""}`,
             mrkdwnText: `${index === 0 && claim.event.eventKey.startsWith("submitted:") ? "<!here> " : ""}${text}`,
           });
-          if (result.attachmentFailures.length) throw new Error("Intake message delivery failed");
+          assertSlackAttachmentsDelivered(result);
           messageTs ??= result.messageId;
         }
       }

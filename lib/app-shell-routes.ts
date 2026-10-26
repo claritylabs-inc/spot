@@ -3,10 +3,9 @@ export type AppShellSurface = "client" | "operator";
 export type OperatorNavSection =
   | "brokers"
   | "clients"
+  | "procurement"
   | "inbox"
   | "channels"
-  | "logs"
-  | "usage"
   | "audit"
   | "profile"
   | "settings";
@@ -55,10 +54,9 @@ function operatorActiveSection(
   switch (area) {
     case "brokers":
     case "clients":
+    case "procurement":
     case "inbox":
     case "channels":
-    case "logs":
-    case "usage":
     case "audit":
     case "profile":
     case "settings":

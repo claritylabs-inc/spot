@@ -34,6 +34,16 @@ export const PROCUREMENT_CAPABILITIES = [
     agentTools: ["list_procurement_client_outreach", "send_procurement_client_email", "stop_procurement_provider_outreach"],
   },
   {
+    id: "client.information_form",
+    browserSurface: "request Information questions and client form workspace",
+    agentTools: [
+      "list_procurement_information",
+      "add_procurement_information_questions",
+      "create_procurement_information_form",
+      "cancel_procurement_information_form",
+    ],
+  },
+  {
     id: "correspondence.reply",
     browserSurface: "request Inbox reply composer",
     agentTools: ["reply_procurement_email_thread"],

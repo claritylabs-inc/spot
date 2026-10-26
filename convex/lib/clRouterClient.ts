@@ -3,6 +3,8 @@ import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { modelCallContext, modelCallResult } from "./modelCallTelemetry";
+import { parseRouterModels, type RouterModelEntry } from "./routerCapabilities";
+import type { RouterJobFailure } from "./routerJobFailure";
 
 import {
   DIFFICULTIES,
@@ -25,7 +27,6 @@ import {
 } from "./modelCatalog";
 import type {
   ClRouterPrimitive,
-  ClRouterRequirements,
   ClRouterRoutingDecision,
   ClRouterRoutingSource,
   ClRouterDifficulty,
@@ -54,10 +55,7 @@ export type ClRouterSettingsSnapshot = {
   routeSources?: Record<string, string>;
 };
 
-export type {
-  ClRouterPrimitive,
-  ClRouterRequirements,
-} from "./clRouterPrimitive";
+export type { ClRouterPrimitive } from "./clRouterPrimitive";
 
 export type ClRouterTraceTagValue = string | number | boolean | null;
 
@@ -312,7 +310,6 @@ export type ClRouterGenerateRequest = {
   tenantId?: string;
   orgId?: string;
   primitive: ClRouterPrimitive;
-  requirements?: ClRouterRequirements;
   system?: string;
   messages?: ClRouterMessage[];
   prompt?: string;
@@ -396,6 +393,7 @@ export type ClRouterCapabilities = {
   apiVersion: "v1";
   credentialMode: "router";
   providers: Array<{ provider: ModelProvider; configured: boolean }>;
+  models?: RouterModelEntry[];
   webRetrieval: {
     providers: Array<{
       provider: "parallel" | "exa" | "openai" | "google" | "anthropic" | "xai";
@@ -1092,7 +1090,6 @@ function pickDefined<T extends object, K extends keyof T>(
 const GENERATE_BODY_KEYS = [
   "orgId",
   "primitive",
-  "requirements",
   "system",
   "messages",
   "prompt",
@@ -1322,16 +1319,52 @@ export async function clRouterGenerateManualStream(
   request: ClRouterManualGenerateRequest,
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterGenerateStreamResponse> {
-  return clRouterGenerationStream(
-    "/v1/manual/stream",
-    request,
-    options,
-    (payload, clientOptions) =>
-      clRouterGenerateManual(
-        payload as ClRouterManualGenerateRequest,
-        clientOptions,
-      ),
-  );
+  if (
+    !options.executeJob &&
+    !(await clRouterRouteIsAvailable(request.route, options))
+  ) {
+    return clRouterGenerateStream(request, options);
+  }
+  let response: ClRouterGenerateStreamResponse;
+  try {
+    response = await clRouterGenerationStream(
+      "/v1/manual/stream",
+      request,
+      options,
+      (payload, clientOptions) =>
+        clRouterGenerateManual(
+          payload as ClRouterManualGenerateRequest,
+          clientOptions,
+        ),
+    );
+  } catch (error) {
+    if (!isUnknownRouteRequestError(error) || options.abortSignal?.aborted)
+      throw error;
+    logIgnoredClRouterPin(request.route, "unknown_route");
+    return clRouterGenerateStream(request, options);
+  }
+  const events = (async function* () {
+    let outputStarted = false;
+    for await (const event of response.events) {
+      if (
+        !outputStarted &&
+        event.type === "error" &&
+        !options.abortSignal?.aborted &&
+        isUnknownClRouterRouteFailure(
+          event.error.code,
+          event.error.executionStarted,
+          event.error.message,
+        )
+      ) {
+        logIgnoredClRouterPin(request.route, "unknown_route");
+        yield* (await clRouterGenerateStream(request, options)).events;
+        return;
+      }
+      if (event.type !== "error") outputStarted = true;
+      yield event;
+    }
+  })();
+  return { ...response, events };
 }
 
 export async function clRouterGenerateMaybeManualStream(
@@ -1622,9 +1655,105 @@ export async function clRouterGenerateManual(
   request: ClRouterManualGenerateRequest,
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterGenerateResponse> {
-  return parseGenerateResponse(
-    await postJson("/v1/manual", manualBody(request), options),
+  // Durable execution owns pin checks so a resumed invocation first reconnects
+  // to its existing job, regardless of subsequent registry changes.
+  if (
+    !options.executeJob &&
+    !(await clRouterRouteIsAvailable(request.route, options))
+  ) {
+    return clRouterGenerate(request, options);
+  }
+  try {
+    return parseGenerateResponse(
+      await postJson("/v1/manual", manualBody(request), options),
+    );
+  } catch (error) {
+    if (
+      options.executeJob ||
+      !isUnknownRouteRequestError(error) ||
+      options.abortSignal?.aborted
+    )
+      throw error;
+    logIgnoredClRouterPin(request.route, "unknown_route");
+    return clRouterGenerate(request, options);
+  }
+}
+
+export function isUnknownClRouterRouteFailure(
+  code: unknown,
+  executionStarted: unknown,
+  message: string,
+): boolean {
+  return (
+    code === "router_rejected" &&
+    executionStarted === false &&
+    /not in (?:the )?model registry|unknown (?:model|route)|(?:model|route).*(?:not found|not available in (?:the )?(?:model )?registry)/i.test(
+      message,
+    )
   );
+}
+
+/**
+ * Whether Spot should retry a failed router job step. Beyond the router's own
+ * verdict, `router_candidates_exhausted` is retried even after execution
+ * started: no candidate produced a result, and callers key retries by step so
+ * a repeat is idempotent. Failures carry no streamed-output signal, so this
+ * relies on the router reporting candidates_exhausted only when every attempt
+ * failed (attempt outcomes are only ever "error" or "timeout").
+ */
+export function isRetryableClRouterJobFailure(
+  failure: Pick<RouterJobFailure, "code" | "retryable"> | undefined,
+): boolean {
+  return Boolean(
+    failure?.retryable || failure?.code === "router_candidates_exhausted",
+  );
+}
+
+function isUnknownRouteRequestError(error: unknown): boolean {
+  return (
+    error instanceof ClRouterRequestError &&
+    isUnknownClRouterRouteFailure(
+      error.routerCode,
+      error.executionStarted,
+      error.message,
+    )
+  );
+}
+
+export function logIgnoredClRouterPin(
+  route: ModelRoute | undefined,
+  reason: string,
+): void {
+  console.warn(
+    "[cl-router] Ignoring unavailable pin; using routed generation",
+    { route, reason },
+  );
+}
+
+export async function clRouterRouteIsAvailable(
+  route: ModelRoute,
+  options: ClRouterClientOptions = {},
+): Promise<boolean> {
+  let models: RouterModelEntry[] | undefined;
+  try {
+    models = (await clRouterCapabilities(options)).models;
+  } catch (error) {
+    if (options.abortSignal?.aborted) throw error;
+    console.warn(
+      "[cl-router] Pin availability check unavailable; deferring validation to manual execution",
+      { route },
+    );
+    return true;
+  }
+  if (!models) return true;
+  const available = models.some(
+    (entry) =>
+      entry.configured &&
+      entry.provider === route.provider &&
+      entry.model === route.model,
+  );
+  if (!available) logIgnoredClRouterPin(route, "capabilities");
+  return available;
 }
 
 export async function clRouterGenerateMaybeManual(
@@ -1684,7 +1813,16 @@ export async function clRouterCapabilities(
       "cl-router capabilities response is invalid",
     );
   }
-  return payload as ClRouterCapabilities;
+  const models = parseRouterModels(payload.models);
+  if (models === undefined)
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router model capabilities response is invalid",
+    );
+  return {
+    ...(payload as ClRouterCapabilities),
+    ...(models ? { models } : {}),
+  };
 }
 
 export async function clRouterRetrieve(

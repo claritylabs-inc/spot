@@ -24,6 +24,7 @@ export const PROSE_MARKDOWN_STYLES =
   "[&_ul]:my-3 [&_ul]:pl-5 [&_ul]:list-disc " +
   "[&_ol]:my-3 [&_ol]:pl-5 [&_ol]:list-decimal " +
   "[&_li]:my-0.5 " +
+  "[&_a]:underline [&_a]:underline-offset-2 " +
   "[&_h1]:mt-8 [&_h1]:mb-4 [&_h1:first-child]:mt-0 " +
   "[&_h2]:mt-6 [&_h2]:mb-3 [&_h2:first-child]:mt-0 " +
   "[&_h3]:mt-4 [&_h3]:mb-2 [&_h3:first-child]:mt-0 " +
@@ -44,6 +45,7 @@ const COMPACT_STYLES =
   "[&_ul]:my-1 [&_ul]:pl-5 [&_ul]:list-disc " +
   "[&_ol]:my-1 [&_ol]:pl-5 [&_ol]:list-decimal " +
   "[&_li]:my-0.5 " +
+  "[&_a]:underline [&_a]:underline-offset-2 " +
   "[&_h1]:mt-2 [&_h1]:mb-0.5 " +
   "[&_h2]:mt-2 [&_h2]:mb-0.5 " +
   "[&_h3]:mt-1.5 [&_h3]:mb-0.5 " +

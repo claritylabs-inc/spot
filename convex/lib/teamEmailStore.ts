@@ -491,6 +491,6 @@ export async function mirrorTeamEmail(
       resendThreadId: args.resendThreadId,
     });
   if (args.direction === "inbound" && thread.requestId)
-    await ctx.scheduler.runAfter(0, internal.procurementInformation.queueEmail, {messageId});
+    await ctx.scheduler.runAfter(0, internal.procurementInformationEmail.queueEmail, {messageId});
   return { duplicate: false, threadId: thread._id, messageId, internalCopy: false };
 }

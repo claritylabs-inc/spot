@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import JSZip from "jszip";
 import { Download, Paperclip } from "lucide-react";
 import { useChatAction } from "./use-chat-action";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { PillButton } from "@/components/ui/pill-button";
 import { cn } from "@/lib/utils";
 import { api } from "@/convex/_generated/api";
@@ -60,11 +60,15 @@ async function downloadAttachmentsZip(files: DownloadableAttachment[]) {
 
 /** A file toggle and expanded downloads, placed by the surface's message layout. */
 export function useChatAttachments(
+  messageId: string,
   attachments: ChatAttachmentChipProps["attachment"][],
   threadId: Id<"threads">,
   gridClassName = "basis-full",
 ) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useFollowedState(
+    `chat:${messageId}:files-expanded`,
+    false,
+  );
   const { pending: preparing, run } = useChatAction();
   const fileIds = attachments.flatMap((file) => (file.fileId ? [file.fileId] : []));
   const urls = useCachedQuery(

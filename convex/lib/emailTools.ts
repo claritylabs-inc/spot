@@ -23,7 +23,10 @@ import { buildEmailSignature, getEmailAgentFromName } from "./emailIdentity";
 import { isOperatorEmailDraft } from "./actionConfirmationFingerprint";
 import { NoWriteInputError } from "./noWriteInputError";
 import { buildOperatorSignature } from "./teamEmail";
-import type { TeamThreadDraftContext } from "./teamThreadReply";
+import {
+  withoutQuotedHistory,
+  type TeamThreadDraftContext,
+} from "./teamThreadReply";
 import { EMAIL_FAMILY_GUIDANCE } from "./channelStyle";
 import {
   MULTIPLE_COI_SINGLE_RECIPIENT_WARNING,
@@ -284,10 +287,6 @@ function uniqueAttachments(
   }
   return result;
 }
-
-/** A trailing "On <date> UTC, <sender> wrote:" block of "> " lines, as written by the team-thread quote. */
-const QUOTED_HISTORY_PATTERN =
-  /\n*On [^\n]+ UTC, [^\n]+ wrote:\n\n(?:>[^\n]*(?:\n|$))*$/;
 
 const draftFields = {
   to: z.string().optional(),
@@ -620,7 +619,7 @@ export function buildEmailToolExecutors(
   function withQuotedHistory(body: string): string {
     const thread = operator?.teamThread;
     if (!thread) return body;
-    const bare = body.replace(QUOTED_HISTORY_PATTERN, "").trimEnd();
+    const bare = withoutQuotedHistory(body);
     return thread.crossReply && thread.quote ? `${bare}\n\n${thread.quote}` : bare;
   }
 

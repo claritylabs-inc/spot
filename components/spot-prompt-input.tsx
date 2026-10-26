@@ -466,7 +466,7 @@ function PromptTextSegment({
       onKeyDown={onKeyDown}
       style={textIndent ? { textIndent } : undefined}
       className={cn(
-        `max-w-full p-0 placeholder:text-muted-foreground/40 ${typeStyle(isDockVariant ? "body.large" : "control.input")}`,
+        `max-w-full p-0 placeholder:text-muted-foreground/40 ${typeStyle(isDockVariant ? "body.default" : "control.input")}`,
         isPlaceholderSegment
           ? isCommandVariant
             ? "min-h-24 min-w-56 flex-[1_1_14rem]"

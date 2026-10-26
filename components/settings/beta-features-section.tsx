@@ -29,6 +29,7 @@ import {
 } from "@/lib/sync/spot-cached-queries";
 import { useSyncStore } from "@claritylabs/cl-sync";
 import { typeStyle } from "@/lib/typography";
+import { useFollowedState } from "@/hooks/use-followed-state";
 
 export function BetaFeaturesSection() {
   const viewer = useQuery(api.users.viewer, {});
@@ -43,7 +44,10 @@ export function BetaFeaturesSection() {
   const flags = betaFeatureFlagsForOrgType(getFeatureFlagOrgType(org));
   const [restarting, setRestarting] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useFollowedState(
+    "settings:beta:reset-dialog",
+    false,
+  );
 
   async function updateFeatureFlag(flagId: FeatureFlagId, enabled: boolean) {
     if (!org) return;

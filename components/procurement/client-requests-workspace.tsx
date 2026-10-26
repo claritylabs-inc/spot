@@ -15,6 +15,7 @@ import { FileText, Loader2, Plus, Upload } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { formatDisplayDate } from "@/lib/date-format";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { typeStyle } from "@/lib/typography";
 import { IntakeApplicationReview } from "@/components/insurance-intake/application-review";
 import { MarkdownReview } from "@/components/ui/markdown-review";
@@ -227,9 +228,15 @@ export function ClientRequestDetail({
   const { run, tasks } = useBackgroundTasks();
   const taskId = `request-file-upload:${requestId}`;
   const busy = tasks.get(taskId)?.status === "running";
-  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useFollowedState(
+    `requests:${requestId}:upload-open`,
+    false,
+  );
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [selectedFileId, setSelectedFileId] = useFollowedState<string | null>(
+    `requests:${requestId}:file`,
+    null,
+  );
   const selectedFile = details?.files.find(
     (file) => file._id === selectedFileId,
   );
@@ -278,7 +285,7 @@ export function ClientRequestDetail({
         setUploadOpen(false);
       }
     },
-    [attachFile, generateUploadUrl, requestId, router, run, taskId],
+    [attachFile, generateUploadUrl, requestId, router, run, setUploadOpen, taskId],
   );
 
   useEffect(() => {
@@ -355,6 +362,8 @@ export function ClientRequestDetail({
     openWithUrl,
     pendingFile,
     selectedFile,
+    setSelectedFileId,
+    setUploadOpen,
     upload,
     uploadOpen,
   ]);

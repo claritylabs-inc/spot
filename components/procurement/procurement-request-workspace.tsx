@@ -1,5 +1,11 @@
 "use client";
-import { InformationFormWorkspace, InformationRequestActions, InformationRequests } from "./information-requests";
+import { InformationDrawer } from "./information/information-drawer";
+import { InformationFormWorkspace } from "./information/form-workspace";
+import {
+  InformationRequestActions,
+  InformationRequests,
+} from "./information/information-requests";
+import type { InformationDrawerTarget } from "./information/shared";
 import { RemoveButton } from "@/components/ui/remove-button";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
@@ -42,11 +48,17 @@ import { ReaderBoundary } from "@/components/inbox/reader-boundary";
 import { useResolvedThreadId } from "@/components/inbox/resolve-thread-id";
 import { TeamInbox } from "@/components/inbox/team-inbox";
 import type { InboxThread } from "@/components/inbox/team-inbox";
-import { ClientOutreachComposer } from "./client-outreach-composer";
+import {
+  ClientOutreachComposer,
+  RequestEmailAudienceTabs,
+  type RequestEmailAudience,
+} from "./client-outreach-composer";
+import { NewEmailComposer } from "@/components/inbox/new-email-composer";
 import {
   FitChips,
   OutreachSequenceActions,
   isLiveSequence,
+  outreachStatusSortValue,
   ProviderOutreachPanel,
   ProviderOutreachCadence,
   SequenceState,
@@ -70,7 +82,6 @@ import {
   ListChecks,
   Loader2,
   StickyNote,
-  Trash2,
   Plus,
   Link,
   Upload,
@@ -99,14 +110,6 @@ import {
   type ProcurementOutreachStatus,
   type ProcurementRequestStatus,
 } from "@/components/procurement/procurement-shared";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-} from "@claritylabs-inc/ui/components/alert-dialog";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -144,6 +147,7 @@ import {
 } from "@claritylabs-inc/ui/components/tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -230,6 +234,23 @@ type EmailThread = {
   latestMessageAt: number;
   messageCount: number;
 };
+
+type RequestPanel =
+  | { kind: "notes" }
+  | { kind: "packet-link" }
+  | { kind: "outreach"; outreachId?: string; proposalId?: string }
+  | {
+      kind: "upload";
+      documentCategory: "requirements" | "policy" | "loss_runs" | "supporting";
+    }
+  | { kind: "file"; fileItemId: string }
+  | { kind: "image"; fileItemId: string }
+  | {
+      kind: "composer";
+      audience: RequestEmailAudience;
+      informationFormId?: Id<"procurementInformationForms">;
+    }
+  | { kind: "information"; target: InformationDrawerTarget };
 
 type RequestDetails = {
   request: RequestSummary;
@@ -876,7 +897,6 @@ function RequestEditorFrame({
 }
 
 type RequestEditorHandle = PacketEditorHandle & {
-  openDelete: () => void;
   acceptUpdatedAt: (updatedAt: number) => void;
   addCoverage: (coverage: CoverageId) => void;
   removeCoverage: (section: string) => void;
@@ -912,7 +932,6 @@ function RequestEditor({
   policies: PolicyOption[];
   onClose: () => void;
 }) {
-  const router = useRouter();
   const saveApplication = useMutation(
     api.procurementRequests.updateApplication,
   );
@@ -929,10 +948,6 @@ function RequestEditor({
       request.application?.details ??
       detailsFromAnswers(request.intakeAnswers ?? {}),
   );
-  const removeRequest = useMutation(api.procurementRequests.remove);
-  const restoreRequest = useMutation(api.procurementRequests.restore);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const updateRequest = useMutation(api.procurementRequests.update);
   const [title, setTitle] = useState(request.title);
   const [targetEffectiveDate, setTargetEffectiveDate] = useState(
@@ -972,7 +987,7 @@ function RequestEditor({
   const saved = useRef(values);
   const autoSave = useLocalFirstAutoSave({
     mutationName: "procurementRequests.update",
-    enabled: !deleting && !readOnly,
+    enabled: !readOnly,
     args: values,
     canSave: !!title.trim(),
     flush: async (next) => {
@@ -1055,7 +1070,6 @@ function RequestEditor({
     saveRef,
     () => ({
       save: autoSave.saveNow,
-      openDelete: () => setConfirmDelete(true),
       acceptUpdatedAt: (updatedAt: number) => {
         version.current.updatedAt = updatedAt;
       },
@@ -1164,89 +1178,7 @@ function RequestEditor({
         }
       }}
       title="Edit request"
-      footer={
-        !embedded ? (
-          <PillButton
-            variant="destructive"
-            disabled={deleting}
-            onClick={() => setConfirmDelete(true)}
-          >
-            Delete request
-          </PillButton>
-        ) : undefined
-      }
     >
-      <AlertDialog
-        open={confirmDelete}
-        onOpenChange={(open) => {
-          if (!deleting) setConfirmDelete(open);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete request?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This removes “{request.title}” from procurement and disables
-              access to its application and shared packets. Existing policies
-              and company files are kept.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <PillButton
-              variant="secondary"
-              disabled={deleting}
-              onClick={() => setConfirmDelete(false)}
-            >
-              Cancel
-            </PillButton>
-            <PillButton
-              variant="destructive"
-              disabled={deleting}
-              onClick={async () => {
-                setDeleting(true);
-                try {
-                  if (!inline && !(await autoSave.saveNow())) {
-                    setDeleting(false);
-                    return;
-                  }
-                  await removeRequest({ requestId: request._id });
-                  onClose();
-                  router.replace(
-                    `/operator/clients/${request.clientOrgId}/procurement`,
-                  );
-                  toast.success("Request deleted", {
-                    action: {
-                      label: "Undo",
-                      onClick: () => {
-                        void restoreRequest({ requestId: request._id })
-                          .then(() => toast.success("Request restored"))
-                          .catch((error) =>
-                            toast.error(
-                              getUserFacingErrorMessage(
-                                error,
-                                "Could not restore request",
-                              ),
-                            ),
-                          );
-                      },
-                    },
-                  });
-                } catch (error) {
-                  toast.error(
-                    getUserFacingErrorMessage(
-                      error,
-                      "Could not delete request",
-                    ),
-                  );
-                  setDeleting(false);
-                }
-              }}
-            >
-              {deleting ? "Deleting…" : "Delete request"}
-            </PillButton>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       <AutoSaveStatus status={autoSave.status} />
       {!embedded && requestCard}
       {inline ? (
@@ -1350,7 +1282,10 @@ function OutreachEditor({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [working, setWorking] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState("pdfs");
+  const [sidebarTab, setSidebarTab] = useFollowedState(
+    `procurement:${requestId}:outreach-sidebar-tab`,
+    "pdfs",
+  );
   const review = proposal?.reviews[0];
   const latestExtraction = proposal?.extraction.latest;
   const [reviewChoice, setReviewChoice] = useState<{
@@ -2005,7 +1940,14 @@ export function ProcurementRequestWorkspace({
   clientOrgId: Id<"organizations">;
   requestId: Id<"procurementRequests">;
   basePath: string;
-  view: "application" | "edit" | "proposals" | "cadence" | "files" | "email" | "information";
+  view:
+    | "application"
+    | "edit"
+    | "proposals"
+    | "cadence"
+    | "files"
+    | "email"
+    | "information";
   readOnly: boolean;
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
@@ -2014,14 +1956,21 @@ export function ProcurementRequestWorkspace({
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedProposalId = searchParams.get("proposal");
-  const selectedInformationForm = view === "information" ? searchParams.get("form") : null;
+  const selectedInformationForm =
+    view === "information" ? searchParams.get("form") : null;
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const handledProposalLink = useRef<string | null>(null);
   // The email in the right panel, and the one being opened. Any other panel
   // replaces it, which clears the first.
   const openedEmailId = useRef<string | null>(null);
   const openingEmailId = useRef<string | null>(null);
-  const onRightPanel = useCallback(
+  const [panel, setPanel] = useFollowedState<RequestPanel | null>(
+    `procurement:${requestId}:panel`,
+    null,
+  );
+  const shownPanel = useRef<RequestPanel | null>(null);
+  const composerDraft = useRef<{ text?: string; title?: string }>({});
+  const showPanel = useCallback(
     (node: ReactNode) => {
       openedEmailId.current = null;
       setRightPanelOpen(node !== null);
@@ -2029,8 +1978,19 @@ export function ProcurementRequestWorkspace({
     },
     [setRightPanel],
   );
-  const [applicationSection, setApplicationSection] =
-    useState("Contact details");
+  // Panels that are not driven by `panel` replace it.
+  const onRightPanel = useCallback(
+    (node: ReactNode) => {
+      shownPanel.current = null;
+      setPanel(null);
+      showPanel(node);
+    },
+    [setPanel, showPanel],
+  );
+  const [applicationSection, setApplicationSection] = useFollowedState(
+    `procurement:${requestId}:application-section`,
+    "Contact details",
+  );
   const result = useQuery(api.procurementRequests.get, { requestId });
   const policies = useQuery(api.procurementRequests.listPolicyOptions, {
     clientOrgId,
@@ -2045,7 +2005,9 @@ export function ProcurementRequestWorkspace({
   });
   const brokers = useCachedOperatorBrokers() as BrokerOption[] | undefined;
   const proposals = useQuery(api.procurementProposals.list, { requestId });
-  const informationForms = useQuery(api.procurementInformation.operatorForms, { requestId });
+  const informationForms = useQuery(api.procurementInformation.operatorForms, {
+    requestId,
+  });
   const providerOutreach = useProviderOutreach(requestId, readOnly);
   // The header actions depend on primitives only; handlers read the latest controller.
   const providerOutreachRef = useRef(providerOutreach);
@@ -2084,7 +2046,11 @@ export function ProcurementRequestWorkspace({
     },
     [removeFileItem],
   );
-  const changeView = async (nextView: string, threadId?: string, informationFormId?: string) => {
+  const changeView = async (
+    nextView: string,
+    threadId?: string,
+    informationFormId?: string,
+  ) => {
     const change = ++latestTabChange.current;
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
@@ -2124,30 +2090,8 @@ export function ProcurementRequestWorkspace({
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
     closePdf();
-    const close = async () => {
-      if (packetEditorRef.current && !(await packetEditorRef.current.save()))
-        return;
-      closeRightPanel();
-    };
-    onRightPanel(
-      <SettingsDrawer
-        open
-        title="Internal notes"
-        onOpenChange={(open) => {
-          if (!open) void close();
-        }}
-      >
-        <PacketWorkspace
-          key={requestId}
-          ref={packetEditorRef}
-          readOnly={readOnly}
-          requestId={requestId}
-          filename="private.md"
-          inlineNotes="sidebar"
-        />
-      </SettingsDrawer>,
-    );
-  }, [closePdf, closeRightPanel, onRightPanel, readOnly, requestId]);
+    setPanel({ kind: "notes" });
+  }, [closePdf, setPanel]);
 
   const openPacketLink = useCallback(async () => {
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
@@ -2158,55 +2102,15 @@ export function ProcurementRequestWorkspace({
     )
       return;
     closePdf();
-    onRightPanel(
-      <PacketLinkDrawer
-        requestId={requestId}
-        onClose={closeRightPanel}
-        beforeRegenerate={() =>
-          submissionNotesRef.current?.save() ?? Promise.resolve(true)
-        }
-      />,
-    );
-  }, [closePdf, closeRightPanel, onRightPanel, requestId]);
+    setPanel({ kind: "packet-link" });
+  }, [closePdf, setPanel]);
 
   const openOutreachEditor = useCallback(
     (outreach?: Outreach, proposalId?: Id<"procurementProposals">) => {
       closePdf();
-      onRightPanel(
-        <OutreachEditor
-          key={proposalId ?? outreach?._id ?? "new-outreach"}
-          requestId={requestId}
-          outreach={outreach}
-          proposalId={proposalId}
-          readOnly={readOnly}
-          brokers={brokers ?? []}
-          onClose={() => {
-            const url = new URL(window.location.href);
-            if (
-              proposalId &&
-              url.pathname === `${basePath}/${requestId}` &&
-              url.searchParams.get("proposal") === proposalId
-            ) {
-              url.searchParams.delete("proposal");
-              router.replace(`${url.pathname}${url.search}${url.hash}`, {
-                scroll: false,
-              });
-            }
-            closeRightPanel();
-          }}
-        />,
-      );
+      setPanel({ kind: "outreach", outreachId: outreach?._id, proposalId });
     },
-    [
-      basePath,
-      brokers,
-      closePdf,
-      closeRightPanel,
-      onRightPanel,
-      readOnly,
-      requestId,
-      router,
-    ],
+    [closePdf, setPanel],
   );
 
   useEffect(() => {
@@ -2235,7 +2139,6 @@ export function ProcurementRequestWorkspace({
       return;
     }
     // Route navigation synchronizes the externally owned app-shell drawer.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     openOutreachEditor(outreach, proposal._id);
   }, [
     clientOrgId,
@@ -2258,69 +2161,18 @@ export function ProcurementRequestWorkspace({
         : "supporting",
     ) => {
       closePdf();
-      onRightPanel(
-        <ClientFileUploadPanel
-          clientOrgId={clientOrgId}
-          showBrokerVisibility
-          onClose={closeRightPanel}
-          onUploaded={async (uploaded, visibility) => {
-            await Promise.all(
-              uploaded.map((file) =>
-                createFileItem({
-                  requestId,
-                  clientFileId: file.clientFileId,
-                  label: file.originalName,
-                  documentCategory,
-                  clientVisible: visibility.clientVisible,
-                  brokerRelease: visibility.brokerVisible
-                    ? "attached"
-                    : "hidden",
-                }),
-              ),
-            );
-          }}
-        />,
-      );
+      setPanel({ kind: "upload", documentCategory });
     },
-    [
-      clientOrgId,
-      closePdf,
-      closeRightPanel,
-      createFileItem,
-      onRightPanel,
-      requestId,
-      applicationSection,
-    ],
+    [closePdf, setPanel, applicationSection],
   );
 
   const openFileEditor = useCallback(
     (fileItem: ProcurementFileItem) => {
       if (!details) return;
       closePdf();
-      onRightPanel(
-        <ProcurementFileEditor
-          key={fileItem._id}
-          fileItem={fileItem}
-          readOnly={readOnly}
-          onPreview={(file) => {
-            if (!file.url) return;
-            if (
-              file.contentType === "application/pdf" ||
-              /\.pdf$/i.test(file.name)
-            ) {
-              onRightPanel(null);
-              openWithUrl(file.url);
-            } else {
-              onRightPanel(
-                <ImagePreview file={file} onClose={closeRightPanel} />,
-              );
-            }
-          }}
-          onClose={closeRightPanel}
-        />,
-      );
+      setPanel({ kind: "file", fileItemId: fileItem._id });
     },
-    [closePdf, closeRightPanel, details, onRightPanel, openWithUrl, readOnly],
+    [closePdf, details, setPanel],
   );
 
   const emailDrawerRef = useRef<ProcurementEmailDrawerHandle>(null);
@@ -2375,7 +2227,10 @@ export function ProcurementRequestWorkspace({
   const handledThread = useRef<string | null>(null);
   useEffect(() => {
     if (resolvedThread.status === "none") handledThread.current = null;
-    if (resolvedThread.status === "unavailable" && handledThread.current !== threadParam) {
+    if (
+      resolvedThread.status === "unavailable" &&
+      handledThread.current !== threadParam
+    ) {
       handledThread.current = threadParam;
       toast.error("That conversation is not available");
       router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
@@ -2392,25 +2247,239 @@ export function ProcurementRequestWorkspace({
   }, [resolvedThread, threadParam, openEmail, router, basePath, requestId]);
 
   const requestTitle = details?.request.title ?? "";
-  const openClientComposer = useCallback(async (initialText?: string, informationFormId?: Id<"procurementInformationForms">, informationFormTitle?: string) => {
-    if (emailDrawerRef.current && !(await emailDrawerRef.current.save())) return;
-    closePdf();
-    router.replace(`${basePath}/${requestId}?view=${informationFormId ? `information&form=${informationFormId}` : "email"}`, { scroll: false });
-    onRightPanel(
-      <ClientOutreachComposer
-        key={informationFormId ?? requestId}
-        informationFormId={informationFormId}
-        requestId={requestId}
-        requestTitle={informationFormTitle ?? requestTitle}
-        initialText={initialText}
-        onClose={closeRightPanel}
-        onSent={closeRightPanel}
-      />,
-    );
-  }, [basePath, closePdf, closeRightPanel, onRightPanel, requestId, requestTitle, router]);
+  const openClientComposer = useCallback(
+    async (
+      initialText?: string,
+      informationFormId?: Id<"procurementInformationForms">,
+      informationFormTitle?: string,
+    ) => {
+      if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
+        return;
+      closePdf();
+      // The prefilled draft stays with the leader; followers only see which form is open.
+      composerDraft.current = {
+        text: initialText,
+        title: informationFormTitle,
+      };
+      router.replace(
+        `${basePath}/${requestId}?view=${informationFormId ? `information&form=${informationFormId}` : "email"}`,
+        { scroll: false },
+      );
+      setPanel({ kind: "composer", audience: "client", informationFormId });
+    },
+    [basePath, closePdf, requestId, router, setPanel],
+  );
+
+  useEffect(() => {
+    if (!panel) {
+      if (shownPanel.current) {
+        shownPanel.current = null;
+        showPanel(null);
+      }
+      return;
+    }
+    let node: ReactNode = null;
+    if (panel.kind === "notes") {
+      const close = async () => {
+        if (packetEditorRef.current && !(await packetEditorRef.current.save()))
+          return;
+        closeRightPanel();
+      };
+      node = (
+        <SettingsDrawer
+          open
+          title="Internal notes"
+          onOpenChange={(open) => {
+            if (!open) void close();
+          }}
+        >
+          <PacketWorkspace
+            key={requestId}
+            ref={packetEditorRef}
+            readOnly={readOnly}
+            requestId={requestId}
+            filename="private.md"
+            inlineNotes="sidebar"
+          />
+        </SettingsDrawer>
+      );
+    } else if (panel.kind === "packet-link") {
+      node = (
+        <PacketLinkDrawer
+          requestId={requestId}
+          onClose={closeRightPanel}
+          beforeRegenerate={() =>
+            submissionNotesRef.current?.save() ?? Promise.resolve(true)
+          }
+        />
+      );
+    } else if (panel.kind === "outreach") {
+      const { proposalId } = panel;
+      const outreach = details?.outreaches.find(
+        (row) => row._id === panel.outreachId,
+      );
+      if (!panel.outreachId || outreach)
+        node = (
+          <OutreachEditor
+            key={proposalId ?? outreach?._id ?? "new-outreach"}
+            requestId={requestId}
+            outreach={outreach}
+            proposalId={proposalId as Id<"procurementProposals"> | undefined}
+            readOnly={readOnly}
+            brokers={brokers ?? []}
+            onClose={() => {
+              const url = new URL(window.location.href);
+              if (
+                proposalId &&
+                url.pathname === `${basePath}/${requestId}` &&
+                url.searchParams.get("proposal") === proposalId
+              ) {
+                url.searchParams.delete("proposal");
+                router.replace(`${url.pathname}${url.search}${url.hash}`, {
+                  scroll: false,
+                });
+              }
+              closeRightPanel();
+            }}
+          />
+        );
+    } else if (panel.kind === "upload") {
+      node = (
+        <ClientFileUploadPanel
+          clientOrgId={clientOrgId}
+          showBrokerVisibility
+          onClose={closeRightPanel}
+          onUploaded={async (uploaded, visibility) => {
+            await Promise.all(
+              uploaded.map((file) =>
+                createFileItem({
+                  requestId,
+                  clientFileId: file.clientFileId,
+                  label: file.originalName,
+                  documentCategory: panel.documentCategory,
+                  clientVisible: visibility.clientVisible,
+                  brokerRelease: visibility.brokerVisible
+                    ? "attached"
+                    : "hidden",
+                }),
+              ),
+            );
+          }}
+        />
+      );
+    } else if (panel.kind === "file") {
+      const fileItem = details?.files.find(
+        (file) => file._id === panel.fileItemId,
+      );
+      if (fileItem)
+        node = (
+          <ProcurementFileEditor
+            key={fileItem._id}
+            fileItem={fileItem}
+            readOnly={readOnly}
+            onPreview={(file) => {
+              if (!file.url) return;
+              if (
+                file.contentType === "application/pdf" ||
+                /\.pdf$/i.test(file.name)
+              ) {
+                onRightPanel(null);
+                openWithUrl(file.url);
+              } else {
+                setPanel({ kind: "image", fileItemId: fileItem._id });
+              }
+            }}
+            onClose={closeRightPanel}
+          />
+        );
+    } else if (panel.kind === "information") {
+      node = (
+        <InformationDrawer
+          key={JSON.stringify(panel.target)}
+          requestId={requestId}
+          target={panel.target}
+          onClose={closeRightPanel}
+        />
+      );
+    } else if (panel.kind === "image") {
+      const file = details?.files.find(
+        (row) => row._id === panel.fileItemId,
+      )?.clientFile;
+      if (file?.url)
+        node = <ImagePreview file={file} onClose={closeRightPanel} />;
+    } else {
+      const audienceTabs = (
+        <RequestEmailAudienceTabs
+          value={panel.audience}
+          onChange={(audience) => setPanel({ kind: "composer", audience })}
+        />
+      );
+      node =
+        panel.audience === "provider" ? (
+          details ? (
+            <NewEmailComposer
+              key="provider-composer"
+              request={{ requestId, clientOrgId, title: requestTitle }}
+              header={audienceTabs}
+              onClose={closeRightPanel}
+              onSent={closeRightPanel}
+            />
+          ) : null
+        ) : (
+          <ClientOutreachComposer
+            key={panel.informationFormId ?? requestId}
+            informationFormId={panel.informationFormId}
+            requestId={requestId}
+            requestTitle={composerDraft.current.title ?? requestTitle}
+            initialText={composerDraft.current.text}
+            header={audienceTabs}
+            onClose={closeRightPanel}
+            onSent={closeRightPanel}
+          />
+        );
+    }
+    if (!node) {
+      // The record is gone (or another request loaded): drop its stale panel.
+      if (details !== undefined && shownPanel.current) {
+        shownPanel.current = null;
+        showPanel(null);
+      }
+      return;
+    }
+    shownPanel.current = panel;
+    showPanel(node);
+  }, [
+    basePath,
+    brokers,
+    clientOrgId,
+    closeRightPanel,
+    createFileItem,
+    details,
+    onRightPanel,
+    openWithUrl,
+    panel,
+    readOnly,
+    requestId,
+    requestTitle,
+    router,
+    setPanel,
+    showPanel,
+  ]);
+
+  const openInformationDrawer = useCallback(
+    (target: InformationDrawerTarget) => {
+      closePdf();
+      setPanel({ kind: "information", target });
+    },
+    [closePdf, setPanel],
+  );
 
   const askClientForInformation = useCallback(
-    (formId: Id<"procurementInformationForms">, questions: string[], title?: string) => {
+    (
+      formId: Id<"procurementInformationForms">,
+      questions: string[],
+      title?: string,
+    ) => {
       const questionList = questions
         .map((question, index) => `${index + 1}. ${question}`)
         .join("\n\n");
@@ -2434,7 +2503,6 @@ export function ProcurementRequestWorkspace({
     },
     [basePath, requestId, router, closeRightPanel],
   );
-  const forwardingAddress = details?.request.forwardingAddress;
   const sendAllCount = providerOutreach.sendAllCount;
   const providerOutreachBusy = providerOutreach.sending.size > 0;
   const canSendAll = providerOutreach.panel?.request.canLaunch ?? false;
@@ -2445,16 +2513,7 @@ export function ProcurementRequestWorkspace({
     }
 
     const actions =
-      view === "application" ? (
-        <PillButton
-          type="button"
-          size="default"
-          onClick={() => void openPacketLink()}
-        >
-          <Link className="size-3.5" />
-          Share link
-        </PillButton>
-      ) : view === "proposals" ? (
+      view === "proposals" ? (
         <>
           <PillButton
             type="button"
@@ -2482,14 +2541,14 @@ export function ProcurementRequestWorkspace({
         <>
           <PillButton type="button" onClick={() => void openClientComposer()}>
             <SquarePen className="size-3.5" />
-            Email client
+            New email
           </PillButton>
         </>
       ) : view === "information" ? (
         <InformationRequestActions
           requestId={requestId}
           readOnly={readOnly}
-          onRightPanel={onRightPanel}
+          onOpenDrawer={openInformationDrawer}
           inboxHref={`${basePath}/${requestId}?view=email`}
           onAskClient={askClientForInformation}
           selectedForm={selectedInformationForm}
@@ -2512,16 +2571,6 @@ export function ProcurementRequestWorkspace({
         >
           <StickyNote className="size-3.5" />
         </PillButton>
-        {view === "application" && (
-          <PillButton
-            variant="destructive"
-            size="default"
-            onClick={() => requestEditorRef.current?.openDelete()}
-          >
-            <Trash2 className="size-3.5" />
-            Delete request
-          </PillButton>
-        )}
         {actions}
       </>,
     );
@@ -2532,11 +2581,11 @@ export function ProcurementRequestWorkspace({
     basePath,
     onRightPanel,
     askClientForInformation,
+    openInformationDrawer,
     selectedInformationForm,
     sendAllCount,
     providerOutreachBusy,
     canSendAll,
-    openPacketLink,
     openNotes,
     openUpload,
     readOnly,
@@ -2664,7 +2713,14 @@ export function ProcurementRequestWorkspace({
           attention: form.status === "open",
         })),
         ...(!readOnly
-          ? [{ key: "information-form:new", label: "Add form", icon: Plus, subtle: true }]
+          ? [
+              {
+                key: "information-form:new",
+                label: "Add form",
+                icon: Plus,
+                subtle: true,
+              },
+            ]
           : []),
       ],
     },
@@ -2703,13 +2759,17 @@ export function ProcurementRequestWorkspace({
       ? applicationSection
       : "Contact details";
   const activeMenuKey =
-    view === "information" ? selectedInformationForm ? `information-form:${selectedInformationForm}` : "information" : view === "proposals"
-      ? "providers"
-      : view === "cadence"
-        ? "cadence"
-        : view === "email"
-          ? "email"
-          : activeApplicationSection;
+    view === "information"
+      ? selectedInformationForm
+        ? `information-form:${selectedInformationForm}`
+        : "information"
+      : view === "proposals"
+        ? "providers"
+        : view === "cadence"
+          ? "cadence"
+          : view === "email"
+            ? "email"
+            : activeApplicationSection;
   const selectMenu = async (key: string) => {
     if (requestEditorRef.current && !(await requestEditorRef.current.save()))
       return;
@@ -2721,10 +2781,19 @@ export function ProcurementRequestWorkspace({
     )
       return;
     if (key.startsWith("information-form:")) {
-      void changeView("information", undefined, key.slice("information-form:".length));
+      void changeView(
+        "information",
+        undefined,
+        key.slice("information-form:".length),
+      );
       return;
     }
-    if (key === "providers" || key === "cadence" || key === "email" || key === "information") {
+    if (
+      key === "providers" ||
+      key === "cadence" ||
+      key === "email" ||
+      key === "information"
+    ) {
       closeRightPanel();
       void changeView(key === "providers" ? "proposals" : key);
       return;
@@ -2834,6 +2903,31 @@ export function ProcurementRequestWorkspace({
           </>
         ) : null}
 
+        {view === "proposals" && !readOnly ? (
+          <OperationalPanel
+            as="div"
+            className="flex flex-wrap items-center gap-3 px-4 py-3"
+          >
+            <div className="min-w-0 flex-1">
+              <p className={typeStyle("body.medium")}>Provider share link</p>
+              <p
+                className={`text-muted-foreground ${typeStyle("caption.default")}`}
+              >
+                Providers open the shared application and released documents
+                from this link.
+              </p>
+            </div>
+            <PillButton
+              type="button"
+              variant="secondary"
+              onClick={() => void openPacketLink()}
+            >
+              <Link className="size-3.5" />
+              Share link
+            </PillButton>
+          </OperationalPanel>
+        ) : null}
+
         {view === "proposals" ? (
           <ProviderOutreachPanel
             controller={providerOutreach}
@@ -2859,6 +2953,13 @@ export function ProcurementRequestWorkspace({
               return {
                 key: outreach._id,
                 brokerOrgId: outreach.brokerOrgId,
+                sort: {
+                  provider: outreach.brokerName,
+                  contact:
+                    sequence?.recipient.email ?? outreach.contactEmail,
+                  coverage: candidate?.lines.covered.length,
+                  status: outreachStatusSortValue(outreach.status),
+                },
                 row: (
                   <TableRow
                     key={outreach._id}
@@ -2898,7 +2999,9 @@ export function ProcurementRequestWorkspace({
                     <TableCell>
                       <div className="flex flex-col items-start gap-2">
                         <OutreachStatusTag status={outreach.status} />
-                        {sequence ? <SequenceState sequence={sequence} /> : null}
+                        {sequence ? (
+                          <SequenceState sequence={sequence} />
+                        ) : null}
                         {proposal && proposalExtractionState(proposal) ? (
                           <ProposalExtractionStatus
                             proposal={proposal}
@@ -2976,9 +3079,26 @@ export function ProcurementRequestWorkspace({
           />
         ) : null}
 
-        {view === "information" && (selectedInformationForm ?
-          <InformationFormWorkspace key={selectedInformationForm} requestId={requestId} readOnly={readOnly} onRightPanel={onRightPanel} inboxHref={`${basePath}/${requestId}?view=email`} onAskClient={askClientForInformation} selectedForm={selectedInformationForm} /> :
-          <InformationRequests requestId={requestId} readOnly={readOnly} onRightPanel={onRightPanel} inboxHref={`${basePath}/${requestId}?view=email`} onAskClient={askClientForInformation} />)}
+        {view === "information" &&
+          (selectedInformationForm ? (
+            <InformationFormWorkspace
+              key={selectedInformationForm}
+              requestId={requestId}
+              readOnly={readOnly}
+              onOpenDrawer={openInformationDrawer}
+              inboxHref={`${basePath}/${requestId}?view=email`}
+              onAskClient={askClientForInformation}
+              selectedForm={selectedInformationForm}
+            />
+          ) : (
+            <InformationRequests
+              requestId={requestId}
+              readOnly={readOnly}
+              onOpenDrawer={openInformationDrawer}
+              inboxHref={`${basePath}/${requestId}?view=email`}
+              onAskClient={askClientForInformation}
+            />
+          ))}
         {view === "cadence" && !readOnly ? (
           <ProviderOutreachCadence controller={providerOutreach} />
         ) : null}
@@ -2988,9 +3108,10 @@ export function ProcurementRequestWorkspace({
             key={requestId}
             scope={{ kind: "request", requestId }}
             selectedThreadId={
-              resolvedThread.status === "loading" ? threadParam : resolvedThread.threadId
+              resolvedThread.status === "loading"
+                ? threadParam
+                : resolvedThread.threadId
             }
-            fallbackForwardingAddress={forwardingAddress ?? null}
             onSelect={selectInboxThread}
             onOpenThread={(thread) => void openEmail(thread)}
           />

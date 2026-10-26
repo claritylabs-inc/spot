@@ -2,33 +2,67 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
 jobs:
-  root:
+  lint:
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: useblacksmith/checkout@v1
 
-      - uses: actions/setup-node@v6
+      - uses: ./.github/actions/setup
+
+      - uses: actions/cache@v6
         with:
-          node-version: 24
-          cache: npm
+          path: .eslintcache
+          key: eslint-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            eslint-${{ github.ref_name }}-
+            eslint-main-
 
-      - run: npm ci --no-audit --no-fund --loglevel=error
+      - run: npm run lint -- --cache --cache-location .eslintcache --cache-strategy content
 
-      - run: npm run lint
+  typecheck:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: useblacksmith/checkout@v1
+
+      - uses: ./.github/actions/setup
+
+      - uses: actions/cache@v6
+        with:
+          path: tsconfig.tsbuildinfo
+          key: tsc-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            tsc-${{ github.ref_name }}-
+            tsc-main-
 
       - run: npx tsc --noEmit
 
-      - run: npx convex typecheck
+  test:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: useblacksmith/checkout@v1
+
+      - uses: ./.github/actions/setup
 
       - run: npm test
+
+  # Required status check for main; passes only when every CI job passed.
+  root:
+    if: always()
+    needs: [lint, typecheck, test]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - run: test "${{ join(needs.*.result, ' ') }}" = "success success success"

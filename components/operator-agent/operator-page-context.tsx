@@ -85,6 +85,7 @@ export function operatorPageContextFromPathname(
     clients: "Client organizations",
     compliance: "Client compliance",
     policies: "Client policies",
+    procurement: "Procurement requests across clients",
     profile: "Operator profile",
     logs: "Model call logs",
     usage: "Model usage",

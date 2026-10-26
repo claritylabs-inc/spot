@@ -1,7 +1,11 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo } from "react";
 import { useEntityPreview } from "@/hooks/use-entity-preview";
+import {
+  followedContentKey,
+  useFollowedState,
+} from "@/hooks/use-followed-state";
 import type { PresentationProps } from "@/lib/chat-presentation";
 import { typeStyle } from "@/lib/typography";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -25,7 +29,9 @@ import {
   TableHeader,
   TableNameLink,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
+import { useTableSort, type TableSortValue } from "@/hooks/use-table-sort";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { usePresentation } from "./context";
 import { referenceHref, Sources } from "./references";
@@ -66,30 +72,55 @@ export function FactList({ facts }: PresentationProps<"FactList">) {
   );
 }
 
+type ComparisonRow = PresentationProps<"ComparisonTable">["rows"][number] & {
+  index: number;
+};
+
 export function ComparisonTable({
   columns,
   rows,
 }: PresentationProps<"ComparisonTable">) {
-  const { openEvidence } = usePresentation();
+  const { stateKey, openEvidence } = usePresentation();
+  const indexedRows = useMemo(
+    () => rows.map((row, index) => ({ ...row, index })),
+    [rows],
+  );
+  const sortColumns = useMemo(() => {
+    const entries: [string, (row: ComparisonRow) => TableSortValue][] = [
+      ["item", (row) => row.label],
+    ];
+    columns.forEach((column, valueIndex) =>
+      entries.push([`column:${column.id}`, (row) => row.values[valueIndex]]),
+    );
+    return Object.fromEntries(entries);
+  }, [columns]);
+  const tableSort = useTableSort(
+    followedContentKey(`${stateKey}:comparison`, { columns, rows }),
+    indexedRows,
+    sortColumns,
+  );
   return (
     <OperationalPanel>
       <Table aria-label="Comparison">
         <TableHeader>
           <TableRow>
-            <TableHead scope="col">Item</TableHead>
+            <SortableTableHead scope="col" {...tableSort.head("item")}>
+              Item
+            </SortableTableHead>
             {columns.map((column) => (
-              <TableHead
+              <SortableTableHead
                 key={column.id}
                 scope="col"
                 className="min-w-32 whitespace-normal"
+                {...tableSort.head(`column:${column.id}`)}
               >
                 {column.label}
-              </TableHead>
+              </SortableTableHead>
             ))}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((row, index) => {
+          {tableSort.rows.map((row) => {
             const inspect = () =>
               openEvidence?.({
                 title: row.label,
@@ -101,7 +132,7 @@ export function ComparisonTable({
               });
             return (
               <TableRow
-                key={index}
+                key={row.index}
                 tabIndex={0}
                 aria-label={`Inspect ${row.label}`}
                 onClick={inspect}
@@ -172,7 +203,11 @@ export function FindingsList({ findings }: PresentationProps<"FindingsList">) {
 export function RequirementMatrix({
   requirements,
 }: PresentationProps<"RequirementMatrix">) {
-  const [status, setStatus] = useState("all");
+  const { stateKey } = usePresentation();
+  const [status, setStatus] = useFollowedState(
+    `${followedContentKey(`${stateKey}:requirements`, requirements)}:status`,
+    "all",
+  );
   const visible = requirements.filter(
     (row) => status === "all" || row.status === status,
   );
@@ -219,10 +254,11 @@ export function RequirementMatrix({
 }
 
 export function RecordList({ records }: PresentationProps<"RecordList">) {
-  const { references, openRecord } = usePresentation();
+  const { stateKey, references, openRecord } = usePresentation();
   const { openPreview } = useEntityPreview();
-  const [filter, setFilter] = useState("");
-  const [order, setOrder] = useState("original");
+  const blockKey = followedContentKey(`${stateKey}:records`, records);
+  const [filter, setFilter] = useFollowedState(`${blockKey}:filter`, "");
+  const [order, setOrder] = useFollowedState(`${blockKey}:order`, "original");
   const filterId = useId();
   const visible = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase();

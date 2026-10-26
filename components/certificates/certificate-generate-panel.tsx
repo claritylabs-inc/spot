@@ -19,6 +19,7 @@ import { usePdf } from "@/components/pdf-context";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { extractionState, hasFinalExtraction } from "@/lib/extraction-state";
 import { typeStyle } from "@/lib/typography";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 type GenerationMode = "policy" | "requirements";
@@ -203,7 +204,10 @@ export function CertificateGeneratePanel({
   );
   const initialMode: GenerationMode =
     initialRequirementSourceId || initialRequirementId ? "requirements" : "policy";
-  const [mode, setMode] = useState<GenerationMode>(initialMode);
+  const [mode, setMode] = useFollowedState<GenerationMode>(
+    `certificates:${orgId}:${initialPolicyId ?? "org"}:generate-mode`,
+    initialMode,
+  );
   const [policyId, setPolicyId] = useState<string>(initialPolicyId ?? "");
   const [requirementSourceId, setRequirementSourceId] = useState<string>(initialRequirementSourceId ?? "");
   const [holderDraft, setHolderDraft] = useState(() => certificateHolderDraft());

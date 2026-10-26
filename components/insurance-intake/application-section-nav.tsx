@@ -41,6 +41,7 @@ import {
 } from "@claritylabs-inc/ui/components/app-shell/app-sidebar/nav-item";
 import { AppShell } from "@/components/app-shell";
 import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import type { IntakeAnswers } from "@/lib/insurance-intake";
 import {
   coverageRequestLabel,
@@ -176,6 +177,10 @@ export function SectionMenu({
     event.stopPropagation();
     onRemove?.(key);
   };
+  const [closedGroups, setClosedGroups] = useFollowedState<string[]>(
+    `section-menu:${label}:collapsed`,
+    [],
+  );
   const sectionsFor = (collapsed: boolean): AppSidebarSection[] => [
     {
       key: "back",
@@ -184,6 +189,14 @@ export function SectionMenu({
     ...groups.map((group) => ({
       key: group.label,
       label: group.label,
+      collapsible: true,
+      open: !closedGroups.includes(group.label),
+      onOpenChange: (open: boolean) =>
+        setClosedGroups((current) =>
+          open
+            ? current.filter((entry) => entry !== group.label)
+            : [...current, group.label],
+        ),
       // Stable identities allow separate forms to share a display title.
       items: group.items.map((entry) => ({
         key: entry.key,

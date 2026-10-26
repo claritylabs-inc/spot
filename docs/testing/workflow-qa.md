@@ -2675,6 +2675,36 @@ end-to-end replay. Evidence: `local-command.json`, `local-command-retry.json`,
 `typecheck-root.log`, `typecheck-convex.log`, `lint.log`, and `tests.log` in the
 same evidence directory. No production code deployment or manual table purge ran.
 
+## Operator Slack notifications — 2026-10-23
+
+Local mock Slack validation covered settings in visible Chrome, normal operator/client login, category routing and persistence, desktop/mobile layouts, offline disabling, tenant/anonymous/impersonation denial, revision conflicts, dedupe, suppressed-event non-replay, route/source cancellation, lease recovery, and bounded retries. Eighteen runtime checks passed. The intake submission seam also confirmed that an explicit disabled Applications route owns alerts and suppresses legacy submission delivery. All routes were left off; Slack mock availability was restored.
+
+The temporary internal QA fixture was removed. External email receipt, real model approvals, policy extraction and live Slack delivery were source-reviewed rather than replayed end to end. See [operator notification workflows](operator-notifications-workflow.md) for scope and evidence. User-requested copy cleanup removed explanatory paragraphs and redundant row descriptions; the final 390px screenshot shows all four categories without horizontal overflow.
+
+Artifacts: `.context/notifications/{runtime-results.json,boundary-results.json,settings-final.png,settings-mobile-clean.png,settings-offline.png,service-review.md}`. Existing Slack/intake/operator identity/confirmation tests passed (17 tests in four files). No new unit tests, Vercel previews, or production deployment.
+
+Final root and Convex TypeScript checks, touched-file ESLint and `git diff --check` passed. Local Convex accepted the generated API and schema after fixture removal.
+
+## Selected model activity — 2026-10-23
+
+The agent activity disclosure now records the actual provider/model returned by
+cl-router after each web model step. Resolving an optional pin no longer creates
+a completed model-selection row. The shared response callback covers client and
+operator web chats; operator metadata can still be recorded when recovery holds
+back response streaming, with the existing run/checkpoint guards.
+
+- Integration: `npx vitest run convex/routerJobs.test.ts` uses a completed durable
+  router response to verify the exact model label, replay deduplication and no
+  new activity on a cancelled message. Full suite: 145 tests passed.
+- Browser: `.context/model-selection-qa/run.mjs` renders the real
+  `ThinkingSummary` component with representative returned metadata. Desktop
+  (1000px) and mobile (390px) show two distinct selected models, hide generic
+  model rows, fit without horizontal overflow and report no uncaught browser errors.
+- Screenshots: `.context/model-selection-qa/{desktop,mobile}.png`.
+- Scope: isolated component browser QA plus the mocked durable integration;
+  no live inference or deployment mutation was run. Existing saved messages
+  are not rewritten.
+
 
 ## Insurance request and provider follow-up round trip — 2026-10-23
 
@@ -2722,3 +2752,16 @@ Helium verified submitted 12, draft correction 13 staying private (packet retain
 conditional applicability and independent file release remain enforced. No new
 browser fixtures for cross-provider/file variants, no sends or deployment. See
 the audit's supplementary packet repair section.
+
+
+## Email verification warning and redirect loop — 2026-10-26
+
+On `zac/intake-workflow-fixes` after merging main, native Helium exercised fresh
+synthetic signup/submission and captured OTP confirmation. The saved application
+remained visible after confirmation and reload, with no unload warning or login
+loop. Verification keeps a fresh cookie-based document load because the prior
+restricted session is revoked; only that successful, flushed navigation bypasses
+the auth SDK's refresh unload warning. Invalid-code handling remained on the
+form. See the Helium audit for fixture and merge details. Root/Convex TypeScript
+passed; focused ESLint has no errors and one existing hook dependency warning.
+No new tests, dev migrations, production writes or deployment.

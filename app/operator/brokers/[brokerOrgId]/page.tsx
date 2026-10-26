@@ -52,6 +52,7 @@ import {
   TabsTrigger,
 } from "@claritylabs-inc/ui/components/tabs";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
   NETWORK_STATUS_LABELS,
@@ -95,6 +96,7 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
   const router = useRouter();
   const update = useMutation(api.brokerProfiles.upsert);
   const office = row.profile?.officeAddress;
+  const [tab, setTab] = useFollowedState(`brokers:${row.broker._id}:tab`, "profile");
   const [values, setValues] = useState({
     name: row.broker.name,
     website: row.broker.website ?? "",
@@ -193,7 +195,7 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
           onDeleted={() => router.push("/operator/brokers")}
         />
       </AppShellPortal>
-      <Tabs defaultValue="profile" className="gap-5">
+      <Tabs value={tab} onValueChange={setTab} className="gap-5">
         <TabsList variant="pill" aria-label="Provider">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="appetite">Appetite</TabsTrigger>

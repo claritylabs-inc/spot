@@ -7,7 +7,7 @@ import {
 } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { requireOperatorForUser } from "./lib/operatorIdentity";
-import type { OperatorSlackConfirmationResolution } from "./lib/slackBlocks";
+import type { OperatorSlackConfirmationResolution } from "./lib/operatorSlackBlocks";
 import {
   getOperatorSlackConfig,
   operatorSlackConversationKey,

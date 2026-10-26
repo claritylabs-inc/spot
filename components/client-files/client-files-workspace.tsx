@@ -14,6 +14,8 @@ import { toast } from "sonner";
 
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { usePdf } from "@/components/pdf-context";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
@@ -39,9 +41,9 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
 import {
   Tabs,
@@ -58,6 +60,11 @@ const NO_POLICY = "__none__";
 const MAX_CLIENT_FILE_BYTES = 50 * 1024 * 1024;
 
 type ClientFilesView = "private" | "shared" | "archived";
+
+type ClientFilesPanel =
+  | { kind: "upload" }
+  | { kind: "edit" | "image"; fileId: string }
+  | null;
 
 const CLIENT_FILE_EMPTY_STATES: Record<
   ClientFilesView,
@@ -110,6 +117,13 @@ function policyOptionLabel(policy: ClientFilePolicyOption) {
     "Policy"
   );
 }
+
+const CLIENT_FILE_SORT_COLUMNS = {
+  name: (file: ClientFileRow) => file.name,
+  policy: (file: ClientFileRow) => file.policyLabel,
+  access: (file: ClientFileRow) => (file.clientVisible ? "Shared" : "Private"),
+  date: (file: ClientFileRow) => file.archivedAt ?? file.createdAt,
+};
 
 function formatFileSize(size: number) {
   if (size < 1_024) return `${size} B`;
@@ -610,7 +624,14 @@ export function ClientFilesWorkspace({
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
 }) {
-  const [requestedView, setView] = useState<ClientFilesView>("private");
+  const [requestedView, setView] = useFollowedState<ClientFilesView>(
+    `clients:${clientOrgId}:files:view`,
+    "private",
+  );
+  const [panel, setPanel] = useFollowedState<ClientFilesPanel>(
+    `clients:${clientOrgId}:files:panel`,
+    null,
+  );
   const activeResult = useQuery(api.clientFiles.list, {
     clientOrgId,
     limit: 200,
@@ -650,16 +671,11 @@ export function ClientFilesWorkspace({
   const archivedView = view === "archived";
   const canEdit = canManage && !archivedView;
 
-  const closeRightPanel = useCallback(() => onRightPanel(null), [onRightPanel]);
+  const closeRightPanel = useCallback(() => setPanel(null), [setPanel]);
   const openUpload = useCallback(() => {
     closePdf();
-    onRightPanel(
-      <ClientFileUploadPanel
-        clientOrgId={clientOrgId}
-        onClose={closeRightPanel}
-      />,
-    );
-  }, [clientOrgId, closePdf, closeRightPanel, onRightPanel]);
+    setPanel({ kind: "upload" });
+  }, [closePdf, setPanel]);
 
   useEffect(() => {
     onActions?.(
@@ -677,44 +693,98 @@ export function ClientFilesWorkspace({
     (file: ClientFileRow) => {
       if (!file.url) return;
       if (isPdf(file)) {
-        onRightPanel(null);
+        setPanel(null);
         openWithUrl(file.url);
         return;
       }
       if (isImage(file)) {
         closePdf();
-        onRightPanel(
-          <ClientFileImagePanel file={file} onClose={closeRightPanel} />,
-        );
+        setPanel({ kind: "image", fileId: file._id });
       }
     },
-    [closePdf, closeRightPanel, onRightPanel, openWithUrl],
+    [closePdf, openWithUrl, setPanel],
   );
 
   const edit = useCallback(
     (file: ClientFileRow) => {
       closePdf();
-      onRightPanel(
+      setPanel({ kind: "edit", fileId: file._id });
+    },
+    [closePdf, setPanel],
+  );
+
+  const panelFile = useMemo(() => {
+    if (panel === null || panel.kind === "upload") return null;
+    const rows = [
+      ...(activeResult?.files ?? []),
+      ...(archivedResult?.files ?? []),
+    ] as ClientFileRow[];
+    return rows.find((file) => file._id === panel.fileId) ?? null;
+  }, [activeResult, archivedResult, panel]);
+  // A panel whose file is gone closes for good rather than reopening if the
+  // file returns.
+  const panelFileGone =
+    panel !== null &&
+    panel.kind !== "upload" &&
+    activeResult !== undefined &&
+    archivedResult !== undefined &&
+    !panelFile;
+  useEffect(() => {
+    if (panelFileGone) setPanel(null);
+  }, [panelFileGone, setPanel]);
+
+  useEffect(() => {
+    const panelKind = panel?.kind;
+    let node: ReactNode = null;
+    if (panelKind === "upload") {
+      node = (
+        <ClientFileUploadPanel
+          clientOrgId={clientOrgId}
+          onClose={closeRightPanel}
+        />
+      );
+    } else if (panelFile && panelKind === "image") {
+      node = <ClientFileImagePanel file={panelFile} onClose={closeRightPanel} />;
+    } else if (panelFile && panelKind === "edit") {
+      node = (
         <ClientFileEditor
-          key={file._id}
-          file={file}
+          key={panelFile._id}
+          file={panelFile}
           policies={policies}
           onClose={closeRightPanel}
-          onPreview={() => preview(file)}
+          onPreview={() => preview(panelFile)}
           canEdit={canEdit}
           canManage={canManage}
-        />,
+        />
       );
-    },
-    [
-      canEdit,
-      canManage,
-      closePdf,
-      closeRightPanel,
-      onRightPanel,
-      policies,
-      preview,
-    ],
+    }
+    if (!node) return;
+    onRightPanel(node);
+    return () => onRightPanel(null);
+  }, [
+    canEdit,
+    canManage,
+    clientOrgId,
+    closeRightPanel,
+    onRightPanel,
+    panel?.kind,
+    panelFile,
+    policies,
+    preview,
+  ]);
+
+  const visibleFiles = useMemo(() => {
+    const files = (result?.files ?? []) as ClientFileRow[];
+    return operatorView && !archivedView
+      ? files.filter((file) =>
+          view === "shared" ? file.clientVisible : !file.clientVisible,
+        )
+      : files;
+  }, [archivedView, operatorView, result, view]);
+  const tableSort = useTableSort(
+    `clients:${clientOrgId}:files:${view}`,
+    visibleFiles,
+    CLIENT_FILE_SORT_COLUMNS,
   );
 
   if (result === undefined || policyRows === undefined) {
@@ -728,13 +798,6 @@ export function ClientFilesWorkspace({
     );
   }
 
-  const files = result.files as ClientFileRow[];
-  const visibleFiles =
-    operatorView && !archivedView
-      ? files.filter((file) =>
-          view === "shared" ? file.clientVisible : !file.clientVisible,
-        )
-      : files;
   const visibilityTabs =
     operatorView && (hasSharedFiles || hasArchivedFiles || result.truncated) ? (
       <div className="flex min-w-0 items-center justify-between gap-4">
@@ -805,14 +868,24 @@ export function ClientFilesWorkspace({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>File</TableHead>
-              <TableHead>Policy</TableHead>
-              {operatorView ? <TableHead>Client access</TableHead> : null}
-              <TableHead>{archivedView ? "Archived" : "Added"}</TableHead>
+              <SortableTableHead {...tableSort.head("name")}>
+                File
+              </SortableTableHead>
+              <SortableTableHead {...tableSort.head("policy")}>
+                Policy
+              </SortableTableHead>
+              {operatorView ? (
+                <SortableTableHead {...tableSort.head("access")}>
+                  Client access
+                </SortableTableHead>
+              ) : null}
+              <SortableTableHead {...tableSort.head("date")}>
+                {archivedView ? "Archived" : "Added"}
+              </SortableTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {visibleFiles.map((file) => {
+            {tableSort.rows.map((file) => {
               return (
                 <TableRow
                   key={file._id}

@@ -14,6 +14,7 @@ import {
 } from "./lib/brokerProfileValidation";
 import { requireOperator, writeOperatorAudit } from "./lib/operatorIdentity";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
+import { requireRequest } from "./procurementRequests";
 
 async function requireProvider(
   ctx: QueryCtx | MutationCtx,
@@ -50,6 +51,70 @@ export const list = query({
     return listProviderContacts(ctx, brokerOrgId);
   },
 });
+/**
+ * Email recipients among the providers added to one request: each outreach's
+ * own contact plus the provider's relationship contacts. Bounded per request
+ * and per provider; Spot-owned or missing providers are skipped.
+ */
+export const listForRequest = query({
+  args: { requestId: v.id("procurementRequests") },
+  handler: async (ctx, { requestId }) => {
+    await requireOperator(ctx);
+    await requireRequest(ctx, requestId);
+    const outreaches = await ctx.db
+      .query("procurementBrokerOutreaches")
+      .withIndex("request", (q) => q.eq("requestId", requestId))
+      .take(50);
+    const recipients: Array<{
+      email: string;
+      name: string | null;
+      brokerOrgId: Id<"organizations">;
+      brokerName: string;
+    }> = [];
+    const seen = new Set<string>();
+    const add = (entry: (typeof recipients)[number]) => {
+      const email = entry.email.trim().toLowerCase();
+      const key = `${entry.brokerOrgId}:${email}`;
+      if (!email || seen.has(key)) return;
+      seen.add(key);
+      recipients.push({ ...entry, email });
+    };
+    const providers = new Set<Id<"organizations">>();
+    for (const outreach of outreaches) {
+      if (!outreach.brokerOrgId) continue;
+      try {
+        await requireProvider(ctx, outreach.brokerOrgId);
+      } catch {
+        continue;
+      }
+      if (outreach.contactEmail)
+        add({
+          email: outreach.contactEmail,
+          name: outreach.contactName ?? null,
+          brokerOrgId: outreach.brokerOrgId,
+          brokerName: outreach.brokerName,
+        });
+      if (providers.has(outreach.brokerOrgId)) continue;
+      providers.add(outreach.brokerOrgId);
+      const contacts = await ctx.db
+        .query("brokerContacts")
+        .withIndex("by_brokerOrgId_and_deletedAt", (q) =>
+          q.eq("brokerOrgId", outreach.brokerOrgId!).eq("deletedAt", undefined),
+        )
+        .take(25);
+      for (const contact of contacts)
+        if (contact.email)
+          add({
+            email: contact.email,
+            name: contact.name || null,
+            brokerOrgId: outreach.brokerOrgId,
+            brokerName: outreach.brokerName,
+          });
+    }
+    return recipients;
+  },
+});
+
 const text = (value: string | undefined, max: number) => {
   const clean = value?.trim();
   if ((clean?.length ?? 0) > max)

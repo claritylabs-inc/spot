@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "convex/react";
 import { Loader2, Paperclip } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePdf } from "@/components/pdf-context";
+import {
+  followedContentKey,
+  useFollowedState,
+} from "@/hooks/use-followed-state";
 import { operatorAgentApi } from "@/lib/operator-agent-api";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { cn } from "@/lib/utils";
@@ -125,7 +128,13 @@ export function ChatAttachmentList({
   collapseAfter?: number;
   className?: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useFollowedState(
+    followedContentKey(
+      "chat:attachments:expanded",
+      attachments.map((attachment) => attachment.fileId ?? attachment.filename),
+    ),
+    false,
+  );
   const hidden = attachments.length - collapseAfter;
   return (
     <div className={cn("flex min-w-0 flex-wrap gap-1.5", className)}>

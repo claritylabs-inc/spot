@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, type ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { ChevronRight, RotateCcw } from "lucide-react";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
@@ -31,6 +31,7 @@ import {
   type OperatorAgentMessage,
   type OperatorAgentThreadDetail,
 } from "@/lib/operator-agent-api";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { cn } from "@/lib/utils";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import type { OperatorEmailDraftView } from "@/lib/operator-email-draft";
@@ -129,7 +130,10 @@ function OperatorMessageFooter({
 }) {
   const rerunTurn = useMutation(operatorAgentApi.rerunTurn);
   const rerunAction = useChatAction();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useFollowedState(
+    `operator-conversation:${message.id}:approvals-expanded`,
+    false,
+  );
   const approved = confirmations.filter(isAutoApproved);
   const disabled = rerunAction.pending || activeRun;
   function rerun() {
@@ -241,6 +245,7 @@ function OperatorMessageRow({
   message,
   viewerUserId,
   working,
+  turnActive,
   showSender,
   onFollowUp,
   presentationDisabled,
@@ -252,6 +257,8 @@ function OperatorMessageRow({
   message: OperatorAgentMessage;
   viewerUserId: string | null;
   working: boolean;
+  /** True while the turn runs, including pauses for approval. */
+  turnActive: boolean;
   showSender: boolean;
   onFollowUp: (message: string) => Promise<void>;
   presentationDisabled: boolean;
@@ -288,6 +295,7 @@ function OperatorMessageRow({
     return (
       <ChatAssistantTurn
         working={working}
+        turnActive={turnActive}
         tools={message.usedTools}
         toolCalls={message.toolCalls}
         activity={message.activity}
@@ -417,7 +425,9 @@ export function OperatorConversation({
   const entries = useMemo(() => operatorConversationEntries(detail), [detail]);
   const threadId = activeThreadId ?? "";
   const emailDraftsByMessage = useOperatorEmailDrafts(detail.messages);
-  const [openEmailDraftId, setOpenEmailDraftId] = useState<string | null>(null);
+  const [openEmailDraftId, setOpenEmailDraftId] = useFollowedState<
+    string | null
+  >(`operator-conversation:${threadId}:email-draft`, null);
   const hasAppShell = useOptionalAppShellSlots();
   const openEmailDraft = useMemo(
     () =>
@@ -572,6 +582,7 @@ export function OperatorConversation({
                   working={
                     message.status === "processing" && !hasPendingConfirmation
                   }
+                  turnActive={message.status === "processing"}
                 />
               )}
               {settledAnswer ? (

@@ -6,7 +6,14 @@ import { modelCallContext } from "./modelCallTelemetry";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { assertSpotRouterAssetUrl } from "./clRouterClient";
+import {
+  assertSpotRouterAssetUrl,
+  ClRouterRequestError,
+  clRouterRouteIsAvailable,
+  isUnknownClRouterRouteFailure,
+  logIgnoredClRouterPin,
+} from "./clRouterClient";
+import type { ModelRoute } from "./modelCatalog";
 import { routerAssetSigningConfiguration } from "./routerAssetSignature";
 import { parseRouterJobError, type RouterJobFailure } from "./routerJobFailure";
 
@@ -355,6 +362,98 @@ export async function executeDurableRouterRequest(
 }
 
 async function executeRouterRequest(
+  ctx: ActionCtx,
+  operation: RouterJobOperation,
+  payload: unknown,
+  invocationKey: string,
+  abortSignal?: AbortSignal,
+  options: {
+    wait?: "yield" | "poll";
+    streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
+  } = {},
+  trace?: ClRouterTraceInput,
+): Promise<unknown> {
+  if (operation !== "manual" && operation !== "generate") {
+    return executeRouterRequestOnce(
+      ctx,
+      operation,
+      payload,
+      invocationKey,
+      abortSignal,
+      options,
+      trace,
+    );
+  }
+  const existing = await ctx.runQuery(internal.routerJobs.get, {
+    invocationKey,
+  });
+  const { route, ...routedPayload } = payload as Record<string, unknown> & {
+    route?: ModelRoute;
+  };
+  const routedKey = `${invocationKey}:routed`;
+  const runRouted = () =>
+    executeRouterRequestOnce(
+      ctx,
+      "generate",
+      routedPayload,
+      routedKey,
+      abortSignal,
+      options,
+      trace,
+    );
+  if (await ctx.runQuery(internal.routerJobs.get, { invocationKey: routedKey }))
+    return runRouted();
+  // Reconnect before consulting the current pin or registry. A job may already
+  // have executed even if settings changed while the operator run was asleep.
+  const activeOperation = existing?.operation ?? operation;
+  if (activeOperation !== "manual") {
+    return executeRouterRequestOnce(
+      ctx,
+      activeOperation,
+      payload,
+      invocationKey,
+      abortSignal,
+      options,
+      trace,
+    );
+  }
+  if (
+    !existing &&
+    route &&
+    !(await clRouterRouteIsAvailable(route, { abortSignal }))
+  )
+    return runRouted();
+  try {
+    return await executeRouterRequestOnce(
+      ctx,
+      "manual",
+      payload,
+      invocationKey,
+      abortSignal,
+      options,
+      trace,
+    );
+  } catch (error) {
+    const failure =
+      error instanceof RouterJobFailed ? error.failure : undefined;
+    const code =
+      error instanceof ClRouterRequestError ? error.routerCode : failure?.code;
+    const executionStarted =
+      error instanceof ClRouterRequestError
+        ? error.executionStarted
+        : failure?.executionStarted;
+    if (
+      !(error instanceof Error) ||
+      abortSignal?.aborted ||
+      !isUnknownClRouterRouteFailure(code, executionStarted, error.message)
+    )
+      throw error;
+    logIgnoredClRouterPin(route, "unknown_route");
+    return runRouted();
+  }
+}
+
+async function executeRouterRequestOnce(
   ctx: ActionCtx,
   operation: RouterJobOperation,
   payload: unknown,

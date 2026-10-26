@@ -29,19 +29,9 @@
   transition: width var(--motion-medium) var(--motion-ease);
 }
 
-/* Agent surfaces (the dock and chat transcripts) read as one monospace,
-   single-size voice, distinct from the sans application UI. Message text is
-   slightly lighter than regular; markdown headings keep only a medium weight,
-   and bold text is medium rather than semibold. */
-:is([data-agent-dock], [data-agent-surface]),
-:is([data-agent-dock], [data-agent-surface]) * {
-  /* The inline theme emits no --font-mono variable at runtime. */
-  font-family: var(--font-geist-mono), "Geist Mono", ui-monospace, monospace;
-}
-:is([data-agent-dock], [data-agent-surface])
-  :is([data-prose], [data-prose] table, [data-chat-bubble]) {
-  font-weight: 300;
-}
+/* Agent surfaces (the dock and chat transcripts) keep a single-size voice:
+   markdown headings and tables match body text, headings keep only a medium
+   weight, and bold text is medium rather than semibold. */
 :is([data-agent-dock], [data-agent-surface]) :is(strong, b, th) {
   font-weight: 500;
 }
@@ -51,6 +41,10 @@
   font-size: inherit;
   line-height: inherit;
   font-weight: 500;
+}
+:is([data-agent-dock], [data-agent-surface]) [data-prose] table {
+  font-size: inherit;
+  line-height: inherit;
 }
 
 /* AppToaster retains Spot’s mobile edge alignment. */
@@ -331,6 +325,32 @@
   border-color: transparent;
   box-shadow: none;
   outline: none;
+}
+/* Phone inputs follow the same rest / hover / active states as other fields. */
+[data-operator-inline-fields] [data-slot="phone-input"] {
+  background-color: transparent;
+  border-color: transparent;
+}
+[data-operator-inline-fields] [data-slot="phone-input"] [data-slot="phone-country-select"] {
+  border-color: transparent;
+}
+[data-operator-inline-fields] [data-slot="phone-input"]:hover {
+  background-color: var(--muted);
+}
+[data-operator-inline-fields] [data-slot="phone-input"]:hover [data-slot="phone-country-select"] {
+  border-color: var(--border);
+}
+[data-operator-inline-fields] [data-slot="phone-input"]:focus-within,
+[data-operator-inline-fields] [data-slot="phone-input"]:has([data-popup-open], [aria-expanded="true"]) {
+  background-color: var(--muted);
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-operator-inline-fields] [data-slot="phone-input"]:is(:focus-within, :has([aria-expanded="true"])) [data-slot="phone-country-select"] {
+  border-color: transparent;
+}
+[data-operator-inline-fields] [data-slot="phone-input"] [data-slot="phone-country-select"]:hover {
+  background-color: transparent;
 }
 /* All editable values share a left edge, including numbers and select values. */
 [data-operator-inline-fields] [data-inline-field-row] :is(input, textarea, [data-slot="select-trigger"], [data-slot="select-value"]) {

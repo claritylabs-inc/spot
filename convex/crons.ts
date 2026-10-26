@@ -76,6 +76,8 @@ crons.cron(
 
 crons.interval("recover MCP event deliveries", { minutes: 1 }, internal.mcpEvents.recoverInternal, {});
 
+crons.interval("recover operator notification deliveries", { minutes: 1 }, internal.operatorNotifications.recoverInternal, {});
+
 crons.interval("recover provider outreach", { minutes: 1 }, internal.providerOutreach.recoverInternal, {});
 
 export default crons;

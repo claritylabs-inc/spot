@@ -50,14 +50,23 @@ completion has been verified on all deployed targets.
 ## Production releases
 
 Vercel deploys Convex as part of the production build. `vercel.json` sets the
-build command to `npx convex deploy --cmd 'npm run build'` when
-`VERCEL_ENV=production` and to `npm run build` otherwise, so preview builds
-never touch production Convex. The Spot Vercel project's Production
+build command to `npx convex deploy --typecheck=disable --cmd 'npm run build'`
+when `VERCEL_ENV=production` and to `npm run build` otherwise, so preview
+builds never touch production Convex. The Spot Vercel project's Production
 environment holds the production `CONVEX_DEPLOY_KEY`. `convex deploy` runs the
-Next.js build first, then typechecks and pushes the Convex functions; a failure
-in either step fails the Vercel build and nothing is promoted. There is no
-GitHub release workflow and no Vercel Deployment Check. PR CI runs lint,
-typechecks and tests.
+Next.js build first, then pushes the Convex functions; a failure in either step
+fails the Vercel build and nothing is promoted. Neither step typechecks:
+`next.config.ts` sets `typescript.ignoreBuildErrors` and the deploy passes
+`--typecheck=disable`, because CI already runs `npx tsc --noEmit` (the root
+tsconfig covers `convex/`), and the "main: require CI" ruleset requires the
+`root` CI check to pass on a branch that is up to date with `main`. There is no
+GitHub release workflow and no Vercel Deployment Check.
+
+`.github/workflows/ci.yml` runs on pull requests and on pushes to `main`. Lint,
+typecheck and tests run as parallel jobs, and `root` passes only when all of
+them pass. Jobs reuse cached `node_modules` (keyed on `package-lock.json` and
+`patches/`), and the ESLint and `tsc` incremental caches fall back to the
+latest `main` run, so pushes to `main` keep PR caches warm.
 
 `.github/workflows/publish-cli.yml` runs only when `cli/` or `operator-cli/`
 changes on `main` and publishes a package only when its version is not yet in
@@ -449,9 +458,11 @@ and every failure after a successful step all fail closed at the consumer
 boundary. Chat preserves the first successful router route pin across later
 steps and never replays completed business tools after visible output.
 
-`/operator/logs` shows 30-day Spot `modelRoutingEvents` call history with
-router-owned request IDs, the router's selection summary, sanitized failed
-provider attempts, cost, and usage. The retired rating and router feedback paths are not used.
+Model-call auditing and usage live in the [Clarity admin router portal](https://admin.toolsforenlightenment.org/router/logs).
+Spot's former Usage and Logs pages are retired. Policy extraction sections link
+to the portal's logs list; the portal does not currently accept Spot trace-ID
+filters. Spot retains `modelRoutingEvents` telemetry, durable job state, and its
+separate operator business Audit log.
 
 The production router health URL is configured through
 `SPOT_PRODUCTION_CL_ROUTER_HEALTH_URL`. The normal deployment audit includes
@@ -463,7 +474,7 @@ AGENT_HEALTH_ATTEMPTS=1 npm run check:agent-health -- --env=production
 
 The router must report the matching environment and a live database.
 Spot no longer calls `/admin/policy`, `/admin/rollups`, `/admin/score`, or
-`/admin/freeze`. Call history lives in Spot. Operator model and web retrieval route settings have no UI; the retired overrides are cleared by the post-deploy checklist.
+`/admin/freeze`. Model-call history is inspected in the Clarity admin portal. Operator model and web retrieval route settings have no UI; the retired overrides are cleared by the post-deploy checklist.
 
 Local health checks skip cl-router unless `SPOT_CL_ROUTER_HEALTH_URL` is set,
 because the default Conductor template does not start the separate repository.

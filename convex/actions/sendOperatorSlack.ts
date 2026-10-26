@@ -4,6 +4,7 @@ import { v } from "convex/values";
 
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
+import { requireSlackMessageId } from "../lib/slackDelivery";
 import { formatSlackAnswerText } from "../lib/slackBlocks";
 import { slackWebApi, SlackProviderError } from "../lib/slackWebApi";
 
@@ -60,18 +61,16 @@ export const sendInternal = internalAction({
         channelId: recipient.slackUserId,
         mrkdwnText: formatSlackAnswerText(args.content),
       });
-      if (!result.messageId) {
-        throw new Error("Slack did not return a message timestamp");
-      }
+      const messageId = requireSlackMessageId(result);
       await ctx.runMutation(
         internalApi.slackOutbound.markOperatorDirectMessageSent,
-        { id: claim.row._id, providerMessageId: result.messageId },
+        { id: claim.row._id, providerMessageId: messageId },
       );
       return {
         status: "sent" as const,
         recipientEmail: recipient.email,
         recipientName: recipient.name,
-        providerMessageId: result.messageId,
+        providerMessageId: messageId,
         idempotent: false,
       };
     } catch (error) {

@@ -29,6 +29,8 @@ export type TeamComposeInput = {
   /** Plain text, as typed; paragraphs are kept. */
   message: string;
   clientOrgId?: Id<"organizations">;
+  /** Files the conversation under this request (and its client). */
+  requestId?: Id<"procurementRequests">;
 };
 
 /** Every field of the pending draft a new email becomes; the fingerprint is computed over these. */
@@ -45,6 +47,7 @@ export type TeamComposeDraftFields = {
   operatorAlwaysCcEmail?: string;
   transport: "operator_inbox";
   orgId?: Id<"organizations">;
+  procurementRequestId?: Id<"procurementRequests">;
 };
 
 export type TeamComposePreview = {
@@ -57,6 +60,8 @@ export type TeamComposePreview = {
   html: string;
   /** The client this email is filed under, if any. */
   client: { _id: Id<"organizations">; name: string } | null;
+  /** The request this email is filed under, if any. */
+  request: { _id: Id<"procurementRequests">; title: string } | null;
   fingerprint: string;
 };
 
@@ -101,9 +106,28 @@ export async function composeTeamEmail(
   if (message.length > MAX_TEAM_REPLY_CHARS) return { ok: false, reason: "The message is too long." };
 
   let client: TeamComposePreview["client"] = null;
-  if (args.clientOrgId) {
-    const problem = await teamTargetProblem(ctx, { clientOrgId: args.clientOrgId });
-    const organization = await ctx.db.get(args.clientOrgId);
+  let request: TeamComposePreview["request"] = null;
+  let clientOrgId = args.clientOrgId;
+  if (args.requestId) {
+    const record = await ctx.db.get(args.requestId);
+    if (
+      !record ||
+      record.deletedAt !== undefined ||
+      !record.clientOrgId ||
+      record.intakeAnswers?.intakeGoal === "savings" ||
+      (clientOrgId && clientOrgId !== record.clientOrgId)
+    ) {
+      return { ok: false, reason: "That request is no longer available." };
+    }
+    clientOrgId = record.clientOrgId;
+    request = { _id: record._id, title: record.title };
+  }
+  if (clientOrgId) {
+    const problem = await teamTargetProblem(ctx, {
+      clientOrgId,
+      ...(request ? { requestId: request._id } : {}),
+    });
+    const organization = await ctx.db.get(clientOrgId);
     if (problem || !organization || organization.type !== "client") {
       return { ok: false, reason: "That client is no longer available." };
     }
@@ -139,6 +163,7 @@ export async function composeTeamEmail(
     ...(identity.alwaysCc ? { operatorAlwaysCcEmail: identity.alwaysCc.toLowerCase() } : {}),
     transport: "operator_inbox",
     ...(client ? { orgId: client._id } : {}),
+    ...(request ? { procurementRequestId: request._id } : {}),
   };
   const fingerprint = await pendingEmailDraftFingerprint(fields);
   return {
@@ -153,6 +178,7 @@ export async function composeTeamEmail(
       text: fields.renderedText,
       html: fields.renderedHtml,
       client,
+      request,
       fingerprint,
     },
   };

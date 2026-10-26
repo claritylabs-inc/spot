@@ -26,13 +26,15 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
+  SortableTableHead,
 } from "@/components/ui/table";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { useCachedOperatorExtractionRuns } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
+import { useFollowedState } from "@/hooks/use-followed-state";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { SourceEvidenceButton } from "./source-provenance";
 
 const RUN_STATUS: Record<
@@ -55,6 +57,25 @@ const SECTION_STATUS: Record<
   succeeded: { label: "Succeeded", tone: "success", indicator: "complete" },
   failed: { label: "Failed", tone: "danger", indicator: "error" },
 };
+
+const RUN_SORT_COLUMNS = {
+  started: (run: ExtractionRunView) => run.startedAt,
+  trigger: (run: ExtractionRunView) => humanize(run.trigger),
+  status: (run: ExtractionRunView) => RUN_STATUS[run.status].label,
+  duration: (run: ExtractionRunView) => run.durationMs,
+  cost: (run: ExtractionRunView) => run.costUsd,
+};
+
+const SECTION_SORT_COLUMNS = {
+  kind: (section: ExtractionRunSectionView) => humanize(section.kind),
+  pages: (section: ExtractionRunSectionView) => section.pageStart,
+  status: (section: ExtractionRunSectionView) =>
+    SECTION_STATUS[section.status].label,
+  duration: (section: ExtractionRunSectionView) => section.durationMs,
+  cost: (section: ExtractionRunSectionView) => section.costUsd,
+};
+
+const NO_SECTIONS: ExtractionRunSectionView[] = [];
 
 function humanize(value: string) {
   const text = value.replaceAll("_", " ").trim();
@@ -79,19 +100,6 @@ function formatPages(section: ExtractionRunSectionView) {
     : `pp. ${section.pageStart}–${section.pageEnd}`;
 }
 
-/** The model-call log for one run, using the log page's search and range filters. */
-function modelCallsHref(run: ExtractionRunView) {
-  if (!run.traceId) return undefined;
-  const from = run.startedAt - 60_000;
-  const to = (run.finishedAt ?? run.startedAt + 86_400_000) + 60_000;
-  const params = new URLSearchParams({
-    search: run.traceId,
-    from: String(from),
-    to: String(Math.min(to, from + 30 * 86_400_000)),
-  });
-  return `/operator/logs?${params}`;
-}
-
 function StatusCell({ status }: { status: StatusPresentation & { label: string } }) {
   const { label, ...presentation } = status;
   return <StatusTag {...presentation}>{label}</StatusTag>;
@@ -114,28 +122,44 @@ function selectableRowProps(selected: boolean, onSelect: () => void) {
 }
 
 function RunsTable({
+  policyId,
   runs,
   selectedRunId,
   onSelect,
 }: {
+  policyId: Id<"policies">;
   runs: ExtractionRunView[];
   selectedRunId?: string;
   onSelect: (runId: string) => void;
 }) {
+  const tableSort = useTableSort(`policy:${policyId}:runs`, runs, RUN_SORT_COLUMNS);
   return (
     <OperationalPanel>
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="px-4">Started</TableHead>
-            <TableHead>Trigger</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Duration</TableHead>
-            <TableHead className="px-4 text-right">Cost</TableHead>
+            <SortableTableHead className="px-4" {...tableSort.head("started")}>
+              Started
+            </SortableTableHead>
+            <SortableTableHead {...tableSort.head("trigger")}>
+              Trigger
+            </SortableTableHead>
+            <SortableTableHead {...tableSort.head("status")}>
+              Status
+            </SortableTableHead>
+            <SortableTableHead {...tableSort.head("duration")}>
+              Duration
+            </SortableTableHead>
+            <SortableTableHead
+              className="px-4 text-right"
+              {...tableSort.head("cost")}
+            >
+              Cost
+            </SortableTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {runs.map((run) => (
+          {tableSort.rows.map((run) => (
             <TableRow
               key={run.runId}
               aria-label={`Show run started ${formatDisplayDateTime(run.startedAt)}`}
@@ -251,17 +275,21 @@ function RunDetail({
   fileUrl?: string | null;
 }) {
   const pdf = usePdf();
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(
-    null,
-  );
+  const [selectedSectionId, setSelectedSectionId] = useFollowedState<
+    string | null
+  >(`policy:run:${run.runId}:section`, null);
   const selectedSection = run.sections?.find(
     (section) => section.sectionId === selectedSectionId,
   );
-  const logsHref = modelCallsHref(run);
   // Section timing and cost are not recorded yet; hide empty columns.
   const showTiming = run.sections?.some(
     (section) =>
       section.durationMs !== undefined || section.costUsd !== undefined,
+  );
+  const sectionSort = useTableSort(
+    `policy:run:${run.runId}:sections`,
+    run.sections ?? NO_SECTIONS,
+    SECTION_SORT_COLUMNS,
   );
 
   return (
@@ -270,11 +298,15 @@ function RunDetail({
         <OperationalPanelHeader
           title="Sections"
           action={
-            logsHref ? (
-              <PillButton size="compact" variant="secondary" href={logsHref}>
-                View model calls
-              </PillButton>
-            ) : undefined
+            <PillButton
+              size="compact"
+              variant="secondary"
+              href="https://admin.toolsforenlightenment.org/router/logs"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open router logs
+            </PillButton>
           }
         />
         {run.sections === null ? (
@@ -295,17 +327,35 @@ function RunDetail({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="px-4">Kind</TableHead>
-                <TableHead>Pages</TableHead>
-                <TableHead>Status</TableHead>
-                {showTiming ? <TableHead>Duration</TableHead> : null}
+                <SortableTableHead
+                  className="px-4"
+                  {...sectionSort.head("kind")}
+                >
+                  Kind
+                </SortableTableHead>
+                <SortableTableHead {...sectionSort.head("pages")}>
+                  Pages
+                </SortableTableHead>
+                <SortableTableHead {...sectionSort.head("status")}>
+                  Status
+                </SortableTableHead>
                 {showTiming ? (
-                  <TableHead className="px-4 text-right">Cost</TableHead>
+                  <SortableTableHead {...sectionSort.head("duration")}>
+                    Duration
+                  </SortableTableHead>
+                ) : null}
+                {showTiming ? (
+                  <SortableTableHead
+                    className="px-4 text-right"
+                    {...sectionSort.head("cost")}
+                  >
+                    Cost
+                  </SortableTableHead>
                 ) : null}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {run.sections.map((section) => (
+              {sectionSort.rows.map((section) => (
                 <TableRow
                   key={section.sectionId}
                   aria-label={`Show ${humanize(section.kind)} ${formatPages(section)}`}
@@ -399,6 +449,7 @@ export function PolicySectionsTab({
   return (
     <div className="space-y-4">
       <RunsTable
+        policyId={policyId}
         runs={runs}
         selectedRunId={selectedRun?.runId}
         onSelect={(runId) => {

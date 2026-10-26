@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import dayjs from "dayjs";
 
 import type { OperatorEmailDraftView } from "../lib/operator-email-draft";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -22,6 +23,7 @@ import {
   quotedHistory,
   teamThreadOwnerAddress,
   teamThreadReplyPlan,
+  withoutQuotedHistory,
   type TeamThreadDraftContext,
 } from "./lib/teamThreadReply";
 
@@ -47,11 +49,11 @@ async function requireOperatorEmailThread(
 export const SENDER_CHANGED_REASON =
   "Sender changed — update draft to re-sign.";
 
-function toDraftView(
+async function toDraftView(
   draft: Doc<"pendingEmails">,
   messageId: Id<"operatorAgentMessages">,
   organizationName: string | undefined,
-): OperatorEmailDraftView {
+): Promise<OperatorEmailDraftView> {
   const legacy =
     draft.status === "draft" && (!draft.transport || !draft.senderUserId);
   return {
@@ -66,6 +68,8 @@ function toDraftView(
     from: draft.fromHeader,
     html: draft.renderedHtml,
     text: draft.renderedText || draft.emailBody,
+    body: withoutQuotedHistory(draft.emailBody),
+    editable: draft.status === "draft" && !draft.directReplyKey,
     attachments: (draft.attachments ?? []).map(({ filename }) => ({
       filename,
     })),
@@ -75,6 +79,7 @@ function toDraftView(
       : undefined,
     sendBlockedReason:
       draft.sendBlockedReason ?? (legacy ? SENDER_CHANGED_REASON : undefined),
+    fingerprint: await pendingEmailDraftFingerprint(draft),
     updatedAt: draft._creationTime,
   };
 }
@@ -104,7 +109,7 @@ export const listForMessages = query({
           organizationNames.set(orgId, (await ctx.db.get(orgId))?.name);
         }
         views.push(
-          toDraftView(
+          await toDraftView(
             draft,
             messageId,
             orgId ? organizationNames.get(orgId) : undefined,
@@ -114,6 +119,23 @@ export const listForMessages = query({
       if (views.length) result[messageId] = views;
     }
     return result;
+  },
+});
+
+/** The signed-in operator and owning thread for a hand edit of an operator draft. */
+export const editTargetInternal = internalQuery({
+  args: { draftId: v.id("pendingEmails") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    const draft = await ctx.db.get(args.draftId);
+    if (!draft?.operatorThreadId) throw new Error("Draft not found");
+    return {
+      operatorUserId: operator.userId,
+      threadId: draft.operatorThreadId,
+      attachmentFileIds: (draft.attachments ?? []).map(({ fileId }) =>
+        String(fileId),
+      ),
+    };
   },
 });
 
@@ -488,9 +510,9 @@ export const agentReplyKey = (confirmationId: Id<"operatorAgentConfirmations">) 
  * - an agent/MCP exact confirmation (`confirmationId`): `send_email_draft`
  *   for a drafted email, or a reply tool for the reply draft created from that
  *   very confirmation;
- * - a browser reply's `directApproval` snapshot (no `confirmationId`), which
- *   only the session-authenticated reply mutation writes: the signing operator
- *   approved this exact fingerprint.
+ * - a browser `directApproval` snapshot (no `confirmationId`), which only the
+ *   session-authenticated reply, compose and chat-draft send mutations write:
+ *   the signing operator approved this exact fingerprint.
  */
 export async function checkOperatorSendApproval(
   ctx: Ctx,
@@ -509,15 +531,21 @@ export async function checkOperatorSendApproval(
 
   if (!args.confirmationId) {
     const grant = draft.directApproval;
-    // The browser grants two kinds: a reply on its conversation, or a new email
-    // that has no conversation until it is sent.
+    // The browser grants three kinds: a reply on its conversation, a new email
+    // that has no conversation until it is sent, or an agent chat draft sent
+    // from its artifact.
     const browserReply =
-      draft.directReplyKey?.startsWith("browser:") && Boolean(draft.teamEmailThreadId);
-    const browserCompose = isComposeKey(draft.directReplyKey) && !draft.teamEmailThreadId;
+      !draft.operatorThreadId &&
+      draft.directReplyKey?.startsWith("browser:") &&
+      Boolean(draft.teamEmailThreadId);
+    const browserCompose =
+      !draft.operatorThreadId &&
+      isComposeKey(draft.directReplyKey) &&
+      !draft.teamEmailThreadId;
+    const browserChat = Boolean(draft.operatorThreadId) && !draft.directReplyKey;
     if (
       !grant ||
-      draft.operatorThreadId ||
-      !(browserReply || browserCompose) ||
+      !(browserReply || browserCompose || browserChat) ||
       grant.actorUserId !== draft.senderUserId ||
       grant.fingerprint !== fingerprint
     ) {
@@ -577,6 +605,41 @@ export const isSendConfirmedInternal = internalQuery({
   },
 });
 
+/**
+ * Records the signed-in operator's Send on a chat draft's artifact as a
+ * browser approval of the exact draft they saw. Only the signing operator can
+ * approve, any later edit voids it, and nothing here sends.
+ */
+export const approveSendInternal = internalMutation({
+  args: { draftId: v.id("pendingEmails"), expectedFingerprint: v.string() },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
+    const existing = await ctx.db.get(args.draftId);
+    if (!existing?.operatorThreadId || existing.directReplyKey) {
+      throw new Error("Draft not found");
+    }
+    const { draft } = await requireSendableOperatorEmailDraft(ctx, {
+      threadId: existing.operatorThreadId,
+      draftId: args.draftId,
+      operatorUserId: operator.userId,
+      browser: true,
+    });
+    const fingerprint = await pendingEmailDraftFingerprint(draft);
+    if (fingerprint !== args.expectedFingerprint) {
+      throw new Error("The draft changed since you opened it. Review it again.");
+    }
+    await ctx.db.patch(draft._id, {
+      directApproval: {
+        actorUserId: operator.userId,
+        fingerprint,
+        approvedAt: dayjs().valueOf(),
+      },
+    });
+    return null;
+  },
+});
+
 /** The draft an operator is asking to send, after eligibility checks. */
 export async function requireSendableOperatorEmailDraft(
   ctx: Ctx,
@@ -585,6 +648,8 @@ export async function requireSendableOperatorEmailDraft(
     draftId: unknown;
     /** The operator who would approve; must be the one who signed the draft. */
     operatorUserId?: Id<"users">;
+    /** A browser send shows the whole draft, so the approval-summary bound does not apply. */
+    browser?: boolean;
   },
 ) {
   const id =
@@ -648,7 +713,7 @@ export async function requireSendableOperatorEmailDraft(
     requestTitle: request?.title,
     threadSubject: thread?.subject,
   });
-  if (summary.length > OPERATOR_EMAIL_SEND_SUMMARY_LIMIT) {
+  if (!args.browser && summary.length > OPERATOR_EMAIL_SEND_SUMMARY_LIMIT) {
     throw new Error(
       "The email is too long to approve exactly. Shorten the body with update_email_draft.",
     );
