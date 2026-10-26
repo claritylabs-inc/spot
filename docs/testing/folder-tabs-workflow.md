@@ -1,14 +1,17 @@
 # Folder tabs workflow — October 26, 2026
 
-Spot adopts the shared folder tabs (`@claritylabs-inc/ui` `TabsList variant="folder"`, clarity-ui branch `work/folder-tabs-30px`, validated at `c510704a29d7956abdce1b2d9a952e8865b32bd4` through a local source overlay; no manifest or lockfile change). Baseline `3cb2c4a4`.
+Spot adopts the shared compact navbar tabs (`@claritylabs-inc/ui` `TabsList variant="navbar"` for page tabs, `variant="folder"` for local field groups; clarity-ui branch `work/folder-tabs-30px`, validated at `eb7ad860af4ea4bb55daa70b5748d375a5f4a8da` through a local source overlay of `tabs.tsx`, `app-shell/app-top-bar.tsx`, `styles.css` and `tokens.css`; no manifest or lockfile change). Baseline `3cb2c4a4`; first candidate `65b2d73f`.
 
 ## Composition
 
-- `components/ui/folder-tabs.tsx` owns Spot's thin composition: `PageTabs` (root, `gap-0`, bleeds through the shell content gutter so the rail sits flush under the top bar), `PageTabsList`, `PageTabsPanel` (shell gutters) and `SectionTabs*` (a bordered local sheet for field-group tabs inside a page). Geometry, colors and focus come from the shared primitive.
-- A mounted `PageTabs` claims the shell slot `folderRail` (`components/app-shell-slots.tsx`, `useAppShellSlotClaim`). `ShellFrame` then renders the top bar with `bg-tab-rail border-0`, so the top bar and rail read as one surface. Unmounting clears it; nested `SectionTabs` do not claim it.
-- `ListToolbar` gains `tabsPlacement="above"`: the caller's page rail renders before the filter row. The default `inline` keeps the previous pill-in-filter-row behavior.
-- Optional previous/next lives in the shared top bar `navigation` slot. Only `OperatorClientSwitcher` fills it (operator client record routes), presented with the shared `PageNavigation`; its client callbacks, section preservation, disabled boundaries and `j`/`k` shortcuts are unchanged.
-- `app/globals.css`: operator form density rules skip `[data-slot="tabs-trigger"]` so rails inside forms keep 30px / 14px.
+- Page-level tabs live in the shell top bar: optional previous/next, breadcrumb on the left, tabs right-aligned, then page-wide actions. The shared `AppTopBar` `tabs` prop owns geometry, alignment, the 42px navbar tabs (6px top gap inside the 48px bar) and the container-query stacking at main-pane widths of 48rem or less. The bar stays on the page background (continuous with the sidebar); there is no gray rail.
+- `components/ui/folder-tabs.tsx`: `PageTabs` (Tabs root, `gap-0`), `PageTabsList` (portals a shared `TabsList variant="navbar"` into the top bar through the existing `AppShellPortal` slot `folderRail`; Base UI context follows the portal), `PageTabsRail` (a `display: contents` root for pages whose body is ordinary content, so it adds no spacing inside `space-y`/`gap` containers) and `SectionTabs*` (local `variant="folder"`, 36px, inline in a page or drawer; never claims the top bar).
+- `ShellFrame` renders the portal target (`<div ref>` passed through Spot's `AppTopBar` `tabs` prop) only while a page owns `folderRail`, so leaving a tab page clears `data-tabs` and the target.
+- Panels are plain `TabsContent` inside the shell's own content gutters: no negative margins and no compensating padding.
+- `ListToolbar` takes `tabsPlacement="navbar"` for page-level tabs that render in the top bar and stay out of the filter row; the default `inline` is unchanged.
+- Optional previous/next lives in the shared top bar `navigation` slot. Only `OperatorClientSwitcher` fills it (operator client record routes), through the shared `PageNavigation`; its client callbacks, section preservation, disabled boundaries and `j`/`k` shortcuts are unchanged.
+- `app/globals.css`: operator form density rules skip `[data-slot="tabs-trigger"]` so tabs inside forms keep the shared geometry.
+- Loading skeletons show only the page body: tabs arrive with the page, so there is no placeholder rail.
 
 ## Action scope
 
@@ -19,7 +22,7 @@ Page-wide actions stay in the top bar; actions that only apply to the selected v
 | Operator client profile (`/operator/clients/:id`) | Notes, autosave status, Delete client | Tech stack: Rescan beside the scan status; Related entities / Locations: Add entity / Add location in the collection (empty-state action when empty, a right-aligned row once items exist) | Notes, autosave and delete act on the whole record; the rest act on one collection. `InlineCollectionActionsContext` is no longer provided here so the collections own their add controls. |
 | Operator provider (`/operator/brokers/:id`) | autosave status, Delete provider | Contacts: existing Add contact | Record-wide; Contacts already owns its action. |
 | Operator client settings | Invite member (Team section, not a tab) | none | Sidebar section, not a tab. |
-| Policy detail (client, operator, vendor) | Archive, Generate certificate/COI, extraction and archived notices stay in the panel body under every tab | none | Record-wide. Notices moved under the rail so the rail stays flush; they render for every tab. |
+| Policy detail (client, operator, vendor) | Archive, Generate certificate/COI, extraction and archived notices stay in the panel body under every tab | none | Record-wide. Notices render in the panel body, so they show under every tab. |
 | Settings → Agent (Channels / Behavior / Company wiki) | autosave status | Company wiki editor controls render inside the editor card (no longer portaled to the top bar) | Editor controls act on the notes document only. |
 | Compliance (operator and client) | none when there is one view (actions stay in the top bar) | Requirements: Add requirement / Import requirements next to the "Coverage requirements" heading (client surface: trailing `ListToolbar` actions); Sources: Import requirements next to "Requirement sources"; Certificates: Generate certificate next to "Certificates" | They act on that view's rows. Overview has none. |
 | Operator channels | none | none | View-only tabs. |
@@ -49,23 +52,26 @@ Local sheets (`SectionTabs`): application detail and review field groups. Both c
 
 ## Known limits
 
-- The first tab label aligns with the breadcrumb text only on pages without previous/next. Where the client switcher precedes the breadcrumb (56px plus the 12px gap) the label aligns with the arrows' left edge, and below `lg` the mobile menu button precedes both. A shell-level alignment contract is a shared-primitive/shell decision.
-- Files and policies lists render a rail only when Shared/Archived views exist; the seeded fixtures have none, so those two rails were not exercised in the browser.
-- Dark theme and the iPad width were not exercised.
+- Dense pages squeeze the breadcrumb. The shared bar caps the tab list at 65% but lets the context column shrink to nothing: the 7-tab client profile plus Notes and Delete client leaves the breadcrumb about 200px at 1440px, about 64px (overlapping the first tab) at 960px, and about 3px (arrows only) at 1024px. Stacking starts only at a 48rem main pane. This is a shared-contract decision (tab cap, context minimum, or stacking threshold), not a Spot page fix.
+- The local `variant="folder"` field tabs (`SectionTabs`, application detail and review) have no live caller, so their 36px geometry was not exercised in the browser.
+- Files and policies lists render tabs only when Shared/Archived views exist; the seeded fixtures have none, so those two tab lists were not exercised.
+- Dark theme was not exercised.
 
 ## Local QA evidence (`.context/qa/folder-tabs/`, not committed)
 
-Local Conductor stack (`npm run conductor:dev`), synthetic operator `foldertabs-qa-*@spot.insure` via email OTP + TOTP enrollment, fixtures Cove, Maple Logistics, two local procurement requests and one demo policy. Client surfaces through read-only operator impersonation of Cove. Scripts: `auth.mjs`, `capture.mjs`, `batch.sh`, `interact.mjs`.
+Local Conductor stack (`npm run conductor:dev`, Convex deploy credentials unset), synthetic operator `foldertabs-qa-*@spot.insure` via email OTP + TOTP enrollment, fixtures Cove, Maple Logistics, two local procurement requests and one demo policy. Client surfaces through read-only operator impersonation of Cove. Scripts: `auth.mjs`, `capture.mjs`, `batch.sh`, `interact.mjs`.
 
 | Check | Result |
 | --- | --- |
-| Rail geometry on 11 operator pages at 1440 and 390: top 48 (flush under top bar), 30px tabs, 14px labels, 5px top / 0 bottom radius, white active tab, no `pill` lists left on migrated pages | Passed |
-| Top bar and rail one surface (`bg-tab-rail`, bottom border 0) on rail pages; default (transparent, 1px border) on pages without a rail (policies and files with no Archived/Shared views); cleared after navigating from a rail page to a non-rail page | Passed |
-| Client surface: policy detail, compliance, Settings → Agent (tabs and wiki), client profile rails | Passed |
-| Profile Tech stack / Related entities / Locations actions in the panel and absent from the top bar; Notes and Delete client remain in the top bar | Passed |
-| Compliance Requirements and Certificates actions beside the view heading, absent from the top bar | Passed |
-| Keyboard: arrow keys move between tabs; focus-visible underline for keyboard focus only | Passed |
-| Previous/next client keeps the section, `k` returns, only on client record routes | Passed |
-| 390px: 7-tab profile rail scrolls horizontally in a single 34px row | Passed |
-| Clients Archived tab selection | Passed |
-| `npx tsc --noEmit`, focused `eslint` on changed files | Clean (two unrelated pre-existing warnings repo-wide) |
+| Geometry on 11 operator pages at 1440: 48px bar, 42px tabs, 6px top gap, 14px labels, `data-tabs` on the bar, tabs right-aligned (tab list right edge 12px before the actions), bar transparent over the page background | Passed |
+| Client surfaces (compliance, Settings → Agent, profile, policy): same geometry, no previous/next | Passed |
+| Previous/next only on operator client records; keeps the section; `k` returns | Passed |
+| No-nav list pages (clients, all-clients procurement, channels, provider) | Passed |
+| 390px: context row 47px, tab row 42px below it (bar 95px), tab list scrolls horizontally, no document overflow | Passed |
+| 960px (no sidebar) and 1024px (sidebar, dense profile) | Geometry passed; breadcrumb squeeze noted above |
+| Leaving a tab page clears `data-tabs` and the tab list; page body has no phantom row above it (content starts at 72px) | Passed |
+| Selecting a tab swaps the panel; panel state kept while the page lives | Passed |
+| Keyboard: arrow keys move between tabs; underline only for keyboard focus | Passed |
+| Profile Tech stack / Related entities / Locations actions in their panels; Notes, Delete client stay in the bar | Passed |
+| Compliance Requirements and Certificates actions beside the view heading | Passed |
+| `npx tsc --noEmit`, `eslint` on changed files | Clean |

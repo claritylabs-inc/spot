@@ -13,12 +13,8 @@ import { api } from "@/convex/_generated/api";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
-import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import {
-  PageTabs,
-  PageTabsList,
-  PageTabsPanel,
-} from "@/components/ui/folder-tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import {
   IntakeCompanyReview,
   IntakeReviewCompact,
@@ -211,7 +207,7 @@ function LoadedProfile({
               </TabsTrigger>
             ))}
           </PageTabsList>
-          <PageTabsPanel value={profileTab}>
+          <TabsContent value={profileTab}>
             {profileTab === "Tech stack" ? (
               <WebsiteTechSection
                 scan={techScan}
@@ -236,21 +232,21 @@ function LoadedProfile({
               />
             ) : !readOnly ? (
               <fieldset disabled={readOnly}>
-                  <IntakeApplicationFields
-                    companyOnly
-                    activeSection={profileTab}
-                    answers={answers}
-                    details={details}
-                    onAnswersChange={(next) => {
-                      setAnswers(next);
-                      setDraftAccount((current) => ({
-                        ...current,
-                        name: next.legalName ?? current.name,
-                        website: next.website ?? current.website,
-                      }));
-                    }}
-                    onDetailsChange={setDetails}
-                  />
+                <IntakeApplicationFields
+                  companyOnly
+                  activeSection={profileTab}
+                  answers={answers}
+                  details={details}
+                  onAnswersChange={(next) => {
+                    setAnswers(next);
+                    setDraftAccount((current) => ({
+                      ...current,
+                      name: next.legalName ?? current.name,
+                      website: next.website ?? current.website,
+                    }));
+                  }}
+                  onDetailsChange={setDetails}
+                />
               </fieldset>
             ) : (
               <IntakeCompanyReview
@@ -267,7 +263,7 @@ function LoadedProfile({
                 hideHeading
               />
             )}
-          </PageTabsPanel>
+          </TabsContent>
         </PageTabs>
       </IntakeReviewCompact.Provider>
     </div>

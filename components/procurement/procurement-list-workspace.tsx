@@ -60,7 +60,7 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
+import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import {
   Table,
   TableBody,
@@ -165,8 +165,7 @@ function RequestPreviewSummary({
     providerPanel?.candidates.matched.filter(
       (candidate) => !added.has(candidate.brokerOrgId),
     ).length ?? 0;
-  const live = (status: string) =>
-    status === "active" || status === "reply_check";
+  const live = (status: string) => status === "active" || status === "reply_check";
   const providerFollowUps =
     providerPanel?.sequences.filter((sequence) => live(sequence.status))
       .length ?? 0;
@@ -190,8 +189,7 @@ function RequestPreviewSummary({
     live(sequence.status),
   ).length;
   const sharedFiles = files.filter(
-    (file) =>
-      file.brokerRelease === "attached" || file.brokerRelease === "listed",
+    (file) => file.brokerRelease === "attached" || file.brokerRelease === "listed",
   ).length;
   const providerLink = links?.find(
     (link) => link.outreachId === null && link.state === "active",
@@ -400,8 +398,7 @@ function ProcurementRequestPreview({
               value={currentRequest.targetEffectiveDate ?? ""}
               disabled={saving}
               onChange={(value) => {
-                if (value === (currentRequest.targetEffectiveDate ?? ""))
-                  return;
+                if (value === (currentRequest.targetEffectiveDate ?? "")) return;
                 void updateQuickField({ targetEffectiveDate: value || null });
               }}
             />
@@ -585,7 +582,9 @@ function NewProcurementRequestDrawer({
           </span>
           <Textarea
             value={narrative}
-            onChange={(event) => updateDraft({ narrative: event.target.value })}
+            onChange={(event) =>
+              updateDraft({ narrative: event.target.value })
+            }
             className="min-h-32"
             maxLength={20_000}
             placeholder="The client’s goals, coverage needs, timing, and constraints."
@@ -740,8 +739,7 @@ export function ProcurementListWorkspace({
       (filter === "all" ||
         CLOSED_STATUSES.includes(request.status) === (filter === "closed")) &&
       (statusFilter.length === 0 || statusFilter.includes(request.status)) &&
-      (clientFilter.length === 0 ||
-        clientFilter.includes(request.clientOrgId)) &&
+      (clientFilter.length === 0 || clientFilter.includes(request.clientOrgId)) &&
       (!searchText ||
         [request.title, request.client?.name].some((value) =>
           value?.toLowerCase().includes(searchText),
@@ -936,9 +934,9 @@ export function ProcurementListWorkspace({
       <ListToolbar
         followKey={`procurement:${scopeKey}:list`}
         filters={filters}
-        tabsPlacement="above"
+        tabsPlacement="navbar"
         tabs={
-          <PageTabs
+          <PageTabsRail
             value={filter}
             onValueChange={(value) => {
               if (value) setFilter(value as StatusFilter);
@@ -949,7 +947,7 @@ export function ProcurementListWorkspace({
               <TabsTrigger value="open">Open</TabsTrigger>
               <TabsTrigger value="closed">Closed</TabsTrigger>
             </PageTabsList>
-          </PageTabs>
+          </PageTabsRail>
         }
         search={{
           value: search,

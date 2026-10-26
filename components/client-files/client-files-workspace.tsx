@@ -46,7 +46,7 @@ import {
   SortableTableHead,
 } from "@/components/ui/table";
 import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
+import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { formatDisplayDate } from "@/lib/date-format";
 import { inferAttachmentContentType } from "@/lib/thread-prompt";
@@ -802,7 +802,7 @@ export function ClientFilesWorkspace({
     operatorView && (hasSharedFiles || hasArchivedFiles || result.truncated) ? (
       <>
         {hasSharedFiles || hasArchivedFiles ? (
-          <PageTabs
+          <PageTabsRail
             value={view}
             onValueChange={(value) => {
               if (
@@ -823,7 +823,7 @@ export function ClientFilesWorkspace({
                 <TabsTrigger value="archived">Archived</TabsTrigger>
               ) : null}
             </PageTabsList>
-          </PageTabs>
+          </PageTabsRail>
         ) : null}
         {result.truncated ? (
           <p

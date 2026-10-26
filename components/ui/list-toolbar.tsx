@@ -62,10 +62,11 @@ export function ListToolbar({
 }: {
   tabs?: ReactNode;
   /**
-   * `inline` keeps view tabs as the first chip in the filter row. `above`
-   * renders them as a page-level folder rail (`PageTabs`) before the row.
+   * `inline` keeps view tabs as the first chip in the filter row. `navbar`
+   * is for page-level tabs (`PageTabsRail`) that render in the shell top bar:
+   * they stay out of the filter row.
    */
-  tabsPlacement?: "inline" | "above";
+  tabsPlacement?: "inline" | "navbar";
   filters?: FilterDefinition[];
   followKey: string;
   /** One batched clear, for filters stored together (e.g. in the URL). */
@@ -114,7 +115,7 @@ export function ListToolbar({
       }
     />
   );
-  return tabsPlacement === "above" ? (
+  return tabsPlacement === "navbar" ? (
     <>
       {tabs}
       {filterBar}

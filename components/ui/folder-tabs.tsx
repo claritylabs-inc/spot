@@ -1,74 +1,50 @@
 "use client";
 
 import type { ComponentProps } from "react";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-} from "@claritylabs-inc/ui/components/tabs";
-import { useAppShellSlotClaim } from "@/components/app-shell-slots";
+import { Tabs, TabsList } from "@claritylabs-inc/ui/components/tabs";
+import { AppShellPortal } from "@/components/app-shell-slots";
 import { cn } from "@/lib/utils";
 
 /*
- * Page-level folder tabs sit flush under the shell top bar. The shell content
- * area pads its children by 1.5rem (2rem from lg), so the rail bleeds through
- * that padding; the shared rail's own inset plus tab padding puts the first
- * label at the top bar's gutter. Geometry and colors stay in the shared Tabs
- * primitive.
+ * Page-level tabs live in the shell top bar, to the right of the breadcrumb.
+ * `PageTabsList` portals a shared `navbar` list into the bar's tabs target;
+ * the Tabs root keeps Base UI context for the page's panels. Geometry,
+ * alignment and narrow-width stacking belong to the shared top bar and tabs.
  */
 
-/** Root for a page whose first element is the rail; the shell top bar blends into it while mounted. */
 export function PageTabs({ className, ...props }: ComponentProps<typeof Tabs>) {
-  useAppShellSlotClaim("folderRail");
-  return (
-    <Tabs className={cn("gap-0 -mx-6 -mt-6 lg:-mx-8", className)} {...props} />
-  );
+  return <Tabs className={cn("gap-0", className)} {...props} />;
 }
 
+/** The page's tab list, rendered in the top bar. Mount it once per page. */
 export function PageTabsList(
   props: Omit<ComponentProps<typeof TabsList>, "variant">,
 ) {
-  return <TabsList variant="folder" {...props} />;
-}
-
-/** A selected view's body at the shell gutters. */
-export function PageTabsPanel({
-  className,
-  ...props
-}: ComponentProps<typeof TabsContent>) {
   return (
-    <TabsContent className={cn("px-6 py-6 lg:px-8", className)} {...props} />
+    <AppShellPortal slot="folderRail">
+      <TabsList variant="navbar" {...props} />
+    </AppShellPortal>
   );
 }
 
-/**
- * A rail and panel for field groups inside a page or drawer: one bordered
- * sheet so the rail never floats in whitespace.
- */
+/** Tabs that only provide context (the body is ordinary page content): the root renders no box, so it adds no spacing. */
+export function PageTabsRail({
+  className,
+  ...props
+}: ComponentProps<typeof Tabs>) {
+  return <PageTabs className={cn("contents", className)} {...props} />;
+}
+
+/** A local tab list for field groups inside a page or drawer. Never claims the top bar. */
 export function SectionTabs({
   className,
   ...props
 }: ComponentProps<typeof Tabs>) {
-  return (
-    <Tabs
-      className={cn(
-        "gap-0 overflow-hidden rounded-lg border border-border",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <Tabs className={cn("gap-0", className)} {...props} />;
 }
 
 export function SectionTabsList(
   props: Omit<ComponentProps<typeof TabsList>, "variant">,
 ) {
   return <TabsList variant="folder" {...props} />;
-}
-
-export function SectionTabsPanel({
-  className,
-  ...props
-}: ComponentProps<typeof TabsContent>) {
-  return <TabsContent className={cn("p-4", className)} {...props} />;
 }

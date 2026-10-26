@@ -21,12 +21,8 @@ import { OperatorPageContextRegistration } from "@/components/operator-agent/ope
 import { AgentChannelsSection } from "@/components/settings/agent-channels-section";
 import { FeatureFlagToggleRow } from "@/components/settings/feature-flag-toggle-row";
 import { TeamSection } from "@/components/settings/team-section";
-import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import {
-  PageTabs,
-  PageTabsList,
-  PageTabsPanel,
-} from "@/components/ui/folder-tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 
 import {
   OperationalPanel,
@@ -147,7 +143,7 @@ function ClientWorkspace({
               <TabsTrigger value="channels">Agent channels</TabsTrigger>
               <TabsTrigger value="features">Beta features</TabsTrigger>
             </PageTabsList>
-            <PageTabsPanel value="channels">
+            <TabsContent value="channels">
               <AgentChannelsSection
                 clientOrgId={client._id}
                 defaultClientSlug={slackChannelSlug(client)}
@@ -157,8 +153,8 @@ function ClientWorkspace({
                 defaultInviteUserId={supportDetails.primaryInsuranceContactId}
                 setRightPanel={setRightPanel}
               />
-            </PageTabsPanel>
-            <PageTabsPanel value="features" className="space-y-3">
+            </TabsContent>
+            <TabsContent value="features" className="space-y-3">
               {betaFeatureFlagsForOrgType("client").map((flag) => (
                 <FeatureFlagToggleRow
                   key={flag.id}
@@ -171,7 +167,7 @@ function ClientWorkspace({
                   disabled={savingFeatureFlagId !== null}
                 />
               ))}
-            </PageTabsPanel>
+            </TabsContent>
           </PageTabs>
         ) : null}
 

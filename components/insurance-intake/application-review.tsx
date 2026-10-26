@@ -3,12 +3,8 @@ import { IntakeAutoQuoteReview } from "./auto-quote-fields";
 import { IntakeDriverReview } from "./driver-fields";
 import { IntakeFollowupReview } from "./followup-review";
 import { useState, type ReactNode } from "react";
-import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import {
-  SectionTabs,
-  SectionTabsList,
-  SectionTabsPanel,
-} from "@/components/ui/folder-tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { SectionTabs, SectionTabsList } from "@/components/ui/folder-tabs";
 import {
   intakeFollowupAnswerRows,
   intakeQuoteSections,
@@ -105,9 +101,9 @@ export function IntakeApplicationReview({
           ))}
         </SectionTabsList>
         {groups.map(({ title, section }) => (
-          <SectionTabsPanel key={title} value={title}>
+          <TabsContent key={title} value={title} className="pt-4">
             {content(section)}
-          </SectionTabsPanel>
+          </TabsContent>
         ))}
       </SectionTabs>
     );
