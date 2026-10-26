@@ -3056,8 +3056,9 @@ export function operatorAgentToolNamesForFamilies(
 
 export function expandOperatorToolsSpec(
   families: readonly OperatorToolFamily[],
+  toolNames: readonly OperatorAgentToolName[] = [],
 ) {
-  return expandToolsSpec(OPERATOR_TOOL_FAMILY_CATALOG, families);
+  return expandToolsSpec(OPERATOR_TOOL_FAMILY_CATALOG, families, toolNames);
 }
 
 export type ResolvedOperatorToolSpec = {

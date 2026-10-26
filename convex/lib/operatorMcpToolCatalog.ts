@@ -12,9 +12,12 @@ function oauthSecuritySchemes(scopes: Array<"read" | "write">) {
 export function buildOperatorMcpToolCatalog(args: {
   canWrite: boolean;
   operatorRole: OperatorToolRole;
+  toolNames?: readonly string[];
 }) {
+  const available = args.toolNames ? new Set(args.toolNames) : undefined;
   const registeredTools = Object.entries(OPERATOR_AGENT_TOOL_REGISTRY)
-    .filter(([, spec]) => {
+    .filter(([name, spec]) => {
+      if (available && !available.has(name)) return false;
       if (spec.requiredRole === "owner" && args.operatorRole !== "owner") {
         return false;
       }
