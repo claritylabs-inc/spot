@@ -1231,6 +1231,120 @@ export async function insertOutreachSequence(
   return { sequenceId, schedule };
 }
 
+type LaunchSkipped = ProviderOutreachLaunchResult["skipped"][number];
+type LaunchCandidate =
+  | { kind: "skip"; skipped: LaunchSkipped }
+  | {
+      kind: "send";
+      org: Doc<"organizations">;
+      outreach: Doc<"procurementBrokerOutreaches"> | null;
+      evaluation: ProviderEvaluation;
+      recipient: RecipientView;
+    };
+
+/** The launch decision for one requested provider; shared by launch and preview. */
+async function classifyLaunchCandidate(
+  ctx: Ctx,
+  args: {
+    requestedId: Id<"organizations">;
+    request: Doc<"procurementRequests">;
+    match: RequestMatchContext;
+    testMode: boolean;
+    selectedContact?: Doc<"brokerContacts">;
+    matchedOnly: boolean;
+  },
+): Promise<LaunchCandidate> {
+  const org = eligibleProviderOrg(await ctx.db.get(args.requestedId));
+  if (!org)
+    return {
+      kind: "skip",
+      skipped: {
+        brokerOrgId: args.requestedId,
+        brokerName: null,
+        reason: "provider_not_found",
+        detail: [],
+      },
+    };
+  const outreach =
+    (
+      await ctx.db
+        .query("procurementBrokerOutreaches")
+        .withIndex("request_broker", (q) =>
+          q.eq("requestId", args.request._id).eq("brokerOrgId", org._id),
+        )
+        .take(1)
+    )[0] ?? null;
+  const sequences = outreach ? await sequencesForOutreach(ctx, outreach._id) : [];
+  const evaluation = await evaluateProvider(
+    ctx,
+    org,
+    args.match,
+    args.testMode,
+    outreach,
+    true,
+    args.selectedContact,
+  );
+  const blocked = launchBlock({
+    evaluation,
+    outreach,
+    hasLiveSequence: sequences.some((row) => blocksRelaunch(row.status)),
+    matchedOnly: args.matchedOnly,
+  });
+  if (blocked || !evaluation.recipient)
+    return {
+      kind: "skip",
+      skipped: {
+        brokerOrgId: org._id,
+        brokerName: org.name,
+        reason: blocked ?? "no_contact_email",
+        detail: evaluation.fit.reasons,
+      },
+    };
+  return { kind: "send", org, outreach, evaluation, recipient: evaluation.recipient };
+}
+
+/**
+ * Read-only: what a launch of these providers would do right now. Backs the
+ * agent's pre-approval check and approval card; it never writes.
+ */
+export async function previewProviderOutreachLaunch(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    requestId: Id<"procurementRequests">;
+    brokerOrgIds: Id<"organizations">[];
+  },
+) {
+  if (!args.brokerOrgIds.length || args.brokerOrgIds.length > MAX_LAUNCH_PROVIDERS)
+    throw new Error(`Select one to ${MAX_LAUNCH_PROVIDERS} providers`);
+  const { request, client } = await loadCompanyRequest(ctx, args.requestId);
+  if (closedReason(request)) throw new Error("Procurement request is closed");
+  const match = matchFor(request, client);
+  const testMode = await operatorInTestMode(ctx, args.operatorUserId);
+  const providers: { brokerOrgId: Id<"organizations">; brokerName: string | null; willSend: boolean; reason?: LaunchSkipReason; recipientEmail?: string }[] = [];
+  const seen = new Set<Id<"organizations">>();
+  for (const requestedId of args.brokerOrgIds) {
+    if (seen.has(requestedId)) {
+      providers.push({ brokerOrgId: requestedId, brokerName: null, willSend: false, reason: "duplicate_selection" });
+      continue;
+    }
+    seen.add(requestedId);
+    const candidate = await classifyLaunchCandidate(ctx, {
+      requestedId,
+      request,
+      match,
+      testMode,
+      matchedOnly: false,
+    });
+    providers.push(
+      candidate.kind === "skip"
+        ? { brokerOrgId: requestedId, brokerName: candidate.skipped.brokerName, willSend: false, reason: candidate.skipped.reason }
+        : { brokerOrgId: requestedId, brokerName: candidate.org.name, willSend: true, recipientEmail: candidate.recipient.email },
+    );
+  }
+  return providers;
+}
+
 export async function launchProviderOutreachByOperator(
   ctx: MutationCtx,
   args: {
@@ -1288,54 +1402,22 @@ export async function launchProviderOutreachByOperator(
       continue;
     }
     seen.add(requestedId);
-    const org = eligibleProviderOrg(await ctx.db.get(requestedId));
-    if (!org) {
-      result.skipped.push({
-        brokerOrgId: requestedId,
-        brokerName: null,
-        reason: "provider_not_found",
-        detail: [],
-      });
-      continue;
-    }
-    const outreach =
-      (
-        await ctx.db
-          .query("procurementBrokerOutreaches")
-          .withIndex("request_broker", (q) =>
-            q.eq("requestId", request._id).eq("brokerOrgId", org._id),
-          )
-          .take(1)
-      )[0] ?? null;
-    const sequences = outreach ? await sequencesForOutreach(ctx, outreach._id) : [];
-    const evaluation = await evaluateProvider(
-      ctx,
-      org,
+    const candidate = await classifyLaunchCandidate(ctx, {
+      requestedId,
+      request,
       match,
       testMode,
-      outreach,
-      true,
-      selectedContacts.get(org._id),
-    );
-    const blocked = launchBlock({
-      evaluation,
-      outreach,
-      hasLiveSequence: sequences.some((row) => blocksRelaunch(row.status)),
+      selectedContact: selectedContacts.get(requestedId),
       matchedOnly: args.matchedOnly === true,
     });
-    if (blocked || !evaluation.recipient) {
-      result.skipped.push({
-        brokerOrgId: org._id,
-        brokerName: org.name,
-        reason: blocked ?? "no_contact_email",
-        detail: evaluation.fit.reasons,
-      });
+    if (candidate.kind === "skip") {
+      result.skipped.push(candidate.skipped);
       continue;
     }
+    const { org, outreach, evaluation, recipient } = candidate;
     // Defensive: a recipient must always clear the external-identity gate.
-    assertExternalBrokerIdentity({ ...org, email: evaluation.recipient.email });
+    assertExternalBrokerIdentity({ ...org, email: recipient.email });
 
-    const recipient = evaluation.recipient;
     let outreachId: Id<"procurementBrokerOutreaches">;
     if (outreach) {
       outreachId = outreach._id;

@@ -171,7 +171,7 @@ import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
 import { applyOperatorBatch } from "./lib/operatorBatch";
 import { isRemainingBatchToolName, remainingBatchConfirmationSummary, REMAINING_BATCH_TOOLS, type RemainingBatchResult } from "./lib/operatorRemainingBatch";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
-import { preflightOperatorToolConfirmation, prepareRemainingBatchForConfirmation } from "./lib/operatorAgentConfirmationPreflight";
+import { preflightOperatorToolConfirmation, prepareRemainingBatchForConfirmation, providerLaunchApprovalLines } from "./lib/operatorAgentConfirmationPreflight";
 import { clientBatchConfirmationSummary, isClientBatchToolName, type ClientBatchResult } from "./lib/operatorClientBatch";
 import {
   describeOperatorRecordFields,
@@ -623,6 +623,15 @@ async function operatorConfirmationSummary(
       `From: ${identity.fromHeader}`,
       `Always CC: ${identity.alwaysCc ?? "None"}`,
     ];
+    if (toolName === "launch_procurement_provider_outreach") {
+      lines.push(
+        "",
+        ...(await providerLaunchApprovalLines(ctx, {
+          operatorUserId: context.operatorUserId,
+          input,
+        })),
+      );
+    }
     if (toolName === "send_procurement_client_email") {
       const panel = await getClientOutreachPanel(ctx, normalizeProcurementRequestId(ctx, input.procurementRequestId));
       const recipient = panel?.recipients.find((person) => person.email === input.recipientEmail);

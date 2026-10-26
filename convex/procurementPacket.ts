@@ -6,6 +6,7 @@ import {
   APPLICATION_END,
 } from "../lib/intake-application";
 import { requireCompanyRequest } from "./lib/companyRequest";
+import { NoWriteInputError } from "./lib/noWriteInputError";
 import { saveMarkdownDocument } from "./markdownDocuments";
 import {
   parseMarkdownDocument,
@@ -92,22 +93,26 @@ async function directOperator(ctx: MutationCtx, userId: Id<"users">) {
   await requireDirectOperatorWrite(ctx, userId);
 }
 
-export async function updatePacketDocumentByOperator(
+type PacketDocumentUpdate = {
+  operatorUserId: Id<"users">;
+  requestId: Id<"procurementRequests">;
+  filename: string;
+  markdown: string;
+  expectedRevision: number;
+};
+
+/** Every check and rendering step of a save, without writing. */
+export async function preparePacketDocumentUpdate(
   ctx: MutationCtx,
-  args: {
-    operatorUserId: Id<"users">;
-    requestId: Id<"procurementRequests">;
-    filename: string;
-    markdown: string;
-    expectedRevision: number;
-  },
+  args: PacketDocumentUpdate,
 ) {
   await directOperator(ctx, args.operatorUserId);
   const request = await requestForOperator(ctx, args.requestId);
   const previous = await readPacketDocument(ctx, request, args.filename);
   if (previous.revision !== args.expectedRevision)
-    throw new Error(
-      "The packet changed while you were editing. Reload it before saving.",
+    throw new NoWriteInputError(
+      "document_revision_changed",
+      `${args.filename} changed (expected revision ${args.expectedRevision}, current ${previous.revision}). No write started. Call lookup_procurement_packet, merge your changes into the latest content, and retry with its revision.`,
     );
   const parsed = parseMarkdownDocument(args.markdown);
   const visibility = packetFileVisibility(args.filename);
@@ -152,6 +157,15 @@ export async function updatePacketDocumentByOperator(
     { ...parsed.frontmatter, visibility },
     body,
   );
+  return { request, previous, visibility, markdown };
+}
+
+export async function updatePacketDocumentByOperator(
+  ctx: MutationCtx,
+  args: PacketDocumentUpdate,
+) {
+  const { request, previous, visibility, markdown } =
+    await preparePacketDocumentUpdate(ctx, args);
   const document = await saveMarkdownDocument(ctx, {
     orgId: request.clientOrgId,
     requestId: request._id,
