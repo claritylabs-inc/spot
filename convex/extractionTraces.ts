@@ -28,18 +28,7 @@ const traceEventKindValidator = v.union(
   v.literal("artifact"),
 );
 
-const modelProviderValidator = v.union(
-  v.literal("openai"),
-  v.literal("anthropic"),
-  v.literal("google"),
-  v.literal("xai"),
-  v.literal("mistral"),
-  v.literal("cohere"),
-  v.literal("fireworks"),
-  v.literal("moonshot"),
-  v.literal("deepseek"),
-  v.literal("cloudflare"),
-);
+const modelProviderValidator = v.string();
 
 const extractionTraceRoutingValidator = v.object({
   decision: v.string(),

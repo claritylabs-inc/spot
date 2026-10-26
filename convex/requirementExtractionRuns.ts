@@ -12,17 +12,7 @@ const parserBackendValidator = v.union(
   v.literal("plain_text"),
 );
 
-const modelProviderValidator = v.union(
-  v.literal("openai"),
-  v.literal("anthropic"),
-  v.literal("google"),
-  v.literal("xai"),
-  v.literal("mistral"),
-  v.literal("cohere"),
-  v.literal("fireworks"),
-  v.literal("moonshot"),
-  v.literal("deepseek"),
-);
+const modelProviderValidator = v.string();
 
 function nowMs() {
   return dayjs().valueOf();

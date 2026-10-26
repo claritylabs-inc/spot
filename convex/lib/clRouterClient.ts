@@ -1,9 +1,14 @@
 "use node";
+import dayjs from "dayjs";
 import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { modelCallContext, modelCallResult } from "./modelCallTelemetry";
-import { parseRouterModels, type RouterModelEntry } from "./routerCapabilities";
+import {
+  parseRouterCapabilities,
+  type RouterCapabilities,
+  type RouterModelEntry,
+} from "./routerCapabilities";
 import type { RouterJobFailure } from "./routerJobFailure";
 
 import {
@@ -20,10 +25,10 @@ import {
 } from "../../contracts/cl-router/policy";
 
 import {
-  MODEL_PROVIDERS,
   MODEL_TASKS,
   type ModelProvider,
   type ModelRoute,
+  type WebRetrievalMode,
 } from "./modelCatalog";
 import type {
   ClRouterPrimitive,
@@ -389,18 +394,7 @@ export type ClRouterTranscribeResponse = ClRouterResponseMetadata & {
   durationSeconds?: number;
 };
 
-export type ClRouterCapabilities = {
-  apiVersion: "v1";
-  credentialMode: "router";
-  providers: Array<{ provider: ModelProvider; configured: boolean }>;
-  models?: RouterModelEntry[];
-  webRetrieval: {
-    providers: Array<{
-      provider: "parallel" | "exa" | "openai" | "google" | "anthropic" | "xai";
-      configured: boolean;
-    }>;
-  };
-};
+export type ClRouterCapabilities = RouterCapabilities;
 
 export type ClRouterRetrieveRequest = {
   tenantId?: string;
@@ -413,14 +407,7 @@ export type ClRouterRetrieveRequest = {
     maxResults?: number;
   };
   config?: {
-    primary:
-      | "parallel"
-      | "exa"
-      | "model_default"
-      | "openai"
-      | "google"
-      | "anthropic"
-      | "xai";
+    primary: WebRetrievalMode;
     route?: ModelRoute;
   };
   executionBudgetMs?: number;
@@ -485,23 +472,9 @@ export type ClRouterBrowseResponse = {
 };
 
 export type ClRouterRetrieveResponse = {
-  provider:
-    | "parallel"
-    | "exa"
-    | "model_default"
-    | "openai"
-    | "google"
-    | "anthropic"
-    | "xai";
+  provider: string;
   attempts: Array<{
-    provider:
-      | "parallel"
-      | "exa"
-      | "model_default"
-      | "openai"
-      | "google"
-      | "anthropic"
-      | "xai";
+    provider: string;
     ok: boolean;
     error?: string;
   }>;
@@ -1766,63 +1739,50 @@ export async function clRouterGenerateMaybeManual(
     : clRouterGenerate(request, options);
 }
 
-const MODEL_PROVIDER_SET = new Set<ModelProvider>(MODEL_PROVIDERS);
+const CAPABILITIES_CACHE_TTL_MS = 60_000;
+let cachedCapabilities:
+  | { url: string; expiresAt: number; value: ClRouterCapabilities }
+  | undefined;
 
-const WEB_RETRIEVAL_PROVIDER_SET = new Set([
-  "parallel",
-  "exa",
-  "model_default",
-  "openai",
-  "google",
-  "anthropic",
-  "xai",
-]);
-
+/**
+ * Live provider/model catalog. Successful reads are cached briefly per router
+ * URL; injected transports (tests) always fetch. Failures throw so callers
+ * choose their own unavailable state.
+ */
 export async function clRouterCapabilities(
   options: ClRouterClientOptions = {},
 ): Promise<ClRouterCapabilities> {
-  const payload = await clRouterFetch(
-    "/v1/capabilities",
-    { method: "GET" },
-    options,
-  );
+  const url = options.fetch
+    ? undefined
+    : clientConfig(options.environment ?? process.env).url;
   if (
-    !isRecord(payload) ||
-    payload.apiVersion !== "v1" ||
-    payload.credentialMode !== "router" ||
-    !Array.isArray(payload.providers) ||
-    !payload.providers.every(
-      (entry) =>
-        isRecord(entry) &&
-        typeof entry.provider === "string" &&
-        MODEL_PROVIDER_SET.has(entry.provider as ModelProvider) &&
-        typeof entry.configured === "boolean",
-    ) ||
-    !isRecord(payload.webRetrieval) ||
-    !Array.isArray(payload.webRetrieval.providers) ||
-    !payload.webRetrieval.providers.every(
-      (entry) =>
-        isRecord(entry) &&
-        typeof entry.provider === "string" &&
-        WEB_RETRIEVAL_PROVIDER_SET.has(entry.provider) &&
-        typeof entry.configured === "boolean",
-    )
+    url &&
+    cachedCapabilities?.url === url &&
+    cachedCapabilities.expiresAt > dayjs().valueOf()
   ) {
+    return cachedCapabilities.value;
+  }
+  const capabilities = parseRouterCapabilities(
+    await clRouterFetch("/v1/capabilities", { method: "GET" }, options),
+  );
+  if (!capabilities) {
     throw new ClRouterRequestError(
       "invalid_response",
       "cl-router capabilities response is invalid",
     );
   }
-  const models = parseRouterModels(payload.models);
-  if (models === undefined)
-    throw new ClRouterRequestError(
-      "invalid_response",
-      "cl-router model capabilities response is invalid",
-    );
-  return {
-    ...(payload as ClRouterCapabilities),
-    ...(models ? { models } : {}),
-  };
+  if (url) {
+    cachedCapabilities = {
+      url,
+      expiresAt: dayjs().add(CAPABILITIES_CACHE_TTL_MS, "ms").valueOf(),
+      value: capabilities,
+    };
+  }
+  return capabilities;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 export async function clRouterRetrieve(
@@ -1836,14 +1796,12 @@ export async function clRouterRetrieve(
   );
   if (
     !isRecord(payload) ||
-    typeof payload.provider !== "string" ||
-    !WEB_RETRIEVAL_PROVIDER_SET.has(payload.provider) ||
+    !isNonEmptyString(payload.provider) ||
     !Array.isArray(payload.attempts) ||
     !payload.attempts.every(
       (attempt) =>
         isRecord(attempt) &&
-        typeof attempt.provider === "string" &&
-        WEB_RETRIEVAL_PROVIDER_SET.has(attempt.provider) &&
+        isNonEmptyString(attempt.provider) &&
         typeof attempt.ok === "boolean" &&
         (attempt.error === undefined || typeof attempt.error === "string"),
     ) ||

@@ -2,8 +2,8 @@
  * Vendored cl-router decision/extraction contracts and primitive vocabulary.
  *
  * Copied from the former published policy package 1.0.0 (`dist/*.js` + `.d.ts`)
- * as TypeScript. Model registry/capability/price tables are not vendored:
- * Spot reads selectable routes from authenticated GET /v1/capabilities.
+ * as TypeScript. Provider and model lists, capabilities and prices are not
+ * vendored: Spot reads them from authenticated GET /v1/capabilities.
  */
 
 export const PRIMITIVES = [
@@ -28,21 +28,6 @@ export type PrimitiveRequirements = {
   structuredOutput?: boolean;
   minInputTokens?: number;
 };
-
-export const DIRECT_MODEL_PROVIDERS = [
-  "openai",
-  "anthropic",
-  "google",
-  "xai",
-  "mistral",
-  "cohere",
-  "fireworks",
-  "deepseek",
-] as const;
-export type DirectModelProvider = (typeof DIRECT_MODEL_PROVIDERS)[number];
-
-/** Response `model` is the actual Jev version TypeSafe served (e.g. "jev-1.14.0"), not a fixed pin. */
-export const JEV_MODEL_PATTERN = /^jev-/;
 
 /** One limit for all decoded assets in a request; there is no count limit. */
 export const MAX_DECISION_TOTAL_ASSET_BYTES = 16 * 1024 * 1024;
@@ -552,8 +537,8 @@ export function parseDecideResponse(
   ]);
   if (r.contractVersion !== 1) invalid();
   text(r.requestId);
+  // The serving model (a Jev version, or a fallback such as "clef") is data.
   text(r.model);
-  if (!JEV_MODEL_PATTERN.test(r.model as string)) invalid();
   if (r.parentRequestId !== undefined) text(r.parentRequestId);
   natural(r.durationMs);
   const usage = object(r.usage);

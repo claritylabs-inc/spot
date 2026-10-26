@@ -2,85 +2,25 @@
 
 import dayjs from "dayjs";
 import { getSessionUserId as getAuthUserId } from "./lib/sessionIdentity";
-import { DIRECT_MODEL_PROVIDERS } from "../contracts/cl-router/policy";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { parseRouterModels } from "./lib/routerCapabilities";
+import {
+  ClRouterRequestError,
+  clRouterCapabilities,
+} from "./lib/clRouterClient";
 
 const REQUEST_TIMEOUT_MS = 15_000;
-const ROUTER_MODEL_PROVIDERS = new Set<string>(DIRECT_MODEL_PROVIDERS);
-const ROUTER_WEB_RETRIEVAL_PROVIDERS = new Set([
-  "parallel",
-  "exa",
-  "openai",
-  "google",
-  "anthropic",
-  "xai",
-]);
 
-function configuredEnv(value: string | undefined) {
-  const trimmed = value?.trim();
-  return trimmed || undefined;
-}
-
-function routerUrl() {
-  return configuredEnv(process.env.CL_ROUTER_URL)?.replace(/\/+$/, "");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function parseConfiguredProviders(
-  value: unknown,
-  supported: ReadonlySet<string>,
-) {
-  if (!Array.isArray(value)) return null;
-  const providers: Array<{ provider: string; configured: boolean }> = [];
-  for (const item of value) {
-    if (
-      !isRecord(item) ||
-      typeof item.provider !== "string" ||
-      !supported.has(item.provider) ||
-      typeof item.configured !== "boolean"
-    ) {
-      return null;
-    }
-    providers.push({
-      provider: item.provider,
-      configured: item.configured,
-    });
-  }
-  return providers;
-}
-
-export function parseRouterCapabilities(value: unknown) {
-  if (
-    !isRecord(value) ||
-    value.apiVersion !== "v1" ||
-    value.credentialMode !== "router" ||
-    !isRecord(value.webRetrieval)
-  ) {
-    return null;
-  }
-  const providers = parseConfiguredProviders(
-    value.providers,
-    ROUTER_MODEL_PROVIDERS,
-  );
-  const webRetrievalProviders = parseConfiguredProviders(
-    value.webRetrieval.providers,
-    ROUTER_WEB_RETRIEVAL_PROVIDERS,
-  );
-  if (!providers || !webRetrievalProviders) return null;
-  const models = parseRouterModels(value.models);
-  if (models === undefined) return null;
-  return {
-    apiVersion: "v1" as const,
-    credentialMode: "router" as const,
-    providers,
-    webRetrieval: { providers: webRetrievalProviders },
-    ...(models ? { models } : {}),
-  };
+function unavailableMessage(error: unknown) {
+  if (!(error instanceof ClRouterRequestError))
+    return "Router capabilities are temporarily unavailable.";
+  if (error.kind === "configuration")
+    return "Router inference is not configured for this deployment.";
+  if (error.kind === "invalid_response")
+    return "Router returned an invalid capabilities response.";
+  return error.status
+    ? `Router capabilities are temporarily unavailable (HTTP ${error.status}).`
+    : "Router capabilities are temporarily unavailable.";
 }
 
 export const getCapabilities = action({
@@ -93,52 +33,21 @@ export const getCapabilities = action({
     });
 
     const fetchedAt = dayjs().valueOf();
-    const url = routerUrl();
-    const secret = configuredEnv(process.env.CL_ROUTER_SECRET);
-    if (!url || !secret) {
-      return {
-        availability: "unavailable" as const,
-        fetchedAt,
-        message: "Router inference is not configured for this deployment.",
-      };
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const response = await fetch(`${url}/v1/capabilities`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${secret}` },
-        signal: controller.signal,
+      const capabilities = await clRouterCapabilities({
+        abortSignal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
-      if (!response.ok) {
-        return {
-          availability: "unavailable" as const,
-          fetchedAt,
-          message: `Router capabilities are temporarily unavailable (HTTP ${response.status}).`,
-        };
-      }
-      const capabilities = parseRouterCapabilities(await response.json());
-      if (!capabilities) {
-        return {
-          availability: "unavailable" as const,
-          fetchedAt,
-          message: "Router returned an invalid capabilities response.",
-        };
-      }
       return {
         availability: "available" as const,
         fetchedAt,
         ...capabilities,
       };
-    } catch {
+    } catch (error) {
       return {
         availability: "unavailable" as const,
         fetchedAt,
-        message: "Router capabilities are temporarily unavailable.",
+        message: unavailableMessage(error),
       };
-    } finally {
-      clearTimeout(timeout);
     }
   },
 });

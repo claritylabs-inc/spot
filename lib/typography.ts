@@ -44,20 +44,6 @@ export const mapboxTypographyAdapter = Object.freeze({
   cssText: ".MapboxSearchListbox * { letter-spacing: 0; }",
 });
 
-/** Scaled text marks use inline sizing while retaining a fixed typed style. */
-export function scaledSvgWordmarkTypography(size: number): Readonly<CSSProperties> {
-  return Object.freeze({
-    fontFamily: "var(--font-geist-sans), Geist, ui-sans-serif, system-ui, sans-serif",
-    fontSize: Math.max(7, Math.round(size * 0.45)),
-    fontWeight: 500,
-    lineHeight: 1,
-    letterSpacing: "normal",
-    textTransform: "none",
-    fontStyle: "normal",
-    fontVariantNumeric: "normal",
-  });
-}
-
 /** CodeMirror keeps source text at one size and only emphasizes Markdown syntax. */
 export const markdownSyntaxTypographyStyles = Object.freeze({
   strong: Object.freeze({ fontWeight: "600" }),

@@ -1,9 +1,8 @@
-import {
-  DIRECT_MODEL_PROVIDERS,
-  type DirectModelProvider,
-} from "../../contracts/cl-router/policy";
-
-export type ModelProvider = DirectModelProvider;
+/**
+ * Provider and model identifiers are cl-router data from GET /v1/capabilities
+ * (`convex/lib/routerCapabilities.ts`); Spot keeps no list of its own.
+ */
+export type ModelProvider = string;
 export type ModelRoute = {
   provider: ModelProvider;
   model: string;
@@ -37,57 +36,23 @@ const ALL_MODEL_TASKS = [
 
 export type ModelTask = (typeof ALL_MODEL_TASKS)[number];
 
-export type WebRetrievalProvider =
-  | "parallel"
-  | "exa"
-  | "model_default"
-  | "openai"
-  | "google"
-  | "anthropic"
-  | "xai";
-
+/**
+ * Retrieval modes Spot configures. `model_default` uses a native provider that
+ * live capabilities list under `webRetrieval.providers`.
+ */
+export type WebRetrievalMode = "parallel" | "exa" | "model_default";
 export type WebRetrievalApiProvider = Extract<
-  WebRetrievalProvider,
+  WebRetrievalMode,
   "parallel" | "exa"
 >;
 
 export function isWebRetrievalApiProvider(
-  provider: WebRetrievalProvider,
+  provider: string,
 ): provider is WebRetrievalApiProvider {
   return provider === "parallel" || provider === "exa";
 }
 
-export type NativeWebRetrievalProvider = Extract<
-  ModelProvider,
-  "openai" | "google" | "anthropic" | "xai"
->;
-
-export function isNativeWebRetrievalProvider(
-  provider: ModelProvider,
-): provider is NativeWebRetrievalProvider {
-  return (
-    provider === "openai" ||
-    provider === "google" ||
-    provider === "anthropic" ||
-    provider === "xai"
-  );
-}
-
-export type WebRetrievalRoute = {
-  primary: WebRetrievalProvider;
-  route?: ModelRoute;
-};
-
-export const PROVIDER_LABELS: Record<ModelProvider, string> = {
-  openai: "OpenAI",
-  anthropic: "Anthropic",
-  google: "Google",
-  xai: "xAI",
-  mistral: "Mistral",
-  cohere: "Cohere",
-  fireworks: "Fireworks",
-  deepseek: "DeepSeek",
-};
+export type WebRetrievalRoute = { primary: WebRetrievalMode };
 
 /**
  * Retired routes: no longer selectable in operator settings, but kept in
@@ -112,10 +77,6 @@ export const MODEL_ROUTE_IDS = [
   ...MODEL_TASKS,
   OPERATOR_AGENT_MODEL_ROUTE_ID,
 ] as ModelRouteId[];
-
-export const MODEL_PROVIDERS = [
-  ...DIRECT_MODEL_PROVIDERS,
-] as const satisfies readonly ModelProvider[];
 
 export const WEB_RETRIEVAL_DEFAULT: WebRetrievalRoute = { primary: "parallel" };
 

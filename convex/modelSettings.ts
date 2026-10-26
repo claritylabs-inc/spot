@@ -48,10 +48,10 @@ export function explicitOperatorAgentRoute(
 }
 
 /**
- * Reads possibly-legacy stored web-retrieval config, so the input type is
- * looser than WebRetrievalRoute: stored `route.provider` can still be the
- * retired "moonshot" literal (schema.ts keeps it for old documents). This
- * always discards `route`, so the mismatch never surfaces.
+ * Reads possibly-legacy stored web-retrieval config. A stored native provider
+ * (for example "google", which cl-router no longer offers) and any stored
+ * `route` are discarded: `model_default` picks a native provider from live
+ * capabilities at call time.
  */
 function normalizeWebRetrieval(
   config: { primary: string; route?: unknown } | undefined,
