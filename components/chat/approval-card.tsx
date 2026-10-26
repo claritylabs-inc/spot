@@ -16,6 +16,7 @@ export type ChatApprovalDecision = "approve" | "reject";
 export function ChatApprovalCard({
   status,
   title,
+  items,
   actionable,
   destructive = false,
   busy,
@@ -24,6 +25,7 @@ export function ChatApprovalCard({
   status: { label: string } & StatusPresentation;
   /** First line is the summary; later lines are details. */
   title: string;
+  items?: string[];
   actionable: boolean;
   destructive?: boolean;
   busy: boolean;
@@ -49,7 +51,11 @@ export function ChatApprovalCard({
             {summary}
           </p>
         </div>
-        {details.length ? (
+        {items ? (
+          <ul className={cn("mt-2 list-disc space-y-1 pl-5 break-words text-foreground", typeStyle("body.default"))}>
+            {items.map((item, index) => <li key={index}>{item}</li>)}
+          </ul>
+        ) : details.length ? (
           <p
             className={cn(
               "mt-2 whitespace-pre-line break-words text-foreground",

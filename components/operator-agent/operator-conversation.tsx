@@ -1,5 +1,6 @@
 "use client";
 
+import { operatorBatchApprovalDetails } from "@/lib/operator-batch-approval";
 import { Fragment, useMemo, type ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { ChevronRight, RotateCcw } from "lucide-react";
@@ -444,6 +445,7 @@ export function OperatorConversation({
       key={confirmation.id}
       status={operatorConfirmationStatus(confirmation)}
       title={confirmation.title}
+      items={operatorBatchApprovalDetails(confirmation.title)?.items}
       actionable={confirmation.state === "pending" && confirmation.actionable}
       destructive={confirmation.destructive}
       busy={confirmationBusyId === confirmation.id}
