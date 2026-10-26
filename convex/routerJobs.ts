@@ -13,7 +13,7 @@ import {
 } from "./lib/messageActivity";
 import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { stripLeakedToolCallText } from "./lib/leakedToolCallText";
+import { sanitizeOperatorReply } from "./lib/operatorToolOutput";
 import { internal } from "./_generated/api";
 import {
   httpAction,
@@ -547,7 +547,7 @@ export const progress = internalMutation({
     }
     await ctx.db.patch(row.streamTarget, {
       // A tool call written as text must never stream to the operator.
-      content: stripLeakedToolCallText(args.text),
+      content: sanitizeOperatorReply(args.text),
       ...(activity ? { activity } : {}),
     });
     return true;
