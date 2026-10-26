@@ -63,7 +63,7 @@ export const OPERATOR_TOOL_FAMILIES = {
   procurement:
     "insurance application intake drafts and submissions, requested coverage, procurement requests, provider packets and packet links, provider outreach, supplementary client information questions and client information forms, proposals and proposal reviews, procurement files and procurement email threads",
   organizations:
-    "creating client organizations and updating structured business fields from documents (read get_organization first), changing an organization's profile, lifecycle status, feature flags or public company research",
+    "creating client organizations and updating structured business fields from documents (read get_organization with include businessProfile first), changing an organization's profile, lifecycle status, feature flags or public company research",
   broker_network:
     "the external insurance provider supplier network (carriers, MGAs, wholesalers, agencies and producers): provider network profiles, provider research and provider profile changes",
   policies:
@@ -642,7 +642,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   get_organization: defineOperatorTool({
     version: 3,
     description:
-      "Read one organization by exact ID: identity, website, access status, assignee, feature flags and research status. Add include for businessProfile (typed answers plus submittedAt version for update_client_business_profile), research, websiteTech, wiki (providers) or counts; [\"all\"] returns every section. Use get_organizations for several IDs.",
+      "Read one organization by exact ID: identity, website, access status, assignee, feature flags and research status. Add include for businessProfile (typed answers plus submittedAt version for update_client_business_profile), research, websiteTech, wiki (providers) or counts; [\"all\"] returns every section; include research when presenting provider findings. Use get_organizations for several IDs.",
     inputSchema: z.object({
       orgId: organizationId,
       include: organizationIncludeSchema,
@@ -2976,7 +2976,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 2,
     description:
-      "Create standalone clients without users; exact-name duplicates are rejected. Research is queued for each client; read get_organization for outcomes. For multiple items use create_client_organizations.",
+      "Create standalone clients without users; exact-name duplicates are rejected. Research is queued for each client; check get_research_status, then get_organization with include research for outcomes. For multiple items use create_client_organizations.",
     inputSchema: createClientOrganizationInputSchema,
     capability: "operator.organizations.write",
     effect: "reversible_write",
@@ -2991,7 +2991,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Create standalone clients without users; exact-name duplicates are rejected. Research is queued for each client; read get_organization for outcomes. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Create standalone clients without users; exact-name duplicates are rejected. Research is queued for each client; check get_research_status, then get_organization with include research for outcomes. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
     inputSchema: z.object({
       items: z.array(createClientOrganizationInputSchema).min(1).max(50),
     }),
@@ -3024,7 +3024,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 2,
     description:
-      "Update structured client business fields: legal name, website, DBA, entity type, tax IDs, industry, operations, staffing, addresses, locations, related entities and revenue. Prefer this over update_client_wiki (supplementary notes, source context, unresolved conflicts), including for document imports. Read get_organization or lookup_client_wiki for businessProfile and pass its submittedAt as expectedVersion (0 if absent). Send only changed keys; a supplied details key replaces its whole value. Field shapes: describe_record_fields. Never replace confirmed facts with conflicting research without operator instruction. Does not alter submitted request snapshots.",
+      "Update structured client business fields: legal name, website, DBA, entity type, tax IDs, industry, operations, staffing, addresses, locations, related entities and revenue. Prefer this over update_client_wiki (supplementary notes, source context, unresolved conflicts), including for document imports. Read get_organization with include ["businessProfile"] (or lookup_client_wiki) and pass businessProfile.submittedAt as expectedVersion (0 if absent). Send only changed keys; a supplied details key replaces its whole value. Field shapes: describe_record_fields. Never replace confirmed facts with conflicting research without operator instruction. Does not alter submitted request snapshots.",
     inputSchema: companyProfileToolInputSchema,
     capability: "operator.organizations.write",
     effect: "reversible_write",
@@ -3112,7 +3112,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Read the status of an organization's async public research: company research (research_client, research_broker) and, for clients, the tech-stack scan. Each entry has state (not_started, queued, running, completed, partial, failed), settled, timestamps and finding counts; read get_organization for the findings. Pass website instead of orgId for a prospect's tech-stack scan. waitSeconds (up to 60) waits for the runs to settle before answering.",
+      "Read the status of an organization's async public research: company research (research_client, research_broker) and, for clients, the tech-stack scan. Each entry has state (not_started, queued, running, completed, partial, failed), settled, timestamps and finding counts; read get_organization with include research (or websiteTech) for the findings. Pass website instead of orgId for a prospect's tech-stack scan. waitSeconds (up to 60) waits for the runs to settle before answering.",
     inputSchema: z
       .object({
         orgId: omittable(organizationId),
@@ -3139,7 +3139,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "broker_network",
     version: 1,
     description:
-      "Queue public research for exact external insurance providers. Preserve manual profile values; read get_organization or get_broker_network_profile for outcomes. Queued is not complete. For multiple items use research_brokers.",
+      "Queue public research for exact external insurance providers. Preserve manual profile values; check get_research_status, then get_broker_network_profile or get_organization with include research for outcomes. Queued is not complete. For multiple items use research_brokers.",
     inputSchema: researchBrokerInputSchema,
     capability: "operator.organizations.write",
     effect: "reversible_write",
@@ -3153,7 +3153,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "broker_network",
     version: 1,
     description:
-      "Queue public research for exact external insurance providers. Preserve manual profile values; read get_organization or get_broker_network_profile for outcomes. Queued is not complete. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Queue public research for exact external insurance providers. Preserve manual profile values; check get_research_status, then get_broker_network_profile or get_organization with include research for outcomes. Queued is not complete. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
     inputSchema: z.object({
       items: z.array(researchBrokerInputSchema).min(1).max(50),
     }),

@@ -1157,12 +1157,17 @@ function proposalSources(
 function addProviders(builder: Candidates, name: string, output: unknown) {
   builder.partial ||= hasBoundedEvidence(output);
   const result = record(output);
+  const organizationRead =
+    name === "get_organization" || name === "get_organizations";
   const providers =
-    name === "list_broker_network_profiles" ? rows(result.profiles) : [result];
+    name === "list_broker_network_profiles"
+      ? rows(result.profiles)
+      : name === "get_organizations"
+        ? rows(result.organizations)
+        : [result];
   for (const provider of providers) {
-    const broker =
-      name === "get_organization" ? provider : record(provider.broker);
-    if (name === "get_organization" && broker.type !== "broker") continue;
+    const broker = organizationRead ? provider : record(provider.broker);
+    if (organizationRead && broker.type !== "broker") continue;
     const id = identifier(broker._id ?? broker.orgId);
     const label = literal(broker.name, 200);
     if (!id || !label) continue;
@@ -1401,6 +1406,7 @@ export function buildPresentationCandidates(evidence: PresentationEvidence): {
         "get_broker_network_profile",
         "list_broker_network_profiles",
         "get_organization",
+        "get_organizations",
       ].includes(tool.name)
     )
       addProviders(builder, tool.name, output);
