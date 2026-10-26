@@ -12,7 +12,6 @@ import { prepareBusinessProfileToolUpdate } from "../orgWiki";
 import { getMarkdownDocument } from "../markdownDocuments";
 import { preparePacketDocumentUpdate } from "../procurementPacket";
 import { requireCompanyRequest } from "./companyRequest";
-import { clientRecipientOptions } from "./clientOutreach";
 import { appendWikiSection } from "./wikiAppend";
 import { validateClientOutreachLaunch } from "../clientOutreach";
 import { previewProviderOutreachLaunch } from "../providerOutreach";
@@ -23,7 +22,6 @@ import {
 } from "./markdownDocument";
 import { clientIdentity, clientIdentityMatches } from "./clientProfile";
 import dayjs from "dayjs";
-import { normalizeCompletionOutcome } from "./procurementCompletionOutcome";
 
 import type { Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";

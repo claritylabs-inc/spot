@@ -349,6 +349,7 @@ import type * as lib_operatorSlackBlocks from "../lib/operatorSlackBlocks.js";
 import type * as lib_operatorSlackConfig from "../lib/operatorSlackConfig.js";
 import type * as lib_operatorSuggestionRanking from "../lib/operatorSuggestionRanking.js";
 import type * as lib_operatorSuggestionTypes from "../lib/operatorSuggestionTypes.js";
+import type * as lib_operatorToolFamilyGuidance from "../lib/operatorToolFamilyGuidance.js";
 import type * as lib_operatorToolFieldCatalog from "../lib/operatorToolFieldCatalog.js";
 import type * as lib_operatorToolOutput from "../lib/operatorToolOutput.js";
 import type * as lib_operatorToolRecovery from "../lib/operatorToolRecovery.js";
@@ -911,6 +912,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorSlackConfig": typeof lib_operatorSlackConfig;
   "lib/operatorSuggestionRanking": typeof lib_operatorSuggestionRanking;
   "lib/operatorSuggestionTypes": typeof lib_operatorSuggestionTypes;
+  "lib/operatorToolFamilyGuidance": typeof lib_operatorToolFamilyGuidance;
   "lib/operatorToolFieldCatalog": typeof lib_operatorToolFieldCatalog;
   "lib/operatorToolOutput": typeof lib_operatorToolOutput;
   "lib/operatorToolRecovery": typeof lib_operatorToolRecovery;

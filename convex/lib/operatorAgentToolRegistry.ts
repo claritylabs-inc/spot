@@ -30,6 +30,7 @@ import {
   updateBrokerProfilesInput,
 } from "./operatorBrokerInputs";
 import { MAX_BULK_READ_IDS } from "./operatorReadViews";
+import { PROCUREMENT_FAMILY_GUIDANCE } from "./operatorToolFamilyGuidance";
 import {
   GENERATE_COI_DESCRIPTION,
   generateCoiInputSchema,
@@ -3351,7 +3352,11 @@ export const OPERATOR_TOOL_FAMILY_CATALOG = Object.fromEntries<
     {
       description,
       guidance:
-        family === "outbound_email" ? OUTBOUND_EMAIL_GUIDANCE : undefined,
+        family === "outbound_email"
+          ? OUTBOUND_EMAIL_GUIDANCE
+          : family === "procurement"
+            ? PROCUREMENT_FAMILY_GUIDANCE
+            : undefined,
       tools: Object.entries(OPERATOR_AGENT_TOOL_REGISTRY)
         .filter(([, spec]) => spec.family === family)
         .map(([name]) => name),
