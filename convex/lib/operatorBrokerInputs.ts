@@ -1,7 +1,11 @@
 import { z } from "zod";
+import { OMITTABLE_JSON_SCHEMA_MARKER } from "./toolJsonSchema";
 
 const optional = <T extends z.ZodType>(schema: T) =>
-  schema.nullish().transform((value) => value ?? undefined);
+  schema
+    .nullish()
+    .meta({ [OMITTABLE_JSON_SCHEMA_MARKER]: true })
+    .transform((value) => value ?? undefined);
 const website = z
   .url()
   .max(2_000)

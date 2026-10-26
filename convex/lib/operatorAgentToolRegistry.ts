@@ -32,6 +32,10 @@ import {
 import { MAX_BULK_READ_IDS } from "./operatorReadViews";
 import { PROCUREMENT_FAMILY_GUIDANCE } from "./operatorToolFamilyGuidance";
 import {
+  OMITTABLE_JSON_SCHEMA_MARKER,
+  compactToolJsonSchema,
+} from "./toolJsonSchema";
+import {
   GENERATE_COI_DESCRIPTION,
   generateCoiInputSchema,
   LOOKUP_ADDRESS_DESCRIPTION,
@@ -149,7 +153,10 @@ function defineOperatorTool<TSchema extends z.ZodType>(
 
 /** Absent input: null and omission both mean "not provided". */
 function omittable<TSchema extends z.ZodType>(schema: TSchema) {
-  return schema.nullish().transform((value) => value ?? undefined);
+  return schema
+    .nullish()
+    .meta({ [OMITTABLE_JSON_SCHEMA_MARKER]: true })
+    .transform((value) => value ?? undefined);
 }
 
 /** Update input where null erases the stored value and omission leaves it. */
@@ -1729,7 +1736,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "outbound_email",
     version: 1,
     description:
-      "Link team conversations and their held attachments to exact clients or requests. Reject conflicting clients and outreach moves; a request determines its client. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Link team conversations and their held attachments to exact clients or requests. Reject conflicting clients and outreach moves; a request determines its client. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(linkTeamInboxThreadInputSchema).min(1).max(50),
     }),
@@ -2093,7 +2100,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "outbound_email",
     version: 1,
     description:
-      "Cancel unsent drafts in this operator conversation. Pending, sent and unknown-delivery messages cannot be cancelled. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Cancel unsent drafts in this operator conversation. Pending, sent and unknown-delivery messages cannot be cancelled. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(cancelEmailDraftInputSchema).min(1).max(50),
     }),
@@ -2171,7 +2178,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "client_files",
     version: 1,
     description:
-      "File attachments from this operator conversation in client file libraries, hidden from clients. Use exact attachment IDs and factual names preserving extensions. Use update_client_files for visibility changes. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "File attachments from this operator conversation in client file libraries, hidden from clients. Use exact attachment IDs and factual names preserving extensions. Use update_client_files for visibility changes. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(addClientFileInputSchema).min(1).max(50),
     }),
@@ -2238,7 +2245,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "client_files",
     version: 1,
     description:
-      "Rename client files or change client visibility and policy links. Omitted fields stay unchanged; null clears a policy link. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Rename client files or change client visibility and policy links. Omitted fields stay unchanged; null clears a policy link. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(updateClientFileInputSchema).min(1).max(50),
     }),
@@ -2330,7 +2337,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Update request titles, dates, status, visibility or policy links. Null clears a date or link; omissions preserve values. Use update_procurement_application for application facts and update_procurement_packet for prose. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Update request titles, dates, status, visibility or policy links. Null clears a date or link; omissions preserve values. Use update_procurement_application for application facts and update_procurement_packet for prose. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(updateProcurementRequestInputSchema).min(1).max(50),
     }),
@@ -2440,7 +2447,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Archive private proposals, preserving empty drafts as archived records. Selected proposals must first be replaced by selecting another reviewed proposal. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Archive private proposals, preserving empty drafts as archived records. Selected proposals must first be replaced by selecting another reviewed proposal. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(archiveProcurementProposalInputSchema).min(1).max(50),
     }),
@@ -2691,7 +2698,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "broker_network",
     version: 1,
     description:
-      "Update 1–50 external provider profiles atomically under one exact approval. Each item uses orgId and a patch; omit unchanged fields. Every item and ACORD/geography code is validated before approval. Explicit edits override enrichment; identity edits queue public research.",
+      "Update 1–50 external provider profiles, one approval. Each item uses orgId and a patch; omit unchanged fields. Every item and ACORD/geography code is validated before approval. Explicit edits override enrichment; identity edits queue public research.",
     inputSchema: updateBrokerProfilesInput,
     capability: "operator.organizations.write",
     effect: "reversible_write",
@@ -3054,7 +3061,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Update provider outreach identities, contacts or status. Spot-owned identities are ineligible. Keep notes in private.md and file quotes as proposals. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Update provider outreach identities, contacts or status. Spot-owned identities are ineligible. Keep notes in private.md and file quotes as proposals. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(updateProcurementBrokerOutreachInputSchema).min(1).max(50),
     }),
@@ -3087,7 +3094,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Add uploaded client files to requests with labels and independent client/provider visibility. Released files immediately appear on existing packet links within their audience. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Add uploaded client files to requests with labels and independent client/provider visibility. Released files immediately appear on existing packet links within their audience. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(createProcurementFileItemInputSchema).min(1).max(50),
     }),
@@ -3124,7 +3131,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Update request file labels, client/provider visibility or underlying files. File links cannot be cleared. Released changes immediately update existing packet links within their audience. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Update request file labels, client/provider visibility or underlying files. File links cannot be cleared. Released changes immediately update existing packet links within their audience. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(updateProcurementFileItemInputSchema).min(1).max(50),
     }),
@@ -3161,7 +3168,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Correct email categories or move forwarded conversations within the same client. Provider outreach stays with its originating request; originally addressed requests remain immutable. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Correct email categories or move forwarded conversations within the same client. Provider outreach stays with its originating request; originally addressed requests remain immutable. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(updateProcurementEmailThreadInputSchema).min(1).max(50),
     }),
@@ -3192,7 +3199,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Create standalone clients without users; exact-name duplicates are rejected. Research is queued for each client; check get_research_status, then get_organization with include research for outcomes. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Create standalone clients without users; exact-name duplicates are rejected. Research is queued for each client; check get_research_status, then get_organization with include research for outcomes. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(createClientOrganizationInputSchema).min(1).max(50),
     }),
@@ -3261,7 +3268,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Update organization names or websites. Omitted fields stay unchanged; null clears a website. Identity edits queue research. Use update_client_business_profile for company facts. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Update organization names or websites. Omitted fields stay unchanged; null clears a website. Identity edits queue research. Use update_client_business_profile for company facts. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(updateOrganizationProfileInputSchema).min(1).max(50),
     }),
@@ -3356,7 +3363,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "broker_network",
     version: 1,
     description:
-      "Queue public research for exact external insurance providers. Preserve manual profile values; check get_research_status, then get_broker_network_profile or get_organization with include research for outcomes. Queued is not complete. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+      "Queue public research for exact external insurance providers. Preserve manual profile values; check get_research_status, then get_broker_network_profile or get_organization with include research for outcomes. Queued is not complete. 1–50 items, one approval.",
     inputSchema: z.object({
       items: z.array(researchBrokerInputSchema).min(1).max(50),
     }),
@@ -3388,7 +3395,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Set access for 1–50 distinct clients atomically under one exact approval. Each status is limited (intake), active (full workspace), or archived (limited, omitted from suggestions). All items are validated before approval; returns per-client previous/next values and updated/unchanged status.",
+      "Set access for 1–50 clients, one approval. Each status is limited (intake), active (full workspace), or archived (limited, omitted from suggestions). All items are validated before approval; returns per-client previous/next values and updated/unchanged status.",
     inputSchema: z.object({
       items: z.array(z.object({
         orgId: organizationId,
@@ -3452,7 +3459,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Assign 1–50 distinct clients atomically under one exact approval. Resolve active operators with list_operators; null unassigns. All items are validated before approval; returns per-client previous/next user IDs and updated/unchanged status.",
+      "Assign 1–50 clients, one approval. Resolve active operators with list_operators; null unassigns. All items are validated before approval; returns per-client previous/next user IDs and updated/unchanged status.",
     inputSchema: z.object({
       items: z.array(z.object({
         orgId: organizationId,
@@ -3490,7 +3497,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Toggle supported feature flags for 1–50 distinct clients atomically under one exact approval. One item per client; all items are validated before approval. Returns per-client previous/next booleans and updated/unchanged status.",
+      "Toggle supported feature flags for 1–50 clients, one approval. Returns per-client previous/next booleans and updated/unchanged status.",
     inputSchema: z.object({
       items: z.array(z.object({
         orgId: organizationId,
@@ -3778,10 +3785,9 @@ export function operatorAgentToolJsonCatalog() {
     name: name as OperatorAgentToolName,
     version: spec.version,
     description: spec.description,
-    inputSchema: z.toJSONSchema(spec.inputSchema, { io: "input" }) as Record<
-      string,
-      unknown
-    >,
+    inputSchema: compactToolJsonSchema(
+      z.toJSONSchema(spec.inputSchema, { io: "input" }),
+    ) as Record<string, unknown>,
     capability: spec.capability,
     effect: spec.effect,
     requiredRole: spec.requiredRole,
