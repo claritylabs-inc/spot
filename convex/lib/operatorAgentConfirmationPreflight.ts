@@ -14,6 +14,7 @@ import {
   writableProcurementRequestStatus,
 } from "../procurementRequests";
 import { assertFeatureFlagAllowedForOrg } from "./featureFlags";
+import { clientBatchConfirmationSummary } from "./operatorClientBatch";
 import {
   assertExternalBrokerIdentity,
   normalizeBrokerLineOfBusinessCodes,
@@ -77,6 +78,9 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "set_client_access_status",
   "set_client_assignee",
   "set_client_feature_flag",
+  "set_client_assignees",
+  "set_client_access_statuses",
+  "set_client_feature_flags",
   "send_operator_slack_message",
   "send_email_draft",
   "clear_all_agent_memory",
@@ -1203,6 +1207,11 @@ export async function preflightOperatorToolConfirmation(
       return;
     case "research_client":
       await requireClientOrganization(ctx, args.input.orgId);
+      return;
+    case "set_client_assignees":
+    case "set_client_access_statuses":
+    case "set_client_feature_flags":
+      await clientBatchConfirmationSummary(ctx, args.toolName, args.input);
       return;
     case "set_client_access_status":
       await requireClientOrganization(ctx, args.input.orgId);

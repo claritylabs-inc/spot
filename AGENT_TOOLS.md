@@ -24,6 +24,17 @@ disabling the switch restores manual approval for new calls. Tenant approvals
 are unchanged. References below to exact confirmation describe the default
 manual mode; the global switch can satisfy that gate automatically.
 
+Organization batches (`set_client_assignees`, `set_client_access_statuses`,
+`set_client_feature_flags`) accept 1–50 items, one per distinct client, under one
+exact approval bound to the complete input. Preflight validates every client and
+assignee/flag before approval; execution revalidates and commits every change in
+one nested mutation. A failure rolls back the entire batch. Each changed client
+has its own `operatorAuditEvents` row with `metadata.domain: "operator_agent"`;
+unchanged rows produce no write or domain audit. Approval summaries have a grouped
+header plus every client/change, resolved to names, shared by web, Slack and MCP.
+Slack splits long lists across sections without dropping rows. Single-item input,
+output and approval behavior remain compatible.
+
 ## Inference execution
 
 Operator tools run between durable router model steps. Pending inference yields
@@ -203,10 +214,13 @@ Operator command email uses the shared `agent@team.spot.insure` inbox. Its Resen
 | `research_client` | Queue Jev-orchestrated parallel public research with cited facts, confidence verification, and persisted partial/failure outcomes. | `operator.organizations.write` | reversible write | operator | exact | mutation |
 | `research_client_tech_stack` | Queue the best-effort tech-stack research agent (DNS/header signatures, sandbox browser agent with startup-only Browserbase fallback via cl-router `browse`, Jev composite verification) for a client by `orgId` or a prospect `website`; returns the current stored result, including `current.browse.skills` from the previous run. Also available as the Rescan button on the operator Profile Tech stack tab, which shows the same outcomes under Browser research. Skill outcomes describe the browser procedure, not vendor proof; a submitted signup form is not a created account. See `docs/architecture/website-tech-research.md`. | `operator.organizations.write` | reversible write | operator | none | mutation |
 | `research_broker` | Queue the same research chain for an external insurance provider (carrier/MGA/wholesaler/agency/producer), selecting each state and ACORD line only above 0.7 confidence; preserve manual profile values and expose evidence through get_broker_network_profile/get_organization. | `operator.organizations.write` | reversible write | operator | exact | mutation |
-| `set_client_access_status`                  | Set a client's workspace access to limited or active.                                                      | `operator.organizations.write`  | reversible write | operator | exact        | mutation  |
+| `set_client_access_status`                  | Set one client's access to limited, active or archived; use `set_client_access_statuses` for multiple clients.                                                      | `operator.organizations.write`  | reversible write | operator | exact        | mutation  |
+| `set_client_access_statuses` | Atomically set access for 1–50 distinct clients via `items: [{orgId, status}]` (limited/active/archived). Returns `{results: [{orgId, clientName, status: "updated" or "unchanged", previous, next}]}`. | `operator.organizations.write` | reversible write | operator | exact | mutation |
 | `get_client_assignees` | Bulk-read client assignees (responsible operators): exact `orgIds` (up to 100) or all clients (bounded to 500), optionally filtered to one assignee. `get_organization` also returns `assignee`. | `operator.organizations.read` | read | operator | none | mutation |
-| `set_client_assignee` | Set a client's assignee to one active operator, or unassign with null; audited as `client_operator_assigned`. | `operator.organizations.write` | reversible write | operator | exact | mutation |
-| `set_client_feature_flag`                  | Enable or disable Connect features or iMessage app cards for a client.                                                                      | `operator.organizations.write`  | reversible write | operator | exact        | mutation  |
+| `set_client_assignee` | Assign one client to an active operator or unassign with null; use `set_client_assignees` for multiple clients. Audited as `client_operator_assigned`. | `operator.organizations.write` | reversible write | operator | exact | mutation |
+| `set_client_assignees` | Atomically assign 1–50 distinct clients via `items: [{orgId, assigneeUserId}]` (active operator ID or null). Returns `{results: [{orgId, clientName, status: "updated" or "unchanged", previous, next}]}`. | `operator.organizations.write` | reversible write | operator | exact | mutation |
+| `set_client_feature_flag`                  | Toggle Connect features for one client; use `set_client_feature_flags` for multiple clients.                                                                      | `operator.organizations.write`  | reversible write | operator | exact        | mutation  |
+| `set_client_feature_flags` | Atomically toggle Connect features for 1–50 distinct clients via `items: [{orgId, flagId, enabled}]` (`flagId: connect_features`). Returns `{results: [{orgId, clientName, status: "updated" or "unchanged", previous, next}]}`. | `operator.organizations.write` | reversible write | operator | exact | mutation |
 | `clear_all_agent_memory`                   | Schedule a global purge of company wiki documents only; retain actual conversation history and other document kinds.                                              | `operator.platform.destructive` | destructive      | owner    | exact        | mutation  |
 
 The operator `outbound_email` family reuses `buildEmailToolExecutors` with the authenticated operator as signer. Mail goes from the person's team address, with their full name and Spot signature. The profile's Always CC is visible in the draft and exact approval; personal Reply-To is removed. Client, procurement request and team conversation links are optional but must agree and remain live. File and policy attachments require a linked client. Revising a draft re-signs it as the current operator and invalidates its previous approval.

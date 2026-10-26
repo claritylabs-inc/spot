@@ -154,6 +154,7 @@ import {
 } from "./procurementPacket";
 import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
 import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmationPreflight";
+import { clientBatchConfirmationSummary, isClientBatchToolName, type ClientBatchResult } from "./lib/operatorClientBatch";
 import { previewTeamEmailReply } from "./lib/teamEmailReply";
 import { assertOutreachIdentity } from "./lib/outreachIdentity";
 import { composeClientOutreachEmail } from "./lib/clientOutreachEmail";
@@ -362,7 +363,8 @@ function serializedOperatorActionOutput(toolName: string, result: unknown) {
     toolName === "read_operator_conversation" ||
     toolName === "list_team_inbox_threads" ||
     toolName === "get_team_inbox_thread" ||
-    toolName === "get_procurement_email_thread"
+    toolName === "get_procurement_email_thread" ||
+    isClientBatchToolName(toolName)
     ? JSON.stringify(result)
     : boundedJson(result);
 }
@@ -559,6 +561,9 @@ async function operatorConfirmationSummary(
     threadId: Id<"operatorAgentThreads">;
   },
 ) {
+  if (isClientBatchToolName(toolName)) {
+    return clientBatchConfirmationSummary(ctx, toolName, input);
+  }
   if (toolName === "reply_email_thread" || toolName === "reply_procurement_email_thread") {
     return (await operatorReplyConfirmation(ctx, input, context.operatorUserId)).summary;
   }
@@ -3346,6 +3351,15 @@ async function executeToolDomain(
       status: (await ctx.db.get(orgId))!.companyResearch!.status,
       orgId,
     };
+  }
+
+  if (isClientBatchToolName(toolName)) {
+    const result: ClientBatchResult = await ctx.runMutation(internal.operatorClientBatchWrites.applyInternal, {
+      operatorUserId: args.operatorUserId,
+      toolName,
+      input,
+    });
+    return result;
   }
 
   if (toolName === "set_client_access_status") {
