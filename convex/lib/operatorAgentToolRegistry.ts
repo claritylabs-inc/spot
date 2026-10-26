@@ -3349,6 +3349,34 @@ function stripNestedNulls(value: unknown): unknown {
   );
 }
 
+// Batch items mirror their single tool's top-level fields, where null means
+// "clear"; keep item-level nulls and strip only below them.
+const BATCH_ITEM_NULL_TOOLS = new Set([
+  "update_organization_profiles",
+  "update_client_files",
+  "update_procurement_requests",
+  "update_procurement_broker_outreaches",
+  "update_procurement_file_items",
+  "update_procurement_email_threads",
+  "link_team_inbox_threads",
+]);
+
+function preserveItemNulls(items: unknown) {
+  if (!Array.isArray(items)) return stripNestedNulls(items);
+  return items.map((item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(
+          Object.entries(item)
+            .filter(([, entry]) => entry !== undefined)
+            .map(([key, entry]) => [
+              key,
+              entry === null ? null : stripNestedNulls(entry),
+            ]),
+        )
+      : stripNestedNulls(item),
+  );
+}
+
 export function parseOperatorAgentToolInput(
   name: string,
   input: unknown,
@@ -3401,7 +3429,9 @@ export function parseOperatorAgentToolInput(
         (name === "call_mcp_tool" && key === "arguments") ||
         (name === "set_client_assignees" && key === "items")
           ? value
-          : stripNestedNulls(value),
+          : BATCH_ITEM_NULL_TOOLS.has(name) && key === "items"
+            ? preserveItemNulls(value)
+            : stripNestedNulls(value),
       ]),
   );
 }
