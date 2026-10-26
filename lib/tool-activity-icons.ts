@@ -56,6 +56,7 @@ const operatorToolCategories = {
   research_broker: "web",
   search_organizations: "organizations",
   get_organization: "organizations",
+  get_organizations: "organizations",
   create_client_organization: "organizations",
   invite_operator: "settings",
   list_operators: "settings",

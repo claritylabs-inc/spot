@@ -9,7 +9,7 @@ Collapsed activity shows each represented category icon once, in first-use order
 | Category | Lucide icon | Tools |
 | --- | --- | --- |
 | Public research | `Globe` | `web_search`, `research_client`, `research_broker` |
-| Organizations | `Building2` | `search_organizations`, `get_organization`, `create_client_organization`, `update_organization_profile`, `set_client_access_status`, `get_client_assignees`, `set_client_assignee` |
+| Organizations | `Building2` | `search_organizations`, `get_organization`, `get_organizations`, `create_client_organization`, `update_organization_profile`, `set_client_access_status`, `get_client_assignees`, `set_client_assignee` |
 | Provider network | `Users` | `get_broker_network_profile`, `list_broker_network_profiles`, `create_broker_network_profile`, `update_broker_network_profile`, `create_procurement_broker_outreach`, `update_procurement_broker_outreach` |
 | Email | `Mail` | `draft_email`, `update_email_draft`, `list_email_drafts`, `list_company_mailboxes`, `search_company_email`, `read_company_email_thread`, `get_procurement_forwarding_address`, `list_procurement_email_threads`, `get_procurement_email_thread`, `preview_procurement_email_reconciliation`, `update_procurement_email_thread`, `file_procurement_email_quote` |
 | Files and attachments | `Paperclip` | `get_company_email_attachment`, `read_thread_attachment`, `attach_policy_pdf_to_draft`, `attach_client_file_to_draft`, `list_client_files`, `read_client_file`, `attach_client_file`, `add_client_file`, `update_client_file`, `create_procurement_file_item`, `update_procurement_file_item` |
