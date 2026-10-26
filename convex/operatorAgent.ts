@@ -94,6 +94,8 @@ import {
   listOperatorAgentIntents,
   resolveOperatorAgentIntent,
 } from "./lib/operatorAgentIntentRegistry";
+import { collectOperatorSuggestionCandidates } from "./lib/operatorSuggestionRanking";
+import type { OperatorSuggestionCandidate } from "./lib/operatorSuggestionTypes";
 import { buildOperatorRunCheckpointSummary } from "./lib/operatorAgentContinuation";
 import { googleWorkspaceCredentialEnvelope } from "./lib/googleWorkspaceCredentials";
 import { lookupMapboxAddress } from "./lib/mapboxAddress";
@@ -177,7 +179,10 @@ import {
   slackThreadContextSnapshotValidator,
   type SlackThreadContextSnapshot,
 } from "./lib/slackThreadContext";
-import { threadPageContext } from "./lib/threadPageContext";
+import {
+  normalizeOperatorPageContext,
+  threadPageContext,
+} from "./lib/threadPageContext";
 import { operatorPeople } from "./lib/operatorAvatar";
 
 const operatorChannelValidator = v.union(
@@ -987,36 +992,6 @@ function applicantContactFromAnswers(...sources: unknown[]) {
     if (contact.name || contact.email || contact.phone) return contact;
   }
   return null;
-}
-
-function normalizeOperatorPageContext(
-  context:
-    | { pageType: string; entityId?: string; summary?: string; href?: string }
-    | undefined,
-) {
-  if (!context) return undefined;
-  const pageType = context.pageType.trim();
-  const entityId = context.entityId?.trim() || undefined;
-  const summary = context.summary?.trim() || undefined;
-  const href = context.href?.trim() || undefined;
-  if (!pageType || pageType.length > 100) {
-    throw new Error("Operator page type must be 1–100 characters");
-  }
-  if (entityId && entityId.length > 200) {
-    throw new Error("Operator page entity ID must be at most 200 characters");
-  }
-  if (summary && summary.length > 500) {
-    throw new Error("Operator page summary must be at most 500 characters");
-  }
-  if (href && href.length > 2000) {
-    throw new Error("Operator page URL must be at most 2000 characters");
-  }
-  return {
-    pageType,
-    ...(entityId ? { entityId } : {}),
-    ...(summary ? { summary } : {}),
-    ...(href ? { href } : {}),
-  };
 }
 
 function normalizeOperatorConversationKey(value: string) {
@@ -4102,6 +4077,7 @@ export const listIntents = query({
 export const startIntent = mutation({
   args: {
     intentId: v.string(),
+    suggestionKey: v.optional(v.string()),
     pageContext: v.optional(pageContextValidator),
     emptyThreadId: v.optional(v.id("operatorAgentThreads")),
   },
@@ -4110,23 +4086,44 @@ export const startIntent = mutation({
     const emptyThread = args.emptyThreadId
       ? await findEmptyChatThread(ctx, args.emptyThreadId, operator.userId)
       : null;
+    // Live suggestions are re-derived from current data; client text is never trusted.
+    let suggestion: OperatorSuggestionCandidate | undefined;
+    if (args.suggestionKey && !args.suggestionKey.startsWith("intent:")) {
+      const candidates = await collectOperatorSuggestionCandidates(ctx, {
+        operatorUserId: operator.userId,
+        pageContext: normalizeOperatorPageContext(args.pageContext),
+        now: dayjs().valueOf(),
+      });
+      suggestion = candidates.find(
+        (candidate) => candidate.key === args.suggestionKey,
+      );
+      if (suggestion?.intentId !== args.intentId) {
+        throw new Error("This suggestion is no longer available");
+      }
+    }
+    const suggestionContext = normalizeOperatorPageContext(
+      suggestion?.pageContext,
+    );
     const pageContext =
+      suggestionContext ??
       (emptyThread ? threadPageContext(emptyThread) : undefined) ??
       normalizeOperatorPageContext(args.pageContext);
     const intent = resolveOperatorAgentIntent(args.intentId, pageContext);
+    const title = suggestion?.label ?? intent.label;
 
     let threadId: Id<"operatorAgentThreads">;
     if (emptyThread) {
       threadId = emptyThread._id;
       await ctx.db.patch(threadId, {
-        title: normalizeOperatorThreadTitle(intent.label),
+        title: normalizeOperatorThreadTitle(title),
+        ...(suggestionContext ? { pageContext: suggestionContext } : {}),
         updatedAt: dayjs().valueOf(),
       });
     } else {
       threadId = await insertOperatorThread(ctx, {
         operatorUserId: operator.userId,
         channel: "chat",
-        title: intent.label,
+        title,
         initialContext: pageContext,
       });
     }
@@ -4135,7 +4132,9 @@ export const startIntent = mutation({
       operatorUserId: operator.userId,
       threadId,
       channel: "chat",
-      content: intent.objective,
+      content: suggestion
+        ? `${intent.objective}\n\nFocus: ${suggestion.focus}`
+        : intent.objective,
       pageContext,
       toolArtifacts: [
         {

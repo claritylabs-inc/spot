@@ -4925,6 +4925,17 @@ export default defineSchema({
     .index("owner_conversation", ["ownerUserId", "channel", "conversationKey"])
     .index("channel_conversation", ["channel", "conversationKey"]),
 
+  // Cached Jev ranking of live operator suggestions, per operator and page.
+  operatorSuggestionRankings: defineTable({
+    operatorUserId: v.id("users"),
+    contextKey: v.string(),
+    scores: v.array(v.object({ key: v.string(), score: v.number() })),
+    // Live candidate keys at rankedAt; a different live set marks the ranking stale.
+    candidateKeys: v.optional(v.array(v.string())),
+    rankedAt: v.optional(v.number()),
+    refreshRequestedAt: v.optional(v.number()),
+  }).index("operator_context", ["operatorUserId", "contextKey"]),
+
   operatorAgentMessages: defineTable({
     threadId: v.id("operatorAgentThreads"),
     ownerUserId: v.id("users"),
