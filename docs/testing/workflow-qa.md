@@ -1,5 +1,14 @@
 # Platform workflow QA
 
+## Operator tool consolidation — October 26, 2026
+
+Native-local backend: catalog/schema compatibility, 22 workflow calls, 13
+approval/preflight calls, and compact default smoke checks passed. Packet-link
+create/rotate/revoke ran under exact approval; extraction retry was rejected,
+invalid email-source filing failed before approval, and no mail was sent.
+Draft preservation and legacy replacement semantics both passed. See
+[repeatable workflow and limits](operator-tool-consolidation-workflow.md).
+
 ## Information extraction after main merge — October 23, 2026
 
 Main `20802f6a` integrated; full lint, root/Convex type checks and 133 existing tests passed. Five fresh extraction cases and duplicate redelivery passed through the merged inbox/storage path, including 25/25 questions, conditional dependencies, a long-body tail request, and a visible partial hold. Details: [reliability report](provider-email-extraction-reliability-2026-10-23.md). No live email was sent; hosted durable callbacks remain unverified.
