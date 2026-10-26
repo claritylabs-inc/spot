@@ -405,7 +405,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   get_organization: defineOperatorTool({
     version: 2,
     description:
-      "Get the current organization name, website, public research status, lifecycle, feature flags and counts by exact organization ID. Returns the client businessProfile with its current typed answers, details and submittedAt version for update_client_business_profile. Read supplementary company notes with lookup_client_wiki separately.",
+      "Get the current organization name, website, public research status, lifecycle, client assignee, feature flags and counts by exact organization ID. Returns the client businessProfile with its current typed answers, details and submittedAt version for update_client_business_profile. Read supplementary company notes with lookup_client_wiki separately.",
     inputSchema: z.object({ orgId: organizationId }),
     capability: "operator.organizations.read",
     effect: "read",
@@ -425,6 +425,19 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     confirmation: "none",
     target: () => ({ kind: "platform", id: "spot" }),
     summarize: () => "Read the operator platform overview",
+  }),
+  list_operators: defineOperatorTool({
+    family: "platform",
+    version: 1,
+    description:
+      "List Spot operators with their exact user ID, name, company email, role and active or disabled status. Use this to resolve an operator by name or email before set_client_assignee; only active operators can be assigned.",
+    inputSchema: z.object({}),
+    capability: "operator.platform.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: () => ({ kind: "platform", id: "operators" }),
+    summarize: () => "List Spot operators",
   }),
   list_company_mailboxes: defineOperatorTool({
     family: "company_email",
@@ -2586,6 +2599,50 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     confirmation: "exact",
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) => `Set client ${input.orgId} access to ${input.status}`,
+  }),
+  get_client_assignees: defineOperatorTool({
+    family: "organizations",
+    version: 1,
+    description:
+      "Get the assignee (the Spot operator responsible for the client) of many clients in one call. Pass orgIds for exact clients, or omit them to list every client; pass assigneeUserId to keep only clients assigned to that operator. Each row has orgId, clientName and assignee (null when unassigned); missing or non-client IDs come back in notFound. Lists of all clients are bounded to 500.",
+    inputSchema: z.object({
+      orgIds: omittable(z.array(organizationId).min(1).max(100)),
+      assigneeUserId: omittable(
+        z.string().min(1).describe("Exact operator user ID from list_operators"),
+      ),
+    }),
+    capability: "operator.organizations.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: () => ({ kind: "platform", id: "clients" }),
+    summarize: (input) =>
+      input.orgIds
+        ? `Read assignees of ${input.orgIds.length} clients`
+        : "Read client assignees",
+  }),
+  set_client_assignee: defineOperatorTool({
+    family: "organizations",
+    version: 1,
+    description:
+      "Set the assignee (the Spot operator responsible for the client) of one exact client organization, or pass assigneeUserId null to unassign. Resolve the client with search_organizations and the operator with list_operators first; only active operators can be assigned. One client per call. Audited.",
+    inputSchema: z.object({
+      orgId: organizationId,
+      assigneeUserId: z
+        .string()
+        .min(1)
+        .nullable()
+        .describe("Exact operator user ID from list_operators, or null to unassign"),
+    }),
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) => ({ kind: "organization", id: input.orgId }),
+    summarize: (input) =>
+      input.assigneeUserId
+        ? `Set the assignee of client ${input.orgId} to ${input.assigneeUserId}`
+        : `Unassign client ${input.orgId}`,
   }),
   set_client_feature_flag: defineOperatorTool({
     family: "organizations",

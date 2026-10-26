@@ -48,7 +48,7 @@ import {
 import {
   ApplicationStatusField,
   ApplicationWebsiteField,
-  ClientOperatorField,
+  ClientAssigneeField,
   ClientStatusField,
   ClientWebsiteField,
 } from "./client-row-fields";
@@ -164,7 +164,7 @@ export default function OperatorClientsScreen() {
     ],
     {
       ...CLIENT_SORT_COLUMNS,
-      operator: (row: ClientListRow) =>
+      assignee: (row: ClientListRow) =>
         row.kind === "client" && row.client.assignedOperatorUserId
           ? operatorNames.get(row.client.assignedOperatorUserId)
           : undefined,
@@ -284,9 +284,9 @@ export default function OperatorClientsScreen() {
                 </SortableTableHead>
                 <SortableTableHead
                   className={`w-28 min-w-28 text-muted-foreground ${typeStyle("label.table")}`}
-                  {...tableSort.head("operator")}
+                  {...tableSort.head("assignee")}
                 >
-                  Operator
+                  Assignee
                 </SortableTableHead>
                 <SortableTableHead
                   className={`w-[12%] text-muted-foreground ${typeStyle("label.table")}`}
@@ -383,7 +383,7 @@ export default function OperatorClientsScreen() {
                           />
                         </TableCell>
                         <TableCell>
-                          <ClientOperatorField
+                          <ClientAssigneeField
                             client={client}
                             operators={operators ?? []}
                             disabled={readOnly}
