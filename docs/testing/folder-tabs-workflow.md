@@ -1,6 +1,6 @@
 # Folder tabs workflow — October 26, 2026
 
-Spot adopts the shared compact navbar tabs (`@claritylabs-inc/ui` `TabsList variant="navbar"` for page tabs, `variant="folder"` for local field groups; clarity-ui branch `work/folder-tabs-30px`, validated at `eb7ad860af4ea4bb55daa70b5748d375a5f4a8da` through a local source overlay of `tabs.tsx`, `app-shell/app-top-bar.tsx`, `styles.css` and `tokens.css`; no manifest or lockfile change). Baseline `3cb2c4a4`; first candidate `65b2d73f`.
+Spot adopts published `@claritylabs-inc/ui@0.18.0` from the registry: `TabsList variant="navbar"` for page tabs and `variant="folder"` for local field groups. The manifest, lockfile and existing UI postinstall patch are pinned to 0.18.0. Final acceptance below uses the installed package, without source overlays. Baseline `3cb2c4a4`.
 
 ## Composition
 
@@ -36,14 +36,14 @@ Page-wide actions stay in the top bar; actions that only apply to the selected v
 ## Migrated tab families
 
 Page rails (`PageTabs`): operator client profile, operator client settings sub-tabs, operator provider, policy detail, Settings (multi-tab sections), compliance (operator and client), operator channels, client profile (Profile / Privacy, formerly a hand-rolled `role="tablist"`).
-List rails (`ListToolbar tabsPlacement="above"` or a plain `PageTabs` rail): operator clients, procurement lists, certificates, policies (client and operator client), operator client files.
+List rails (`ListToolbar tabsPlacement="navbar"` or a plain `PageTabs` rail): operator clients, procurement lists, certificates, policies (client and operator client), operator client files.
 Local sheets (`SectionTabs`): application detail and review field groups. Both code paths are currently unreferenced: every caller passes `activeSection`, so they keep plain `useState` and no new followed keys were introduced.
 
 ## Retained pill exceptions
 
 | Control | Why it stays |
 | --- | --- |
-| Team inbox mailbox (Inbox / Sent / All mail / Archived) | A filter in the shared `FilterBar` row beside search and chips; also nested inside procurement request view `email`. |
+| Team inbox mailbox (Inbox / Sent / All mail / Archived) | Inline navigation in its own row above search and filters; also nested inside procurement request view `email`. |
 | Information requests (Draft / All) | Shares a row with search inside the procurement request body. |
 | Policy upload mode, certificate generate mode, client/provider email audience, proposal PDFs/Terms, Slack Overview/Channels/Automations | Form or panel modes inside drawers and cards. |
 | Notification panel Unread/Read, agent dock chat tabs, agent dock history views | Panel and dock chrome. |
@@ -52,11 +52,9 @@ Local sheets (`SectionTabs`): application detail and review field groups. Both c
 
 ## Known limits
 
-- Dense pages: with the shared navbar fix (clarity-ui `3f34a44`, styles only) the context column keeps 12rem and the tab list shrinks and scrolls, so the 7-tab client profile no longer overlaps at 1440, 1100, 1024 or 960px. On client records that 12rem includes the previous/next arrows, leaving the breadcrumb about 124px (truncated to "Clients / Ma… / P…" at 1024px).
-- When a tab list overflows, it can open scrolled away from the active tab: at 1024px the profile list loads at `scrollLeft` 351 and "Business" is out of view until another tab is chosen. The shared list does not scroll the active tab into view; that belongs in the shared primitive.
 - The local `variant="folder"` field tabs (`SectionTabs`, application detail and review) have no live caller, so their 36px geometry was not exercised in the browser.
 - Files and policies lists render tabs only when Shared/Archived views exist; the seeded fixtures have none, so those two tab lists were not exercised.
-- Dark theme was not exercised.
+- Dark rendering was captured in final acceptance; changing the theme through settings was not separately exercised.
 
 ## Local QA evidence (`.context/qa/folder-tabs/`, not committed)
 
@@ -78,3 +76,14 @@ Local Conductor stack (`npm run conductor:dev`, Convex deploy credentials unset)
 | `ListToolbar` order at 1440 (clients with a selected row, procurement, inbox) and 390: search left of filters, selection actions right, inline inbox tabs in their own row above, chips wrap under a full-width search, no horizontal overflow | Passed |
 | Search narrows clients and requests; the Filters menu opens; no divider beside the actions | Passed |
 | `npx tsc --noEmit`, `eslint` on changed files | Clean |
+
+## Final installed-package acceptance
+
+October 26, 2026: registry 0.18.0, Spot code head `8fba8bd0`. Manager script `.context/folder-tabs-rollout/acceptance.mjs` and `final018-browser.log` passed on the native local backend with synthetic clients. Screenshots and `acceptance.json` are in the same directory.
+
+- Verified 42px navbar tabs, 6px top clearance, 14px text, breadcrumb left and tabs right.
+- Dense context retains 12rem; the active Tech stack tab remains visible after resizing through 1024, 960 and 390px. Mobile actions wrap while preserving context.
+- Previous/next and j/k retain client section; list pages omit them. Related entities and Locations keep their add actions in the selected panel.
+- Clients has one search; selecting a row places bulk actions right with no divider, and search narrows results. Search precedes combined FilterBar criteria wherever filters exist. Named text predicates belong in the shared Filters popover, not extra page search bars.
+- Local production build passed. Exact code-head CI lint, tests and typecheck passed (run 40417754369). A concurrent local typecheck was killed by memory pressure; no local final typecheck pass is claimed.
+- Earlier worker evidence above covers additional operator/client routes. Shared 0.18.0 browser acceptance also covers text-filter Apply/Enter/clear, keyboard focus and responsive active-tab visibility. No new unit tests or Vercel preview testing.

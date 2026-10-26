@@ -1,5 +1,9 @@
 # Platform workflow QA
 
+## Shared navbar tabs and filter toolbars — October 26, 2026
+
+Published UI 0.18.0 installed from the registry. Local browser acceptance and production build passed; code-head CI lint, tests and typecheck passed. Verified responsive navbar geometry, active-tab visibility, optional client navigation, selected-view actions and one-search toolbars with actions right and no divider. See [workflow and limits](folder-tabs-workflow.md); artifacts: `.context/folder-tabs-rollout/`. Secondary Shared/Archived rails lacked fixtures; local field tabs have no live caller. No Vercel preview testing or new unit tests.
+
 ## Information extraction after main merge — October 23, 2026
 
 Main `20802f6a` integrated; full lint, root/Convex type checks and 133 existing tests passed. Five fresh extraction cases and duplicate redelivery passed through the merged inbox/storage path, including 25/25 questions, conditional dependencies, a long-body tail request, and a visible partial hold. Details: [reliability report](provider-email-extraction-reliability-2026-10-23.md). No live email was sent; hosted durable callbacks remain unverified.
