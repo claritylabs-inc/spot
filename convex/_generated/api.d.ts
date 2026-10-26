@@ -236,6 +236,7 @@ import type * as lib_extractionPromptGuidance from "../lib/extractionPromptGuida
 import type * as lib_extractionRunView from "../lib/extractionRunView.js";
 import type * as lib_extractionTraceRouterFields from "../lib/extractionTraceRouterFields.js";
 import type * as lib_featureFlags from "../lib/featureFlags.js";
+import type * as lib_fetchPublicUrl from "../lib/fetchPublicUrl.js";
 import type * as lib_forwardReplyDirection from "../lib/forwardReplyDirection.js";
 import type * as lib_googleWorkspace from "../lib/googleWorkspace.js";
 import type * as lib_googleWorkspaceCredentials from "../lib/googleWorkspaceCredentials.js";
@@ -393,6 +394,7 @@ import type * as lib_providerOutreachValidators from "../lib/providerOutreachVal
 import type * as lib_quoWebhook from "../lib/quoWebhook.js";
 import type * as lib_receivingEmail from "../lib/receivingEmail.js";
 import type * as lib_requirementAttachmentIntent from "../lib/requirementAttachmentIntent.js";
+import type * as lib_researchStatus from "../lib/researchStatus.js";
 import type * as lib_resend from "../lib/resend.js";
 import type * as lib_resendInbox from "../lib/resendInbox.js";
 import type * as lib_reviewerAuth from "../lib/reviewerAuth.js";
@@ -455,6 +457,7 @@ import type * as lib_webRetrieval from "../lib/webRetrieval.js";
 import type * as lib_websiteBrand from "../lib/websiteBrand.js";
 import type * as lib_websiteTech from "../lib/websiteTech.js";
 import type * as lib_websiteTechSignatures from "../lib/websiteTechSignatures.js";
+import type * as lib_wikiAppend from "../lib/wikiAppend.js";
 import type * as lib_workflows_certificateRequest from "../lib/workflows/certificateRequest.js";
 import type * as lib_workflows_comms from "../lib/workflows/comms.js";
 import type * as lib_workflows_index from "../lib/workflows/index.js";
@@ -779,6 +782,7 @@ declare const fullApi: ApiFromModules<{
   "lib/extractionRunView": typeof lib_extractionRunView;
   "lib/extractionTraceRouterFields": typeof lib_extractionTraceRouterFields;
   "lib/featureFlags": typeof lib_featureFlags;
+  "lib/fetchPublicUrl": typeof lib_fetchPublicUrl;
   "lib/forwardReplyDirection": typeof lib_forwardReplyDirection;
   "lib/googleWorkspace": typeof lib_googleWorkspace;
   "lib/googleWorkspaceCredentials": typeof lib_googleWorkspaceCredentials;
@@ -936,6 +940,7 @@ declare const fullApi: ApiFromModules<{
   "lib/quoWebhook": typeof lib_quoWebhook;
   "lib/receivingEmail": typeof lib_receivingEmail;
   "lib/requirementAttachmentIntent": typeof lib_requirementAttachmentIntent;
+  "lib/researchStatus": typeof lib_researchStatus;
   "lib/resend": typeof lib_resend;
   "lib/resendInbox": typeof lib_resendInbox;
   "lib/reviewerAuth": typeof lib_reviewerAuth;
@@ -998,6 +1003,7 @@ declare const fullApi: ApiFromModules<{
   "lib/websiteBrand": typeof lib_websiteBrand;
   "lib/websiteTech": typeof lib_websiteTech;
   "lib/websiteTechSignatures": typeof lib_websiteTechSignatures;
+  "lib/wikiAppend": typeof lib_wikiAppend;
   "lib/workflows/certificateRequest": typeof lib_workflows_certificateRequest;
   "lib/workflows/comms": typeof lib_workflows_comms;
   "lib/workflows/index": typeof lib_workflows_index;
