@@ -115,6 +115,7 @@ type CreateThreadArgs = { initialContext?: PageContext };
 type ListIntentsArgs = { pageContext?: PageContext };
 type StartIntentArgs = {
   intentId: string;
+  suggestionKey?: string;
   pageContext?: PageContext;
   emptyThreadId?: string;
 };

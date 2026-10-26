@@ -27,10 +27,10 @@ import { PillButton } from "@/components/ui/pill-button";
 import {
   operatorAgentApi,
   type OperatorAgentConfirmation,
-  type OperatorAgentIntent,
   type OperatorAgentMessage,
   type OperatorAgentThreadDetail,
 } from "@/lib/operator-agent-api";
+import type { OperatorSuggestion } from "@/convex/lib/operatorSuggestionTypes";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { cn } from "@/lib/utils";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -197,19 +197,15 @@ function OperatorMessageFooter({
 }
 
 function EmptyThread({
-  intents,
-  prompts,
-  launchingIntentId,
+  suggestions,
+  launchingSuggestionKey,
   onSelect,
-  onSelectPrompt,
 }: {
-  intents: OperatorAgentIntent[] | undefined;
-  prompts: Array<{ label: string; prompt: string }>;
-  launchingIntentId: string | null;
-  onSelect: (intentId: string) => void;
-  onSelectPrompt: (prompt: string) => void;
+  suggestions: OperatorSuggestion[] | undefined;
+  launchingSuggestionKey: string | null;
+  onSelect: (suggestion: OperatorSuggestion) => void;
 }) {
-  if (intents === undefined) {
+  if (suggestions === undefined) {
     return (
       <div className="mt-auto flex justify-center pb-4">
         <Spinner className="text-muted-foreground" />
@@ -218,23 +214,14 @@ function EmptyThread({
   }
   return (
     <AgentDockSuggestions
-      items={[
-        ...intents,
-        ...prompts
-          .filter(
-            (prompt) =>
-              !intents.some((intent) => intent.label === prompt.label),
-          )
-          .map((prompt) => ({
-            id: `prompt:${prompt.label}`,
-            label: prompt.label,
-          })),
-      ].slice(0, 5)}
-      pendingId={launchingIntentId}
+      items={suggestions.map((suggestion) => ({
+        id: suggestion.key,
+        label: suggestion.label,
+      }))}
+      pendingId={launchingSuggestionKey}
       onSelect={(id) => {
-        const prompt = prompts.find((item) => `prompt:${item.label}` === id);
-        if (prompt) onSelectPrompt(prompt.prompt);
-        else onSelect(id);
+        const suggestion = suggestions.find((item) => item.key === id);
+        if (suggestion) onSelect(suggestion);
       }}
     />
   );
@@ -394,12 +381,10 @@ export function OperatorConversation({
   activeThreadId,
   loading,
   detail,
-  intents,
-  prompts,
-  launchingIntentId,
+  suggestions,
+  launchingSuggestionKey,
   confirmationBusyId,
-  onSelectIntent,
-  onSelectPrompt,
+  onSelectSuggestion,
   onDecision,
   composer,
   onFollowUp,
@@ -408,12 +393,10 @@ export function OperatorConversation({
   activeThreadId: string | null;
   loading: boolean;
   detail: OperatorAgentThreadDetail;
-  intents: OperatorAgentIntent[] | undefined;
-  prompts: Array<{ label: string; prompt: string }>;
-  launchingIntentId: string | null;
+  suggestions: OperatorSuggestion[] | undefined;
+  launchingSuggestionKey: string | null;
   confirmationBusyId: string | null;
-  onSelectIntent: (intentId: string) => void;
-  onSelectPrompt: (prompt: string) => void;
+  onSelectSuggestion: (suggestion: OperatorSuggestion) => void;
   onDecision: (
     confirmation: OperatorAgentConfirmation,
     decision: ChatApprovalDecision,
@@ -495,11 +478,9 @@ export function OperatorConversation({
         </div>
       ) : !hasMessages ? (
         <EmptyThread
-          intents={intents}
-          prompts={prompts}
-          launchingIntentId={launchingIntentId}
-          onSelect={onSelectIntent}
-          onSelectPrompt={onSelectPrompt}
+          suggestions={suggestions}
+          launchingSuggestionKey={launchingSuggestionKey}
+          onSelect={onSelectSuggestion}
         />
       ) : (
         entries.map((entry) => {
