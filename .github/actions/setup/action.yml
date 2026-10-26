@@ -1,0 +1,19 @@
+name: Setup
+description: Install Node and restore node_modules, running npm ci only when the lockfile or patches change.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 24
+
+    - id: node-modules
+      uses: actions/cache@v6
+      with:
+        path: node_modules
+        key: node-modules-${{ runner.os }}-node24-${{ hashFiles('package-lock.json', 'patches/**') }}
+
+    - if: steps.node-modules.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci --no-audit --no-fund --loglevel=error
