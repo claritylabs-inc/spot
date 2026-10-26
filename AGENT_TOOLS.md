@@ -288,6 +288,8 @@ Company email uses the global connection configured in Channels → Google Works
 
 ### Compatibility aliases
 
+Single-item writes whose batch variant takes the same input under the same approval level are hidden; `add_client_file` and `cancel_email_draft` stay offered because they run without approval, and `create_broker_network_profile` stays offered for full profile fields.
+
 Registry entries with `offered: false` remain callable by name through MCP and the executor, but are excluded from in-app tool availability, both offered catalogs, MCP tools/list and expand_tools family listings. Existing schemas, outputs, source checks and approval fingerprints are retained; dispatch adaptation occurs only after validation and approval binding. The consolidated tools share existing service owners. Tenant tool contracts are unchanged.
 
 | Hidden names | Offered replacement |
@@ -301,6 +303,9 @@ Registry entries with `offered: false` remain callable by name through MCP and t
 | `list_procurement_information`, `list_procurement_client_outreach` | `get_procurement_information` with information/clientOutreach include |
 | `get_operator_overview`, `get_routing_status`, `get_channel_health` | `get_platform_status` with overview/routing/channels sections |
 | `list_procurement_email_threads` | `list_team_inbox_threads` with procurementRequestId; both read teamEmailThreads. Legacy output/bounds remain unchanged; use the offered tool for pagination. |
+| `set_client_assignee`, `set_client_access_status`, `set_client_feature_flag` | `set_client_assignees`, `set_client_access_statuses`, `set_client_feature_flags` (1–50 items, including one) |
+| `create_client_organization`, `update_organization_profile`, `research_broker`, `update_broker_network_profile` | `create_client_organizations`, `update_organization_profiles`, `research_brokers`, `update_broker_network_profiles` |
+| `update_client_file`, `update_procurement_request`, `update_procurement_broker_outreach`, `create_procurement_file_item`, `update_procurement_file_item`, `archive_procurement_proposal`, `update_procurement_email_thread`, `link_team_inbox_thread` | The matching plural batch tool (1–50 items, same exact approval) |
 | `reply_procurement_email_thread` | `reply_email_thread` (existing W6 compatibility entry) |
 
 ### Operator MCP projection

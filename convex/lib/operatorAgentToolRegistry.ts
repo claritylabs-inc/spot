@@ -741,7 +741,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "platform",
     version: 1,
     description:
-      "List Spot operators (userId, name, email, role, active or disabled). Resolve the assignee here before set_client_assignee; only active operators can be assigned.",
+      "List Spot operators (userId, name, email, role, active or disabled). Resolve the assignee here before set_client_assignees; only active operators can be assigned.",
     inputSchema: z.object({}),
     capability: "operator.platform.read",
     effect: "read",
@@ -1714,6 +1714,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   link_team_inbox_thread: defineOperatorTool({
     family: "outbound_email",
     version: 1,
+    offered: false,
     description:
       "Link team conversations and their held attachments to exact clients or requests. Reject conflicting clients and outreach moves; a request determines its client. For multiple items use link_team_inbox_threads.",
     inputSchema: linkTeamInboxThreadInputSchema,
@@ -2211,6 +2212,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_client_file: defineOperatorTool({
     family: "client_files",
     version: 1,
+    offered: false,
     description:
       "Rename client files or change client visibility and policy links. Omitted fields stay unchanged; null clears a policy link. For multiple items use update_client_files.",
     inputSchema: updateClientFileInputSchema,
@@ -2289,7 +2291,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 2,
     description:
-      "Correct structured application fields: applicant contact, request reason and requirements, effective date, company facts, coverage lines and limits, insured property/vehicles, locations, revenue and insurance history. Prefer this over update_procurement_packet (prose only), including for document imports. Read get_procurement_request first and pass its intakeRevision (0 if absent) and updatedAt as expectedRevision and expectedUpdatedAt. Send only changed keys; a supplied details key replaces its whole value. Field shapes and coverage limit keys: describe_record_fields. Invalid fields are rejected before approval with the allowed keys. Title, status and policy links: update_procurement_request.",
+      "Correct structured application fields: applicant contact, request reason and requirements, effective date, company facts, coverage lines and limits, insured property/vehicles, locations, revenue and insurance history. Prefer this over update_procurement_packet (prose only), including for document imports. Read get_procurement_request first and pass its intakeRevision (0 if absent) and updatedAt as expectedRevision and expectedUpdatedAt. Send only changed keys; a supplied details key replaces its whole value. Field shapes and coverage limit keys: describe_record_fields. Invalid fields are rejected before approval with the allowed keys. Title, status and policy links: update_procurement_requests.",
     inputSchema: procurementApplicationToolInputSchema,
     capability: "operator.procurement.write",
     effect: "reversible_write",
@@ -2305,6 +2307,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_procurement_request: defineOperatorTool({
     family: "procurement",
     version: 6,
+    offered: false,
     description:
       "Update request titles, dates, status, visibility or policy links. Null clears a date or link; omissions preserve values. Use update_procurement_application for application facts and update_procurement_packet for prose. For multiple items use update_procurement_requests.",
     inputSchema: updateProcurementRequestInputSchema,
@@ -2418,6 +2421,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   archive_procurement_proposal: defineOperatorTool({
     family: "procurement",
     version: 1,
+    offered: false,
     description:
       "Archive one private proposal, or delete a truly empty draft. Selected proposals must first be replaced by selecting another reviewed proposal. For multiple items use archive_procurement_proposals.",
     inputSchema: archiveProcurementProposalInputSchema,
@@ -2648,7 +2652,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "broker_network",
     version: 1,
     description:
-      "Match or create 1–50 external providers by normalized domain, then exact name, in one atomic approved batch. Optionally attach missing request tracking rows; never sends. Matched profiles are unchanged. New profiles queue public enrichment; explicit research reruns need research_broker approval. Spot-owned identities and ambiguous matches are rejected.",
+      "Match or create 1–50 external providers by normalized domain, then exact name, in one atomic approved batch. Optionally attach missing request tracking rows; never sends. Matched profiles are unchanged. New profiles queue public enrichment; explicit research reruns need research_brokers approval. Spot-owned identities and ambiguous matches are rejected.",
     inputSchema: ensureBrokerProfilesInput,
     capability: "operator.organizations.write",
     effect: "reversible_write",
@@ -2667,6 +2671,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_broker_network_profile: defineOperatorTool({
     family: "broker_network",
     version: 7,
+    offered: false,
     description:
       "Update supplied fields on one external provider; use update_broker_network_profiles for batches. Omitted fields stay unchanged; explicit edits and empty lists override enrichment. Identity changes queue public research. Spot-owned identities are rejected.",
     inputSchema: brokerUpdateInput,
@@ -3026,6 +3031,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_procurement_broker_outreach: defineOperatorTool({
     family: "procurement",
     version: 5,
+    offered: false,
     description:
       "Update provider outreach identities, contacts or status. Spot-owned identities are ineligible. Keep notes in private.md and file quotes as proposals. For multiple items use update_procurement_broker_outreaches.",
     inputSchema: updateProcurementBrokerOutreachInputSchema,
@@ -3062,6 +3068,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   create_procurement_file_item: defineOperatorTool({
     family: "procurement",
     version: 7,
+    offered: false,
     description:
       "Add uploaded client files to requests with labels and independent client/provider visibility. Released files immediately appear on existing packet links within their audience. For multiple items use create_procurement_file_items.",
     inputSchema: createProcurementFileItemInputSchema,
@@ -3094,6 +3101,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_procurement_file_item: defineOperatorTool({
     family: "procurement",
     version: 7,
+    offered: false,
     description:
       "Update request file labels, client/provider visibility or underlying files. File links cannot be cleared. Released changes immediately update existing packet links within their audience. For multiple items use update_procurement_file_items.",
     inputSchema: updateProcurementFileItemInputSchema,
@@ -3130,6 +3138,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_procurement_email_thread: defineOperatorTool({
     family: "procurement",
     version: 1,
+    offered: false,
     description:
       "Correct email categories or move forwarded conversations within the same client. Provider outreach stays with its originating request; originally addressed requests remain immutable. For multiple items use update_procurement_email_threads.",
     inputSchema: updateProcurementEmailThreadInputSchema,
@@ -3166,6 +3175,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   create_client_organization: defineOperatorTool({
     family: "organizations",
     version: 2,
+    offered: false,
     description:
       "Create standalone clients without users; exact-name duplicates are rejected. Research is queued for each client; check get_research_status, then get_organization with include research for outcomes. For multiple items use create_client_organizations.",
     inputSchema: createClientOrganizationInputSchema,
@@ -3228,6 +3238,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_organization_profile: defineOperatorTool({
     family: "organizations",
     version: 5,
+    offered: false,
     description:
       "Update organization names or websites. Omitted fields stay unchanged; null clears a website. Identity edits queue research. Use update_client_business_profile for company facts. For multiple items use update_organization_profiles.",
     inputSchema: updateOrganizationProfileInputSchema,
@@ -3303,7 +3314,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Read the status of an organization's async public research: company research (research_client, research_broker) and, for clients, the tech-stack scan. Each entry has state (not_started, queued, running, completed, partial, failed), settled, timestamps and finding counts; read get_organization with include research (or websiteTech) for the findings. Pass website instead of orgId for a prospect's tech-stack scan. waitSeconds (up to 60) waits for the runs to settle before answering.",
+      "Read the status of an organization's async public research: company research (research_client, research_brokers) and, for clients, the tech-stack scan. Each entry has state (not_started, queued, running, completed, partial, failed), settled, timestamps and finding counts; read get_organization with include research (or websiteTech) for the findings. Pass website instead of orgId for a prospect's tech-stack scan. waitSeconds (up to 60) waits for the runs to settle before answering.",
     inputSchema: z
       .object({
         orgId: omittable(organizationId),
@@ -3329,6 +3340,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   research_broker: defineOperatorTool({
     family: "broker_network",
     version: 1,
+    offered: false,
     description:
       "Queue public research for exact external insurance providers. Preserve manual profile values; check get_research_status, then get_broker_network_profile or get_organization with include research for outcomes. Queued is not complete. For multiple items use research_brokers.",
     inputSchema: researchBrokerInputSchema,
@@ -3358,6 +3370,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   set_client_access_status: defineOperatorTool({
     family: "organizations",
     version: 1,
+    offered: false,
     description:
       "Set one client’s access: limited (intake only), active (full workspace), or archived (limited, omitted from suggestions). For multiple clients use set_client_access_statuses.",
     inputSchema: z.object({
@@ -3414,6 +3427,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   set_client_assignee: defineOperatorTool({
     family: "organizations",
     version: 1,
+    offered: false,
     description:
       "Assign one client to an active operator from list_operators, or pass null to unassign. Resolve exact client IDs with search_organizations. For multiple clients use set_client_assignees. Audited.",
     inputSchema: z.object({
@@ -3456,6 +3470,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   set_client_feature_flag: defineOperatorTool({
     family: "organizations",
     version: 1,
+    offered: false,
     description:
       "Toggle one supported flag for an exact client. For multiple clients use set_client_feature_flags.",
     inputSchema: z.object({
