@@ -338,10 +338,13 @@ export function classifyProvider(
   const geographyEvaluable = geography.places.length > 0;
   const geographyAppetiteEmpty =
     !countries.size && !profile.writingStates.length;
-  if (geographyEvaluable && geographyAppetiteEmpty) {
+  if (!geographyEvaluable) {
+    result.geography.fit = "unknown";
+    result.reasons.push("request_not_evaluable");
+  } else if (geographyAppetiteEmpty) {
     result.geography.fit = "unknown";
     result.reasons.push("geography_appetite_empty");
-  } else if (geographyEvaluable) {
+  } else {
     for (const place of geography.places)
       (placeServiced(place, profile)
         ? result.geography.serviced

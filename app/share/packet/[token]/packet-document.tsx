@@ -207,7 +207,10 @@ function DocumentSection({
 }
 
 export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
-  const parts = useMemo(() => packetParts(view.markdown), [view.markdown]);
+  const parts = useMemo(
+    () => packetParts(view.baseMarkdown ?? view.markdown),
+    [view.baseMarkdown, view.markdown],
+  );
   const presentedMarkdown = hideApplicationControlMarkers(
     parts.details,
   ).replace(/^#{1,2} Request\s*\n+(?=#{2,6} Contact details\b)/gm, "");
@@ -364,6 +367,20 @@ export function PacketDocument({ view }: { view: NonNullable<PacketView> }) {
             </p>
           )}
         </DocumentSection>
+        {view.supplementaryMarkdown && (
+          <DocumentSection
+            id="supplementary-answers"
+            title="Supplementary answers"
+          >
+            <ProseMarkdown
+              gfm
+              components={applicationComponents}
+              className={APPLICATION_PROSE_SPACING}
+            >
+              {view.supplementaryMarkdown}
+            </ProseMarkdown>
+          </DocumentSection>
+        )}
         {view.files.length > 0 && (
           <DocumentSection id="packet-files" title="All files">
             <PairList>

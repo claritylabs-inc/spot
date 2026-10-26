@@ -82,7 +82,8 @@ async function clientAccess(
   requestId: Id<"procurementRequests">,
   write = false,
 ) {
-  const userId = await getSessionUserId(ctx);
+  // Unverified applicants may access their own request through ownedRequest below.
+  const userId = await getSessionUserId(ctx, true);
   const user = userId ? await ctx.db.get(userId) : null;
   if (!user || user.serviceAccountKind) throw new Error("Sign in to continue");
   const request = await ctx.db.get(requestId);

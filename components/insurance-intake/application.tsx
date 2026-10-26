@@ -123,7 +123,6 @@ import { Input } from "@claritylabs-inc/ui/components/input";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { PillButton } from "@/components/ui/pill-button";
 import { Button } from "@claritylabs-inc/ui/components/button";
-import { completeOtpSignIn } from "@/lib/auth-sign-in";
 import { useBackgroundTasks } from "@claritylabs-inc/ui/components/background-tasks";
 import { ArrowRight, ChevronLeft, Circle, X } from "lucide-react";
 
@@ -243,7 +242,10 @@ export function InsuranceIntake() {
       );
   }, [verification, requestId, isAuthenticated, viewer, confirmOwnership]);
   useEffect(() => {
-    if (!verification || !requestId || !isAuthenticated) return;
+    // OTP sign-in replaces the restricted session asynchronously. Wait for the
+    // verified viewer before claiming the application with the new identity.
+    if (!verification || !requestId || !isAuthenticated ||
+      !viewer?.emailVerificationTime || viewer.intakeRestricted) return;
     void confirmOwnership({ requestId, token: verification })
       .then(() => {
         try {
@@ -251,14 +253,14 @@ export function InsuranceIntake() {
         } catch {
           /* Ownership is already saved on the server. */
         }
-        window.location.replace(withQuoteProvider(`/intake?request=${requestId}`, params.get("provider")));
+        router.replace(withQuoteProvider(`/intake?request=${requestId}`, params.get("provider")));
       })
       .catch((e) => {
         setConfirmationError(
           getUserFacingErrorMessage(e, "Could not confirm your application"),
         );
       });
-  }, [verification, requestId, isAuthenticated, confirmOwnership, params]);
+  }, [verification, requestId, isAuthenticated, viewer, confirmOwnership, params, router]);
   if (requestId && (isLoading || needsLogin))
     return <IntakeApplicationLoading />;
   if (verification)
@@ -1942,9 +1944,11 @@ function Application({
         requestId,
         token: verificationToken.current,
       });
-      await completeOtpSignIn(answers.email!, code);
-      intentionalRedirect.current = true;
-      window.location.assign(
+      const result = await signIn("resend-otp", { email: answers.email!, code });
+      if (!result.signingIn) throw new Error("Could not confirm your email");
+      // Keep navigation within the app: a document unload can race the auth
+      // SDK's refresh guard and show a misleading unsaved-changes warning.
+      router.replace(
         withQuoteProvider(`/intake?request=${requestId}&verify=${verificationToken.current}`, params.get("provider")),
       );
     } catch (e) {
