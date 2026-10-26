@@ -103,6 +103,7 @@ export type OperatorGoogleWorkspaceToolName =
   | "list_company_mailboxes"
   | "search_company_email"
   | "read_company_email_thread"
+  | "read_company_email_threads"
   | "get_company_email_attachment"
   | "scan_workspace_mailbox";
 
@@ -121,6 +122,12 @@ export type OperatorGoogleWorkspaceListMailboxesInput = {
 export type OperatorGoogleWorkspaceSearchEmailInput = {
   query: string;
   mailboxes?: string[];
+  /** Email addresses or bare domains matched against From, To and Cc. */
+  participants?: string[];
+  /** Inclusive UTC start date in YYYY-MM-DD format. */
+  since?: string;
+  /** Inclusive UTC end date in YYYY-MM-DD format. */
+  until?: string;
   cursor?: string;
   limit?: number;
 };
@@ -129,6 +136,11 @@ export type OperatorGoogleWorkspaceReadThreadInput = {
   mailbox: string;
   threadId: string;
   cursor?: string;
+  limit?: number;
+};
+
+export type OperatorGoogleWorkspaceReadThreadsInput = {
+  threads: Array<{ mailbox: string; threadId: string }>;
   limit?: number;
 };
 
@@ -189,6 +201,8 @@ export type OperatorGoogleWorkspaceSearchEmailResult = {
   directoryError: string | null;
   encounteredErrorCount: number;
   nextCursor: string | null;
+  /** True when more results exist or any mailbox failed; absence is unproven. */
+  bounded: boolean;
   completeness: "complete" | "partial";
   ordering: "mailbox_then_gmail";
   querySemantics: "gmail_api_no_alias_expansion";
@@ -238,6 +252,18 @@ export type OperatorGoogleWorkspaceReadThreadResult = {
   nextCursor: string | null;
   completeness: "complete" | "partial";
   maxBodyCharsPerPage: number;
+};
+
+export type OperatorGoogleWorkspaceReadThreadsResult = {
+  threads: Array<
+    Omit<OperatorGoogleWorkspaceReadThreadResult, "nextCursor"> & {
+      /** The page budget cut this thread short; read it alone for the rest. */
+      truncated: boolean;
+    }
+  >;
+  notFound: Array<{ mailbox: string; threadId: string }>;
+  errors: Array<{ mailbox: string; threadId: string; error: string }>;
+  completeness: "complete" | "partial";
 };
 
 export type OperatorGoogleWorkspaceAttachmentSource = {

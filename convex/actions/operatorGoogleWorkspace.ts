@@ -37,6 +37,7 @@ const toolNames = new Set<OperatorGoogleWorkspaceToolName>([
   "list_company_mailboxes",
   "search_company_email",
   "read_company_email_thread",
+  "read_company_email_threads",
   "get_company_email_attachment",
   "scan_workspace_mailbox",
 ]);
