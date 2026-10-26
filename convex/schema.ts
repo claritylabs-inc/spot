@@ -3,6 +3,7 @@ import {
   operatorNotificationTargetValidator,
   operatorNotificationStatusValidator,
 } from "./lib/operatorNotificationTypes";
+import { clientAccessStatusValidator } from "./lib/clientAccess";
 import {
   informationScopeValidator,
   informationRequirementStatus,
@@ -499,9 +500,7 @@ export default defineSchema({
   // Organizations — owns company data, agent, broker info
   organizations: defineTable({
     intakeBusinessProfile: v.optional(intakeBusinessProfileValidator),
-    clientAccessStatus: v.optional(
-      v.union(v.literal("limited"), v.literal("active")),
-    ),
+    clientAccessStatus: v.optional(clientAccessStatusValidator),
     // Unsubmitted intake draft that created this client; its identity follows the draft until submission.
     intakeDraftRequestId: v.optional(v.id("procurementRequests")),
     name: v.string(),

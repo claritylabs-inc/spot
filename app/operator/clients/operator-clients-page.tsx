@@ -68,7 +68,7 @@ function applicationName(application: {
 /** Highlights rows whose application has not been submitted yet. */
 const UNSUBMITTED_ROW_CLASS = "bg-warning/5 hover:bg-warning/10";
 
-type ClientFilter = "all" | "active" | "limited";
+type ClientFilter = "all" | "active" | "limited" | "archived";
 
 type UnlinkedApplication = FunctionReturnType<
   typeof api.operator.listUnlinkedApplications
@@ -214,6 +214,7 @@ export default function OperatorClientsScreen() {
                 <TabsTrigger value="all">All</TabsTrigger>
                 <TabsTrigger value="active">Active</TabsTrigger>
                 <TabsTrigger value="limited">Limited</TabsTrigger>
+                <TabsTrigger value="archived">Archived</TabsTrigger>
               </TabsList>
             </Tabs>
           }

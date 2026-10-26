@@ -1,5 +1,5 @@
 import { clientIdentity, clientIdentityMatches } from "./lib/clientProfile";
-import { clientAccessStatus } from "./lib/clientAccess";
+import { clientAccessStatus, type ClientAccessStatus } from "./lib/clientAccess";
 import { scheduleCompanyResearch } from "./companyResearch";
 import dayjs from "dayjs";
 import { assertExternalBrokerIdentity } from "./lib/brokerProfileValidation";
@@ -62,6 +62,7 @@ import {
 const clientStatusValidator = v.union(
   v.literal("limited"),
   v.literal("active"),
+  v.literal("archived"),
 );
 const orgRoleValidator = v.union(v.literal("admin"), v.literal("member"));
 const operatorClientUserValidator = v.object({
@@ -1079,7 +1080,7 @@ export async function createStandaloneClientOrganizationByOperator(
     operatorUserId: Id<"users">;
     name: string;
     website?: string;
-    clientAccessStatus?: "limited" | "active";
+    clientAccessStatus?: ClientAccessStatus;
   },
 ) {
   await requireOperatorForUser(ctx, args.operatorUserId);
@@ -1278,7 +1279,7 @@ export const markSoloClientLaunchedInternal = internalMutation({
     const client = await ctx.db.get(args.clientOrgId);
     if (!client || client.deletedAt !== undefined || client.type !== "client")
       throw new Error("Client not found");
-    const wasLimited = clientAccessStatus(client) === "limited";
+    const wasLimited = clientAccessStatus(client) !== "active";
     await ctx.db.patch(args.clientOrgId, {
       clientAccessStatus: "active",
       onboardingComplete: true,

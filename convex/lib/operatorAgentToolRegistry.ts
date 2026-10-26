@@ -2575,10 +2575,10 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Set the client workspace access of one exact client organization: limited (routed to the intake application) or active (full client workspace).",
+      "Set the client workspace access of one exact client organization: limited (routed to the intake application) active (full client workspace), or archived (functionally dead lead; behaves like limited and is kept out of suggestions).",
     inputSchema: z.object({
       orgId: organizationId,
-      status: z.enum(["limited", "active"]),
+      status: z.enum(["limited", "active", "archived"]),
     }),
     capability: "operator.organizations.write",
     effect: "reversible_write",

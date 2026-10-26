@@ -101,7 +101,7 @@ function policyName(policy: Doc<"policies">) {
   );
 }
 
-/** Live, non-test, non-Spot organizations, read once each. */
+/** Live, non-test, non-archived, non-Spot organizations, read once each. */
 function organizationReader(ctx: QueryCtx) {
   const cache = new Map<Id<"organizations">, Promise<Organization | null>>();
   return (orgId: Id<"organizations"> | undefined | null) => {
@@ -112,6 +112,7 @@ function organizationReader(ctx: QueryCtx) {
         org &&
         org.deletedAt === undefined &&
         !org.smokeMarker &&
+        org.clientAccessStatus !== "archived" &&
         !isSpotOwnedBrokerIdentity(org)
           ? org
           : null,

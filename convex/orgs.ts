@@ -1,4 +1,5 @@
 import { clientIdentity } from "./lib/clientProfile";
+import { clientAccessStatusValidator } from "./lib/clientAccess";
 import { scheduleCompanyResearch } from "./companyResearch";
 import { v } from "convex/values";
 import {
@@ -1323,7 +1324,7 @@ export const getById = query({
 export const setClientAccessStatus = mutation({
   args: {
     orgId: v.id("organizations"),
-    status: v.union(v.literal("limited"), v.literal("active")),
+    status: clientAccessStatusValidator,
   },
   handler: async (ctx, args) => {
     await requireOperator(ctx);

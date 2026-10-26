@@ -240,7 +240,7 @@ function requestStageSummary(request: Request) {
 async function clientStateCandidates(scope: Scope) {
   const { ctx, now, page } = scope;
   const org = await loadClient(ctx, scope.entityId);
-  if (!org) return [];
+  if (!org || org.clientAccessStatus === "archived") return [];
   const onWiki = page.pageType === "operator_client_wiki";
   const [policies, openRequests, wikiDocument] = await Promise.all([
     loadActivePolicies(ctx, org._id),
