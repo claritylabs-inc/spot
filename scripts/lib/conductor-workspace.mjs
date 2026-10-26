@@ -30,8 +30,11 @@ export const cloudConvexSelectionKeys = [
 ];
 
 // These credentials belong only in cl-router. Keep the list explicit so local
-// setup cannot accidentally strip unrelated integration credentials.
+// setup cannot accidentally strip unrelated integration credentials: setup also
+// removes these names from the Convex deployment, and a `*_API_KEY` pattern
+// would catch Spot's own keys. Retired providers stay listed.
 export const consumerAiCredentialNames = [
+  "ABLITERATION_API_KEY",
   "AI_GATEWAY_API_KEY",
   "ANTHROPIC_API_KEY",
   "COHERE_API_KEY",

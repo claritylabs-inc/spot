@@ -13,10 +13,8 @@ import {
 } from "./clRouterClient";
 import {
   WEB_RETRIEVAL_DEFAULT,
-  isNativeWebRetrievalProvider,
   isWebRetrievalApiProvider,
   type ModelRoute,
-  type WebRetrievalProvider,
   type WebRetrievalRoute,
 } from "./modelCatalog";
 
@@ -40,9 +38,9 @@ export type WebRetrievalSource = {
   snippet?: string;
 };
 export type WebRetrievalResult = {
-  provider: WebRetrievalProvider;
+  provider: string;
   attempts: Array<{
-    provider: WebRetrievalProvider;
+    provider: string;
     ok: boolean;
     error?: string;
   }>;
@@ -202,7 +200,8 @@ async function runWebRetrievalWithConfig(
 ): Promise<WebRetrievalResult> {
   const input = normalizeInput(rawInput);
   // The retrieval contract requires an explicit model for model_default. Use
-  // the live registry rather than inheriting a generation pin or a static id.
+  // the live registry rather than inheriting a generation pin or a static id:
+  // native providers are the configured non-API retrieval providers.
   let route: ModelRoute | undefined;
   if (config.primary === "model_default") {
     try {
@@ -210,11 +209,13 @@ async function runWebRetrievalWithConfig(
       const entry = capabilities.models?.find(
         (model) =>
           model.configured &&
-          isNativeWebRetrievalProvider(model.provider) &&
           model.primitives.includes("text") &&
           capabilities.webRetrieval.providers.some(
-            (provider) =>
-              provider.provider === model.provider && provider.configured,
+            ({ provider, configured }) =>
+              configured &&
+              provider === model.provider &&
+              provider !== "model_default" &&
+              !isWebRetrievalApiProvider(provider),
           ),
       );
       if (entry) route = { provider: entry.provider, model: entry.model };

@@ -73,17 +73,8 @@ import {
   storedOperatorGoogleWorkspaceVerificationValidator,
 } from "./lib/googleWorkspaceValidators";
 
-const modelProviderValidator = v.union(
-  v.literal("openai"),
-  v.literal("anthropic"),
-  v.literal("google"),
-  v.literal("xai"),
-  v.literal("mistral"),
-  v.literal("cohere"),
-  v.literal("fireworks"),
-  v.literal("moonshot"),
-  v.literal("deepseek"),
-);
+// Provider ids are cl-router data (GET /v1/capabilities), not a Spot enum.
+const modelProviderValidator = v.string();
 
 const modelRouteValidator = v.object({
   provider: modelProviderValidator,
@@ -123,15 +114,9 @@ const extractionTraceRoutingValidator = v.object({
   selection: v.optional(routingSelectionValidator),
 });
 
-const webRetrievalProviderValidator = v.union(
-  v.literal("parallel"),
-  v.literal("exa"),
-  v.literal("model_default"),
-  v.literal("openai"),
-  v.literal("google"),
-  v.literal("anthropic"),
-  v.literal("xai"),
-);
+// Stored modes may name a native provider from older settings;
+// modelSettings.normalizeWebRetrieval maps those to model_default.
+const webRetrievalProviderValidator = v.string();
 
 const webRetrievalValidator = v.object({
   primary: webRetrievalProviderValidator,
@@ -2634,9 +2619,7 @@ export default defineSchema({
     label: v.optional(v.string()),
     task: v.optional(v.string()),
     taskKind: v.optional(v.string()),
-    provider: v.optional(
-      v.union(modelProviderValidator, v.literal("cloudflare")),
-    ),
+    provider: v.optional(modelProviderValidator),
     model: v.optional(v.string()),
     routeSource: v.optional(v.string()),
     transport: v.optional(v.string()),

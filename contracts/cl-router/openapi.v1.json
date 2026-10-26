@@ -1300,12 +1300,12 @@
                     "enum": [
                       "openai",
                       "anthropic",
-                      "google",
                       "xai",
                       "mistral",
                       "cohere",
                       "fireworks",
-                      "deepseek"
+                      "deepseek",
+                      "abliteration"
                     ]
                   },
                   "model": {
@@ -1581,21 +1581,76 @@
                   "enum": [
                     "openai",
                     "anthropic",
-                    "google",
                     "xai",
                     "mistral",
                     "cohere",
                     "fireworks",
-                    "deepseek"
+                    "deepseek",
+                    "abliteration"
                   ]
                 },
                 "configured": {
                   "type": "boolean"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "brandColor": {
+                  "type": "string"
+                },
+                "monogram": {
+                  "type": "string"
+                },
+                "logo": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "viewBox": {
+                          "type": "string"
+                        },
+                        "paths": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "d": {
+                                "type": "string"
+                              },
+                              "fillRule": {
+                                "type": "string",
+                                "enum": [
+                                  "evenodd",
+                                  "nonzero"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "d"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "viewBox",
+                        "paths"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               },
               "required": [
                 "provider",
-                "configured"
+                "configured",
+                "label",
+                "brandColor",
+                "monogram",
+                "logo"
               ],
               "additionalProperties": false
             }
@@ -1610,12 +1665,12 @@
                   "enum": [
                     "openai",
                     "anthropic",
-                    "google",
                     "xai",
                     "mistral",
                     "cohere",
                     "fireworks",
-                    "deepseek"
+                    "deepseek",
+                    "abliteration"
                   ]
                 },
                 "model": {
@@ -1711,10 +1766,12 @@
                         "parallel",
                         "exa",
                         "openai",
-                        "google",
                         "anthropic",
                         "xai"
                       ]
+                    },
+                    "label": {
+                      "type": "string"
                     },
                     "configured": {
                       "type": "boolean"
@@ -1722,6 +1779,7 @@
                   },
                   "required": [
                     "provider",
+                    "label",
                     "configured"
                   ],
                   "additionalProperties": false
@@ -2329,12 +2387,12 @@
                 "enum": [
                   "openai",
                   "anthropic",
-                  "google",
                   "xai",
                   "mistral",
                   "cohere",
                   "fireworks",
-                  "deepseek"
+                  "deepseek",
+                  "abliteration"
                 ]
               },
               "model": {
@@ -2416,12 +2474,12 @@
                     "enum": [
                       "openai",
                       "anthropic",
-                      "google",
                       "xai",
                       "mistral",
                       "cohere",
                       "fireworks",
-                      "deepseek"
+                      "deepseek",
+                      "abliteration"
                     ]
                   },
                   "model": {
@@ -3167,12 +3225,12 @@
                 "enum": [
                   "openai",
                   "anthropic",
-                  "google",
                   "xai",
                   "mistral",
                   "cohere",
                   "fireworks",
-                  "deepseek"
+                  "deepseek",
+                  "abliteration"
                 ]
               },
               "model": {
@@ -3254,12 +3312,12 @@
                     "enum": [
                       "openai",
                       "anthropic",
-                      "google",
                       "xai",
                       "mistral",
                       "cohere",
                       "fireworks",
-                      "deepseek"
+                      "deepseek",
+                      "abliteration"
                     ]
                   },
                   "model": {
@@ -3942,12 +4000,12 @@
                 "enum": [
                   "openai",
                   "anthropic",
-                  "google",
                   "xai",
                   "mistral",
                   "cohere",
                   "fireworks",
-                  "deepseek"
+                  "deepseek",
+                  "abliteration"
                 ]
               },
               "model": {
@@ -4063,7 +4121,6 @@
                   "exa",
                   "model_default",
                   "openai",
-                  "google",
                   "anthropic",
                   "xai"
                 ]
@@ -4076,12 +4133,12 @@
                     "enum": [
                       "openai",
                       "anthropic",
-                      "google",
                       "xai",
                       "mistral",
                       "cohere",
                       "fireworks",
-                      "deepseek"
+                      "deepseek",
+                      "abliteration"
                     ]
                   },
                   "model": {
@@ -4124,7 +4181,6 @@
               "exa",
               "model_default",
               "openai",
-              "google",
               "anthropic",
               "xai"
             ]
@@ -4141,7 +4197,6 @@
                     "exa",
                     "model_default",
                     "openai",
-                    "google",
                     "anthropic",
                     "xai"
                   ]
@@ -4432,12 +4487,12 @@
                     "enum": [
                       "openai",
                       "anthropic",
-                      "google",
                       "xai",
                       "mistral",
                       "cohere",
                       "fireworks",
-                      "deepseek"
+                      "deepseek",
+                      "abliteration"
                     ]
                   },
                   "model": {
@@ -4519,12 +4574,12 @@
                         "enum": [
                           "openai",
                           "anthropic",
-                          "google",
                           "xai",
                           "mistral",
                           "cohere",
                           "fireworks",
-                          "deepseek"
+                          "deepseek",
+                          "abliteration"
                         ]
                       },
                       "model": {
@@ -4623,12 +4678,12 @@
                           "enum": [
                             "openai",
                             "anthropic",
-                            "google",
                             "xai",
                             "mistral",
                             "cohere",
                             "fireworks",
-                            "deepseek"
+                            "deepseek",
+                            "abliteration"
                           ]
                         },
                         "model": {
@@ -4911,12 +4966,12 @@
                 "enum": [
                   "openai",
                   "anthropic",
-                  "google",
                   "xai",
                   "mistral",
                   "cohere",
                   "fireworks",
-                  "deepseek"
+                  "deepseek",
+                  "abliteration"
                 ]
               },
               "model": {
@@ -4998,12 +5053,12 @@
                     "enum": [
                       "openai",
                       "anthropic",
-                      "google",
                       "xai",
                       "mistral",
                       "cohere",
                       "fireworks",
-                      "deepseek"
+                      "deepseek",
+                      "abliteration"
                     ]
                   },
                   "model": {
@@ -5544,8 +5599,8 @@
           },
           "model": {
             "type": "string",
-            "pattern": "^jev-",
-            "description": "Actual TypeSafe Jev model version that served this decision, e.g. \"jev-1.14.0\". Requests use jev-latest (or TYPESAFE_MODEL) but the response reports the concrete version TypeSafe selected."
+            "pattern": "^(jev-|clef$)",
+            "description": "Model that served this decision: the concrete TypeSafe Jev version (e.g. \"jev-1.14.0\"; requests use jev-latest or TYPESAFE_MODEL), or \"clef\" when Jev was unavailable and Cloudflare's Clef answered instead."
           },
           "answers": {
             "type": "object",
