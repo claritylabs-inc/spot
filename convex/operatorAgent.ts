@@ -43,6 +43,13 @@ import {
   scheduleWebsiteTechScan,
 } from "./websiteTech";
 import { websiteTechDomain } from "./lib/websiteTech";
+import { clientRecipientOptions } from "./lib/clientOutreach";
+import { appendWikiSection } from "./lib/wikiAppend";
+import {
+  companyResearchStatus,
+  techStackResearchStatus,
+  type ResearchStatus,
+} from "./lib/researchStatus";
 import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
 import { operatorEmailContentValidator } from "./lib/threadMessageValidators";
@@ -316,6 +323,7 @@ type OperatorActionToolResult = {
 const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "import_policy_files",
   "web_search",
+  "fetch_url",
   "lookup_policy",
   "compare_coverages",
   "lookup_policy_section",
@@ -350,6 +358,7 @@ function isOperatorGoogleWorkspaceTool(
     toolName === "list_company_mailboxes" ||
     toolName === "search_company_email" ||
     toolName === "read_company_email_thread" ||
+    toolName === "read_company_email_threads" ||
     toolName === "get_company_email_attachment" ||
     toolName === "scan_workspace_mailbox"
   );
@@ -358,6 +367,7 @@ function isOperatorGoogleWorkspaceTool(
 function serializedOperatorActionOutput(toolName: string, result: unknown) {
   return isOperatorGoogleWorkspaceTool(toolName) ||
     toolName === "web_search" ||
+    toolName === "fetch_url" ||
     toolName === "list_operator_conversations" ||
     toolName === "read_operator_conversation" ||
     toolName === "list_team_inbox_threads" ||
@@ -600,6 +610,10 @@ async function operatorConfirmationSummary(
     });
     const client = await ctx.db.get(orgId);
     return `Import into ${client!.name}'s policy library\nFiles: ${files.map((file) => file.fileName).join(", ")}\nGrouping: ${input.mode === "combined" ? "one policy containing all selected PDFs" : `${files.length} separate policies (one per PDF)`}\nQueue extraction; duplicate PDFs reuse existing policies.`;
+  }
+  if (toolName === "update_client_wiki" && input.mode === "append") {
+    const client = await ctx.db.get(normalizeOrganizationId(ctx, input.orgId));
+    return `Append to ${client?.name ?? "the organization"}'s company notes:\n\n${boundedDisplayText(String(input.markdown), 2_000, true)}`;
   }
   if (toolName === "send_email_draft") {
     const { summary } = await operatorEmailSendConfirmation(ctx, {
@@ -1029,6 +1043,40 @@ function normalizePolicyId(ctx: QueryCtx | MutationCtx, value: unknown) {
   if (!policyId)
     throw new NoWriteInputError("invalid_identifier", "Invalid policy ID");
   return policyId;
+}
+
+function alreadyRunningExtraction(policyId: Id<"policies">) {
+  return {
+    status: "already_running" as const,
+    policyId,
+    message:
+      "An extraction is already running; no new one was queued. Check get_policy_status for progress.",
+  };
+}
+
+const CLIENT_FILE_SCAN_LIMIT = 1_000;
+const RESEARCH_POLL_MS = 3_000;
+
+/** Offset into the sorted match list of one bounded policy scan. */
+function listCursorOffset(value: unknown) {
+  if (value === undefined) return 0;
+  if (typeof value !== "string" || !/^\d{1,4}$/.test(value))
+    throw new NoWriteInputError(
+      "invalid_continuation",
+      "Cursor is invalid. Restart without a cursor using the original filters.",
+    );
+  return Number(value);
+}
+
+function fileListCursor(value: unknown) {
+  if (value === undefined) return undefined;
+  const match = typeof value === "string" ? /^(\d{1,16}):(\d{1,4})$/.exec(value) : null;
+  if (!match)
+    throw new NoWriteInputError(
+      "invalid_continuation",
+      "Cursor is invalid. Restart without a cursor using the original filters.",
+    );
+  return { createdAt: Number(match[1]), skip: Number(match[2]) };
 }
 
 function normalizeClientFileId(ctx: QueryCtx | MutationCtx, value: unknown) {
@@ -2085,12 +2133,28 @@ async function executeToolDomain(
       typeof input.query === "string" ? input.query.trim().toLowerCase() : "";
     const limit = typeof input.limit === "number" ? input.limit : 15;
     const includeArchived = input.includeArchived === true;
+    const expiringBefore =
+      typeof input.expiringBefore === "string"
+        ? dayjs(input.expiringBefore).endOf("day")
+        : undefined;
+    const offset = listCursorOffset(input.cursor);
     const policies = await ctx.db
       .query("policies")
       .withIndex("organization", (index) => index.eq("orgId", orgId))
       .take(2_000);
+    const expirationOf = (policy: (typeof policies)[number]) => {
+      if (!policy.expirationDate || policy.policyTermType === "continuous")
+        return undefined;
+      const expiration = dayjs(policy.expirationDate);
+      return expiration.isValid() ? expiration : undefined;
+    };
     const matches = policies
       .filter((policy) => includeArchived || !policy.deletedAt)
+      .filter((policy) => {
+        if (!expiringBefore) return true;
+        const expiration = expirationOf(policy);
+        return Boolean(expiration && !expiration.isAfter(expiringBefore));
+      })
       .filter((policy) => {
         if (!queryText) return true;
         return [
@@ -2105,8 +2169,23 @@ async function executeToolDomain(
             .toLowerCase()
             .includes(queryText),
         );
-      })
-      .map((policy) => ({
+      });
+    if (input.sort === "expiration_asc") {
+      matches.sort(
+        (left, right) =>
+          (expirationOf(left)?.valueOf() ?? Number.MAX_SAFE_INTEGER) -
+          (expirationOf(right)?.valueOf() ?? Number.MAX_SAFE_INTEGER),
+      );
+    } else if (input.sort === "updated_desc") {
+      const changedAt = (policy: (typeof policies)[number]) =>
+        Math.max(policy.extractionDataStageUpdatedAt ?? 0, policy._creationTime);
+      matches.sort((left, right) => changedAt(right) - changedAt(left));
+    }
+    const page = matches.slice(offset, offset + limit);
+    const nextCursor =
+      offset + limit < matches.length ? String(offset + limit) : null;
+    return {
+      policies: page.map((policy) => ({
         policyId: policy._id,
         policyNumber: policy.policyNumber,
         carrier: policy.carrier,
@@ -2116,39 +2195,55 @@ async function executeToolDomain(
         linesOfBusiness: policy.linesOfBusiness,
         extractionDataStage: policy.extractionDataStage,
         pipelineStatus: policy.pipelineStatus,
+        pipelineError: policy.pipelineError?.slice(0, 200),
+        sourceTreeStatus: policy.sourceTreeStatus,
         archived: Boolean(policy.deletedAt),
-      }));
-    return {
-      policies: matches.slice(0, limit),
+      })),
       matchedInScan: matches.length,
       scanned: policies.length,
-      bounded: policies.length >= 2_000 || matches.length > limit,
+      bounded: policies.length >= 2_000 || nextCursor !== null,
       scanBounded: policies.length >= 2_000,
+      nextCursor,
       limit,
     };
   }
 
   if (toolName === "get_policy_status") {
-    const policyId = normalizePolicyId(ctx, input.policyId);
-    const policy = await ctx.db.get(policyId);
-    if (!policy) throw new Error("Policy not found");
-    const extractionRun = await ctx.db
-      .query("policyExtractionRuns")
-      .withIndex("policy", (index) => index.eq("policyId", policyId))
-      .order("desc")
-      .first();
-    return {
-      policyId,
-      orgId: policy.orgId,
-      policyNumber: policy.policyNumber,
-      carrier: policy.carrier,
-      extractionDataStage: policy.extractionDataStage,
-      pipelineStatus: extractionRun?.pipelineStatus ?? policy.pipelineStatus,
-      pipelineError: extractionRun?.pipelineError ?? policy.pipelineError,
-      sourceTreeStatus: policy.sourceTreeStatus,
-      archived: Boolean(policy.deletedAt),
-      fileName: policy.fileName,
+    const readStatus = async (policyId: Id<"policies">) => {
+      const policy = await ctx.db.get(policyId);
+      if (!policy) return null;
+      const extractionRun = await ctx.db
+        .query("policyExtractionRuns")
+        .withIndex("policy", (index) => index.eq("policyId", policyId))
+        .order("desc")
+        .first();
+      return {
+        policyId,
+        orgId: policy.orgId,
+        policyNumber: policy.policyNumber,
+        carrier: policy.carrier,
+        extractionDataStage: policy.extractionDataStage,
+        pipelineStatus: extractionRun?.pipelineStatus ?? policy.pipelineStatus,
+        pipelineError: extractionRun?.pipelineError ?? policy.pipelineError,
+        sourceTreeStatus: policy.sourceTreeStatus,
+        archived: Boolean(policy.deletedAt),
+        fileName: policy.fileName,
+      };
     };
+    if (Array.isArray(input.policyIds)) {
+      const items = [];
+      const notFound: string[] = [];
+      for (const value of input.policyIds as string[]) {
+        const policyId = ctx.db.normalizeId("policies", value);
+        const status = policyId ? await readStatus(policyId) : null;
+        if (status) items.push(status);
+        else notFound.push(value);
+      }
+      return { items, notFound };
+    }
+    const status = await readStatus(normalizePolicyId(ctx, input.policyId));
+    if (!status) throw new Error("Policy not found");
+    return status;
   }
 
   if (toolName === "list_client_files") {
@@ -2162,14 +2257,90 @@ async function executeToolDomain(
       throw new Error("Client organization not found");
     }
     const limit = typeof input.limit === "number" ? input.limit : 25;
-    const files = await ctx.db
-      .query("clientFiles")
-      .withIndex("organization", (index) => index.eq("orgId", orgId))
-      .order("desc")
-      .take(limit);
+    const policyId =
+      typeof input.policyId === "string"
+        ? normalizePolicyId(ctx, input.policyId)
+        : undefined;
+    const clientVisible =
+      typeof input.clientVisible === "boolean" ? input.clientVisible : undefined;
+    const queryText =
+      typeof input.query === "string" ? input.query.trim().toLowerCase() : "";
+    const contentType =
+      typeof input.contentType === "string"
+        ? input.contentType.trim().toLowerCase()
+        : "";
+    const createdAfter =
+      typeof input.createdAfter === "string"
+        ? dayjs(input.createdAfter).valueOf() - 1
+        : -1;
+    // Cursor "<createdAt>:<scanned at that instant>" resumes inside a
+    // millisecond that bulk uploads can share.
+    const cursor = fileListCursor(input.cursor);
+    const upper = cursor?.createdAt ?? Number.MAX_SAFE_INTEGER;
+    const files = policyId
+      ? ctx.db
+          .query("clientFiles")
+          .withIndex("policy", (index) =>
+            index
+              .eq("policyId", policyId)
+              .gt("createdAt", createdAfter)
+              .lte("createdAt", upper),
+          )
+      : clientVisible !== undefined
+        ? ctx.db
+            .query("clientFiles")
+            .withIndex("visibility", (index) =>
+              index
+                .eq("orgId", orgId)
+                .eq("clientVisible", clientVisible)
+                .gt("createdAt", createdAfter)
+                .lte("createdAt", upper),
+            )
+        : ctx.db
+            .query("clientFiles")
+            .withIndex("organization", (index) =>
+              index
+                .eq("orgId", orgId)
+                .gt("createdAt", createdAfter)
+                .lte("createdAt", upper),
+            );
+    const matches: Array<{ file: Doc<"clientFiles">; sameInstant: number }> = [];
+    let scanned = 0;
+    let skip = cursor?.skip ?? 0;
+    let sameInstant = 0;
+    let lastCreatedAt = -1;
+    let scanBounded = false;
+    for await (const file of files.order("desc")) {
+      if (++scanned > CLIENT_FILE_SCAN_LIMIT) {
+        scanBounded = true;
+        break;
+      }
+      sameInstant = file.createdAt === lastCreatedAt ? sameInstant + 1 : 1;
+      lastCreatedAt = file.createdAt;
+      if (skip > 0 && file.createdAt === cursor?.createdAt) {
+        skip -= 1;
+        continue;
+      }
+      if (
+        file.orgId !== orgId ||
+        file.archivedAt ||
+        file.deletedAt ||
+        (clientVisible !== undefined && file.clientVisible !== clientVisible) ||
+        (contentType && !file.contentType.toLowerCase().includes(contentType)) ||
+        (queryText &&
+          !`${file.name} ${file.originalName}`.toLowerCase().includes(queryText))
+      ) {
+        continue;
+      }
+      matches.push({ file, sameInstant });
+      if (matches.length > limit) break;
+    }
+    const page = matches.slice(0, limit);
+    const hasMore = matches.length > limit;
+    const last = page.at(-1);
     return {
       files: await Promise.all(
-        files.map(async (file) => {
+        page.map(async ({ file }) => {
           const policy = file.policyId ? await ctx.db.get(file.policyId) : null;
           return {
             clientFileId: file._id,
@@ -2186,7 +2357,9 @@ async function executeToolDomain(
           };
         }),
       ),
-      bounded: files.length === limit,
+      nextCursor:
+        hasMore && last ? `${last.file.createdAt}:${last.sameInstant}` : null,
+      bounded: hasMore || scanBounded,
     };
   }
 
@@ -2203,11 +2376,17 @@ async function executeToolDomain(
   }
 
   if (toolName === "update_client_wiki") {
+    const orgId = normalizeOrganizationId(ctx, input.orgId);
+    // Append reads the current revision in this same transaction, so it cannot conflict.
+    const current =
+      input.mode === "append" ? await readOrgWiki(ctx, orgId) : null;
     return await upsertOrgWikiDocumentByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      orgId: normalizeOrganizationId(ctx, input.orgId),
-      markdown: String(input.markdown),
-      expectedRevision: Number(input.expectedRevision),
+      orgId,
+      markdown: current
+        ? appendWikiSection(current.markdown, String(input.markdown))
+        : String(input.markdown),
+      expectedRevision: current ? current.revision : Number(input.expectedRevision),
       source: args.channel === "mcp" ? "mcp" : "operator",
     });
   }
@@ -2737,10 +2916,9 @@ async function executeToolDomain(
       .order("desc")
       .first();
     const status = run?.pipelineStatus ?? policy.pipelineStatus;
-    if (status === "running" || status === "paused") {
-      throw new Error(
-        "An extraction is already running or paused for this policy",
-      );
+    if (status === "running") return alreadyRunningExtraction(policyId);
+    if (status === "paused") {
+      throw new Error("An extraction is paused for this policy");
     }
     if (!policy.fileId) throw new Error("Policy source file is missing");
     await ctx.scheduler.runAfter(
@@ -3326,6 +3504,7 @@ async function executeToolDomain(
     return {
       queued,
       domain,
+      research: await techStackResearchStatus(ctx, website),
       current: await readWebsiteTechProfile(ctx, website),
     };
   }
@@ -3341,9 +3520,11 @@ async function executeToolDomain(
       throw new Error("Research organization not found");
     if (org.type === "broker") assertExternalBrokerIdentity(org);
     const queued = await scheduleCompanyResearch(ctx, orgId, { force: true });
+    const researched = (await ctx.db.get(orgId))!;
     return {
       queued,
-      status: (await ctx.db.get(orgId))!.companyResearch!.status,
+      status: researched.companyResearch!.status,
+      research: companyResearchStatus(researched),
       orgId,
     };
   }
@@ -3478,6 +3659,108 @@ export const forwardingContextInternal = internalQuery({
   },
 });
 
+export const researchStatusInternal = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    orgId: v.optional(v.string()),
+    website: v.optional(v.string()),
+    kind: v.union(
+      v.literal("company"),
+      v.literal("tech_stack"),
+      v.literal("all"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    // A prospect has no organization, only a scanned website.
+    if (!args.orgId) {
+      const techStack = await techStackResearchStatus(ctx, args.website);
+      return { research: [techStack], settled: techStack.settled };
+    }
+    const orgId = normalizeOrganizationId(ctx, args.orgId);
+    const organization = await ctx.db.get(orgId);
+    if (
+      !organization ||
+      organization.deletedAt !== undefined ||
+      (organization.type !== "client" && organization.type !== "broker")
+    ) {
+      throw new NoWriteInputError(
+        "target_not_found",
+        "Client or provider organization not found",
+      );
+    }
+    const statuses: ResearchStatus[] = [];
+    if (args.kind !== "tech_stack")
+      statuses.push(companyResearchStatus(organization));
+    // Provider organizations have no tech-stack scan.
+    if (args.kind !== "company" && organization.type === "client")
+      statuses.push(await techStackResearchStatus(ctx, organization.website));
+    return {
+      orgId,
+      research: statuses,
+      settled: statuses.every((status) => status.settled),
+    };
+  },
+});
+
+/** Participants for scoping company-email search to a client or request. */
+export const emailScopeParticipantsInternal = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    orgId: v.optional(v.string()),
+    procurementRequestId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    const participants = new Set<string>();
+    const request = args.procurementRequestId
+      ? await ctx.db.get(
+          normalizeProcurementRequestId(ctx, args.procurementRequestId),
+        )
+      : null;
+    if (args.procurementRequestId && (!request || request.deletedAt)) {
+      throw new NoWriteInputError(
+        "target_not_found",
+        "Procurement request not found",
+      );
+    }
+    const orgId = args.orgId
+      ? normalizeOrganizationId(ctx, args.orgId)
+      : request?.clientOrgId;
+    const organization = orgId ? await ctx.db.get(orgId) : null;
+    if (orgId && (!organization || organization.deletedAt !== undefined)) {
+      throw new NoWriteInputError(
+        "target_not_found",
+        "Organization not found",
+      );
+    }
+    const domain = websiteTechDomain(organization?.website);
+    if (domain) participants.add(domain);
+    if (request && orgId) {
+      for (const option of await clientRecipientOptions(ctx, request, orgId))
+        participants.add(option.email);
+      const outreaches = await ctx.db
+        .query("procurementBrokerOutreaches")
+        .withIndex("request", (q) => q.eq("requestId", request._id))
+        .take(25);
+      for (const outreach of outreaches)
+        if (outreach.contactEmail)
+          participants.add(outreach.contactEmail.trim().toLowerCase());
+    } else if (orgId) {
+      const memberships = await ctx.db
+        .query("orgMemberships")
+        .withIndex("organization", (q) => q.eq("orgId", orgId))
+        .take(20);
+      for (const membership of memberships) {
+        const user = await ctx.db.get(membership.userId);
+        if (user?.email && !user.isAnonymous)
+          participants.add(user.email.trim().toLowerCase());
+      }
+    }
+    return [...participants].slice(0, 20);
+  },
+});
+
 export const teamEmailThreadForToolInternal = internalQuery({
   args: { operatorUserId: v.id("users"), threadId: v.string() },
   handler: async (ctx, args) => {
@@ -3520,6 +3803,29 @@ async function executeToolActionDomain(
     };
   }
 
+  if (args.toolName === "get_research_status") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.get_research_status.inputSchema.parse(args.input);
+    const startedAt = dayjs().valueOf();
+    const deadline = startedAt + (parsed.waitSeconds ?? 0) * 1_000;
+    for (;;) {
+      const status = await ctx.runQuery(internal.operatorAgent.researchStatusInternal, {
+        operatorUserId: args.operatorUserId,
+        orgId: parsed.orgId,
+        website: parsed.website,
+        kind: parsed.kind ?? "all",
+      });
+      const now = dayjs().valueOf();
+      if (status.settled || now >= deadline) {
+        return {
+          result: { ...status, waitedSeconds: Math.round((now - startedAt) / 1_000) },
+        };
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(RESEARCH_POLL_MS, deadline - now)),
+      );
+    }
+  }
+
   if (args.toolName === "list_mcp_tools" || args.toolName === "call_mcp_tool") {
     return await ctx.runAction(internal.actions.operatorMcp.run, {
       operatorUserId: args.operatorUserId,
@@ -3529,13 +3835,40 @@ async function executeToolActionDomain(
   }
 
   if (isOperatorGoogleWorkspaceTool(args.toolName)) {
+    let input = args.input;
+    if (
+      args.toolName === "search_company_email" &&
+      (input.orgId || input.procurementRequestId)
+    ) {
+      const scoped = await ctx.runQuery(
+        internal.operatorAgent.emailScopeParticipantsInternal,
+        {
+          operatorUserId: args.operatorUserId,
+          orgId: normalizedOptionalText(input.orgId),
+          procurementRequestId: normalizedOptionalText(
+            input.procurementRequestId,
+          ),
+        },
+      );
+      const explicit = Array.isArray(input.participants)
+        ? (input.participants as string[])
+        : [];
+      const participants = [...new Set([...explicit, ...scoped])].slice(0, 20);
+      if (!participants.length) {
+        throw new NoWriteInputError(
+          "invalid_input",
+          "No website domain or contact email is on record for that scope. Pass participants explicitly.",
+        );
+      }
+      input = { ...input, participants };
+    }
     return await ctx.runAction(
       internal.actions.operatorGoogleWorkspace.runToolInternal,
       {
         operatorUserId: args.operatorUserId,
         threadId: args.threadId,
         toolName: args.toolName,
-        input: args.input,
+        input,
         channel: args.channel,
       },
     );
@@ -6444,6 +6777,24 @@ export const requestToolConfirmationInternal = internalMutation({
         summary: blockingConfirmation.payload.summary,
         expiresAt: blockingConfirmation.expiresAt,
       };
+    }
+    // Nothing to approve when the work is already underway.
+    if (args.toolName === "retry_failed_policy_extraction") {
+      const policy = await ctx.db.get(normalizePolicyId(ctx, input.policyId));
+      const run = policy
+        ? await ctx.db
+            .query("policyExtractionRuns")
+            .withIndex("policy", (index) => index.eq("policyId", policy._id))
+            .order("desc")
+            .first()
+        : null;
+      if (policy && (run?.pipelineStatus ?? policy.pipelineStatus) === "running") {
+        return {
+          status: "succeeded" as const,
+          result: alreadyRunningExtraction(policy._id),
+          idempotent: false,
+        };
+      }
     }
     try {
       await preflightOperatorToolConfirmation(ctx, {
