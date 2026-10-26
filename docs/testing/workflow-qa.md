@@ -2785,3 +2785,32 @@ No new tests, dev migrations, production writes or deployment.
 Story: Providers Send → durable claim → accepted application summary → persisted plain-text/HTML email → existing dynamic operator inbox and scoped packet link.
 
 Local review on `zac/provider-outreach-summary`: root and Convex TypeScript passed; ESLint passed with existing warnings; all 145 existing tests passed with two workers (an earlier parallel run had an auth-fixture timeout). No tests or migrations were added. Helium rendered the real composer output using synthetic Riley QA Applicant / Alex QA Operator: applicant-first subject/introduction, HTML bullets, readable Ontario/date labels, separate packet section and dynamic signature were visible. Local artifact: ignored `.context/qa/provider-summary-20261026/initial-email.html`; screenshot `01-email-layout-preview.png`. This render checks composition, not actual email delivery. Production deployment and live outreach remain pending at the time of this entry.
+
+## Provider tool batches — October 26, 2026 (W4)
+
+Native local Conductor backend; synthetic providers and the existing local request
+fixture. Evidence: `.context/w4-local-results.json`,
+`.context/w4-local-extra-results.json`, `.context/w4-local-qa.mjs` and
+`.context/w4-catalog-size.json`. Registered tool reads/preflights used
+`operatorAgent.invokeRegisteredToolInternal` with the MCP channel; atomic writes
+used the internal batch mutation. Browser approval cards and OAuth HTTP transport
+were not exercised.
+
+| Workflow | Status | Evidence / limits |
+| --- | --- | --- |
+| Ensure/create/attach and repeat | Passed locally | Two created providers, a normalized `www`/path alias reused the first, repeated ensure matched all; exactly one request/provider outreach, without `sentAt`. |
+| Bulk update and clearing | Passed locally | Two profile updates; lowercase geography/ACORD normalized; nested `website: null` retained and cleared storage. |
+| Invalid final item | Passed locally | `CAUT` failed preflight before approval; prior item remained unchanged. Three pre-implementation isolation cases cover no partial writes, Spot-owned identity rejection and duplicate identity reuse. |
+| Cursor and batch search | Passed locally | Both QA providers found across 10 one-row pages with accurate bounds; domain groups match normalized hostnames. |
+| Full batch approval summary | Passed locally | All 50 items retained in the persisted 4,885-character summary, including item 50. W3 owns approval-card presentation. |
+| Public enrichment | Queued, completion not verified | Existing create scheduling ran; synthetic `.invalid` identities produced no cited public evidence. No inference accuracy claim. |
+
+Repeat with an active local operator and request: ensure two distinct domains plus
+an alias with `attachToProcurementRequestId`, repeat unchanged, update both profiles
+(including a null website), then page grouped search with `limit: 1`. Request an
+update with a valid first patch and invalid final ACORD code; verify no confirmation
+or profile write. Request a 50-item ensure and inspect the saved summary tail.
+Use a separate conversation for subsequent writes while this approval is pending.
+Every Convex CLI call must unset the two deployment credentials as documented in
+AGENTS.md and explicitly target the local backend. No production or live sends
+were used.

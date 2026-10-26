@@ -1,3 +1,9 @@
+import {
+  prepareEnsureProviders,
+  prepareUpdateProviders,
+  validateProviderCreate,
+  validateProviderUpdate,
+} from "./operatorBrokerProfiles";
 import { prepareApplicationToolUpdate } from "../procurementRequests";
 import { prepareBusinessProfileToolUpdate } from "../orgWiki";
 import { getMarkdownDocument } from "../markdownDocuments";
@@ -14,13 +20,7 @@ import {
   writableProcurementRequestStatus,
 } from "../procurementRequests";
 import { assertFeatureFlagAllowedForOrg } from "./featureFlags";
-import {
-  assertExternalBrokerIdentity,
-  normalizeBrokerLineOfBusinessCodes,
-  normalizeBrokerWritingStates,
-  normalizeBrokerWritingCountries,
-  resolveBrokerAppetite,
-} from "./brokerProfileValidation";
+import { assertExternalBrokerIdentity } from "./brokerProfileValidation";
 import { assertNoOperatorImpersonation } from "./clientFiles";
 import type { OperatorAgentToolName } from "./operatorAgentToolRegistry";
 import { resolveOperatorPolicySources } from "../operatorPolicyImports";
@@ -64,6 +64,8 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "confirm_procurement_proposal_review",
   "select_procurement_proposal",
   "create_broker_network_profile",
+  "ensure_broker_network_profiles",
+  "update_broker_network_profiles",
   "update_broker_network_profile",
   "create_procurement_file_item",
   "update_procurement_file_item",
@@ -266,58 +268,6 @@ function validateOptionalUrl(value: unknown) {
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new Error("URL must use http or https");
-  }
-}
-
-function validateBrokerProfileFields(input: Record<string, unknown>) {
-  assertExternalBrokerIdentity({
-    name: typeof input.name === "string" ? input.name : undefined,
-    website: typeof input.website === "string" ? input.website : undefined,
-  });
-  if (Array.isArray(input.writingCountries)) {
-    const writingCountries = normalizeBrokerWritingCountries(
-      input.writingCountries.filter(
-        (value): value is string => typeof value === "string",
-      ),
-    );
-    resolveBrokerAppetite({
-      writingCountries,
-      writingStates: Array.isArray(input.writingStates)
-        ? input.writingStates.filter(
-            (value): value is string => typeof value === "string",
-          )
-        : undefined,
-    });
-  }
-  if (Array.isArray(input.nationwideCountries))
-    normalizeBrokerWritingCountries(
-      input.nationwideCountries.filter(
-        (value): value is string => typeof value === "string",
-      ),
-    );
-  if (Array.isArray(input.excludedStates))
-    normalizeBrokerWritingStates(
-      input.excludedStates.filter(
-        (value): value is string => typeof value === "string",
-      ),
-    );
-  if (Array.isArray(input.writingStates)) {
-    normalizeBrokerWritingStates(
-      input.writingStates.filter(
-        (value): value is string => typeof value === "string",
-      ),
-    );
-  }
-  if (Array.isArray(input.lineOfBusinessCodes)) {
-    normalizeBrokerLineOfBusinessCodes(
-      input.lineOfBusinessCodes.filter(
-        (value): value is string => typeof value === "string",
-      ),
-    );
-  }
-  if (input.website !== null) validateOptionalUrl(input.website);
-  if (input.name !== undefined && !normalizedText(input.name)) {
-    throw new Error("Provider name cannot be blank");
   }
 }
 
@@ -732,30 +682,6 @@ async function preflightProposalSelect(
   }
 }
 
-async function preflightBrokerProfileCreate(
-  ctx: MutationCtx,
-  input: Record<string, unknown>,
-) {
-  const name = normalizedText(input.name);
-  if (!name) throw new Error("Provider name is required");
-  validateBrokerProfileFields(input);
-  // The agent reaches this tool from unstructured submission records, where the
-  // same broker often appears under a name it has already been registered with.
-  // Registering a duplicate splits that broker's outreach and proposal history.
-  const brokers = await ctx.db
-    .query("organizations")
-    .withIndex("type", (query) => query.eq("type", "broker"))
-    .collect();
-  const duplicate = brokers.find(
-    (broker) => broker.name.trim().toLowerCase() === name.toLowerCase(),
-  );
-  if (duplicate) {
-    throw new Error(
-      `Provider ${duplicate.name} is already registered as ${duplicate._id}; update that profile instead`,
-    );
-  }
-}
-
 async function preflightClientOrganizationCreate(
   ctx: MutationCtx,
   input: Record<string, unknown>,
@@ -1135,11 +1061,16 @@ export async function preflightOperatorToolConfirmation(
       await preflightProposalSelect(ctx, args.input);
       return;
     case "create_broker_network_profile":
-      await preflightBrokerProfileCreate(ctx, args.input);
+      await validateProviderCreate(ctx, args.input);
+      return;
+    case "ensure_broker_network_profiles":
+      await prepareEnsureProviders(ctx, args.input);
+      return;
+    case "update_broker_network_profiles":
+      await prepareUpdateProviders(ctx, args.input);
       return;
     case "update_broker_network_profile":
-      await requireBrokerOrganization(ctx, args.input.brokerOrgId);
-      validateBrokerProfileFields(args.input);
+      await validateProviderUpdate(ctx, args.input);
       return;
     case "create_procurement_file_item":
       await preflightProcurementFileCreate(ctx, args.input);

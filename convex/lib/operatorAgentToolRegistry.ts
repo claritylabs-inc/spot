@@ -19,11 +19,15 @@ import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
 import {
   normalizeBrokerLineOfBusinessCodes,
   normalizeBrokerWritingStates,
-  BROKER_REGION_CODES,
-  BROKER_COUNTRY_CODES,
   normalizeBrokerWritingCountries,
 } from "./brokerProfileValidation";
-import { ProviderAcordLobCodeSchema, lobLabel } from "./linesOfBusiness";
+import { lobLabel } from "./linesOfBusiness";
+import {
+  brokerCreateInput,
+  brokerUpdateInput,
+  ensureBrokerProfilesInput,
+  updateBrokerProfilesInput,
+} from "./operatorBrokerInputs";
 import {
   GENERATE_COI_DESCRIPTION,
   generateCoiInputSchema,
@@ -203,20 +207,12 @@ const brokerNetworkStatus = z.enum([
   "inactive",
   "blacklisted",
 ]);
-const brokerOfficeAddress = z.object({
-  street1: omittable(z.string().max(300)),
-  street2: omittable(z.string().max(300)),
-  city: omittable(z.string().max(200)),
-  state: omittable(z.string().max(100)),
-  postalCode: omittable(z.string().max(40)),
-  country: omittable(z.string().max(100)),
-});
 const brokerWritingState = z
-  .enum(BROKER_REGION_CODES)
-  .describe("Exact two-letter US state or Canadian province/territory code");
-const brokerLineOfBusinessCode = ProviderAcordLobCodeSchema.describe(
-  "Exact ACORD PCS LineOfBusiness code. Unknown/blank markers are excluded; an empty list means not yet known. Common commercial values: CGL = General Liability, PROP = Commercial Property, AUTOB = Business Automobile. Never invent an abbreviation.",
-);
+  .string()
+  .describe("Two-letter US state/DC or Canadian province/territory code");
+const brokerLineOfBusinessCode = z
+  .string()
+  .describe("Exact ACORD LOBCd, e.g. CGL, PROP, AUTOB");
 const optionalHttpUrl = z
   .url()
   .max(2_000)
@@ -1019,7 +1015,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "broker_network",
     version: 3,
     description:
-      "Read one exact external supplier-network insurance provider profile; Spot-owned brands are ineligible. Includes neutral organization identity, office, serviced countries and states/provinces, exact ACORD LOBCd values, portal contacts plus operator-only networkContacts (people/team contact methods, roles, coverage context, notes, sources and a bounded flag), last outreach, proposal count, and persisted research outcome, sources and confidence-scored findings.",
+      "Read one external provider’s identity, appetite, portal and network contacts, market history and persisted research evidence/outcome. Network contacts include roles, coverage context, notes, sources and a bounded flag. Spot-owned identities are rejected.",
     inputSchema: z.object({ brokerOrgId: organizationId }),
     capability: "operator.organizations.read",
     effect: "read",
@@ -1030,15 +1026,22 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   list_broker_network_profiles: defineOperatorTool({
     family: "broker_network",
-    version: 3,
+    version: 4,
     description:
-      "Search the external supplier-network insurance provider directory by ONE name or domain substring, status, US state/Canadian province code, or exact ACORD LOBCd value. query is one literal substring (maximum 200 characters), NOT a list or batch search. For multiple identities, call separately per identity or omit query to list and compare the bounded results. A rejected query is not evidence of absence; correct it before concluding no match. Spot-owned brands are excluded, including legacy type=broker rows.",
+      "Search providers by query or batch queries/domains (1–20 each), status, region or ACORD LOBCd. Batch results are grouped by input. Cursor pages scan at most limit providers; filtered pages may be empty. Follow nextCursor until null before concluding absence. Returns compact profiles; get_broker_network_profile adds contacts, activity and research. Spot-owned identities are excluded.",
     inputSchema: z.object({
       query: omittable(z.string().max(200)),
+      queries: omittable(
+        z.array(z.string().trim().min(1).max(200)).min(1).max(20),
+      ),
+      domains: omittable(
+        z.array(z.string().trim().min(1).max(253)).min(1).max(20),
+      ),
       status: omittable(brokerNetworkStatus),
       writingState: omittable(brokerWritingState),
       lineOfBusinessCode: omittable(brokerLineOfBusinessCode),
       limit: omittable(z.number().int().min(1).max(100)),
+      cursor: omittable(z.string()),
     }),
     capability: "operator.organizations.read",
     effect: "read",
@@ -1908,38 +1911,10 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   create_broker_network_profile: defineOperatorTool({
     family: "broker_network",
-    version: 6,
+    version: 7,
     description:
-      "Register a new external supplier-network insurance provider organization and its network profile with no portal users and no invites. The legacy type=broker organization value covers carriers, MGAs, wholesalers, agencies and producers; record only evidenced roles. Spot-owned brands and domains cannot be registered; treat them as Spot. Search the provider network first and update the existing profile instead when the provider is already registered. Countries use ISO two-letter codes; writing states/provinces use US/Canadian abbreviations and lines use exact ACORD LOBCd values. Creation queues Jev-orchestrated public research to fill missing profile fields; inspect the research outcome before claiming completion.",
-    inputSchema: z.object({
-      name: z.string().min(1).max(200),
-      website: omittable(optionalHttpUrl).describe(
-        "Verified provider website. Omit when unknown; null is treated as omitted on create.",
-      ),
-      networkStatus: omittable(brokerNetworkStatus).describe(
-        "Defaults to prospect for a provider that has not yet placed business",
-      ),
-      officeAddress: omittable(brokerOfficeAddress),
-      writingCountries: omittable(
-        z.array(z.enum(BROKER_COUNTRY_CODES)).max(250),
-      ).describe(
-        "Replacement list of ISO two-letter country codes. Omit to preserve; removing a country removes its regions.",
-      ),
-      nationwideCountries: omittable(
-        z.array(z.enum(BROKER_COUNTRY_CODES)).max(250),
-      ).describe(
-        "Countries with explicitly evidenced nationwide service. Omit to preserve; never infer nationwide service from licensing or an empty region list.",
-      ),
-      excludedStates: omittable(z.array(brokerWritingState).max(64)).describe(
-        "Explicit state/province exceptions to nationwide service. Omit to preserve.",
-      ),
-      writingStates: omittable(z.array(brokerWritingState).max(64)).describe(
-        "Complete supported state/province list using exact US/Canadian codes",
-      ),
-      lineOfBusinessCodes: omittable(
-        z.array(brokerLineOfBusinessCode).max(100),
-      ).describe("Complete supported-line list using exact ACORD LOBCd values"),
-    }),
+      "Create one external provider without users or invites; use ensure_broker_network_profiles for multiple identities or create-and-attach. Search first to avoid duplicates. Spot-owned identities are rejected. Creation queues public enrichment; queued is not complete.",
+    inputSchema: brokerCreateInput,
     capability: "operator.organizations.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -1948,55 +1923,32 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `Create provider network profile ${JSON.stringify(input.name)} with no portal users`,
   }),
+  ensure_broker_network_profiles: defineOperatorTool({
+    family: "broker_network",
+    version: 1,
+    description:
+      "Match or create 1–50 external providers by normalized domain, then exact name, in one atomic approved batch. Optionally attach missing request tracking rows; never sends. Matched profiles are unchanged. New profiles queue public enrichment; explicit research reruns need research_broker approval. Spot-owned identities and ambiguous matches are rejected.",
+    inputSchema: ensureBrokerProfilesInput,
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: (input) =>
+      input.attachToProcurementRequestId
+        ? { kind: "procurement_request", id: input.attachToProcurementRequestId }
+        : { kind: "platform", id: "broker-network" },
+    summarize: (input) =>
+      [
+        `Match or create ${input.items.length} provider profiles${input.attachToProcurementRequestId ? ` and attach to request ${input.attachToProcurementRequestId}` : ""}; new profiles queue public enrichment. No users, invites or email.`,
+        ...input.items.map((item, index) => `${index + 1}. ${JSON.stringify(item)}`),
+      ].join("\n"),
+  }),
   update_broker_network_profile: defineOperatorTool({
     family: "broker_network",
-    version: 6,
+    version: 7,
     description:
-      "Update supplied fields on one exact external supplier-network insurance provider profile. Spot-owned identities are rejected. Countries use ISO two-letter codes; writing states/provinces use US/Canadian abbreviations and lines use exact ACORD LOBCd values; omitted fields remain unchanged. Explicit profile edits, including empty lists, take precedence over automated enrichment. Identity edits queue fresh public research.",
-    inputSchema: z
-      .object({
-        brokerOrgId: organizationId,
-        evidence: omittable(z.string().min(1).max(800)).describe(
-          "Explain why these changes are supported, citing public source URLs or mailbox, sender, and message date. Retained with the action input; not shown in the approval summary or saved as a profile field.",
-        ),
-        networkStatus: omittable(brokerNetworkStatus),
-        officeAddress: omittable(brokerOfficeAddress),
-        writingCountries: omittable(
-          z.array(z.enum(BROKER_COUNTRY_CODES)).max(250),
-        ).describe(
-          "Replacement list of ISO two-letter country codes. Omit to preserve; removing a country removes its regions.",
-        ),
-        nationwideCountries: omittable(
-          z.array(z.enum(BROKER_COUNTRY_CODES)).max(250),
-        ).describe(
-          "Countries with explicitly evidenced nationwide service. Omit to preserve; never infer nationwide service from licensing or an empty region list.",
-        ),
-        excludedStates: omittable(z.array(brokerWritingState).max(64)).describe(
-          "Explicit state/province exceptions to nationwide service. Omit to preserve.",
-        ),
-        writingStates: omittable(z.array(brokerWritingState).max(64)).describe(
-          "Replacement list of exact US state or Canadian province/territory codes. Omit to preserve the saved list.",
-        ),
-        lineOfBusinessCodes: omittable(
-          z.array(brokerLineOfBusinessCode).max(100),
-        ).describe(
-          "Replacement list of exact ACORD LOBCd values. Omit to preserve the saved list.",
-        ),
-        name: omittable(z.string().min(1).max(200)),
-        website: clearable(optionalHttpUrl).describe(
-          "Omit to preserve the saved website. Pass null only when the operator's evidence explicitly calls for clearing it.",
-        ),
-      })
-      .refine(
-        (input) =>
-          Object.entries(input).some(
-            ([key, value]) =>
-              key !== "brokerOrgId" &&
-              key !== "evidence" &&
-              value !== undefined,
-          ),
-        "At least one provider profile field is required",
-      ),
+      "Update supplied fields on one external provider; use update_broker_network_profiles for batches. Omitted fields stay unchanged; explicit edits and empty lists override enrichment. Identity changes queue public research. Spot-owned identities are rejected.",
+    inputSchema: brokerUpdateInput,
     capability: "operator.organizations.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -2008,6 +1960,25 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         input,
         "brokerOrgId",
       ),
+  }),
+  update_broker_network_profiles: defineOperatorTool({
+    family: "broker_network",
+    version: 1,
+    description:
+      "Update 1–50 external provider profiles atomically under one exact approval. Each item uses orgId and a patch; omit unchanged fields. Every item and ACORD/geography code is validated before approval. Explicit edits override enrichment; identity edits queue public research.",
+    inputSchema: updateBrokerProfilesInput,
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "platform", id: "broker-network" }),
+    summarize: (input) =>
+      [
+        `Update ${input.items.length} provider profiles:`,
+        ...input.items.map(
+          (item, index) => `${index + 1}. ${item.orgId}: ${JSON.stringify(item.patch)}`,
+        ),
+      ].join("\n"),
   }),
   list_procurement_provider_matches: defineOperatorTool({
     family: "procurement",
@@ -2280,7 +2251,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 5,
     description:
-      "Add an external provider-network organization to an exact procurement request with a selected contact and workflow status. This only creates a tracking record; it does not send email. Keep outreach notes in the request’s private.md. Spot-owned organizations and contact domains are ineligible.",
+      "Add one provider’s tracking row to a request with contact and status; no email is sent. For multiple providers use ensure_broker_network_profiles with attachToProcurementRequestId. Notes belong in private.md; Spot-owned identities/contact domains are rejected.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgId: organizationId,
@@ -2859,6 +2830,12 @@ export function parseOperatorAgentToolInput(
   const parsed = getOperatorAgentToolSpec(name).inputSchema.parse(
     input,
   ) as Record<string, unknown>;
+  if (
+    name === "ensure_broker_network_profiles" ||
+    name === "update_broker_network_profiles"
+  ) {
+    return JSON.parse(JSON.stringify(parsed)) as Record<string, unknown>;
+  }
   return Object.fromEntries(
     Object.entries(parsed)
       .filter(([, value]) => value !== undefined)

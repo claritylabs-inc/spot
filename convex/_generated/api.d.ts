@@ -318,6 +318,8 @@ import type * as lib_operatorAgentIntentRegistry from "../lib/operatorAgentInten
 import type * as lib_operatorAgentToolFailure from "../lib/operatorAgentToolFailure.js";
 import type * as lib_operatorAgentToolRegistry from "../lib/operatorAgentToolRegistry.js";
 import type * as lib_operatorAvatar from "../lib/operatorAvatar.js";
+import type * as lib_operatorBrokerInputs from "../lib/operatorBrokerInputs.js";
+import type * as lib_operatorBrokerProfiles from "../lib/operatorBrokerProfiles.js";
 import type * as lib_operatorEmailAddress from "../lib/operatorEmailAddress.js";
 import type * as lib_operatorEmailAuthentication from "../lib/operatorEmailAuthentication.js";
 import type * as lib_operatorEmailTools from "../lib/operatorEmailTools.js";
@@ -475,6 +477,7 @@ import type * as operator from "../operator.js";
 import type * as operatorAgent from "../operatorAgent.js";
 import type * as operatorAgentRunner from "../operatorAgentRunner.js";
 import type * as operatorAudit from "../operatorAudit.js";
+import type * as operatorBrokerBatches from "../operatorBrokerBatches.js";
 import type * as operatorCursors from "../operatorCursors.js";
 import type * as operatorEmail from "../operatorEmail.js";
 import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
@@ -861,6 +864,8 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorAgentToolFailure": typeof lib_operatorAgentToolFailure;
   "lib/operatorAgentToolRegistry": typeof lib_operatorAgentToolRegistry;
   "lib/operatorAvatar": typeof lib_operatorAvatar;
+  "lib/operatorBrokerInputs": typeof lib_operatorBrokerInputs;
+  "lib/operatorBrokerProfiles": typeof lib_operatorBrokerProfiles;
   "lib/operatorEmailAddress": typeof lib_operatorEmailAddress;
   "lib/operatorEmailAuthentication": typeof lib_operatorEmailAuthentication;
   "lib/operatorEmailTools": typeof lib_operatorEmailTools;
@@ -1018,6 +1023,7 @@ declare const fullApi: ApiFromModules<{
   operatorAgent: typeof operatorAgent;
   operatorAgentRunner: typeof operatorAgentRunner;
   operatorAudit: typeof operatorAudit;
+  operatorBrokerBatches: typeof operatorBrokerBatches;
   operatorCursors: typeof operatorCursors;
   operatorEmail: typeof operatorEmail;
   operatorEmailDrafts: typeof operatorEmailDrafts;

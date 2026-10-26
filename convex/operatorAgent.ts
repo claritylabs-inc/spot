@@ -138,10 +138,14 @@ import {
 } from "./procurementProposals";
 import {
   getBrokerProfileDetails,
-  listBrokerProfiles,
   createStandaloneBrokerByOperator,
   updateBrokerProfileByOperator,
 } from "./brokerProfiles";
+import type { ProviderBatchResult } from "./operatorBrokerBatches";
+import {
+  listProviderPage,
+  validateProviderCreate,
+} from "./lib/operatorBrokerProfiles";
 import { readOrgWiki, upsertOrgWikiDocumentByOperator } from "./orgWiki";
 import {
   listPacketLinksForOperator,
@@ -362,7 +366,10 @@ function serializedOperatorActionOutput(toolName: string, result: unknown) {
     toolName === "read_operator_conversation" ||
     toolName === "list_team_inbox_threads" ||
     toolName === "get_team_inbox_thread" ||
-    toolName === "get_procurement_email_thread"
+    toolName === "get_procurement_email_thread" ||
+    toolName === "list_broker_network_profiles" ||
+    toolName === "ensure_broker_network_profiles" ||
+    toolName === "update_broker_network_profiles"
     ? JSON.stringify(result)
     : boundedJson(result);
 }
@@ -559,6 +566,12 @@ async function operatorConfirmationSummary(
     threadId: Id<"operatorAgentThreads">;
   },
 ) {
+  if (
+    toolName === "ensure_broker_network_profiles" ||
+    toolName === "update_broker_network_profiles"
+  ) {
+    return getOperatorAgentToolSpec(toolName).summarize(input);
+  }
   if (toolName === "reply_email_thread" || toolName === "reply_procurement_email_thread") {
     return (await operatorReplyConfirmation(ctx, input, context.operatorUserId)).summary;
   }
@@ -2314,21 +2327,9 @@ async function executeToolDomain(
   }
 
   if (toolName === "list_broker_network_profiles") {
-    const limit = typeof input.limit === "number" ? input.limit : 50;
-    const profiles = await listBrokerProfiles(ctx, {
-      search: normalizedOptionalText(input.query),
-      status:
-        input.status === "prospect" ||
-        input.status === "active" ||
-        input.status === "inactive" ||
-        input.status === "blacklisted"
-          ? input.status
-          : undefined,
-      writingState: normalizedOptionalText(input.writingState),
-      lineOfBusinessCode: normalizedOptionalText(input.lineOfBusinessCode),
-      limit,
-    });
-    return { profiles, bounded: profiles.length === limit };
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.list_broker_network_profiles.inputSchema.parse(input);
+    return await listProviderPage(ctx, parsed);
   }
 
   if (toolName === "list_team_inbox_threads") {
@@ -2992,7 +2993,19 @@ async function executeToolDomain(
     });
   }
 
+  if (
+    toolName === "ensure_broker_network_profiles" ||
+    toolName === "update_broker_network_profiles"
+  ) {
+    const result: ProviderBatchResult = await ctx.runMutation(
+      internal.operatorBrokerBatches.execute,
+      { operatorUserId: args.operatorUserId, toolName, input },
+    );
+    return result;
+  }
+
   if (toolName === "create_broker_network_profile") {
+    await validateProviderCreate(ctx, input);
     const name = normalizedOptionalText(input.name);
     if (!name) throw new Error("Provider name is required");
     return await createStandaloneBrokerByOperator(ctx, {
