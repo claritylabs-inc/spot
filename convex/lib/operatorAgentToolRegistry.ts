@@ -2056,7 +2056,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       [
         `Match or create ${input.items.length} provider profiles${input.attachToProcurementRequestId ? ` and attach to request ${input.attachToProcurementRequestId}` : ""}; new profiles queue public enrichment. No users, invites or email.`,
-        ...input.items.map((item, index) => `${index + 1}. ${JSON.stringify(item)}`),
+        ...input.items.map((item) => `- ${JSON.stringify(item)}`),
       ].join("\n"),
   }),
   update_broker_network_profile: defineOperatorTool({
@@ -2092,7 +2092,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       [
         `Update ${input.items.length} provider profiles:`,
         ...input.items.map(
-          (item, index) => `${index + 1}. ${item.orgId}: ${JSON.stringify(item.patch)}`,
+          (item) => `- ${item.orgId}: ${JSON.stringify(item.patch)}`,
         ),
       ].join("\n"),
   }),
