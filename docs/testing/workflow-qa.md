@@ -2704,3 +2704,64 @@ back response streaming, with the existing run/checkpoint guards.
 - Scope: isolated component browser QA plus the mocked durable integration;
   no live inference or deployment mutation was run. Existing saved messages
   are not rewritten.
+
+
+## Insurance request and provider follow-up round trip — 2026-10-23
+
+Native-local capture QA covered fresh client intake, two-provider outreach,
+provider replies through parser/event routing and cl-router extraction, operator
+answers, batched invitations, conditional client forms, PDF upload, email answers,
+correction/resubmission and reminder termination. Four concurrent reply trials,
+28 aggregate assertions, 8 authorization/revision guards and 10 lifecycle cases
+passed. Found and fixed concurrent question duplication, misleading accepted
+intake completion, delayed reminder terminalization and submitted-form composer
+cadence. No live sends or production writes. Real delivery, webhook signature
+verification, hosted callbacks and clean signed-out browser recovery remain
+outside the verified scope. See
+[round-trip report](insurance-request-roundtrip-2026-10-23.md) and
+`.context/qa/full-insurance-workflow/` for evidence and validation.
+
+## Helium intake-to-provider audit — 2026-10-26
+
+Fresh synthetic intake through submission, captured provider outreach/shared packet,
+manual supplementary question/invitation, applicant save/reload/submission and
+operator answer readback exercised on localhost:8080. Fixed restricted applicants'
+post-submission failure: clientForms excluded them before its existing ownedRequest
+check. Same restricted applicant's own page recovered; other synthetic intake/form
+access stayed denied. Client sequence completed and two reminders cancelled.
+Provider geography could remain unknown despite accepted free-text address and
+explicit generated geography answer; panel still offered 50 matched sends.
+Supplementary answer was absent from provider packet. Irrelevant zero-contractor
+questions, missing-address follow-up and unconditional 24-hour quote promise
+recorded. Focused lint/Convex typecheck passed. No live sends or deployment.
+Inbound email extraction, mobile and alternate-theme coverage not claimed.
+See [audit](helium-e2e-2026-10-26.md); private readback evidence lives in
+`.context/qa/helium-e2e-20261026/`.
+
+Follow-up geography repair: missing structured request geography now yields
+unknown fit and is excluded by the existing bulk-send guard. Manual address entry
+exposes country/state controls. Helium verified disabled bulk send (0) before
+correction, applicant US/DC save/resubmission, then 28 eligible sends with Canadian
+and French examples excluded for geography. No additional sends. Root TypeScript
+and focused ESLint passed; no tests added, migrations or deployment.
+
+Supplementary packet follow-up: the existing provider link now renders current
+confirmed answers in its own card and includes them in preview/export Markdown.
+Helium verified submitted 12, draft correction 13 staying private (packet retained
+12), then resubmission and packet reload showing 13. Provider requirement scope,
+conditional applicability and independent file release remain enforced. No new
+browser fixtures for cross-provider/file variants, no sends or deployment. See
+the audit's supplementary packet repair section.
+
+
+## Email verification warning and redirect loop — 2026-10-26
+
+On `zac/intake-workflow-fixes` after merging main, native Helium exercised fresh
+synthetic signup/submission and captured OTP confirmation. The saved application
+remained visible after confirmation and reload, with no unload warning or login
+loop. Verification keeps a fresh cookie-based document load because the prior
+restricted session is revoked; only that successful, flushed navigation bypasses
+the auth SDK's refresh unload warning. Invalid-code handling remained on the
+form. See the Helium audit for fixture and merge details. Root/Convex TypeScript
+passed; focused ESLint has no errors and one existing hook dependency warning.
+No new tests, dev migrations, production writes or deployment.

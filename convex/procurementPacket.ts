@@ -18,6 +18,13 @@ import {
   packetFileVisibility,
 } from "./lib/packetDocuments";
 import dayjs from "dayjs";
+import {
+  informationApplicability,
+  informationCoverageGroups,
+} from "../lib/procurement-information";
+import { COVERAGE_OPTIONS } from "../lib/insurance-intake-details";
+import { formatIntakeFollowupAnswer } from "../lib/intake-followups";
+import { intakeCurrency } from "../lib/intake-money";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -222,6 +229,110 @@ export async function listPacketDocuments(
   };
 }
 
+/** Only saved, current facts are shared; form drafts and provider correspondence stay private. */
+async function supplementaryPacketMarkdown(
+  ctx: QueryCtx | MutationCtx,
+  request: Doc<"procurementRequests">,
+  outreachId: Id<"procurementBrokerOutreaches"> | undefined,
+  releasedFiles: { fileItemId: Id<"procurementFileItems">; name: string }[],
+) {
+  const [questions, requirements] = await Promise.all([
+    ctx.db
+      .query("procurementInformationQuestions")
+      .withIndex("by_requestId", (q) => q.eq("requestId", request._id))
+      .take(201),
+    ctx.db
+      .query("procurementInformationRequirements")
+      .withIndex("by_requestId", (q) => q.eq("requestId", request._id))
+      .take(201),
+  ]);
+  if (questions.length > 200 || requirements.length > 200)
+    throw new Error(
+      "This request exceeds the supplementary information limit (200). Contact Spot.",
+    );
+  const facts = await Promise.all(
+    questions
+      .filter((q) => !q.archivedAt)
+      .map(async (q) => {
+        const answer = q.answerId ? await ctx.db.get(q.answerId) : null;
+        return {
+          ...q,
+          answer:
+            answer?.requestId === request._id && answer.questionId === q._id
+              ? answer
+              : null,
+        };
+      }),
+  );
+  const sharedQuestions = new Set(
+    requirements
+      .filter(
+        (r) =>
+          (!outreachId || r.outreachId === outreachId) &&
+          r.status !== "waived" &&
+          r.status !== "withdrawn",
+      )
+      .map((r) => r.questionId),
+  );
+  const currency = intakeCurrency(
+    submittedIntakeApplication(request)?.details.registrationCountry,
+  );
+  const answered = facts.flatMap((q) => {
+    const answer = q.answer;
+    if (
+      !sharedQuestions.has(q._id) ||
+      !answer ||
+      answer.unsure ||
+      informationApplicability(q, facts) !== "applies"
+    )
+      return [];
+    // Attachment visibility is independent of answering a question.
+    const attachments = releasedFiles.filter((file) =>
+      answer.fileItemIds.includes(file.fileItemId),
+    );
+    const formattedAnswer = [
+      answer.answer.trim()
+        ? formatIntakeFollowupAnswer(
+            { ...q.question, answer: answer.answer },
+            q.scope.currency ?? currency,
+          )
+        : "",
+      attachments.length
+        ? `Supporting files: ${attachments.map((file) => file.name).join(", ")}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return formattedAnswer ? [{ ...q, formattedAnswer }] : [];
+  });
+  const cell = (value: string) =>
+    value
+      .trim()
+      .replace(/\\/g, "\\\\")
+      .replace(/[|*_[\]`]/g, "\\$&")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\r?\n/g, "&#10;");
+  return informationCoverageGroups(answered)
+    .map(({ coverage, questions: rows }) => {
+      const label =
+        COVERAGE_OPTIONS.find((option) => option.id === coverage)?.label ??
+        coverage;
+      return `### ${cell(label)}\n\n| Question | Answer |\n| --- | --- |\n${rows
+        .map((q) => {
+          const scope = [
+            q.scope.subject !== "company" ? q.scope.subject : "",
+            q.scope.period !== "current" ? q.scope.period : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          return `| ${cell(q.question.label)}${scope ? ` (${cell(scope)})` : ""} | ${cell(q.formattedAnswer)} |`;
+        })
+        .join("\n")}`;
+    })
+    .join("\n\n");
+}
+
 async function brokerPacketProjection(
   ctx: QueryCtx | MutationCtx,
   args: {
@@ -288,6 +399,26 @@ async function brokerPacketProjection(
         }),
     )
   ).filter((file): file is NonNullable<typeof file> => file !== null);
+  const supplementaryMarkdown = await supplementaryPacketMarkdown(
+    ctx,
+    request,
+    outreach?._id,
+    files,
+  );
+  const baseMarkdown = assemblePacketMarkdown(
+    visibleSections.map((section) => ({ ...section, audience: "broker" })),
+    { audience: "broker" },
+  );
+  const supplementarySection = supplementaryMarkdown
+    ? [
+        {
+          key: "supplementary-answers",
+          heading: "Supplementary answers",
+          body: supplementaryMarkdown,
+          order: visibleSections.length,
+        },
+      ]
+    : [];
   return {
     request: {
       requestId: request._id,
@@ -303,11 +434,17 @@ async function brokerPacketProjection(
           recipientEmail: outreach.contactEmail ?? null,
         }
       : null,
-    sections: visibleSections,
-    markdown: assemblePacketMarkdown(
-      visibleSections.map((section) => ({ ...section, audience: "broker" })),
-      { audience: "broker" },
-    ),
+    sections: [...visibleSections, ...supplementarySection],
+    baseMarkdown,
+    supplementaryMarkdown,
+    markdown: [
+      baseMarkdown,
+      supplementaryMarkdown
+        ? `## Supplementary answers\n\n${supplementaryMarkdown}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
     files,
     gaps: [],
   };
@@ -890,6 +1027,8 @@ export const getByToken = query({
       ),
       expiresAt: link.expiresAt,
       markdown: current.markdown,
+      baseMarkdown: current.baseMarkdown,
+      supplementaryMarkdown: current.supplementaryMarkdown,
       files: current.files.map((file) => {
         const downloadUrl = new URL("/packet-file", siteUrl);
         downloadUrl.searchParams.set("token", token);

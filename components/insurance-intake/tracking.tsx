@@ -399,12 +399,13 @@ export function IntakeTracking({
               <ReviewSection
                 key={section}
                 title={"Additional details"}
-                complete={(data.followupBatches?.additional?.status === "failed" ||
-                  (data.followupBatches?.additional?.status === "ready" && data.followupBatches.additional.current && !data.followupBatches.additional.enriching)) &&
-                  rows.every(row => !!row.answer.trim() || !!row.skipped) &&
-                  (data.followupBatches?.additional?.questions ?? [])
-                    .filter(question => followupQuestionVisible(question, data.details.followups))
-                    .every(question => rows.some(row => row.id === question.id && (!!row.answer.trim() || !!row.skipped)))}
+                complete={rows.every(row => !!row.answer.trim() || !!row.skipped) &&
+                  ((data.submitted && !data.hasUnsubmittedChanges) ||
+                    ((data.followupBatches?.additional?.status === "failed" ||
+                      (data.followupBatches?.additional?.status === "ready" && data.followupBatches.additional.current && !data.followupBatches.additional.enriching)) &&
+                      (data.followupBatches?.additional?.questions ?? [])
+                        .filter(question => followupQuestionVisible(question, data.details.followups))
+                        .every(question => rows.some(row => row.id === question.id && (!!row.answer.trim() || !!row.skipped)))))}
                 step={30}
                 onEdit={onEdit}
               >

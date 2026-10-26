@@ -7,6 +7,8 @@ export type PacketView = {
   contactEmail?: string | null;
   expiresAt?: number;
   markdown: string;
+  baseMarkdown?: string;
+  supplementaryMarkdown?: string;
   files: Array<{
     _id: string;
     name: string;

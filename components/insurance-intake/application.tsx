@@ -257,7 +257,10 @@ function IntakeApplication() {
       );
   }, [verification, requestId, isAuthenticated, viewer, confirmOwnership]);
   useEffect(() => {
-    if (!verification || !requestId || !isAuthenticated) return;
+    // OTP sign-in replaces the restricted session asynchronously. Wait for the
+    // verified viewer before claiming the application with the new identity.
+    if (!verification || !requestId || !isAuthenticated ||
+      !viewer?.emailVerificationTime || viewer.intakeRestricted) return;
     void confirmOwnership({ requestId, token: verification })
       .then(() => {
         try {
@@ -265,14 +268,14 @@ function IntakeApplication() {
         } catch {
           /* Ownership is already saved on the server. */
         }
-        window.location.replace(withQuoteProvider(`/intake?request=${requestId}`, params.get("provider")));
+        router.replace(withQuoteProvider(`/intake?request=${requestId}`, params.get("provider")));
       })
       .catch((e) => {
         setConfirmationError(
           getUserFacingErrorMessage(e, "Could not confirm your application"),
         );
       });
-  }, [verification, requestId, isAuthenticated, confirmOwnership, params]);
+  }, [verification, requestId, isAuthenticated, viewer, confirmOwnership, params, router]);
   if (requestId && (isLoading || needsLogin))
     return <IntakeApplicationLoading />;
   if (verification)
@@ -1958,6 +1961,12 @@ function Application({
       });
       await completeOtpSignIn(answers.email!, code);
       intentionalRedirect.current = true;
+      // Verification revokes the restricted session. Reload from the freshly
+      // written auth cookies instead of letting old live queries redirect to
+      // login. Answers are flushed and uploads are idle, so this one deliberate
+      // unload must also bypass the auth SDK's token-refresh unload warning.
+      const allowVerifiedRedirect = (event: BeforeUnloadEvent) => event.stopImmediatePropagation();
+      window.addEventListener("beforeunload", allowVerifiedRedirect, { capture: true, once: true });
       window.location.assign(
         withQuoteProvider(`/intake?request=${requestId}&verify=${verificationToken.current}`, params.get("provider")),
       );

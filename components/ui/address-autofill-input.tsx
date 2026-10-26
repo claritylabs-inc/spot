@@ -7,6 +7,9 @@ import type { Theme as MapboxSearchTheme } from "@mapbox/search-js-web";
 
 import { MapboxAddressPreview } from "./mapbox-address-preview";
 import { Input } from "@claritylabs-inc/ui/components/input";
+import { Field, FieldLabel, FieldDescription } from "@claritylabs-inc/ui/components/field";
+import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
+import { getCountries } from "react-phone-number-input";
 import { mapboxTypographyAdapter } from "@/lib/typography";
 
 const AddressAutofill = dynamic(
@@ -18,6 +21,11 @@ const AddressAutofill = dynamic(
 );
 
 const MAPBOX_ACCESS_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+const countryNames = new Intl.DisplayNames(["en"], { type: "region" });
+const addressCountries = getCountries().map((value) => ({
+  value,
+  label: countryNames.of(value) ?? value,
+})).sort((a, b) => a.label.localeCompare(b.label));
 const MAPBOX_ADDRESS_AUTOFILL_OPTIONS = {
   language: "en",
   proximity: "ip",
@@ -254,10 +262,48 @@ export function AddressAutofillInput({
     />
   );
 
-  if (!MAPBOX_ACCESS_TOKEN) return input;
+  const unresolved = !!displayedValue.trim() &&
+    (value.latitude === undefined || !value.country || !value.state);
+  const geography = unresolved ? (
+    <div className="space-y-3">
+      <FieldDescription>
+        Confirm the country and state/province if you entered the address manually.
+      </FieldDescription>
+      <Field>
+        <FieldLabel>Country</FieldLabel>
+        <SearchableSelect
+          ariaLabel="Country"
+          placeholder="Select country"
+          disabled={disabled}
+          value={addressCountries.find((option) =>
+            option.value === value.country || option.label === value.country,
+          )?.value ?? ""}
+          options={addressCountries}
+          onChange={(country) => onChange({
+            ...value, country, state: undefined,
+            latitude: undefined, longitude: undefined,
+          })}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`${id}-state`}>State / province</FieldLabel>
+        <Input
+          id={`${id}-state`}
+          value={value.state ?? ""}
+          placeholder="For example, DC or Ontario"
+          disabled={disabled}
+          onChange={(event) => onChange({
+            ...value, state: event.target.value,
+            latitude: undefined, longitude: undefined,
+          })}
+          onBlur={onBlur}
+        />
+      </Field>
+    </div>
+  ) : null;
   return (
     <>
-      <AddressAutofill
+      {MAPBOX_ACCESS_TOKEN ? <AddressAutofill
         accessToken={MAPBOX_ACCESS_TOKEN}
         options={MAPBOX_ADDRESS_AUTOFILL_OPTIONS}
         theme={MAPBOX_ADDRESS_AUTOFILL_THEME}
@@ -265,8 +311,9 @@ export function AddressAutofillInput({
         onRetrieve={handleRetrieve}
       >
         {input}
-      </AddressAutofill>
-      {showMap &&
+      </AddressAutofill> : input}
+      {geography}
+      {showMap && MAPBOX_ACCESS_TOKEN &&
         value.longitude !== undefined &&
         value.latitude !== undefined && (
           <MapboxAddressPreview

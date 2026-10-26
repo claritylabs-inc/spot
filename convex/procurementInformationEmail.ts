@@ -14,6 +14,7 @@ import {
   mutation,
   internalQuery,
   internalMutation,
+  type MutationCtx,
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -66,6 +67,7 @@ export const startExtraction = mutation({
       operatorUserId: operator.userId,
       startedAt: dayjs().valueOf(),
       status: "running",
+      processingStartedAt: 0,
       questions: [],
     });
     await ctx.scheduler.runAfter(
@@ -93,6 +95,50 @@ export const extraction = query({
     return { status: row.status, questions: row.questions };
   },
 });
+async function nextExtraction(
+  ctx: MutationCtx,
+  requestId: Id<"procurementRequests">,
+) {
+  return await ctx.db
+    .query("procurementInformationExtractions")
+    .withIndex("by_requestId_and_status", (q) =>
+      q.eq("requestId", requestId).eq("status", "running"),
+    )
+    .first();
+}
+
+async function wakeNextExtraction(
+  ctx: MutationCtx,
+  requestId: Id<"procurementRequests">,
+) {
+  const next = await nextExtraction(ctx, requestId);
+  if (next?.processingStartedAt === 0)
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.procurementInformation.extractInternal,
+      { extractionId: next._id },
+    );
+}
+
+/** Read the latest facts only after earlier mail on this request has finished. */
+export const claimExtraction = internalMutation({
+  args: { extractionId: v.id("procurementInformationExtractions") },
+  handler: async (ctx, { extractionId }) => {
+    const row = await ctx.db.get(extractionId);
+    if (!row || row.status !== "running" || row.processingStartedAt !== 0)
+      return false;
+    if ((await nextExtraction(ctx, row.requestId))?._id !== row._id)
+      return false;
+    await ctx.db.patch(row._id, { processingStartedAt: dayjs().valueOf() });
+    await ctx.scheduler.runAfter(
+      15 * 60 * 1000,
+      internal.procurementInformationEmail.expireExtraction,
+      { extractionId },
+    );
+    return true;
+  },
+});
+
 export const extractionContext = internalQuery({
   args: { extractionId: v.id("procurementInformationExtractions") },
   handler: async (ctx, { extractionId }) => {
@@ -411,19 +457,39 @@ export const finishExtraction = internalMutation({
       reviewReasons,
       finishedAt: dayjs().valueOf(),
     });
+    await wakeNextExtraction(ctx, row.requestId);
   },
 });
 export const expireExtraction = internalMutation({
   args: { extractionId: v.id("procurementInformationExtractions") },
   handler: async (ctx, { extractionId }) => {
     const row = await ctx.db.get(extractionId);
-    if (row?.status === "running")
+    if (row?.status === "running") {
+      if (row.processingStartedAt === 0) {
+        await wakeNextExtraction(ctx, row.requestId);
+        return;
+      }
+      const remaining =
+        (row.processingStartedAt ?? row.startedAt) +
+        15 * 60 * 1000 -
+        dayjs().valueOf();
+      if (remaining > 0) {
+        await ctx.scheduler.runAfter(
+          remaining,
+          internal.procurementInformationEmail.expireExtraction,
+          { extractionId },
+        );
+        return;
+      }
       await ctx.db.patch(row._id, {
         status: "failed",
         finishedAt: dayjs().valueOf(),
       });
+      await wakeNextExtraction(ctx, row.requestId);
+    }
   },
 });
+
 async function informationEmailRoute(
   ctx: Ctx,
   messageId: Id<"teamEmailMessages">,
@@ -548,6 +614,7 @@ export const queueEmail = internalMutation({
         })),
         startedAt: dayjs().valueOf(),
         status: "running",
+        processingStartedAt: 0,
         questions: [],
       },
     );

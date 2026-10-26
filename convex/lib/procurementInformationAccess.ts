@@ -1,3 +1,4 @@
+import { closeInformationFormOutreach } from "../providerOutreach";
 import { normalizeProcurementEmail } from "./procurement";
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -41,7 +42,8 @@ export async function clientAccess(
   requestId: Id<"procurementRequests">,
   write = false,
 ) {
-  const userId = await getSessionUserId(ctx);
+  // Unverified applicants may access their own request through ownedRequest below.
+  const userId = await getSessionUserId(ctx, true);
   const user = userId ? await ctx.db.get(userId) : null;
   if (!user || user.serviceAccountKind) throw new Error("Sign in to continue");
   const request = await ctx.db.get(requestId);
@@ -193,9 +195,15 @@ export async function cancelSupersededForms(
       form.status === "open" &&
       (form.questions.some((q) => q.questionId === questionId) ||
         form.prerequisites?.some((q) => q.questionId === questionId))
-    )
+    ) {
       await ctx.db.patch(form._id, {
         status: "cancelled",
         revision: form.revision + 1,
       });
+      await closeInformationFormOutreach(
+        ctx,
+        form,
+        "information_form_cancelled",
+      );
+    }
 }

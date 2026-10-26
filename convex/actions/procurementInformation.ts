@@ -9,6 +9,11 @@ import { extractProviderQuestions } from "../lib/procurementInformationProviderE
 export const extractInternal = internalAction({
   args: { extractionId: v.id("procurementInformationExtractions") },
   handler: async (ctx, { extractionId }): Promise<void> => {
+    const claimed = await ctx.runMutation(
+      internal.procurementInformationEmail.claimExtraction,
+      { extractionId },
+    );
+    if (!claimed) return;
     try {
       const context = await ctx.runQuery(
         internal.procurementInformationEmail.extractionContext,
@@ -39,22 +44,28 @@ export const extractInternal = internalAction({
         context,
         trace,
       );
-      await ctx.runMutation(internal.procurementInformationEmail.finishExtraction, {
-        extractionId,
-        failed: false,
-        questions,
-        reviewReasons,
-      });
+      await ctx.runMutation(
+        internal.procurementInformationEmail.finishExtraction,
+        {
+          extractionId,
+          failed: false,
+          questions,
+          reviewReasons,
+        },
+      );
     } catch (error) {
       console.error("[procurementInformation] extraction failed", {
         extractionId,
         error: error instanceof Error ? error.message : String(error),
       });
-      await ctx.runMutation(internal.procurementInformationEmail.finishExtraction, {
-        extractionId,
-        failed: true,
-        questions: [],
-      });
+      await ctx.runMutation(
+        internal.procurementInformationEmail.finishExtraction,
+        {
+          extractionId,
+          failed: true,
+          questions: [],
+        },
+      );
     }
   },
 });

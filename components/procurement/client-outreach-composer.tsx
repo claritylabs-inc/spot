@@ -116,7 +116,7 @@ export function ClientOutreachComposer({
   /** Shown above the header rows (the audience switch). */
   header?: ReactNode;
 }) {
-  const panel = useQuery(api.clientOutreach.getPanel, { requestId });
+  const panel = useQuery(api.clientOutreach.getPanel, { requestId, informationFormId });
   const launch = useMutation(api.clientOutreach.launch);
   const draftKey = informationFormId
     ? `${requestId}:${informationFormId}`
@@ -157,7 +157,11 @@ export function ClientOutreachComposer({
     recipients.find((option) => option.email === draft.recipientEmail) ??
     recipients[0] ??
     null;
-  const cadence = draft.cadence ?? panel?.defaultCadence ?? null;
+  const selectedCadence = draft.cadence ?? panel?.defaultCadence ?? null;
+  const cadence =
+    selectedCadence && panel?.formSubmitted
+      ? { ...selectedCadence, followUpCount: 0 }
+      : selectedCadence;
   const preview = cadence
     ? schedulePreview(
         { ...cadence, style: "brief_nudge" },
@@ -256,8 +260,10 @@ export function ClientOutreachComposer({
                     size="compact"
                     type="button"
                     variant="ghost"
-                    disabled={disabled}
-                    title="Automatic follow-ups on this thread; they stop when the client replies"
+                    disabled={disabled || panel?.formSubmitted}
+                    title={panel?.formSubmitted
+                      ? "This form has been submitted; no automatic follow-ups are needed"
+                      : "Automatic follow-ups on this thread; they stop when the client replies"}
                   />
                 }
               >

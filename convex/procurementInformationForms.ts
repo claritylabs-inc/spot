@@ -1,3 +1,4 @@
+import { closeInformationFormOutreach } from "./providerOutreach";
 import {
   informationApplicability,
   informationFormTitle,
@@ -199,6 +200,7 @@ export async function cancelInformationForm(
     status: "cancelled",
     revision: form.revision + 1,
   });
+  await closeInformationFormOutreach(ctx, form, "information_form_cancelled");
   await audit(
     ctx,
     operatorUserId,
@@ -461,6 +463,12 @@ export const saveForm = mutation({
           }
         : {}),
     });
+    if (args.submit)
+      await closeInformationFormOutreach(
+        ctx,
+        form,
+        "information_form_submitted",
+      );
     if (impersonated && request.clientOrgId) await recordImpersonatedWrite(ctx);
     return form.revision + 1;
   },

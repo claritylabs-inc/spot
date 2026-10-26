@@ -79,7 +79,7 @@ const STYLE_LABELS: Record<OutreachCadence["style"], string> = {
 
 const BANNER_COPY: Record<string, string> = {
   geography_undeterminable:
-    "Request locations could not be determined, so geography is not used to match providers.",
+    "Confirm the country and state/province in the application’s mailing or operating address. Providers with unknown geography are excluded from bulk sending; individual sends require your explicit selection.",
   lines_undeterminable:
     "Requested coverages could not be determined, so coverage lines are not used to match providers.",
   lines_partly_unevaluated:
