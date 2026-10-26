@@ -214,8 +214,9 @@ function ShellFrame({
     useAppShellSlot("artifactPanel");
   const { filled: hasSecondaryNav, setTarget: setSecondaryNavTarget } =
     useAppShellSlot("secondaryNav");
-  // A page-level folder rail continues the top bar's surface.
-  const { filled: hasFolderRail } = useAppShellSlot("folderRail");
+  // Page-level tabs render in the top bar through this target.
+  const { filled: hasPageTabs, setTarget: setPageTabsTarget } =
+    useAppShellSlot("folderRail");
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [rightPanelWide, setRightPanelWide] = useState(false);
   const hasPdfPanel = isPdfOpen && !!fileUrl;
@@ -240,7 +241,9 @@ function ShellFrame({
       main={
         <>
           <AppTopBar
-            className={hasFolderRail ? "bg-tab-rail border-0" : undefined}
+            tabs={
+              hasPageTabs ? <div ref={setPageTabsTarget} /> : undefined
+            }
             actions={
               hasActions ? (
                 <span ref={setActionsTarget} className="contents" />

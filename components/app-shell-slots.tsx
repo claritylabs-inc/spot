@@ -112,22 +112,6 @@ export function useAppShellSlot(slot: AppShellSlotName) {
   return { filled: owners[slot].length > 0, setTarget: targetRef(slot) };
 }
 
-/**
- * Declares, while mounted, that a page has no content to portal but owns the
- * slot (for example a page-level folder rail the top bar blends into).
- */
-export function useAppShellSlotClaim(slot: AppShellSlotName) {
-  const slots = useContext(AppShellSlotsContext);
-  const token = useId();
-  const claim = slots?.claim;
-  const release = slots?.release;
-  useLayoutEffect(() => {
-    if (!claim || !release) return;
-    claim(slot, token);
-    return () => release(slot, token);
-  }, [claim, release, slot, token]);
-}
-
 export function useOptionalAppShellSlots() {
   return useContext(AppShellSlotsContext) !== null;
 }

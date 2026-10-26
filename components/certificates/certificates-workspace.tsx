@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
+import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import { useCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { usePageContext } from "@/hooks/use-page-context";
@@ -380,10 +380,10 @@ export function CertificatesWorkspace({
         (!isLoading && tableCertificates.length > 0) ? (
           <ListToolbar
             followKey={uiKey}
-            tabsPlacement="above"
+            tabsPlacement="navbar"
             tabs={
               !renderShell && visibleTabs.length > 1 ? (
-                <PageTabs
+                <PageTabsRail
                   value={visibleTab}
                   onValueChange={(value) =>
                     setTab(value as CertificateWorkspaceTab)
@@ -396,7 +396,7 @@ export function CertificatesWorkspace({
                       </TabsTrigger>
                     ))}
                   </PageTabsList>
-                </PageTabs>
+                </PageTabsRail>
               ) : undefined
             }
             filters={

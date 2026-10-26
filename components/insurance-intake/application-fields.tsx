@@ -304,7 +304,7 @@ export function IntakeApplicationFields({
     return activeSection ? (
       <div className="space-y-5">{fields}</div>
     ) : (
-      <TabsContent value={title} className="p-4">
+      <TabsContent value={title} className="pt-4">
         {fields}
       </TabsContent>
     );
@@ -317,9 +317,7 @@ export function IntakeApplicationFields({
         onValueChange={(value) => setSelected(String(value))}
         className={cn(
           "[&_input:not([type=checkbox])]:h-9 [&_[data-slot=select-trigger]]:h-9",
-          activeSection
-            ? "gap-5"
-            : "gap-0 overflow-hidden rounded-lg border border-border",
+          activeSection ? "gap-5" : "gap-0",
         )}
       >
         {!activeSection && (

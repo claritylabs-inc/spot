@@ -11,12 +11,8 @@ import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
-import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import {
-  PageTabs,
-  PageTabsList,
-  PageTabsPanel,
-} from "@/components/ui/folder-tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useTabParam } from "@/hooks/use-tab-param";
 import { openOAuthTab } from "@/lib/oauth-tab";
@@ -128,14 +124,14 @@ function OperatorChannelTabs({
         <TabsTrigger value="google-workspace">Google Workspace</TabsTrigger>
         <TabsTrigger value="mcp">MCP</TabsTrigger>
       </PageTabsList>
-      <PageTabsPanel value="slack">{children}</PageTabsPanel>
-      <PageTabsPanel value="imessage">
+      <TabsContent value="slack">{children}</TabsContent>
+      <TabsContent value="imessage">
         {imessageContent ?? placeholder}
-      </PageTabsPanel>
-      <PageTabsPanel value="google-workspace">
+      </TabsContent>
+      <TabsContent value="google-workspace">
         {googleWorkspaceContent ?? placeholder}
-      </PageTabsPanel>
-      <PageTabsPanel value="mcp">{mcpContent ?? placeholder}</PageTabsPanel>
+      </TabsContent>
+      <TabsContent value="mcp">{mcpContent ?? placeholder}</TabsContent>
     </PageTabs>
   );
 }

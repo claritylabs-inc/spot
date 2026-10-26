@@ -14,7 +14,7 @@ import {
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
+import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import { api } from "@/convex/_generated/api";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -71,7 +71,7 @@ export default function OperatorClientPoliciesPage() {
   );
 
   const statusNavigation = (
-    <PageTabs
+    <PageTabsRail
       value={policyStatus}
       onValueChange={(value) => {
         if (!value) return;
@@ -85,7 +85,7 @@ export default function OperatorClientPoliciesPage() {
         <TabsTrigger value="active">Active</TabsTrigger>
         <TabsTrigger value="archived">Archived</TabsTrigger>
       </PageTabsList>
-    </PageTabs>
+    </PageTabsRail>
   );
 
   return (

@@ -20,12 +20,8 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { buildCoverageBreakdown } from "@/convex/lib/coverageBreakdown";
 import { lobLabel, policyLobCodes } from "@/convex/lib/linesOfBusiness";
 import { PillButton } from "@/components/ui/pill-button";
-import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import {
-  PageTabs,
-  PageTabsList,
-  PageTabsPanel,
-} from "@/components/ui/folder-tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
@@ -1108,10 +1104,10 @@ export function PolicyDetailBody({
               </TabsTrigger>
             ))}
           </PageTabsList>
-          <PageTabsPanel value={visibleActiveTab}>
+          <TabsContent value={visibleActiveTab}>
             {notices}
             {views}
-          </PageTabsPanel>
+          </TabsContent>
         </PageTabs>
       ) : (
         <>

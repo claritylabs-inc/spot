@@ -21,7 +21,7 @@ import {
 } from "@claritylabs-inc/ui/components/dialog";
 import { PillButton } from "@/components/ui/pill-button";
 import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
+import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import { api } from "@/convex/_generated/api";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { typeStyle } from "@/lib/typography";
@@ -326,15 +326,14 @@ export function ProfileSectionTabs({
   onChange: (value: "profile" | "privacy") => void;
 }) {
   return (
-    <PageTabs
+    <PageTabsRail
       value={active}
       onValueChange={(value) => onChange(value as "profile" | "privacy")}
-      className="mb-6"
     >
       <PageTabsList aria-label="Profile sections">
         <TabsTrigger value="profile">Profile</TabsTrigger>
         <TabsTrigger value="privacy">Privacy</TabsTrigger>
       </PageTabsList>
-    </PageTabs>
+    </PageTabsRail>
   );
 }

@@ -146,9 +146,10 @@ export function AppTopBar({
   presence,
   mobileMenuRef,
   mobileMenuOpen,
-  className,
+  tabs,
 }: {
-  className?: string;
+  /** Page-owned tabs (or the portal target for them), right of the breadcrumb. */
+  tabs?: React.ReactNode;
   actions?: React.ReactNode;
   breadcrumbDetail?: React.ReactNode;
   onMobileMenuToggle?: () => void;
@@ -179,7 +180,7 @@ export function AppTopBar({
       onMobileMenuToggle={onMobileMenuToggle}
       mobileMenuRef={mobileMenuRef}
       mobileMenuOpen={mobileMenuOpen}
-      className={className}
+      tabs={tabs}
       actions={
         <>
           {presence}

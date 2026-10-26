@@ -45,12 +45,8 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
-import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import {
-  PageTabs,
-  PageTabsList,
-  PageTabsPanel,
-} from "@/components/ui/folder-tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -202,7 +198,7 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </PageTabsList>
-        <PageTabsPanel value="profile" className="space-y-5">
+        <TabsContent value="profile" className="space-y-5">
           <InlineFieldCard>
             <InlineFieldRow label="Provider name">
               <Input
@@ -330,8 +326,8 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
               />
             </InlineFieldRow>
           </InlineFieldCard>
-        </PageTabsPanel>
-        <PageTabsPanel value="appetite" className="space-y-5">
+        </TabsContent>
+        <TabsContent value="appetite" className="space-y-5">
           <InlineFieldCard>
             <InlineFieldRow label="Countries serviced">
               <AppetiteCountriesField
@@ -402,13 +398,13 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
               />
             </InlineFieldRow>
           </InlineFieldCard>
-        </PageTabsPanel>
-        <PageTabsPanel value="contacts">
+        </TabsContent>
+        <TabsContent value="contacts">
           <ProviderContacts brokerOrgId={row.broker._id} />
-        </PageTabsPanel>
-        <PageTabsPanel value="activity">
+        </TabsContent>
+        <TabsContent value="activity">
           <BrokerActivity brokerOrgId={row.broker._id} />
-        </PageTabsPanel>
+        </TabsContent>
       </PageTabs>
     </main>
   );

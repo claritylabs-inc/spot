@@ -65,12 +65,8 @@ import {
   TableRow,
   SortableTableHead,
 } from "@/components/ui/table";
-import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import {
-  PageTabs,
-  PageTabsList,
-  PageTabsPanel,
-} from "@/components/ui/folder-tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -3773,7 +3769,7 @@ function ComplianceWorkspace({
           </TabsTrigger>
         ))}
       </PageTabsList>
-      <PageTabsPanel value={navigationValue}>{content}</PageTabsPanel>
+      <TabsContent value={navigationValue}>{content}</TabsContent>
     </PageTabs>
   ) : (
     content

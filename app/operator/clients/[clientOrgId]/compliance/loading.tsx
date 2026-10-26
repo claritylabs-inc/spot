@@ -1,10 +1,10 @@
 import { OperationalSkeletonList } from "@claritylabs-inc/ui/components/operational-panel";
-import { FolderTabsSkeleton } from "@/components/route-skeletons";
 
+// Tabs load with the page, so the skeleton shows only the body.
 export default function OperatorClientComplianceLoading() {
   return (
-    <FolderTabsSkeleton tabs={["w-20", "w-20"]}>
+    <div className="flex w-full flex-col gap-4" aria-hidden="true">
       <OperationalSkeletonList rows={4} />
-    </FolderTabsSkeleton>
+    </div>
   );
 }

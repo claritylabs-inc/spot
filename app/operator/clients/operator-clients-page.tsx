@@ -9,7 +9,7 @@ import { AppShell } from "@/components/app-shell";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
+import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { ListToolbar } from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
@@ -221,9 +221,9 @@ export default function OperatorClientsScreen() {
       <main className="flex w-full flex-col gap-4">
         <ListToolbar
           followKey="clients:list"
-          tabsPlacement="above"
+          tabsPlacement="navbar"
           tabs={
-            <PageTabs
+            <PageTabsRail
               value={filter}
               onValueChange={(value) => {
                 if (value) setFilter(value as ClientFilter);
@@ -235,7 +235,7 @@ export default function OperatorClientsScreen() {
                 <TabsTrigger value="limited">Limited</TabsTrigger>
                 <TabsTrigger value="archived">Archived</TabsTrigger>
               </PageTabsList>
-            </PageTabs>
+            </PageTabsRail>
           }
           search={{
             value: search,
