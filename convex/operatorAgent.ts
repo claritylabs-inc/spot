@@ -1,3 +1,4 @@
+import { resolveOperatorToolDispatch } from "./lib/operatorToolConsolidation";
 import { getProviderOutreachPanel, launchProviderOutreachByOperator, stopProviderOutreachByOperator } from "./providerOutreach";
 import { getClientOutreachPanel, launchClientOutreachByOperator } from "./clientOutreach";
 import {
@@ -357,6 +358,7 @@ const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "attach_client_file",
   "search_thread_history",
   "read_thread_attachment",
+  "save_email_draft",
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
@@ -402,6 +404,9 @@ function serializedOperatorActionOutput(toolName: string, result: unknown) {
     toolName === "update_broker_network_profiles" ||
     toolName === "get_procurement_proposal" ||
     toolName === "list_procurement_provider_matches" ||
+    toolName === "get_platform_status" ||
+    toolName === "get_procurement_information" ||
+    toolName === "get_procurement_packet" ||
     toolName === "get_channel_health" ||
     toolName === "list_email_drafts" ||
     toolName === "search_thread_history"
@@ -1881,17 +1886,47 @@ async function readTeamThreadOwnRun(
   });
 }
 
-async function executeToolDomain(
-  ctx: MutationCtx,
-  args: {
-    operatorUserId: Id<"users">;
-    threadId: Id<"operatorAgentThreads">;
-    channel: OperatorChannel;
-    toolName: OperatorAgentToolName;
-    input: Record<string, unknown>;
-    sourceFingerprint?: string;
-  },
-) {
+type OperatorToolDomainArgs = {
+  operatorUserId: Id<"users">;
+  threadId: Id<"operatorAgentThreads">;
+  channel: OperatorChannel;
+  toolName: OperatorAgentToolName;
+  input: Record<string, unknown>;
+  sourceFingerprint?: string;
+};
+
+async function executeToolDomain(ctx: MutationCtx, args: OperatorToolDomainArgs) {
+  const { toolName, input } = resolveOperatorToolDispatch(args.toolName, args.input);
+  if (toolName === "get_platform_status") {
+    const sections = [...new Set(stringList(input.sections) ?? ["overview"])];
+    const entries = await Promise.all(sections.map(async (section) => {
+      const name = section === "overview" ? "get_operator_overview" : section === "routing" ? "get_routing_status" : "get_channel_health";
+      return [section, await executeToolDomainSingle(ctx, { ...args, toolName: name, input })];
+    }));
+    return Object.fromEntries(entries);
+  }
+  if (toolName === "get_procurement_information") {
+    if (!input.include) {
+      const information = await procurementInformationOverview(
+        ctx, normalizeProcurementRequestId(ctx, input.procurementRequestId),
+      );
+      return {
+        providers: information.providers,
+        questionCount: information.questions.length,
+        formCount: information.forms.length,
+      };
+    }
+    const sections = [...new Set(stringList(input.include) ?? [])];
+    const entries = await Promise.all(sections.map(async (section) => [
+      section,
+      await executeToolDomainSingle(ctx, { ...args, toolName: section === "information" ? "list_procurement_information" : "list_procurement_client_outreach", input }),
+    ]));
+    return Object.fromEntries(entries);
+  }
+  return executeToolDomainSingle(ctx, { ...args, toolName, input });
+}
+
+async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomainArgs) {
   const { toolName, input } = args;
   if (toolName === "list_operator_conversations") {
     const archived = input.archived === true;
@@ -4284,6 +4319,7 @@ async function executeToolActionDomain(
     threadMessageId?: Id<"operatorAgentMessages">;
   },
 ): Promise<OperatorActionToolResult> {
+  args = { ...args, ...resolveOperatorToolDispatch(args.toolName, args.input) };
   if (args.toolName === "get_procurement_forwarding_address") {
     const parsed = OPERATOR_AGENT_TOOL_REGISTRY.get_procurement_forwarding_address.inputSchema.parse(args.input);
     const context = await ctx.runQuery(internal.operatorAgent.forwardingContextInternal, {

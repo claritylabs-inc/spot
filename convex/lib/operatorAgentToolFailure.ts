@@ -149,7 +149,8 @@ export function executionOperatorToolFailure(
   // Attachment retrieval is catalogued as read but stages a file in the thread.
   const readOnly =
     getOperatorAgentToolSpec(toolName).effect === "read" &&
-    toolName !== "get_company_email_attachment";
+    toolName !== "get_company_email_attachment" &&
+    toolName !== "attach_to_conversation";
   const recoverable = !terminal && Boolean(knownNoWrite || readOnly);
   const code =
     terminal ??

@@ -308,6 +308,13 @@ const updateSchema = z.object({
       "Existing draft attachments to retain. Omission clears attachments.",
     ),
 });
+const saveSchema = updateSchema.extend({
+  draftId: z.string().optional(),
+  clientFileIds: z.array(z.string()).max(10).optional(),
+  policyIds: z.array(z.string()).max(10).optional(),
+  explicitArtifactRequest: z.literal("original_policy_document").optional(),
+  intentEvidence: z.string().optional(),
+});
 const policySchema = z.object({
   draftId: z.string(),
   policyId: z.string(),
@@ -968,6 +975,61 @@ export function buildEmailToolExecutors(
   }
 
   return {
+    save_email_draft: {
+      description: "Create or patch a draft, preserving omitted fields and preparing every attachment before saving.",
+      inputSchema: saveSchema,
+      execute: serialized(async (input: z.infer<typeof saveSchema>): Promise<EmailToolResult> => {
+        // Only the operator projection exposes this contract; tenant updates keep replacement semantics.
+        if (!operator) throw new Error("Operator draft context is required");
+        assertScope(true);
+        let existing = input.draftId ? await getDraft(input.draftId) : undefined;
+        if (existing) assertEditable(existing);
+        const content = normalizeContent({
+          ...input,
+          cc: input.cc ?? existing?.ccAddresses,
+          bcc: input.bcc ?? existing?.bccAddresses,
+        }, existing);
+        content.referencedPolicyIds = existing?.referencedPolicyIds ?? content.referencedPolicyIds;
+        const retain = input.attachmentFileIds === undefined
+          ? undefined : new Set(input.attachmentFileIds);
+        if (retain && [...retain].some((id) => !existing?.attachments?.some((attachment) => String(attachment.fileId) === id)))
+          throw new Error("That attachment is not available on this draft.");
+        content.attachments = (existing?.attachments ?? []).filter((attachment) => !retain || retain.has(String(attachment.fileId)));
+        for (const clientFileId of new Set(input.clientFileIds ?? [])) {
+          const file = await ctx.runQuery(internal.clientFiles.getForEmailAttachmentInternal, { orgId: requireOrg(), clientFileId });
+          if (!file) throw new Error("Client file not found, archived, or belongs to another client.");
+          if (!content.attachments.some((attachment) => attachment.fileId === file.fileId))
+            content.attachments.push({ ...file, kind: countCoiAttachments([file]) > 0 ? "coi" : "uploaded_file" });
+        }
+        const policyIds = [...new Set(input.policyIds ?? [])];
+        for (const policyId of policyIds) {
+          const requested = resolveRequestedCoiAttachmentsForRecipient({
+            to: content.to,
+            attachments: [{ kind: "original_policy", policyId, explicitArtifactRequest: input.explicitArtifactRequest, intentEvidence: input.intentEvidence }],
+          });
+          if (!requested.attachments.length)
+            throw new Error("Original policy PDFs require an explicit operator request identifying the artifact and policy.");
+        }
+        const error = await prepareOriginalPolicies(policyIds, content);
+        if (error) throw new Error(error);
+        content.attachments = uniqueAttachments(content.attachments);
+        if (content.attachments.reduce((total, attachment) => total + Math.ceil(attachment.size / 3) * 4, 0) > MAX_EMAIL_SIZE)
+          throw new Error("Attachments would be too large to send in one email.");
+        if (countCoiAttachments(content.attachments) > 0 && content.attachments.some((attachment) => countCoiAttachments([attachment]) === 0))
+          throw new Error("COI delivery requests should attach only generated COIs.");
+        if (!existing && content.to) {
+          const previous = await ctx.runQuery(internal.pendingEmails.findDraftByOperatorThreadAndRecipient, {
+            orgId, teamEmailThreadId: operator.teamThread?.id,
+            operatorThreadId: operator.threadId, recipientEmail: content.to,
+          });
+          if (previous && previous.orgId !== orgId) throw new Error("Draft not found");
+          if (previous && (!previous.senderUserId || previous.senderUserId === operator.senderUserId))
+            existing = previous;
+        }
+        const draft = await persist(content, existing, true);
+        return resultForDraft(draft, draft.sendBlockedReason);
+      }),
+    },
     draft_email: {
       description:
         "Create a saved email draft. This never sends. Supply recipient direction and only explicitly requested original policy PDFs.",
