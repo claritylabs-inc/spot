@@ -27,6 +27,20 @@ emails were sent. Evidence: `.context/qa/information-requests/`.
 No unit tests or migrations were added. Deleted-request and impersonation guards
 were reviewed in code; separate browser exercises are not claimed.
 
+## Client operator assignment and table column resizing — October 26, 2026
+
+Local Conductor stack, two synthetic operators via email OTP + TOTP enrollment.
+Screenshots and scripts in `.context/qa/client-operator/`.
+
+| Workflow | Status | Evidence / remaining check |
+| --- | --- | --- |
+| Clients Operator column: assign, clear to Unassigned, persists across reload, searchable | Passed locally | `02-dropdown-open.png`, `r2-unassigned-dashed.png` |
+| Assignment writes a `client_operator_assigned` audit entry | Passed locally | `04-audit-entry.png` |
+| All tab excludes archived clients; Archived tab lists them | Passed locally | `08-archived-tab.png` |
+| Operator column avatar-only at its 112px default, name when widened | Passed locally | `r3-01-default.png`, `r4-01-default.png`, `r04-operator-200-name.png` |
+| Shared `Table` column resizing (clients, audit, brokers, procurement): drag both sides of the border, exact widths, last column absorbs space, click without drag is a no-op, double-click resets, widths persist | Passed locally | `r4-02-hover-line_*.png`, `r05-overflow-scrolled.png` |
+| Avatar-only Operator dropdown hides its chevron at 80px minimum width | Changed after round 4; not re-run | `r4-04-min-width-zoom.png` shows the prior clipping |
+
 ## Operator UI polish (inbox, reader, settings) — October 23, 2026
 
 Local Conductor stack, synthetic operator via email OTP + TOTP enrollment, and

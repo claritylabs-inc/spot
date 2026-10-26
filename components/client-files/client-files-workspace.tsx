@@ -865,7 +865,7 @@ export function ClientFilesWorkspace({
     <div className="space-y-4">
       {visibilityTabs}
       <OperationalPanel as="div">
-        <Table>
+        <Table storageKey="spot:client-files:columns">
           <TableHeader>
             <TableRow>
               <SortableTableHead {...tableSort.head("name")}>

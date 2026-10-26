@@ -284,7 +284,7 @@ export function ManagedClientPolicyWorkspace({
         <PolicyEmptyState uploading={uploading} onUpload={handleUpload} />
       ) : (
         <OperationalPanel>
-          <Table className="min-w-[900px]">
+          <Table storageKey="spot:policies:list:columns" className="min-w-[900px]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <SortableTableHead

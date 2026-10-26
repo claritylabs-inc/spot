@@ -48,6 +48,7 @@ import {
 import {
   ApplicationStatusField,
   ApplicationWebsiteField,
+  ClientOperatorField,
   ClientStatusField,
   ClientWebsiteField,
 } from "./client-row-fields";
@@ -116,18 +117,28 @@ export default function OperatorClientsScreen() {
   const unlinkedApplications = useQuery(
     api.operator.listUnlinkedApplications,
   );
+  const operators = useQuery(api.operator.listOperators)?.filter(
+    (operator) => operator.status === "active",
+  );
+  const operatorNames = new Map(
+    operators?.map((operator) => [operator.userId, operator.name]),
+  );
   const searchText = search.trim().toLowerCase();
   const matchesSearch = (values: (string | undefined)[]) =>
     values.some((value) => value?.toLowerCase().includes(searchText));
   const filteredClients = clients?.filter(
     (client) =>
-      (filter === "all" || client.clientAccessStatus === filter) &&
+      (filter === "all"
+        ? client.clientAccessStatus !== "archived"
+        : client.clientAccessStatus === filter) &&
       matchesSearch([
         client.name,
         client.dba,
         client.website,
         client.primaryContactEmail,
         client.adminEmail,
+        client.assignedOperatorUserId &&
+          operatorNames.get(client.assignedOperatorUserId),
       ]),
   );
   // Applicants who have not named their company yet have no client record.
@@ -151,7 +162,13 @@ export default function OperatorClientsScreen() {
         (application): ClientListRow => ({ kind: "application", application }),
       ),
     ],
-    CLIENT_SORT_COLUMNS,
+    {
+      ...CLIENT_SORT_COLUMNS,
+      operator: (row: ClientListRow) =>
+        row.kind === "client" && row.client.assignedOperatorUserId
+          ? operatorNames.get(row.client.assignedOperatorUserId)
+          : undefined,
+    },
   );
   const selection = useRowSelection<string>("clients:list:selected", [
     ...(filteredClients?.map((client) => client._id) ?? []),
@@ -235,7 +252,7 @@ export default function OperatorClientsScreen() {
           }
         />
         <OperationalPanel data-operator-inline-fields>
-          <Table>
+          <Table storageKey="spot:clients:list:columns">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-11 pl-4 pr-0">
@@ -248,31 +265,37 @@ export default function OperatorClientsScreen() {
                   />
                 </TableHead>
                 <SortableTableHead
-                  className={`w-[28%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[24%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
                   {...tableSort.head("name")}
                 >
                   Client
                 </SortableTableHead>
                 <SortableTableHead
-                  className={`w-[24%] text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[18%] text-muted-foreground ${typeStyle("label.table")}`}
                   {...tableSort.head("admin")}
                 >
                   Admin
                 </SortableTableHead>
                 <SortableTableHead
-                  className={`w-[20%] text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[16%] text-muted-foreground ${typeStyle("label.table")}`}
                   {...tableSort.head("website")}
                 >
                   Website
                 </SortableTableHead>
                 <SortableTableHead
-                  className={`w-[14%] text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-28 min-w-28 text-muted-foreground ${typeStyle("label.table")}`}
+                  {...tableSort.head("operator")}
+                >
+                  Operator
+                </SortableTableHead>
+                <SortableTableHead
+                  className={`w-[12%] text-muted-foreground ${typeStyle("label.table")}`}
                   {...tableSort.head("status")}
                 >
                   Status
                 </SortableTableHead>
                 <SortableTableHead
-                  className={`w-[14%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
+                  className={`w-[12%] px-4 text-muted-foreground ${typeStyle("label.table")}`}
                   {...tableSort.head("created")}
                 >
                   Created
@@ -289,7 +312,7 @@ export default function OperatorClientsScreen() {
               {clients === undefined ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className="h-32 text-center text-muted-foreground"
                   >
                     <Loader2 className="mx-auto h-5 w-5 animate-spin" />
@@ -300,7 +323,7 @@ export default function OperatorClientsScreen() {
                 !creating ? (
                 <TableRow className="hover:bg-transparent">
                   <TableCell
-                    colSpan={7}
+                    colSpan={8}
                     className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
                   >
                     {searchText || filter !== "all"
@@ -356,6 +379,13 @@ export default function OperatorClientsScreen() {
                         <TableCell className="max-w-44">
                           <ClientWebsiteField
                             client={client}
+                            disabled={readOnly}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <ClientOperatorField
+                            client={client}
+                            operators={operators ?? []}
                             disabled={readOnly}
                           />
                         </TableCell>
@@ -418,6 +448,7 @@ export default function OperatorClientsScreen() {
                           name={applicationName(application)}
                         />
                       </TableCell>
+                      <TableCell />
                       <TableCell>
                         <ApplicationStatusField />
                       </TableCell>
@@ -508,6 +539,7 @@ function NewClientRow({ onDone }: { onDone: () => void }) {
           onKeyDown={onKeyDown}
         />
       </TableCell>
+      <TableCell />
       <TableCell />
       <TableCell className="px-4 text-muted-foreground">
         {busy ? <Loader2 className="size-4 animate-spin" /> : null}

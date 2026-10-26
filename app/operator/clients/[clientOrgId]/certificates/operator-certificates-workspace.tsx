@@ -281,7 +281,7 @@ export function OperatorCertificatesWorkspace({
       ) : (
         <OperationalPanel as="div">
           <div className="overflow-x-auto">
-            <Table className="min-w-[1220px]">
+            <Table storageKey="spot:certificates:columns" className="min-w-[1220px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <SortableTableHead className="w-[12%] px-4" {...tableSort.head("status")}>

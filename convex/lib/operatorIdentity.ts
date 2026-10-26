@@ -337,6 +337,7 @@ type OperatorAuditType =
   | "broker_launch_email_sent"
   | "client_created"
   | "client_status_changed"
+  | "client_operator_assigned"
   | "client_launch_email_sent"
   | "impersonation_started"
   | "impersonation_stopped"

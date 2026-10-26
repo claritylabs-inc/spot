@@ -1,7 +1,7 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  Table,
+  Table as BaseTable,
   TableHeader,
   TableBody,
   TableFooter,
@@ -12,6 +12,14 @@ import {
   TableNameLink as BaseTableNameLink,
   SortableTableHead,
 } from "@claritylabs-inc/ui/components/table";
+
+// Every table's columns are resizable unless a caller opts out.
+function Table({
+  resizable = true,
+  ...props
+}: React.ComponentProps<typeof BaseTable>) {
+  return <BaseTable resizable={resizable} {...props} />;
+}
 
 type BaseTableNameLinkProps = React.ComponentProps<typeof BaseTableNameLink>;
 

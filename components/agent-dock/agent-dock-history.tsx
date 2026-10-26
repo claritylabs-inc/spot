@@ -60,7 +60,7 @@ function HistoryRow({
             name={thread.creator.name}
             title={`Started by ${thread.creator.name}`}
             imageUrl={thread.creator.avatarUrl}
-            className="size-5"
+            className="size-5 border-2 border-background"
           />
         ) : null}
         <span

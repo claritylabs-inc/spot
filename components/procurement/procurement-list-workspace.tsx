@@ -958,7 +958,7 @@ export function ProcurementListWorkspace({
         }
       />
       <OperationalPanel as="div">
-        <Table>
+        <Table storageKey="spot:procurement:list:columns">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               {!readOnly && (
