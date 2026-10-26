@@ -122,6 +122,7 @@ const operatorToolCategories = {
   preview_broker_packet: "packets",
   update_procurement_packet: "packets",
   list_procurement_requests: "requests",
+  get_client_attention: "requests",
   get_procurement_request: "requests",
   create_procurement_request: "requests",
   update_procurement_application: "requests",

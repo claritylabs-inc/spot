@@ -947,29 +947,81 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   list_procurement_requests: defineOperatorTool({
     family: "procurement",
-    version: 1,
+    version: 2,
     description:
-      "List insurance applications and new-policy procurement requests for one exact client organization, including intake submission timestamps, applicant answers, requested coverage, request-specific forwarding addresses, policy links, provider progress, files, and imported-email counts. Use application.submittedAt to compare accepted submissions and application.answers/application.details for submitted facts; intakeAnswers/intakeDetails are mutable drafts. Intake drafts are not submitted applications. Query is one literal substring of at most 200 characters, not a list of clients. Returns at most 100 requests with bounded metadata and no cursor. Report bounded coverage rather than claiming an exhaustive comparison.",
+      "Page compact procurement requests across clients, or scope by orgId. Filter by statuses, client assignee and updated dates. Follow nextCursor with unchanged filters even on empty pages; bounded means coverage is incomplete. Use get_procurement_request with include application for answers. Summary omits child counts; view full restores legacy rows, capped at 10 per page.",
     inputSchema: z.object({
-      orgId: organizationId,
+      orgId: omittable(organizationId),
       query: omittable(z.string().max(200)),
-      status: omittable(procurementRequestStatus),
+      status: omittable(
+        z.union([
+          procurementRequestStatus,
+          z.array(procurementRequestStatus).max(8),
+        ]),
+      ),
+      assigneeUserId: omittable(z.string().min(1)),
+      updatedAfter: omittable(
+        z.iso.datetime({ offset: true }).or(z.iso.date()),
+      ),
+      updatedBefore: omittable(
+        z.iso.datetime({ offset: true }).or(z.iso.date()),
+      ),
+      sort: omittable(z.enum(["updated_desc", "created_desc"])),
+      cursor: omittable(z.string().min(1)),
+      view: omittable(z.enum(["summary", "full"])),
       limit: omittable(z.number().int().min(1).max(100)),
     }),
     capability: "operator.procurement.read",
     effect: "read",
     requiredRole: "operator",
     confirmation: "none",
+    target: (input) =>
+      input.orgId
+        ? { kind: "organization", id: input.orgId }
+        : { kind: "platform", id: "procurement" },
+    summarize: (input) =>
+      input.orgId
+        ? `List procurement requests for organization ${input.orgId}`
+        : "List procurement requests across clients",
+  }),
+  get_client_attention: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Read a compact client attention summary: expirations in the next 90 days, open extraction issues and open procurement requests. Counts and top items disclose scan limits; incomplete coverage cannot prove absence. Compliance gaps require lookup_compliance_requirements.",
+    inputSchema: z.object({ orgId: organizationId }),
+    capability: "operator.procurement.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) =>
-      `List procurement requests for organization ${input.orgId}`,
+      `Read attention items for organization ${input.orgId}`,
   }),
   get_procurement_request: defineOperatorTool({
     family: "procurement",
-    version: 2,
+    version: 3,
     description:
-      "Get one exact insurance intake or procurement request. Includes the applicant contact (name, email, phone), also at application.answers, for emailing the applicant with the outbound_email tools. Before company attachment, returns an operator-only diagnostic view of saved draft answers/details, current step, revision, timestamps and bounded Slack delivery events; it grants no fulfillment or sharing access. Draft answers are not an accepted application. For company-linked requests, includes its typed application, intakeRevision and updatedAt for update_procurement_application, client requirements, replacement/result policy links, request forwarding address, provider outreach/application/quote state, requested files, linked client files with upload or procurement-email provenance, and imported email threads.",
-    inputSchema: z.object({ procurementRequestId }),
+      "Read one request's identity, status, revision and accepted application summary. Opt into application answers, files, emailThreads, outreach, proposals, timeline or audit; only include files returns signed file URLs. Unlinked intake remains diagnostic-only; draft answers are not submissions. view full restores legacy detail fields; file URLs still require include files. Proposal data is operator-private.",
+    inputSchema: z.object({
+      procurementRequestId,
+      include: omittable(
+        z
+          .array(
+            z.enum([
+              "application",
+              "files",
+              "emailThreads",
+              "outreach",
+              "proposals",
+              "timeline",
+              "audit",
+            ]),
+          )
+          .max(7),
+      ),
+      view: omittable(z.enum(["summary", "full"])),
+    }),
     capability: "operator.procurement.read",
     effect: "read",
     requiredRole: "operator",
@@ -983,10 +1035,15 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   list_procurement_proposals: defineOperatorTool({
     family: "procurement",
-    version: 1,
+    version: 2,
     description:
-      "List every operator-private proposal for one exact procurement request, including provider, documents, extracted offer facts, revision lineage, and reviews. Never expose this output to a client or provider.",
-    inputSchema: z.object({ procurementRequestId }),
+      "Page private proposal summaries for a request: provider, premium, status, review conclusion and IDs. Use view full for documents, extracted offers and reviews (10 per page). Follow nextCursor for complete coverage. Never expose proposals to clients or providers.",
+    inputSchema: z.object({
+      procurementRequestId,
+      view: omittable(z.enum(["summary", "full"])),
+      limit: omittable(z.number().int().min(1).max(100)),
+      cursor: omittable(z.string().min(1)),
+    }),
     capability: "operator.procurement.read",
     effect: "read",
     requiredRole: "operator",
@@ -998,6 +1055,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `List private proposals for procurement request ${input.procurementRequestId}`,
   }),
+
   get_procurement_proposal: defineOperatorTool({
     family: "procurement",
     version: 1,

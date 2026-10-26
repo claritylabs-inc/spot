@@ -294,7 +294,7 @@ function outreachDto(outreach: Doc<"procurementBrokerOutreaches">) {
   return outreach;
 }
 
-async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
+export async function requestRow(ctx: Ctx, request: Doc<"procurementRequests">) {
   requireCompanyRequest(request);
   const [replacingPolicy, resultingPolicy, outreaches, emails] =
     await Promise.all([
@@ -350,7 +350,7 @@ export type ProcurementTimelineEntry = {
 /** One request-scoped stream over every surface an operator has to reconcile:
  * operator writes, imported email, request files, outreach, and proposals.
  * Each entry is a stored record's own timestamp, never a reconstructed one. */
-function buildRequestTimeline(args: {
+export function buildRequestTimeline(args: {
   auditEvents: Array<{ _id: string; summary: string; createdAt: number }>;
   emailThreads: Doc<"teamEmailThreads">[];
   fileItems: Array<{
@@ -414,6 +414,7 @@ function buildRequestTimeline(args: {
 export async function getProcurementRequestDetails(
   ctx: Ctx,
   requestId: Id<"procurementRequests">,
+  options?: { signedFileUrls?: boolean },
 ) {
   const request = await requireRequest(ctx, requestId);
   const [
@@ -503,7 +504,9 @@ export async function getProcurementRequestDetails(
                 policyId: file.policyId,
                 uploadedBySide: file.uploadedBySide,
                 nameStatus: file.nameStatus,
-                url: await ctx.storage.getUrl(file.fileId),
+                url: options?.signedFileUrls === false
+                  ? null
+                  : await ctx.storage.getUrl(file.fileId),
               }
             : null,
         };
@@ -610,6 +613,101 @@ export const list = query({
   },
 });
 
+export async function listAcrossClientRequestRows(
+  ctx: Ctx,
+  args: {
+    clientOrgId?: Id<"organizations">;
+    status?: RequestStatus[];
+    assigneeUserId?: Id<"users">;
+    updatedAfter?: number;
+    updatedBefore?: number;
+    query?: string;
+    sort?: "updated_desc" | "created_desc";
+    cursor?: string;
+    limit: number;
+  },
+) {
+  if (args.clientOrgId) await requireClient(ctx, args.clientOrgId);
+  const after = args.updatedAfter ?? Number.MIN_SAFE_INTEGER;
+  const before = args.updatedBefore ?? Number.MAX_SAFE_INTEGER;
+  const source =
+    args.sort === "created_desc"
+      ? ctx.db
+          .query("procurementRequests")
+          .withIndex("by_deletedAt_and_createdAt", (q) =>
+            q.eq("deletedAt", undefined),
+          )
+      : args.clientOrgId
+        ? ctx.db
+            .query("procurementRequests")
+            .withIndex("organization", (q) =>
+              q
+                .eq("clientOrgId", args.clientOrgId)
+                .gte("updatedAt", after)
+                .lte("updatedAt", before),
+            )
+        : ctx.db
+            .query("procurementRequests")
+            .withIndex("by_deletedAt_and_updatedAt", (q) =>
+              q
+                .eq("deletedAt", undefined)
+                .gte("updatedAt", after)
+                .lte("updatedAt", before),
+            );
+  const page = await source.order("desc").paginate({
+    cursor: args.cursor ?? null,
+    numItems: args.limit,
+  });
+  const clients = new Map<Id<"organizations">, Doc<"organizations"> | null>();
+  const rows: Array<{
+    row: Doc<"procurementRequests">;
+    client: Doc<"organizations">;
+  }> = [];
+  const search = args.query?.trim().toLowerCase();
+  for (const row of page.page) {
+    const orgId = row.clientOrgId;
+    if (
+      !orgId ||
+      row.deletedAt !== undefined ||
+      row.intakeAnswers?.intakeGoal === "savings"
+    )
+      continue;
+    if (args.clientOrgId && orgId !== args.clientOrgId) continue;
+    if (args.status?.length && !args.status.includes(row.status)) continue;
+    if (row.updatedAt < after || row.updatedAt > before) continue;
+    if (!clients.has(orgId)) {
+      const client = await ctx.db.get(orgId);
+      clients.set(
+        orgId,
+        client && client.deletedAt === undefined && client.type === "client"
+          ? client
+          : null,
+      );
+    }
+    const client = clients.get(orgId);
+    if (
+      !client ||
+      (args.assigneeUserId &&
+        client.assignedOperatorUserId !== args.assigneeUserId)
+    )
+      continue;
+    if (
+      search &&
+      !`${row.title} ${await requestPacketText(ctx, row)}`
+        .toLowerCase()
+        .includes(search)
+    )
+      continue;
+    rows.push({ row, client });
+  }
+  return {
+    rows,
+    nextCursor: page.isDone ? null : page.continueCursor,
+    bounded: !page.isDone,
+    scanned: page.page.length,
+  };
+}
+
 /**
  * Live procurement requests across every client, most recently updated first,
  * for the operator Procurement page. Reads one bounded index page; deleted
@@ -621,42 +719,15 @@ export const listAcrossClients = query({
   handler: async (ctx, args) => {
     await requireOperator(ctx);
     const limit = Math.max(1, Math.min(args.limit ?? MAX_REQUESTS, MAX_REQUESTS));
-    const rows = await ctx.db
-      .query("procurementRequests")
-      .withIndex("by_deletedAt_and_updatedAt", (index) =>
-        index.eq("deletedAt", undefined),
-      )
-      .order("desc")
-      .take(MAX_REQUESTS * 2);
-    const clients = new Map<Id<"organizations">, Doc<"organizations"> | null>();
-    const live: Array<{
-      row: Doc<"procurementRequests">;
-      client: Doc<"organizations">;
-    }> = [];
-    for (const row of rows) {
-      if (live.length >= limit) break;
-      const clientOrgId = row.clientOrgId;
-      if (!clientOrgId || row.intakeAnswers?.intakeGoal === "savings") continue;
-      if (!clients.has(clientOrgId)) {
-        const client = await ctx.db.get(clientOrgId);
-        clients.set(
-          clientOrgId,
-          client && client.deletedAt === undefined && client.type === "client"
-            ? client
-            : null,
-        );
-      }
-      const client = clients.get(clientOrgId);
-      if (client) live.push({ row, client });
-    }
+    const page = await listAcrossClientRequestRows(ctx, { limit: MAX_REQUESTS * 2 });
     return {
       requests: await Promise.all(
-        live.map(async ({ row, client }) => ({
+        page.rows.slice(0, limit).map(async ({ row, client }) => ({
           ...(await requestRow(ctx, row)),
           client: { _id: client._id, name: client.name },
         })),
       ),
-      bounded: rows.length === MAX_REQUESTS * 2,
+      bounded: page.bounded || page.rows.length > limit,
     };
   },
 });
