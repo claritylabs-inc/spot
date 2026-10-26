@@ -47,9 +47,12 @@ export function SearchField({
 }
 
 /**
- * A list's toolbar: view tabs, inline filter chips and the Filters menu on the
- * left; search and trailing controls right-aligned. Filter definitions own
- * their values; `followKey` keeps open filter popovers followed.
+ * A list's toolbar: search first, then the inline filter chips and Filters
+ * menu on the left; the selected view's action buttons right-aligned. View
+ * tabs are navigation, not a filter: page tabs render in the shell top bar and
+ * inline tabs get their own row above the toolbar, never between search and
+ * filters. Filter definitions own their values; `followKey` keeps open filter
+ * popovers followed.
  */
 export function ListToolbar({
   tabs,
@@ -62,9 +65,8 @@ export function ListToolbar({
 }: {
   tabs?: ReactNode;
   /**
-   * `inline` keeps view tabs as the first chip in the filter row. `navbar`
-   * is for page-level tabs (`PageTabsRail`) that render in the shell top bar:
-   * they stay out of the filter row.
+   * `inline` renders view tabs in a row above the toolbar. `navbar` is for
+   * page-level tabs (`PageTabsRail`) that render in the shell top bar.
    */
   tabsPlacement?: "inline" | "navbar";
   filters?: FilterDefinition[];
@@ -88,7 +90,13 @@ export function ListToolbar({
   );
   const filterBar = (
     <FilterBar
-      leading={tabsPlacement === "inline" ? tabs : undefined}
+      leading={
+        search ? (
+          <div className="w-full sm:w-56">
+            <SearchField {...search} />
+          </div>
+        ) : undefined
+      }
       filters={filters}
       onClearAll={onClearFilters}
       menu={{
@@ -101,26 +109,19 @@ export function ListToolbar({
         open: openChip === id,
         onOpenChange: (open) => setOpenChip(open ? id : null),
       })}
-      trailing={
-        search || actions ? (
-          <>
-            {search ? (
-              <div className="w-56">
-                <SearchField {...search} />
-              </div>
-            ) : null}
-            {actions}
-          </>
-        ) : null
-      }
+      trailing={actions}
     />
   );
+  if (!tabs) return filterBar;
   return tabsPlacement === "navbar" ? (
     <>
       {tabs}
       {filterBar}
     </>
   ) : (
-    filterBar
+    <div className="flex flex-col gap-3">
+      {tabs}
+      {filterBar}
+    </div>
   );
 }
