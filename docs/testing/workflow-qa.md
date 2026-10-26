@@ -2779,3 +2779,9 @@ the auth SDK's refresh unload warning. Invalid-code handling remained on the
 form. See the Helium audit for fixture and merge details. Root/Convex TypeScript
 passed; focused ESLint has no errors and one existing hook dependency warning.
 No new tests, dev migrations, production writes or deployment.
+
+## Provider initial-email summary — 2026-10-26
+
+Story: Providers Send → durable claim → accepted application summary → persisted plain-text/HTML email → existing dynamic operator inbox and scoped packet link.
+
+Local review on `zac/provider-outreach-summary`: root and Convex TypeScript passed; ESLint passed with existing warnings; all 145 existing tests passed with two workers (an earlier parallel run had an auth-fixture timeout). No tests or migrations were added. Helium rendered the real composer output using synthetic Riley QA Applicant / Alex QA Operator: applicant-first subject/introduction, HTML bullets, readable Ontario/date labels, separate packet section and dynamic signature were visible. Local artifact: ignored `.context/qa/provider-summary-20261026/initial-email.html`; screenshot `01-email-layout-preview.png`. This render checks composition, not actual email delivery. Production deployment and live outreach remain pending at the time of this entry.

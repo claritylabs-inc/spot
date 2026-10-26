@@ -91,6 +91,12 @@ import {
 import { mirrorTeamEmail, type NewTeamThread, type TeamThread } from "./lib/teamEmailStore";
 import { emitOperatorNotification } from "./lib/operatorNotify";
 import { mintPacketLinkForOperator, previewBrokerPacket } from "./procurementPacket";
+import { providerOutreachSummary, type OutreachSummaryItem } from "./lib/providerOutreachSummary";
+import { submittedIntakeApplication } from "../lib/intake-application";
+import { CANADIAN_PROVINCES, USPS_STATE_NAMES } from "./lib/brokerProfileValidation";
+
+const OUTREACH_REGION_NAMES: Readonly<Record<string, string>> = { ...USPS_STATE_NAMES, ...CANADIAN_PROVINCES };
+const OUTREACH_COUNTRY_NAMES = new Intl.DisplayNames(["en"], { type: "region" });
 
 type Ctx = QueryCtx | MutationCtx;
 /** How long a sent event with no conversation yet waits for the send that created it to be mirrored. */
@@ -1847,6 +1853,8 @@ export type ClaimStepResult =
         regions: string[];
         title: string;
         clientName: string;
+        applicantName: string | null;
+        summaryItems: OutreachSummaryItem[];
         targetEffectiveDate: string | null;
         isRenewal: boolean;
       };
@@ -2043,10 +2051,13 @@ export const claimStepInternal = internalMutation({
           : null;
       })(),
       request: {
+        ...providerOutreachSummary(submittedIntakeApplication(world.request)),
         clientOrgId: sequence.clientOrgId,
         coverageLines: matchFor(world.request, world.client).needs.needs.map((need) => need.label),
         regions: matchFor(world.request, world.client).geography.places.map((place) =>
-          place.region ? `${place.country}-${place.region}` : place.country),
+          place.region
+            ? `${OUTREACH_REGION_NAMES[place.region] ?? place.region}, ${OUTREACH_COUNTRY_NAMES.of(place.country) ?? place.country}`
+            : OUTREACH_COUNTRY_NAMES.of(place.country) ?? place.country),
         title: world.request.title,
         clientName: world.client.name,
         targetEffectiveDate: world.request.targetEffectiveDate ?? null,

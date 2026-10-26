@@ -358,13 +358,14 @@ function emailInputFor(
     providerName: broker.name,
     recipientName: sequence.recipient.name,
     operator,
-    client: { name: request.clientName, summary: request.title },
+    client: { name: request.clientName, applicantName: request.applicantName ?? undefined, summary: request.title },
     request: {
       coverageLines: request.coverageLines,
       regions: request.regions,
       effectiveDate: request.targetEffectiveDate ?? undefined,
       isRenewal: request.isRenewal,
       packetFileCount: packet.fileCount,
+      summaryItems: request.summaryItems,
     },
     ...(initialSubject ? { initialSubject } : {}),
   };
@@ -461,7 +462,7 @@ async function resolveDraft(
   if (!claim.broker || !claim.packet) return null;
   const input = emailInputFor(claim, claim.broker, claim.packet, operator);
   let generated: Parameters<typeof composeOutreachEmail>[2];
-  if (prepared.mode === "generate") {
+  if (prepared.mode === "generate" && input.kind !== "initial") {
     const attempt = await generateOutreachDraftText(ctx, claim.request.clientOrgId, input, {
       trace: {
         traceId: `provider-outreach-draft:${stepId}`,
