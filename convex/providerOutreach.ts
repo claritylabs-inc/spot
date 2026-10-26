@@ -495,13 +495,54 @@ export type ProviderOutreachPanel = {
   providersBounded: boolean;
   sequences: SequenceView[];
   sequencesBounded: boolean;
+  /** Present only on a paged read: candidates matching the filters and the cursor for the next page. */
+  paging?: { total: number; nextCursor: string | null };
 };
+
+/** One filtered page of candidates; omit for the whole panel. */
+export type ProviderPageOptions = {
+  cursor?: string;
+  limit: number;
+  verdict?: ProviderFit["verdict"];
+  /** A requested coverage line the provider covers. */
+  coverage?: string;
+  /** Serviced state or province code. */
+  state?: string;
+  /** Role of the recipient chosen for the provider. */
+  role?: RecipientView["role"];
+};
+
+type CandidateKey = [partial: number, name: string, id: string];
+function candidateKey(evaluation: ProviderEvaluation): CandidateKey {
+  return [Number(evaluation.fit.partial), evaluation.org.name, evaluation.org._id];
+}
+function compareKeys(a: CandidateKey, b: CandidateKey) {
+  return a[0] - b[0] || a[1].localeCompare(b[1]) || a[2].localeCompare(b[2]);
+}
+function decodeCandidateCursor(cursor: string | undefined): CandidateKey | null {
+  if (!cursor) return null;
+  try {
+    const key: unknown = JSON.parse(decodeURIComponent(cursor));
+    if (
+      Array.isArray(key) &&
+      key.length === 3 &&
+      typeof key[0] === "number" &&
+      typeof key[1] === "string" &&
+      typeof key[2] === "string"
+    )
+      return [key[0], key[1], key[2]];
+  } catch {
+    // Fall through to the error below.
+  }
+  throw new Error("Provider match cursor is invalid. Restart without a cursor.");
+}
 
 /** Reads the matching, cadence and sequence state for a request. Caller authorizes the operator. */
 export async function getProviderOutreachPanel(
   ctx: Ctx,
   requestId: Id<"procurementRequests">,
   operatorUserId: Id<"users">,
+  page?: ProviderPageOptions,
 ): Promise<ProviderOutreachPanel | null> {
   let loaded: Awaited<ReturnType<typeof loadCompanyRequest>>;
   try {
@@ -558,13 +599,13 @@ export async function getProviderOutreachPanel(
       latestByOutreach.set(sequence.outreachId, sequence);
   }
 
-  const candidates: ProviderCandidateView[] = [];
-  for (const org of orgs.slice(0, MAX_PANEL_PROVIDERS)) {
-    if (!eligibleProviderOrg(org)) continue;
+  const buildCandidate = async (
+    evaluation: ProviderEvaluation,
+  ): Promise<ProviderCandidateView> => {
+    const { org } = evaluation;
     const outreach = outreachByBroker.get(org._id) ?? null;
-    const evaluation = await evaluateProvider(ctx, org, match, testMode, outreach, true);
     const sequence = outreach ? (latestByOutreach.get(outreach._id) ?? null) : null;
-    candidates.push({
+    return {
       brokerOrgId: org._id,
       name: org.name,
       website: org.website ?? null,
@@ -608,11 +649,62 @@ export async function getProviderOutreachPanel(
           }
         : null,
       sequenceId: sequence?._id ?? null,
-    });
+    };
+  };
+  const providers = orgs.slice(0, MAX_PANEL_PROVIDERS).flatMap((org) => {
+    const eligible = eligibleProviderOrg(org);
+    return eligible ? [eligible] : [];
+  });
+  const evaluateWithContacts = (org: Doc<"organizations">) =>
+    evaluateProvider(ctx, org, match, testMode, outreachByBroker.get(org._id) ?? null, true);
+
+  let candidates: ProviderCandidateView[] = [];
+  let paging: ProviderOutreachPanel["paging"];
+  if (!page) {
+    for (const org of providers) candidates.push(await buildCandidate(await evaluateWithContacts(org)));
+    candidates.sort(
+      (a, b) => Number(a.partial) - Number(b.partial) || a.name.localeCompare(b.name),
+    );
+  } else {
+    // Fit needs only the profile; contacts are read for the page (or for every
+    // provider when the recipient role is a filter).
+    const evaluated = await Promise.all(
+      providers.map((org) =>
+        page.role
+          ? evaluateWithContacts(org)
+          : evaluateProvider(ctx, org, match, testMode, outreachByBroker.get(org._id) ?? null, false),
+      ),
+    );
+    const state = page.state?.trim().toUpperCase();
+    const matching = evaluated
+      .filter(
+        (evaluation) =>
+          (!page.verdict || evaluation.fit.verdict === page.verdict) &&
+          (!page.coverage ||
+            evaluation.fit.lines.covered.some((need) => need.coverage === page.coverage)) &&
+          (!state ||
+            evaluation.fit.geography.serviced.some((place) => place.region?.toUpperCase() === state)) &&
+          (!page.role || evaluation.recipient?.role === page.role),
+      )
+      .sort((a, b) => compareKeys(candidateKey(a), candidateKey(b)));
+    const after = decodeCandidateCursor(page.cursor);
+    const remaining = after
+      ? matching.filter((evaluation) => compareKeys(candidateKey(evaluation), after) > 0)
+      : matching;
+    const rows = remaining.slice(0, page.limit);
+    candidates = await Promise.all(
+      rows.map(async (evaluation) =>
+        buildCandidate(page.role ? evaluation : await evaluateWithContacts(evaluation.org)),
+      ),
+    );
+    paging = {
+      total: matching.length,
+      nextCursor:
+        remaining.length > rows.length
+          ? encodeURIComponent(JSON.stringify(candidateKey(rows[rows.length - 1])))
+          : null,
+    };
   }
-  candidates.sort(
-    (a, b) => Number(a.partial) - Number(b.partial) || a.name.localeCompare(b.name),
-  );
   const reason = closedReason(request);
   return {
     request: {
@@ -648,6 +740,7 @@ export async function getProviderOutreachPanel(
       sequenceView(sequence, stepsBySequence.get(sequence._id) ?? []),
     ),
     sequencesBounded: sequences.bounded,
+    ...(paging ? { paging } : {}),
   };
 }
 
