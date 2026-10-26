@@ -24,7 +24,6 @@ import {
 } from "./procurementRequests";
 import { clientAccessStatus } from "./lib/clientAccess";
 import { routerJobFailureValidator } from "./lib/routerJobFailure";
-import { readIntakeBusinessProfile } from "./lib/intakeApplication";
 import {
   prepareBusinessProfileToolUpdate,
   updateBusinessProfileByOperator,
@@ -184,6 +183,12 @@ import {
   threadPageContext,
 } from "./lib/threadPageContext";
 import { operatorPeople, operatorPerson } from "./lib/operatorAvatar";
+import {
+  loadOrganizationAssignees,
+  organizationDetail,
+  organizationIncludeSet,
+  organizationRow,
+} from "./lib/operatorOrganizationReads";
 
 const operatorChannelValidator = v.union(
   v.literal("chat"),
@@ -1802,80 +1807,185 @@ async function executeToolDomain(
   }
   if (toolName === "search_organizations") {
     const queryText = typeof input.query === "string" ? input.query.trim() : "";
-    const requestedType =
-      input.type === "broker" || input.type === "client"
-        ? input.type
+    const queryList = Array.isArray(input.queries)
+      ? input.queries.flatMap((value: unknown) =>
+          typeof value === "string" && value.trim() ? [value.trim()] : [],
+        )
+      : undefined;
+    const statusFilter = Array.isArray(input.clientAccessStatus)
+      ? new Set<unknown>(input.clientAccessStatus)
+      : undefined;
+    const assigneeFilter =
+      typeof input.assigneeUserId === "string"
+        ? ctx.db.normalizeId("users", input.assigneeUserId)
         : undefined;
-    const limit = typeof input.limit === "number" ? input.limit : 15;
-    const organizations = requestedType
-      ? requestedType === "client"
-        ? (
-            await Promise.all([
-              ctx.db
-                .query("organizations")
-                .withIndex("deletion_type", (index) =>
-                  index.eq("deletedAt", undefined).eq("type", "client"),
-                )
-                .take(500),
-              ctx.db
-                .query("organizations")
-                .withIndex("deletion_type", (index) =>
-                  index.eq("deletedAt", undefined).eq("type", undefined),
-                )
-                .take(500),
-            ])
-          ).flat()
-        : await ctx.db
-            .query("organizations")
-            .withIndex("deletion_type", (index) =>
-              index.eq("deletedAt", undefined).eq("type", "broker"),
-            )
-            .take(500)
-      : await ctx.db
-          .query("organizations")
-          .withIndex("deletion_type", (q) => q.eq("deletedAt", undefined))
-          .take(1_000);
-    const matches = organizations
-      .filter(
-        (organization) =>
-          organization.type !== "broker" ||
-          !isSpotOwnedBrokerIdentity(organization),
-      )
-      .map((organization) => ({
-        organization,
-        score: organizationSearchScore(organization, queryText),
-      }))
-      .filter(({ score }) => score > 0)
-      .sort(
-        (left, right) =>
-          right.score - left.score ||
-          left.organization.name.localeCompare(right.organization.name),
-      )
-      .map(({ organization }) => ({
-        orgId: organization._id,
-        name: organization.name,
-        type: organization.type ?? "client",
-        ...(organization.type === "client"
-          ? { clientAccessStatus: clientAccessStatus(organization) }
-          : {}),
-        slug: organization.slug,
-        website: organization.website,
-        brokerOrgId: organization.brokerOrgId,
-      }));
-    const scanBounded =
+    if (assigneeFilter === null)
+      throw new NoWriteInputError(
+        "invalid_identifier",
+        "Invalid assignee user ID",
+      );
+    const clientFilters = Boolean(statusFilter || assigneeFilter);
+    if (clientFilters && input.type === "broker")
+      throw new NoWriteInputError(
+        "invalid_filter",
+        "clientAccessStatus and assigneeUserId apply to clients only",
+      );
+    const requestedType =
+      input.type === "client" || clientFilters
+        ? "client"
+        : input.type === "broker"
+          ? "broker"
+          : undefined;
+    const sort = input.sort === "created_desc" ? "created_desc" : "name";
+    const limit =
+      typeof input.limit === "number" ? input.limit : queryList ? 5 : 15;
+    const order = sort === "created_desc" ? "desc" : "asc";
+    const takeType = (type: "client" | "broker" | undefined) =>
+      ctx.db
+        .query("organizations")
+        .withIndex("deletion_type", (index) =>
+          index.eq("deletedAt", undefined).eq("type", type),
+        )
+        .order(order)
+        .take(500);
+    const ranges =
       requestedType === "client"
-        ? ["client", undefined].some(
-            (type) =>
-              organizations.filter((org) => org.type === type).length >= 500,
+        ? await Promise.all(
+            clientFilters
+              ? [takeType("client")]
+              : [takeType("client"), takeType(undefined)],
           )
-        : organizations.length >= (requestedType ? 500 : 1_000);
+        : requestedType === "broker"
+          ? [await takeType("broker")]
+          : [
+              await ctx.db
+                .query("organizations")
+                .withIndex("deletion_type", (q) => q.eq("deletedAt", undefined))
+                .order(order)
+                .take(1_000),
+            ];
+    const organizations = ranges.flat();
+    const scanBounded = ranges.some(
+      (range) => range.length >= (requestedType ? 500 : 1_000),
+    );
+    const candidates = organizations.filter(
+      (organization) =>
+        (organization.type !== "broker" ||
+          !isSpotOwnedBrokerIdentity(organization)) &&
+        (!statusFilter ||
+          statusFilter.has(clientAccessStatus(organization))) &&
+        (!assigneeFilter ||
+          organization.assignedOperatorUserId === assigneeFilter),
+    );
+    const byQuery = (query: string) =>
+      candidates
+        .map((organization) => ({
+          organization,
+          score: organizationSearchScore(organization, query),
+        }))
+        .filter(({ score }) => score > 0)
+        .sort(
+          (left, right) =>
+            right.score - left.score ||
+            left.organization.name.localeCompare(right.organization.name),
+        )
+        .map(({ organization }) => organization);
+    const presentRows = async (groups: Doc<"organizations">[][]) => {
+      const assignees = await loadOrganizationAssignees(ctx, groups.flat());
+      return groups.map((group) =>
+        group.map((organization) => organizationRow(organization, assignees)),
+      );
+    };
+
+    if (queryList) {
+      const matched = queryList.map(byQuery);
+      const rows = await presentRows(
+        matched.map((matches) => matches.slice(0, limit)),
+      );
+      const results = queryList.map((query, index) => ({
+        query,
+        organizations: rows[index],
+        matchedInScan: matched[index].length,
+        bounded: scanBounded || matched[index].length > limit,
+      }));
+      return {
+        results,
+        scanned: organizations.length,
+        bounded: results.some((result) => result.bounded),
+        scanBounded,
+        limit,
+      };
+    }
+
+    if (queryText) {
+      const matches = byQuery(queryText);
+      const [rows] = await presentRows([matches.slice(0, limit)]);
+      return {
+        organizations: rows,
+        matchedInScan: matches.length,
+        scanned: organizations.length,
+        bounded: scanBounded || matches.length > limit,
+        scanBounded,
+        limit,
+      };
+    }
+
+    // Listing: keyset pagination over the bounded scan, stable under inserts.
+    const sorted = [...candidates].sort((left, right) =>
+      sort === "created_desc"
+        ? right._creationTime - left._creationTime ||
+          left._id.localeCompare(right._id)
+        : left.name.localeCompare(right.name) ||
+          left._id.localeCompare(right._id),
+    );
+    let remaining = sorted;
+    if (typeof input.cursor === "string") {
+      let position: { s?: unknown; k?: unknown; id?: unknown } | null = null;
+      try {
+        position = JSON.parse(input.cursor);
+      } catch {
+        position = null;
+      }
+      if (
+        !position ||
+        position.s !== sort ||
+        (typeof position.k !== "string" && typeof position.k !== "number") ||
+        typeof position.id !== "string"
+      )
+        throw new NoWriteInputError(
+          "invalid_cursor",
+          "Invalid cursor; restart the listing without a cursor using the same sort",
+        );
+      const { k, id } = position;
+      remaining = sorted.filter((organization) =>
+        sort === "created_desc"
+          ? organization._creationTime < Number(k) ||
+            (organization._creationTime === Number(k) &&
+              organization._id.localeCompare(id) > 0)
+          : organization.name.localeCompare(String(k)) > 0 ||
+            (organization.name.localeCompare(String(k)) === 0 &&
+              organization._id.localeCompare(id) > 0),
+      );
+    }
+    const page = remaining.slice(0, limit);
+    const last = page.at(-1);
+    const nextCursor =
+      last && remaining.length > limit
+        ? JSON.stringify({
+            s: sort,
+            k: sort === "created_desc" ? last._creationTime : last.name,
+            id: last._id,
+          })
+        : null;
+    const [rows] = await presentRows([page]);
     return {
-      organizations: matches.slice(0, limit),
-      matchedInScan: matches.length,
+      organizations: rows,
+      matchedInScan: sorted.length,
       scanned: organizations.length,
-      bounded: scanBounded || matches.length > limit,
+      bounded: scanBounded || nextCursor !== null,
       scanBounded,
       limit,
+      nextCursor,
     };
   }
 
@@ -1884,59 +1994,49 @@ async function executeToolDomain(
     const organization = await ctx.db.get(orgId);
     if (!organization || organization.deletedAt !== undefined)
       throw new Error("Organization not found");
-    const [memberships, policies] = await Promise.all([
-      ctx.db
-        .query("orgMemberships")
-        .withIndex("organization", (index) => index.eq("orgId", orgId))
-        .take(5_001),
-      ctx.db
-        .query("policies")
-        .withIndex("organization", (index) => index.eq("orgId", orgId))
-        .take(5_001),
-    ]);
+    return await organizationDetail(
+      ctx,
+      organization,
+      await loadOrganizationAssignees(ctx, [organization]),
+      organizationIncludeSet(input.include),
+      5_000,
+    );
+  }
+
+  if (toolName === "get_organizations") {
+    const requested: unknown[] = Array.isArray(input.orgIds)
+      ? input.orgIds
+      : [];
+    const loaded = await Promise.all(
+      requested.map(async (value) => {
+        const orgId =
+          typeof value === "string"
+            ? ctx.db.normalizeId("organizations", value)
+            : null;
+        const organization = orgId ? await ctx.db.get(orgId) : null;
+        return organization && organization.deletedAt === undefined
+          ? organization
+          : null;
+      }),
+    );
+    const found = [
+      ...new Map(
+        loaded.flatMap((organization) =>
+          organization ? [[organization._id, organization] as const] : [],
+        ),
+      ).values(),
+    ];
+    const assignees = await loadOrganizationAssignees(ctx, found);
+    const include = organizationIncludeSet(input.include);
     return {
-      orgId,
-      name: organization.name,
-      type:
-        organization.type === "broker" &&
-        isSpotOwnedBrokerIdentity(organization)
-          ? "spot"
-          : (organization.type ?? "client"),
-      ...(organization.type === "client"
-        ? {
-            clientAccessStatus: clientAccessStatus(organization),
-            assignee: organization.assignedOperatorUserId
-              ? await operatorPerson(ctx, organization.assignedOperatorUserId)
-              : null,
-          }
-        : {}),
-      slug: organization.slug,
-      website: organization.website,
-      companyResearch: organization.companyResearch ?? null,
-      ...(organization.type === "client"
-        ? {
-            businessProfile: await readIntakeBusinessProfile(ctx, orgId),
-            websiteTech: await readWebsiteTechProfile(
-              ctx,
-              organization.website,
-            ),
-          }
-        : {}),
-      ...(organization.type === "broker"
-        ? { companyWiki: await readOrgWiki(ctx, orgId) }
-        : {}),
-      brokerOrgId: organization.brokerOrgId,
-      featureFlags: organization.featureFlags,
-      onboardingComplete: organization.onboardingComplete,
-      memberCount: Math.min(memberships.length, 5_000),
-      policyCount: policies
-        .slice(0, 5_000)
-        .filter((policy) => !policy.deletedAt).length,
-      archivedPolicyCount: policies
-        .slice(0, 5_000)
-        .filter((policy) => policy.deletedAt).length,
-      countsAreLowerBounds:
-        memberships.length > 5_000 || policies.length > 5_000,
+      organizations: await Promise.all(
+        found.map((organization) =>
+          organizationDetail(ctx, organization, assignees, include, 100),
+        ),
+      ),
+      notFound: requested.flatMap((value, index) =>
+        loaded[index] ? [] : [String(value)],
+      ),
     };
   }
 

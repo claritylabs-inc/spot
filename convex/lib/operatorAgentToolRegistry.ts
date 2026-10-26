@@ -142,6 +142,21 @@ function clearable<TSchema extends z.ZodType>(schema: TSchema) {
 }
 
 const organizationId = z.string().min(1).describe("Exact organization ID");
+
+export const ORGANIZATION_INCLUDE_SECTIONS = [
+  "businessProfile",
+  "research",
+  "websiteTech",
+  "wiki",
+  "counts",
+] as const;
+
+const organizationIncludeSchema = omittable(
+  z
+    .array(z.enum([...ORGANIZATION_INCLUDE_SECTIONS, "all"]))
+    .max(ORGANIZATION_INCLUDE_SECTIONS.length + 1)
+    .describe("Optional heavy sections; omit for compact identity"),
+);
 const policyId = z.string().min(1).describe("Exact policy ID");
 const clientFileId = z.string().min(1).describe("Exact client file ID");
 const procurementRequestId = z
@@ -386,33 +401,73 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Research the public web: ${input.query ?? input.url}`,
   }),
   search_organizations: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
-      "Search Spot customer and external insurance provider organizations (legacy type=broker covers carriers, MGAs, wholesalers, agencies and producers); Spot-owned brands are excluded from provider results. Omit query to list organizations of the selected type, including when comparing applications across clients. Use this to resolve an exact organization ID before any organization write. Query is one organization name or domain, at most 200 characters, not a batch. Query each target separately. Returns organizations plus bounded and scanBounded: at most 25 matches from a scan of 500 providers, up to 500 client and 500 legacy-client records, or 1,000 unfiltered records. Bounded results cannot establish complete absence or an exhaustive client comparison; report remaining coverage.",
-    inputSchema: z.object({
-      query: omittable(z.string().max(200)),
-      type: omittable(z.enum(["broker", "client"])),
-      limit: omittable(z.number().int().min(1).max(25)),
-    }),
+      "Resolve customer or provider organizations (type=broker: carriers, MGAs, wholesalers, agencies, producers) to exact IDs. Use query for one name or domain, or queries (up to 20) to resolve many at once, grouped per query. Omit both to list (sort, cursor); filter clients by clientAccessStatus or assigneeUserId. bounded=true means the capped scan cannot prove absence; report it.",
+    inputSchema: z
+      .object({
+        query: omittable(z.string().max(200)),
+        queries: omittable(
+          z.array(z.string().trim().min(1).max(200)).min(1).max(20),
+        ),
+        type: omittable(z.enum(["broker", "client"])),
+        limit: omittable(z.number().int().min(1).max(25)),
+        clientAccessStatus: omittable(
+          z.array(z.enum(["limited", "active", "archived"])).min(1).max(3),
+        ),
+        assigneeUserId: omittable(
+          z.string().min(1).describe("Exact operator user ID from list_operators"),
+        ),
+        sort: omittable(z.enum(["name", "created_desc"])),
+        cursor: omittable(z.string().max(1_000)),
+      })
+      .refine(
+        (input) => !(input.query?.trim() && input.queries),
+        "Provide query or queries, not both",
+      )
+      .refine(
+        (input) => !(input.cursor && (input.query?.trim() || input.queries)),
+        "cursor applies only when listing without query or queries",
+      ),
     capability: "operator.organizations.read",
     effect: "read",
     requiredRole: "operator",
     confirmation: "none",
     target: () => ({}),
     summarize: (input) =>
-      `Search organizations${input.query ? ` for “${input.query}”` : ""}`,
+      input.queries
+        ? `Search organizations for ${input.queries.length} names`
+        : `Search organizations${input.query ? ` for “${input.query}”` : ""}`,
   }),
   get_organization: defineOperatorTool({
-    version: 2,
+    version: 3,
     description:
-      "Get the current organization name, website, public research status, lifecycle, client assignee, feature flags and counts by exact organization ID. Returns the client businessProfile with its current typed answers, details and submittedAt version for update_client_business_profile. Read supplementary company notes with lookup_client_wiki separately.",
-    inputSchema: z.object({ orgId: organizationId }),
+      "Read one organization by exact ID: identity, website, access status, assignee, feature flags and research status. Add include for businessProfile (typed answers plus submittedAt version for update_client_business_profile), research, websiteTech, wiki (providers) or counts; [\"all\"] returns every section. Use get_organizations for several IDs.",
+    inputSchema: z.object({
+      orgId: organizationId,
+      include: organizationIncludeSchema,
+    }),
     capability: "operator.organizations.read",
     effect: "read",
     requiredRole: "operator",
     confirmation: "none",
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) => `Read organization ${input.orgId}`,
+  }),
+  get_organizations: defineOperatorTool({
+    version: 1,
+    description:
+      "Read up to 25 organizations by exact ID in one call, with the same rows and include sections as get_organization (counts are capped at 100 per list in bulk). Returns {organizations, notFound}; IDs that are invalid, deleted or missing land in notFound.",
+    inputSchema: z.object({
+      orgIds: z.array(organizationId).min(1).max(25),
+      include: organizationIncludeSchema,
+    }),
+    capability: "operator.organizations.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: () => ({ kind: "platform", id: "organizations" }),
+    summarize: (input) => `Read ${input.orgIds.length} organizations`,
   }),
   get_operator_overview: defineOperatorTool({
     version: 1,
@@ -430,7 +485,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "platform",
     version: 1,
     description:
-      "List Spot operators with their exact user ID, name, company email, role and active or disabled status. Use this to resolve an operator by name or email before set_client_assignee; only active operators can be assigned.",
+      "List Spot operators (userId, name, email, role, active or disabled). Resolve the assignee here before set_client_assignee; only active operators can be assigned.",
     inputSchema: z.object({}),
     capability: "operator.platform.read",
     effect: "read",
@@ -2604,7 +2659,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Get the assignee (the Spot operator responsible for the client) of many clients in one call. Pass orgIds for exact clients, or omit them to list every client; pass assigneeUserId to keep only clients assigned to that operator. Each row has orgId, clientName and assignee (null when unassigned); missing or non-client IDs come back in notFound. Lists of all clients are bounded to 500.",
+      "Read the assignee (responsible Spot operator) of exact clients via orgIds, or of all clients (bounded to 500), optionally filtered by assigneeUserId. Rows: orgId, clientName, assignee (null when unassigned); unknown or non-client IDs land in notFound. To filter clients by status or assignee with identity fields, use search_organizations.",
     inputSchema: z.object({
       orgIds: omittable(z.array(organizationId).min(1).max(100)),
       assigneeUserId: omittable(
