@@ -697,43 +697,73 @@ export const setSoloClientStatus = mutation({
   },
 });
 
-/** Assigns an active operator to a client, or clears the assignment. */
-export const setClientAssignedOperator = mutation({
+/** The active operator profile for a user, or an error naming the problem. */
+async function requireActiveOperatorUser(ctx: QueryCtx, userId: Id<"users">) {
+  const profile = await ctx.db
+    .query("operatorProfiles")
+    .withIndex("user", (q) => q.eq("userId", userId))
+    .first();
+  if (profile?.status !== "active") throw new Error("Operator not found");
+  return profile;
+}
+
+/**
+ * Sets a client's assignee (an active operator), or clears it with null, and
+ * audits the change. Shared by the clients table and the operator agent tool.
+ */
+export async function setClientAssigneeForOperator(
+  ctx: MutationCtx,
+  args: {
+    actorUserId: Id<"users">;
+    clientOrgId: Id<"organizations">;
+    assigneeUserId: Id<"users"> | null;
+    domain?: "operator_agent";
+  },
+) {
+  const client = await ctx.db.get(args.clientOrgId);
+  if (!client || client.deletedAt !== undefined || client.type !== "client")
+    throw new Error("Client not found");
+  const previous = client.assignedOperatorUserId ?? null;
+  if (args.assigneeUserId)
+    await requireActiveOperatorUser(ctx, args.assigneeUserId);
+  if (previous === args.assigneeUserId)
+    return { status: "unchanged" as const, previous, next: previous };
+  await ctx.db.patch(args.clientOrgId, {
+    assignedOperatorUserId: args.assigneeUserId ?? undefined,
+  });
+  const [from, to] = await Promise.all(
+    [previous, args.assigneeUserId].map(async (userId) =>
+      userId ? (await operatorPerson(ctx, userId)).name : "Unassigned",
+    ),
+  );
+  await writeOperatorAudit(ctx, {
+    operatorUserId: args.actorUserId,
+    type: "client_operator_assigned",
+    targetOrgId: args.clientOrgId,
+    targetUserId: args.assigneeUserId ?? undefined,
+    summary: `${client.name} assignee changed from ${from} to ${to}`,
+    metadata: {
+      previous,
+      next: args.assigneeUserId,
+      ...(args.domain ? { domain: args.domain } : {}),
+    },
+  });
+  return { status: "updated" as const, previous, next: args.assigneeUserId };
+}
+
+/** Sets a client's assignee to an active operator, or clears it. */
+export const setClientAssignee = mutation({
   args: {
     clientOrgId: v.id("organizations"),
-    operatorUserId: v.union(v.id("users"), v.null()),
+    assigneeUserId: v.union(v.id("users"), v.null()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     await assertNoOperatorImpersonation(ctx, operator.userId);
-    const client = await ctx.db.get(args.clientOrgId);
-    if (!client || client.deletedAt !== undefined || client.type !== "client")
-      throw new Error("Client not found");
-    const previous = client.assignedOperatorUserId ?? null;
-    if (previous === args.operatorUserId) return;
-    if (args.operatorUserId) {
-      const userId = args.operatorUserId;
-      const profile = await ctx.db
-        .query("operatorProfiles")
-        .withIndex("user", (q) => q.eq("userId", userId))
-        .first();
-      if (profile?.status !== "active") throw new Error("Operator not found");
-    }
-    await ctx.db.patch(args.clientOrgId, {
-      assignedOperatorUserId: args.operatorUserId ?? undefined,
-    });
-    const [from, to] = await Promise.all(
-      [previous, args.operatorUserId].map(async (userId) =>
-        userId ? (await operatorPerson(ctx, userId)).name : "Unassigned",
-      ),
-    );
-    await writeOperatorAudit(ctx, {
-      operatorUserId: operator.userId,
-      type: "client_operator_assigned",
-      targetOrgId: args.clientOrgId,
-      targetUserId: args.operatorUserId ?? undefined,
-      summary: `${client.name} operator changed from ${from} to ${to}`,
-      metadata: { previous, next: args.operatorUserId },
+    await setClientAssigneeForOperator(ctx, {
+      actorUserId: operator.userId,
+      clientOrgId: args.clientOrgId,
+      assigneeUserId: args.assigneeUserId,
     });
   },
 });

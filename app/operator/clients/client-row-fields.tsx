@@ -143,7 +143,7 @@ type AssignableOperator = {
   avatarUrl: string | null;
 };
 
-function OperatorOption({
+function AssigneeOption({
   operator,
   compact,
 }: {
@@ -178,7 +178,7 @@ function OperatorOption({
   );
 }
 
-export function ClientOperatorField({
+export function ClientAssigneeField({
   client,
   operators,
   disabled,
@@ -187,7 +187,7 @@ export function ClientOperatorField({
   operators: AssignableOperator[];
   disabled?: boolean;
 }) {
-  const assign = useMutation(api.operator.setClientAssignedOperator);
+  const assign = useMutation(api.operator.setClientAssignee);
   const { patchClientSettings } = useOperatorClientCacheActions();
   const byId = new Map(operators.map((operator) => [operator.userId, operator]));
   const items: Record<string, string> = {
@@ -204,13 +204,13 @@ export function ClientOperatorField({
     if (next === previous) return;
     await patchClientSettings(client._id, { assignedOperatorUserId: next });
     try {
-      await assign({ clientOrgId: client._id, operatorUserId: next ?? null });
+      await assign({ clientOrgId: client._id, assigneeUserId: next ?? null });
     } catch (error) {
       await patchClientSettings(client._id, {
         assignedOperatorUserId: previous,
       });
       toast.error(
-        getUserFacingErrorMessage(error, "Could not assign the operator"),
+        getUserFacingErrorMessage(error, "Could not save the assignee"),
       );
     }
   }
@@ -228,19 +228,19 @@ export function ClientOperatorField({
         <SelectTrigger
           // Avatar-only columns drop the chevron so the avatar fits.
           className="-ml-[13px] w-[calc(100%+13px)] @max-[6.5rem]:[&_.lucide-chevron-down]:hidden"
-          aria-label={`Operator for ${client.name}`}
+          aria-label={`Assignee for ${client.name}`}
         >
           <SelectValue>
-            <OperatorOption operator={assigned} compact />
+            <AssigneeOption operator={assigned} compact />
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={UNASSIGNED}>
-            <OperatorOption operator={undefined} />
+            <AssigneeOption operator={undefined} />
           </SelectItem>
           {operators.map((operator) => (
             <SelectItem key={operator.userId} value={operator.userId}>
-              <OperatorOption operator={operator} />
+              <AssigneeOption operator={operator} />
             </SelectItem>
           ))}
         </SelectContent>

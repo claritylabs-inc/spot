@@ -75,6 +75,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "research_client",
   "research_broker",
   "set_client_access_status",
+  "set_client_assignee",
   "set_client_feature_flag",
   "send_operator_slack_message",
   "send_email_draft",
@@ -1206,6 +1207,18 @@ export async function preflightOperatorToolConfirmation(
     case "set_client_access_status":
       await requireClientOrganization(ctx, args.input.orgId);
       return;
+    case "set_client_assignee": {
+      await requireClientOrganization(ctx, args.input.orgId);
+      if (args.input.assigneeUserId !== null) {
+        const userId = exactId(ctx, "users", args.input.assigneeUserId, "Assignee");
+        const profile = await ctx.db
+          .query("operatorProfiles")
+          .withIndex("user", (q) => q.eq("userId", userId))
+          .first();
+        if (profile?.status !== "active") throw new Error("Operator not found");
+      }
+      return;
+    }
     case "set_client_feature_flag": {
       const organization = await requireClientOrganization(
         ctx,
