@@ -119,6 +119,7 @@ Operator command email uses the shared `agent@team.spot.insure` inbox. Its Resen
 
 | Tool                                       | Purpose                                                                                                                 | Capability                      | Effect           | Role     | Confirmation | Execution |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------- | -------- | ------------ | --------- |
+| `compact_context` | v1: compact older working context next iteration; optional `keepRecentSteps` (1–12) and `focus`. Direct MCP calls return `not_applicable`. | `operator.threads.read` | read | operator | none | mutation |
 | `web_search` | Search the public web for company or provider background with source links and provider diagnostics (Parallel/Exa fallbacks); steers URL reads to `fetch_url`. | `operator.web.read` | read | operator | none | action |
 | `fetch_url` | Fetch one public http(s) page (pinned-DNS SSRF guard, redirects revalidated, private/metadata addresses refused) and return title plus truncated readable text (`maxChars`, default 12,000, `truncated` flag); HTML only. | `operator.web.read` | read | operator | none | action |
 | `search_organizations`                     | Resolve customer and provider organizations to exact IDs. `query` (one name/domain) or `queries` (1–20, grouped per query) search; omitting both lists with `sort` (`name`/`created_desc`) and `cursor`/`nextCursor`; `clientAccessStatus[]` and `assigneeUserId` filter clients. Rows carry website, status, assignee and `createdAt`. | `operator.organizations.read`   | read             | operator | none         | mutation  |
@@ -576,3 +577,16 @@ orgId and optional outreachId. New profiles retain the single-create enrichment
 semantics; matched providers need a separate `research_broker` approval to rerun
 research. Identity matching scans at most 5,000 active provider organizations and
 fails closed if the bound is exceeded. No schema/index changes are required.
+
+Operator context management: `compact_context` v1 is a core read tool
+(`operator.threads.read`, operator role, no confirmation, mutation boundary).
+Optional `keepRecentSteps` (1–12, default 4) and `focus` (up to 1,000 characters)
+request working-context compaction on the next durable iteration. It retains
+complete recent call/result exchanges and exact reference metadata. Direct MCP
+invocations return `not_applicable` because they have no model working context;
+use the tool inside `run_operator_task`. Notes cannot authorize writes or change
+confirmation hashes. Automatic compaction estimates the full system, offered
+schemas and messages; checkpoints retain count and before/after estimates.
+Completed operator turns schedule a bounded rolling conversation summary,
+using the existing `summary` model task and thread-continuity helpers. See
+[operator context compaction](docs/architecture/operator-context-compaction.md).

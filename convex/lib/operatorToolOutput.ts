@@ -2,7 +2,6 @@ import type { ModelMessage } from "ai";
 import { stripLeakedToolCallText } from "./leakedToolCallText";
 
 const MAX_TOOL_OUTPUT_BYTES = 24_000;
-const MAX_HISTORY_TOOL_BYTES = 128_000;
 const encoder = new TextEncoder();
 const OUTPUT_NOTE =
   "Tool output was shortened for model context. This is incomplete evidence: page with the returned cursor or narrow the query; omitted results do not prove absence. Do not replay writes to recover omitted output.";
@@ -108,18 +107,8 @@ export function boundToolOutput(
   return result;
 }
 
-/** Retain every call/result pair; bound evidence across the entire durable history. */
+/** Bound each result without repeatedly shrinking recent pairs; the runner compacts total input. */
 export function boundToolHistory(messages: ModelMessage[]): ModelMessage[] {
-  let remaining = MAX_HISTORY_TOOL_BYTES;
-  let count = messages.reduce(
-    (total, message) =>
-      total + (message.role === "tool" ? message.content.length : 0),
-    0,
-  );
-  if (count * 1024 > MAX_HISTORY_TOOL_BYTES)
-    throw new Error(
-      "Tool history exceeded the model context limit; continue with fewer records",
-    );
   return messages.map((message) => {
     if (message.role === "assistant") {
       return typeof message.content === "string"
@@ -138,11 +127,6 @@ export function boundToolHistory(messages: ModelMessage[]): ModelMessage[] {
       ...message,
       content: message.content.map((part) => {
         if (part.type !== "tool-result") return part;
-        const budget = Math.min(
-          MAX_TOOL_OUTPUT_BYTES,
-          Math.floor(remaining / Math.max(1, count)),
-        );
-        count -= 1;
         const output = part.output;
         if (
           output.type !== "json" &&
@@ -151,8 +135,7 @@ export function boundToolHistory(messages: ModelMessage[]): ModelMessage[] {
           output.type !== "error-text"
         )
           return part;
-        const bounded = boundToolOutput(output.value, budget);
-        remaining -= byteLength(bounded);
+        const bounded = boundToolOutput(output.value);
         return {
           ...part,
           output: {
