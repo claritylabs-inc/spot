@@ -334,6 +334,7 @@ import type * as lib_operatorNotificationTypes from "../lib/operatorNotification
 import type * as lib_operatorNotify from "../lib/operatorNotify.js";
 import type * as lib_operatorOrganizationReads from "../lib/operatorOrganizationReads.js";
 import type * as lib_operatorPlanning from "../lib/operatorPlanning.js";
+import type * as lib_operatorProcurementReads from "../lib/operatorProcurementReads.js";
 import type * as lib_operatorRunPlan from "../lib/operatorRunPlan.js";
 import type * as lib_operatorSecondFactor from "../lib/operatorSecondFactor.js";
 import type * as lib_operatorSlackBlocks from "../lib/operatorSlackBlocks.js";
@@ -878,6 +879,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorNotify": typeof lib_operatorNotify;
   "lib/operatorOrganizationReads": typeof lib_operatorOrganizationReads;
   "lib/operatorPlanning": typeof lib_operatorPlanning;
+  "lib/operatorProcurementReads": typeof lib_operatorProcurementReads;
   "lib/operatorRunPlan": typeof lib_operatorRunPlan;
   "lib/operatorSecondFactor": typeof lib_operatorSecondFactor;
   "lib/operatorSlackBlocks": typeof lib_operatorSlackBlocks;

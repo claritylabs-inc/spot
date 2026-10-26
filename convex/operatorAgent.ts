@@ -43,6 +43,13 @@ import {
 } from "./websiteTech";
 import { websiteTechDomain } from "./lib/websiteTech";
 import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
+import {
+  getClientAttention,
+  getOperatorProcurementRequest,
+  listOperatorProcurementProposals,
+  listOperatorProcurementRequests,
+  procurementApplicationSummary,
+} from "./lib/operatorProcurementReads";
 import dayjs from "dayjs";
 import { operatorEmailContentValidator } from "./lib/threadMessageValidators";
 import {
@@ -115,7 +122,6 @@ import {
   getProcurementEmailThreadDetails,
   getProcurementRequestDetails,
   listProcurementEmailThreads,
-  listProcurementRequestSummaries,
   previewProcurementEmailReconciliation,
   updateProcurementEmailThreadByOperator,
   updateProcurementFileItemByOperator,
@@ -131,7 +137,6 @@ import {
   fileProcurementProposalByOperator,
   getProcurementProposalDetails,
   listProposalExtractionIssues,
-  listProcurementProposals,
   retryProcurementProposalExtractionByOperator,
   selectProcurementProposalByOperator,
 } from "./procurementProposals";
@@ -983,20 +988,6 @@ function normalizedOptionalText(value: unknown) {
   if (value === null) return undefined;
   if (typeof value !== "string") return undefined;
   return value.trim() || undefined;
-}
-
-/** The applicant's own contact details, for addressing email from records. */
-function applicantContactFromAnswers(...sources: unknown[]) {
-  for (const source of sources) {
-    const answers = recordValue(source);
-    const contact = {
-      name: normalizedOptionalText(answers?.name),
-      email: normalizedOptionalText(answers?.email),
-      phone: normalizedOptionalText(answers?.phone),
-    };
-    if (contact.name || contact.email || contact.phone) return contact;
-  }
-  return null;
 }
 
 function normalizeOperatorConversationKey(value: string) {
@@ -2473,15 +2464,54 @@ async function executeToolDomain(
   }
 
   if (toolName === "list_procurement_requests") {
-    const clientOrgId = normalizeOrganizationId(ctx, input.orgId);
-    const limit = typeof input.limit === "number" ? input.limit : 50;
-    const requests = await listProcurementRequestSummaries(ctx, {
-      clientOrgId,
+    const after = normalizedOptionalText(input.updatedAfter);
+    const before = normalizedOptionalText(input.updatedBefore);
+    const updatedAfter = after ? dayjs(after).valueOf() : undefined;
+    const updatedBefore = before
+      ? (before.length === 10
+          ? dayjs(before).endOf("day")
+          : dayjs(before)
+        ).valueOf()
+      : undefined;
+    if (
+      updatedAfter !== undefined &&
+      updatedBefore !== undefined &&
+      updatedAfter > updatedBefore
+    ) {
+      throw new Error("updatedAfter must not be later than updatedBefore");
+    }
+    const assigneeUserId = input.assigneeUserId
+      ? ctx.db.normalizeId("users", String(input.assigneeUserId))
+      : undefined;
+    if (assigneeUserId === null) throw new Error("Invalid assignee user ID");
+    const statuses = Array.isArray(input.status)
+      ? input.status
+      : input.status
+        ? [input.status]
+        : undefined;
+    return await listOperatorProcurementRequests(ctx, {
+      clientOrgId: input.orgId
+        ? normalizeOrganizationId(ctx, input.orgId)
+        : undefined,
       query: normalizedOptionalText(input.query),
-      status: writableProcurementRequestStatus(input.status),
-      limit,
+      status: statuses?.map(
+        (status) => writableProcurementRequestStatus(status)!,
+      ),
+      assigneeUserId,
+      updatedAfter,
+      updatedBefore,
+      sort: input.sort === "created_desc" ? "created_desc" : "updated_desc",
+      view: input.view === "full" ? "full" : "summary",
+      cursor: normalizedOptionalText(input.cursor),
+      limit: typeof input.limit === "number" ? input.limit : 50,
     });
-    return { requests, bounded: requests.length === limit };
+  }
+
+  if (toolName === "get_client_attention") {
+    return await getClientAttention(
+      ctx,
+      normalizeOrganizationId(ctx, input.orgId),
+    );
   }
 
   if (toolName === "get_procurement_request") {
@@ -2489,38 +2519,59 @@ async function executeToolDomain(
       ctx,
       input.procurementRequestId,
     );
+    const include = Array.isArray(input.include)
+      ? input.include.map(String)
+      : [];
     const intake = await readUnlinkedIntakeByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       requestId,
     });
     if (intake) {
+      if (input.view === "full") return intake;
+      const request = (await ctx.db.get(requestId))!;
       return {
-        ...intake,
-        applicantContact: applicantContactFromAnswers(
-          intake.application?.answers,
-          intake.intakeAnswers,
-        ),
+        procurementRequestId: intake._id,
+        title: intake.title,
+        diagnosticStatus: intake.diagnosticStatus,
+        clientOrgId: null,
+        intakeStep: intake.intakeStep,
+        intakeRevision: intake.intakeRevision,
+        createdAt: intake.createdAt,
+        updatedAt: intake.updatedAt,
+        fulfillmentAvailable: false,
+        application: include.includes("application")
+          ? intake.application
+          : procurementApplicationSummary(request),
+        ...(include.includes("application")
+          ? {
+              intakeAnswers: intake.intakeAnswers,
+              intakeDetails: intake.intakeDetails,
+            }
+          : {}),
+        ...(include.includes("audit")
+          ? {
+              slackEvents: intake.slackEvents,
+              bounded: intake.slackEventsBounded,
+            }
+          : {}),
       };
     }
-    const details = await getProcurementRequestDetails(ctx, requestId);
-    return {
-      ...details,
-      applicantContact: applicantContactFromAnswers(
-        details.request.application?.answers,
-        details.request.intakeAnswers,
-      ),
-    };
+    return await getOperatorProcurementRequest(ctx, requestId, {
+      include,
+      view: input.view === "full" ? "full" : "summary",
+    });
   }
 
   if (toolName === "list_procurement_proposals") {
-    const requestId = normalizeProcurementRequestId(
+    return await listOperatorProcurementProposals(
       ctx,
-      input.procurementRequestId,
+      normalizeProcurementRequestId(ctx, input.procurementRequestId),
+      {
+        view: input.view === "full" ? "full" : "summary",
+        limit: typeof input.limit === "number" ? input.limit : undefined,
+        cursor: normalizedOptionalText(input.cursor),
+      },
     );
-    return {
-      proposals: await listProcurementProposals(ctx, requestId),
-      private: true,
-    };
   }
 
   if (toolName === "get_procurement_proposal") {

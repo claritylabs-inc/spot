@@ -18,7 +18,7 @@ Collapsed activity shows each represented category icon once, in first-use order
 | Conversations | `MessagesSquare` | `search_thread_history`, `list_operator_conversations`, `read_operator_conversation` |
 | Company notes | `NotebookPen` | `lookup_client_wiki`, `update_client_wiki` |
 | Procurement packets | `FileText` | `lookup_procurement_packet`, `preview_broker_packet`, `update_procurement_packet` |
-| Procurement requests | `ClipboardList` | `list_procurement_requests`, `get_procurement_request`, `create_procurement_request`, `update_procurement_request` |
+| Procurement requests | `ClipboardList` | `list_procurement_requests`, `get_client_attention`, `get_procurement_request`, `create_procurement_request`, `update_procurement_request` |
 | Proposals and reviews | `FileCheck2` | `list_procurement_proposals`, `get_procurement_proposal`, `file_procurement_proposal`, `generate_procurement_proposal_review`, `confirm_procurement_proposal_review`, `select_procurement_proposal` |
 | Sharing and access | `Link2` | `list_broker_packet_links`, `create_broker_packet_link`, `rotate_broker_packet_link`, `revoke_broker_packet_link` |
 | Extraction | `ScanText` | `list_extraction_issues`, `retry_failed_policy_extraction`, `retry_procurement_proposal_extraction`, `cancel_procurement_proposal_extraction` |
