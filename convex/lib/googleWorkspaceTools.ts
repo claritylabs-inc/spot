@@ -21,6 +21,8 @@ import {
   type OperatorGoogleWorkspaceMailbox,
   type OperatorGoogleWorkspaceReadThreadInput,
   type OperatorGoogleWorkspaceReadThreadResult,
+  type OperatorGoogleWorkspaceReadThreadsInput,
+  type OperatorGoogleWorkspaceReadThreadsResult,
   type OperatorGoogleWorkspaceScanCandidate,
   type OperatorGoogleWorkspaceScanMailboxInput,
   type OperatorGoogleWorkspaceScanMailboxResult,
@@ -45,6 +47,12 @@ const DIRECTORY_PAGE_SIZE = 20;
 const TOOL_WORK_BUDGET_MS = 60_000;
 const MAX_SEARCH_MAILBOXES_PER_CALL = 10;
 const MAX_THREAD_BODY_CHARS_PER_PAGE = 80_000;
+const MAX_BULK_THREADS = 10;
+// Keeps ten threads under the 512 KiB tool-result cap; a thread cut short
+// reports `truncated` and is read alone for the rest.
+const BULK_THREAD_BODY_CHARS_BUDGET = 300_000;
+const MAX_SEARCH_PARTICIPANTS = 20;
+const PARTICIPANT_PATTERN = /^(?:[^\s@(){}":]+@)?[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i;
 const MAX_EXTERNAL_BODY_PART_BYTES = 2 * 1024 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -104,6 +112,17 @@ function optionalString(value: unknown, label: string) {
   return value === undefined ? undefined : requiredString(value, label);
 }
 
+function optionalParticipants(value: unknown) {
+  if (value === undefined) return undefined;
+  if (
+    !Array.isArray(value) ||
+    value.some((item) => typeof item !== "string")
+  ) {
+    throw new Error("Search participants are invalid.");
+  }
+  return value as string[];
+}
+
 export function parseGoogleWorkspaceToolInput(
   toolName: OperatorGoogleWorkspaceToolName,
   value: unknown,
@@ -134,8 +153,11 @@ export function parseGoogleWorkspaceToolInput(
     return {
       toolName: "search_company_email" as const,
       input: {
-        query: requiredString(input.query, "Gmail search query"),
+        query: optionalString(input.query, "Gmail search query") ?? "",
         mailboxes,
+        participants: optionalParticipants(input.participants),
+        since: optionalString(input.since, "Search start date"),
+        until: optionalString(input.until, "Search end date"),
         cursor: optionalCursor(input.cursor),
         limit: optionalLimit(input.limit),
       },
@@ -148,6 +170,30 @@ export function parseGoogleWorkspaceToolInput(
         mailbox: requiredString(input.mailbox, "Company mailbox"),
         threadId: requiredString(input.threadId, "Gmail thread ID"),
         cursor: optionalCursor(input.cursor),
+        limit: optionalLimit(input.limit),
+      },
+    };
+  }
+  if (toolName === "read_company_email_threads") {
+    if (
+      !Array.isArray(input.threads) ||
+      input.threads.length < 1 ||
+      input.threads.length > MAX_BULK_THREADS
+    ) {
+      throw new Error(
+        `Provide 1 to ${MAX_BULK_THREADS} Gmail threads to read.`,
+      );
+    }
+    return {
+      toolName: "read_company_email_threads" as const,
+      input: {
+        threads: input.threads.map((thread) => {
+          const reference = inputRecord(thread);
+          return {
+            mailbox: requiredString(reference.mailbox, "Company mailbox"),
+            threadId: requiredString(reference.threadId, "Gmail thread ID"),
+          };
+        }),
         limit: optionalLimit(input.limit),
       },
     };
@@ -171,6 +217,7 @@ export function parseGoogleWorkspaceToolInput(
         dateFrom: optionalString(input.dateFrom, "Scan start date"),
         dateTo: optionalString(input.dateTo, "Scan end date"),
         limit: optionalLimit(input.limit),
+        cursor: optionalCursor(input.cursor),
       },
     };
   }
@@ -178,6 +225,8 @@ export function parseGoogleWorkspaceToolInput(
 }
 
 type ListCursorState = { offset?: number; pageToken?: string };
+/** The date window is pinned so later pages cover the same range across midnight. */
+type ScanCursorState = { start?: number; end?: number; pageToken?: string };
 type SearchCursorState = {
   mailboxes: string[];
   mailboxIndex: number;
@@ -297,6 +346,19 @@ function assertListCursorState(state: ListCursorState) {
   if (
     (state.offset !== undefined &&
       (!Number.isInteger(state.offset) || state.offset < 0)) ||
+    !validOptionalToken(state.pageToken)
+  ) {
+    throw new Error("Google Workspace cursor is invalid.");
+  }
+}
+
+function assertScanCursorState(state: ScanCursorState) {
+  const validTime = (value: number | undefined) =>
+    value === undefined || (Number.isInteger(value) && value >= 0);
+  if (
+    !validTime(state.start) ||
+    !validTime(state.end) ||
+    (state.start === undefined) !== (state.end === undefined) ||
     !validOptionalToken(state.pageToken)
   ) {
     throw new Error("Google Workspace cursor is invalid.");
@@ -646,20 +708,80 @@ async function loadDirectorySearchMailboxes(
   return page.pagesFetched;
 }
 
+/** Folds participants and a UTC date window into one Gmail query. */
+function composedSearchQuery(
+  query: string,
+  input: OperatorGoogleWorkspaceSearchEmailInput,
+) {
+  const participants = [
+    ...new Set(
+      (input.participants ?? []).map((value) =>
+        value.trim().toLowerCase().replace(/^@/, ""),
+      ),
+    ),
+  ];
+  if (
+    participants.length > MAX_SEARCH_PARTICIPANTS ||
+    participants.some((value) => !PARTICIPANT_PATTERN.test(value))
+  ) {
+    throw new NoWriteInputError(
+      "invalid_input",
+      `Participants must be at most ${MAX_SEARCH_PARTICIPANTS} email addresses or bare domains such as acme.com.`,
+    );
+  }
+  const clauses = query ? [query] : [];
+  if (participants.length) {
+    clauses.push(
+      `(${participants
+        .flatMap((value) => [`from:${value}`, `to:${value}`, `cc:${value}`])
+        .join(" OR ")})`,
+    );
+  }
+  if (input.since) {
+    clauses.push(`after:${searchDay(input.since, "Search start date") / 1000}`);
+  }
+  if (input.until) {
+    clauses.push(
+      `before:${(searchDay(input.until, "Search end date") + DAY_MS) / 1000}`,
+    );
+  }
+  return clauses.join(" ");
+}
+
+function searchDay(value: string, label: string) {
+  const parsed = dayjs(`${value}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !parsed.isValid()) {
+    throw new NoWriteInputError(
+      "invalid_input",
+      `${label} must be a YYYY-MM-DD date.`,
+    );
+  }
+  return parsed.valueOf();
+}
+
 export async function searchCompanyEmail(
   dependencies: GoogleWorkspaceToolDependencies,
   input: OperatorGoogleWorkspaceSearchEmailInput,
 ): Promise<OperatorGoogleWorkspaceSearchEmailResult> {
   const { config, provider, cursorSecret } = dependencies;
   const query = input.query.trim();
-  if (!query || query.length > GOOGLE_WORKSPACE_LIMITS.maxQueryChars) {
+  const scoped = Boolean(input.participants?.length || input.since || input.until);
+  if (
+    (!query && !scoped) ||
+    query.length > GOOGLE_WORKSPACE_LIMITS.maxQueryChars
+  ) {
     throw new Error(
       `Google Workspace search query must be 1 to ${GOOGLE_WORKSPACE_LIMITS.maxQueryChars.toLocaleString()} characters.`,
     );
   }
   const limit = pageSize(input.limit);
   const requested = normalizedRequestedMailboxes(input.mailboxes);
-  const requestFingerprint = hashJson({ query, requested, limit });
+  const gmailQuery = composedSearchQuery(query, input);
+  const requestFingerprint = hashJson({
+    query: gmailQuery,
+    requested,
+    limit,
+  });
   const state = decodeCursor<SearchCursorState>(
     cursorSecret,
     input.cursor,
@@ -727,7 +849,7 @@ export async function searchCompanyEmail(
       searchedMailboxes.push(mailbox);
       const page = await provider.listMessages({
         mailbox,
-        query,
+        query: gmailQuery,
         pageToken: state.gmailPageToken,
         maxResults: limit - messages.length,
       });
@@ -800,7 +922,7 @@ export async function searchCompanyEmail(
       )
     : null;
   return {
-    query,
+    query: gmailQuery,
     messages: messages.slice(0, limit),
     searchedMailboxes: [...new Set(searchedMailboxes)],
     errors: errors.filter(
@@ -814,6 +936,7 @@ export async function searchCompanyEmail(
     directoryError,
     encounteredErrorCount: state.encounteredErrorCount,
     nextCursor,
+    bounded: Boolean(nextCursor) || state.hadErrors,
     completeness: !nextCursor && !state.hadErrors ? "complete" : "partial",
     ordering: "mailbox_then_gmail",
     querySemantics: "gmail_api_no_alias_expansion",
@@ -1029,6 +1152,7 @@ async function threadMessage(
 export async function readCompanyEmailThread(
   dependencies: GoogleWorkspaceToolDependencies,
   input: OperatorGoogleWorkspaceReadThreadInput,
+  options: { maxBodyChars?: number } = {},
 ): Promise<OperatorGoogleWorkspaceReadThreadResult> {
   const { config, provider, cursorSecret } = dependencies;
   const requestedMailbox = input.mailbox.trim().toLowerCase();
@@ -1073,7 +1197,8 @@ export async function readCompanyEmailThread(
   }
   state.threadFingerprint = threadFingerprint;
   const messages: OperatorGoogleWorkspaceThreadMessage[] = [];
-  let remainingChars = MAX_THREAD_BODY_CHARS_PER_PAGE;
+  const maxBodyChars = options.maxBodyChars ?? MAX_THREAD_BODY_CHARS_PER_PAGE;
+  let remainingChars = maxBodyChars;
   while (
     state.messageIndex < messageIds.length &&
     messages.length < limit &&
@@ -1130,8 +1255,62 @@ export async function readCompanyEmailThread(
     nextCursor,
     completeness:
       nextCursor || state.hadUnavailableBody ? "partial" : "complete",
-    maxBodyCharsPerPage: MAX_THREAD_BODY_CHARS_PER_PAGE,
+    maxBodyCharsPerPage: maxBodyChars,
   };
+}
+
+/** Reads up to ten exact threads; failures never fail the batch. */
+export async function readCompanyEmailThreads(
+  dependencies: GoogleWorkspaceToolDependencies,
+  input: OperatorGoogleWorkspaceReadThreadsInput,
+): Promise<OperatorGoogleWorkspaceReadThreadsResult> {
+  const maxBodyChars = Math.max(
+    10_000,
+    Math.floor(BULK_THREAD_BODY_CHARS_BUDGET / input.threads.length),
+  );
+  const result: OperatorGoogleWorkspaceReadThreadsResult = {
+    threads: [],
+    notFound: [],
+    errors: [],
+    completeness: "complete",
+  };
+  type Outcome =
+    | { kind: "thread"; thread: OperatorGoogleWorkspaceReadThreadsResult["threads"][number] }
+    | { kind: "notFound"; reference: { mailbox: string; threadId: string } }
+    | { kind: "error"; reference: { mailbox: string; threadId: string }; error: string };
+  for (let offset = 0; offset < input.threads.length; offset += 3) {
+    const batch = await Promise.all(
+      input.threads.slice(offset, offset + 3).map(async (reference): Promise<Outcome> => {
+        try {
+          const { nextCursor, ...page } = await readCompanyEmailThread(
+            dependencies,
+            { ...reference, limit: input.limit },
+            { maxBodyChars },
+          );
+          return { kind: "thread", thread: { ...page, truncated: nextCursor !== null } };
+        } catch (error) {
+          const message = sanitizeGoogleWorkspaceError(error);
+          return /was not found/.test(message)
+            ? { kind: "notFound", reference }
+            : { kind: "error", reference, error: message };
+        }
+      }),
+    );
+    for (const outcome of batch) {
+      if (outcome.kind === "thread") result.threads.push(outcome.thread);
+      else if (outcome.kind === "notFound") result.notFound.push(outcome.reference);
+      else result.errors.push({ ...outcome.reference, error: outcome.error });
+    }
+  }
+  if (
+    result.errors.length ||
+    result.threads.some(
+      (thread) => thread.truncated || thread.completeness === "partial",
+    )
+  ) {
+    result.completeness = "partial";
+  }
+  return result;
 }
 
 function locatedAttachment(
@@ -1366,14 +1545,36 @@ export async function scanWorkspaceMailbox(
       `Mailbox scan limit must be between 1 and ${GOOGLE_WORKSPACE_LIMITS.maxScanCandidates}.`,
     );
   }
-  const { start, end } = scanRange(input);
   const requested = input.mailbox ?? dependencies.operatorMailbox;
   if (!requested) throw new Error("Choose a company mailbox to scan.");
+  const requestFingerprint = hashJson({
+    terms,
+    requested,
+    dateFrom: input.dateFrom,
+    dateTo: input.dateTo,
+    limit,
+  });
+  const state = decodeCursor<ScanCursorState>(
+    dependencies.cursorSecret,
+    input.cursor,
+    {
+      tool: "scan_workspace_mailbox",
+      configUpdatedAt: config.updatedAt,
+      requestFingerprint,
+    },
+    {},
+  );
+  assertScanCursorState(state);
+  const { start, end } =
+    state.start !== undefined && state.end !== undefined
+      ? { start: state.start, end: state.end }
+      : scanRange(input);
   const mailbox = await resolveMailbox(provider, config, requested);
   const query = `(${terms}) -in:drafts after:${start / 1000} before:${(end + DAY_MS) / 1000}`;
   const page = await provider.listMessages({
     mailbox,
     query,
+    pageToken: state.pageToken,
     maxResults: limit,
   });
   const deadline = dayjs().valueOf() + TOOL_WORK_BUDGET_MS;
@@ -1436,6 +1637,15 @@ export async function scanWorkspaceMailbox(
     candidates,
     errors,
     hasMoreMatches: Boolean(page.nextPageToken) || page.messages.length > limit,
+    nextCursor: page.nextPageToken
+      ? encodeCursor(
+          dependencies.cursorSecret,
+          "scan_workspace_mailbox",
+          config.updatedAt,
+          requestFingerprint,
+          { start, end, pageToken: page.nextPageToken } satisfies ScanCursorState,
+        )
+      : null,
     completeness:
       page.nextPageToken || page.messages.length > limit || errors.length
         ? "partial"
@@ -1457,6 +1667,10 @@ async function executeGoogleWorkspaceTool(
     case "read_company_email_thread":
       return {
         result: await readCompanyEmailThread(dependencies, parsed.input),
+      };
+    case "read_company_email_threads":
+      return {
+        result: await readCompanyEmailThreads(dependencies, parsed.input),
       };
     case "get_company_email_attachment": {
       const output = await getCompanyEmailAttachment(

@@ -1,5 +1,14 @@
 # Platform workflow QA
 
+## Operator tool consolidation — October 26, 2026
+
+Native-local backend: catalog/schema compatibility, 22 workflow calls, 13
+approval/preflight calls, and compact default smoke checks passed. Packet-link
+create/rotate/revoke ran under exact approval; extraction retry was rejected,
+invalid email-source filing failed before approval, and no mail was sent.
+Draft preservation and legacy replacement semantics both passed. See
+[repeatable workflow and limits](operator-tool-consolidation-workflow.md).
+
 ## Information extraction after main merge — October 23, 2026
 
 Main `20802f6a` integrated; full lint, root/Convex type checks and 133 existing tests passed. Five fresh extraction cases and duplicate redelivery passed through the merged inbox/storage path, including 25/25 questions, conditional dependencies, a long-body tail request, and a visible partial hold. Details: [reliability report](provider-email-extraction-reliability-2026-10-23.md). No live email was sent; hosted durable callbacks remain unverified.
@@ -2785,6 +2794,56 @@ No new tests, dev migrations, production writes or deployment.
 Story: Providers Send → durable claim → accepted application summary → persisted plain-text/HTML email → existing dynamic operator inbox and scoped packet link.
 
 Local review on `zac/provider-outreach-summary`: root and Convex TypeScript passed; ESLint passed with existing warnings; all 145 existing tests passed with two workers (an earlier parallel run had an auth-fixture timeout). No tests or migrations were added. Helium rendered the real composer output using synthetic Riley QA Applicant / Alex QA Operator: applicant-first subject/introduction, HTML bullets, readable Ontario/date labels, separate packet section and dynamic signature were visible. Local artifact: ignored `.context/qa/provider-summary-20261026/initial-email.html`; screenshot `01-email-layout-preview.png`. This render checks composition, not actual email delivery. Production deployment and live outreach remain pending at the time of this entry.
+
+## Provider tool batches — October 26, 2026 (W4)
+
+Native local Conductor backend; synthetic providers and the existing local request
+fixture. Evidence: `.context/w4-local-results.json`,
+`.context/w4-local-extra-results.json`, `.context/w4-local-qa.mjs` and
+`.context/w4-catalog-size.json`. Registered tool reads/preflights used
+`operatorAgent.invokeRegisteredToolInternal` with the MCP channel; atomic writes
+used the internal batch mutation. Browser approval cards and OAuth HTTP transport
+were not exercised.
+
+| Workflow | Status | Evidence / limits |
+| --- | --- | --- |
+| Ensure/create/attach and repeat | Passed locally | Two created providers, a normalized `www`/path alias reused the first, repeated ensure matched all; exactly one request/provider outreach, without `sentAt`. |
+| Bulk update and clearing | Passed locally | Two profile updates; lowercase geography/ACORD normalized; nested `website: null` retained and cleared storage. |
+| Invalid final item | Passed locally | `CAUT` failed preflight before approval; prior item remained unchanged. Three pre-implementation isolation cases cover no partial writes, Spot-owned identity rejection and duplicate identity reuse. |
+| Cursor and batch search | Passed locally | Both QA providers found across 10 one-row pages with accurate bounds; domain groups match normalized hostnames. |
+| Full batch approval summary | Passed locally | All 50 items retained in the persisted 4,885-character summary, including item 50. W3 owns approval-card presentation. |
+| Public enrichment | Queued, completion not verified | Existing create scheduling ran; synthetic `.invalid` identities produced no cited public evidence. No inference accuracy claim. |
+
+Repeat with an active local operator and request: ensure two distinct domains plus
+an alias with `attachToProcurementRequestId`, repeat unchanged, update both profiles
+(including a null website), then page grouped search with `limit: 1`. Request an
+update with a valid first patch and invalid final ACORD code; verify no confirmation
+or profile write. Request a 50-item ensure and inspect the saved summary tail.
+Use a separate conversation for subsequent writes while this approval is pending.
+Every Convex CLI call must unset the two deployment credentials as documented in
+AGENTS.md and explicitly target the local backend. No production or live sends
+were used.
+
+## Operator context compaction — October 26, 2026
+
+See [operator-context-compaction-workflow.md](operator-context-compaction-workflow.md).
+No test files were added.
+
+| Workflow | Status | Evidence / remaining check |
+| --- | --- | --- |
+| Synthetic 180-step continuation: bounded results, safe exchange retention, exact references | Passed locally | 66,630 → 22,585 estimated history tokens; four recent pairs, 352 reference entries, no dangling calls. Illustrative fixed notes; no live inference claimed. |
+| Direct MCP `compact_context`, then exact idempotent replay | Passed locally | Existing authorized read path returns `not_applicable`; replay retains run, message IDs and input hash. |
+| Completed turn schedules rolling summary; rejected inference preserves watermark | Passed locally | Local 60-message fixture creates context state, records router failure, and does not advance summary watermark. |
+| Live automatic/proactive compaction, approval resume and later-turn summary injection | Blocked locally | cl-router rejects the local callback URL: `The job callback is not permitted. (router_rejected)`. Requires a router-approved callback environment. |
+
+W12 manager-review follow-up: real local runner with a router HTTP stub verified
+automatic deterministic fallback (49,062 → 18,327 estimated tokens), manual
+routed-summary rejection (10,369 → 9,573), and original-history retention when
+the deterministic ledger exceeds the hard limit (43,736 unchanged). Pending
+summary reconnect and empty-result fallback also completed with count 1.
+Checkpoint mode/skipped metadata and the web activity detail were verified.
+Execution responses were stubbed; live provider inference is not claimed. See
+the correction section in the linked workflow report.
 
 ## Incoming and Sent mailbox views — 2026-10-26
 

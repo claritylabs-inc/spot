@@ -1,5 +1,26 @@
+import { operatorBatchApprovalDetails } from "../../lib/operator-batch-approval";
 import type { Id } from "../_generated/dataModel";
 import { slackBlockId as blockId, truncateSlackText as truncate, escapeSlackMrkdwn as escapeMrkdwn, type SlackBlock } from "./slackMessage";
+
+function batchSummarySections(summary: string): SlackBlock[] | null {
+  const batch = operatorBatchApprovalDetails(summary);
+  if (!batch) return null;
+  const chunks: string[] = [];
+  for (const line of [batch.header, ...batch.items.map((item) => `- ${item}`)]) {
+    let remaining = escapeMrkdwn(line);
+    const last = chunks.length - 1;
+    if (last >= 0 && chunks[last].length + remaining.length + 1 <= 2_800) {
+      chunks[last] += `\n${remaining}`;
+      continue;
+    }
+    while (remaining.length > 2_800) {
+      chunks.push(remaining.slice(0, 2_800));
+      remaining = remaining.slice(2_800);
+    }
+    if (remaining) chunks.push(remaining);
+  }
+  return chunks.map((text) => ({ type: "section", text: { type: "mrkdwn", text } }));
+}
 
 export function buildOperatorSlackConfirmationBlocks(args: {
   confirmationId: Id<"operatorAgentConfirmations">;
@@ -8,15 +29,17 @@ export function buildOperatorSlackConfirmationBlocks(args: {
 }): SlackBlock[] {
   const summary = truncate(escapeMrkdwn(args.summary.trim()), 2_800);
   const accessibleSummary = truncate(args.summary.trim(), 60);
+  const batchSections = batchSummarySections(args.summary);
   return [
     {
       type: "section",
       block_id: blockId("spot-operator-confirmation", args.confirmationId),
       text: {
         type: "mrkdwn",
-        text: `*Confirmation required*\n${summary}`,
+        text: batchSections ? "*Confirmation required*" : `*Confirmation required*\n${summary}`,
       },
     },
+    ...(batchSections ?? []),
     {
       type: "actions",
       block_id: blockId(
@@ -75,7 +98,9 @@ export function operatorSlackConfirmationText(args: {
   }[args.decision];
   return [
     `*${OPERATOR_SLACK_CONFIRMATION_LABELS[args.decision]}*`,
-    truncate(escapeMrkdwn(args.summary.trim()), 1_700),
+    operatorBatchApprovalDetails(args.summary)
+      ? escapeMrkdwn(args.summary.trim())
+      : truncate(escapeMrkdwn(args.summary.trim()), 1_700),
     args.error?.trim()
       ? `Details: ${truncate(escapeMrkdwn(args.error.trim()), 800)}`
       : "",
@@ -88,6 +113,15 @@ export function operatorSlackConfirmationText(args: {
 export function buildOperatorSlackConfirmationResolvedBlocks(args: {
   summary: string;
 } & OperatorSlackConfirmationResolution): SlackBlock[] {
+  const batchSections = batchSummarySections(args.summary);
+  if (batchSections) {
+    return [
+      ...batchSections,
+      { type: "section", block_id: blockId("spot-operator-confirmation-resolved", args.decision), text: {
+        type: "mrkdwn", text: operatorSlackConfirmationText({ ...args, summary: "" }),
+      } },
+    ];
+  }
   return [
     {
       type: "section",

@@ -109,21 +109,24 @@ export const getPanel = query({
   },
 });
 
-export async function launchClientOutreachByOperator(
+type ClientOutreachLaunchInput = {
+  requestId: Id<"procurementRequests">;
+  recipientEmail: string;
+  subject: string;
+  text: string;
+  cadence: OutreachCadenceInput;
+  informationFormId?: Id<"procurementInformationForms">;
+};
+
+/**
+ * Every check a client information request must pass, without writing. The
+ * launch and the agent's pre-approval preflight share it, so nothing that can
+ * fail at execution is first discovered after the operator approves.
+ */
+export async function validateClientOutreachLaunch(
   ctx: MutationCtx,
-  args: {
-    operatorUserId: Id<"users">;
-    requestId: Id<"procurementRequests">;
-    recipientEmail: string;
-    subject: string;
-    text: string;
-    cadence: OutreachCadenceInput;
-    /** From the reviewed preview (`sender.fingerprint`); a mismatch refuses the launch. */
-    expectedIdentityFingerprint?: string;
-    informationFormId?: Id<"procurementInformationForms">;
-  },
+  args: ClientOutreachLaunchInput,
 ) {
-  await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const subject = args.subject.replace(/\s+/g, " ").trim();
   const text = args.text.replace(/\r\n?/g, "\n").trim();
   if (!subject) throw new Error("Add a subject");
@@ -158,6 +161,21 @@ export async function launchClientOutreachByOperator(
     throw new Error(
       "Follow-ups to this contact are already running. Reply in that conversation or stop its follow-ups first.",
     );
+  return { request, client, recipient, form, subject, text, email };
+}
+
+export async function launchClientOutreachByOperator(
+  ctx: MutationCtx,
+  args: ClientOutreachLaunchInput & {
+    operatorUserId: Id<"users">;
+    /** From the reviewed preview (`sender.fingerprint`); a mismatch refuses the launch. */
+    expectedIdentityFingerprint?: string;
+  },
+) {
+  await requireDirectOperatorWrite(ctx, args.operatorUserId);
+  const { request, recipient, form, subject, text } =
+    await validateClientOutreachLaunch(ctx, args);
+  const { followUpCount, intervalBusinessDays } = args.cadence;
 
   const now = dayjs().valueOf();
   const cadence = { followUpCount: form?.status === "submitted" ? 0 : followUpCount, intervalBusinessDays, style: "brief_nudge" as const };

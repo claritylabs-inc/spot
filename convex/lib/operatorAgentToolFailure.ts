@@ -149,7 +149,8 @@ export function executionOperatorToolFailure(
   // Attachment retrieval is catalogued as read but stages a file in the thread.
   const readOnly =
     getOperatorAgentToolSpec(toolName).effect === "read" &&
-    toolName !== "get_company_email_attachment";
+    toolName !== "get_company_email_attachment" &&
+    toolName !== "attach_to_conversation";
   const recoverable = !terminal && Boolean(knownNoWrite || readOnly);
   const code =
     terminal ??
@@ -202,4 +203,113 @@ export function isRecoverableOperatorToolFailure(
     (failure as { recoverable?: unknown }).recoverable === true &&
     (failure as { writeState?: unknown }).writeState === "not_started"
   );
+}
+
+export type OperatorRunFailureReason = {
+  code: string;
+  message: string;
+  nextStep: string;
+};
+
+/** Provider payloads remain in server logs; only fixed categories reach channels. */
+export function operatorRunFailureReason(
+  error: unknown,
+): OperatorRunFailureReason {
+  const detail = errorMessage(error);
+  const record =
+    error && typeof error === "object"
+      ? (error as {
+          failure?: { code?: string };
+          routerCode?: string;
+          name?: string;
+        })
+      : undefined;
+  const code = record?.failure?.code ?? record?.routerCode ?? "";
+  const match = `${code} ${detail}`;
+  if (/\[context_compaction_failed\]/.test(match)) return {
+    code: "context_compaction_failed",
+    message: "The task's working context could not be compacted safely.",
+    nextStep: "Check completed actions, then continue the remaining items in a smaller request.",
+  };
+  if (
+    /payload_too_large|context.{0,20}(?:limit|length|window)|maximum.{0,20}tokens|too many tokens|request.{0,20}too large/i.test(
+      match,
+    )
+  )
+    return {
+      code: "context_limit",
+      message: "The task exceeded the model's context limit.",
+      nextStep: "Narrow the request or process fewer records at a time.",
+    };
+  if (
+    /\[time_limit\]|budget_exhausted|timed? out|timeout|deadline/i.test(match)
+  )
+    return {
+      code: "time_limit",
+      message: "The model service ran out of time.",
+      nextStep:
+        "Check completed actions, then continue with a smaller request.",
+    };
+  if (
+    /\[model_unavailable\]|router_unavailable|router_internal|HTTP (?:429|5\d\d)|rate.?limit|temporarily unavailable/i.test(
+      match,
+    )
+  )
+    return {
+      code: "model_unavailable",
+      message: "The model service is temporarily unavailable.",
+      nextStep: "Check completed actions before trying again later.",
+    };
+  if (
+    /\[model_rejected\]|candidates_exhausted|router_rejected|rejected.*request/i.test(
+      match,
+    )
+  )
+    return {
+      code: "model_rejected",
+      message: "The model service could not accept this task.",
+      nextStep:
+        "Try a smaller request; if it persists, ask an administrator to check model routing.",
+    };
+  const terminal = terminalCode(error);
+  if (terminal === "not_authorized" || /\[not_authorized\]/.test(match))
+    return {
+      code: "not_authorized",
+      message: "Access to this operation is no longer authorized.",
+      nextStep: "Sign in again with the required operator access.",
+    };
+  if (
+    terminal === "integration_unavailable" ||
+    /\[integration_unavailable\]/.test(match)
+  )
+    return {
+      code: "integration_unavailable",
+      message: "A required integration is unavailable.",
+      nextStep: "Ask an administrator to check its connection in Settings.",
+    };
+  if (
+    record?.name === "OperatorPlanGenerationError" ||
+    /\[planning_failed\]/.test(match)
+  )
+    return {
+      code: "planning_failed",
+      message: "The model could not create a valid plan.",
+      nextStep:
+        "Retry with a smaller, concrete objective. No business tools ran.",
+    };
+  if (
+    record?.name === "AgentIncompleteOutputError" ||
+    /\[model_empty_output\]/.test(match)
+  )
+    return {
+      code: "model_empty_output",
+      message: "The model stopped before producing a complete answer.",
+      nextStep: "Check completed actions, then continue the remaining work.",
+    };
+  return {
+    code: "internal_error",
+    message: "An internal error stopped the task.",
+    nextStep:
+      "Check completed actions and share the run ID with an administrator before retrying changes.",
+  };
 }

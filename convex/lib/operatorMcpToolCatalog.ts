@@ -12,9 +12,12 @@ function oauthSecuritySchemes(scopes: Array<"read" | "write">) {
 export function buildOperatorMcpToolCatalog(args: {
   canWrite: boolean;
   operatorRole: OperatorToolRole;
+  toolNames?: readonly string[];
 }) {
+  const available = args.toolNames ? new Set(args.toolNames) : undefined;
   const registeredTools = Object.entries(OPERATOR_AGENT_TOOL_REGISTRY)
-    .filter(([, spec]) => {
+    .filter(([name, spec]) => {
+      if (!spec.offered || (available && !available.has(name))) return false;
       if (spec.requiredRole === "owner" && args.operatorRole !== "owner") {
         return false;
       }
@@ -121,7 +124,7 @@ export function buildOperatorMcpToolCatalog(args: {
       name: "get_operator_run",
       title: "Get an operator task result",
       description:
-        "Read the current state, response, checkpoint, and pending confirmation for an operator run.",
+        "Read an operator run: status, iteration, executionCount, lastToolName, step tool names, failure, response and checkpoint. Accepts the runId surfaced by read_operator_conversation; other operators' runs return a compact view without tool outputs.",
       inputSchema: {
         type: "object" as const,
         properties: {

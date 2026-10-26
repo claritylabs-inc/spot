@@ -17,6 +17,7 @@ import {
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { extractEmailAddress, parseReplyToAddresses } from "./lib/emailAddress";
 import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
+import { NoWriteInputError } from "./lib/noWriteInputError";
 import { isComposeKey } from "./lib/teamEmailReply";
 import { operatorSenderIdentity, type OperatorSenderIdentity } from "./lib/outreachIdentity";
 import {
@@ -30,6 +31,8 @@ import {
 const MAX_MESSAGES_PER_QUERY = 50;
 const MAX_DRAFTS_PER_MESSAGE = 10;
 const MAX_THREAD_DRAFTS = 50;
+// Newest drafts examined per page when filters skip most of them.
+const MAX_DRAFT_SCAN = 200;
 // The exact-approval summary is bounded; a draft that cannot be shown in full
 // there cannot be approved as exact. It leaves room for one quoted message.
 export const OPERATOR_EMAIL_SEND_SUMMARY_LIMIT = 3_500;
@@ -384,22 +387,77 @@ export const getReplyTargetInternal = internalQuery({
   },
 });
 
-/** Drafts created from one operator thread, newest first. */
+/** Drafts created from one operator thread, newest first, scanned in bounded pages. */
 export const listForThreadInternal = internalQuery({
   args: {
     operatorUserId: v.id("users"),
     threadId: v.id("operatorAgentThreads"),
+    status: v.optional(
+      v.union(
+        v.literal("draft"),
+        v.literal("pending"),
+        v.literal("sent"),
+        v.literal("cancelled"),
+      ),
+    ),
+    orgId: v.optional(v.string()),
+    procurementRequestId: v.optional(v.string()),
+    teamEmailThreadId: v.optional(v.string()),
+    createdByMe: v.optional(v.boolean()),
+    /** Creation time of the last draft already seen; the next page is older. */
+    before: v.optional(v.number()),
+    limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
     await requireOperatorEmailThread(ctx, args.threadId);
-    return await ctx.db
+    const limit = Math.max(1, Math.min(args.limit ?? 20, MAX_THREAD_DRAFTS));
+    const orgId = args.orgId ? ctx.db.normalizeId("organizations", args.orgId) : undefined;
+    const requestId = args.procurementRequestId
+      ? ctx.db.normalizeId("procurementRequests", args.procurementRequestId)
+      : undefined;
+    const teamThreadId = args.teamEmailThreadId
+      ? ctx.db.normalizeId("teamEmailThreads", args.teamEmailThreadId)
+      : undefined;
+    if (orgId === null || requestId === null || teamThreadId === null) {
+      throw new Error(
+        "clientOrgId, procurementRequestId and teamEmailThreadId must be exact IDs.",
+      );
+    }
+    const before = args.before;
+    const drafts: Doc<"pendingEmails">[] = [];
+    let scanned = 0;
+    let lastSeen = before;
+    let more = false;
+    for await (const draft of ctx.db
       .query("pendingEmails")
       .withIndex("operator_thread", (q) =>
-        q.eq("operatorThreadId", args.threadId),
+        before === undefined
+          ? q.eq("operatorThreadId", args.threadId)
+          : q.eq("operatorThreadId", args.threadId).lt("_creationTime", before),
       )
-      .order("desc")
-      .take(MAX_THREAD_DRAFTS);
+      .order("desc")) {
+      if (scanned >= MAX_DRAFT_SCAN) {
+        more = true;
+        break;
+      }
+      scanned += 1;
+      const matches =
+        (!args.status || draft.status === args.status) &&
+        (!orgId || draft.orgId === orgId) &&
+        (!requestId || draft.procurementRequestId === requestId) &&
+        (!teamThreadId || draft.teamEmailThreadId === teamThreadId) &&
+        (!args.createdByMe || draft.senderUserId === args.operatorUserId);
+      if (matches && drafts.length === limit) {
+        more = true;
+        break;
+      }
+      if (matches) drafts.push(draft);
+      lastSeen = draft._creationTime;
+    }
+    // The cursor resumes after the last draft consumed, so skipped
+    // non-matching drafts are not re-read and no match is skipped.
+    return { drafts, nextCursor: more ? (lastSeen ?? null) : null };
   },
 });
 
@@ -769,3 +827,69 @@ export async function operatorEmailSendConfirmation(
   const { draft, summary } = await requireSendableOperatorEmailDraft(ctx, args);
   return { summary, fingerprint: await pendingEmailDraftFingerprint(draft) };
 }
+
+/**
+ * Exact-ID checks for the draft attachment tools, run before they execute so a
+ * wrong ID fails with the reason and the read to use instead of a generic
+ * not-found. Returns the normalized IDs; it never writes.
+ */
+export const checkAttachmentInputInternal = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    threadId: v.id("operatorAgentThreads"),
+    toolName: v.union(
+      v.literal("attach_client_file_to_draft"),
+      v.literal("attach_policy_pdf_to_draft"),
+    ),
+    draftId: v.string(),
+    reference: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    await requireOperatorEmailThread(ctx, args.threadId);
+    const reference = args.reference.trim();
+    const fail = (message: string): never => {
+      throw new NoWriteInputError("invalid_identifier", message);
+    };
+    const draftId = ctx.db.normalizeId("pendingEmails", args.draftId.trim());
+    const draft = draftId ? await ctx.db.get(draftId) : null;
+    if (!draft || draft.operatorThreadId !== args.threadId)
+      return fail(
+        "Draft not found. Use an exact draftId returned by draft_email or list_email_drafts.",
+      );
+    if (draft.status !== "draft")
+      return fail("Only unsent drafts can receive attachments.");
+    if (!draft.orgId)
+      return fail(
+        "This draft is not linked to a client. Revise it with update_email_draft and the client's orgId before attaching files or policies.",
+      );
+    if (args.toolName === "attach_client_file_to_draft") {
+      const clientFileId = ctx.db.normalizeId("clientFiles", reference);
+      if (!clientFileId)
+        return fail(
+          ctx.db.system.normalizeId("_storage", reference)
+            ? "That is a storage file ID, not a client file ID. Use the clientFileId from list_client_files or generate_coi."
+            : "clientFileId must be an exact ID from list_client_files (or the clientFileId returned by generate_coi).",
+        );
+      const file = await ctx.db.get(clientFileId);
+      if (!file) return fail("Client file not found. List the client's files again.");
+      if (file.orgId !== draft.orgId)
+        return fail("That file belongs to a different client than this draft.");
+      if (file.archivedAt || file.deletedAt)
+        return fail("That client file is archived or deleted.");
+      return { reference: clientFileId };
+    }
+    const policyId = ctx.db.normalizeId("policies", reference);
+    if (!policyId)
+      return fail(
+        "policyId must be an exact policy ID from list_policies or lookup_policy, not a policy number or file name.",
+      );
+    const policy = await ctx.db.get(policyId);
+    if (!policy || policy.deletedAt) return fail("Policy not found.");
+    if (policy.orgId !== draft.orgId)
+      return fail("That policy belongs to a different client than this draft.");
+    if (!policy.fileId)
+      return fail("That policy has no original PDF available to attach.");
+    return { reference: policyId };
+  },
+});

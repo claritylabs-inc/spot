@@ -495,13 +495,54 @@ export type ProviderOutreachPanel = {
   providersBounded: boolean;
   sequences: SequenceView[];
   sequencesBounded: boolean;
+  /** Present only on a paged read: candidates matching the filters and the cursor for the next page. */
+  paging?: { total: number; nextCursor: string | null };
 };
+
+/** One filtered page of candidates; omit for the whole panel. */
+export type ProviderPageOptions = {
+  cursor?: string;
+  limit: number;
+  verdict?: ProviderFit["verdict"];
+  /** A requested coverage line the provider covers. */
+  coverage?: string;
+  /** Serviced state or province code. */
+  state?: string;
+  /** Role of the recipient chosen for the provider. */
+  role?: RecipientView["role"];
+};
+
+type CandidateKey = [partial: number, name: string, id: string];
+function candidateKey(evaluation: ProviderEvaluation): CandidateKey {
+  return [Number(evaluation.fit.partial), evaluation.org.name, evaluation.org._id];
+}
+function compareKeys(a: CandidateKey, b: CandidateKey) {
+  return a[0] - b[0] || a[1].localeCompare(b[1]) || a[2].localeCompare(b[2]);
+}
+function decodeCandidateCursor(cursor: string | undefined): CandidateKey | null {
+  if (!cursor) return null;
+  try {
+    const key: unknown = JSON.parse(decodeURIComponent(cursor));
+    if (
+      Array.isArray(key) &&
+      key.length === 3 &&
+      typeof key[0] === "number" &&
+      typeof key[1] === "string" &&
+      typeof key[2] === "string"
+    )
+      return [key[0], key[1], key[2]];
+  } catch {
+    // Fall through to the error below.
+  }
+  throw new Error("Provider match cursor is invalid. Restart without a cursor.");
+}
 
 /** Reads the matching, cadence and sequence state for a request. Caller authorizes the operator. */
 export async function getProviderOutreachPanel(
   ctx: Ctx,
   requestId: Id<"procurementRequests">,
   operatorUserId: Id<"users">,
+  page?: ProviderPageOptions,
 ): Promise<ProviderOutreachPanel | null> {
   let loaded: Awaited<ReturnType<typeof loadCompanyRequest>>;
   try {
@@ -558,13 +599,13 @@ export async function getProviderOutreachPanel(
       latestByOutreach.set(sequence.outreachId, sequence);
   }
 
-  const candidates: ProviderCandidateView[] = [];
-  for (const org of orgs.slice(0, MAX_PANEL_PROVIDERS)) {
-    if (!eligibleProviderOrg(org)) continue;
+  const buildCandidate = async (
+    evaluation: ProviderEvaluation,
+  ): Promise<ProviderCandidateView> => {
+    const { org } = evaluation;
     const outreach = outreachByBroker.get(org._id) ?? null;
-    const evaluation = await evaluateProvider(ctx, org, match, testMode, outreach, true);
     const sequence = outreach ? (latestByOutreach.get(outreach._id) ?? null) : null;
-    candidates.push({
+    return {
       brokerOrgId: org._id,
       name: org.name,
       website: org.website ?? null,
@@ -608,11 +649,62 @@ export async function getProviderOutreachPanel(
           }
         : null,
       sequenceId: sequence?._id ?? null,
-    });
+    };
+  };
+  const providers = orgs.slice(0, MAX_PANEL_PROVIDERS).flatMap((org) => {
+    const eligible = eligibleProviderOrg(org);
+    return eligible ? [eligible] : [];
+  });
+  const evaluateWithContacts = (org: Doc<"organizations">) =>
+    evaluateProvider(ctx, org, match, testMode, outreachByBroker.get(org._id) ?? null, true);
+
+  let candidates: ProviderCandidateView[] = [];
+  let paging: ProviderOutreachPanel["paging"];
+  if (!page) {
+    for (const org of providers) candidates.push(await buildCandidate(await evaluateWithContacts(org)));
+    candidates.sort(
+      (a, b) => Number(a.partial) - Number(b.partial) || a.name.localeCompare(b.name),
+    );
+  } else {
+    // Fit needs only the profile; contacts are read for the page (or for every
+    // provider when the recipient role is a filter).
+    const evaluated = await Promise.all(
+      providers.map((org) =>
+        page.role
+          ? evaluateWithContacts(org)
+          : evaluateProvider(ctx, org, match, testMode, outreachByBroker.get(org._id) ?? null, false),
+      ),
+    );
+    const state = page.state?.trim().toUpperCase();
+    const matching = evaluated
+      .filter(
+        (evaluation) =>
+          (!page.verdict || evaluation.fit.verdict === page.verdict) &&
+          (!page.coverage ||
+            evaluation.fit.lines.covered.some((need) => need.coverage === page.coverage)) &&
+          (!state ||
+            evaluation.fit.geography.serviced.some((place) => place.region?.toUpperCase() === state)) &&
+          (!page.role || evaluation.recipient?.role === page.role),
+      )
+      .sort((a, b) => compareKeys(candidateKey(a), candidateKey(b)));
+    const after = decodeCandidateCursor(page.cursor);
+    const remaining = after
+      ? matching.filter((evaluation) => compareKeys(candidateKey(evaluation), after) > 0)
+      : matching;
+    const rows = remaining.slice(0, page.limit);
+    candidates = await Promise.all(
+      rows.map(async (evaluation) =>
+        buildCandidate(page.role ? evaluation : await evaluateWithContacts(evaluation.org)),
+      ),
+    );
+    paging = {
+      total: matching.length,
+      nextCursor:
+        remaining.length > rows.length
+          ? encodeURIComponent(JSON.stringify(candidateKey(rows[rows.length - 1])))
+          : null,
+    };
   }
-  candidates.sort(
-    (a, b) => Number(a.partial) - Number(b.partial) || a.name.localeCompare(b.name),
-  );
   const reason = closedReason(request);
   return {
     request: {
@@ -648,6 +740,7 @@ export async function getProviderOutreachPanel(
       sequenceView(sequence, stepsBySequence.get(sequence._id) ?? []),
     ),
     sequencesBounded: sequences.bounded,
+    ...(paging ? { paging } : {}),
   };
 }
 
@@ -1138,6 +1231,125 @@ export async function insertOutreachSequence(
   return { sequenceId, schedule };
 }
 
+type LaunchSkipped = ProviderOutreachLaunchResult["skipped"][number];
+type LaunchCandidate =
+  | { kind: "skip"; skipped: LaunchSkipped }
+  | {
+      kind: "send";
+      org: Doc<"organizations">;
+      outreach: Doc<"procurementBrokerOutreaches"> | null;
+      evaluation: ProviderEvaluation;
+      recipient: RecipientView;
+    };
+
+/** The launch decision for one requested provider; shared by launch and preview. */
+async function classifyLaunchCandidate(
+  ctx: Ctx,
+  args: {
+    requestedId: Id<"organizations">;
+    request: Doc<"procurementRequests">;
+    match: RequestMatchContext;
+    testMode: boolean;
+    selectedContact?: Doc<"brokerContacts">;
+    matchedOnly: boolean;
+  },
+): Promise<LaunchCandidate> {
+  const org = eligibleProviderOrg(await ctx.db.get(args.requestedId));
+  if (!org)
+    return {
+      kind: "skip",
+      skipped: {
+        brokerOrgId: args.requestedId,
+        brokerName: null,
+        reason: "provider_not_found",
+        detail: [],
+      },
+    };
+  const outreach =
+    (
+      await ctx.db
+        .query("procurementBrokerOutreaches")
+        .withIndex("request_broker", (q) =>
+          q.eq("requestId", args.request._id).eq("brokerOrgId", org._id),
+        )
+        .take(1)
+    )[0] ?? null;
+  const sequences = outreach ? await sequencesForOutreach(ctx, outreach._id) : [];
+  const evaluation = await evaluateProvider(
+    ctx,
+    org,
+    args.match,
+    args.testMode,
+    outreach,
+    true,
+    args.selectedContact,
+  );
+  const blocked = launchBlock({
+    evaluation,
+    outreach,
+    hasLiveSequence: sequences.some((row) => blocksRelaunch(row.status)),
+    matchedOnly: args.matchedOnly,
+  });
+  if (blocked || !evaluation.recipient)
+    return {
+      kind: "skip",
+      skipped: {
+        brokerOrgId: org._id,
+        brokerName: org.name,
+        reason: blocked ?? "no_contact_email",
+        detail: evaluation.fit.reasons,
+      },
+    };
+  return { kind: "send", org, outreach, evaluation, recipient: evaluation.recipient };
+}
+
+/**
+ * Read-only: what a launch of these providers would do right now. Backs the
+ * agent's pre-approval check and approval card; it never writes.
+ */
+export async function previewProviderOutreachLaunch(
+  ctx: MutationCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    requestId: Id<"procurementRequests">;
+    brokerOrgIds: Id<"organizations">[];
+  },
+) {
+  if (!args.brokerOrgIds.length || args.brokerOrgIds.length > MAX_LAUNCH_PROVIDERS)
+    throw new Error(`Select one to ${MAX_LAUNCH_PROVIDERS} providers`);
+  const { request, client } = await loadCompanyRequest(ctx, args.requestId);
+  if (closedReason(request)) throw new Error("Procurement request is closed");
+  const match = matchFor(request, client);
+  const testMode = await operatorInTestMode(ctx, args.operatorUserId);
+  const providers: { brokerOrgId: Id<"organizations">; brokerName: string | null; willSend: boolean; reason?: LaunchSkipReason; recipientEmail?: string }[] = [];
+  const seen = new Set<Id<"organizations">>();
+  for (const requestedId of args.brokerOrgIds) {
+    if (seen.has(requestedId)) {
+      providers.push({
+        brokerOrgId: requestedId,
+        brokerName: eligibleProviderOrg(await ctx.db.get(requestedId))?.name ?? null,
+        willSend: false,
+        reason: "duplicate_selection",
+      });
+      continue;
+    }
+    seen.add(requestedId);
+    const candidate = await classifyLaunchCandidate(ctx, {
+      requestedId,
+      request,
+      match,
+      testMode,
+      matchedOnly: false,
+    });
+    providers.push(
+      candidate.kind === "skip"
+        ? { brokerOrgId: requestedId, brokerName: candidate.skipped.brokerName, willSend: false, reason: candidate.skipped.reason }
+        : { brokerOrgId: requestedId, brokerName: candidate.org.name, willSend: true, recipientEmail: candidate.recipient.email },
+    );
+  }
+  return providers;
+}
+
 export async function launchProviderOutreachByOperator(
   ctx: MutationCtx,
   args: {
@@ -1195,54 +1407,22 @@ export async function launchProviderOutreachByOperator(
       continue;
     }
     seen.add(requestedId);
-    const org = eligibleProviderOrg(await ctx.db.get(requestedId));
-    if (!org) {
-      result.skipped.push({
-        brokerOrgId: requestedId,
-        brokerName: null,
-        reason: "provider_not_found",
-        detail: [],
-      });
-      continue;
-    }
-    const outreach =
-      (
-        await ctx.db
-          .query("procurementBrokerOutreaches")
-          .withIndex("request_broker", (q) =>
-            q.eq("requestId", request._id).eq("brokerOrgId", org._id),
-          )
-          .take(1)
-      )[0] ?? null;
-    const sequences = outreach ? await sequencesForOutreach(ctx, outreach._id) : [];
-    const evaluation = await evaluateProvider(
-      ctx,
-      org,
+    const candidate = await classifyLaunchCandidate(ctx, {
+      requestedId,
+      request,
       match,
       testMode,
-      outreach,
-      true,
-      selectedContacts.get(org._id),
-    );
-    const blocked = launchBlock({
-      evaluation,
-      outreach,
-      hasLiveSequence: sequences.some((row) => blocksRelaunch(row.status)),
+      selectedContact: selectedContacts.get(requestedId),
       matchedOnly: args.matchedOnly === true,
     });
-    if (blocked || !evaluation.recipient) {
-      result.skipped.push({
-        brokerOrgId: org._id,
-        brokerName: org.name,
-        reason: blocked ?? "no_contact_email",
-        detail: evaluation.fit.reasons,
-      });
+    if (candidate.kind === "skip") {
+      result.skipped.push(candidate.skipped);
       continue;
     }
+    const { org, outreach, evaluation, recipient } = candidate;
     // Defensive: a recipient must always clear the external-identity gate.
-    assertExternalBrokerIdentity({ ...org, email: evaluation.recipient.email });
+    assertExternalBrokerIdentity({ ...org, email: recipient.email });
 
-    const recipient = evaluation.recipient;
     let outreachId: Id<"procurementBrokerOutreaches">;
     if (outreach) {
       outreachId = outreach._id;

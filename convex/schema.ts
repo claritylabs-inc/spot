@@ -2898,6 +2898,7 @@ export default defineSchema({
     .index("inbox", ["inboxToken"])
     .index("owner_updated", ["ownerUserId", "updatedAt"])
     .index("by_deletedAt_and_updatedAt", ["deletedAt", "updatedAt"])
+    .index("by_deletedAt_and_createdAt", ["deletedAt", "createdAt"])
     .index("intake_submitted_status", [
       "intakeSubmittedAt",
       "status",
@@ -4861,6 +4862,19 @@ export default defineSchema({
     sentAt: v.optional(v.number()),
   }).index("receipt_phase", ["receiptId", "phase"]),
 
+  operatorThreadContextStates: defineTable({
+    cutoffCreatedAt: v.optional(v.number()),
+    threadId: v.id("operatorAgentThreads"),
+    summary: v.optional(v.string()),
+    summaryVersion: v.number(),
+    summarizedThroughMessageId: v.optional(v.id("operatorAgentMessages")),
+    summarizedThroughCreatedAt: v.optional(v.number()),
+    generation: v.number(),
+    status: v.union(v.literal("scheduled"), v.literal("ready"), v.literal("error")),
+    lastError: v.optional(v.string()),
+    updatedAt: v.number(),
+  }).index("by_threadId", ["threadId"]),
+
   operatorAgentThreads: defineTable({
     resendThreadId: v.optional(v.string()),
     ownerUserId: v.id("users"),
@@ -5201,6 +5215,14 @@ export default defineSchema({
         lastToolName: v.optional(v.string()),
         pendingConfirmationId: v.optional(v.id("operatorAgentConfirmations")),
         routerRetryCount: v.optional(v.number()),
+        compaction: v.optional(v.object({
+          mode: v.optional(v.union(v.literal("model"), v.literal("deterministic"))),
+          skipped: v.optional(v.boolean()),
+          count: v.number(),
+          iteration: v.number(),
+          tokensBefore: v.number(),
+          tokensAfter: v.number(),
+        })),
         // Tool families chosen once per run and reused on later iterations.
         families: v.optional(v.array(v.string())),
       }),

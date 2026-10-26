@@ -483,106 +483,51 @@ export const attachPolicyDocument = tool({
 });
 
 export const GENERATE_COI_DESCRIPTION =
-  "Generate certificate PDFs in exactly one of two modes. Policy mode uses policyId plus a holder and includes all available policy coverages; when the user provides an address, call lookup_address first. Requirements mode uses requirementSourceDocumentId or one requirementId; the saved source supplies the holder and Spot creates the necessary certificates from matching policies with only the relevant coverages. Do not combine these modes. Additional-insured, waiver, primary/non-contributory, loss payee, and mortgagee requests issue only when existing policy evidence supports them; otherwise Spot gates the certificate and returns a drafted provider email.";
+  "Generate certificate PDFs in exactly one mode; never combine them. Policy mode: policyId plus a holder, covering all available policy coverages (call lookup_address first when given an address). Requirements mode: requirementSourceDocumentId or one requirementId; the saved source supplies the holder and Spot makes the needed certificates from matching policies with only the relevant coverages. Additional-insured, waiver, primary/non-contributory, loss payee and mortgagee requests issue only when policy evidence supports them; otherwise the certificate is gated and a provider email is drafted.";
+
+const coiText = (description?: string) => {
+  const schema = z.string().optional();
+  return description ? schema.describe(description) : schema;
+};
 
 export const generateCoiInputSchema = z.object({
-  policyId: z
-    .string()
-    .optional()
-    .describe("Policy-mode reference. Omit in requirements mode."),
-  requirementSourceDocumentId: z
-    .string()
-    .optional()
-    .describe(
-      "Requirements-mode source ID returned by lookup_compliance_requirements. The source provides the holder and all active requirements.",
-    ),
-  requirementId: z
-    .string()
-    .optional()
-    .describe(
-      "Requirements-mode exact requirement ID. Spot uses its connected source and generates only for this requirement.",
-    ),
-  certificateHolder: z
-    .string()
-    .optional()
-    .describe(
-      "Certificate holder name. Include the address in this block only when the user already provided it.",
-    ),
-  holderContactName: z
-    .string()
-    .optional()
-    .describe(
-      "Specific certificate holder contact name or attention line when the user provides one",
-    ),
-  holderEmail: z
-    .string()
-    .optional()
-    .describe(
-      "Certificate holder email address only when the user explicitly asks Spot to email/send the certificate or already provides the email. Do not ask for this for ordinary certificate generation.",
-    ),
-  holderPhone: z
-    .string()
-    .optional()
-    .describe(
-      "Certificate holder phone number only when the user provides one",
-    ),
-  addressLine1: z
-    .string()
-    .optional()
-    .describe(
-      "Certificate holder street address line 1 when the user provides it.",
-    ),
-  addressLine2: z
-    .string()
-    .optional()
-    .describe(
-      "Certificate holder street address line 2 when the user provides it.",
-    ),
-  city: z
-    .string()
-    .optional()
-    .describe("Certificate holder city when provided."),
-  state: z
-    .string()
-    .optional()
-    .describe("Certificate holder state/province when provided."),
-  postalCode: z
-    .string()
-    .optional()
-    .describe("Certificate holder postal code when provided."),
-  country: z
-    .string()
-    .optional()
-    .describe("Certificate holder country when provided."),
-  requestText: z
-    .string()
-    .optional()
-    .describe(
-      "The user's full certificate request. Include explicit endorsement-bearing wording only if the user asked for it.",
-    ),
-  descriptionOfOperations: z
-    .string()
-    .optional()
-    .describe(
-      "Source-backed description-of-operations wording to place in the certificate description box when the user explicitly provides wording or the policy source facts clearly support operations, locations, covered autos, or special items. Do not invent this wording. Do not use this for generic policy summaries, carrier names, policy numbers, limits, terms, or unsupported endorsement status.",
-    ),
+  policyId: coiText("Policy mode only"),
+  requirementSourceDocumentId: coiText(
+    "Requirements mode: source ID from lookup_compliance_requirements",
+  ),
+  requirementId: coiText("Requirements mode: exact requirement ID"),
+  certificateHolder: coiText(
+    "Holder name; add the address here only if the user already gave it",
+  ),
+  holderContactName: coiText("Contact or attention line, if the user gave one"),
+  holderEmail: coiText(
+    "Only when the user asks to email the certificate or already provided it",
+  ),
+  holderPhone: coiText(),
+  addressLine1: coiText(
+    "Holder address; fill addressLine1/2, city, state, postalCode and country only with what the user provided",
+  ),
+  addressLine2: coiText(),
+  city: coiText(),
+  state: coiText(),
+  postalCode: coiText(),
+  country: coiText(),
+  requestText: coiText("The user's full certificate request"),
+  descriptionOfOperations: coiText(
+    "Wording for the description box, only when the user supplied it or policy facts clearly support it. Never invent; not for summaries, limits, terms or endorsement status",
+  ),
   requestedEndorsements: z
     .array(z.string())
     .optional()
     .describe(
-      "Specific endorsement requests only when the user explicitly asks for them, such as additional insured, waiver of subrogation, primary and non-contributory, loss payee, or mortgagee. Do not invent extra wording.",
+      "Only endorsements the user explicitly asked for (additional insured, waiver of subrogation, primary and non-contributory, loss payee, mortgagee)",
     ),
-  additionalInsuredName: z
-    .string()
-    .optional()
-    .describe(
-      "Name of the requested additional insured when the user asks to add or show one on the certificate.",
-    ),
+  additionalInsuredName: coiText("Additional insured to show, when requested"),
   explicitReissue: z
     .boolean()
     .optional()
     .describe(
-      "Set true only when the user explicitly asks to reissue/regenerate a new certificate version even if one already exists for this holder and current policy version",
+      "True only when the user explicitly asks for a new version despite an existing certificate for this holder and policy version",
     ),
 });
 

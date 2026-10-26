@@ -216,6 +216,7 @@ export async function createClientFileFromOperatorAttachment(
     attachmentFileId: Id<"_storage">;
     name: string;
     policyId?: Id<"policies">;
+    auditAlreadyFiled?: boolean;
   },
 ) {
   await requireOperatorForUser(ctx, args.operatorUserId);
@@ -241,6 +242,19 @@ export async function createClientFileFromOperatorAttachment(
         "Operator attachment is already filed for another client",
       );
     }
+    if (args.auditAlreadyFiled)
+      await writeOperatorAudit(ctx, {
+        operatorUserId: args.operatorUserId,
+        type: "setup_write",
+        targetOrgId: args.orgId,
+        summary: `Attachment ${existing.name} already filed for ${organization.name}`,
+        metadata: {
+          domain: "client_files",
+          clientFileId: existing._id,
+          source: "operator_agent",
+          unchanged: true,
+        },
+      });
     return {
       clientFileId: existing._id,
       status: "already_filed" as const,

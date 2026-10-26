@@ -1,7 +1,7 @@
 "use node";
 
 import { internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import {
   buildEmailToolExecutors,
@@ -18,6 +18,7 @@ import {
  * operator's completed exact approval.
  */
 export const OPERATOR_EMAIL_TOOL_NAMES = new Set([
+  "save_email_draft",
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
@@ -51,6 +52,24 @@ function operatorEmailResult(result: EmailToolResult) {
   );
 }
 
+/** Compact list row: enough to pick a draft; `view: "full"` returns the whole draft. */
+function compactDraftRow(draft: Doc<"pendingEmails">) {
+  return Object.fromEntries(
+    Object.entries({
+      id: draft._id,
+      subject: draft.subject,
+      to: draft.recipientEmail,
+      status: draft.status,
+      updatedAt: draft._creationTime,
+      attachmentCount: draft.attachments?.length ?? 0,
+      sendBlockedReason: draft.sendBlockedReason,
+      orgId: draft.orgId,
+      procurementRequestId: draft.procurementRequestId,
+      teamEmailThreadId: draft.teamEmailThreadId,
+    }).filter(([, value]) => value !== undefined),
+  );
+}
+
 export async function runOperatorEmailTool(
   ctx: ActionCtx,
   args: {
@@ -62,22 +81,90 @@ export async function runOperatorEmailTool(
     confirmationId?: Id<"operatorAgentConfirmations">;
   },
 ) {
-  const { input } = args;
+  let { input } = args;
   if (args.toolName === "list_email_drafts") {
-    const drafts = await ctx.runQuery(
+    const text = (value: unknown) =>
+      typeof value === "string" && value ? value : undefined;
+    const before = text(input.cursor) === undefined ? undefined : Number(input.cursor);
+    if (before !== undefined && !Number.isFinite(before)) {
+      throw new Error("Draft cursor is invalid. Restart without a cursor.");
+    }
+    const status = text(input.status);
+    const page = await ctx.runQuery(
       internal.operatorEmailDrafts.listForThreadInternal,
-      { operatorUserId: args.operatorUserId, threadId: args.threadId },
+      {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        status:
+          status === "draft" ||
+          status === "pending" ||
+          status === "sent" ||
+          status === "cancelled"
+            ? status
+            : undefined,
+        orgId: text(input.clientOrgId),
+        procurementRequestId: text(input.procurementRequestId),
+        teamEmailThreadId: text(input.teamEmailThreadId),
+        createdByMe: input.createdByMe === true ? true : undefined,
+        before,
+        limit: typeof input.limit === "number" ? input.limit : undefined,
+      },
     );
+    const nextCursor = page.nextCursor === null ? null : String(page.nextCursor);
     return {
-      drafts: drafts.map((draft) => ({
-        ...serializeEmailDraft(draft),
-        sendBlockedReason: draft.sendBlockedReason,
-      })),
+      drafts:
+        input.view === "full"
+          ? page.drafts.map((draft) => ({
+              ...serializeEmailDraft(draft),
+              sendBlockedReason: draft.sendBlockedReason,
+            }))
+          : page.drafts.map(compactDraftRow),
+      nextCursor,
+      bounded: nextCursor !== null,
     };
   }
 
   if (args.toolName === "send_email_draft" && !args.confirmationId) {
     throw new Error("Exact operator confirmation is required");
+  }
+  // Attachment IDs are trimmed and verified against the draft's client first.
+  if (
+    args.toolName === "attach_client_file_to_draft" ||
+    args.toolName === "attach_policy_pdf_to_draft"
+  ) {
+    const field =
+      args.toolName === "attach_client_file_to_draft"
+        ? "clientFileId"
+        : "policyId";
+    const checked = await ctx.runQuery(
+      internal.operatorEmailDrafts.checkAttachmentInputInternal,
+      {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        toolName: args.toolName,
+        draftId: String(input.draftId ?? ""),
+        reference: String(input[field] ?? ""),
+      },
+    );
+    input = { ...input, draftId: String(input.draftId).trim(), [field]: checked.reference };
+  }
+  if (args.toolName === "save_email_draft" && typeof input.draftId === "string") {
+    const draftId = input.draftId;
+    for (const [field, toolName] of [
+      ["clientFileIds", "attach_client_file_to_draft"],
+      ["policyIds", "attach_policy_pdf_to_draft"],
+    ] as const) {
+      if (!Array.isArray(input[field])) continue;
+      const checkedIds: string[] = [];
+      for (const reference of input[field]) {
+        const checked = await ctx.runQuery(internal.operatorEmailDrafts.checkAttachmentInputInternal, {
+          operatorUserId: args.operatorUserId, threadId: args.threadId,
+          toolName, draftId, reference: String(reference),
+        });
+        checkedIds.push(checked.reference);
+      }
+      input = { ...input, [field]: checkedIds };
+    }
   }
   // `clientOrgId` is an alias of `orgId`; naming two different clients is an error.
   if (
@@ -143,6 +230,8 @@ export async function runOperatorEmailTool(
   } = input;
   const result = await (async (): Promise<EmailToolResult> => {
     switch (args.toolName) {
+      case "save_email_draft":
+        return executors.save_email_draft.execute(fields as never);
       case "draft_email":
         return executors.draft_email.execute({
           ...fields,
