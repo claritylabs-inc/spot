@@ -10,6 +10,7 @@
 
 import type * as actions_chatPresentations from "../actions/chatPresentations.js";
 import type * as actions_clientFileNaming from "../actions/clientFileNaming.js";
+import type * as actions_compactOperatorThreadHistory from "../actions/compactOperatorThreadHistory.js";
 import type * as actions_compactThreadHistory from "../actions/compactThreadHistory.js";
 import type * as actions_companyInformationExtraction from "../actions/companyInformationExtraction.js";
 import type * as actions_companyResearch from "../actions/companyResearch.js";
@@ -323,6 +324,8 @@ import type * as lib_operatorBatch from "../lib/operatorBatch.js";
 import type * as lib_operatorBrokerInputs from "../lib/operatorBrokerInputs.js";
 import type * as lib_operatorBrokerProfiles from "../lib/operatorBrokerProfiles.js";
 import type * as lib_operatorClientBatch from "../lib/operatorClientBatch.js";
+import type * as lib_operatorContextCompaction from "../lib/operatorContextCompaction.js";
+import type * as lib_operatorContextCompactionRunner from "../lib/operatorContextCompactionRunner.js";
 import type * as lib_operatorEmailAddress from "../lib/operatorEmailAddress.js";
 import type * as lib_operatorEmailAuthentication from "../lib/operatorEmailAuthentication.js";
 import type * as lib_operatorEmailTools from "../lib/operatorEmailTools.js";
@@ -483,10 +486,12 @@ import type * as oauth from "../oauth.js";
 import type * as operationalRouterSmoke from "../operationalRouterSmoke.js";
 import type * as operator from "../operator.js";
 import type * as operatorAgent from "../operatorAgent.js";
+import type * as operatorAgentHistory from "../operatorAgentHistory.js";
 import type * as operatorAgentRunner from "../operatorAgentRunner.js";
 import type * as operatorAudit from "../operatorAudit.js";
 import type * as operatorBrokerBatches from "../operatorBrokerBatches.js";
 import type * as operatorClientBatchWrites from "../operatorClientBatchWrites.js";
+import type * as operatorContext from "../operatorContext.js";
 import type * as operatorCursors from "../operatorCursors.js";
 import type * as operatorEmail from "../operatorEmail.js";
 import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
@@ -567,6 +572,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   "actions/chatPresentations": typeof actions_chatPresentations;
   "actions/clientFileNaming": typeof actions_clientFileNaming;
+  "actions/compactOperatorThreadHistory": typeof actions_compactOperatorThreadHistory;
   "actions/compactThreadHistory": typeof actions_compactThreadHistory;
   "actions/companyInformationExtraction": typeof actions_companyInformationExtraction;
   "actions/companyResearch": typeof actions_companyResearch;
@@ -880,6 +886,8 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorBrokerInputs": typeof lib_operatorBrokerInputs;
   "lib/operatorBrokerProfiles": typeof lib_operatorBrokerProfiles;
   "lib/operatorClientBatch": typeof lib_operatorClientBatch;
+  "lib/operatorContextCompaction": typeof lib_operatorContextCompaction;
+  "lib/operatorContextCompactionRunner": typeof lib_operatorContextCompactionRunner;
   "lib/operatorEmailAddress": typeof lib_operatorEmailAddress;
   "lib/operatorEmailAuthentication": typeof lib_operatorEmailAuthentication;
   "lib/operatorEmailTools": typeof lib_operatorEmailTools;
@@ -1040,10 +1048,12 @@ declare const fullApi: ApiFromModules<{
   operationalRouterSmoke: typeof operationalRouterSmoke;
   operator: typeof operator;
   operatorAgent: typeof operatorAgent;
+  operatorAgentHistory: typeof operatorAgentHistory;
   operatorAgentRunner: typeof operatorAgentRunner;
   operatorAudit: typeof operatorAudit;
   operatorBrokerBatches: typeof operatorBrokerBatches;
   operatorClientBatchWrites: typeof operatorClientBatchWrites;
+  operatorContext: typeof operatorContext;
   operatorCursors: typeof operatorCursors;
   operatorEmail: typeof operatorEmail;
   operatorEmailDrafts: typeof operatorEmailDrafts;

@@ -60,7 +60,7 @@ type SelectedAgentHistory<T extends AgentHistoryMessage> = {
 
 const textEncoder = new TextEncoder();
 
-function estimateAgentHistoryTokens(value: string): number {
+export function estimateAgentHistoryTokens(value: string): number {
   return Math.max(1, Math.ceil(textEncoder.encode(value).byteLength / 3));
 }
 
