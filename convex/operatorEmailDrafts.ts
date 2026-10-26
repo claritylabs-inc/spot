@@ -30,6 +30,8 @@ import {
 const MAX_MESSAGES_PER_QUERY = 50;
 const MAX_DRAFTS_PER_MESSAGE = 10;
 const MAX_THREAD_DRAFTS = 50;
+// Newest drafts examined per page when filters skip most of them.
+const MAX_DRAFT_SCAN = 200;
 // The exact-approval summary is bounded; a draft that cannot be shown in full
 // there cannot be approved as exact. It leaves room for one quoted message.
 export const OPERATOR_EMAIL_SEND_SUMMARY_LIMIT = 3_500;
@@ -384,22 +386,77 @@ export const getReplyTargetInternal = internalQuery({
   },
 });
 
-/** Drafts created from one operator thread, newest first. */
+/** Drafts created from one operator thread, newest first, scanned in bounded pages. */
 export const listForThreadInternal = internalQuery({
   args: {
     operatorUserId: v.id("users"),
     threadId: v.id("operatorAgentThreads"),
+    status: v.optional(
+      v.union(
+        v.literal("draft"),
+        v.literal("pending"),
+        v.literal("sent"),
+        v.literal("cancelled"),
+      ),
+    ),
+    orgId: v.optional(v.string()),
+    procurementRequestId: v.optional(v.string()),
+    teamEmailThreadId: v.optional(v.string()),
+    createdByMe: v.optional(v.boolean()),
+    /** Creation time of the last draft already seen; the next page is older. */
+    before: v.optional(v.number()),
+    limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
     await requireOperatorEmailThread(ctx, args.threadId);
-    return await ctx.db
+    const limit = Math.max(1, Math.min(args.limit ?? 20, MAX_THREAD_DRAFTS));
+    const orgId = args.orgId ? ctx.db.normalizeId("organizations", args.orgId) : undefined;
+    const requestId = args.procurementRequestId
+      ? ctx.db.normalizeId("procurementRequests", args.procurementRequestId)
+      : undefined;
+    const teamThreadId = args.teamEmailThreadId
+      ? ctx.db.normalizeId("teamEmailThreads", args.teamEmailThreadId)
+      : undefined;
+    if (orgId === null || requestId === null || teamThreadId === null) {
+      throw new Error(
+        "clientOrgId, procurementRequestId and teamEmailThreadId must be exact IDs.",
+      );
+    }
+    const before = args.before;
+    const drafts: Doc<"pendingEmails">[] = [];
+    let scanned = 0;
+    let lastSeen = before;
+    let more = false;
+    for await (const draft of ctx.db
       .query("pendingEmails")
       .withIndex("operator_thread", (q) =>
-        q.eq("operatorThreadId", args.threadId),
+        before === undefined
+          ? q.eq("operatorThreadId", args.threadId)
+          : q.eq("operatorThreadId", args.threadId).lt("_creationTime", before),
       )
-      .order("desc")
-      .take(MAX_THREAD_DRAFTS);
+      .order("desc")) {
+      if (scanned >= MAX_DRAFT_SCAN) {
+        more = true;
+        break;
+      }
+      scanned += 1;
+      const matches =
+        (!args.status || draft.status === args.status) &&
+        (!orgId || draft.orgId === orgId) &&
+        (!requestId || draft.procurementRequestId === requestId) &&
+        (!teamThreadId || draft.teamEmailThreadId === teamThreadId) &&
+        (!args.createdByMe || draft.senderUserId === args.operatorUserId);
+      if (matches && drafts.length === limit) {
+        more = true;
+        break;
+      }
+      if (matches) drafts.push(draft);
+      lastSeen = draft._creationTime;
+    }
+    // The cursor resumes after the last draft consumed, so skipped
+    // non-matching drafts are not re-read and no match is skipped.
+    return { drafts, nextCursor: more ? (lastSeen ?? null) : null };
   },
 });
 

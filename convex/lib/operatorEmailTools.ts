@@ -1,7 +1,7 @@
 "use node";
 
 import { internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import {
   buildEmailToolExecutors,
@@ -51,6 +51,24 @@ function operatorEmailResult(result: EmailToolResult) {
   );
 }
 
+/** Compact list row: enough to pick a draft; `view: "full"` returns the whole draft. */
+function compactDraftRow(draft: Doc<"pendingEmails">) {
+  return Object.fromEntries(
+    Object.entries({
+      id: draft._id,
+      subject: draft.subject,
+      to: draft.recipientEmail,
+      status: draft.status,
+      updatedAt: draft._creationTime,
+      attachmentCount: draft.attachments?.length ?? 0,
+      sendBlockedReason: draft.sendBlockedReason,
+      orgId: draft.orgId,
+      procurementRequestId: draft.procurementRequestId,
+      teamEmailThreadId: draft.teamEmailThreadId,
+    }).filter(([, value]) => value !== undefined),
+  );
+}
+
 export async function runOperatorEmailTool(
   ctx: ActionCtx,
   args: {
@@ -64,15 +82,44 @@ export async function runOperatorEmailTool(
 ) {
   const { input } = args;
   if (args.toolName === "list_email_drafts") {
-    const drafts = await ctx.runQuery(
+    const text = (value: unknown) =>
+      typeof value === "string" && value ? value : undefined;
+    const before = text(input.cursor) === undefined ? undefined : Number(input.cursor);
+    if (before !== undefined && !Number.isFinite(before)) {
+      throw new Error("Draft cursor is invalid. Restart without a cursor.");
+    }
+    const status = text(input.status);
+    const page = await ctx.runQuery(
       internal.operatorEmailDrafts.listForThreadInternal,
-      { operatorUserId: args.operatorUserId, threadId: args.threadId },
+      {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        status:
+          status === "draft" ||
+          status === "pending" ||
+          status === "sent" ||
+          status === "cancelled"
+            ? status
+            : undefined,
+        orgId: text(input.clientOrgId),
+        procurementRequestId: text(input.procurementRequestId),
+        teamEmailThreadId: text(input.teamEmailThreadId),
+        createdByMe: input.createdByMe === true ? true : undefined,
+        before,
+        limit: typeof input.limit === "number" ? input.limit : undefined,
+      },
     );
+    const nextCursor = page.nextCursor === null ? null : String(page.nextCursor);
     return {
-      drafts: drafts.map((draft) => ({
-        ...serializeEmailDraft(draft),
-        sendBlockedReason: draft.sendBlockedReason,
-      })),
+      drafts:
+        input.view === "full"
+          ? page.drafts.map((draft) => ({
+              ...serializeEmailDraft(draft),
+              sendBlockedReason: draft.sendBlockedReason,
+            }))
+          : page.drafts.map(compactDraftRow),
+      nextCursor,
+      bounded: nextCursor !== null,
     };
   }
 
