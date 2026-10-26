@@ -107,7 +107,7 @@ export function OperatorThreadPeople({
           <ChatAvatar
             name={creator.name}
             imageUrl={creator.avatarUrl}
-            className="size-5"
+            className="size-5 border-2 border-background"
           />
           <span className="truncate">{creator.name}</span>
         </span>
