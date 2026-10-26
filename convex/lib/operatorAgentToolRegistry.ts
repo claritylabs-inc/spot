@@ -1862,7 +1862,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "outbound_email",
     version: 2,
     description:
-      "Attach the original full policy PDF to an unsent draft linked to that policy's client, only when the operator explicitly asked to send the original policy document. Wrong, foreign or file-less policy IDs are rejected with the reason.",
+      "Attach the original policy PDF to an unsent draft of the policy's client, only when the operator explicitly asked to send the original policy document. Wrong or foreign policy IDs are rejected.",
     inputSchema: z.object({
       draftId: z.string().trim().min(1).describe("Exact draft ID"),
       policyId: z.string().trim().min(1).describe("Exact policy ID"),
@@ -1886,7 +1886,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "outbound_email",
     version: 2,
     description:
-      "Attach one stored client file to an unsent draft linked to the same client. Use a clientFileId from list_client_files or the one generate_coi returns (not its storage fileId). Wrong, foreign or archived files are rejected with the reason; size and duplicate checks apply.",
+      "Attach one stored client file to an unsent draft of the same client. Use a clientFileId from list_client_files or generate_coi, not a storage fileId. Foreign or archived files are rejected.",
     inputSchema: z.object({
       draftId: z.string().trim().min(1).describe("Exact draft ID"),
       clientFileId: z.string().trim().min(1).describe("Exact client file ID"),
