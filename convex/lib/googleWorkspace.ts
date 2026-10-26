@@ -158,6 +158,8 @@ export type OperatorGoogleWorkspaceScanMailboxInput = {
   dateFrom?: string;
   dateTo?: string;
   limit?: number;
+  /** Continuation returned as `nextCursor` by a scan with the same inputs. */
+  cursor?: string;
 };
 
 export type OperatorGoogleWorkspaceMailbox = {
@@ -321,5 +323,7 @@ export type OperatorGoogleWorkspaceScanMailboxResult = {
   errors: Array<{ messageId: string; error: string }>;
   /** Gmail has more matches than this bounded scan returned. */
   hasMoreMatches: boolean;
+  /** Pass as `cursor` with the same query, mailbox, dates and limit for the next page. */
+  nextCursor: string | null;
   completeness: "complete" | "partial";
 };
