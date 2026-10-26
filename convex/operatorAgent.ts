@@ -154,6 +154,10 @@ import {
 } from "./procurementPacket";
 import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
 import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmationPreflight";
+import {
+  describeOperatorRecordFields,
+  type OperatorDescribableRecord,
+} from "./lib/operatorRecordFieldCatalog";
 import { previewTeamEmailReply } from "./lib/teamEmailReply";
 import { assertOutreachIdentity } from "./lib/outreachIdentity";
 import { composeClientOutreachEmail } from "./lib/clientOutreachEmail";
@@ -2025,6 +2029,12 @@ async function executeToolDomain(
       operators: operators.sort((a, b) => a.name.localeCompare(b.name)),
       bounded: profiles.length === 200,
     };
+  }
+
+  if (toolName === "describe_record_fields") {
+    return describeOperatorRecordFields(
+      input.record as OperatorDescribableRecord,
+    );
   }
 
   if (toolName === "get_operator_overview") {
