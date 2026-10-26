@@ -2704,7 +2704,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Set the client workspace access of one exact client organization: limited (routed to the intake application) active (full client workspace), or archived (functionally dead lead; behaves like limited and is kept out of suggestions).",
+      "Set one client’s access: limited (intake only), active (full workspace), or archived (limited, omitted from suggestions). For multiple clients use set_client_access_statuses.",
     inputSchema: z.object({
       orgId: organizationId,
       status: z.enum(["limited", "active", "archived"]),
@@ -2715,6 +2715,25 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     confirmation: "exact",
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) => `Set client ${input.orgId} access to ${input.status}`,
+  }),
+  set_client_access_statuses: defineOperatorTool({
+    family: "organizations",
+    version: 1,
+    description:
+      "Set access for 1–50 distinct clients atomically under one exact approval. Each status is limited (intake), active (full workspace), or archived (limited, omitted from suggestions). All items are validated before approval; returns per-client previous/next values and updated/unchanged status.",
+    inputSchema: z.object({
+      items: z.array(z.object({
+        orgId: organizationId,
+        status: z.enum(["limited", "active", "archived"]),
+      })).min(1).max(50),
+    }),
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "platform", id: "clients" }),
+    summarize: (input) =>
+      `Set access for ${input.items.length} clients\n${input.items.map((item) => `- ${item.orgId} → ${item.status}`).join("\n")}`,
   }),
   get_client_assignees: defineOperatorTool({
     family: "organizations",
@@ -2741,7 +2760,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Set the assignee (the Spot operator responsible for the client) of one exact client organization, or pass assigneeUserId null to unassign. Resolve the client with search_organizations and the operator with list_operators first; only active operators can be assigned. One client per call. Audited.",
+      "Assign one client to an active operator from list_operators, or pass null to unassign. Resolve exact client IDs with search_organizations. For multiple clients use set_client_assignees. Audited.",
     inputSchema: z.object({
       orgId: organizationId,
       assigneeUserId: z
@@ -2760,11 +2779,30 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         ? `Set the assignee of client ${input.orgId} to ${input.assigneeUserId}`
         : `Unassign client ${input.orgId}`,
   }),
+  set_client_assignees: defineOperatorTool({
+    family: "organizations",
+    version: 1,
+    description:
+      "Assign 1–50 distinct clients atomically under one exact approval. Resolve active operators with list_operators; null unassigns. All items are validated before approval; returns per-client previous/next user IDs and updated/unchanged status.",
+    inputSchema: z.object({
+      items: z.array(z.object({
+        orgId: organizationId,
+        assigneeUserId: z.string().min(1).nullable().describe("Active operator user ID from list_operators, or null to unassign"),
+      })).min(1).max(50),
+    }),
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "platform", id: "clients" }),
+    summarize: (input) =>
+      `Assign ${input.items.length} clients\n${input.items.map((item) => `- ${item.orgId} → ${item.assigneeUserId ?? "Unassigned"}`).join("\n")}`,
+  }),
   set_client_feature_flag: defineOperatorTool({
     family: "organizations",
     version: 1,
     description:
-      "Enable or disable one supported Spot feature flag for an exact client organization.",
+      "Toggle one supported flag for an exact client. For multiple clients use set_client_feature_flags.",
     inputSchema: z.object({
       orgId: organizationId,
       flagId: z.enum(["connect_features"]),
@@ -2777,6 +2815,26 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) =>
       `${input.enabled ? "Enable" : "Disable"} ${input.flagId} for organization ${input.orgId}`,
+  }),
+  set_client_feature_flags: defineOperatorTool({
+    family: "organizations",
+    version: 1,
+    description:
+      "Toggle supported feature flags for 1–50 distinct clients atomically under one exact approval. One item per client; all items are validated before approval. Returns per-client previous/next booleans and updated/unchanged status.",
+    inputSchema: z.object({
+      items: z.array(z.object({
+        orgId: organizationId,
+        flagId: z.enum(["connect_features"]),
+        enabled: z.boolean(),
+      })).min(1).max(50),
+    }),
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "platform", id: "clients" }),
+    summarize: (input) =>
+      `Set feature flags for ${input.items.length} clients\n${input.items.map((item) => `- ${item.orgId} → ${item.flagId} ${item.enabled ? "enabled" : "disabled"}`).join("\n")}`,
   }),
   clear_all_agent_memory: defineOperatorTool({
     family: "wiki",
@@ -2925,8 +2983,8 @@ export function getOperatorAgentToolSpec(
 }
 
 // Nested tool objects are written straight into Convex validators that reject
-// `null`, and no nested field carries clear-on-null meaning, so drop nulls below
-// the top level. Top-level nulls survive for `clearable` fields.
+// `null`, so drop nulls below the top level unless the tool owns explicit
+// nested clear semantics. Top-level nulls survive for `clearable` fields.
 function stripNestedNulls(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stripNestedNulls);
   if (!value || typeof value !== "object") return value;
@@ -2980,7 +3038,8 @@ export function parseOperatorAgentToolInput(
       .filter(([, value]) => value !== undefined)
       .map(([key, value]) => [
         key,
-        name === "call_mcp_tool" && key === "arguments"
+        (name === "call_mcp_tool" && key === "arguments") ||
+        (name === "set_client_assignees" && key === "items")
           ? value
           : stripNestedNulls(value),
       ]),

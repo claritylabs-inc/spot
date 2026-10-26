@@ -63,8 +63,10 @@ const operatorToolCategories = {
   update_organization_profile: "organizations",
   update_client_business_profile: "organizations",
   set_client_access_status: "organizations",
+  set_client_access_statuses: "organizations",
   get_client_assignees: "organizations",
   set_client_assignee: "organizations",
+  set_client_assignees: "organizations",
   get_broker_network_profile: "brokers",
   list_broker_network_profiles: "brokers",
   create_broker_network_profile: "brokers",
@@ -155,6 +157,7 @@ const operatorToolCategories = {
   send_email_draft: "send",
   cancel_email_draft: "delete",
   set_client_feature_flag: "settings",
+  set_client_feature_flags: "settings",
   archive_procurement_proposal: "archive",
   clear_all_agent_memory: "delete",
 } satisfies Record<OperatorAgentToolName, keyof typeof toolActivityCategories>;
