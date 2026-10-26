@@ -9,6 +9,12 @@ import { jevProceeds } from "./jevThreshold";
 
 export const EXPAND_TOOLS_NAME = "expand_tools";
 
+// Lookups needed to use another family's tools; never register unavailable tools.
+export const AGENT_TOOL_FAMILY_LOOKUPS: Record<string, readonly string[]> = {
+  organizations: ["list_operators", "lookup_client_wiki"],
+  outbound_email: ["list_client_files", "get_procurement_request"],
+};
+
 export type AgentToolFamilyCatalog<Family extends string> = Record<
   Family,
   {
@@ -71,7 +77,12 @@ export function activeAgentToolNames<
   const grouped = new Set(
     familyNames(catalog).flatMap((family) => catalog[family].tools),
   );
-  const active = new Set(selected.flatMap((family) => catalog[family].tools));
+  const active = new Set(
+    selected.flatMap((family) => [
+      ...catalog[family].tools,
+      ...(AGENT_TOOL_FAMILY_LOOKUPS[family] ?? []),
+    ]),
+  );
   return toolNames.filter((name) => !grouped.has(name) || active.has(name));
 }
 
@@ -174,10 +185,47 @@ export async function selectAgentToolFamilies<Family extends string>(
 export function expandToolsSpec<Family extends string>(
   catalog: AgentToolFamilyCatalog<Family>,
   families: readonly Family[],
+  toolNames: readonly string[] = [],
 ) {
+  const grouped = new Set(
+    familyNames(catalog).flatMap((family) => catalog[family].tools),
+  );
+  const coreTools = new Set(toolNames.filter((name) => !grouped.has(name)));
+  const names = z.union([
+    z.string().min(1).max(200),
+    z.array(z.string().min(1).max(200)).min(1).max(50),
+  ]);
   return {
-    description: `Request tool families for the next step. Already selected families stay available; this call changes no records. Families: ${families.map((family) => `${family} (${catalog[family].description})`).join("; ")}.`,
-    inputSchema: z.object({ families: z.array(z.enum(families)).min(1) }),
+    description: `Load families or named tools for the next step; loaded families stay available. No business writes. Use families (string or array); family, tool_families and tools are aliases. Available: ${families.join(", ")}.`,
+    inputSchema: z
+      .object({
+        families: names.optional(),
+        family: names.optional(),
+        tool_families: names.optional(),
+        tools: names.optional(),
+      })
+      .transform((input, ctx) => {
+        const requested = Object.values(input).flatMap((value) => value ?? []);
+        const resolved = new Set<Family>();
+        for (const name of requested) {
+          if (coreTools.has(name)) continue;
+          const family = families.find(
+            (family) => family === name || catalog[family].tools.includes(name),
+          );
+          if (family) resolved.add(family);
+          else
+            ctx.addIssue({
+              code: "custom",
+              message: `Unknown or unavailable family/tool ${name}. Valid families: ${families.join(", ")}.`,
+            });
+        }
+        if (!requested.length)
+          ctx.addIssue({
+            code: "custom",
+            message: `Provide families, family, tool_families or tools. Valid families: ${families.join(", ")}.`,
+          });
+        return { families: [...resolved] };
+      }),
   };
 }
 

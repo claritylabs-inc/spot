@@ -1,6 +1,7 @@
 "use node";
 
 import { toolActivityContext } from "../lib/tool-activity-context";
+import dayjs from "dayjs";
 import { capturePresentationTool } from "./chatPresentations";
 
 import { CLIENT_PROFILE_GUIDANCE } from "./lib/clientProfile";
@@ -54,11 +55,12 @@ import {
   type OperatorExecutionPlan,
   type OperatorPlanningAssessment,
 } from "./lib/operatorRunPlan";
+import { containsLeakedToolCall } from "./lib/leakedToolCallText";
 import {
-  containsLeakedToolCall,
-  stripLeakedToolCallText,
-} from "./lib/leakedToolCallText";
-import { describeAgentFailure } from "./lib/agentFailureReason";
+  boundToolHistory,
+  boundToolOutput,
+  sanitizeOperatorReply,
+} from "./lib/operatorToolOutput";
 import {
   buildOperatorRunCheckpointSummary,
   shouldContinueOperatorRun,
@@ -88,6 +90,7 @@ import {
 } from "./lib/agentToolSelection";
 import {
   executionOperatorToolFailure,
+  operatorRunFailureReason,
   preflightOperatorToolFailure,
 } from "./lib/operatorAgentToolFailure";
 import {
@@ -211,15 +214,61 @@ function operatorRunRequiredFamilies(
     for (const part of message.content) {
       if (part.type !== "tool-call") continue;
       toolNames.add(part.toolName);
-      const families = (part.input as { families?: unknown } | undefined)
-        ?.families;
-      if (part.toolName === EXPAND_TOOLS_NAME && Array.isArray(families)) {
-        for (const family of families.filter(isOperatorToolFamily))
-          requested.add(family);
+      if (part.toolName === EXPAND_TOOLS_NAME) {
+        const parsed = expandOperatorToolsSpec(
+          Object.keys(OPERATOR_TOOL_FAMILY_CATALOG) as OperatorToolFamily[],
+        ).inputSchema.safeParse(part.input);
+        if (parsed.success)
+          for (const family of parsed.data.families) requested.add(family);
       }
     }
   }
   return [...new Set([...operatorToolFamiliesOf(toolNames), ...requested])];
+}
+
+// Existing per-message audit is the durable source: no thread-wide mutable
+// cache. Carry only used/explicitly expanded families from eight recent turns,
+// expiring after a day; current authorization still filters every offered tool.
+function operatorConversationFamilies(
+  run: Doc<"operatorAgentRuns">,
+  messages: Array<Doc<"operatorAgentMessages">>,
+) {
+  const cutoff = dayjs(run.createdAt).subtract(24, "hour").valueOf();
+  const previous = messages
+    .filter(
+      (message) =>
+        message.role === "agent" &&
+        message._id !== run.agentMessageId &&
+        message.createdAt >= cutoff &&
+        message.createdAt <= run.createdAt,
+    )
+    .slice(-8);
+  const families = new Set<OperatorToolFamily>(
+    operatorToolFamiliesOf(
+      previous.flatMap((message) => message.usedTools ?? []),
+    ),
+  );
+  for (const message of previous) {
+    for (const call of message.toolCalls ?? []) {
+      if (call.name !== EXPAND_TOOLS_NAME || !call.output) continue;
+      try {
+        const output = JSON.parse(call.output) as {
+          status?: string;
+          families?: unknown[];
+        };
+        if (
+          output.status === "available_next_step" &&
+          Array.isArray(output.families)
+        ) {
+          for (const family of output.families.filter(isOperatorToolFamily))
+            families.add(family);
+        }
+      } catch {
+        /* Truncated legacy audit entries cannot load families. */
+      }
+    }
+  }
+  return [...families];
 }
 
 function operatorIntentFamilies(
@@ -546,11 +595,14 @@ export const run = internalAction({
         selectOperatorToolFamilies(
           {
             toolNames: context.toolNames,
-            required: operatorRunRequiredFamilies(
-              run,
-              context.messages,
-              continuation?.messages ?? [],
-            ),
+            required: [
+              ...operatorConversationFamilies(run, context.messages),
+              ...operatorRunRequiredFamilies(
+                run,
+                context.messages,
+                continuation?.messages ?? [],
+              ),
+            ],
             intentFamilies,
             resumed,
             request: run.objective,
@@ -809,7 +861,7 @@ export const run = internalAction({
       let toolEvidence = collectToolAudit({});
       if (!recovery.stopped && !exhaustedTools.has(EXPAND_TOOLS_NAME)) {
         tools[EXPAND_TOOLS_NAME] = tool({
-          ...expandOperatorToolsSpec(availableFamilies),
+          ...expandOperatorToolsSpec(availableFamilies, context.toolNames),
           execute: async ({ families }, options) => {
             const activity = {
               kind: "tool" as const,
@@ -817,8 +869,15 @@ export const run = internalAction({
               toolName: EXPAND_TOOLS_NAME,
             };
             await recordActivity({ ...activity, status: "running" });
+            familySelection.families = [
+              ...new Set([...familySelection.families, ...families]),
+            ];
             await recordActivity({ ...activity, status: "returned" });
-            return { status: "available_next_step", families };
+            return {
+              status: "available_next_step",
+              families,
+              ...(families.length ? {} : { note: "Requested core tools are already available. Call them directly." }),
+            };
           },
         });
       }
@@ -966,7 +1025,16 @@ export const run = internalAction({
                 () => recordActivity({ ...activity, status: "failed" }),
               )
               .catch(() => undefined);
-            return toolQueue.then(() => execution);
+            return toolQueue.then(async () => {
+              const output = await execution;
+              const bounded = boundToolOutput(output);
+              if (bounded !== output) console.info("Operator tool output shortened", {
+                runId: run._id,
+                toolName: name,
+                originalBytes: (bounded as { originalBytes: number }).originalBytes,
+              });
+              return bounded;
+            });
           },
         });
       }
@@ -1012,7 +1080,7 @@ export const run = internalAction({
               : "") +
             (executionPlan ? operatorPlanPromptBlock(executionPlan) : "") +
             recoveryPromptBlock(recovery),
-          messages,
+          messages: boundToolHistory(messages),
           tools,
           experimental_onStepStart: () => recordActivity({ kind: "model" }),
           onStepFinish: async (step) => {
@@ -1037,12 +1105,8 @@ export const run = internalAction({
             expectedRunnerAttempt,
             expectedCheckpointIteration,
           },
-          // While a failure is unresolved no reply can become the final
-          // answer (a tool call continues, a bare reply is held back or
-          // replaced by the blocker report), so it must not stream.
-          ...(traceChannel === "web" && recovery.pending.length === 0
-            ? { streamTarget: run.agentMessageId }
-            : {}),
+          // Persist only the sanitized final reply. Activity still streams;
+          // provisional text can contain raw JSON tool envelopes.
           durable: {
             invocationKey,
             route,
@@ -1070,7 +1134,10 @@ export const run = internalAction({
       // for a real call or prose a bounded number of times.
       const replyText = generatedTextFromResult(result);
       const leakedReply =
-        !pendingConfirmation && !stepHadCalls && containsLeakedToolCall(replyText);
+        !pendingConfirmation &&
+        !stepHadCalls &&
+        (containsLeakedToolCall(replyText) ||
+          sanitizeOperatorReply(replyText) !== replyText.trimEnd());
       const leakedCallRetries = continuation?.leakedCallRetries ?? 0;
       const leakContinues =
         leakedReply && leakedCallRetries < OPERATOR_LEAKED_CALL_MAX_RETRIES;
@@ -1106,7 +1173,7 @@ export const run = internalAction({
                               content: heldBackNotice,
                             },
                           ]
-                        : [...messages, ...result.response.messages],
+                        : boundToolHistory([...messages, ...result.response.messages]),
                     parentRequestId: result.clRouter?.requestId,
                     recovery: nextRecovery,
                     leakedCallRetries: leakContinues
@@ -1160,10 +1227,10 @@ export const run = internalAction({
         ? `Confirmation required: ${pendingConfirmation.summary}. Approve or reject this update. After approval, I'll continue the remaining work.`
         : blocked
           ? recoveryBlockerReport(unresolved)
-          : (stripLeakedToolCallText(replyText).trim() ||
+          : (sanitizeOperatorReply(replyText).trim() ||
               (audit.completedTools.length > 0 && !hasExhaustedCalls
-                ? "The requested operator work completed."
-                : "I couldn't complete that operator task.")) +
+                ? "The recorded tool calls completed, but the model did not produce a usable answer. Review their results before continuing."
+                : "The model stopped without a usable answer. Check completed actions, then continue with a smaller request.")) +
             (hasExhaustedCalls
               ? `\n\n${incompleteWorkNote(nextRecovery)}`
               : "");
@@ -1178,7 +1245,7 @@ export const run = internalAction({
             previous: run.checkpoint?.summary,
             audit,
           }),
-          content,
+          content: sanitizeOperatorReply(content),
           routerRequestId: result.clRouter?.requestId,
           usedTools: audit.usedTools,
           toolCalls: audit.toolCalls,
@@ -1211,17 +1278,26 @@ export const run = internalAction({
         return { status: "queued" };
       }
       const message = error instanceof Error ? error.message : String(error);
+      const failureReason = operatorRunFailureReason(error);
+      console.error("Operator run failed", {
+        runId: args.runId,
+        category: failureReason.code,
+        error,
+      });
       await ctx.runMutation(internal.operatorAgent.failRunInternal, {
         runId: args.runId,
         expectedCheckpointIteration,
         expectedRunnerAttempt,
-        error: message,
-        reason: describeAgentFailure(error),
+        error: `[${failureReason.code}] ${message}`,
+        reason: `[${failureReason.code}] ${failureReason.message} ${failureReason.nextStep}`,
         ...(error instanceof RouterJobFailed && error.failure
           ? { failure: error.failure }
           : {}),
       });
-      return { status: "failed" as const, error: message };
+      return {
+        status: "failed" as const,
+        error: `${failureReason.code}: ${failureReason.message} ${failureReason.nextStep}`,
+      };
     }
   },
 });
