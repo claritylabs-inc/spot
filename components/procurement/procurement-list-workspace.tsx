@@ -59,7 +59,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import {
   Table,
   TableBody,
@@ -164,7 +165,8 @@ function RequestPreviewSummary({
     providerPanel?.candidates.matched.filter(
       (candidate) => !added.has(candidate.brokerOrgId),
     ).length ?? 0;
-  const live = (status: string) => status === "active" || status === "reply_check";
+  const live = (status: string) =>
+    status === "active" || status === "reply_check";
   const providerFollowUps =
     providerPanel?.sequences.filter((sequence) => live(sequence.status))
       .length ?? 0;
@@ -188,7 +190,8 @@ function RequestPreviewSummary({
     live(sequence.status),
   ).length;
   const sharedFiles = files.filter(
-    (file) => file.brokerRelease === "attached" || file.brokerRelease === "listed",
+    (file) =>
+      file.brokerRelease === "attached" || file.brokerRelease === "listed",
   ).length;
   const providerLink = links?.find(
     (link) => link.outreachId === null && link.state === "active",
@@ -397,7 +400,8 @@ function ProcurementRequestPreview({
               value={currentRequest.targetEffectiveDate ?? ""}
               disabled={saving}
               onChange={(value) => {
-                if (value === (currentRequest.targetEffectiveDate ?? "")) return;
+                if (value === (currentRequest.targetEffectiveDate ?? ""))
+                  return;
                 void updateQuickField({ targetEffectiveDate: value || null });
               }}
             />
@@ -581,9 +585,7 @@ function NewProcurementRequestDrawer({
           </span>
           <Textarea
             value={narrative}
-            onChange={(event) =>
-              updateDraft({ narrative: event.target.value })
-            }
+            onChange={(event) => updateDraft({ narrative: event.target.value })}
             className="min-h-32"
             maxLength={20_000}
             placeholder="The client’s goals, coverage needs, timing, and constraints."
@@ -657,7 +659,10 @@ export function ProcurementListWorkspace({
   readOnly,
   onActions,
   onRightPanel,
+  notice,
 }: {
+  /** Page-level notice (such as read-only), shown under the view tabs. */
+  notice?: ReactNode;
   /** Omit to list every client's requests. */
   clientOrgId?: Id<"organizations">;
   /** The client's procurement route; rows of the all-clients list use their own client's. */
@@ -735,7 +740,8 @@ export function ProcurementListWorkspace({
       (filter === "all" ||
         CLOSED_STATUSES.includes(request.status) === (filter === "closed")) &&
       (statusFilter.length === 0 || statusFilter.includes(request.status)) &&
-      (clientFilter.length === 0 || clientFilter.includes(request.clientOrgId)) &&
+      (clientFilter.length === 0 ||
+        clientFilter.includes(request.clientOrgId)) &&
       (!searchText ||
         [request.title, request.client?.name].some((value) =>
           value?.toLowerCase().includes(searchText),
@@ -867,15 +873,18 @@ export function ProcurementListWorkspace({
 
   if (requests.length === 0)
     return (
-      <EmptyStateCard
-        title="No procurement requests yet"
-        description={
-          allClients
-            ? "Requests from every client show up here once they are created or submitted."
-            : "Create a request to centralize client requirements, provider outreach, documents, quotes, and forwarded email."
-        }
-        icon={<FileSearch className="size-6" />}
-      />
+      <div className="space-y-4">
+        {notice}
+        <EmptyStateCard
+          title="No procurement requests yet"
+          description={
+            allClients
+              ? "Requests from every client show up here once they are created or submitted."
+              : "Create a request to centralize client requirements, provider outreach, documents, quotes, and forwarded email."
+          }
+          icon={<FileSearch className="size-6" />}
+        />
+      </div>
     );
 
   const clientOptions = Array.from(
@@ -927,19 +936,20 @@ export function ProcurementListWorkspace({
       <ListToolbar
         followKey={`procurement:${scopeKey}:list`}
         filters={filters}
+        tabsPlacement="above"
         tabs={
-          <Tabs
+          <PageTabs
             value={filter}
             onValueChange={(value) => {
               if (value) setFilter(value as StatusFilter);
             }}
           >
-            <TabsList variant="pill" aria-label="Request status">
+            <PageTabsList aria-label="Request status">
               <TabsTrigger value="all">All</TabsTrigger>
               <TabsTrigger value="open">Open</TabsTrigger>
               <TabsTrigger value="closed">Closed</TabsTrigger>
-            </TabsList>
-          </Tabs>
+            </PageTabsList>
+          </PageTabs>
         }
         search={{
           value: search,
@@ -957,6 +967,7 @@ export function ProcurementListWorkspace({
           )
         }
       />
+      {notice}
       <OperationalPanel as="div">
         <Table storageKey="spot:procurement:list:columns">
           <TableHeader>

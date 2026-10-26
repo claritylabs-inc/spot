@@ -13,7 +13,8 @@ import {
   OperationalPanelHeader,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { api } from "@/convex/_generated/api";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -70,7 +71,7 @@ export default function OperatorClientPoliciesPage() {
   );
 
   const statusNavigation = (
-    <Tabs
+    <PageTabs
       value={policyStatus}
       onValueChange={(value) => {
         if (!value) return;
@@ -80,11 +81,11 @@ export default function OperatorClientPoliciesPage() {
         );
       }}
     >
-      <TabsList variant="pill" aria-label="Policy status" className="min-w-max">
+      <PageTabsList aria-label="Policy status">
         <TabsTrigger value="active">Active</TabsTrigger>
         <TabsTrigger value="archived">Archived</TabsTrigger>
-      </TabsList>
-    </Tabs>
+      </PageTabsList>
+    </PageTabs>
   );
 
   return (
@@ -126,9 +127,7 @@ export default function OperatorClientPoliciesPage() {
         </OperationalPanel>
       ) : (
         <main className="w-full space-y-6">
-          {hasArchivedPolicies ? (
-            <div className="overflow-x-auto">{statusNavigation}</div>
-          ) : null}
+          {hasArchivedPolicies ? statusNavigation : null}
           {activeImpersonation ? (
             <OperationalPanel
               as="div"

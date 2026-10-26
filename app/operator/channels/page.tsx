@@ -11,12 +11,12 @@ import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+  PageTabs,
+  PageTabsList,
+  PageTabsPanel,
+} from "@/components/ui/folder-tabs";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useTabParam } from "@/hooks/use-tab-param";
 import { openOAuthTab } from "@/lib/oauth-tab";
@@ -115,31 +115,28 @@ function OperatorChannelTabs({
   const [activeTab, selectTab] = useTabParam(CHANNEL_TABS);
 
   return (
-    <Tabs
+    <PageTabs
       value={activeTab}
       onValueChange={(value) => {
         selectTab(value);
         onTabChange?.();
       }}
-      className="gap-4"
     >
-      <div className="-mx-1 overflow-x-auto px-1 scrollbar-hide">
-        <TabsList variant="pill" aria-label="Channel">
-          <TabsTrigger value="slack">Slack</TabsTrigger>
-          <TabsTrigger value="imessage">iMessage</TabsTrigger>
-          <TabsTrigger value="google-workspace">Google Workspace</TabsTrigger>
-          <TabsTrigger value="mcp">MCP</TabsTrigger>
-        </TabsList>
-      </div>
-      <TabsContent value="slack">{children}</TabsContent>
-      <TabsContent value="imessage">
+      <PageTabsList aria-label="Channel">
+        <TabsTrigger value="slack">Slack</TabsTrigger>
+        <TabsTrigger value="imessage">iMessage</TabsTrigger>
+        <TabsTrigger value="google-workspace">Google Workspace</TabsTrigger>
+        <TabsTrigger value="mcp">MCP</TabsTrigger>
+      </PageTabsList>
+      <PageTabsPanel value="slack">{children}</PageTabsPanel>
+      <PageTabsPanel value="imessage">
         {imessageContent ?? placeholder}
-      </TabsContent>
-      <TabsContent value="google-workspace">
+      </PageTabsPanel>
+      <PageTabsPanel value="google-workspace">
         {googleWorkspaceContent ?? placeholder}
-      </TabsContent>
-      <TabsContent value="mcp">{mcpContent ?? placeholder}</TabsContent>
-    </Tabs>
+      </PageTabsPanel>
+      <PageTabsPanel value="mcp">{mcpContent ?? placeholder}</PageTabsPanel>
+    </PageTabs>
   );
 }
 

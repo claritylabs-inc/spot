@@ -20,11 +20,12 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { buildCoverageBreakdown } from "@/convex/lib/coverageBreakdown";
 import { lobLabel, policyLobCodes } from "@/convex/lib/linesOfBusiness";
 import { PillButton } from "@/components/ui/pill-button";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+  PageTabs,
+  PageTabsList,
+  PageTabsPanel,
+} from "@/components/ui/folder-tabs";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
@@ -902,7 +903,7 @@ export function PolicyDetailBody({
     );
   }
 
-  return (
+  const notices = (
     <>
       <FadeIn when={true} staggerIndex={0} duration={0.6}>
         {isArchived && (
@@ -928,40 +929,6 @@ export function PolicyDetailBody({
         )}
       </FadeIn>
 
-      <Dialog
-        open={showArchiveDialog}
-        onOpenChange={(v) => !v && setShowArchiveDialog(false)}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Archive policy</DialogTitle>
-            <DialogDescription>
-              Archive <strong>{policyNumber}</strong>? It will be excluded from
-              active policy lists, compliance, search, and Spot tools until
-              restored.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <PillButton
-              variant="secondary"
-              onClick={() => setShowArchiveDialog(false)}
-              disabled={archiving}
-            >
-              Cancel
-            </PillButton>
-            <PillButton
-              variant="secondary"
-              onClick={handleArchive}
-              disabled={archiving}
-            >
-              {archiving ? "Archiving..." : "Archive"}
-            </PillButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {reextractDialog}
-
       {!operatorMode ? (
         <PolicyExtractionBanner
           policyId={policy._id}
@@ -973,34 +940,10 @@ export function PolicyDetailBody({
           cancelling={reextract.cancelling}
         />
       ) : null}
-
-      {visibleTabs.length > 1 ? (
-        <Tabs
-          value={visibleActiveTab}
-          onValueChange={(value) => setActiveTab(value as PolicyDetailTab)}
-          className="mb-6"
-        >
-          <TabsList variant="pill">
-            {visibleTabs.map((tab) => (
-              <TabsTrigger key={tab.id} value={tab.id}>
-                {tab.id === "review" ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    Review
-                    <span
-                      className={`rounded-full border border-border-emphasized px-1.5 text-muted-foreground ${typeStyle("label.tag")}`}
-                    >
-                      {reviewQuestions.length}
-                    </span>
-                  </span>
-                ) : (
-                  tab.label
-                )}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      ) : null}
-
+    </>
+  );
+  const views = (
+    <>
       {visibleActiveTab === "details" &&
         (operatorMode && canEditPolicyDetails && fullPolicy ? (
           <div className="space-y-5">
@@ -1102,6 +1045,79 @@ export function PolicyDetailBody({
 
       {visibleActiveTab === "history" && (
         <PolicyHistoryTab policyId={policy._id} />
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <Dialog
+        open={showArchiveDialog}
+        onOpenChange={(v) => !v && setShowArchiveDialog(false)}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Archive policy</DialogTitle>
+            <DialogDescription>
+              Archive <strong>{policyNumber}</strong>? It will be excluded from
+              active policy lists, compliance, search, and Spot tools until
+              restored.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <PillButton
+              variant="secondary"
+              onClick={() => setShowArchiveDialog(false)}
+              disabled={archiving}
+            >
+              Cancel
+            </PillButton>
+            <PillButton
+              variant="secondary"
+              onClick={handleArchive}
+              disabled={archiving}
+            >
+              {archiving ? "Archiving..." : "Archive"}
+            </PillButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {reextractDialog}
+
+      {visibleTabs.length > 1 ? (
+        <PageTabs
+          value={visibleActiveTab}
+          onValueChange={(value) => setActiveTab(value as PolicyDetailTab)}
+        >
+          <PageTabsList>
+            {visibleTabs.map((tab) => (
+              <TabsTrigger key={tab.id} value={tab.id}>
+                {tab.id === "review" ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    Review
+                    <span
+                      className={`rounded-full border border-border-emphasized px-1.5 text-muted-foreground ${typeStyle("label.tag")}`}
+                    >
+                      {reviewQuestions.length}
+                    </span>
+                  </span>
+                ) : (
+                  tab.label
+                )}
+              </TabsTrigger>
+            ))}
+          </PageTabsList>
+          <PageTabsPanel value={visibleActiveTab}>
+            {notices}
+            {views}
+          </PageTabsPanel>
+        </PageTabs>
+      ) : (
+        <>
+          {notices}
+          {views}
+        </>
       )}
     </>
   );

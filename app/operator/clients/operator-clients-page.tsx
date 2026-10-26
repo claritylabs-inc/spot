@@ -8,7 +8,8 @@ import { api } from "@/convex/_generated/api";
 import { AppShell } from "@/components/app-shell";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { ListToolbar } from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
@@ -220,20 +221,21 @@ export default function OperatorClientsScreen() {
       <main className="flex w-full flex-col gap-4">
         <ListToolbar
           followKey="clients:list"
+          tabsPlacement="above"
           tabs={
-            <Tabs
+            <PageTabs
               value={filter}
               onValueChange={(value) => {
                 if (value) setFilter(value as ClientFilter);
               }}
             >
-              <TabsList variant="pill" aria-label="Client status">
+              <PageTabsList aria-label="Client status">
                 <TabsTrigger value="all">All</TabsTrigger>
                 <TabsTrigger value="active">Active</TabsTrigger>
                 <TabsTrigger value="limited">Limited</TabsTrigger>
                 <TabsTrigger value="archived">Archived</TabsTrigger>
-              </TabsList>
-            </Tabs>
+              </PageTabsList>
+            </PageTabs>
           }
           search={{
             value: search,

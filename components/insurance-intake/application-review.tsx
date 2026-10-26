@@ -3,12 +3,12 @@ import { IntakeAutoQuoteReview } from "./auto-quote-fields";
 import { IntakeDriverReview } from "./driver-fields";
 import { IntakeFollowupReview } from "./followup-review";
 import { useState, type ReactNode } from "react";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@claritylabs-inc/ui/components/tabs";
+  SectionTabs,
+  SectionTabsList,
+  SectionTabsPanel,
+} from "@/components/ui/folder-tabs";
 import {
   intakeFollowupAnswerRows,
   intakeQuoteSections,
@@ -89,32 +89,27 @@ export function IntakeApplicationReview({
     );
   if (tabbed)
     return (
-      <Tabs
+      <SectionTabs
         value={
           groups.some((group) => group.title === selected)
             ? selected
             : groups[0].title
         }
         onValueChange={(value) => setSelected(String(value))}
-        className="gap-5"
       >
-        <TabsList
-          variant="pill"
-          aria-label="Application details"
-          className="max-w-full flex-wrap"
-        >
+        <SectionTabsList aria-label="Application details">
           {groups.map(({ title }) => (
             <TabsTrigger key={title} value={title}>
               {title}
             </TabsTrigger>
           ))}
-        </TabsList>
+        </SectionTabsList>
         {groups.map(({ title, section }) => (
-          <TabsContent key={title} value={title}>
+          <SectionTabsPanel key={title} value={title}>
             {content(section)}
-          </TabsContent>
+          </SectionTabsPanel>
         ))}
-      </Tabs>
+      </SectionTabs>
     );
   return (
     <div data-review-content className="w-full space-y-8">

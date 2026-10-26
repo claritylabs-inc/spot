@@ -962,28 +962,28 @@ export function IntakeLocations({
 }: Props & { defaultActivities?: string; identityOnly?: boolean }) {
   const inline = useContext(InlineFieldsContext);
   const externalActions = useContext(InlineCollectionActionsContext);
+  const addLocation = () =>
+    onChange({
+      ...details,
+      locations: [
+        ...details.locations,
+        {
+          address: {},
+          details: defaultActivities,
+          activitiesPrefilled: !!defaultActivities,
+        },
+      ],
+    });
   if (inline)
     return (
       <div className="space-y-4">
-        {!externalActions && (
+        {!externalActions && details.locations.length > 0 && (
           <div className="flex justify-end">
             <PillButton
               variant="secondary"
               size="compact"
               disabled={disabled || details.locations.length >= 30}
-              onClick={() =>
-                onChange({
-                  ...details,
-                  locations: [
-                    ...details.locations,
-                    {
-                      address: {},
-                      details: defaultActivities,
-                      activitiesPrefilled: !!defaultActivities,
-                    },
-                  ],
-                })
-              }
+              onClick={addLocation}
             >
               <Plus className="size-4" />
               Add location
@@ -995,6 +995,10 @@ export function IntakeLocations({
             icon={<MapPin className="size-6" />}
             title="No locations yet"
             description="Add the places where this company operates."
+            actionLabel={
+              externalActions || disabled ? undefined : "Add location"
+            }
+            onAction={addLocation}
           />
         )}
         {details.locations.map((location, index) => {
@@ -1309,7 +1313,7 @@ export function IntakeRelatedEntities({
       });
     return (
       <div className="space-y-4">
-        {!externalActions && (
+        {!externalActions && details.relatedEntities.length > 0 && (
           <div className="flex justify-end">
             <PillButton
               variant="secondary"
@@ -1327,6 +1331,8 @@ export function IntakeRelatedEntities({
             icon={<Building2 className="size-6" />}
             title="No related entities yet"
             description="Add parents, subsidiaries or affiliates of this company."
+            actionLabel={externalActions || disabled ? undefined : "Add entity"}
+            onAction={add}
           />
         )}
         {details.relatedEntities.map((entity, index) => {

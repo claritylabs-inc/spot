@@ -100,7 +100,6 @@ export default function OperatorClientCompliancePage() {
       renderShell={({
         actions,
         rightPanel,
-        toolbar,
         children,
       }: ComplianceWorkspaceShellArgs) => (
         <AppShell
@@ -108,10 +107,7 @@ export default function OperatorClientCompliancePage() {
           breadcrumbDetail={breadcrumb}
           rightPanel={rightPanel}
         >
-          <main className="w-full space-y-6">
-            <div className="overflow-x-auto">{toolbar}</div>
-            {children}
-          </main>
+          <main className="w-full">{children}</main>
         </AppShell>
       )}
     />
