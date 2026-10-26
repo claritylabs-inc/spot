@@ -1037,6 +1037,7 @@ export async function archiveProcurementProposalByOperator(
     operatorUserId: Id<"users">;
     proposalId: Id<"procurementProposals">;
     reason?: string;
+    preserveEmptyDraft?: boolean;
   },
 ) {
   await requireDirectOperator(ctx, args.operatorUserId);
@@ -1054,7 +1055,8 @@ export async function archiveProcurementProposalByOperator(
   const outcome: "deleted" | "archived" | "unchanged" =
     proposal.status === "archived"
       ? "unchanged"
-      : proposal.status === "draft" &&
+      : !args.preserveEmptyDraft &&
+          proposal.status === "draft" &&
           documents.length === 0 &&
           jobs.length === 0
         ? "deleted"

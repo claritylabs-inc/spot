@@ -1,3 +1,6 @@
+import { internal } from "../_generated/api";
+import { isRemainingBatchToolName, prepareRemainingBatch, resolveBatchAttachment, type RemainingBatchToolName } from "./operatorRemainingBatch";
+import { normalizeCompletionOutcome } from "./procurementCompletionOutcome";
 import { prepareApplicationToolUpdate } from "../procurementRequests";
 import { prepareBusinessProfileToolUpdate } from "../orgWiki";
 import { getMarkdownDocument } from "../markdownDocuments";
@@ -40,8 +43,12 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "generate_coi",
   "import_policy_files",
   "update_client_file",
+  "update_client_files",
+  "add_client_files",
+  "cancel_email_drafts",
   "create_procurement_request",
   "update_procurement_request",
+  "update_procurement_requests",
   "update_procurement_application",
   "create_procurement_broker_outreach",
   "launch_procurement_provider_outreach",
@@ -52,10 +59,13 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "reply_procurement_email_thread",
   "reply_email_thread",
   "link_team_inbox_thread",
+  "link_team_inbox_threads",
   "update_procurement_broker_outreach",
+  "update_procurement_broker_outreaches",
   "file_procurement_proposal",
   "file_procurement_email_quote",
   "archive_procurement_proposal",
+  "archive_procurement_proposals",
   "retry_procurement_proposal_extraction",
   "cancel_procurement_proposal_extraction",
   "generate_procurement_proposal_review",
@@ -67,14 +77,20 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "create_broker_network_profile",
   "update_broker_network_profile",
   "create_procurement_file_item",
+  "create_procurement_file_items",
   "update_procurement_file_item",
+  "update_procurement_file_items",
   "update_procurement_email_thread",
+  "update_procurement_email_threads",
   "create_client_organization",
+  "create_client_organizations",
   "invite_operator",
   "update_organization_profile",
+  "update_organization_profiles",
   "update_client_business_profile",
   "research_client",
   "research_broker",
+  "research_brokers",
   "set_client_access_status",
   "set_client_assignee",
   "set_client_feature_flag",
@@ -432,11 +448,19 @@ async function preflightProcurementRequestUpdate(
   requireCompanyRequest(request);
   await Promise.all([
     requirePolicyForClient(ctx, input.replacingPolicyId, request.clientOrgId),
-    requirePolicyForClient(ctx, input.resultingPolicyId, request.clientOrgId),
+    requirePolicyForClient(ctx, input.resultingPolicyId, request.clientOrgId, {
+      active: true,
+    }),
   ]);
   if (input.targetEffectiveDate !== null) {
     validateOptionalDate(input.targetEffectiveDate);
   }
+  if (input.title !== undefined && !normalizedText(input.title))
+    throw new Error("Title is required");
+  if (input.status !== undefined)
+    writableProcurementRequestStatus(input.status);
+  if (input.completionOutcome != null)
+    normalizeCompletionOutcome(input.completionOutcome);
 }
 
 async function preflightOutreachCreate(
@@ -460,6 +484,19 @@ async function preflightOutreachUpdate(
     "Provider outreach",
   );
   await requireProcurementRequest(ctx, outreach.requestId);
+  if (
+    input.brokerOrgId !== undefined &&
+    input.brokerOrgId !== outreach.brokerOrgId
+  ) {
+    const proposal = await ctx.db
+      .query("procurementProposals")
+      .withIndex("outreach", (q) => q.eq("outreachId", outreach._id))
+      .first();
+    if (proposal)
+      throw new Error(
+        "The provider cannot change after a proposal has been filed",
+      );
+  }
   await requireBrokerOrganization(
     ctx,
     input.brokerOrgId ?? outreach.brokerOrgId,
@@ -771,8 +808,10 @@ async function preflightClientOrganizationCreate(
     .query("organizations")
     .withIndex("type", (query) => query.eq("type", "client"))
     .collect();
-  const duplicate = clients.find((client) =>
-    clientIdentityMatches(client, String(input.name)),
+  const duplicate = clients.find(
+    (client) =>
+      client.deletedAt === undefined &&
+      clientIdentityMatches(client, String(input.name)),
   );
   if (duplicate)
     throw new Error(
@@ -794,9 +833,12 @@ async function preflightProcurementFileCreate(
     input.clientFileId,
     "Client file",
   );
-  if (file.orgId !== request.clientOrgId) {
-    throw new Error("Client file does not belong to this request's client");
+  if (file.archivedAt || file.deletedAt || file.orgId !== request.clientOrgId) {
+    throw new Error(
+      "Client file is unavailable or does not belong to this request's client",
+    );
   }
+  if (!normalizedText(input.label)) throw new Error("File label is required");
 }
 
 async function preflightProcurementFileUpdate(
@@ -809,7 +851,10 @@ async function preflightProcurementFileUpdate(
     input.procurementFileItemId,
     "Procurement file item",
   );
+  if (item.removedAt) throw new Error("Procurement file item not found");
   const request = await requireProcurementRequest(ctx, item.requestId);
+  if (input.label !== undefined && !normalizedText(input.label))
+    throw new Error("File label is required");
   if (input.clientFileId != null) {
     const file = await requireDocument(
       ctx,
@@ -817,8 +862,14 @@ async function preflightProcurementFileUpdate(
       input.clientFileId,
       "Client file",
     );
-    if (file.orgId !== request.clientOrgId) {
-      throw new Error("Client file does not belong to this request's client");
+    if (
+      file.archivedAt ||
+      file.deletedAt ||
+      file.orgId !== request.clientOrgId
+    ) {
+      throw new Error(
+        "Client file is unavailable or does not belong to this request's client",
+      );
     }
   }
 }
@@ -841,6 +892,70 @@ async function preflightUpdateClientFile(
   });
 }
 
+export async function prepareRemainingBatchForConfirmation(
+  ctx: MutationCtx,
+  args: PreflightArgs & { toolName: RemainingBatchToolName },
+) {
+  return prepareRemainingBatch(
+    ctx,
+    { ...args, toolName: args.toolName },
+    async (toolName, input) => {
+      if (toolName === "add_client_file") {
+        const client = await requireClientOrganization(ctx, input.orgId);
+        await requirePolicyForClient(ctx, input.policyId, client._id, {
+          active: true,
+        });
+        const attachment = await resolveBatchAttachment(
+          ctx,
+          args.threadId,
+          input.attachmentFileId,
+        );
+        if (attachment.operatorUserId !== args.operatorUserId)
+          throw new Error("Operator attachment was not found in this thread");
+        if (!(await ctx.db.system.get("_storage", attachment.fileId)))
+          throw new Error("Operator attachment file is unavailable");
+        const existing = await ctx.db
+          .query("clientFiles")
+          .withIndex("storage", (q) => q.eq("fileId", attachment.fileId))
+          .first();
+        if (existing && existing.orgId !== client._id)
+          throw new Error(
+            "Operator attachment is already filed for another client",
+          );
+        return;
+      }
+      if (toolName === "cancel_email_draft") {
+        const draft = await requireDocument(
+          ctx,
+          "pendingEmails",
+          input.draftId,
+          "Email draft",
+        );
+        if (
+          draft.operatorThreadId !== args.threadId ||
+          draft.threadId ||
+          draft.status !== "draft"
+        )
+          throw new Error(
+            "Only unsent drafts in this operator conversation can be cancelled",
+          );
+        await ctx.runQuery(internal.operatorEmailDrafts.resolveSenderInternal, {
+          operatorUserId: args.operatorUserId,
+          threadId: args.threadId,
+          draftId: draft._id,
+          write: true,
+        });
+        return;
+      }
+      await preflightOperatorToolConfirmation(ctx, {
+        ...args,
+        toolName,
+        input,
+      });
+    },
+  );
+}
+
 export async function preflightOperatorToolConfirmation(
   ctx: MutationCtx,
   args: PreflightArgs,
@@ -856,6 +971,11 @@ export async function preflightOperatorToolConfirmation(
   }
   if (args.toolName === "clear_all_agent_memory") return;
   await assertNoOperatorImpersonation(ctx, args.operatorUserId);
+
+  if (isRemainingBatchToolName(args.toolName)) {
+    await prepareRemainingBatchForConfirmation(ctx, { ...args, toolName: args.toolName });
+    return;
+  }
 
   switch (args.toolName) {
     case "call_mcp_tool": {

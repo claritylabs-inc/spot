@@ -157,7 +157,10 @@ import {
   updatePacketDocumentByOperator,
 } from "./procurementPacket";
 import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
-import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmationPreflight";
+import { applyOperatorBatch } from "./lib/operatorBatch";
+import { isRemainingBatchToolName, remainingBatchConfirmationSummary, REMAINING_BATCH_TOOLS, type RemainingBatchResult } from "./lib/operatorRemainingBatch";
+import { assertNoOperatorImpersonation } from "./lib/clientFiles";
+import { preflightOperatorToolConfirmation, prepareRemainingBatchForConfirmation } from "./lib/operatorAgentConfirmationPreflight";
 import { clientBatchConfirmationSummary, isClientBatchToolName, type ClientBatchResult } from "./lib/operatorClientBatch";
 import { previewTeamEmailReply } from "./lib/teamEmailReply";
 import { assertOutreachIdentity } from "./lib/outreachIdentity";
@@ -571,6 +574,9 @@ async function operatorConfirmationSummary(
     threadId: Id<"operatorAgentThreads">;
   },
 ) {
+  if (isRemainingBatchToolName(toolName)) {
+    return remainingBatchConfirmationSummary(ctx, toolName, input);
+  }
   if (isClientBatchToolName(toolName)) {
     return clientBatchConfirmationSummary(ctx, toolName, input);
   }
@@ -3631,6 +3637,17 @@ async function executeToolDomain(
     };
   }
 
+  if (isRemainingBatchToolName(toolName)) {
+    const result: RemainingBatchResult = await ctx.runMutation(internal.operatorAgent.applyRemainingBatchInternal, {
+      operatorUserId: args.operatorUserId,
+      threadId: args.threadId,
+      channel: args.channel,
+      toolName,
+      input,
+    });
+    return result;
+  }
+
   if (isClientBatchToolName(toolName)) {
     const result: ClientBatchResult = await ctx.runMutation(internal.operatorClientBatchWrites.applyInternal, {
       operatorUserId: args.operatorUserId,
@@ -4033,6 +4050,156 @@ async function executeToolActionDomain(
 
   throw new Error(`Unsupported operator action tool: ${args.toolName}`);
 }
+
+// Keep all item writes, scheduled research and audits in a nested transaction:
+// the runner catches tool failures, so a failed batch must roll back independently.
+export const applyRemainingBatchInternal = internalMutation({
+  args: {
+    operatorUserId: v.id("users"),
+    threadId: v.id("operatorAgentThreads"),
+    channel: operatorChannelValidator,
+    toolName: v.string(),
+    input: v.any(),
+  },
+  handler: async (ctx, args): Promise<RemainingBatchResult> => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    await requireOperatorThread(ctx, args.threadId, args.operatorUserId, {
+      anyOperator: true,
+    });
+    await assertNoOperatorImpersonation(ctx, args.operatorUserId);
+    if (!isRemainingBatchToolName(args.toolName))
+      throw new Error("Unsupported batch tool");
+    const toolName = args.toolName;
+    const prepared = await prepareRemainingBatchForConfirmation(ctx, {
+      ...args,
+      toolName,
+    });
+    const single = REMAINING_BATCH_TOOLS[toolName].single;
+    return applyOperatorBatch(prepared, async (input) => {
+      if (single === "create_client_organization") {
+        const created: { clientOrgId: Id<"organizations"> } =
+          await ctx.runMutation(internal.operator.createSoloClientInternal, {
+            operatorUserId: args.operatorUserId,
+            users: [],
+            client: {
+              name: String(input.name),
+              website: normalizedOptionalText(input.website),
+            },
+          });
+        return {
+          ...created,
+          status: "created",
+          deepLink: `/operator/clients/${created.clientOrgId}`,
+        };
+      }
+      if (single === "add_client_file") {
+        return createClientFileFromOperatorAttachment(ctx, {
+          operatorUserId: args.operatorUserId,
+          threadId: args.threadId,
+          orgId: normalizeOrganizationId(ctx, input.orgId),
+          attachmentFileId: await resolveThreadAttachmentFileId(
+            ctx,
+            args.threadId,
+            input.attachmentFileId,
+          ),
+          name: String(input.name),
+          policyId: input.policyId
+            ? normalizePolicyId(ctx, input.policyId)
+            : undefined,
+          auditAlreadyFiled: true,
+        });
+      }
+      if (single === "cancel_email_draft") {
+        const draftId = ctx.db.normalizeId(
+          "pendingEmails",
+          String(input.draftId),
+        )!;
+        const draft = (await ctx.db.get(draftId))!;
+        await ctx.runMutation(internal.pendingEmails.cancelInternal, {
+          id: draftId,
+        });
+        await writeOperatorAudit(ctx, {
+          operatorUserId: args.operatorUserId,
+          type: "setup_write",
+          targetOrgId: draft.orgId,
+          summary: `Cancelled email draft ${draft.subject}`,
+          metadata: {
+            domain: "operator_agent",
+            toolName,
+            draftId,
+            threadId: args.threadId,
+          },
+        });
+        return { draftId, status: "cancelled" };
+      }
+      if (single === "archive_procurement_proposal") {
+        const result = await archiveProcurementProposalByOperator(ctx, {
+          operatorUserId: args.operatorUserId,
+          proposalId: normalizeProcurementProposalId(
+            ctx,
+            input.procurementProposalId,
+          ),
+          reason: normalizedOptionalText(input.reason),
+          preserveEmptyDraft: true,
+        });
+        if (result.outcome === "unchanged")
+          await writeOperatorAudit(ctx, {
+            operatorUserId: args.operatorUserId,
+            type: "setup_write",
+            summary: `Proposal ${result.proposalId} already archived`,
+            metadata: {
+              domain: "operator_agent",
+              toolName,
+              proposalId: result.proposalId,
+              outcome: result.outcome,
+            },
+          });
+        return result;
+      }
+      // Shared writers retain their existing authorization and per-item audits.
+      const result = await executeToolDomain(ctx, {
+        ...args,
+        toolName: single,
+        input,
+      });
+      if (
+        single === "update_organization_profile" &&
+        result &&
+        "companyResearch" in result
+      ) {
+        const { companyResearch: _research, ...compact } = result;
+        return compact;
+      }
+      if (single === "research_broker") {
+        await writeOperatorAudit(ctx, {
+          operatorUserId: args.operatorUserId,
+          type: "setup_write",
+          targetOrgId: normalizeOrganizationId(ctx, input.orgId),
+          summary: `Requested provider research for ${input.orgId}`,
+          metadata: { domain: "operator_agent", toolName, input },
+        });
+      }
+      if (
+        single === "link_team_inbox_thread" &&
+        result &&
+        "linked" in result &&
+        result.linked === false
+      )
+        await writeOperatorAudit(ctx, {
+          operatorUserId: args.operatorUserId,
+          type: "setup_write",
+          summary: `Email conversation ${input.teamEmailThreadId} already linked`,
+          metadata: {
+            domain: "operator_agent",
+            toolName,
+            input,
+            unchanged: true,
+          },
+        });
+      return result;
+    });
+  },
+});
 
 async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
   const operator = await requireOperatorForUser(ctx, args.operatorUserId);

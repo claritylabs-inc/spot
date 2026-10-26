@@ -335,6 +335,177 @@ const replyEmailThreadSpec = defineOperatorTool({
   summarize: (input) => `Reply on email thread ${input.teamEmailThreadId ?? input.procurementEmailThreadId}`,
 });
 
+const createClientOrganizationInputSchema = z.object({
+  name: z.string().min(1).max(200),
+  website: omittable(optionalHttpUrl.max(500)).describe(
+    "Verified client website. Omit when unknown; null is treated as omitted on create.",
+  ),
+});
+
+const updateOrganizationProfileInputSchema = z
+  .object({
+    orgId: organizationId,
+    name: omittable(z.string().min(1).max(200)),
+    website: clearable(optionalHttpUrl.max(500)).describe(
+      "Omit to preserve the saved website. Pass null only when the operator explicitly requested or evidence supports clearing it.",
+    ),
+  })
+  .strict()
+  .refine(
+    (input) => input.name !== undefined || input.website !== undefined,
+    "At least one identity field is required",
+  );
+
+const researchBrokerInputSchema = z.object({ orgId: organizationId });
+
+const addClientFileInputSchema = z.object({
+  orgId: organizationId,
+  attachmentFileId: z
+    .string()
+    .min(1)
+    .describe(
+      "Exact storage ID from this operator thread's attachment metadata, or the exact filename of one attachment in this thread",
+    ),
+  name: z
+    .string()
+    .min(1)
+    .max(220)
+    .describe(
+      "Concise factual document name inferred from the file contents and operator prompt",
+    ),
+  policyId: clearable(policyId),
+});
+
+const updateClientFileInputSchema = z
+  .object({
+    clientFileId,
+    name: omittable(z.string().min(1).max(220)),
+    clientVisible: omittable(z.boolean()),
+    policyId: clearable(policyId),
+  })
+  .refine(
+    (input) =>
+      input.name !== undefined ||
+      input.clientVisible !== undefined ||
+      input.policyId !== undefined,
+    "At least one client file field is required",
+  );
+
+const updateProcurementRequestInputSchema = z
+  .object({
+    procurementRequestId,
+    title: omittable(z.string().min(1).max(200)),
+    targetEffectiveDate: clearable(isoCalendarDate).describe(
+      "Omit to preserve the saved date. Pass null only to deliberately clear it.",
+    ),
+    status: omittable(procurementRequestStatus),
+    completionOutcome: clearable(completionOutcomeSchema),
+    clientVisible: omittable(z.boolean()),
+    replacingPolicyId: clearable(policyId),
+    resultingPolicyId: clearable(policyId),
+  })
+  .refine(
+    (input) =>
+      Object.entries(input).some(
+        ([key, value]) => key !== "procurementRequestId" && value !== undefined,
+      ),
+    "At least one procurement request field is required",
+  );
+
+const updateProcurementBrokerOutreachInputSchema = z
+  .object({
+    procurementOutreachId,
+    brokerOrgId: omittable(organizationId),
+    contactName: clearable(z.string().max(200)),
+    contactEmail: clearable(emailAddress).describe(
+      "Omit to preserve the saved contact email. Pass null only to deliberately clear it.",
+    ),
+    contactPhone: clearable(z.string().max(100)),
+    status: omittable(procurementOutreachStatus),
+  })
+  .refine(
+    (input) =>
+      Object.entries(input).some(
+        ([key, value]) =>
+          key !== "procurementOutreachId" && value !== undefined,
+      ),
+    "At least one provider outreach field is required",
+  );
+
+const createProcurementFileItemInputSchema = z.object({
+  procurementRequestId,
+  clientFileId: clientFileId.describe(
+    "Required underlying uploaded client file.",
+  ),
+  label: z.string().min(1).max(300),
+  documentCategory: omittable(
+    z.enum(["requirements", "policy", "loss_runs", "supporting"]),
+  ).describe(
+    "Place the file in the appropriate application section; defaults to supporting documents in Request details.",
+  ),
+  brokerRelease: omittable(procurementFileBrokerRelease).describe(
+    "Provider visibility; defaults to attached on creation and preserves existing visibility on updates. An available file immediately appears on existing packet links within their audience.",
+  ),
+  clientVisible: omittable(z.boolean()).describe(
+    "Visibility to the client when the file is available.",
+  ),
+});
+
+const updateProcurementFileItemInputSchema = z
+  .object({
+    procurementFileItemId,
+    clientFileId: omittable(clientFileId).describe(
+      "Omit to preserve the underlying file, or provide an uploaded replacement.",
+    ),
+    label: omittable(z.string().min(1).max(300)),
+    brokerRelease: omittable(procurementFileBrokerRelease).describe(
+      "Provider visibility; defaults to attached on creation and preserves existing visibility on updates. An available file immediately appears on existing packet links within their audience.",
+    ),
+    clientVisible: omittable(z.boolean()).describe(
+      "Visibility to the client when the file is available.",
+    ),
+  })
+  .refine(
+    (input) =>
+      Object.entries(input).some(
+        ([key, value]) =>
+          key !== "procurementFileItemId" && value !== undefined,
+      ),
+    "At least one procurement file field is required",
+  );
+
+const archiveProcurementProposalInputSchema = z.object({
+  procurementProposalId,
+  reason: omittable(z.string().max(1_000)),
+});
+
+const updateProcurementEmailThreadInputSchema = z
+  .object({
+    procurementEmailThreadId,
+    category: omittable(procurementEmailCategory),
+    procurementRequestId: omittable(procurementRequestId),
+  })
+  .refine(
+    (input) =>
+      input.category !== undefined || input.procurementRequestId !== undefined,
+    "A category or procurement request is required",
+  );
+
+const linkTeamInboxThreadInputSchema = z
+  .object({
+    teamEmailThreadId,
+    clientOrgId: omittable(organizationId),
+    procurementRequestId: omittable(procurementRequestId),
+  })
+  .refine(
+    (input) => Boolean(input.clientOrgId || input.procurementRequestId),
+    "Provide a client or procurement request",
+  );
+
+const cancelEmailDraftInputSchema = z.object({
+  draftId: z.string().min(1).describe("Exact draft ID"),
+});
+
 export const OPERATOR_AGENT_TOOL_REGISTRY = {
   list_mcp_tools: defineOperatorTool({
     family: "mcp",
@@ -1255,18 +1426,30 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   link_team_inbox_thread: defineOperatorTool({
     family: "outbound_email",
     version: 1,
-    description: "Link a shared team email thread and its attachments to an exact client and optionally a procurement request. A request determines its client; conflicting targets are rejected. Outreach threads remain locked to their request. Requires exact approval.",
-    inputSchema: z.object({
-      teamEmailThreadId,
-      clientOrgId: omittable(organizationId),
-      procurementRequestId: omittable(procurementRequestId),
-    }).refine((input) => Boolean(input.clientOrgId || input.procurementRequestId), "Provide a client or procurement request"),
+    description:
+      "Link team conversations and their held attachments to exact clients or requests. Reject conflicting clients and outreach moves; a request determines its client. For multiple items use link_team_inbox_threads.",
+    inputSchema: linkTeamInboxThreadInputSchema,
     capability: "operator.email.write",
     effect: "reversible_write",
     requiredRole: "operator",
     confirmation: "exact",
     target: (input) => ({ kind: "team_email_thread", id: input.teamEmailThreadId }),
     summarize: (input) => `Link email thread ${input.teamEmailThreadId} to ${input.procurementRequestId ?? input.clientOrgId}`,
+  }),
+  link_team_inbox_threads: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description:
+      "Link team conversations and their held attachments to exact clients or requests. Reject conflicting clients and outreach moves; a request determines its client. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(linkTeamInboxThreadInputSchema).min(1).max(50),
+    }),
+    capability: "operator.email.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "link_team_inbox_threads" }),
+    summarize: (input) => `link team inbox threads (${input.items.length} items)`,
   }),
   preview_procurement_email_reconciliation: defineOperatorTool({
     family: "procurement",
@@ -1539,10 +1722,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   cancel_email_draft: defineOperatorTool({
     family: "outbound_email",
     version: 1,
-    description: "Cancel one unsent draft from this conversation.",
-    inputSchema: z.object({
-      draftId: z.string().min(1).describe("Exact draft ID"),
-    }),
+    description:
+      "Cancel unsent drafts in this operator conversation. Pending, sent and unknown-delivery messages cannot be cancelled. For multiple items use cancel_email_drafts.",
+    inputSchema: cancelEmailDraftInputSchema,
     capability: "operator.email.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -1550,6 +1732,21 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     execution: "action",
     target: (input) => ({ kind: "email_draft", id: input.draftId }),
     summarize: (input) => `Cancel email draft ${input.draftId}`,
+  }),
+  cancel_email_drafts: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description:
+      "Cancel unsent drafts in this operator conversation. Pending, sent and unknown-delivery messages cannot be cancelled. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(cancelEmailDraftInputSchema).min(1).max(50),
+    }),
+    capability: "operator.email.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "cancel_email_drafts" }),
+    summarize: (input) => `cancel email drafts (${input.items.length} items)`,
   }),
   retry_failed_policy_extraction: defineOperatorTool({
     family: "extraction",
@@ -1598,24 +1795,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "client_files",
     version: 1,
     description:
-      "File one attachment from this operator thread in an exact client organization's shared dropbox, hidden from the client. Use the exact attachment file ID shown in attachment metadata. Infer a concise factual name from the parsed file contents and the operator's prompt, while preserving the original extension. Filing runs immediately; use update_client_file when the operator asks to show a filed document to the client.",
-    inputSchema: z.object({
-      orgId: organizationId,
-      attachmentFileId: z
-        .string()
-        .min(1)
-        .describe(
-          "Exact storage ID from this operator thread's attachment metadata, or the exact filename of one attachment in this thread",
-        ),
-      name: z
-        .string()
-        .min(1)
-        .max(220)
-        .describe(
-          "Concise factual document name inferred from the file contents and operator prompt",
-        ),
-      policyId: clearable(policyId),
-    }),
+      "File attachments from this operator conversation in client file libraries, hidden from clients. Use exact attachment IDs and factual names preserving extensions. Use update_client_files for visibility changes. Filing one attachment runs immediately. For multiple items use add_client_files.",
+    inputSchema: addClientFileInputSchema,
     capability: "operator.client_files.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -1623,6 +1804,21 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) =>
       `Add ${JSON.stringify(input.name)} to organization ${input.orgId}${input.policyId ? ` for policy ${input.policyId}` : ""} hidden from the client`,
+  }),
+  add_client_files: defineOperatorTool({
+    family: "client_files",
+    version: 1,
+    description:
+      "File attachments from this operator conversation in client file libraries, hidden from clients. Use exact attachment IDs and factual names preserving extensions. Use update_client_files for visibility changes. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(addClientFileInputSchema).min(1).max(50),
+    }),
+    capability: "operator.client_files.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "add_client_files" }),
+    summarize: (input) => `add client files (${input.items.length} items)`,
   }),
   import_policy_files: defineOperatorTool({
     family: "policies",
@@ -1655,21 +1851,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "client_files",
     version: 1,
     description:
-      "Rename a filed client document, change whether the client can see it, or change its optional policy association. Only supplied fields change; null removes a policy association.",
-    inputSchema: z
-      .object({
-        clientFileId,
-        name: omittable(z.string().min(1).max(220)),
-        clientVisible: omittable(z.boolean()),
-        policyId: clearable(policyId),
-      })
-      .refine(
-        (input) =>
-          input.name !== undefined ||
-          input.clientVisible !== undefined ||
-          input.policyId !== undefined,
-        "At least one client file field is required",
-      ),
+      "Rename client files or change client visibility and policy links. Omitted fields stay unchanged; null clears a policy link. For multiple items use update_client_files.",
+    inputSchema: updateClientFileInputSchema,
     capability: "operator.client_files.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -1687,6 +1870,21 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ].filter(Boolean);
       return `Update client file ${input.clientFileId}: ${fields.join(", ")}`;
     },
+  }),
+  update_client_files: defineOperatorTool({
+    family: "client_files",
+    version: 1,
+    description:
+      "Rename client files or change client visibility and policy links. Omitted fields stay unchanged; null clears a policy link. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(updateClientFileInputSchema).min(1).max(50),
+    }),
+    capability: "operator.client_files.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "update_client_files" }),
+    summarize: (input) => `update client files (${input.items.length} items)`,
   }),
   create_procurement_request: defineOperatorTool({
     family: "procurement",
@@ -1747,28 +1945,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 6,
     description:
-      "Update supplied workflow fields on one exact procurement request. Use update_procurement_application for actual contact, coverage, limit, company and history fields. Edit prose through update_procurement_packet in private.md or public.md. Null clears an effective date or policy link; omitted fields stay unchanged.",
-    inputSchema: z
-      .object({
-        procurementRequestId,
-        title: omittable(z.string().min(1).max(200)),
-        targetEffectiveDate: clearable(isoCalendarDate).describe(
-          "Omit to preserve the saved date. Pass null only to deliberately clear it.",
-        ),
-        status: omittable(procurementRequestStatus),
-        completionOutcome: clearable(completionOutcomeSchema),
-        clientVisible: omittable(z.boolean()),
-        replacingPolicyId: clearable(policyId),
-        resultingPolicyId: clearable(policyId),
-      })
-      .refine(
-        (input) =>
-          Object.entries(input).some(
-            ([key, value]) =>
-              key !== "procurementRequestId" && value !== undefined,
-          ),
-        "At least one procurement request field is required",
-      ),
+      "Update request titles, dates, status, visibility or policy links. Null clears a date or link; omissions preserve values. Use update_procurement_application for application facts and update_procurement_packet for prose. For multiple items use update_procurement_requests.",
+    inputSchema: updateProcurementRequestInputSchema,
     capability: "operator.procurement.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -1783,6 +1961,21 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         input,
         "procurementRequestId",
       ),
+  }),
+  update_procurement_requests: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Update request titles, dates, status, visibility or policy links. Null clears a date or link; omissions preserve values. Use update_procurement_application for application facts and update_procurement_packet for prose. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(updateProcurementRequestInputSchema).min(1).max(50),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "update_procurement_requests" }),
+    summarize: (input) => `update procurement requests (${input.items.length} items)`,
   }),
   file_procurement_proposal: defineOperatorTool({
     family: "procurement",
@@ -1860,11 +2053,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Archive one private procurement proposal, or delete it when it is an empty draft with no extraction history. Selected proposals must be deselected by selecting another reviewed proposal first.",
-    inputSchema: z.object({
-      procurementProposalId,
-      reason: omittable(z.string().max(1_000)),
-    }),
+      "Archive one private proposal, or delete a truly empty draft. Selected proposals must first be replaced by selecting another reviewed proposal. For multiple items use archive_procurement_proposals.",
+    inputSchema: archiveProcurementProposalInputSchema,
     capability: "operator.procurement.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -1875,6 +2065,21 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     }),
     summarize: (input) =>
       `Archive procurement proposal ${input.procurementProposalId}`,
+  }),
+  archive_procurement_proposals: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Archive private proposals, preserving empty drafts as archived records. Selected proposals must first be replaced by selecting another reviewed proposal. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(archiveProcurementProposalInputSchema).min(1).max(50),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "archive_procurement_proposals" }),
+    summarize: (input) => `archive procurement proposals (${input.items.length} items)`,
   }),
   retry_procurement_proposal_extraction: defineOperatorTool({
     family: "extraction",
@@ -2420,26 +2625,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 5,
     description:
-      "Update supplied external provider outreach identity or workflow status. Keep outreach notes in the request’s private.md. Spot-owned organizations and contact domains are ineligible. File quote documents as private proposals.",
-    inputSchema: z
-      .object({
-        procurementOutreachId,
-        brokerOrgId: omittable(organizationId),
-        contactName: clearable(z.string().max(200)),
-        contactEmail: clearable(emailAddress).describe(
-          "Omit to preserve the saved contact email. Pass null only to deliberately clear it.",
-        ),
-        contactPhone: clearable(z.string().max(100)),
-        status: omittable(procurementOutreachStatus),
-      })
-      .refine(
-        (input) =>
-          Object.entries(input).some(
-            ([key, value]) =>
-              key !== "procurementOutreachId" && value !== undefined,
-          ),
-        "At least one provider outreach field is required",
-      ),
+      "Update provider outreach identities, contacts or status. Spot-owned identities are ineligible. Keep notes in private.md and file quotes as proposals. For multiple items use update_procurement_broker_outreaches.",
+    inputSchema: updateProcurementBrokerOutreachInputSchema,
     capability: "operator.procurement.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -2455,29 +2642,27 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         "procurementOutreachId",
       ),
   }),
+  update_procurement_broker_outreaches: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Update provider outreach identities, contacts or status. Spot-owned identities are ineligible. Keep notes in private.md and file quotes as proposals. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(updateProcurementBrokerOutreachInputSchema).min(1).max(50),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "update_procurement_broker_outreaches" }),
+    summarize: (input) => `update procurement broker outreaches (${input.items.length} items)`,
+  }),
   create_procurement_file_item: defineOperatorTool({
     family: "procurement",
     version: 7,
     description:
-      "Add an existing uploaded client file to a procurement request with a label and client/provider visibility. Released files and visibility changes immediately update existing packet links within their audience. Keep file notes in private.md or public.md.",
-    inputSchema: z.object({
-      procurementRequestId,
-      clientFileId: clientFileId.describe(
-        "Required underlying uploaded client file.",
-      ),
-      label: z.string().min(1).max(300),
-      documentCategory: omittable(
-        z.enum(["requirements", "policy", "loss_runs", "supporting"]),
-      ).describe(
-        "Place the file in the appropriate application section; defaults to supporting documents in Request details.",
-      ),
-      brokerRelease: omittable(procurementFileBrokerRelease).describe(
-        "Provider visibility; defaults to attached on creation and preserves existing visibility on updates. An available file immediately appears on existing packet links within their audience.",
-      ),
-      clientVisible: omittable(z.boolean()).describe(
-        "Visibility to the client when the file is available.",
-      ),
-    }),
+      "Add uploaded client files to requests with labels and independent client/provider visibility. Released files immediately appear on existing packet links within their audience. For multiple items use create_procurement_file_items.",
+    inputSchema: createProcurementFileItemInputSchema,
     capability: "operator.procurement.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -2489,33 +2674,27 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `Add ${JSON.stringify(input.label)} to procurement request ${input.procurementRequestId}`,
   }),
+  create_procurement_file_items: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Add uploaded client files to requests with labels and independent client/provider visibility. Released files immediately appear on existing packet links within their audience. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(createProcurementFileItemInputSchema).min(1).max(50),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "create_procurement_file_items" }),
+    summarize: (input) => `create procurement file items (${input.items.length} items)`,
+  }),
   update_procurement_file_item: defineOperatorTool({
     family: "procurement",
     version: 7,
     description:
-      "Update a procurement file label, client/provider visibility, or underlying file link. The underlying file can be replaced but cannot be cleared. Released files and visibility changes immediately update existing packet links within their audience. Keep file notes in private.md or public.md.",
-    inputSchema: z
-      .object({
-        procurementFileItemId,
-        clientFileId: omittable(clientFileId).describe(
-          "Omit to preserve the underlying file, or provide an uploaded replacement.",
-        ),
-        label: omittable(z.string().min(1).max(300)),
-        brokerRelease: omittable(procurementFileBrokerRelease).describe(
-          "Provider visibility; defaults to attached on creation and preserves existing visibility on updates. An available file immediately appears on existing packet links within their audience.",
-        ),
-        clientVisible: omittable(z.boolean()).describe(
-          "Visibility to the client when the file is available.",
-        ),
-      })
-      .refine(
-        (input) =>
-          Object.entries(input).some(
-            ([key, value]) =>
-              key !== "procurementFileItemId" && value !== undefined,
-          ),
-        "At least one procurement file field is required",
-      ),
+      "Update request file labels, client/provider visibility or underlying files. File links cannot be cleared. Released changes immediately update existing packet links within their audience. For multiple items use update_procurement_file_items.",
+    inputSchema: updateProcurementFileItemInputSchema,
     capability: "operator.procurement.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -2531,23 +2710,27 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         "procurementFileItemId",
       ),
   }),
+  update_procurement_file_items: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Update request file labels, client/provider visibility or underlying files. File links cannot be cleared. Released changes immediately update existing packet links within their audience. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(updateProcurementFileItemInputSchema).min(1).max(50),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "update_procurement_file_items" }),
+    summarize: (input) => `update procurement file items (${input.items.length} items)`,
+  }),
   update_procurement_email_thread: defineOperatorTool({
     family: "procurement",
     version: 1,
     description:
-      "Correct a procurement email thread's category or reassign a forwarded thread within the same client. Provider outreach conversations stay with their originating request. The originally addressed request remains immutable.",
-    inputSchema: z
-      .object({
-        procurementEmailThreadId,
-        category: omittable(procurementEmailCategory),
-        procurementRequestId: omittable(procurementRequestId),
-      })
-      .refine(
-        (input) =>
-          input.category !== undefined ||
-          input.procurementRequestId !== undefined,
-        "A category or procurement request is required",
-      ),
+      "Correct email categories or move forwarded conversations within the same client. Provider outreach stays with its originating request; originally addressed requests remain immutable. For multiple items use update_procurement_email_threads.",
+    inputSchema: updateProcurementEmailThreadInputSchema,
     capability: "operator.procurement.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -2563,17 +2746,27 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         "procurementEmailThreadId",
       ),
   }),
+  update_procurement_email_threads: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Correct email categories or move forwarded conversations within the same client. Provider outreach stays with its originating request; originally addressed requests remain immutable. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(updateProcurementEmailThreadInputSchema).min(1).max(50),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "update_procurement_email_threads" }),
+    summarize: (input) => `update procurement email threads (${input.items.length} items)`,
+  }),
   create_client_organization: defineOperatorTool({
     family: "organizations",
     version: 2,
     description:
-      "Create one standalone client without users. Use the operating/DBA name; an explicit Legal Name DBA Trading Name is normalized and the legal name retained. Public company research is always queued, even without a website; read get_organization for its result before claiming enrichment is complete. Exact-name duplicates are rejected.",
-    inputSchema: z.object({
-      name: z.string().min(1).max(200),
-      website: omittable(optionalHttpUrl.max(500)).describe(
-        "Verified client website. Omit when unknown; null is treated as omitted on create.",
-      ),
-    }),
+      "Create standalone clients without users; exact-name duplicates are rejected. Research is queued for each client; read get_organization for outcomes. For multiple items use create_client_organizations.",
+    inputSchema: createClientOrganizationInputSchema,
     capability: "operator.organizations.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -2582,6 +2775,21 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: () => ({ kind: "platform", id: "clients" }),
     summarize: (input) =>
       `Create standalone client ${JSON.stringify(input.name)}`,
+  }),
+  create_client_organizations: defineOperatorTool({
+    family: "organizations",
+    version: 1,
+    description:
+      "Create standalone clients without users; exact-name duplicates are rejected. Research is queued for each client; read get_organization for outcomes. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(createClientOrganizationInputSchema).min(1).max(50),
+    }),
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "create_client_organizations" }),
+    summarize: (input) => `create client organizations (${input.items.length} items)`,
   }),
   invite_operator: defineOperatorTool({
     family: "platform",
@@ -2619,20 +2827,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 5,
     description:
-      "Update the organization name or website. Only supplied fields change. Use update_client_business_profile for structured company details and update_client_wiki only for supplementary notes. Public identity edits schedule research.",
-    inputSchema: z
-      .object({
-        orgId: organizationId,
-        name: omittable(z.string().min(1).max(200)),
-        website: clearable(optionalHttpUrl.max(500)).describe(
-          "Omit to preserve the saved website. Pass null only when the operator explicitly requested or evidence supports clearing it.",
-        ),
-      })
-      .strict()
-      .refine(
-        (input) => input.name !== undefined || input.website !== undefined,
-        "At least one identity field is required",
-      ),
+      "Update organization names or websites. Omitted fields stay unchanged; null clears a website. Identity edits queue research. Use update_client_business_profile for company facts. For multiple items use update_organization_profiles.",
+    inputSchema: updateOrganizationProfileInputSchema,
     capability: "operator.organizations.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -2647,6 +2843,21 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       ].filter(Boolean);
       return `Update organization ${input.orgId}: ${fields.join(", ")}`;
     },
+  }),
+  update_organization_profiles: defineOperatorTool({
+    family: "organizations",
+    version: 1,
+    description:
+      "Update organization names or websites. Omitted fields stay unchanged; null clears a website. Identity edits queue research. Use update_client_business_profile for company facts. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(updateOrganizationProfileInputSchema).min(1).max(50),
+    }),
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "update_organization_profiles" }),
+    summarize: (input) => `update organization profiles (${input.items.length} items)`,
   }),
   research_client: defineOperatorTool({
     family: "organizations",
@@ -2690,8 +2901,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "broker_network",
     version: 1,
     description:
-      "Run Jev-orchestrated parallel public research for an exact external insurance provider (carrier, MGA, wholesaler, agency or producer). Verify its actual role and identity, gather cited profile evidence, and select states serviced and ACORD lines above 0.7 confidence. Fill missing profile fields without overwriting manual values. Read get_organization or get_broker_network_profile for completed, partial or failed outcomes; queued is not complete.",
-    inputSchema: z.object({ orgId: organizationId }),
+      "Queue public research for exact external insurance providers. Preserve manual profile values; read get_organization or get_broker_network_profile for outcomes. Queued is not complete. For multiple items use research_brokers.",
+    inputSchema: researchBrokerInputSchema,
     capability: "operator.organizations.write",
     effect: "reversible_write",
     requiredRole: "operator",
@@ -2699,6 +2910,21 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) =>
       `Research and enrich insurance provider ${input.orgId}`,
+  }),
+  research_brokers: defineOperatorTool({
+    family: "broker_network",
+    version: 1,
+    description:
+      "Queue public research for exact external insurance providers. Preserve manual profile values; read get_organization or get_broker_network_profile for outcomes. Queued is not complete. Process 1–50 distinct items atomically under one exact approval; every item is validated and listed before approval. Returns compact per-item results.",
+    inputSchema: z.object({
+      items: z.array(researchBrokerInputSchema).min(1).max(50),
+    }),
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "research_brokers" }),
+    summarize: (input) => `research brokers (${input.items.length} items)`,
   }),
   set_client_access_status: defineOperatorTool({
     family: "organizations",
