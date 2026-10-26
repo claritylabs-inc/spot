@@ -455,7 +455,7 @@ export type ClRouterBrowseSkillOutcome = {
 };
 
 export type ClRouterBrowseResponse = {
-  provider: "browserbase" | "sandbox";
+  provider: string;
   model: string;
   output?: unknown;
   text: string;
@@ -1850,7 +1850,7 @@ export async function clRouterBrowse(
   );
   if (
     !isRecord(payload) ||
-    (payload.provider !== "browserbase" && payload.provider !== "sandbox") ||
+    !isNonEmptyString(payload.provider) ||
     typeof payload.text !== "string" ||
     typeof payload.finished !== "boolean" ||
     !Array.isArray(payload.networkHosts) ||
