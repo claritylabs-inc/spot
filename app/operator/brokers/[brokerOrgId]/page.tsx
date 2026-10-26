@@ -45,12 +45,12 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+  PageTabs,
+  PageTabsList,
+  PageTabsPanel,
+} from "@/components/ui/folder-tabs";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -195,14 +195,14 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
           onDeleted={() => router.push("/operator/brokers")}
         />
       </AppShellPortal>
-      <Tabs value={tab} onValueChange={setTab} className="gap-5">
-        <TabsList variant="pill" aria-label="Provider">
+      <PageTabs value={tab} onValueChange={setTab}>
+        <PageTabsList aria-label="Provider">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="appetite">Appetite</TabsTrigger>
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
-        </TabsList>
-        <TabsContent value="profile" className="space-y-5">
+        </PageTabsList>
+        <PageTabsPanel value="profile" className="space-y-5">
           <InlineFieldCard>
             <InlineFieldRow label="Provider name">
               <Input
@@ -330,8 +330,8 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
               />
             </InlineFieldRow>
           </InlineFieldCard>
-        </TabsContent>
-        <TabsContent value="appetite" className="space-y-5">
+        </PageTabsPanel>
+        <PageTabsPanel value="appetite" className="space-y-5">
           <InlineFieldCard>
             <InlineFieldRow label="Countries serviced">
               <AppetiteCountriesField
@@ -402,14 +402,14 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
               />
             </InlineFieldRow>
           </InlineFieldCard>
-        </TabsContent>
-        <TabsContent value="contacts">
+        </PageTabsPanel>
+        <PageTabsPanel value="contacts">
           <ProviderContacts brokerOrgId={row.broker._id} />
-        </TabsContent>
-        <TabsContent value="activity">
+        </PageTabsPanel>
+        <PageTabsPanel value="activity">
           <BrokerActivity brokerOrgId={row.broker._id} />
-        </TabsContent>
-      </Tabs>
+        </PageTabsPanel>
+      </PageTabs>
     </main>
   );
 }

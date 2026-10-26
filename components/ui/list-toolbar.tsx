@@ -58,8 +58,14 @@ export function ListToolbar({
   onClearFilters,
   search,
   actions,
+  tabsPlacement = "inline",
 }: {
   tabs?: ReactNode;
+  /**
+   * `inline` keeps view tabs as the first chip in the filter row. `above`
+   * renders them as a page-level folder rail (`PageTabs`) before the row.
+   */
+  tabsPlacement?: "inline" | "above";
   filters?: FilterDefinition[];
   followKey: string;
   /** One batched clear, for filters stored together (e.g. in the URL). */
@@ -79,9 +85,9 @@ export function ListToolbar({
     `${followKey}:filter-chip`,
     null,
   );
-  return (
+  const filterBar = (
     <FilterBar
-      leading={tabs}
+      leading={tabsPlacement === "inline" ? tabs : undefined}
       filters={filters}
       onClearAll={onClearFilters}
       menu={{
@@ -107,5 +113,13 @@ export function ListToolbar({
         ) : null
       }
     />
+  );
+  return tabsPlacement === "above" ? (
+    <>
+      {tabs}
+      {filterBar}
+    </>
+  ) : (
+    filterBar
   );
 }

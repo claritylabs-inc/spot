@@ -4,8 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { InlineCollectionActionsContext } from "@/components/ui/inline-fields";
-import { Loader2, Plus, RefreshCw, StickyNote } from "lucide-react";
+import { Loader2, StickyNote } from "lucide-react";
 
 import { useMutation, useQuery } from "convex/react";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -14,12 +13,12 @@ import { api } from "@/convex/_generated/api";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@claritylabs-inc/ui/components/tabs";
+  PageTabs,
+  PageTabsList,
+  PageTabsPanel,
+} from "@/components/ui/folder-tabs";
 import {
   IntakeCompanyReview,
   IntakeReviewCompact,
@@ -181,64 +180,6 @@ function LoadedProfile({
             Notes
           </PillButton>
           {!readOnly && <AutoSaveStatus status={autoSave.status} />}
-          {!readOnly && profileTab === "Tech stack" && techScan.canRescan && (
-            <PillButton
-              variant="secondary"
-              size="compact"
-              disabled={techScan.scanning}
-              onClick={techScan.rescan}
-            >
-              {techScan.scanning ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <RefreshCw className="size-4" />
-              )}
-              Rescan
-            </PillButton>
-          )}
-          {!readOnly && profileTab === "Related legal entities" && (
-            <PillButton
-              variant="secondary"
-              size="compact"
-              disabled={details.relatedEntities.length >= 30}
-              onClick={() =>
-                setDetails({
-                  ...details,
-                  hasRelatedEntities: "yes",
-                  relatedEntities: [
-                    ...details.relatedEntities,
-                    { legalName: "", relationship: "", insured: "" },
-                  ],
-                })
-              }
-            >
-              <Plus className="size-4" />
-              Add entity
-            </PillButton>
-          )}
-          {!readOnly && profileTab === "Locations" && (
-            <PillButton
-              variant="secondary"
-              size="compact"
-              disabled={details.locations.length >= 30}
-              onClick={() =>
-                setDetails({
-                  ...details,
-                  locations: [
-                    ...details.locations,
-                    {
-                      address: {},
-                      details: answers.description ?? "",
-                      activitiesPrefilled: !!answers.description,
-                    },
-                  ],
-                })
-              }
-            >
-              <Plus className="size-4" />
-              Add location
-            </PillButton>
-          )}
           {!readOnly && (
             <DeleteOrganizationButton
               orgId={client._id}
@@ -251,16 +192,11 @@ function LoadedProfile({
         </AppShellPortal>
       }
       <IntakeReviewCompact.Provider value={true}>
-        <Tabs
+        <PageTabs
           value={profileTab}
           onValueChange={(value) => setProfileTab(String(value))}
-          className="gap-5"
         >
-          <TabsList
-            variant="pill"
-            aria-label="Client profile"
-            className="max-w-full flex-wrap"
-          >
+          <PageTabsList aria-label="Client profile">
             {[
               ["Account", "Account"],
               ["Business details", "Business"],
@@ -274,8 +210,8 @@ function LoadedProfile({
                 {label}
               </TabsTrigger>
             ))}
-          </TabsList>
-          <TabsContent value={profileTab}>
+          </PageTabsList>
+          <PageTabsPanel value={profileTab}>
             {profileTab === "Tech stack" ? (
               <WebsiteTechSection
                 scan={techScan}
@@ -300,7 +236,6 @@ function LoadedProfile({
               />
             ) : !readOnly ? (
               <fieldset disabled={readOnly}>
-                <InlineCollectionActionsContext.Provider value={true}>
                   <IntakeApplicationFields
                     companyOnly
                     activeSection={profileTab}
@@ -316,7 +251,6 @@ function LoadedProfile({
                     }}
                     onDetailsChange={setDetails}
                   />
-                </InlineCollectionActionsContext.Provider>
               </fieldset>
             ) : (
               <IntakeCompanyReview
@@ -333,8 +267,8 @@ function LoadedProfile({
                 hideHeading
               />
             )}
-          </TabsContent>
-        </Tabs>
+          </PageTabsPanel>
+        </PageTabs>
       </IntakeReviewCompact.Provider>
     </div>
   );

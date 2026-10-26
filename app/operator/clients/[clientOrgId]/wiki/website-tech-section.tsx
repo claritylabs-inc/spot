@@ -2,7 +2,8 @@
 
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
+import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { useEffect, useState } from "react";
 import { api } from "@/convex/_generated/api";
@@ -202,7 +203,7 @@ function VendorList({
 
 export type WebsiteTechScan = ReturnType<typeof useWebsiteTechScan>;
 
-/** Query and rescan control, owned by the page so Rescan can live in the top bar. */
+/** Query and rescan control; Rescan renders with the scan status in the Tech stack panel. */
 export function useWebsiteTechScan(orgId: Id<"organizations">, enabled: boolean) {
   const result = useQuery(api.websiteTech.getForOperator, enabled ? { orgId } : "skip");
   const rescanMutation = useMutation(api.websiteTech.rescanForOperator);
@@ -314,10 +315,28 @@ export function WebsiteTechSection({
           </InlineFieldRow>
         </InlineFieldCard>
       </InlineFieldsContext.Provider>
-      <p className={`flex items-center gap-2 text-muted-foreground ${typeStyle("caption.default")}`}>
-        {scanning && <Loader2 className="size-3.5 animate-spin" />}
-        {scanNote}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className={`flex items-center gap-2 text-muted-foreground ${typeStyle("caption.default")}`}>
+          {scanning && <Loader2 className="size-3.5 animate-spin" />}
+          {scanNote}
+        </p>
+        {!readOnly && scan.canRescan ? (
+          <PillButton
+            variant="secondary"
+            size="compact"
+            className="shrink-0"
+            disabled={scanning}
+            onClick={scan.rescan}
+          >
+            {scanning ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+            Rescan
+          </PillButton>
+        ) : null}
+      </div>
     </div>
   );
 }

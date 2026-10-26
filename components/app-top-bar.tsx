@@ -146,7 +146,9 @@ export function AppTopBar({
   presence,
   mobileMenuRef,
   mobileMenuOpen,
+  className,
 }: {
+  className?: string;
   actions?: React.ReactNode;
   breadcrumbDetail?: React.ReactNode;
   onMobileMenuToggle?: () => void;
@@ -157,6 +159,8 @@ export function AppTopBar({
 }) {
   const pathname = usePathname();
   const resolved = resolveAppBreadcrumb(pathname);
+  // Previous/next client belongs to a client record, not the list.
+  const clientRecord = /^\/operator\/clients\/[^/]+/.test(pathname);
   // Deep client records (a request, a policy) lead with the client name from
   // their own detail; a "Clients" root would crowd it out.
   const { label, href } =
@@ -168,21 +172,14 @@ export function AppTopBar({
       breadcrumb={label}
       breadcrumbHref={href}
       breadcrumbRender={<Link href={href} />}
-      breadcrumbDetail={
-        breadcrumbDetail && pathname.startsWith("/operator/clients/") ? (
-          <span className="flex items-center gap-1.5">
-            {breadcrumbDetail}
-            <OperatorClientSwitcher />
-          </span>
-        ) : (
-          breadcrumbDetail
-        )
-      }
+      navigation={clientRecord ? <OperatorClientSwitcher /> : undefined}
+      breadcrumbDetail={breadcrumbDetail}
       breadcrumbSeparator={<span className="text-muted-foreground/30">/</span>}
       breadcrumbListClassName={`gap-1.5 ${typeStyle("body.default")}`}
       onMobileMenuToggle={onMobileMenuToggle}
       mobileMenuRef={mobileMenuRef}
       mobileMenuOpen={mobileMenuOpen}
+      className={className}
       actions={
         <>
           {presence}

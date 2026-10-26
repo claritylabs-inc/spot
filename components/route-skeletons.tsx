@@ -34,6 +34,34 @@ export function PillTabsSkeleton({ tabs }: { tabs: string[] }) {
   );
 }
 
+/** A page-level folder rail (flush under the top bar) with its panel; first tab reads as selected. */
+export function FolderTabsSkeleton({
+  tabs,
+  children,
+}: {
+  tabs: string[];
+  children: ReactNode;
+}) {
+  return (
+    <div className="-mx-6 -mt-6 lg:-mx-8" aria-hidden="true">
+      <div className="flex h-9 items-end gap-1 bg-tab-rail px-6 pt-1 lg:px-8">
+        {tabs.map((width, index) => (
+          <div
+            key={index}
+            className={cn(
+              "flex h-tab-folder shrink-0 items-center rounded-t-tab-folder px-4",
+              index === 0 && "bg-background",
+            )}
+          >
+            <Skeleton className={cn("h-3.5", width)} />
+          </div>
+        ))}
+      </div>
+      <div className="px-6 py-6 lg:px-8">{children}</div>
+    </div>
+  );
+}
+
 export type TableSkeletonColumn = {
   className?: string;
   cell: ReactNode;

@@ -18,7 +18,8 @@ export type AppShellSlotName =
   | "rightPanel"
   | "artifactPanel"
   | "sidebar"
-  | "secondaryNav";
+  | "secondaryNav"
+  | "folderRail";
 
 type SlotOwners = Record<AppShellSlotName, string[]>;
 type SlotTargets = Record<AppShellSlotName, HTMLElement | null>;
@@ -30,6 +31,7 @@ const EMPTY_OWNERS: SlotOwners = {
   artifactPanel: [],
   sidebar: [],
   secondaryNav: [],
+  folderRail: [],
 };
 const EMPTY_TARGETS: SlotTargets = {
   actions: null,
@@ -38,6 +40,7 @@ const EMPTY_TARGETS: SlotTargets = {
   artifactPanel: null,
   sidebar: null,
   secondaryNav: null,
+  folderRail: null,
 };
 
 type AppShellSlotsValue = {
@@ -107,6 +110,22 @@ function useAppShellSlots() {
 export function useAppShellSlot(slot: AppShellSlotName) {
   const { owners, targetRef } = useAppShellSlots();
   return { filled: owners[slot].length > 0, setTarget: targetRef(slot) };
+}
+
+/**
+ * Declares, while mounted, that a page has no content to portal but owns the
+ * slot (for example a page-level folder rail the top bar blends into).
+ */
+export function useAppShellSlotClaim(slot: AppShellSlotName) {
+  const slots = useContext(AppShellSlotsContext);
+  const token = useId();
+  const claim = slots?.claim;
+  const release = slots?.release;
+  useLayoutEffect(() => {
+    if (!claim || !release) return;
+    claim(slot, token);
+    return () => release(slot, token);
+  }, [claim, release, slot, token]);
 }
 
 export function useOptionalAppShellSlots() {

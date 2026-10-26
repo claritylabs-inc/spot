@@ -21,12 +21,12 @@ import { OperatorPageContextRegistration } from "@/components/operator-agent/ope
 import { AgentChannelsSection } from "@/components/settings/agent-channels-section";
 import { FeatureFlagToggleRow } from "@/components/settings/feature-flag-toggle-row";
 import { TeamSection } from "@/components/settings/team-section";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@claritylabs-inc/ui/components/tabs";
+  PageTabs,
+  PageTabsList,
+  PageTabsPanel,
+} from "@/components/ui/folder-tabs";
 
 import {
   OperationalPanel,
@@ -139,20 +139,15 @@ function ClientWorkspace({
     <>
       <main className="w-full space-y-6">
         {activeTab === "settings" ? (
-          <Tabs
+          <PageTabs
             value={settingsTab}
             onValueChange={(value) => setSettingsTab(String(value))}
-            className="gap-5"
           >
-            <TabsList
-              variant="pill"
-              aria-label="Client settings"
-              className="max-w-full flex-wrap"
-            >
+            <PageTabsList aria-label="Client settings">
               <TabsTrigger value="channels">Agent channels</TabsTrigger>
               <TabsTrigger value="features">Beta features</TabsTrigger>
-            </TabsList>
-            <TabsContent value="channels">
+            </PageTabsList>
+            <PageTabsPanel value="channels">
               <AgentChannelsSection
                 clientOrgId={client._id}
                 defaultClientSlug={slackChannelSlug(client)}
@@ -162,8 +157,8 @@ function ClientWorkspace({
                 defaultInviteUserId={supportDetails.primaryInsuranceContactId}
                 setRightPanel={setRightPanel}
               />
-            </TabsContent>
-            <TabsContent value="features" className="space-y-3">
+            </PageTabsPanel>
+            <PageTabsPanel value="features" className="space-y-3">
               {betaFeatureFlagsForOrgType("client").map((flag) => (
                 <FeatureFlagToggleRow
                   key={flag.id}
@@ -176,8 +171,8 @@ function ClientWorkspace({
                   disabled={savingFeatureFlagId !== null}
                 />
               ))}
-            </TabsContent>
-          </Tabs>
+            </PageTabsPanel>
+          </PageTabs>
         ) : null}
 
         {activeTab === "team" ? (

@@ -79,29 +79,34 @@ export default function OperatorClientProcurementPage() {
         </OperationalPanel>
       ) : (
         <main className="w-full space-y-6">
-          {activeImpersonation ? (
-            <OperationalPanel
-              as="div"
-              className="flex items-start gap-3 px-4 py-3"
-            >
-              <AlertCircle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-              <div>
-                <p className={`text-foreground ${typeStyle("body.medium")}`}>
-                  Procurement is read-only
-                </p>
-                <p
-                  className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
-                >
-                  Stop the current impersonation session to create or change
-                  requests, provider outreach, files, or email classification.
-                </p>
-              </div>
-            </OperationalPanel>
-          ) : null}
           <ProcurementListWorkspace
             clientOrgId={clientOrgId as Id<"organizations">}
             basePath={basePath}
             readOnly={Boolean(activeImpersonation)}
+            notice={
+              activeImpersonation ? (
+                <OperationalPanel
+                  as="div"
+                  className="flex items-start gap-3 px-4 py-3"
+                >
+                  <AlertCircle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <div>
+                    <p
+                      className={`text-foreground ${typeStyle("body.medium")}`}
+                    >
+                      Procurement is read-only
+                    </p>
+                    <p
+                      className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
+                    >
+                      Stop the current impersonation session to create or change
+                      requests, provider outreach, files, or email
+                      classification.
+                    </p>
+                  </div>
+                </OperationalPanel>
+              ) : null
+            }
             onActions={setWorkspaceActions}
             onRightPanel={setRightPanel}
           />
