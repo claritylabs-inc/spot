@@ -10,12 +10,16 @@ import type { AgentScope } from "../lib/agentScope";
 import { buildAgentToolExecutors } from "../lib/agentToolExecutors";
 import { readStoredAgentFile } from "../lib/storedAgentFile";
 import { runOperatorWebRetrieval } from "../lib/webRetrieval";
+import { fetchPublicUrl } from "../lib/fetchPublicUrl";
 import { parseOperatorAgentToolInput } from "../lib/operatorAgentToolRegistry";
 import { mergePdfsFromUrls, mergedFileName } from "../lib/mergePdfs";
 import {
   OPERATOR_EMAIL_TOOL_NAMES,
   runOperatorEmailTool,
 } from "../lib/operatorEmailTools";
+
+// Keeps ten bulk-read files within one tool result.
+const BULK_FILE_TEXT_CHARS = 8_000;
 
 const operatorChannelValidator = v.union(
   v.literal("chat"),
@@ -78,6 +82,16 @@ export const runInternal = internalAction({
     if (args.toolName === "web_search") {
       const input = parseOperatorAgentToolInput("web_search", args.input);
       return { result: await runOperatorWebRetrieval(ctx, input) };
+    }
+
+    if (args.toolName === "fetch_url") {
+      const input = parseOperatorAgentToolInput("fetch_url", args.input);
+      return {
+        result: await fetchPublicUrl(
+          String(input.url),
+          typeof input.maxChars === "number" ? input.maxChars : undefined,
+        ),
+      };
     }
 
     if (args.toolName === "import_policy_files") {
@@ -223,6 +237,50 @@ export const runInternal = internalAction({
         messages: [],
       });
       return { result, attachments };
+    }
+
+    if (
+      args.toolName === "read_client_file" &&
+      Array.isArray((args.input as Record<string, unknown>).clientFileIds)
+    ) {
+      const input = args.input as {
+        clientFileIds: string[];
+        maxChars?: number;
+      };
+      const maxChars = input.maxChars ?? BULK_FILE_TEXT_CHARS;
+      const items = [];
+      const notFound: string[] = [];
+      for (const clientFileId of input.clientFileIds) {
+        const file = await ctx
+          .runQuery(internal.clientFiles.getForOperatorInternal, {
+            operatorUserId: args.operatorUserId,
+            clientFileId: clientFileId as Id<"clientFiles">,
+          })
+          // A malformed ID fails argument validation like a missing file.
+          .catch(() => null);
+        if (!file) {
+          notFound.push(clientFileId);
+          continue;
+        }
+        const content = await readStoredAgentFile(ctx, {
+          fileId: file.fileId,
+          filename: file.name,
+          contentType: file.contentType,
+          size: file.size,
+        });
+        const text =
+          "text" in content && typeof content.text === "string"
+            ? content.text
+            : undefined;
+        items.push({
+          clientFileId: file.clientFileId,
+          orgId: file.orgId,
+          ...content,
+          text: text?.slice(0, maxChars),
+          truncated: Boolean(text && text.length > maxChars),
+        });
+      }
+      return { result: { items, notFound } };
     }
 
     if (

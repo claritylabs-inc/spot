@@ -10,6 +10,7 @@ import { getMarkdownDocument } from "../markdownDocuments";
 import { requireCompanyRequest } from "./companyRequest";
 import { clientRecipientOptions } from "./clientOutreach";
 import { parseMarkdownDocument } from "./markdownDocument";
+import { appendWikiSection } from "./wikiAppend";
 import { clientIdentity, clientIdentityMatches } from "./clientProfile";
 import dayjs from "dayjs";
 
@@ -830,11 +831,18 @@ export async function preflightOperatorToolConfirmation(
       if (organization.type !== "client" && organization.type !== "broker") {
         throw new Error("Client or supplier organization not found");
       }
-      parseMarkdownDocument(String(args.input.markdown));
       const document = await getMarkdownDocument(ctx, {
         orgId: organization._id as Id<"organizations">,
         kind: "company_wiki",
       });
+      if (args.input.mode === "append") {
+        // The write appends to whatever is current, so there is no revision to match.
+        parseMarkdownDocument(
+          appendWikiSection(document?.markdown ?? "", String(args.input.markdown)),
+        );
+        return;
+      }
+      parseMarkdownDocument(String(args.input.markdown));
       const revision = document?.revision ?? 0;
       if (args.input.expectedRevision !== revision) {
         throw new Error(
@@ -866,11 +874,9 @@ export async function preflightOperatorToolConfirmation(
         .withIndex("policy", (query) => query.eq("policyId", policy._id))
         .order("desc")
         .first();
-      const status = run?.pipelineStatus ?? policy.pipelineStatus;
-      if (status === "running" || status === "paused") {
-        throw new Error(
-          "An extraction is already running or paused for this policy",
-        );
+      // A running extraction is reported as already_running at execution, not rejected.
+      if ((run?.pipelineStatus ?? policy.pipelineStatus) === "paused") {
+        throw new Error("An extraction is paused for this policy");
       }
       if (!policy.fileId) throw new Error("Policy source file is missing");
       return;
