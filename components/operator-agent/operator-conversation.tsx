@@ -259,6 +259,7 @@ function OperatorMessageRow({
   openEmailDraftId,
   onOpenEmailDraft,
   toolApproval,
+  toolEntities,
 }: {
   threadId: string;
   message: OperatorAgentMessage;
@@ -273,6 +274,7 @@ function OperatorMessageRow({
   openEmailDraftId: string | null;
   onOpenEmailDraft: (draftId: string) => void;
   toolApproval?: ComponentProps<typeof ChatAssistantTurn>["toolApproval"];
+  toolEntities?: ComponentProps<typeof ChatAssistantTurn>["toolEntities"];
 }) {
   const bubbleChannel = message.channel === "mcp" ? "chat" : message.channel;
   const content =
@@ -309,6 +311,7 @@ function OperatorMessageRow({
         toolCalls={message.toolCalls}
         activity={message.activity}
         toolIntegrations={message.toolIntegrations}
+        toolEntities={toolEntities}
         toolApproval={toolApproval}
         executionPlan={message.executionPlan}
         failure={message.failure}
@@ -616,6 +619,7 @@ export function OperatorConversation({
                   openEmailDraftId={openEmailDraftId}
                   onOpenEmailDraft={setOpenEmailDraftId}
                   toolApproval={rowApproval}
+                  toolEntities={detail.entities}
                   presentationDisabled={
                     presentationDisabled || hasPendingConfirmation
                   }

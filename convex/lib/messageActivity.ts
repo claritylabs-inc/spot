@@ -17,6 +17,12 @@ const toolContextValidator = v.object({
   websites: v.optional(v.array(v.string())),
 });
 
+/** Record a call acted on, as an id the viewer's query resolves to a brand. */
+export const toolTargetValidator = v.object({
+  kind: v.union(v.literal("organization"), v.literal("procurement_request")),
+  id: v.string(),
+});
+
 export const messageActivityToolStatusValidator = v.union(
   v.literal("requested"),
   v.literal("running"),
@@ -63,6 +69,7 @@ export const messageActivityValidator = v.object({
       context: v.optional(toolContextValidator),
       /** Count summary of a settled call ("3 threads"); see toolResultSummary. */
       result: v.optional(v.string()),
+      target: v.optional(toolTargetValidator),
       ...activityTimingFields,
     }),
   ),
@@ -99,6 +106,7 @@ export const messageActivityUpdateValidator = v.union(
     status: messageActivityToolStatusValidator,
     context: v.optional(toolContextValidator),
     result: v.optional(v.string()),
+    target: v.optional(toolTargetValidator),
   }),
 );
 
@@ -112,6 +120,7 @@ export type MessageActivityToolStatus = Infer<
   typeof messageActivityToolStatusValidator
 >;
 export type RequestedToolCall = Infer<typeof requestedToolCallValidator>;
+export type MessageActivityToolTarget = Infer<typeof toolTargetValidator>;
 
 const SETTLED: ReadonlySet<MessageActivityToolStatus> = new Set([
   "returned",
@@ -254,6 +263,10 @@ export function applyMessageActivity(
       TOOL_RESULT_SUMMARY_PATTERN.test(update.result)
         ? { result: update.result }
         : {};
+    const target =
+      update.target && validText(update.target.id)
+        ? { target: { kind: update.target.kind, id: update.target.id } }
+        : {};
     if (index < 0) {
       tools.push({
         toolCallId: update.toolCallId,
@@ -261,6 +274,7 @@ export function applyMessageActivity(
         status: update.status,
         ...(context ? { context } : {}),
         ...result,
+        ...target,
         ...(update.status === "running" ? { startedAt: now } : {}),
       });
     } else if (
@@ -275,6 +289,7 @@ export function applyMessageActivity(
         status: update.status,
         ...(context ? { context } : {}),
         ...result,
+        ...target,
         ...(startedAt !== undefined ? { startedAt } : {}),
         ...(startedAt !== undefined &&
         previous.endedAt === undefined &&
@@ -290,6 +305,16 @@ export function applyMessageActivity(
     ...(stages ? { stages } : {}),
     updatedAt: now,
   };
+}
+
+/** The activity target for a registry target, when it has a brand to show. */
+export function toolActivityTarget(target: {
+  kind?: string;
+  id?: string;
+}): MessageActivityToolTarget | undefined {
+  if (!validText(target.id)) return;
+  if (target.kind === "organization" || target.kind === "procurement_request")
+    return { kind: target.kind, id: target.id };
 }
 
 /** Classifies a tool function's return value without claiming business success. */

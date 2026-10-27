@@ -69,6 +69,7 @@ import { v, type Infer } from "convex/values";
 import { cancelRouterJobForInvocation } from "./routerJobs";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { MessageActivityToolTarget } from "./lib/messageActivity";
 import {
   internalMutation,
   internalQuery,
@@ -5082,6 +5083,51 @@ export const clearThreadContext = mutation({
   },
 });
 
+const MAX_ACTIVITY_ENTITIES = 40;
+
+/**
+ * Brands for the records tool calls acted on, keyed `kind:id`, so activity
+ * rows can show the client's mark. Requests resolve to their client
+ * organization; deleted or unknown records are omitted.
+ */
+async function activityEntities(
+  ctx: QueryCtx,
+  messages: Doc<"operatorAgentMessages">[],
+) {
+  const targets = new Map<string, MessageActivityToolTarget>();
+  for (const message of messages)
+    for (const tool of message.activity?.tools ?? [])
+      if (tool.target && targets.size < MAX_ACTIVITY_ENTITIES)
+        targets.set(`${tool.target.kind}:${tool.target.id}`, tool.target);
+  const entities: Record<
+    string,
+    { name: string; website?: string; iconUrl?: string }
+  > = {};
+  await Promise.all(
+    [...targets].map(async ([key, target]) => {
+      let orgId: Id<"organizations"> | null | undefined;
+      if (target.kind === "organization") {
+        orgId = ctx.db.normalizeId("organizations", target.id);
+      } else {
+        const requestId = ctx.db.normalizeId("procurementRequests", target.id);
+        const request = requestId ? await ctx.db.get(requestId) : null;
+        orgId = request && !request.deletedAt ? request.clientOrgId : null;
+      }
+      const org = orgId ? await ctx.db.get(orgId) : null;
+      if (!org || org.deletedAt) return;
+      const iconUrl = org.iconStorageId
+        ? await ctx.storage.getUrl(org.iconStorageId)
+        : null;
+      entities[key] = {
+        name: org.name,
+        ...(org.website ? { website: org.website } : {}),
+        ...(iconUrl ? { iconUrl } : {}),
+      };
+    }),
+  );
+  return entities;
+}
+
 /** External system each named tool reaches, for branded activity rows. */
 function toolIntegrations(names: string[]) {
   const integrations: Record<string, OperatorToolIntegration> = {};
@@ -5150,8 +5196,10 @@ export const getThread = query({
       thread.ownerUserId,
       ...messages.flatMap((message) => (message.userId ? [message.userId] : [])),
     ]);
+    const entities = await activityEntities(ctx, messages);
     return {
       thread: { ...thread, initialContext, pageContext: pageContext ?? null },
+      entities,
       viewerUserId: operator.userId,
       creator: people.get(thread.ownerUserId)!,
       people: [...people.values()],

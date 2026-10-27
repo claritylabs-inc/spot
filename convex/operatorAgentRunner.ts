@@ -42,6 +42,7 @@ import { summarizeToolResult } from "./lib/toolResultSummary";
 import {
   toolOutcomeStatus,
   type MessageActivityUpdate,
+  toolActivityTarget,
 } from "./lib/messageActivity";
 import { traceStage } from "./lib/agentActivityTrace";
 import {
@@ -75,6 +76,7 @@ import {
   expandOperatorToolsSpec,
   isOperatorToolFamily,
   OPERATOR_AGENT_TOOL_REGISTRY,
+  getOperatorAgentToolSpec,
   OPERATOR_TOOL_FAMILY_CATALOG,
   operatorAgentToolNamesForFamilies,
   operatorToolFamiliesOf,
@@ -943,10 +945,14 @@ export const run = internalAction({
               }
               // Tools run serially; mark running only once this call's turn starts.
               const activityContext = toolActivityContext(name, input);
+              const activityTarget = toolActivityTarget(
+                getOperatorAgentToolSpec(name).target(input),
+              );
               await recordActivity({
                 ...activity,
                 status: "running",
                 ...(activityContext ? { context: activityContext } : {}),
+                ...(activityTarget ? { target: activityTarget } : {}),
               });
               const inputHash = await actionConfirmationFingerprint({
                 toolName: name,

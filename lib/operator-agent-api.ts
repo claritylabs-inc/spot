@@ -105,8 +105,15 @@ type ListThreadsArgs = {
 };
 type GetThreadArgs = { threadId: string };
 type SetThreadArchiveArgs = { threadId: string };
+/** Brand of a record a tool call acted on, keyed `kind:id`. */
+export type OperatorActivityEntity = {
+  name: string;
+  website?: string;
+  iconUrl?: string;
+};
 type GetThreadResult = {
   thread: BackendThread;
+  entities: Record<string, OperatorActivityEntity>;
   viewerUserId: string;
   creator: OperatorPerson;
   people: OperatorPerson[];
@@ -219,6 +226,7 @@ type OperatorAgentToolCall = {
 
 export type OperatorAgentThreadDetail = {
   thread: OperatorAgentThread | null;
+  entities: Record<string, OperatorActivityEntity>;
   viewerUserId: string | null;
   messages: OperatorAgentMessage[];
   activeRun: boolean;
@@ -354,6 +362,7 @@ export function normalizeOperatorAgentThread(
   if (!value) {
     return {
       thread: null,
+      entities: {},
       viewerUserId: null,
       messages: [],
       activeRun: false,
@@ -363,6 +372,7 @@ export function normalizeOperatorAgentThread(
   const people = new Map(value.people.map((person) => [person.userId, person]));
   return {
     thread: normalizeThread(value.thread, value.creator),
+    entities: value.entities,
     viewerUserId: value.viewerUserId,
     messages: value.messages.map((message) => ({
       id: message._id,
