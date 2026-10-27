@@ -1,6 +1,6 @@
 "use node";
 import { createHash } from "node:crypto";
-import MailComposer from "spot-mailer/lib/mail-composer";
+import MailComposer from "nodemailer/lib/mail-composer";
 import type { gmail_v1 } from "googleapis";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";

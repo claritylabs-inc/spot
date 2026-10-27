@@ -201,9 +201,11 @@ Disconnect revokes the token at Google; stored mail is kept.
 
 **Capture.** Spot never reads the Gmail mailbox. Mail enters only when the operator's
 team address is on To, Cc or Bcc, and it arrives through the existing Resend inbox
-webhook. A received email whose From is the operator's active connected Gmail is the
-operator's own outbound mail (attributed to them, not something to answer); any
-other received mail that names a connected Gmail on To/Cc is ordinary inbound mail
+webhook. A received email whose From is a connected Gmail is the
+operator's own outbound mail (attributed to them, not something to answer) only when
+the message is found in their Gmail Sent folder (an `rfc822msgid:` lookup, a single
+immediate check) or its original MIME carries aligned DKIM; without that proof it
+stays inbound. Any other received mail that names a connected Gmail on To/Cc is ordinary inbound mail
 marked with `gmailAddress`. Copies deduplicate by RFC Message-ID against the stored
 outbound message when Spot sent the original, and a copy waits briefly while its
 send is drafted but not yet recorded. Replies and reply-all from external people
