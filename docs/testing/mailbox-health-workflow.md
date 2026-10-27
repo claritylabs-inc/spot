@@ -129,3 +129,19 @@ labelled Connected by row, using OperationalLabelValueRow. Helium verified all
 five clean mailbox rows and Zac’s Connected by details locally; the sender
 address, default selection and dynamic signature behavior are unchanged.
 Evidence: .context/qa/mailbox-production-20261027/connected-by-details.png.
+
+## Production activation workflow — October 27
+
+After exact production-access approval, all five existing InboxKit mailboxes were
+connected through app.spot.insure. Each passed SMTP/IMAP verification and an
+initial reply check. Zac is selected and enabled; the other four stay paused.
+No existing provider sequence is relaunched as part of activation.
+
+The live seed uses the subject “Spot production mailbox verification — October
+27” and only synthetic content, addressed to Zac’s personal Gmail. Required
+observations: actual Gmail folder and authentication, Gmail reply with a harmless
+attachment, original production thread plus attachment contents, and a final Spot
+reply after the default pacing interval. Final evidence and release checks are
+recorded on PR #604; screenshots stay gitignored in
+.context/qa/mailbox-production-20261027/. Local development remains running with
+its recipient-restricted mode, independently of the live production sender.
