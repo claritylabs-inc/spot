@@ -9,11 +9,11 @@ import { normalizeGmailAddress } from "./lib/operatorGmail";
 export const getActiveByAddressInternal = internalQuery({
   args: { address: v.string() },
   handler: async (ctx, { address }) => {
-    const row = await ctx.db
+    const rows = await ctx.db
       .query("operatorGmailConnections")
       .withIndex("by_address", (q) => q.eq("address", normalizeGmailAddress(address)))
-      .first();
-    return row?.status === "active" ? row : null;
+      .take(20);
+    return rows.find((row) => row.status === "active") ?? null;
   },
 });
 

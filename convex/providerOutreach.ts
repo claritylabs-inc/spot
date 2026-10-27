@@ -3687,11 +3687,11 @@ export const applyInboundInboxEmailInternal = internalMutation({
 
 /** The active connected Gmail for `address`, or null. */
 async function activeGmailConnection(ctx: MutationCtx, address: string) {
-  const row = await ctx.db
+  const rows = await ctx.db
     .query("operatorGmailConnections")
     .withIndex("by_address", (q) => q.eq("address", normalizeGmailAddress(address)))
-    .first();
-  return row?.status === "active" ? row : null;
+    .take(20);
+  return rows.find((row) => row.status === "active") ?? null;
 }
 
 /** Whether a Gmail send is drafted under this Message-ID but its message is not stored yet. */
