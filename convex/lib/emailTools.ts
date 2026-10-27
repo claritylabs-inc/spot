@@ -739,7 +739,7 @@ export function buildEmailToolExecutors(
       subject: content.subject,
       body: content.body,
       signature: operator
-        ? buildOperatorSignature({ name: operator.senderName })
+        ? buildOperatorSignature({ name: operator.senderName, address: operator.teamAddress })
         : buildEmailSignature(context.agentAddress),
       replyTo: context.replyTo,
       inReplyTo: context.inReplyTo,

@@ -652,7 +652,7 @@ async function operatorConfirmationSummary(
       const recipient = panel?.recipients.find((person) => person.email === input.recipientEmail);
       const composed = composeClientOutreachEmail({
         kind: "initial", isFinal: false, recipientName: recipient?.name ?? undefined,
-        operator: { name: identity.name },
+        operator: { name: identity.name, address: identity.address },
         message: { subject: String(input.subject), text: String(input.message) },
       });
       lines.push("", composed.text);

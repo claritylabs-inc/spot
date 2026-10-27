@@ -13,7 +13,7 @@ export type ClientOutreachEmailInput = {
   isFinal: boolean;
   recipientName?: string;
   /** The sender's full name, as signed. */
-  operator: { name: string };
+  operator: { name: string; address: string };
   message: { subject: string; text: string };
 };
 
