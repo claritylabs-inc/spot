@@ -24,9 +24,11 @@ import type { RouterJobFailure } from "@/convex/lib/routerJobFailure";
 import {
   activityStatusLabel,
   hasActiveActivity,
+  hasAwaitingApprovalCall,
   ThinkingTrace,
   ToolActivityCard,
   type ChatActivity,
+  type ToolApproval,
 } from "./thinking-summary";
 
 export { ChatErrorNotice } from "./message-bubble";
@@ -65,6 +67,8 @@ export function ChatAssistantTurn({
   tools,
   toolCalls,
   activity,
+  toolIntegrations,
+  toolApproval,
   executionPlan,
   failure,
   routerRequestId,
@@ -98,6 +102,12 @@ export function ChatAssistantTurn({
   toolCalls?: { name: string; input?: string }[];
   /** Observed stages and tool status; retained as evidence once settled. */
   activity?: ChatActivity;
+  toolIntegrations?: ComponentProps<typeof ToolActivityCard>["integrations"];
+  /**
+   * Approval for a call in this turn. Decided on the call's row when the
+   * tool card shows it; otherwise `fallback` renders after the answer.
+   */
+  toolApproval?: ToolApproval & { fallback: ReactNode };
   executionPlan?: OperatorExecutionPlan;
   /** Operator-only diagnostics for a failed turn; ignored for other audiences. */
   failure?: RouterJobFailure;
@@ -123,6 +133,12 @@ export function ChatAssistantTurn({
   // standalone indicator would repeat it. It stays for Show thinking off, no
   // activity, and waiting on the model with no row in progress.
   const rowShowsProgress = showThinking && hasActiveActivity(activity);
+  const inlineApproval =
+    toolApproval &&
+    showThinking &&
+    hasAwaitingApprovalCall(activity, toolApproval.toolName)
+      ? toolApproval
+      : undefined;
   const answer =
     working && (!streamResponses || !content) ? (
       rowShowsProgress ? (
@@ -182,6 +198,8 @@ export function ChatAssistantTurn({
             tools={tools}
             toolCalls={toolCalls}
             activity={activity}
+            integrations={toolIntegrations}
+            approval={inlineApproval}
             working={turnActive}
           />
         </>
@@ -203,6 +221,7 @@ export function ChatAssistantTurn({
           activity={activity}
         />
       ) : null}
+      {toolApproval && !inlineApproval ? toolApproval.fallback : null}
       {after}
     </div>
   );
