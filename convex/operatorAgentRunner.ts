@@ -38,6 +38,7 @@ import {
   selectBoundedAgentHistory,
 } from "./lib/agentMessageHistory";
 import { collectToolAudit, mergeToolAudits } from "./lib/agentToolAudit";
+import { summarizeToolResult } from "./lib/toolResultSummary";
 import {
   toolOutcomeStatus,
   type MessageActivityUpdate,
@@ -1016,9 +1017,11 @@ export const run = internalAction({
             toolQueue = execution
               .then(
                 async (output) => {
+                  const result = summarizeToolResult(output);
                   await recordActivity({
                     ...activity,
                     status: toolOutcomeStatus(output),
+                    ...(result ? { result } : {}),
                   });
                   if (thread.channel === "chat") {
                     const tool = capturePresentationTool(name, output);

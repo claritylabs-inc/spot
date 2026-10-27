@@ -42,6 +42,8 @@ type ActivityCall = {
   input?: string;
   status?: ActivityStatus;
   context?: ToolActivityContext;
+  /** Count summary of the returned result ("3 threads"). */
+  result?: string;
   startedAt?: number;
   endedAt?: number;
 };
@@ -73,6 +75,7 @@ export type ChatActivity = {
     toolName: string;
     status: ActivityStatus;
     context?: ToolActivityContext;
+    result?: string;
     /** Observed running → settled span; absent on older messages. */
     startedAt?: number;
     endedAt?: number;
@@ -256,6 +259,7 @@ function observedCall(tool: ChatActivity["tools"][number]): ActivityCall {
     toolCallId: tool.toolCallId,
     status: tool.status,
     context: tool.context,
+    result: tool.result,
     startedAt: tool.startedAt,
     endedAt: tool.endedAt,
   };
@@ -331,6 +335,23 @@ function Duration({
       className={`shrink-0 text-muted-foreground/70 ${typeStyle("data.numeric")}`}
     >
       {formatDuration(span)}
+    </span>
+  );
+}
+
+/** Result count and duration for one call: "3 threads · 0.4s". */
+function CallMeta({ call }: { call: ActivityCall }) {
+  const span = spanOf([call]);
+  const parts = [
+    call.result,
+    span === undefined ? undefined : formatDuration(span),
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return (
+    <span
+      className={`shrink-0 whitespace-nowrap text-muted-foreground/70 ${typeStyle("data.numeric")}`}
+    >
+      {parts.join(" · ")}
     </span>
   );
 }
@@ -640,7 +661,7 @@ function CallRow({
           ) : null}
         </div>
         <span className="flex min-h-6 shrink-0 items-center gap-2">
-          <Duration entries={[call]} />
+          <CallMeta call={call} />
           <CallStatus status={call.status} working={working} />
           {approval?.actions}
         </span>

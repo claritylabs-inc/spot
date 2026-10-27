@@ -1,5 +1,6 @@
 "use node";
 
+import { summarizeToolResult } from "../lib/toolResultSummary";
 import { toolActivityContext } from "../../lib/tool-activity-context";
 import {
   appendCapturedPresentationTool,
@@ -808,15 +809,20 @@ export const run = internalAction({
               ...(context ? { context } : {}),
             });
           },
-          experimental_onToolCallFinish: (event) =>
-            recordActivity({
+          experimental_onToolCallFinish: (event) => {
+            const result = event.success
+              ? summarizeToolResult(event.output)
+              : undefined;
+            return recordActivity({
               kind: "tool",
               toolCallId: event.toolCall.toolCallId,
               toolName: event.toolCall.toolName,
               status: event.success
                 ? toolOutcomeStatus(event.output)
                 : "failed",
-            }),
+              ...(result ? { result } : {}),
+            });
+          },
           onStepFinish: async (step) => {
             if (surface !== "web") return;
             for (const result of step.toolResults) {

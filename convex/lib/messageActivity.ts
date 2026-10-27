@@ -1,9 +1,10 @@
 import { v, type Infer } from "convex/values";
+import { TOOL_RESULT_SUMMARY_PATTERN } from "./toolResultSummary";
 
 /**
  * Live execution status for a processing agent message. It records what the
- * app itself observed: tool names, call ids and bounded web-search labels,
- * never full arguments, results or model reasoning. "returned" means the tool
+ * app itself observed: tool names, call ids, bounded web-search labels and
+ * structural result counts, never full arguments, results or model reasoning. "returned" means the tool
  * function returned without an error marker; only an explicit success marker
  * becomes "completed".
  */
@@ -60,6 +61,8 @@ export const messageActivityValidator = v.object({
       toolName: v.string(),
       status: messageActivityToolStatusValidator,
       context: v.optional(toolContextValidator),
+      /** Count summary of a settled call ("3 threads"); see toolResultSummary. */
+      result: v.optional(v.string()),
       ...activityTimingFields,
     }),
   ),
@@ -95,6 +98,7 @@ export const messageActivityUpdateValidator = v.union(
     toolName: v.string(),
     status: messageActivityToolStatusValidator,
     context: v.optional(toolContextValidator),
+    result: v.optional(v.string()),
   }),
 );
 
@@ -244,12 +248,19 @@ export function applyMessageActivity(
     const index = tools.findIndex(
       (tool) => tool.toolCallId === update.toolCallId,
     );
+    const result =
+      update.result &&
+      SETTLED.has(update.status) &&
+      TOOL_RESULT_SUMMARY_PATTERN.test(update.result)
+        ? { result: update.result }
+        : {};
     if (index < 0) {
       tools.push({
         toolCallId: update.toolCallId,
         toolName: update.toolName,
         status: update.status,
         ...(context ? { context } : {}),
+        ...result,
         ...(update.status === "running" ? { startedAt: now } : {}),
       });
     } else if (
@@ -263,6 +274,7 @@ export function applyMessageActivity(
         ...previous,
         status: update.status,
         ...(context ? { context } : {}),
+        ...result,
         ...(startedAt !== undefined ? { startedAt } : {}),
         ...(startedAt !== undefined &&
         previous.endedAt === undefined &&
