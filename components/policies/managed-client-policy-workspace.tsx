@@ -281,7 +281,7 @@ export function ManagedClientPolicyWorkspace({
           <p className={typeStyle("body.default")}>No active policies</p>
         </OperationalPanel>
       ) : rows.length === 0 ? (
-        <PolicyEmptyState uploading={uploading} onUpload={handleUpload} />
+        <PolicyEmptyState />
       ) : (
         <OperationalPanel>
           <Table storageKey="spot:policies:list:columns" className="min-w-[900px]">

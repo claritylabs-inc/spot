@@ -137,7 +137,7 @@ export default function PoliciesPage() {
         {policies === undefined ? (
           <div className="min-h-32" aria-hidden="true" />
         ) : rows.length === 0 && !showArchived ? (
-          <PolicyEmptyState uploading={uploading} onUpload={upload} />
+          <PolicyEmptyState />
         ) : rows.length === 0 ? (
           <div
             className={`py-16 text-center text-muted-foreground/50 ${typeStyle("body.default")}`}
