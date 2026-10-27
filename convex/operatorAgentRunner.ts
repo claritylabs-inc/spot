@@ -39,6 +39,7 @@ import {
 } from "./lib/agentMessageHistory";
 import { collectToolAudit, mergeToolAudits } from "./lib/agentToolAudit";
 import { summarizeToolResult } from "./lib/toolResultSummary";
+import { toolResultPreview } from "./lib/toolResultPreview";
 import {
   toolOutcomeStatus,
   type MessageActivityUpdate,
@@ -1038,11 +1039,28 @@ export const run = internalAction({
                           )
                           .catch(() => null)
                       : null;
+                  const previewItems =
+                    status === "completed" || status === "returned"
+                      ? toolResultPreview(output)
+                      : [];
+                  const preview =
+                    previewItems.length > 0 &&
+                    (await ctx
+                      .runMutation(
+                        internal.operatorAgent.recordToolPreviewInternal,
+                        {
+                          messageId: run.agentMessageId,
+                          toolCallId: options.toolCallId,
+                          items: previewItems,
+                        },
+                      )
+                      .catch(() => false));
                   await recordActivity({
                     ...activity,
                     status,
                     ...(result ? { result } : {}),
                     ...(change ? { change } : {}),
+                    ...(preview ? { preview: true } : {}),
                   });
                   if (thread.channel === "chat") {
                     const tool = capturePresentationTool(name, output);

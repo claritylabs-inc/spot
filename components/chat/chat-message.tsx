@@ -69,6 +69,7 @@ export function ChatAssistantTurn({
   activity,
   toolIntegrations,
   toolEntities,
+  toolPreview,
   toolApproval,
   executionPlan,
   failure,
@@ -105,6 +106,7 @@ export function ChatAssistantTurn({
   activity?: ChatActivity;
   toolIntegrations?: ComponentProps<typeof ToolActivityCard>["integrations"];
   toolEntities?: ComponentProps<typeof ToolActivityCard>["entities"];
+  toolPreview?: ComponentProps<typeof ToolActivityCard>["renderPreview"];
   /**
    * Approval for a call in this turn. Decided on the call's row when the
    * tool card shows it; otherwise `fallback` renders after the answer.
@@ -202,6 +204,7 @@ export function ChatAssistantTurn({
             activity={activity}
             integrations={toolIntegrations}
             entities={toolEntities}
+            renderPreview={toolPreview}
             approval={inlineApproval}
             working={turnActive}
           />

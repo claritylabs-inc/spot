@@ -14,6 +14,7 @@ import {
   TooltipTrigger,
 } from "@claritylabs-inc/ui/components/tooltip";
 import { api } from "@/convex/_generated/api";
+import { useFollowedState } from "@/hooks/use-followed-state";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import type { OperatorToolIntegration } from "@/convex/lib/operatorAgentToolRegistry";
@@ -48,6 +49,8 @@ type ActivityCall = {
   target?: { kind: string; id: string };
   /** What a completed write did ("Assign Sarah Chen to Ramp"). */
   change?: string;
+  /** A stored preview of the result can be shown under the row. */
+  preview?: boolean;
   startedAt?: number;
   endedAt?: number;
 };
@@ -82,6 +85,7 @@ export type ChatActivity = {
     result?: string;
     target?: { kind: string; id: string };
     change?: string;
+    preview?: boolean;
     /** Observed running → settled span; absent on older messages. */
     startedAt?: number;
     endedAt?: number;
@@ -268,6 +272,7 @@ function observedCall(tool: ChatActivity["tools"][number]): ActivityCall {
     result: tool.result,
     target: tool.target,
     change: tool.change,
+    preview: tool.preview,
     startedAt: tool.startedAt,
     endedAt: tool.endedAt,
   };
@@ -631,14 +636,25 @@ function CallRow({
   integration,
   entities,
   approval,
+  renderPreview,
   working,
 }: {
   call: ActivityCall;
   integration?: OperatorToolIntegration;
   entities?: Record<string, ToolEntity>;
   approval?: ToolApproval;
+  renderPreview?: (toolCallId: string) => ReactNode;
   working: boolean;
 }) {
+  const previewId = useId();
+  const [previewOpen, setPreviewOpen] = useFollowedState(
+    `tool-activity:${call.toolCallId ?? ""}:preview`,
+    false,
+  );
+  const previewCallId =
+    renderPreview && call.preview && call.toolCallId
+      ? call.toolCallId
+      : undefined;
   const mcp = mcpInput(call);
   const context = callContext(call);
   const running = working && call.status === "running";
@@ -658,11 +674,11 @@ function CallRow({
         <span className="flex h-6 shrink-0 items-center">
           {toolBrand(call, integration, entities).icon}
         </span>
-        <div
-          className={cn(
-            "flex min-h-6 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1",
-            typeStyle("body.default"),
-          )}
+        <LabelGroup
+          expandable={Boolean(previewCallId) && !context?.websites?.length}
+          open={previewOpen}
+          controls={previewId}
+          onToggle={() => setPreviewOpen(!previewOpen)}
         >
           <span
             className={cn(
@@ -689,7 +705,7 @@ function CallRow({
               {context.label}
             </span>
           ) : null}
-        </div>
+        </LabelGroup>
         <span className="flex min-h-6 shrink-0 items-center gap-2">
           <CallMeta call={call} />
           <CallStatus status={call.status} working={working} />
@@ -703,7 +719,57 @@ function CallRow({
           <p className="line-clamp-3 whitespace-pre-line">{call.change}</p>
         </RowDetail>
       ) : null}
+      {previewCallId ? (
+        <DisclosurePanel id={previewId} open={previewOpen}>
+          <div className="mt-2 ml-6.5">
+            {previewOpen ? renderPreview?.(previewCallId) : null}
+          </div>
+        </DisclosurePanel>
+      ) : null}
     </li>
+  );
+}
+
+/** A row's label and context; a toggle with a trailing caret when the call
+ * has a result preview. */
+function LabelGroup({
+  expandable,
+  open,
+  controls,
+  onToggle,
+  children,
+}: {
+  expandable: boolean;
+  open: boolean;
+  controls: string;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const className = cn(
+    "flex min-h-6 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1",
+    typeStyle("body.default"),
+  );
+  if (!expandable) return <div className={className}>{children}</div>;
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={controls}
+      onClick={onToggle}
+      className={cn(
+        className,
+        "cursor-pointer rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      {children}
+      <ChevronRight
+        aria-hidden
+        className={cn(
+          "-ml-1 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-200 motion-reduce:transition-none",
+          open && "rotate-90",
+        )}
+      />
+    </button>
   );
 }
 
@@ -755,6 +821,7 @@ export function ToolActivityCard({
   integrations,
   entities,
   approval,
+  renderPreview,
   working,
 }: {
   tools?: string[];
@@ -764,6 +831,8 @@ export function ToolActivityCard({
   integrations?: Record<string, OperatorToolIntegration>;
   entities?: Record<string, ToolEntity>;
   approval?: ToolApproval;
+  /** Renders a call's stored result preview; rows without one never expand. */
+  renderPreview?: (toolCallId: string) => ReactNode;
   working: boolean;
 }) {
   const contentId = useId();
@@ -845,6 +914,7 @@ export function ToolActivityCard({
               call={call}
               integration={integrations?.[call.name]}
               entities={entities}
+              renderPreview={renderPreview}
               approval={index === approvalIndex ? approval : undefined}
               working={working}
             />

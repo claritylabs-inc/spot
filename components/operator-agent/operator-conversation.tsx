@@ -44,6 +44,7 @@ import {
   useOperatorEmailDrafts,
 } from "./operator-email-drafts";
 import { OperatorEmailMessage } from "./operator-email-message";
+import { OperatorToolPreview } from "./operator-tool-preview";
 import { OperatorThreadChannelIcon } from "./operator-thread-channel";
 import {
   operatorConversationEntries,
@@ -312,6 +313,9 @@ function OperatorMessageRow({
         activity={message.activity}
         toolIntegrations={message.toolIntegrations}
         toolEntities={toolEntities}
+        toolPreview={(toolCallId) => (
+          <OperatorToolPreview messageId={message.id} toolCallId={toolCallId} />
+        )}
         toolApproval={toolApproval}
         executionPlan={message.executionPlan}
         failure={message.failure}
