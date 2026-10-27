@@ -29,7 +29,6 @@ type TeamMembersListProps = {
   showActivationStatus?: boolean;
   onEditMember: (member: TeamMember) => void;
   onOpenInvitation: (invitation: TeamInvitation) => void;
-  onInviteMember?: () => void;
 };
 
 type TeamRow =
@@ -54,7 +53,6 @@ export function TeamMembersList({
   showActivationStatus,
   onEditMember,
   onOpenInvitation,
-  onInviteMember,
 }: TeamMembersListProps) {
   const pendingInvitations =
     invitations?.filter((invitation) => invitation.status === "pending") ?? [];
@@ -86,8 +84,6 @@ export function TeamMembersList({
             ? "Invite a member to give them access to this account."
             : undefined
         }
-        actionLabel={canEditMembers ? "Invite member" : undefined}
-        onAction={canEditMembers ? onInviteMember : undefined}
       />
     );
   }

@@ -59,8 +59,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
-import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import {
   Table,
   TableBody,
@@ -896,6 +894,17 @@ export function ProcurementListWorkspace({
     ([value, label]) => ({ value: value as string, label }),
   ).sort((left, right) => left.label.localeCompare(right.label));
   const filters: FilterDefinition[] = [
+    {
+      id: "state",
+      label: "State",
+      inline: true,
+      value: filter === "all" ? [] : [filter],
+      onChange: (value) => setFilter((value[0] ?? "all") as StatusFilter),
+      options: [
+        { value: "open", label: "Open" },
+        { value: "closed", label: "Closed" },
+      ],
+    },
     ...(allClients
       ? [
           {
@@ -934,21 +943,6 @@ export function ProcurementListWorkspace({
       <ListToolbar
         followKey={`procurement:${scopeKey}:list`}
         filters={filters}
-        tabsPlacement="navbar"
-        tabs={
-          <PageTabsRail
-            value={filter}
-            onValueChange={(value) => {
-              if (value) setFilter(value as StatusFilter);
-            }}
-          >
-            <PageTabsList aria-label="Request status">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="open">Open</TabsTrigger>
-              <TabsTrigger value="closed">Closed</TabsTrigger>
-            </PageTabsList>
-          </PageTabsRail>
-        }
         search={{
           value: search,
           onChange: setSearch,

@@ -13,8 +13,7 @@ import {
   OperationalPanelHeader,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { api } from "@/convex/_generated/api";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -71,21 +70,25 @@ export default function OperatorClientPoliciesPage() {
   );
 
   const statusNavigation = (
-    <PageTabsRail
-      value={policyStatus}
-      onValueChange={(value) => {
-        if (!value) return;
-        setPreviewPolicyId(null);
-        router.push(
-          value === "archived" ? `${basePath}?view=archived` : basePath,
-        );
-      }}
-    >
-      <PageTabsList aria-label="Policy status">
-        <TabsTrigger value="active">Active</TabsTrigger>
-        <TabsTrigger value="archived">Archived</TabsTrigger>
-      </PageTabsList>
-    </PageTabsRail>
+    <ListToolbar
+      followKey={`clients:${clientOrgId}:policies`}
+      filters={[
+        {
+          id: "status",
+          label: "Status",
+          inline: true,
+          allLabel: "Active",
+          value: policyStatus === "archived" ? ["archived"] : [],
+          onChange: (value) => {
+            setPreviewPolicyId(null);
+            router.push(
+              value[0] === "archived" ? `${basePath}?view=archived` : basePath,
+            );
+          },
+          options: [{ value: "archived", label: "Archived" }],
+        },
+      ]}
+    />
   );
 
   return (
