@@ -1,8 +1,7 @@
 "use node";
 
-// Shared IMAP account/crypto helpers for connected-mailbox node actions.
+// Shared IMAP account helpers for connected-mailbox node actions.
 // Uses Node.js built-ins, so import this module only from "use node" action files.
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { ImapFlow } from "imapflow";
 import { simpleParser, type ParsedMail } from "mailparser";
 import type { ActionCtx } from "../_generated/server";
@@ -12,6 +11,7 @@ import {
   resolveImapDestination,
   type ResolvedImapDestination,
 } from "./imapDestination";
+import { decryptSecret } from "./secretBox";
 
 export type ConnectedEmailAccount = Doc<"connectedEmailAccounts">;
 
@@ -45,41 +45,6 @@ export function isMailboxMessageUnavailableError(
   return error instanceof MailboxMessageUnavailableError;
 }
 
-function encryptionKey() {
-  const secret = process.env.EMAIL_CONNECTIONS_ENCRYPTION_KEY;
-  if (!secret) {
-    throw new Error("EMAIL_CONNECTIONS_ENCRYPTION_KEY is not configured");
-  }
-  return createHash("sha256").update(secret).digest();
-}
-
-export function encryptPassword(password: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
-  const ciphertext = Buffer.concat([cipher.update(password, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return JSON.stringify({
-    v: 1,
-    iv: iv.toString("base64"),
-    tag: tag.toString("base64"),
-    data: ciphertext.toString("base64"),
-  });
-}
-
-export function decryptPassword(encrypted: string): string {
-  const parsed = JSON.parse(encrypted) as { iv: string; tag: string; data: string };
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    encryptionKey(),
-    Buffer.from(parsed.iv, "base64"),
-  );
-  decipher.setAuthTag(Buffer.from(parsed.tag, "base64"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(parsed.data, "base64")),
-    decipher.final(),
-  ]).toString("utf8");
-}
-
 export async function withClient<T>(
   account: ImapConnectionConfig,
   fn: (client: ImapFlow) => Promise<T>,
@@ -101,7 +66,7 @@ export async function withClient<T>(
     socketTimeout: IMAP_SOCKET_TIMEOUT_MS,
     auth: {
       user: account.username,
-      pass: decryptPassword(account.encryptedPassword),
+      pass: decryptSecret(account.encryptedPassword),
     },
     logger: false,
   });

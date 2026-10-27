@@ -190,8 +190,11 @@ export const GMAIL_RECONNECT_MESSAGE =
   "Your connected Gmail needs to be reconnected before Spot can send from it. Reconnect it in Profile, or send from your Spot address.";
 
 /** A Gmail send is refused locally: nothing was sent and it never falls back to Resend. */
-export function gmailReconnectError(operation: string) {
-  return new ResendInboxError("blocked", operation, GMAIL_RECONNECT_MESSAGE, {
+export function gmailReconnectError(
+  operation: string,
+  message = GMAIL_RECONNECT_MESSAGE,
+) {
+  return new ResendInboxError("blocked", operation, message, {
     code: "gmail_needs_reconnect",
   });
 }

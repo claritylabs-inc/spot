@@ -6,7 +6,7 @@ import { ConvexError, v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getAuthSiteUrl } from "../lib/domains";
-import { decryptPassword, encryptPassword } from "../lib/imapMailbox";
+import { decryptSecret, encryptSecret } from "../lib/secretBox";
 import { allowedGmailDomains, GMAIL_SCOPES } from "../lib/operatorGmail";
 import { gmailOAuthClient, gmailOAuthConfigured } from "../lib/operatorGmailOAuth";
 import { oauthStateHash } from "../lib/operatorMcpOAuth";
@@ -104,7 +104,7 @@ export const callback = internalAction({
           userId: saved.userId,
           address,
           googleSub: claims.sub,
-          encryptedRefreshToken: encryptPassword(tokens.refresh_token),
+          encryptedRefreshToken: encryptSecret(tokens.refresh_token),
           scopes,
         },
       );
@@ -132,7 +132,7 @@ export const disconnect = action({
     if (connection.encryptedRefreshToken) {
       try {
         await gmailOAuthClient().revokeToken(
-          decryptPassword(connection.encryptedRefreshToken),
+          decryptSecret(connection.encryptedRefreshToken),
         );
       } catch {
         // Best effort: the token may already be revoked or the key rotated.

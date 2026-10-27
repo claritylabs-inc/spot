@@ -5,7 +5,7 @@ import { getSessionUserId as getAuthUserId } from "../lib/sessionIdentity";
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { encryptPassword, decryptPassword } from "../lib/imapMailbox";
+import { encryptSecret, decryptSecret } from "../lib/secretBox";
 import {
   authorizeMcp,
   oauthClientMetadata,
@@ -35,7 +35,7 @@ export const connect = action({
         ? {
             client_id: server.oauthClientId,
             client_secret: server.encryptedOAuthClientSecret
-              ? decryptPassword(server.encryptedOAuthClientSecret)
+              ? decryptSecret(server.encryptedOAuthClientSecret)
               : undefined,
           }
         : previous?.clientInformation,
@@ -50,7 +50,7 @@ export const connect = action({
       serverId: server._id,
       serverRevision: server.revision,
       stateHash: oauthStateHash(state),
-      encryptedData: encryptPassword(JSON.stringify(data)),
+      encryptedData: encryptSecret(JSON.stringify(data)),
     });
     return { authorizationUrl: result.authorizationUrl };
   },
@@ -93,7 +93,7 @@ export const callback = internalAction({
       );
       await ctx.runMutation(internal.operatorMcpOAuth.finishSession, {
         id: session._id,
-        encryptedOAuth: encryptPassword(JSON.stringify(data)),
+        encryptedOAuth: encryptSecret(JSON.stringify(data)),
         toolsJson: JSON.stringify(tools),
       });
       redirect.searchParams.set("mcp", "connected");
