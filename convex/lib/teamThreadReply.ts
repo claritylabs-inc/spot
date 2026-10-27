@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { gmailInboxId } from "./operatorGmail";
+import { asRfcId } from "./teamEmailStore";
 import { operatorSenderIdentity } from "./outreachIdentity";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -35,9 +36,6 @@ async function activeSenderInbox(ctx: Ctx, userId: Id<"users">) {
 
 const MAX_REFERENCES = 20;
 
-const asRfcId = (messageId: string) =>
-  messageId.startsWith("<") ? messageId : `<${messageId}>`;
-
 /** Message-IDs oldest to newest, keeping the conversation root when the chain is capped. */
 function referenceChain(newestFirst: Doc<"teamEmailMessages">[]) {
   const ids = [
@@ -63,9 +61,9 @@ function referenceChain(newestFirst: Doc<"teamEmailMessages">[]) {
  *
  * A reply sent from the sender's connected Gmail (`gmailAddress`) needs no
  * Resend mapping: Gmail threads by RFC headers, so it is threaded whenever the
- * conversation holds a message with a Message-ID. It answers the latest such
- * message and carries the stored Message-IDs as the References chain. Gmail
- * has no Resend thread, so the team thread id fills `resendThreadId`.
+ * newest message has a Message-ID (never on a forwarded conversation). It
+ * answers that message and carries the stored Message-IDs as the References
+ * chain. Gmail has no Resend thread, so the team thread id fills `resendThreadId`.
  */
 export async function teamThreadReplyPlan(
   ctx: Ctx,
@@ -79,14 +77,17 @@ export async function teamThreadReplyPlan(
       .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
       .order("desc")
       .take(50);
-    const answered = messages.find((message) => message.messageId);
+    // Only the newest message can be answered, and forwarded conversations have
+    // no RFC thread to join: anything else is a standalone "Re:".
+    const answered =
+      thread.source !== "forward" && messages[0]?.messageId ? messages[0] : undefined;
     const latestInbound = messages.find((m) => m.direction === "inbound");
     return {
       threaded: Boolean(answered),
       inboxId: gmailInboxId(gmailAddress) as string | undefined,
       resendThreadId: String(thread._id) as string | undefined,
       replyToEmailId: answered?.messageId ? asRfcId(answered.messageId) : undefined,
-      references: referenceChain(messages),
+      references: answered ? referenceChain(messages) : [],
       latest: messages[0],
       defaultTo:
         latestInbound?.fromEmail ?? messages[0]?.toAddresses[0] ?? undefined,
