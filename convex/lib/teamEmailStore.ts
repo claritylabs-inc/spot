@@ -10,6 +10,7 @@ import {
   uniqueProcurementEmails,
   type ProcurementEmailCategory,
 } from "./procurement";
+import { messageIdForms } from "./messageId";
 import type { InboxEmail } from "./providerOutreachValidators";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -166,6 +167,23 @@ async function unfiledUploadRoom(ctx: Ctx, threadId: Id<"teamEmailThreads">) {
     0,
   );
   return Math.max(0, MAX_UNFILED_PER_THREAD - held);
+}
+
+// ---------------------------------------------------------------------------
+// RFC Message-IDs
+// ---------------------------------------------------------------------------
+
+/** The outbound message stored under this Message-ID in any spelling, or null. */
+export async function outboundByMessageId(ctx: Ctx, messageId: string) {
+  for (const form of messageIdForms(messageId)) {
+    const stored = await ctx.db
+      .query("teamEmailMessages")
+      .withIndex("by_messageId", (q) => q.eq("messageId", form))
+      .take(5);
+    const own = stored.find((message) => message.direction === "outbound");
+    if (own) return own;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -328,11 +346,7 @@ export async function mirrorTeamEmail(
     return { duplicate: true, threadId: duplicate.threadId, messageId: duplicate._id, internalCopy: false };
   }
   if (args.direction === "inbound" && email.messageId) {
-    const sent = await ctx.db
-      .query("teamEmailMessages")
-      .withIndex("by_messageId", (q) => q.eq("messageId", email.messageId!.slice(0, 500)))
-      .take(5);
-    const own = sent.find((message) => message.direction === "outbound");
+    const own = await outboundByMessageId(ctx, email.messageId);
     if (own) {
       await dropUploads();
       if (args.inboxId && args.resendThreadId)

@@ -15,6 +15,7 @@ import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import { isOperatorEmailDraft } from "./lib/actionConfirmationFingerprint";
 import { extractEmailAddress } from "./lib/emailAddress";
+import { inboxKind } from "./lib/inboxIds";
 import { normalizeProcurementSubject } from "./lib/procurement";
 import { MAX_EMAIL_ATTACHMENTS, teamTargetProblem, bindTeamInboxThread } from "./lib/teamEmailStore";
 import {
@@ -782,7 +783,7 @@ export const recordOperatorInboxSentInternal = internalMutation({
       });
     }
 
-    const gmailThreadId = attempt.inboxId?.startsWith("gmail:") ? (intended?.resendThreadId ?? args.emailId) : undefined;
+    const gmailThreadId = attempt.inboxId && inboxKind(attempt.inboxId) === "legacy_google" ? (intended?.resendThreadId ?? args.emailId) : undefined;
     if(gmailThreadId && attempt.inboxId) await bindTeamInboxThread(ctx,{threadId,inboxId:attempt.inboxId,resendThreadId:gmailThreadId});
     if (existingMessage) {
       await ctx.db.patch(existingMessage._id, {

@@ -4,7 +4,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { operatorSenderIdentity } from "./outreachIdentity";
 import { quotedHistory, teamThreadOwnerAddress, teamThreadReplyPlan } from "./teamThreadReply";
 import { pendingEmailDraftFingerprint } from "./actionConfirmationFingerprint";
-import { extractEmailAddress } from "./emailAddress";
+import { canonicalAddress, extractEmailAddress } from "./emailAddress";
 import { escapeHtml } from "./emailTemplate";
 import { forwardedCorrespondents } from "./teamEmailForwards";
 import { operatorEmailAliases, requireOperatorForUser } from "./operatorIdentity";
@@ -130,9 +130,6 @@ function quoteHtml(header: string, block: string) {
   return `<p>${escapeHtml(header)}</p><blockquote style="margin:0 0 0 4px;padding:0 0 0 12px;border-left:2px solid #d4d4d4;color:#6b6b6b">${paragraphsHtml(lines.join("\n"))}</blockquote>`;
 }
 
-const normalized = (address: string) =>
-  (extractEmailAddress(address) ?? address.trim().toLowerCase()).toLowerCase();
-
 /** Mail addresses Spot runs for clients and notifications; never a correspondent to copy. */
 export function isMachineAddress(address: string) {
   const domain = address.split("@")[1] ?? "";
@@ -163,7 +160,7 @@ async function replyCorrespondents(
   const fromOwner =
     thread.source === "forward" &&
     latest.direction === "inbound" &&
-    ownerAddresses.includes(normalized(latest.fromEmail));
+    ownerAddresses.includes(canonicalAddress(latest.fromEmail));
   if (fromOwner) {
     const original = forwardedCorrespondents(latest.forwarded);
     if (!original?.from) {
@@ -175,7 +172,7 @@ async function replyCorrespondents(
     }
     to = [original.from];
     cc = [...original.to, ...original.cc];
-    forwarder = [...ownerAddresses, normalized(latest.fromEmail)];
+    forwarder = [...ownerAddresses, canonicalAddress(latest.fromEmail)];
   } else if (latest.direction === "inbound") {
     to = [latest.fromEmail];
     cc = [...latest.toAddresses, ...latest.ccAddresses];
@@ -185,7 +182,7 @@ async function replyCorrespondents(
   }
   const keep = (addresses: string[]) =>
     addresses
-      .map(normalized)
+      .map(canonicalAddress)
       .filter(
         (address) =>
           extractEmailAddress(address) &&
