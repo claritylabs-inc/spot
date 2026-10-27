@@ -62,7 +62,7 @@ export function InformationRequestActions(props: Actions) {
         <RefreshCw className={`size-3.5${syncing ? " animate-spin" : ""}`} />
         Sync from email
       </PillButton>
-      <PillButton variant="secondary" onClick={() => open({ kind: "add" })}>
+      <PillButton variant="primary" onClick={() => open({ kind: "add" })}>
         <Plus className="size-3.5" />
         Add question
       </PillButton>

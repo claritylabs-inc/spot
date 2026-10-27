@@ -334,13 +334,10 @@ export function WebsiteTechSection({
           </InlineFieldRow>
         </InlineFieldCard>
       </InlineFieldsContext.Provider>
-      <div>
-        <p className={`flex items-center gap-2 text-muted-foreground ${typeStyle("caption.default")}`}>
-          {scanning && <Loader2 className="size-3.5 animate-spin" />}
-          {scanNote}
-        </p>
-
-      </div>
+      <p className={`flex items-center gap-2 text-muted-foreground ${typeStyle("caption.default")}`}>
+        {scanning && <Loader2 className="size-3.5 animate-spin" />}
+        {scanNote}
+      </p>
     </div>
   );
 }

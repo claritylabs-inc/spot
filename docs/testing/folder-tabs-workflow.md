@@ -1,5 +1,7 @@
 # Folder tabs workflow — October 26, 2026
 
+Historical rollout evidence. The [October 27 action/status audit](tab-action-layout-audit.md) supersedes the original status-tab and action-placement decisions below.
+
 Spot adopts published `@claritylabs-inc/ui@0.18.0` from the registry: `TabsList variant="navbar"` for page tabs and `variant="folder"` for local field groups. The manifest, lockfile and existing UI postinstall patch are pinned to 0.18.0. Final acceptance below uses the installed package, without source overlays. Baseline `3cb2c4a4`.
 
 ## Composition

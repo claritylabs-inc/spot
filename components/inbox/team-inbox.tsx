@@ -784,7 +784,6 @@ export function TeamInbox({
     );
   }
 
-
   return (
     <section className="@container space-y-3">
       {scope.kind === "team" ? (

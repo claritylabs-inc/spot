@@ -724,6 +724,7 @@ export function PolicyDetailBody({
   };
 
   const hasViewTabs = visibleTabs.length > 1;
+  const hasCertificatesView = visibleTabs.some((tab) => tab.id === "certificates");
   const generateAction = useMemo(
     () => !readOnly && !isArchived ? (
       <PillButton
@@ -1114,7 +1115,7 @@ export function PolicyDetailBody({
           <TabsContent value={visibleActiveTab}>
             {generateAction &&
             (visibleActiveTab === "certificates" ||
-              (!hasCertificates && visibleActiveTab === "details")) ? (
+              (!hasCertificatesView && visibleActiveTab === "details")) ? (
               <div className="mb-4">
                 <ListToolbar
                   followKey={`policy:${policy._id}:actions`}

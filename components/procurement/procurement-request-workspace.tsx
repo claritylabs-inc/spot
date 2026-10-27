@@ -86,6 +86,7 @@ import {
   Link,
   Upload,
   ChevronRight,
+  ArrowLeft,
   Clock3,
   SquarePen,
 } from "lucide-react";
@@ -885,6 +886,7 @@ function RequestEditorFrame({
             disabled={saving}
             onClick={() => props.onOpenChange(false)}
           >
+            <ArrowLeft className="size-3.5" />
             Back
           </PillButton>
         </div>

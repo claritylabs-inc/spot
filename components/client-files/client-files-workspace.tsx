@@ -783,6 +783,7 @@ export function ClientFilesWorkspace({
     if (panelKind === "upload" && canUpload) {
       node = (
         <ClientFileUploadPanel
+          key={uploadClientVisible ? "shared" : "private"}
           clientOrgId={clientOrgId}
           defaultClientVisible={uploadClientVisible}
           onClose={closeRightPanel}
