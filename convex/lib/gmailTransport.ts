@@ -329,9 +329,20 @@ export async function sendGmailDraft(
       ...(sent.data.id ? { gmailMessageId: sent.data.id } : {}),
       ...((sent.data.threadId ?? threadId) ? { gmailThreadId: (sent.data.threadId ?? threadId)! } : {}),
     });
+    if (connection.sendError)
+      await ctx
+        .runMutation(internal.operatorGmail.recordSendErrorInternal, { connectionId: connection._id })
+        .catch(() => null);
     return { status: "ok", data: { emailId: draft.messageId }, replayed: false };
   } catch (error) {
     const mapped = mapGmailError(operation, error, true);
+    if (mapped.outcome === "blocked" || mapped.outcome === "permanent")
+      await ctx
+        .runMutation(internal.operatorGmail.recordSendErrorInternal, {
+          connectionId: connection._id,
+          error: mapped.message,
+        })
+        .catch(() => null);
     await ctx
       .runMutation(internal.operatorGmailDrafts.finishInternal, {
         id: draft._id,

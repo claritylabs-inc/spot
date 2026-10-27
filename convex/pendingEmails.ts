@@ -704,12 +704,22 @@ export const recordOperatorInboxSentInternal = internalMutation({
     if (pending.teamEmailThreadId && (!intended || intended.deletedAt !== undefined)) {
       throw new Error("The team email thread is no longer available.");
     }
-    const existingMessage = await ctx.db
-      .query("teamEmailMessages")
-      .withIndex("by_resendInboxEmailId", (q) =>
-        q.eq("resendInboxEmailId", args.emailId),
-      )
-      .first();
+    // A connected-Gmail send's emailId is its Message-ID: the Resend Cc copy may already hold it.
+    const existingMessage =
+      (await ctx.db
+        .query("teamEmailMessages")
+        .withIndex("by_resendInboxEmailId", (q) =>
+          q.eq("resendInboxEmailId", args.emailId),
+        )
+        .first()) ??
+      (attempt.inboxId && isOperatorGmailInbox(attempt.inboxId)
+        ? (
+            await ctx.db
+              .query("teamEmailMessages")
+              .withIndex("by_messageId", (q) => q.eq("messageId", args.emailId))
+              .take(5)
+          ).find((message) => message.direction === "outbound") ?? null
+        : null);
     const provisional = existingMessage
       ? await ctx.db.get(existingMessage.threadId)
       : null;
