@@ -12,9 +12,9 @@ import { getSessionUserId as getAuthUserId } from "../lib/sessionIdentity";
 import type { Doc, Id } from "../_generated/dataModel";
 import { resolveImapDestination } from "../lib/imapDestination";
 import { extractPdfPlainText } from "../lib/pdfText";
+import { encryptSecret } from "../lib/secretBox";
 import {
   accessibleAccount,
-  encryptPassword,
   fetchParsedMessage,
   imapErrorMessage,
   isMailboxMessageUnavailableError,
@@ -454,7 +454,7 @@ export const connect = action({
       host: args.host,
       port: args.port,
     });
-    const encryptedPassword = encryptPassword(args.password);
+    const encryptedPassword = encryptSecret(args.password);
     await withClient(
       {
         host: destination.normalizedHost,

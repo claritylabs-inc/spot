@@ -11,7 +11,7 @@ import {
 import { ConvexError, v } from "convex/values";
 import { internal } from "../_generated/api";
 import { action, type ActionCtx } from "../_generated/server";
-import { decryptPassword, encryptPassword } from "../lib/imapMailbox";
+import { decryptSecret, encryptSecret } from "../lib/secretBox";
 import {
   RECOVERY_CODE_COUNT,
   TOTP_DIGITS,
@@ -86,7 +86,7 @@ async function checkCode(
         : "No authenticator is enrolled.",
     );
   const key = decodeBase32IgnorePadding(
-    decryptPassword(credential.encryptedSecret),
+    decryptSecret(credential.encryptedSecret),
   );
   const counter = matchTotpCounter(key, code);
   return counter === null
@@ -106,7 +106,7 @@ export const beginEnrollment = action({
     const secret = encodeBase32UpperCaseNoPadding(key);
     await ctx.runMutation(
       internal.operatorSecondFactor.storePendingEnrollmentInternal,
-      { ...session, encryptedSecret: encryptPassword(secret) },
+      { ...session, encryptedSecret: encryptSecret(secret) },
     );
     return {
       keyUri: createTOTPKeyURI(

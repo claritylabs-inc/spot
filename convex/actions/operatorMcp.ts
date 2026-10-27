@@ -8,7 +8,7 @@ import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { mcpServerToken } from "../lib/operatorMcpOAuth";
-import { encryptPassword, decryptPassword } from "../lib/imapMailbox";
+import { encryptSecret, decryptSecret } from "../lib/secretBox";
 import {
   discoverMcpTools,
   mcpHttpsUrl,
@@ -81,7 +81,7 @@ export const save = action({
       ) {
         encryptedOAuthClientSecret = existing.encryptedOAuthClientSecret;
       } else if (args.oauthClientSecret) {
-        encryptedOAuthClientSecret = encryptPassword(args.oauthClientSecret);
+        encryptedOAuthClientSecret = encryptSecret(args.oauthClientSecret);
       }
     }
     const preserveOAuth =
@@ -104,7 +104,7 @@ export const save = action({
         args.token === undefined
           ? existing?.encryptedToken
           : args.token
-            ? encryptPassword(args.token)
+            ? encryptSecret(args.token)
             : undefined;
     }
     const enabled =
@@ -115,7 +115,7 @@ export const save = action({
     if (enabled) {
       if (authType === "oauth" && existing)
         token = await mcpServerToken(ctx, existing, operatorUserId);
-      else if (encryptedToken) token = decryptPassword(encryptedToken);
+      else if (encryptedToken) token = decryptSecret(encryptedToken);
     }
     // Disabling must remain possible while the remote service is unavailable.
     const tools = enabled
