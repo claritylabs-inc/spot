@@ -1048,6 +1048,7 @@ export const handleInboxEvent = internalAction({
         if (
           applied.applied &&
           !applied.duplicate &&
+          !applied.gmailSent &&
           event.eventType === "inbox.email.received"
         )
           await labelThread(target, event.threadId, "needsReply");
