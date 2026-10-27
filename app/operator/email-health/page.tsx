@@ -63,6 +63,12 @@ function Connection({
           label="Provider"
           value="Google Workspace · managed in InboxKit"
         />
+        {mailbox.owner ? (
+          <OperationalLabelValueRow
+            label="Connected by"
+            value={mailbox.owner}
+          />
+        ) : null}
         <OperationalLabelValueRow
           label="Purpose"
           value="Spot provider and client correspondence"
@@ -265,11 +271,6 @@ export default function EmailHealth() {
                       >
                         {mailbox.address}
                       </PillButton>
-                      <p
-                        className={`text-muted-foreground ${typeStyle("caption.default")}`}
-                      >
-                        {mailbox.owner ?? "Google Workspace"}
-                      </p>
                     </TableCell>
                     <TableCell>
                       <StatusTag
