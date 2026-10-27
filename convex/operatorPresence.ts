@@ -94,3 +94,52 @@ export const listActive = query({
     }));
   },
 });
+
+/** Active operators with titles for what they have open, for the team sessions page. */
+export const listSessions = query({
+  args: {},
+  handler: async (ctx) => {
+    const operator = await requireOperator(ctx);
+    const rows = await ctx.db
+      .query("operatorPresence")
+      .withIndex("by_lastSeen", (q) =>
+        q.gt("lastSeen", dayjs().valueOf() - PRESENCE_WINDOW_MS),
+      )
+      .order("desc")
+      .take(100);
+    const people = await operatorPeople(
+      ctx,
+      rows.map((row) => row.userId),
+    );
+    return await Promise.all(
+      rows.map(async (row) => {
+        const [thread, emailThread] = await Promise.all([
+          row.threadId ? ctx.db.get(row.threadId) : null,
+          row.emailThreadId ? ctx.db.get(row.emailThreadId) : null,
+        ]);
+        // A private chat stays hidden from everyone but its owner.
+        const chat =
+          thread &&
+          (thread.visibility === "shared" ||
+            thread.ownerUserId === operator.userId)
+            ? { id: thread._id, title: thread.title }
+            : null;
+        return {
+          ...people.get(row.userId)!,
+          self: row.userId === operator.userId,
+          pathname: row.pathname,
+          chat,
+          email: emailThread
+            ? {
+                id: emailThread._id,
+                subject: emailThread.subject,
+                activity: row.activity ?? "viewing",
+              }
+            : null,
+          followingUserId: row.followingUserId ?? null,
+          lastSeen: row.lastSeen,
+        };
+      }),
+    );
+  },
+});

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import { PresenceAvatars } from "@/components/app-top-bar";
@@ -15,7 +14,9 @@ import {
 } from "@/components/operator-agent/operator-follow";
 import { usePublishOperatorCursor } from "@/hooks/use-operator-cursor";
 import {
+  setFollowingOperator,
   useActiveOperators,
+  useFollowingOperator,
   useOperatorPresenceHeartbeat,
 } from "@/hooks/use-operator-presence";
 
@@ -27,9 +28,7 @@ import {
 export function OperatorPresence() {
   const pathname = usePathname();
   const dock = useAgentDock();
-  const [followingUserId, setFollowingUserId] = useState<Id<"users"> | null>(
-    null,
-  );
+  const followingUserId = useFollowingOperator();
   const active = useActiveOperators();
   const others = active.filter((operator) => !operator.self);
   const self = active.find((operator) => operator.self);
@@ -61,7 +60,7 @@ export function OperatorPresence() {
               : `Follow ${user.name}`
           }
           onSelect={(user) =>
-            setFollowingUserId(
+            setFollowingOperator(
               user.userId === following ? null : (user.userId as Id<"users">),
             )
           }
@@ -73,7 +72,7 @@ export function OperatorPresence() {
           userId={leader.userId}
           name={leader.name}
           pathname={leader.pathname}
-          onStop={() => setFollowingUserId(null)}
+          onStop={() => setFollowingOperator(null)}
         />
       ) : null}
     </>
