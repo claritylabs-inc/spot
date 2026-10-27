@@ -724,24 +724,25 @@ export function PolicyDetailBody({
   };
 
   const hasViewTabs = visibleTabs.length > 1;
-  const generateAction = useMemo(() => !readOnly && !isArchived ? (
-          <PillButton
-            size="compact"
-            onClick={() => {
-              if (!isPolicyFinal) {
-                toast.message(
-                  "Available once Spot finishes reading this policy",
-                );
-                return;
-              }
-              setSelectedCertificateId(null);
-              setShowCertificateSheet(true);
-            }}
-          >
-            <Plus className="size-3.5" />
-            Generate COI
-          </PillButton>
-  ) : null, [readOnly, isArchived, isPolicyFinal, setSelectedCertificateId, setShowCertificateSheet]);
+  const generateAction = useMemo(
+    () => !readOnly && !isArchived ? (
+      <PillButton
+        size="compact"
+        onClick={() => {
+          if (!isPolicyFinal) {
+            toast.message("Available once Spot finishes reading this policy");
+            return;
+          }
+          setSelectedCertificateId(null);
+          setShowCertificateSheet(true);
+        }}
+      >
+        <Plus className="size-3.5" />
+        Generate COI
+      </PillButton>
+    ) : null,
+    [readOnly, isArchived, isPolicyFinal, setSelectedCertificateId, setShowCertificateSheet],
+  );
 
   useEffect(() => {
     if (!onActions) return;
@@ -1111,9 +1112,14 @@ export function PolicyDetailBody({
             ))}
           </PageTabsList>
           <TabsContent value={visibleActiveTab}>
-            {generateAction && (visibleActiveTab === "certificates" || (!hasCertificates && visibleActiveTab === "details")) ? (
+            {generateAction &&
+            (visibleActiveTab === "certificates" ||
+              (!hasCertificates && visibleActiveTab === "details")) ? (
               <div className="mb-4">
-                <ListToolbar followKey={`policy:${policy._id}:actions`} actions={generateAction} />
+                <ListToolbar
+                  followKey={`policy:${policy._id}:actions`}
+                  actions={generateAction}
+                />
               </div>
             ) : null}
             {notices}

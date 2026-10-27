@@ -46,19 +46,19 @@ export function ProviderContacts({
   return (
     <div className="space-y-4">
       <ListToolbar
-      followKey={`provider:${brokerOrgId}:contacts:actions`}
-      actions={
-        <PillButton
-          variant="primary"
-          size="compact"
-          disabled={
-            adding || result === undefined || result.contacts.length >= 200
-          }
-          onClick={() => void add()}
-        >
-          {adding ? "Adding…" : "Add contact"}
-        </PillButton>
-      }
+        followKey={`provider:${brokerOrgId}:contacts:actions`}
+        actions={
+          <PillButton
+            variant="primary"
+            size="compact"
+            disabled={
+              adding || result === undefined || result.contacts.length >= 200
+            }
+            onClick={() => void add()}
+          >
+            {adding ? "Adding…" : "Add contact"}
+          </PillButton>
+        }
       />
       <div className="space-y-5">
         {result === undefined ? (

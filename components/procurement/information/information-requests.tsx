@@ -7,23 +7,13 @@ import {
   informationCoverageGroups,
 } from "@/lib/procurement-information";
 import { toast } from "sonner";
-import { Plus, FileQuestion, RefreshCw, Search } from "lucide-react";
+import { Plus, FileQuestion, RefreshCw } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { typeStyle } from "@/lib/typography";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { PillButton } from "@/components/ui/pill-button";
 import { RemoveButton } from "@/components/ui/remove-button";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@claritylabs-inc/ui/components/input-group";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@claritylabs-inc/ui/components/tabs";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import {
   OperationalPanel,
   OperationalSkeletonList,
@@ -81,7 +71,7 @@ export function InformationRequestActions(props: Actions) {
 }
 
 export function InformationRequests(props: Actions) {
-  const { requestId, readOnly, onOpenDrawer: open } = props;
+  const { requestId, readOnly } = props;
   const panel = useQuery(api.procurementInformation.panel, { requestId });
   const archive = useMutation(api.procurementInformation.archiveQuestion);
   const [search, setSearch] = useFollowedState(
@@ -115,28 +105,25 @@ export function InformationRequests(props: Actions) {
     q.question.label.toLowerCase().includes(search.toLowerCase()),
   );
   return (
-    <Tabs value={view} onValueChange={setView} className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <TabsList variant="pill" aria-label="Questions">
-          <TabsTrigger value="draft">Draft</TabsTrigger>
-          <TabsTrigger value="all">All</TabsTrigger>
-        </TabsList>
-        {applicableQuestions.length > 0 && (
-          <InputGroup className="w-full sm:w-72">
-            <InputGroupAddon>
-              <Search aria-hidden="true" className="size-4" />
-            </InputGroupAddon>
-            <InputGroupInput
-              type="search"
-              aria-label="Search questions"
-              placeholder="Search questions"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </InputGroup>
-        )}
-      </div>
-      <TabsContent value={view} className="space-y-5">
+    <div className="space-y-5">
+      <ListToolbar
+        followKey={`procurement:${requestId}:information`}
+        search={applicableQuestions.length > 0 ? {
+          value: search,
+          onChange: setSearch,
+          label: "Search questions",
+          placeholder: "Search questions",
+        } : undefined}
+        filters={[{
+          id: "status",
+          label: "Status",
+          inline: true,
+          value: view === "all" ? [] : ["draft"],
+          onChange: (value) => setView(value[0] ?? "all"),
+          options: [{ value: "draft", label: "Draft" }],
+        }]}
+      />
+      <div className="space-y-5">
         {(panel.emailActivity.running > 0 ||
           panel.emailActivity.needsReview > 0) && (
           <p
@@ -167,8 +154,6 @@ export function InformationRequests(props: Actions) {
                 ? "Open a form in the sidebar to view its questions, or add a new question here."
                 : "Add what a provider needs, combine overlapping questions, and send your client one short form."
             }
-            actionLabel={readOnly ? undefined : "Add a question"}
-            onAction={() => open({ kind: "add" })}
           />
         ) : !visible.length ? (
           <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
@@ -282,7 +267,7 @@ export function InformationRequests(props: Actions) {
             correspondence remains in the inbox.
           </p>
         )}
-      </TabsContent>
-    </Tabs>
+      </div>
+    </div>
   );
 }
