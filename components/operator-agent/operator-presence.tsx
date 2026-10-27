@@ -4,7 +4,7 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import { PresenceAvatars } from "@/components/app-top-bar";
-import { ChatAvatar } from "@/components/chat/chat-message";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import type { OperatorPerson } from "@/lib/operator-agent-api";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
@@ -104,7 +104,7 @@ export function OperatorThreadPeople({
           )}
           title={`Started by ${creator.name}`}
         >
-          <ChatAvatar
+          <Avatar
             name={creator.name}
             imageUrl={creator.avatarUrl}
             className="size-5 border-2 border-background"

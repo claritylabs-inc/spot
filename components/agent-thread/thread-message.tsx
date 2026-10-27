@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { memo, useEffect, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
 import dayjs from "dayjs";
@@ -17,7 +18,6 @@ import { useChatAttachments } from "@/components/chat/attachment-grid";
 import { ChatChannelIcon } from "@/components/chat/channel-icon";
 import {
   ChatAssistantTurn,
-  ChatAvatar,
   ChatCopyButton,
   ChatErrorNotice,
   ChatUserTurn,
@@ -523,13 +523,13 @@ export const UnifiedMessageBubble = memo(function UnifiedMessageBubble({
       }
       avatar={
         msg.operatorInitiated ? (
-          <ChatAvatar
+          <Avatar
             name={displayName}
             title="Clarity Labs"
             className="border border-border-emphasized bg-background"
           >
             <LogoIcon size={15} className="h-[15px] w-[15px]" />
-          </ChatAvatar>
+          </Avatar>
         ) : undefined
       }
       meta={

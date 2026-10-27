@@ -18,7 +18,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
-import { ChatAvatar } from "@/components/chat/chat-message";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useTableSort } from "@/hooks/use-table-sort";
@@ -106,7 +106,7 @@ function Actor({ entry }: { entry: AuditEntry }) {
   if (!entry.actor) return <span className="text-muted-foreground">System</span>;
   return (
     <span className="flex min-w-0 items-center gap-2">
-      <ChatAvatar
+      <Avatar
         name={entry.actor.name}
         imageUrl={entry.actor.avatarUrl}
         className="size-5"

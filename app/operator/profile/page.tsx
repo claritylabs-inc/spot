@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { FadeIn } from "@claritylabs-inc/ui/components/fade-in";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
-import { ChatAvatar } from "@/components/chat/chat-message";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -332,7 +332,7 @@ function OperatorAvatarField({ current }: { current: OperatorCurrent }) {
 
   return (
     <div className="flex items-center gap-2">
-      <ChatAvatar name={name} imageUrl={current.user.avatarUrl} className="size-8" />
+      <Avatar name={name} imageUrl={current.user.avatarUrl} className="size-8" />
       <input
         ref={inputRef}
         type="file"

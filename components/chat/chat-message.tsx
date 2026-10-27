@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -226,64 +227,6 @@ export function ChatAssistantTurn({
   );
 }
 
-export function ChatAvatar({
-  name,
-  title,
-  imageUrl,
-  className,
-  children,
-}: {
-  name: string;
-  title?: string;
-  /** Profile photo; initials show while it is missing or fails to load. */
-  imageUrl?: string | null;
-  className?: string;
-  children?: ReactNode;
-}) {
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const initials = name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((word) => word[0])
-    .join("")
-    .toUpperCase();
-  const showImage = !children && imageUrl && failedUrl !== imageUrl;
-  return (
-    <div
-      className={cn(
-        "@container flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-foreground/8",
-        className,
-      )}
-      title={title}
-    >
-      {showImage ? (
-        // eslint-disable-next-line @next/next/no-img-element -- remote avatar hosts vary
-        <img
-          src={imageUrl}
-          alt=""
-          className="size-full object-cover"
-          referrerPolicy="no-referrer"
-          onError={() => setFailedUrl(imageUrl)}
-        />
-      ) : (
-        (children ?? (
-          // Initials scale with the circle so every avatar size stays balanced.
-          <span
-            className={cn(
-              "text-foreground/60 select-none",
-              typeStyle("caption.medium"),
-              // Trim to cap height so the letters sit optically centered.
-              "text-[44cqw]! [text-box:trim-both_cap_alphabetic]",
-            )}
-          >
-            {initials}
-          </span>
-        ))
-      )}
-    </div>
-  );
-}
-
 function QuotedToggle({ id, text }: { id: string; text: string }) {
   const [showQuoted, setShowQuoted] = useFollowedState(
     `chat:${id}:quoted`,
@@ -361,7 +304,7 @@ export function ChatUserTurn({
             {own ? null : (
               <>
                 <span className="flex shrink-0 [&>*]:size-5">
-                  {avatar ?? <ChatAvatar name={name} />}
+                  {avatar ?? <Avatar name={name} />}
                 </span>
                 <p
                   className={cn(

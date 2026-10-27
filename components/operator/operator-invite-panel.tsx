@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { api } from "@/convex/_generated/api";
-import { ChatAvatar } from "@/components/chat/chat-message";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { PillButton } from "@/components/ui/pill-button";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
@@ -120,7 +120,7 @@ export function useOperatorInvite(disabled: boolean) {
                 <TableRow key={operator.userId} className="hover:bg-transparent">
                   <TableCell className="px-5 py-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <ChatAvatar
+                      <Avatar
                         name={operator.name}
                         imageUrl={operator.avatarUrl}
                         className="size-8"

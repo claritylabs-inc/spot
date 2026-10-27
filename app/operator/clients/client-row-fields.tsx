@@ -7,7 +7,7 @@ import { useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { toast } from "sonner";
 import { UserRound } from "lucide-react";
-import { ChatAvatar } from "@/components/chat/chat-message";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { cn } from "@/lib/utils";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -154,7 +154,7 @@ function AssigneeOption({
   const name = operator?.name ?? "Unassigned";
   return (
     <span className="flex min-w-0 items-center gap-2" title={name}>
-      <ChatAvatar
+      <Avatar
         name={name}
         imageUrl={operator?.avatarUrl}
         className={cn(
@@ -164,7 +164,7 @@ function AssigneeOption({
         )}
       >
         {operator ? undefined : <UserRound className="size-3" />}
-      </ChatAvatar>
+      </Avatar>
       <span
         className={cn(
           "truncate",
