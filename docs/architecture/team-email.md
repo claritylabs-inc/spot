@@ -17,6 +17,8 @@ addresses. The shared command address is `agent@<TEAM_EMAIL_DOMAIN>`.
 | Transport selection by inbox id (Resend, connected Gmail, retired `gmail:`) | `convex/lib/mailboxTransport.ts` (`transportFor`) |
 | Inbox id formats (`inboxKind`, `google:`/`gmail:` prefixes, Gmail scopes and allowed domains) | `convex/lib/inboxIds.ts` |
 | Connected Gmail OAuth, send and capture | `convex/actions/operatorGmail.ts`, `convex/lib/gmailTransport.ts`, `convex/lib/gmailSenderAuthentication.ts`, `convex/gmailInbound.ts` |
+| Inbox webhook ingress, event leases, routing and the team-thread mirror (sequence-owned events are applied in `convex/providerOutreach.ts`) | `convex/teamInboxEvents.ts`, `convex/actions/teamInboxEvents.ts`, `convex/lib/teamInboxEventLease.ts` |
+| Aligned DKIM verification shared by command ingress and Gmail own-copy proof | `convex/lib/dkim.ts` |
 | RFC Message-ID spellings and address canonicalisation | `convex/lib/messageId.ts`, `convex/lib/emailAddress.ts` |
 | From picker and compose helpers | `components/inbox/send-from.tsx` |
 | Shared conversations, mirroring and attachments | `convex/lib/teamEmailStore.ts` |
