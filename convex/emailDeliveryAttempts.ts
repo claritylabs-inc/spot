@@ -12,6 +12,7 @@ import {
   pendingEmailDraftFingerprint,
 } from "./lib/actionConfirmationFingerprint";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
+import { isOperatorGmailInbox } from "./lib/operatorGmail";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { replyContextProblem } from "./lib/teamEmailReply";
 import {
@@ -430,7 +431,16 @@ export const advanceOperatorInboxAttemptInternal = internalMutation({
     }
     await ctx.db.patch(attempt._id, {
       operatorStage: args.stage,
-      ...(args.inboxId ? { inboxId: args.inboxId, ...(args.inboxId.startsWith("gmail:") ? { provider: "google_smtp" as const } : {}) } : {}),
+      ...(args.inboxId
+        ? {
+            inboxId: args.inboxId,
+            ...(args.inboxId.startsWith("gmail:")
+              ? { provider: "google_smtp" as const }
+              : isOperatorGmailInbox(args.inboxId)
+                ? { provider: "gmail" as const }
+                : {}),
+          }
+        : {}),
       ...(args.draftId ? { draftId: args.draftId } : {}),
       ...(args.resendEmailId ? { resendEmailId: args.resendEmailId } : {}),
       ...(args.stage === "sent"

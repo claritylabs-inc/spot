@@ -2,6 +2,7 @@ import dayjs from "dayjs";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { gmailInboxId } from "./operatorGmail";
 import { operatorSenderIdentity } from "./outreachIdentity";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -32,18 +33,65 @@ async function activeSenderInbox(ctx: Ctx, userId: Id<"users">) {
   );
 }
 
+const MAX_REFERENCES = 20;
+
+const asRfcId = (messageId: string) =>
+  messageId.startsWith("<") ? messageId : `<${messageId}>`;
+
+/** Message-IDs oldest to newest, keeping the conversation root when the chain is capped. */
+function referenceChain(newestFirst: Doc<"teamEmailMessages">[]) {
+  const ids = [
+    ...new Set(
+      newestFirst
+        .map((message) => message.messageId)
+        .filter((id): id is string => Boolean(id))
+        .reverse()
+        .map(asRfcId),
+    ),
+  ];
+  return ids.length > MAX_REFERENCES
+    ? [ids[0], ...ids.slice(-(MAX_REFERENCES - 1))]
+    : ids;
+}
+
 /**
  * Whether the sender's active inbox holds a Resend conversation of this team
  * thread, and if so which one and which message a reply threads under. The
  * only evidence is a `teamEmailThreadLinks` row for that exact inbox: thread
  * ownership says nothing about it, because an owner's inbox can rotate. With no
  * mapping the reply is a new quoted "Re:" (copying the owner).
+ *
+ * A reply sent from the sender's connected Gmail (`gmailAddress`) needs no
+ * Resend mapping: Gmail threads by RFC headers, so it is threaded whenever the
+ * conversation holds a message with a Message-ID. It answers the latest such
+ * message and carries the stored Message-IDs as the References chain. Gmail
+ * has no Resend thread, so the team thread id fills `resendThreadId`.
  */
 export async function teamThreadReplyPlan(
   ctx: Ctx,
   thread: Doc<"teamEmailThreads">,
   senderUserId: Id<"users">,
+  gmailAddress?: string,
 ) {
+  if (gmailAddress) {
+    const messages = await ctx.db
+      .query("teamEmailMessages")
+      .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
+      .order("desc")
+      .take(50);
+    const answered = messages.find((message) => message.messageId);
+    const latestInbound = messages.find((m) => m.direction === "inbound");
+    return {
+      threaded: Boolean(answered),
+      inboxId: gmailInboxId(gmailAddress) as string | undefined,
+      resendThreadId: String(thread._id) as string | undefined,
+      replyToEmailId: answered?.messageId ? asRfcId(answered.messageId) : undefined,
+      references: referenceChain(messages),
+      latest: messages[0],
+      defaultTo:
+        latestInbound?.fromEmail ?? messages[0]?.toAddresses[0] ?? undefined,
+    };
+  }
   const [inbox, links, messages] = await Promise.all([
     activeSenderInbox(ctx, senderUserId),
     ctx.db
@@ -83,6 +131,7 @@ export async function teamThreadReplyPlan(
     inboxId: inbox?.inboxId,
     resendThreadId,
     replyToEmailId,
+    references: [] as string[],
     latest: messages[0],
     defaultTo:
       latestInbound?.fromEmail ?? messages[0]?.toAddresses[0] ?? undefined,

@@ -242,6 +242,7 @@ import type * as lib_extractionTraceRouterFields from "../lib/extractionTraceRou
 import type * as lib_featureFlags from "../lib/featureFlags.js";
 import type * as lib_fetchPublicUrl from "../lib/fetchPublicUrl.js";
 import type * as lib_forwardReplyDirection from "../lib/forwardReplyDirection.js";
+import type * as lib_gmailTransport from "../lib/gmailTransport.js";
 import type * as lib_googleMailboxTransport from "../lib/googleMailboxTransport.js";
 import type * as lib_googleWorkspace from "../lib/googleWorkspace.js";
 import type * as lib_googleWorkspaceCredentials from "../lib/googleWorkspaceCredentials.js";
@@ -512,6 +513,7 @@ import type * as operatorEmail from "../operatorEmail.js";
 import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
 import type * as operatorEmailSettings from "../operatorEmailSettings.js";
 import type * as operatorGmail from "../operatorGmail.js";
+import type * as operatorGmailDrafts from "../operatorGmailDrafts.js";
 import type * as operatorGoogleWorkspace from "../operatorGoogleWorkspace.js";
 import type * as operatorImessage from "../operatorImessage.js";
 import type * as operatorInboxes from "../operatorInboxes.js";
@@ -821,6 +823,7 @@ declare const fullApi: ApiFromModules<{
   "lib/featureFlags": typeof lib_featureFlags;
   "lib/fetchPublicUrl": typeof lib_fetchPublicUrl;
   "lib/forwardReplyDirection": typeof lib_forwardReplyDirection;
+  "lib/gmailTransport": typeof lib_gmailTransport;
   "lib/googleMailboxTransport": typeof lib_googleMailboxTransport;
   "lib/googleWorkspace": typeof lib_googleWorkspace;
   "lib/googleWorkspaceCredentials": typeof lib_googleWorkspaceCredentials;
@@ -1091,6 +1094,7 @@ declare const fullApi: ApiFromModules<{
   operatorEmailDrafts: typeof operatorEmailDrafts;
   operatorEmailSettings: typeof operatorEmailSettings;
   operatorGmail: typeof operatorGmail;
+  operatorGmailDrafts: typeof operatorGmailDrafts;
   operatorGoogleWorkspace: typeof operatorGoogleWorkspace;
   operatorImessage: typeof operatorImessage;
   operatorInboxes: typeof operatorInboxes;
