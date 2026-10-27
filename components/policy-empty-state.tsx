@@ -15,9 +15,13 @@ export interface PolicyEmptyStateProps {
   /** Optional agent email to show in the forward card. Card is hidden if absent. */
   agentEmail?: string | null;
   /** Upload-in-flight flag. */
-  uploading: boolean;
-  /** Called when the user presses Upload with 1+ staged files. */
-  onUpload: (files: File[], mode: PolicyUploadMode) => Promise<boolean>;
+  uploading?: boolean;
+  /**
+   * Called when the user presses Upload with 1+ staged files. Omit when the
+   * page already offers upload (such as a navbar action) to show only the
+   * message.
+   */
+  onUpload?: (files: File[], mode: PolicyUploadMode) => Promise<boolean>;
   /** Override the default title/subtitle if needed. */
   title?: string;
   subtitle?: string;
@@ -37,7 +41,7 @@ export interface PolicyEmptyStateProps {
 
 export function PolicyEmptyState({
   agentEmail,
-  uploading,
+  uploading = false,
   onUpload,
   title,
   subtitle,
@@ -53,7 +57,7 @@ export function PolicyEmptyState({
     subtitle === ""
       ? null
       : (subtitle ??
-        `Email it in or drop a PDF — Spot sets it up for you, no forms to fill.`);
+        `Email it in or ${onUpload ? "drop" : "upload"} a PDF — Spot sets it up for you, no forms to fill.`);
   const hasHeader = heading || sub;
 
   const content = (
@@ -69,16 +73,18 @@ export function PolicyEmptyState({
         <AgentForwardCard email={agentEmail} className={hasHeader ? "mt-5" : ""} />
       ) : null}
 
-      <DropZone
-        uploading={uploading}
-        onUpload={onUpload}
-        className={agentEmail ? "mt-3" : hasHeader ? "mt-5" : ""}
-        staged={staged}
-        onStagedChange={onStagedChange}
-        uploadMode={uploadMode}
-        onUploadModeChange={onUploadModeChange}
-        hideUploadButton={hideUploadButton}
-      />
+      {onUpload ? (
+        <DropZone
+          uploading={uploading}
+          onUpload={onUpload}
+          className={agentEmail ? "mt-3" : hasHeader ? "mt-5" : ""}
+          staged={staged}
+          onStagedChange={onStagedChange}
+          uploadMode={uploadMode}
+          onUploadModeChange={onUploadModeChange}
+          hideUploadButton={hideUploadButton}
+        />
+      ) : null}
     </>
   );
 
