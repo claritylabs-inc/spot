@@ -3,7 +3,6 @@
 import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
 import { useAuthActions } from "@convex-dev/auth/react";
 import {
-  Activity,
   Building2,
   FileSearch,
   History,
@@ -93,7 +92,6 @@ export function OperatorSidebar({
               collapsed={collapsed}
             />
           </div>
-          <SidebarMenuItem href="/operator/email-health" label="Email health" icon={Activity} active={active === "email-health"} collapsed={collapsed} />
           <SectionHeader label="DevOps" collapsed={collapsed} />
           <div className="flex flex-col gap-1">
             <SidebarMenuItem

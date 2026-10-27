@@ -162,8 +162,7 @@ export async function ensureOperatorInbox(
     { userId },
   );
   const fromName = operatorFromName(identity.name);
-  const mailbox = identity.sendingMailbox;
-  const emailAddress = mailbox?.address ?? operatorTeamAddressFor(identity);
+  const emailAddress = operatorTeamAddressFor(identity);
   await assertAddressAvailable(ctx, emailAddress, userId);
 
   if (getEmailDeliveryMode() === "capture") {
@@ -172,12 +171,6 @@ export async function ensureOperatorInbox(
       captured: true,
       alwaysCcEmail: identity.alwaysCcEmail,
     };
-  }
-  if (mailbox) {
-    const inbox: InboxRecord = { inboxId: `gmail:${emailAddress}`, emailAddress, fromName, labelIds: { automated: "gmail:automated", needsReply: "gmail:needs-reply" } };
-    const recorded = await ctx.runMutation(internal.operatorInboxes.recordOperatorInboxInternal, { userId, inbox });
-    if (recorded.status !== "stored") throw new Error("Sending mailbox could not be bound to this operator.");
-    return { inbox, captured: false, alwaysCcEmail: identity.alwaysCcEmail };
   }
   const inbox = await reconcileInbox(
     ctx,
