@@ -16,6 +16,7 @@ import type { MutationCtx } from "./_generated/server";
 import { isOperatorEmailDraft } from "./lib/actionConfirmationFingerprint";
 import { extractEmailAddress } from "./lib/emailAddress";
 import { gmailAddressOf, inboxKind } from "./lib/inboxIds";
+import { bindRecordedGmailSend } from "./lib/gmailThreadBinding";
 import { normalizeProcurementSubject } from "./lib/procurement";
 import { MAX_EMAIL_ATTACHMENTS, teamTargetProblem, bindTeamInboxThread, outboundByMessageId } from "./lib/teamEmailStore";
 import {
@@ -839,7 +840,11 @@ export const recordOperatorInboxSentInternal = internalMutation({
         createdAt: now,
       });
     }
-    if (gmailAddress) await ctx.db.patch(threadId, { gmailAddress });
+    if (gmailAddress) {
+      await ctx.db.patch(threadId, { gmailAddress });
+      // Replies that drop the team Cc stay on this Gmail thread: bind it and schedule the follow-up checks.
+      await bindRecordedGmailSend(ctx, { threadId, messageId: args.emailId, now });
+    }
     await ctx.db.patch(pending._id, {
       status: "sent",
       sentMessageId: args.emailId,

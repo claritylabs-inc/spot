@@ -3,7 +3,8 @@
 import { randomBytes } from "node:crypto";
 import { Auth } from "googleapis";
 import { ConvexError, v } from "convex/values";
-import { action, internalAction } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getAuthSiteUrl } from "../lib/domains";
 import { decryptSecret, encryptSecret } from "../lib/secretBox";
@@ -11,6 +12,7 @@ import { allowedGmailDomains, GMAIL_SCOPES } from "../lib/inboxIds";
 import { gmailOAuthClient, gmailOAuthConfigured } from "../lib/operatorGmailOAuth";
 import { oauthStateHash } from "../lib/operatorMcpOAuth";
 import { mailboxConnectionsAllowed } from "../lib/sendingMailbox";
+import { SYNC_NOTES, startWatch, stopWatchBestEffort } from "../lib/gmailSync";
 
 /** Scopes Google may drop when the user unticks them on the consent screen. */
 const REQUIRED_SCOPES = GMAIL_SCOPES.filter((scope) => scope.includes("/auth/gmail."));
@@ -51,6 +53,20 @@ export const start = action({
     return { url };
   },
 });
+
+/** Starts Pub/Sub push for a fresh connection. Never fails the connect: replies are still checked without it. */
+async function watchConnectedMailbox(ctx: ActionCtx, userId: Id<"users">) {
+  const connection = await ctx.runQuery(internal.operatorGmail.getByOwnerInternal, { userId });
+  if (!connection) return;
+  try {
+    await startWatch(ctx, connection);
+  } catch {
+    await ctx.runMutation(internal.operatorGmailSync.recordSyncErrorInternal, {
+      connectionId: connection._id,
+      error: SYNC_NOTES.watchFailed,
+    });
+  }
+}
 
 export const callback = internalAction({
   args: {
@@ -109,6 +125,7 @@ export const callback = internalAction({
         },
       );
       if (!result.ok) throw new GmailOAuthError(result.reason);
+      await watchConnectedMailbox(ctx, saved.userId);
       redirect.searchParams.set("gmail", "connected");
     } catch (error) {
       redirect.searchParams.set("gmail", "error");
@@ -129,6 +146,7 @@ export const disconnect = action({
       userId,
     });
     if (!connection || connection.status === "disconnected") return;
+    if (connection.watchExpiresAt !== undefined) await stopWatchBestEffort(connection);
     if (connection.encryptedRefreshToken) {
       try {
         await gmailOAuthClient().revokeToken(

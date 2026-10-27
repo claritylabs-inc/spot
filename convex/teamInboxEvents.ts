@@ -18,6 +18,7 @@ import {
   type InboxRecord,
 } from "./lib/providerOutreachValidators";
 import { messageIdForms } from "./lib/messageId";
+import { noteGmailCopy } from "./lib/gmailThreadBinding";
 import {
   mirrorTeamEmail,
   outboundByMessageId,
@@ -519,6 +520,69 @@ async function mirror(
 }
 
 /**
+ * Alerts the team about new inbound mail in a conversation, unless an operator
+ * sent it: the inbox badge, then the owner (a linked conversation through the
+ * notification pipeline, an unlinked one by email). Shared by the Resend inbox
+ * events and the Gmail thread refresh. Returns whether the owner is emailed
+ * about unlinked mail.
+ */
+export async function notifyTeamInbound(
+  ctx: MutationCtx,
+  args: {
+    threadId: Id<"teamEmailThreads">;
+    messageId: Id<"teamEmailMessages">;
+    fromEmail: string;
+    /** Owns the alert when the conversation has no owner of its own. */
+    fallbackOwnerUserId?: Id<"users">;
+    now: number;
+  },
+) {
+  const { threadId, now } = args;
+  const senderAddress = normalizeProcurementEmail(args.fromEmail);
+  const operatorSender =
+    (await resolveActiveOperatorEmail(ctx, senderAddress)) ||
+    (await ctx.db.query("operatorOutreachInboxes")
+      .withIndex("by_emailAddress", (q) => q.eq("emailAddress", senderAddress))
+      .first());
+  if (operatorSender) return false;
+  await emitOperatorNotification(ctx, {
+    eventKey: `inbox:team_mail:${args.messageId}`,
+    category: "inbox",
+    target: { kind: "inbox", threadId },
+  });
+  const thread = (await ctx.db.get(threadId))!;
+  const ownerUserId = thread.ownerUserId ?? args.fallbackOwnerUserId;
+  if (!ownerUserId) return false;
+  if (thread.clientOrgId && thread.requestId) {
+    // Linked conversations reach the owner the same way outreach handoffs do.
+    await ctx.scheduler.runAfter(0, internal.lib.notify.notifyInternal, {
+      orgId: thread.clientOrgId,
+      userId: ownerUserId,
+      type: "mailbox_attention",
+      severity: "warning",
+      actionType: "view_operator_procurement",
+      actionPayload: {
+        clientOrgId: thread.clientOrgId,
+        requestId: thread.requestId,
+        view: "email",
+        emailThreadId: thread._id,
+      },
+      title: "New email in your conversation",
+      body: `${thread.subject.slice(0, 200)}: review it in the request Inbox.`,
+      coalesceKeyParts: ["team_email_thread", String(thread._id)],
+      nowMs: now,
+    });
+    return false;
+  }
+  // No client to file a notification under: the badge shows it and the owner is emailed.
+  await ctx.scheduler.runAfter(0, internal.actions.teamInbox.notifyOwnerOfUnlinkedMail, {
+    userId: ownerUserId,
+    threadId: thread._id,
+  });
+  return true;
+}
+
+/**
  * Inbound mail not from an operator forwards for matching and alerts the
  * operator. Returns whether the owner is emailed about unlinked mail.
  */
@@ -533,59 +597,19 @@ async function notifyInbound(
   },
 ) {
   const { event, inbox, email, mirrored, now } = args;
-  let notifyOwner = false;
-  if (!mirrored.duplicate) {
-    await ctx.scheduler.runAfter(0, internal.actions.teamEmailForwarding.process, {
-      threadId: mirrored.threadId,
-      inboxId: event.inboxId,
-      emailId: event.emailId,
-    });
-  }
-  const senderAddress = normalizeProcurementEmail(email.fromEmail);
-  const operatorSender =
-    (await resolveActiveOperatorEmail(ctx, senderAddress)) ||
-    (await ctx.db.query("operatorOutreachInboxes")
-      .withIndex("by_emailAddress", (q) => q.eq("emailAddress", senderAddress))
-      .first());
-  if (!mirrored.duplicate && !operatorSender) {
-    await emitOperatorNotification(ctx, {
-      eventKey: `inbox:team_mail:${mirrored.messageId}`,
-      category: "inbox",
-      target: { kind: "inbox", threadId: mirrored.threadId },
-    });
-    const thread = (await ctx.db.get(mirrored.threadId))!;
-    const ownerUserId = thread.ownerUserId ?? inbox.userId;
-    if (ownerUserId) {
-      if (thread.clientOrgId && thread.requestId) {
-        // Linked conversations reach the owner the same way outreach handoffs do.
-        await ctx.scheduler.runAfter(0, internal.lib.notify.notifyInternal, {
-          orgId: thread.clientOrgId,
-          userId: ownerUserId,
-          type: "mailbox_attention",
-          severity: "warning",
-          actionType: "view_operator_procurement",
-          actionPayload: {
-            clientOrgId: thread.clientOrgId,
-            requestId: thread.requestId,
-            view: "email",
-            emailThreadId: thread._id,
-          },
-          title: "New email in your conversation",
-          body: `${thread.subject.slice(0, 200)}: review it in the request Inbox.`,
-          coalesceKeyParts: ["team_email_thread", String(thread._id)],
-          nowMs: now,
-        });
-      } else {
-        // No client to file a notification under: the badge shows it and the owner is emailed.
-        await ctx.scheduler.runAfter(0, internal.actions.teamInbox.notifyOwnerOfUnlinkedMail, {
-          userId: ownerUserId,
-          threadId: thread._id,
-        });
-        notifyOwner = true;
-      }
-    }
-  }
-  return notifyOwner;
+  if (mirrored.duplicate) return false;
+  await ctx.scheduler.runAfter(0, internal.actions.teamEmailForwarding.process, {
+    threadId: mirrored.threadId,
+    inboxId: event.inboxId,
+    emailId: event.emailId,
+  });
+  return await notifyTeamInbound(ctx, {
+    threadId: mirrored.threadId,
+    messageId: mirrored.messageId,
+    fromEmail: email.fromEmail,
+    fallbackOwnerUserId: inbox.userId,
+    now,
+  });
 }
 
 /**
@@ -661,6 +685,15 @@ export const applyTeamInboxEmailInternal = internalMutation({
     const notifyOwner = gmail.inbound
       ? await notifyInbound(ctx, { event, inbox, email: args.email, mirrored, now })
       : false;
+    // A copy that names a connected Gmail refreshes, or binds, that Gmail thread.
+    if (gmail.gmailAddress)
+      await noteGmailCopy(ctx, {
+        threadId: mirrored.threadId,
+        gmailAddress: gmail.gmailAddress,
+        messageId: args.email.messageId,
+        fromEmail: args.email.fromEmail,
+        internalCopy: mirrored.internalCopy,
+      });
     await finishEvent(ctx, event, now);
     return {
       applied: true as const,

@@ -196,19 +196,19 @@ PKCE authorization-code flow modeled on the operator MCP OAuth); the callback is
 Google app is Internal, so only accounts in the organization can consent, and the
 callback additionally requires the verified address and hosted domain to be in
 `GOOGLE_MAILBOX_ALLOWED_DOMAINS`. Scopes are `openid email gmail.send
-gmail.readonly`. `gmail.readonly` is used only to find a Gmail thread or message by
-`rfc822msgid:` (threading replies, reconciling an unknown send). There is no mailbox
-sync, Pub/Sub or polling. Each operator has one connection, and an address belongs
-to one operator. The refresh token is encrypted with
+gmail.readonly`. `gmail.readonly` finds a Gmail thread or message by `rfc822msgid:`
+(threading replies, reconciling an unknown send) and reads the Gmail threads bound to
+Spot conversations (see Thread refresh below); Spot never reads other mail. Each
+operator has one connection, and an address belongs to one operator. The refresh token is encrypted with
 `EMAIL_CONNECTIONS_ENCRYPTION_KEY`. Connecting is disabled in capture mode unless
 `OPERATOR_MAILBOX_CONNECTIONS_ENABLED=true`. Revocation or `invalid_grant` marks the
 connection `needs_reconnect`; a missing, `needs_reconnect` or disconnected
 connection blocks Gmail sends with a visible error and never falls back to Resend.
 Disconnect revokes the token at Google; stored mail is kept.
 
-**Capture.** Spot never reads the Gmail mailbox. Mail enters only when the operator's
-team address is on To, Cc or Bcc, and it arrives through the existing Resend inbox
-webhook. A received email whose From is a connected Gmail is the
+**Capture.** Mail enters in two ways: through the existing Resend inbox webhook when
+the operator's team address is on To, Cc or Bcc, and through Thread refresh for
+Gmail threads Spot already holds. A received email whose From is a connected Gmail is the
 operator's own outbound mail (attributed to them, not something to answer) only when
 the message is found in their Gmail Sent folder (an `rfc822msgid:` lookup, a single
 immediate check) or its original MIME carries aligned DKIM; without that proof it
@@ -227,8 +227,66 @@ Spot. That Cc is part of the reviewed payload and approval fingerprint, never ad
 secretly, exactly like Always CC. Provider-outreach sequences and agent/MCP saved
 drafts keep sending from the Spot team address through Resend.
 
-**Known limitation.** A reply that drops the team address (a plain Reply to the
-Gmail user, or forwarding without it) never reaches Spot.
+**Thread refresh.** A reply that drops the team address (a plain Reply to the Gmail
+user, or forwarding without it) still lands in the right Spot conversation, without
+importing unrelated Gmail mail. Only Gmail threads *bound* to a Spot conversation are
+ever read, through `teamEmailGmailThreads` (`threadId`, `connectionId`, `address`,
+`gmailThreadId`, `nextCheckAt`, `checks`, `lastRefreshedAt`). It is separate from
+`teamEmailThreadLinks`, whose rows feed Resend reply planning. A binding is made
+when a Gmail send is recorded (`recordOperatorInboxSentInternal`, from the draft's
+`gmailThreadId`), when a Resend copy that names a connected Gmail arrives for an
+unbound conversation (a `rfc822msgid:` lookup in that Gmail; the found message must
+be from the same sender as the copy), and for earlier sends by the one-off
+`intakeApplicationMigrations:bindEarlierGmailSends` migration (run it once through the
+migrations runner on the release target; it is idempotent and resumable).
+
+`refreshGmailThread` (`actions/operatorGmailSync`) reads a bound thread with
+`threads.get` in `minimal` format, skips drafts, trash, spam and anything older than
+the conversation's first stored message (minus ten minutes), and fetches the raw MIME
+of messages Spot has not stored. Stored means the key
+`google:<address>:<gmailMessageId>` in `teamEmailMessages.resendInboxEmailId`: it
+reuses an indexed field that already keys `gmail:` legacy and Resend ids, cannot
+collide with them and needs no schema change on the large message table. Messages are
+parsed with `mailparser` and mirrored through `mirrorTeamEmail` (at most 25 per
+refresh, 10 attachments of 25 MB, inline images skipped, anything dropped named in the
+text; oversized messages are stored as a stub). A message with the SENT label is the
+operator's own outbound mail (`sentByUserId` the owner) and stops live automated
+follow-ups like a reply sent from Spot; any other message is inbound and alerts the
+team through the same notify path as Resend mail. `mirrorTeamEmail` treats a message
+as a copy when its conversation already holds the same normalized RFC Message-ID from
+the same From address, in either direction, so the Gmail and Resend paths deduplicate
+each other; requiring the From stops a forged Message-ID from suppressing real mail.
+
+*Triggers (no Pub/Sub needed).* After a Gmail send, one scheduled job per binding
+checks at about +5m, +1h, +6h, +1d, +3d and +7d (`nextCheckAt`/`checks`; a newer send
+restarts the schedule, and a daily sweep restarts a lost job). Opening a Gmail
+conversation in the reader refreshes it when `lastRefreshedAt` is over five minutes
+old. A Resend copy for a bound conversation refreshes it after 30 seconds.
+
+*Push (Gmail `watch` + Pub/Sub).* With `GOOGLE_GMAIL_PUBSUB_TOPIC` set, connecting or
+reconnecting calls `users.watch` for the INBOX and SENT labels and stores `historyId`
+and `watchExpiresAt`; disconnect calls `users.stop`. Pub/Sub pushes to
+`POST /operator-gmail/push`, which verifies the `Authorization: Bearer` Google OIDC token
+(audience `GOOGLE_GMAIL_PUSH_AUDIENCE`, default `<CONVEX_SITE_URL>/operator-gmail/push`;
+`email` must equal `GOOGLE_GMAIL_PUSH_SERVICE_ACCOUNT` and be verified). Missing or
+invalid tokens get 401. Everything after that is 204 (which stops retries): unknown,
+disconnected or needs-reconnect connections are ignored, and valid notifications
+schedule `processHistory`. It takes a per-connection lease, lists `history.list`
+(`messageAdded`) from the stored `historyId` one page per run, refreshes only the
+threads that have a binding for the connection (other messages are never fetched), and
+advances `historyId` monotonically after the last page. A daily cron
+(`renewAll`) renews watches expiring within 48 hours (or never started) and runs one
+catch-up per connection. Without a topic, watch and push are off and the triggers
+above still work. Capture mode disables all of it.
+
+*Failure modes.* `needs_reconnect` connections are skipped (a stop is attempted once
+with the stored grant if a watch is recorded). 429 and quota errors reschedule with
+backoff (honouring `Retry-After`, up to six attempts, then a note). A 404 from
+`history.list` means the cursor expired: the cursor is reset from `getProfile`,
+conversations active in the last 30 days are refreshed, and `syncError` says so.
+`syncError` and `lastSyncAt` are returned by `operatorGmail.myConnection` and shown on
+the Profile Gmail card; they hold fixed text, never provider messages. Tokens are never
+logged.
 
 **Setup (once per Google Cloud project/deployment).**
 
@@ -240,6 +298,14 @@ Gmail user, or forwarding without it) never reaches Spot.
 5. Set the Convex env vars `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`
    and `GOOGLE_MAILBOX_ALLOWED_DOMAINS` (comma-separated domains). The existing
    `EMAIL_CONNECTIONS_ENCRYPTION_KEY` is reused.
+6. Optional push: create a Pub/Sub topic, grant `gmail-api-push@system.gserviceaccount.com`
+   Publisher on it, and create a push subscription to
+   `<CONVEX_SITE_URL>/operator-gmail/push` with OIDC authentication (a dedicated
+   service account, audience the same URL). Set `GOOGLE_GMAIL_PUBSUB_TOPIC` (the full
+   `projects/<project>/topics/<topic>` name), `GOOGLE_GMAIL_PUSH_SERVICE_ACCOUNT` (the
+   invoker's email) and, only if the audience differs from the URL,
+   `GOOGLE_GMAIL_PUSH_AUDIENCE`. Existing connections get a watch at the next daily
+   renewal, or immediately by reconnecting. The scopes are unchanged.
 
 Manual QA is in [operator Gmail workflow](../testing/operator-gmail-workflow.md).
 
