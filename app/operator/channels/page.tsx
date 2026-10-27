@@ -11,12 +11,8 @@ import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useTabParam } from "@/hooks/use-tab-param";
 import { openOAuthTab } from "@/lib/oauth-tab";
@@ -115,22 +111,19 @@ function OperatorChannelTabs({
   const [activeTab, selectTab] = useTabParam(CHANNEL_TABS);
 
   return (
-    <Tabs
+    <PageTabs
       value={activeTab}
       onValueChange={(value) => {
         selectTab(value);
         onTabChange?.();
       }}
-      className="gap-4"
     >
-      <div className="-mx-1 overflow-x-auto px-1 scrollbar-hide">
-        <TabsList variant="pill" aria-label="Channel">
-          <TabsTrigger value="slack">Slack</TabsTrigger>
-          <TabsTrigger value="imessage">iMessage</TabsTrigger>
-          <TabsTrigger value="google-workspace">Google Workspace</TabsTrigger>
-          <TabsTrigger value="mcp">MCP</TabsTrigger>
-        </TabsList>
-      </div>
+      <PageTabsList aria-label="Channel">
+        <TabsTrigger value="slack">Slack</TabsTrigger>
+        <TabsTrigger value="imessage">iMessage</TabsTrigger>
+        <TabsTrigger value="google-workspace">Google Workspace</TabsTrigger>
+        <TabsTrigger value="mcp">MCP</TabsTrigger>
+      </PageTabsList>
       <TabsContent value="slack">{children}</TabsContent>
       <TabsContent value="imessage">
         {imessageContent ?? placeholder}
@@ -139,7 +132,7 @@ function OperatorChannelTabs({
         {googleWorkspaceContent ?? placeholder}
       </TabsContent>
       <TabsContent value="mcp">{mcpContent ?? placeholder}</TabsContent>
-    </Tabs>
+    </PageTabs>
   );
 }
 

@@ -9,7 +9,8 @@ import { PolicyEmptyState } from "@/components/policy-empty-state";
 import { PolicyListItem } from "@/components/policy-list-item";
 import { PolicyUploadDrawer } from "@/components/policy-upload-drawer";
 import { PillButton } from "@/components/ui/pill-button";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePolicyUpload } from "@/hooks/use-policy-upload";
@@ -113,7 +114,7 @@ export default function PoliciesPage() {
     >
       <div className="space-y-4">
         {hasArchivedPolicies ? (
-          <Tabs
+          <PageTabsRail
             value={showArchived ? "archived" : "active"}
             onValueChange={(value) =>
               router.push(
@@ -121,11 +122,11 @@ export default function PoliciesPage() {
               )
             }
           >
-            <TabsList variant="pill">
+            <PageTabsList aria-label="Policy status">
               <TabsTrigger value="active">Active</TabsTrigger>
               <TabsTrigger value="archived">Archived</TabsTrigger>
-            </TabsList>
-          </Tabs>
+            </PageTabsList>
+          </PageTabsRail>
         ) : null}
 
         {policies === undefined ? (

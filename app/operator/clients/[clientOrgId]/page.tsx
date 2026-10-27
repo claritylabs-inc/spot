@@ -21,12 +21,8 @@ import { OperatorPageContextRegistration } from "@/components/operator-agent/ope
 import { AgentChannelsSection } from "@/components/settings/agent-channels-section";
 import { FeatureFlagToggleRow } from "@/components/settings/feature-flag-toggle-row";
 import { TeamSection } from "@/components/settings/team-section";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@claritylabs-inc/ui/components/tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 
 import {
   OperationalPanel,
@@ -139,19 +135,14 @@ function ClientWorkspace({
     <>
       <main className="w-full space-y-6">
         {activeTab === "settings" ? (
-          <Tabs
+          <PageTabs
             value={settingsTab}
             onValueChange={(value) => setSettingsTab(String(value))}
-            className="gap-5"
           >
-            <TabsList
-              variant="pill"
-              aria-label="Client settings"
-              className="max-w-full flex-wrap"
-            >
+            <PageTabsList aria-label="Client settings">
               <TabsTrigger value="channels">Agent channels</TabsTrigger>
               <TabsTrigger value="features">Beta features</TabsTrigger>
-            </TabsList>
+            </PageTabsList>
             <TabsContent value="channels">
               <AgentChannelsSection
                 clientOrgId={client._id}
@@ -177,7 +168,7 @@ function ClientWorkspace({
                 />
               ))}
             </TabsContent>
-          </Tabs>
+          </PageTabs>
         ) : null}
 
         {activeTab === "team" ? (

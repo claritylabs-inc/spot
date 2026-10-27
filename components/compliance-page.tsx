@@ -65,11 +65,8 @@ import {
   TableRow,
   SortableTableHead,
 } from "@/components/ui/table";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -161,7 +158,6 @@ type ComplianceWorkspaceOrgContext = {
 export type ComplianceWorkspaceShellArgs = {
   actions: ReactNode;
   rightPanel: ReactNode;
-  toolbar: ReactNode;
   children: ReactNode;
 };
 
@@ -647,6 +643,12 @@ function PolicyTagList({
     </div>
   );
 }
+
+const VIEW_HEADINGS: Partial<Record<ComplianceView, string>> = {
+  requirements: "Coverage requirements",
+  sources: "Requirement sources",
+  certificates: "Certificates",
+};
 
 function EmptyState() {
   return (
@@ -3609,24 +3611,26 @@ function ComplianceWorkspace({
     />
   ) : null;
 
+  const addRequirementAction = (
+    <PillButton size="compact" variant="secondary" onClick={openAddRequirement}>
+      <Plus className="h-3.5 w-3.5" />
+      Add requirement
+    </PillButton>
+  );
+  const importRequirementsAction = (
+    <PillButton
+      size="compact"
+      variant="primary"
+      onClick={openImportRequirements}
+    >
+      <FileUp className="h-3.5 w-3.5" />
+      Import requirements
+    </PillButton>
+  );
   const complianceActions = canManageCompliance ? (
     <>
-      <PillButton
-        size="compact"
-        variant="secondary"
-        onClick={openAddRequirement}
-      >
-        <Plus className="h-3.5 w-3.5" />
-        Add requirement
-      </PillButton>
-      <PillButton
-        size="compact"
-        variant="primary"
-        onClick={openImportRequirements}
-      >
-        <FileUp className="h-3.5 w-3.5" />
-        Import requirements
-      </PillButton>
+      {addRequirementAction}
+      {importRequirementsAction}
     </>
   ) : null;
   const certificatePanel =
@@ -3648,26 +3652,24 @@ function ComplianceWorkspace({
     creationDrawer === "manual" ? addRequirementPanel : importRequirementsPanel;
   const complianceRightPanel =
     certificatePanel ?? detailPanel ?? sourcePanel ?? requirementCreationPanel;
-  const actions =
-    view === "certificates" ? certificateTabActions : complianceActions;
+  const tabbed = navigationOptions.length > 1;
+  // With view tabs, Add/Import belong to the views they act on; a single view
+  // is the whole page, so its actions stay in the top bar.
+  const viewActions =
+    view === "certificates"
+      ? certificateTabActions
+      : view === "requirements"
+        ? complianceActions
+        : view === "sources" && canManageCompliance
+          ? importRequirementsAction
+          : null;
+  const actions = tabbed
+    ? null
+    : view === "certificates"
+      ? certificateTabActions
+      : complianceActions;
   const rightPanel =
     view === "certificates" ? certificateTabRightPanel : complianceRightPanel;
-  const toolbar =
-    navigationOptions.length > 1 ? (
-      <Tabs value={navigationValue} onValueChange={changeNavigation}>
-        <TabsList
-          variant="pill"
-          aria-label="Compliance view"
-          className="min-w-max"
-        >
-          {navigationOptions.map((option) => (
-            <TabsTrigger key={option.value} value={option.value}>
-              {option.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-    ) : null;
   const content = (
     <div className="flex w-full flex-col gap-4">
       {complianceWriteRestriction ? (
@@ -3685,7 +3687,16 @@ function ComplianceWorkspace({
           </div>
         </OperationalPanel>
       ) : null}
-      {!renderShell ? toolbar : null}
+      {tabbed &&
+      viewActions &&
+      !(view === "requirements" && surface !== "operator") ? (
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+          <h2 className={typeStyle("heading.item")}>
+            {VIEW_HEADINGS[view] ?? ""}
+          </h2>
+          <div className="flex items-center gap-2">{viewActions}</div>
+        </div>
+      ) : null}
       {view === "certificates" && renderCertificatesTab ? (
         renderCertificatesTab({
           onActions: setCertificateTabActions,
@@ -3728,6 +3739,7 @@ function ComplianceWorkspace({
             <ListToolbar
               followKey={`${uiKey}:requirements`}
               filters={requirementFilters}
+              actions={tabbed ? viewActions : undefined}
             />
           ) : null}
           {visibleRequirements.length === 0 ? (
@@ -3748,13 +3760,28 @@ function ComplianceWorkspace({
     </div>
   );
 
+  const page = tabbed ? (
+    <PageTabs value={navigationValue} onValueChange={changeNavigation}>
+      <PageTabsList aria-label="Compliance view">
+        {navigationOptions.map((option) => (
+          <TabsTrigger key={option.value} value={option.value}>
+            {option.label}
+          </TabsTrigger>
+        ))}
+      </PageTabsList>
+      <TabsContent value={navigationValue}>{content}</TabsContent>
+    </PageTabs>
+  ) : (
+    content
+  );
+
   if (renderShell) {
-    return renderShell({ actions, rightPanel, toolbar, children: content });
+    return renderShell({ actions, rightPanel, children: page });
   }
 
   return (
     <AppShell actions={actions} rightPanel={rightPanel}>
-      {content}
+      {page}
     </AppShell>
   );
 }

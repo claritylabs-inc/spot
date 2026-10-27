@@ -20,6 +20,8 @@ import {
   DialogTitle,
 } from "@claritylabs-inc/ui/components/dialog";
 import { PillButton } from "@/components/ui/pill-button";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import { api } from "@/convex/_generated/api";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { typeStyle } from "@/lib/typography";
@@ -324,29 +326,14 @@ export function ProfileSectionTabs({
   onChange: (value: "profile" | "privacy") => void;
 }) {
   return (
-    <div
-      role="tablist"
-      aria-label="Profile sections"
-      className="mb-4 flex items-center gap-1"
+    <PageTabsRail
+      value={active}
+      onValueChange={(value) => onChange(value as "profile" | "privacy")}
     >
-      <PillButton
-        variant={active === "profile" ? "primary" : "ghost"}
-        size="compact"
-        role="tab"
-        aria-selected={active === "profile"}
-        onClick={() => onChange("profile")}
-      >
-        Profile
-      </PillButton>
-      <PillButton
-        variant={active === "privacy" ? "primary" : "ghost"}
-        size="compact"
-        role="tab"
-        aria-selected={active === "privacy"}
-        onClick={() => onChange("privacy")}
-      >
-        Privacy
-      </PillButton>
-    </div>
+      <PageTabsList aria-label="Profile sections">
+        <TabsTrigger value="profile">Profile</TabsTrigger>
+        <TabsTrigger value="privacy">Privacy</TabsTrigger>
+      </PageTabsList>
+    </PageTabsRail>
   );
 }

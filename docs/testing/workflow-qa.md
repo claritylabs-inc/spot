@@ -1,5 +1,9 @@
 # Platform workflow QA
 
+## Shared navbar tabs and filter toolbars — October 26, 2026
+
+Published UI 0.18.0 installed from the registry. Local browser acceptance and production build passed; code-head CI lint, tests and typecheck passed. Verified responsive navbar geometry, active-tab visibility, optional client navigation, selected-view actions and one-search toolbars with actions right and no divider. See [workflow and limits](folder-tabs-workflow.md); artifacts: `.context/folder-tabs-rollout/`. Secondary Shared/Archived rails lacked fixtures; local field tabs have no live caller. No Vercel preview testing or new unit tests.
+
 ## Operator tool consolidation — October 26, 2026
 
 Native-local backend: catalog/schema compatibility, 22 workflow calls, 13

@@ -44,12 +44,8 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -186,13 +182,13 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
       <AppShellPortal slot="actions">
         <AutoSaveStatus status={autoSave.status} />
       </AppShellPortal>
-      <Tabs value={tab} onValueChange={setTab} className="gap-5">
-        <TabsList variant="pill" aria-label="Provider">
+      <PageTabs value={tab} onValueChange={setTab}>
+        <PageTabsList aria-label="Provider">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="appetite">Appetite</TabsTrigger>
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
-        </TabsList>
+        </PageTabsList>
         <TabsContent value="profile" className="space-y-5">
           <InlineFieldCard>
             <InlineFieldRow label="Provider name">
@@ -400,7 +396,7 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
         <TabsContent value="activity">
           <BrokerActivity brokerOrgId={row.broker._id} />
         </TabsContent>
-      </Tabs>
+      </PageTabs>
     </main>
   );
 }

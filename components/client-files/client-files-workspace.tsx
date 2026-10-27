@@ -45,11 +45,8 @@ import {
   TableRow,
   SortableTableHead,
 } from "@/components/ui/table";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { formatDisplayDate } from "@/lib/date-format";
 import { inferAttachmentContentType } from "@/lib/thread-prompt";
@@ -618,9 +615,12 @@ export function ClientFilesWorkspace({
   readOnly = false,
   onActions,
   onRightPanel,
+  notice,
 }: {
   clientOrgId: Id<"organizations">;
   readOnly?: boolean;
+  /** Page-level notice (such as read-only), shown under the view tabs. */
+  notice?: ReactNode;
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
 }) {
@@ -800,41 +800,39 @@ export function ClientFilesWorkspace({
 
   const visibilityTabs =
     operatorView && (hasSharedFiles || hasArchivedFiles || result.truncated) ? (
-      <div className="flex min-w-0 items-center justify-between gap-4">
+      <>
         {hasSharedFiles || hasArchivedFiles ? (
-          <div className="overflow-x-auto">
-            <Tabs
-              value={view}
-              onValueChange={(value) => {
-                if (
-                  value === "private" ||
-                  value === "shared" ||
-                  value === "archived"
-                ) {
-                  setView(value);
-                }
-              }}
-            >
-              <TabsList variant="pill" aria-label="Client files view">
-                <TabsTrigger value="private">Private</TabsTrigger>
-                {hasSharedFiles ? (
-                  <TabsTrigger value="shared">Shared</TabsTrigger>
-                ) : null}
-                {hasArchivedFiles ? (
-                  <TabsTrigger value="archived">Archived</TabsTrigger>
-                ) : null}
-              </TabsList>
-            </Tabs>
-          </div>
+          <PageTabsRail
+            value={view}
+            onValueChange={(value) => {
+              if (
+                value === "private" ||
+                value === "shared" ||
+                value === "archived"
+              ) {
+                setView(value);
+              }
+            }}
+          >
+            <PageTabsList aria-label="Client files view">
+              <TabsTrigger value="private">Private</TabsTrigger>
+              {hasSharedFiles ? (
+                <TabsTrigger value="shared">Shared</TabsTrigger>
+              ) : null}
+              {hasArchivedFiles ? (
+                <TabsTrigger value="archived">Archived</TabsTrigger>
+              ) : null}
+            </PageTabsList>
+          </PageTabsRail>
         ) : null}
         {result.truncated ? (
-          <span
-            className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
+          <p
+            className={`text-muted-foreground ${typeStyle("caption.default")}`}
           >
             Showing the latest 200
-          </span>
+          </p>
         ) : null}
-      </div>
+      </>
     ) : null;
 
   if (visibleFiles.length === 0) {
@@ -850,6 +848,7 @@ export function ClientFilesWorkspace({
     return (
       <div className="space-y-4">
         {visibilityTabs}
+        {notice}
         <EmptyStateCard
           title={CLIENT_FILE_EMPTY_STATES[view].title}
           description={CLIENT_FILE_EMPTY_STATES[view].description}
@@ -864,6 +863,7 @@ export function ClientFilesWorkspace({
   return (
     <div className="space-y-4">
       {visibilityTabs}
+      {notice}
       <OperationalPanel as="div">
         <Table storageKey="spot:client-files:columns">
           <TableHeader>

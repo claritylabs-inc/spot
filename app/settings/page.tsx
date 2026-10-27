@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { SettingsActionsContext } from "@/components/settings/settings-actions-context";
 import {
@@ -78,6 +84,28 @@ export default function SettingsPage() {
     if (page) navigate(page.id, page.tabs[0].id);
   }
 
+  // Narrow screens switch pages here; wider ones use the sidebar.
+  const sectionSwitcher = (
+    <div className="-mx-6 mb-6 overflow-x-auto px-6 scrollbar-hide lg:hidden">
+      <Tabs
+        value={destination.section}
+        onValueChange={(value) => handlePageChange(value as SettingsPageId)}
+      >
+        <TabsList variant="pill" className="min-w-max">
+          {pages.map((page) => {
+            const Icon = page.icon;
+            return (
+              <TabsTrigger key={page.id} value={page.id}>
+                <Icon className="size-3.5 shrink-0" />
+                {page.label}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+      </Tabs>
+    </div>
+  );
+
   if (isBroker) return null;
 
   return (
@@ -89,44 +117,37 @@ export default function SettingsPage() {
         actions={headerActions}
         rightPanel={rightPanel}
       >
-        <div className="-mx-6 mb-6 overflow-x-auto px-6 scrollbar-hide lg:hidden">
-          <Tabs
-            value={destination.section}
-            onValueChange={(value) => handlePageChange(value as SettingsPageId)}
-          >
-            <TabsList variant="pill" className="min-w-max">
-              {pages.map((page) => {
-                const Icon = page.icon;
-                return (
-                  <TabsTrigger key={page.id} value={page.id}>
-                    <Icon className="size-3.5 shrink-0" />
-                    {page.label}
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
-          </Tabs>
-        </div>
-
         {destination.page.tabs.length > 1 ? (
-          <Tabs
+          <PageTabs
             value={destination.tab}
             onValueChange={(value) =>
               navigate(destination.section, value as SettingsTabId)
             }
-            className="mb-6"
           >
-            <TabsList variant="pill">
+            <PageTabsList aria-label={`${destination.page.label} settings`}>
               {destination.page.tabs.map((tab) => (
                 <TabsTrigger key={tab.id} value={tab.id}>
                   {tab.label}
                 </TabsTrigger>
               ))}
-            </TabsList>
-          </Tabs>
-        ) : null}
-
-        <SectionContent section={destination.section} tab={destination.tab} />
+            </PageTabsList>
+            <TabsContent value={destination.tab}>
+              {sectionSwitcher}
+              <SectionContent
+                section={destination.section}
+                tab={destination.tab}
+              />
+            </TabsContent>
+          </PageTabs>
+        ) : (
+          <>
+            {sectionSwitcher}
+            <SectionContent
+              section={destination.section}
+              tab={destination.tab}
+            />
+          </>
+        )}
       </AppShell>
     </SettingsActionsContext.Provider>
   );

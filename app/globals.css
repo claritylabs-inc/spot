@@ -206,12 +206,13 @@
   font-size: 0.8125rem;
   line-height: 1.125rem;
 }
-[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]),
-[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]) * {
+/* Folder tabs keep their shared 30px / 14px geometry inside operator forms. */
+[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]):not([data-slot="tabs-trigger"]),
+[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]):not([data-slot="tabs-trigger"]) * {
   font-size: 0.8125rem;
   line-height: 1.125rem;
 }
-[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]) {
+[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]):not([data-slot="tabs-trigger"]) {
   min-height: 2rem;
   height: auto;
   padding-block: 0.375rem;

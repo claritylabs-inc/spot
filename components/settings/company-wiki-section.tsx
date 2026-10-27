@@ -25,7 +25,6 @@ import {
   MAX_MARKDOWN_BYTES,
   parseMarkdownDocument,
 } from "@/convex/lib/markdownDocument";
-import { useSettingsActions } from "@/components/settings/settings-actions-context";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
@@ -230,16 +229,8 @@ export function CompanyWikiSection({
   sidebar?: boolean;
   readOnly?: boolean;
 } = {}) {
-  const { setActions } = useSettingsActions();
   const [notesToolbarTarget, setNotesToolbarTarget] =
     useState<HTMLDivElement | null>(null);
-  const [settingsToolbarTarget, setSettingsToolbarTarget] =
-    useState<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (operator) return;
-    setActions(<div ref={setSettingsToolbarTarget} />);
-    return () => setActions(null);
-  }, [operator, setActions]);
   const currentOrg = useCurrentOrg();
   const orgId = clientOrgId ?? currentOrg?.orgId;
   const tenantWiki = useQuery(
@@ -304,7 +295,7 @@ export function CompanyWikiSection({
             ? sidebar
               ? toolbarTarget
               : notesToolbarTarget
-            : (toolbarTarget ?? settingsToolbarTarget)
+            : toolbarTarget
         }
         businessProfile={wiki.businessProfile}
         legacyBusinessProfile={wiki.legacyBusinessProfile}
