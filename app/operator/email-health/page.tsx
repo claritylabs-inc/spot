@@ -9,6 +9,7 @@ import { AppShell } from "@/components/app-shell";
 import { PillButton } from "@/components/ui/pill-button";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { ListToolbar } from "@/components/ui/list-toolbar";
+import { PageTabsRail, PageTabsList } from "@/components/ui/folder-tabs";
 import {
   Table,
   TableBody,
@@ -27,11 +28,7 @@ import {
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { Input } from "@claritylabs-inc/ui/components/input";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import { typeStyle } from "@/lib/typography";
 import { PlacementChecks, RecordCheck } from "./placement-checks";
@@ -177,8 +174,10 @@ export default function EmailHealth() {
   return (
     <AppShell
       actions={
-        data?.capture ? (
-          <StatusTag tone="warning">Sending captured</StatusTag>
+        data?.capture || data?.restricted ? (
+          <StatusTag tone="warning">
+            {data.capture ? "Sending captured" : "Test recipients only"}
+          </StatusTag>
         ) : undefined
       }
       rightPanel={
@@ -196,14 +195,15 @@ export default function EmailHealth() {
       <div className="space-y-4">
         <ListToolbar
           followKey="email-health"
+          tabsPlacement="navbar"
           tabs={
-            <Tabs value={view} onValueChange={setView}>
-              <TabsList variant="pill">
+            <PageTabsRail value={view} onValueChange={setView}>
+              <PageTabsList>
                 <TabsTrigger value="mailboxes">Mailboxes</TabsTrigger>
                 <TabsTrigger value="activity">Sending activity</TabsTrigger>
                 <TabsTrigger value="placement">Placement checks</TabsTrigger>
-              </TabsList>
-            </Tabs>
+              </PageTabsList>
+            </PageTabsRail>
           }
           search={
             view === "mailboxes"

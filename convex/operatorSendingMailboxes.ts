@@ -96,6 +96,7 @@ export const overview = query({
       placementChecks,
       mailboxes,
       capture: process.env.EMAIL_DELIVERY_MODE === "capture",
+      restricted: process.env.EMAIL_DELIVERY_MODE === "restricted",
       connectionsEnabled: mailboxConnectionsAllowed(),
       encryptionReady: !!process.env.EMAIL_CONNECTIONS_ENCRYPTION_KEY,
       attempts: attempts.map((row) => ({

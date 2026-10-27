@@ -103,3 +103,7 @@ Spot thread; opening the stored attachment showed the exact synthetic marker.
 An immediate Spot reply was refused by the ten-minute pacing guard with its
 editable draft retained. The refusal now skips futile short retries and reports
 the approximate wait directly. Return-send verification follows once due.
+
+After syncing the latest main, Email health now uses the shared top-bar page tabs.
+Restricted recipient mode is explicitly labelled "Test recipients only". Incoming
+Gmail replies appear in Inbox with Needs reply, independently of the Sent filter.
