@@ -90,6 +90,7 @@ import {
 } from "./procurementRequests";
 import { mirrorTeamEmail, type NewTeamThread, type TeamThread } from "./lib/teamEmailStore";
 import { emitOperatorNotification } from "./lib/operatorNotify";
+import { normalizeGmailAddress } from "./lib/operatorGmail";
 import { mintPacketLinkForOperator, previewBrokerPacket } from "./procurementPacket";
 import { providerOutreachSummary, type OutreachSummaryItem } from "./lib/providerOutreachSummary";
 import { submittedIntakeApplication } from "../lib/intake-application";
@@ -3684,6 +3685,34 @@ export const applyInboundInboxEmailInternal = internalMutation({
   },
 });
 
+/** The active connected Gmail for `address`, or null. */
+async function activeGmailConnection(ctx: MutationCtx, address: string) {
+  const row = await ctx.db
+    .query("operatorGmailConnections")
+    .withIndex("by_address", (q) => q.eq("address", normalizeGmailAddress(address)))
+    .first();
+  return row?.status === "active" ? row : null;
+}
+
+/** Whether a Gmail send is drafted under this Message-ID but its message is not stored yet. */
+async function gmailSendAwaitsRecord(ctx: MutationCtx, messageId: string | undefined) {
+  if (!messageId) return false;
+  const stored = await ctx.db
+    .query("teamEmailMessages")
+    .withIndex("by_messageId", (q) => q.eq("messageId", messageId.slice(0, 500)))
+    .take(5);
+  if (stored.some((message) => message.direction === "outbound")) return false;
+  const bare = messageId.replace(/^<|>$/g, "");
+  for (const candidate of new Set([messageId, bare, `<${bare}>`])) {
+    const draft = await ctx.db
+      .query("operatorGmailDrafts")
+      .withIndex("by_messageId", (q) => q.eq("messageId", candidate))
+      .first();
+    if (draft) return true;
+  }
+  return false;
+}
+
 /**
  * `inbox.email.received` / `inbox.email.sent` for mail no outreach sequence
  * owns: mirrors it into its team conversation (found by thread id, link, or
@@ -3721,20 +3750,42 @@ export const applyTeamInboxEmailInternal = internalMutation({
     if (inbox.kind === "agent") return await reject("agent_inbox_reserved");
     const route = await routeInboxEvent(ctx, event);
     if (route.kind !== "thread" && route.kind !== "team") return await reject("event_route_mismatch");
-    const inbound = event.eventType === "inbox.email.received";
+    const received = event.eventType === "inbox.email.received";
+    // An operator's own Gmail send captured by CC/BCC is their outbound mail,
+    // not something to answer. Other mail on a Gmail conversation stays inbound.
+    const gmailSender = received
+      ? await activeGmailConnection(ctx, args.email.fromEmail)
+      : null;
+    const inbound = received && !gmailSender;
+    const gmailAddress = gmailSender
+      ? gmailSender.address
+      : received
+        ? (
+            await Promise.all(
+              [...args.email.toAddresses, ...args.email.ccAddresses].map((address) =>
+                activeGmailConnection(ctx, address),
+              ),
+            )
+          ).find(Boolean)?.address
+        : undefined;
     // Mail from one of our own inboxes may be the copy of a send whose
     // `inbox.email.sent` has not landed to supply its Message-ID: wait briefly,
     // then treat it as ordinary (internal) mail. The sender address only delays.
+    // A Gmail copy waits only while its send is recorded as a draft but its
+    // message is not stored yet.
     if (
       route.kind === "team" &&
-      inbound &&
+      received &&
       now - event.createdAt < SENT_EVENT_BINDING_WAIT_MS &&
-      (await ctx.db
-        .query("operatorOutreachInboxes")
-        .withIndex("by_emailAddress", (q) =>
-          q.eq("emailAddress", normalizeProcurementEmail(args.email.fromEmail)),
-        )
-        .first())
+      ((gmailSender
+        ? await gmailSendAwaitsRecord(ctx, args.email.messageId)
+        : false) ||
+        (await ctx.db
+          .query("operatorOutreachInboxes")
+          .withIndex("by_emailAddress", (q) =>
+            q.eq("emailAddress", normalizeProcurementEmail(args.email.fromEmail)),
+          )
+          .first()))
     ) {
       await dropUploads();
       const retryAt = now + INBOX_EVENT_RETRY_MS;
@@ -3758,7 +3809,7 @@ export const applyTeamInboxEmailInternal = internalMutation({
       target = {
         create: {
           source: "team",
-          ownerUserId: inbox.userId,
+          ownerUserId: gmailSender?.ownerUserId ?? inbox.userId,
           resendThreadId: event.threadId,
           category: "other",
           categoryReason: "Unlinked team mail",
@@ -3772,7 +3823,9 @@ export const applyTeamInboxEmailInternal = internalMutation({
       attachments,
       resendThreadId: event.threadId,
       inboxId: event.inboxId,
-      sentByUserId: inbound ? undefined : inbox.userId,
+      sentByUserId: gmailSender ? gmailSender.ownerUserId : inbound ? undefined : inbox.userId,
+      gmailAddress,
+      ownCopyCheck: !!gmailSender,
       now,
     });
     // A dead client/request target takes nothing (uploads already deleted); the event is final.
@@ -3838,6 +3891,7 @@ export const applyTeamInboxEmailInternal = internalMutation({
       applied: true as const,
       duplicate: mirrored.duplicate,
       internalCopy: mirrored.internalCopy,
+      gmailSent: !!gmailSender,
       threadId: mirrored.threadId,
       notifyOwner,
     };

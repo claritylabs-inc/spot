@@ -298,6 +298,14 @@ export async function mirrorTeamEmail(
     inboxId?: string;
     sentByUserId?: Id<"users">;
     pendingEmailId?: Id<"pendingEmails">;
+    /** Connected operator Gmail on this email; kept on the thread once set, never cleared. */
+    gmailAddress?: string;
+    /**
+     * The email is a CC/BCC capture of mail the operator sent, so a stored
+     * outbound message with the same RFC Message-ID is its original (inbound
+     * mail always gets this check).
+     */
+    ownCopyCheck?: boolean;
     /** Known correspondents to add to the thread's participants (for example an outreach recipient). */
     extraParticipants?: string[];
     now: number;
@@ -318,6 +326,7 @@ export async function mirrorTeamEmail(
     if (!duplicate.resendThreadId && args.resendThreadId) fill.resendThreadId = args.resendThreadId;
     if (!duplicate.sentByUserId && args.sentByUserId) fill.sentByUserId = args.sentByUserId;
     if (!duplicate.pendingEmailId && args.pendingEmailId) fill.pendingEmailId = args.pendingEmailId;
+    if (!duplicate.gmailAddress && args.gmailAddress) fill.gmailAddress = args.gmailAddress;
     if (Object.keys(fill).length) await ctx.db.patch(duplicate._id, fill);
     if (args.inboxId && args.resendThreadId)
       await bindTeamInboxThread(ctx, {
@@ -327,7 +336,7 @@ export async function mirrorTeamEmail(
       });
     return { duplicate: true, threadId: duplicate.threadId, messageId: duplicate._id, internalCopy: false };
   }
-  if (args.direction === "inbound" && email.messageId) {
+  if ((args.direction === "inbound" || args.ownCopyCheck) && email.messageId) {
     const sent = await ctx.db
       .query("teamEmailMessages")
       .withIndex("by_messageId", (q) => q.eq("messageId", email.messageId!.slice(0, 500)))
@@ -384,6 +393,7 @@ export async function mirrorTeamEmail(
       categorySource: "auto",
       categoryReason: create.categoryReason,
       participantEmails: participants,
+      gmailAddress: args.gmailAddress,
       latestMessageAt: 0,
       messageCount: 0,
       createdAt: now,
@@ -427,6 +437,7 @@ export async function mirrorTeamEmail(
     direction: args.direction,
     sentByUserId: args.sentByUserId,
     pendingEmailId: args.pendingEmailId,
+    gmailAddress: args.gmailAddress,
     resendThreadId: args.resendThreadId,
     unfiledAttachments: unfiled,
     resendInboxEmailId: email.resendInboxEmailId,
@@ -461,6 +472,7 @@ export async function mirrorTeamEmail(
   const newest = email.occurredAt >= thread.latestMessageAt;
   await ctx.db.patch(thread._id, {
     participantEmails: uniqueProcurementEmails([...thread.participantEmails, ...participants]),
+    ...(args.gmailAddress && !thread.gmailAddress ? { gmailAddress: args.gmailAddress } : {}),
     latestMessageAt: Math.max(thread.latestMessageAt, email.occurredAt),
     messageCount: thread.messageCount + 1,
     ...(args.resendThreadId && !thread.resendThreadId
