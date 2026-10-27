@@ -485,6 +485,8 @@ export default defineSchema({
   // Organizations — owns company data, agent, broker info
   organizations: defineTable({
     intakeBusinessProfile: v.optional(intakeBusinessProfileValidator),
+    // One representation grant per client; requests only reference its shared file.
+    intakeAuthorizationId: v.optional(v.id("requestIntakeAuthorizations")),
     clientAccessStatus: v.optional(clientAccessStatusValidator),
     // Operator responsible for this client.
     assignedOperatorUserId: v.optional(v.id("users")),
@@ -3678,7 +3680,8 @@ export default defineSchema({
     .index("by_userId_and_threadId", ["userId", "threadId"])
     .index("by_threadId", ["threadId"]),
 
-  // The signed facts are immutable; only PDF generation/publication state changes.
+  // Client-owned grants. The legacy table name and source request preserve evidence.
+  // Signed facts are immutable; only PDF generation/publication state changes.
   requestIntakeAuthorizations: defineTable({
     requestId: v.id("procurementRequests"),
     clientOrgId: v.id("organizations"),
@@ -3698,9 +3701,11 @@ export default defineSchema({
     status: v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
     attempts: v.number(),
     fileId: v.optional(v.id("_storage")),
+    clientFileId: v.optional(v.id("clientFiles")),
     fileItemId: v.optional(v.id("procurementFileItems")),
     createdAt: v.number(),
-  }).index("by_requestId", ["requestId"]),
+  }).index("by_requestId", ["requestId"])
+    .index("by_clientOrgId", ["clientOrgId"]),
 
   procurementFileItems: defineTable({
     removedAt: v.optional(v.number()),

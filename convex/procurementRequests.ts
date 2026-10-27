@@ -8,6 +8,7 @@ import {
   validateIntakeDetails,
 } from "../lib/insurance-intake-details";
 import { refreshPremiumEstimateByOperator } from "./requestIntake";
+import { linkClientIntakeAuthorization } from "./intakeAuthorizations";
 import {
   hashIntakeToken,
   readIntakeBusinessProfile,
@@ -847,6 +848,7 @@ export async function createProcurementRequestByOperator(
     userId: args.operatorUserId,
     source: args.source === "agent" ? "operator_agent" : "manual",
   });
+  await linkClientIntakeAuthorization(ctx, requestId);
   if (args.source !== "workspace_scan")
     await ctx.scheduler.runAfter(
       0,
