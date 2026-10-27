@@ -2,16 +2,19 @@
 
 Actor: authenticated operator without impersonation. Local target: localhost:8080,
 local Convex 127.0.0.1:8083, EMAIL_DELIVERY_MODE=capture. Run: October 27, 2026.
-No real messages or mailbox credentials used in this QA run.
+No real messages sent. After explicit user approval, all five existing InboxKit
+Google app passwords were connected through the local UI and stored encrypted.
 
 ## Acceptance workflow
 
 1. Navigate through Email health; show the five reserved addresses, actual connection
-   state, disabled limits for unconnected mailboxes, and a local capture banner.
+   state, automatic sending defaults, and a local capture banner.
 2. Search, clear, sort and switch Mailboxes / Sending activity / Placement checks.
    Empty searches explain that there are no matches. Enter activates a focused tab.
-3. Connect using a synthetic password; capture must refuse external access and
-   save no connection. Closing/reopening clears the password.
+3. Without the explicit local connection opt-in, capture must refuse external
+   access and save no connection. Closing/reopening clears the password. With
+   `OPERATOR_MAILBOX_CONNECTIONS_ENABLED=true`, SMTP verification and IMAP reads
+   are permitted; outbound delivery remains captured.
 4. Record a clearly labelled local QA placement observation, then reload and
    verify persistence. Do not present synthetic local results as live placement.
 5. Inspect light/dark and 200% browser zoom; verify the connection drawer remains
@@ -33,8 +36,23 @@ No real messages or mailbox credentials used in this QA run.
 | Changed frontend and transitive backend types | Passed | .context/qa/mailbox-health-20261027/tsconfig.json; final tsc exit 0 |
 | Focused ESLint / diff whitespace | Passed | Changed email UI/transport/settings modules; git diff --check |
 | Existing email tool regression tests | Passed | 32 existing tests, convex/lib/emailTools.test.ts; no tests added |
-| Real connection / SMTP send / quota / reply / attachments | Not run | Requires live credentials and isolated live seed verification; no live readiness claim |
+| Five real mailbox connections / initial reply checks | Passed locally | All five passed SMTP/IMAP verification, persisted after reload and show Last checked; all-five-connected.png |
+| SMTP send / quota / reply import / attachments | Not run live | Requires isolated live seed verification; no live readiness claim |
 | Unknown / partial recipient acceptance | Reviewed, not live-tested | Unknown sends never replay. Sent-folder reconciliation only for a single-recipient envelope; multi-recipient unknowns stay locked |
+
+## Primitive UI revision
+
+The revised page uses ListToolbar pill tabs, the shared Table and StatusTag,
+PillButton actions and SettingsDrawer. Marketing panels and editable sending
+limits are removed. Five mailboxes can connect to one operator, with one explicit
+default sender. Connections remain paused until resumed. Mailbox management and
+default selection are restricted to the owning operator.
+
+Scoped TypeScript and focused ESLint both passed after the revision. Local Convex
+reported functions ready at 12:08:07. Helium verified all five rows and the empty
+Zac connection drawer; evidence: connection-ready.png. After action-time approval, all five addresses passed SMTP/IMAP verification
+and persisted as Connected after reload. Zac remains the selected default;
+all five remain paused and outgoing delivery remains captured.
 
 ## Instantly reservation
 
@@ -51,7 +69,8 @@ instantly-reserved-warmups.png and per-campaign removal screenshots.
 ## Fixture / operational notes
 
 One synthetic local placement observation remains, explicitly labelled as QA.
-No live credentials, real messages, production deploys or database migrations.
+Five live mailbox credentials are encrypted in the local backend. No real
+messages sent, production deploys or database migrations.
 Local services remain running through npm run conductor:dev. Temporary typecheck
 configuration and screenshots remain gitignored.
 

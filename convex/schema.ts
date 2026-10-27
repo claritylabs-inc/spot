@@ -3514,6 +3514,7 @@ export default defineSchema({
   }),
   operatorSendingMailboxes: defineTable({
     address: v.string(),
+    isDefault: v.optional(v.boolean()),
     ownerUserId: v.id("users"),
     encryptedPassword: v.string(),
     enabled: v.boolean(),

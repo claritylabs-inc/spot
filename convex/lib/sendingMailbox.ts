@@ -8,7 +8,15 @@ export const SENDING_ADDRESSES = [
   "dan",
   "adyan",
 ].map((name) => `${name}@${SENDING_DOMAIN}`);
+export const DEFAULT_MAILBOX_DAILY_LIMIT = 20;
+export const DEFAULT_MAILBOX_GAP_MINUTES = 10;
 export const MAILBOX_PREFIX = "gmail:";
+export function mailboxConnectionsAllowed() {
+  return (
+    process.env.EMAIL_DELIVERY_MODE !== "capture" ||
+    process.env.OPERATOR_MAILBOX_CONNECTIONS_ENABLED === "true"
+  );
+}
 export function isGoogleMailbox(id: string) {
   return id.startsWith(MAILBOX_PREFIX);
 }
@@ -19,7 +27,9 @@ export async function sendingMailboxFor(
   const rows = await ctx.db
     .query("operatorSendingMailboxes")
     .withIndex("by_ownerUserId", (q) => q.eq("ownerUserId", userId))
-    .take(2);
+    .take(6);
+  const defaults = rows.filter((row) => row.isDefault);
+  if (defaults.length === 1) return defaults[0];
   if (rows.length > 1)
     throw new Error(
       "Multiple sending mailboxes assigned. Review Email health.",

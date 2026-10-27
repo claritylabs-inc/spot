@@ -8,8 +8,10 @@ import {
   imapFor,
   syncGoogleMailbox,
 } from "../lib/googleMailboxTransport";
-import { SENDING_ADDRESSES } from "../lib/sendingMailbox";
-import { getEmailDeliveryMode } from "../lib/resend";
+import {
+  SENDING_ADDRESSES,
+  mailboxConnectionsAllowed,
+} from "../lib/sendingMailbox";
 
 export const connect = action({
   args: { address: v.string(), appPassword: v.string() },
@@ -21,7 +23,7 @@ export const connect = action({
     const address = args.address.trim().toLowerCase();
     if (!SENDING_ADDRESSES.includes(address))
       throw new Error("Choose an insurewithspot.com mailbox.");
-    if (getEmailDeliveryMode() === "capture")
+    if (!mailboxConnectionsAllowed())
       return {
         ok: false,
         message:
@@ -70,8 +72,7 @@ export const connect = action({
     }
     return {
       ok: true,
-      message:
-        "Connection verified. Review sending limits, then resume this mailbox to use it for new emails.",
+      message: "Mailbox connected. Sending remains paused until you resume it.",
     };
   },
 });
@@ -81,7 +82,7 @@ export const sync = action({
     await ctx.runQuery(internal.operatorSendingMailboxes.authorize, {});
     if (!SENDING_ADDRESSES.includes(args.address))
       throw new Error("Unknown mailbox");
-    if (getEmailDeliveryMode() === "capture")
+    if (!mailboxConnectionsAllowed())
       return {
         ok: false,
         message: "Local capture mode: external mailbox sync is disabled.",
@@ -102,7 +103,7 @@ export const sync = action({
 export const syncAll = internalAction({
   args: {},
   handler: async (ctx) => {
-    if (getEmailDeliveryMode() === "capture") return;
+    if (!mailboxConnectionsAllowed()) return;
     for (const address of SENDING_ADDRESSES) {
       try {
         await syncGoogleMailbox(ctx, address);

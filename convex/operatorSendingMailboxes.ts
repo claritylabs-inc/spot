@@ -14,7 +14,13 @@ import {
   requireOperatorForUser,
 } from "./lib/operatorIdentity";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
-import { MAILBOX_PREFIX, SENDING_ADDRESSES } from "./lib/sendingMailbox";
+import {
+  MAILBOX_PREFIX,
+  SENDING_ADDRESSES,
+  DEFAULT_MAILBOX_DAILY_LIMIT,
+  DEFAULT_MAILBOX_GAP_MINUTES,
+  mailboxConnectionsAllowed,
+} from "./lib/sendingMailbox";
 import { emitOperatorNotification } from "./lib/operatorNotify";
 import { mirrorTeamEmail } from "./lib/teamEmailStore";
 import {
@@ -29,7 +35,7 @@ const today = () => dayjs().tz("America/Toronto").format("YYYY-MM-DD");
 export const overview = query({
   args: {},
   handler: async (ctx) => {
-    await requireOperator(ctx);
+    const operator = await requireOperator(ctx);
     const boxes = await ctx.db.query("operatorSendingMailboxes").take(6);
     const mailboxes = await Promise.all(
       SENDING_ADDRESSES.map(async (address) => {
@@ -39,6 +45,8 @@ export const overview = query({
             address,
             id: null,
             owner: null,
+            isDefault: false,
+            canManage: true,
             enabled: false,
             verifiedAt: null,
             dailyLimit: 20,
@@ -58,6 +66,11 @@ export const overview = query({
           address,
           id: box._id,
           owner: owner?.name ?? owner?.email ?? "Operator",
+          isDefault:
+            box.isDefault ??
+            boxes.filter((row) => row.ownerUserId === box.ownerUserId)
+              .length === 1,
+          canManage: box.ownerUserId === operator.user._id,
           enabled: box.enabled,
           verifiedAt: box.verifiedAt,
           dailyLimit: box.dailyLimit,
@@ -83,6 +96,8 @@ export const overview = query({
       placementChecks,
       mailboxes,
       capture: process.env.EMAIL_DELIVERY_MODE === "capture",
+      connectionsEnabled: mailboxConnectionsAllowed(),
+      encryptionReady: !!process.env.EMAIL_CONNECTIONS_ENCRYPTION_KEY,
       attempts: attempts.map((row) => ({
         id: row._id,
         provider: row.provider,
@@ -103,36 +118,31 @@ export const pause = mutation({
     const operator = await requireOperator(ctx);
     await assertNoOperatorImpersonation(ctx, operator.user._id);
     const box = await ctx.db.get(args.id);
-    if (!box) throw new Error("Mailbox not found");
+    if (!box || box.ownerUserId !== operator.user._id)
+      throw new Error("Mailbox is not connected to your operator account");
     await ctx.db.patch(box._id, {
       enabled: !args.paused,
       updatedAt: dayjs().valueOf(),
     });
   },
 });
-export const setLimits = mutation({
-  args: {
-    id: v.id("operatorSendingMailboxes"),
-    dailyLimit: v.number(),
-    gapMinutes: v.number(),
-  },
+export const makeDefault = mutation({
+  args: { id: v.id("operatorSendingMailboxes") },
   handler: async (ctx, args) => {
-    const operator = await requireOperator(ctx);
-    await assertNoOperatorImpersonation(ctx, operator.user._id);
-    if (
-      !Number.isInteger(args.dailyLimit) ||
-      args.dailyLimit < 1 ||
-      args.dailyLimit > 30 ||
-      !Number.isInteger(args.gapMinutes) ||
-      args.gapMinutes < 5 ||
-      args.gapMinutes > 60
-    )
-      throw new Error("Use 1–30 emails/day and a 5–60 minute gap.");
-    await ctx.db.patch(args.id, {
-      dailyLimit: args.dailyLimit,
-      gapMinutes: args.gapMinutes,
-      updatedAt: dayjs().valueOf(),
-    });
+    const op = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, op.user._id);
+    const box = await ctx.db.get(args.id);
+    if (!box || box.ownerUserId !== op.user._id)
+      throw new Error("Choose a mailbox connected to your operator account.");
+    const rows = await ctx.db
+      .query("operatorSendingMailboxes")
+      .withIndex("by_ownerUserId", (q) => q.eq("ownerUserId", op.user._id))
+      .take(6);
+    for (const row of rows)
+      await ctx.db.patch(row._id, {
+        isDefault: row._id === box._id,
+        updatedAt: dayjs().valueOf(),
+      });
   },
 });
 export const authorize = internalQuery({
@@ -180,14 +190,9 @@ export const saveConnection = internalMutation({
     const owned = await ctx.db
       .query("operatorSendingMailboxes")
       .withIndex("by_ownerUserId", (q) => q.eq("ownerUserId", args.ownerUserId))
-      .take(2);
-    if (
-      owned.some((row) => row.address !== args.address) ||
-      (existing && existing.ownerUserId !== args.ownerUserId)
-    )
-      throw new Error(
-        "Mailbox already assigned; keep one sending mailbox per operator.",
-      );
+      .take(6);
+    if (existing && existing.ownerUserId !== args.ownerUserId)
+      throw new Error("Mailbox is connected to another operator.");
     const now = dayjs().valueOf();
     if (existing) {
       await ctx.db.patch(existing._id, {
@@ -201,8 +206,9 @@ export const saveConnection = internalMutation({
     return await ctx.db.insert("operatorSendingMailboxes", {
       ...args,
       enabled: false,
-      dailyLimit: 20,
-      gapMinutes: 10,
+      isDefault: owned.length === 0,
+      dailyLimit: DEFAULT_MAILBOX_DAILY_LIMIT,
+      gapMinutes: DEFAULT_MAILBOX_GAP_MINUTES,
       verifiedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -254,11 +260,14 @@ export const claimDraft = internalMutation({
     const now = dayjs().valueOf();
     const day = today();
     const count = health?.day === day ? health.acceptedToday : 0;
-    if (count >= box.dailyLimit || (health && health.nextSendAt > now))
+    if (
+      count >= DEFAULT_MAILBOX_DAILY_LIMIT ||
+      (health && health.nextSendAt > now)
+    )
       return {
         status: "throttled" as const,
         retryAt:
-          count >= box.dailyLimit
+          count >= DEFAULT_MAILBOX_DAILY_LIMIT
             ? dayjs()
                 .tz("America/Toronto")
                 .add(1, "day")
@@ -272,7 +281,9 @@ export const claimDraft = internalMutation({
       day,
       acceptedToday: count + 1,
       lastAttemptAt: now,
-      nextSendAt: dayjs(now).add(box.gapMinutes, "minute").valueOf(),
+      nextSendAt: dayjs(now)
+        .add(DEFAULT_MAILBOX_GAP_MINUTES, "minute")
+        .valueOf(),
     };
     if (health) await ctx.db.patch(health._id, patch);
     else

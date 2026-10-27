@@ -182,11 +182,10 @@ placement and from SMTP acceptance. No Instantly warmup score is synthesized.
 The UI uses shared primitives and followed display state; password inputs are
 private and never returned by public queries.
 
-`operatorSendingMailboxes` stores one encrypted Google app password per operator
+`operatorSendingMailboxes` stores one encrypted Google app password per connected
 mailbox, using the existing `EMAIL_CONNECTIONS_ENCRYPTION_KEY` AES-GCM helper.
 Connection verifies fixed Google SMTP/TLS and IMAP/TLS endpoints and starts paused.
-Operators connect their own mailbox; they cannot replace another operator's
-connection. `operatorMailboxHealth` separates sending errors from sync errors.
+Operators can connect several mailboxes and select one default sender; they cannot replace another operator's connection. `operatorMailboxHealth` separates sending errors from sync errors.
 `operatorEmailPlacementChecks` stores manually observed seed checks, not a derived
 promise of deliverability. No migration or production activation is performed by
 local validation.
@@ -203,7 +202,7 @@ not automatically relaunched from a different address.
 
 Google drafts have durable immutable payloads and deterministic RFC Message-IDs.
 The quota mutation reserves a slot before SMTP (20/day, 10 minute gap by default;
-configurable 1–30/day and 5–60 minute gap). Counters include unresolved reservations,
+fixed defaults, without per-mailbox controls in the UI). Counters include unresolved reservations,
 not just accepted messages. Provider outreach quota refusals and paused mailboxes reschedule without
 burning delivery retry attempts. Reconnecting an existing mailbox also pauses it
 until the operator explicitly resumes sending. Manual replies retain a saved draft when throttled.
@@ -228,7 +227,7 @@ to this transport yet. New conversations without reply references and delivery
 reports without a matching reference require review in Gmail. This limitation must
 be checked before live rollout.
 
-Local capture makes no SMTP, IMAP or connection calls. Live prerequisites are:
+Local capture always prevents outbound delivery. By default it also prevents SMTP verification and IMAP reads; `OPERATOR_MAILBOX_CONNECTIONS_ENABLED=true` explicitly enables connection verification and reply synchronization independently, allowing connected-inbox QA without sending real mail. Live prerequisites are:
 review/release through CI, explicit mailbox access, verified connection, realistic
 Gmail and Microsoft seed sends with authentication/placement checks, a reply with
 an attachment, and review of existing approved sequences before resuming traffic.
