@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { InlineCollectionActionsContext } from "@/components/ui/inline-fields";
 import { Loader2, Plus, RefreshCw, StickyNote } from "lucide-react";
 
@@ -13,7 +13,6 @@ import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { api } from "@/convex/_generated/api";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AppShellPortal } from "@/components/app-shell-slots";
-import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import {
   Tabs,
   TabsList,
@@ -90,7 +89,6 @@ function LoadedProfile({
     >
   >;
 }) {
-  const router = useRouter();
   const update = useMutation(api.orgWiki.updateBusinessProfileForOperator);
   const [profileTab, setProfileTab] = useFollowedState(
     `clients:${client._id}:profile:tab`,
@@ -238,15 +236,6 @@ function LoadedProfile({
               <Plus className="size-4" />
               Add location
             </PillButton>
-          )}
-          {!readOnly && (
-            <DeleteOrganizationButton
-              orgId={client._id}
-              name={client.name}
-              type="client"
-              beforeDelete={async () => true}
-              onDeleted={() => router.push("/operator/clients")}
-            />
           )}
         </AppShellPortal>
       }

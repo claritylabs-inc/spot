@@ -3,7 +3,7 @@
 import { normalizeWebsiteUrl } from "@claritylabs-inc/ui/lib/website";
 import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Loader2 } from "lucide-react";
@@ -24,7 +24,6 @@ import {
   brokerRegionCountry,
 } from "@/convex/lib/brokerProfileValidation";
 import { AcordLinesField } from "@/components/broker-network/acord-lines-field";
-import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -93,7 +92,6 @@ export default function OperatorBrokerPage() {
 }
 
 function BrokerEditor({ row }: { row: BrokerRow }) {
-  const router = useRouter();
   const update = useMutation(api.brokerProfiles.upsert);
   const office = row.profile?.officeAddress;
   const [tab, setTab] = useFollowedState(`brokers:${row.broker._id}:tab`, "profile");
@@ -187,13 +185,6 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
     >
       <AppShellPortal slot="actions">
         <AutoSaveStatus status={autoSave.status} />
-        <DeleteOrganizationButton
-          orgId={row.broker._id}
-          name={row.broker.name}
-          type="broker"
-          beforeDelete={autoSave.saveNow}
-          onDeleted={() => router.push("/operator/brokers")}
-        />
       </AppShellPortal>
       <Tabs value={tab} onValueChange={setTab} className="gap-5">
         <TabsList variant="pill" aria-label="Provider">

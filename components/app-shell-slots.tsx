@@ -11,6 +11,8 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { usePathname } from "next/navigation";
+import { PillButtonIconOnlyProvider } from "@/components/ui/pill-button";
 
 export type AppShellSlotName =
   | "actions"
@@ -114,6 +116,8 @@ export function useOptionalAppShellSlots() {
 }
 
 /** Renders `children` into a shell slot; the latest mounted claim wins. */
+const INDIVIDUAL_CLIENT_PAGE = /^\/operator\/clients\/[^/]+/;
+
 export function AppShellPortal({
   slot,
   active = true,
@@ -132,7 +136,16 @@ export function AppShellPortal({
     return () => release(slot, token);
   }, [active, claim, release, slot, token]);
 
+  const pathname = usePathname();
   const target = targets[slot];
   if (!active || !target || owners[slot].at(-1) !== token) return null;
-  return createPortal(children, target);
+  // Individual client pages keep their top-bar actions icon-only.
+  const iconOnly =
+    slot === "actions" && INDIVIDUAL_CLIENT_PAGE.test(pathname ?? "");
+  return createPortal(
+    <PillButtonIconOnlyProvider enabled={iconOnly}>
+      {children}
+    </PillButtonIconOnlyProvider>,
+    target,
+  );
 }
