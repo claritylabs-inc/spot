@@ -1,6 +1,8 @@
 # Operator team email
 
-Operators share one inbox in Spot. A configured `insurewithspot.com` Google Workspace mailbox supplies that operator’s correspondence transport; otherwise the existing Resend inbox on `TEAM_EMAIL_DOMAIN` remains in use. Full names and the `Name / Spot` signature remain dynamic. The default production domain is `team.spot.insure`; isolated
+Operators share one inbox in Spot. Operator correspondence sends through the
+existing Resend inbox on `TEAM_EMAIL_DOMAIN`. Full names and the `Name / Spot`
+signature remain dynamic. The default production domain is `team.spot.insure`; isolated
 development uses `team.dev.spot.insure`. Client agents retain their agent-domain
 addresses. The shared command address is `agent@<TEAM_EMAIL_DOMAIN>`.
 
@@ -172,62 +174,31 @@ The repeatable local acceptance cases and actual outcomes belong in
 restricted delivery with an explicit allowlist. Never test through Vercel previews.
 
 
-## Dedicated Google mailboxes and health
+## Retired Google sender rollout
 
-`/operator/email-health` lists the five reserved `insurewithspot.com` addresses,
-connection ownership, pause state, bounded daily allowance, minimum gap, sync
-errors and the latest 100 delivery attempts. A separate Placement checks tab
-records operator-observed seed results, explicitly distinguished from provider-wide
-placement and from SMTP acceptance. No Instantly warmup score is synthesized.
-The UI uses shared primitives and followed display state; password inputs are
-private and never returned by public queries.
+On 2026-10-27 operator sending returned to Resend. The operator’s saved team
+localpart and `TEAM_EMAIL_DOMAIN` select the sender, without consulting Google
+connections. Profile uses the original Team address controls. `/operator/email-health`
+redirects to Inbox; the Google connect, default-sender and resume APIs and SMTP
+implementation are removed. The `spot-mailer` dependency is removed.
 
-`operatorSendingMailboxes` stores one encrypted Google app password per connected
-mailbox, using the existing `EMAIL_CONNECTIONS_ENCRYPTION_KEY` AES-GCM helper.
-Connection verifies fixed Google SMTP/TLS and IMAP/TLS endpoints and starts paused.
-Operators can connect several mailboxes and select one default sender; they cannot replace another operator's connection. `operatorMailboxHealth` separates sending errors from sync errors.
-`operatorEmailPlacementChecks` stores manually observed seed checks, not a derived
-promise of deliverability. No migration or production activation is performed by
-local validation.
+The existing `operatorSendingMailboxes`, `operatorMailboxHealth`,
+`operatorMailboxDrafts` and `operatorEmailPlacementChecks` tables remain compatible
+with stored production data. They are not sending configuration. Existing encrypted
+connections support only read-only IMAP sync for replies to already-sent Spot mail
+and positive Sent-folder reconciliation of unresolved single-recipient drafts.
+The two-minute legacy reply sync remains; it does not send mail or import unrelated
+mailbox traffic. No schema/data migration or credential deletion is needed.
 
-`convex/lib/mailboxTransport.ts` routes correspondence drafts and sends to Resend
-or `googleMailboxTransport.ts`; authentication/OTP, command mail and notifications
-retain their existing channels. Sender identity fingerprints, exact approvals,
-attachment validation, restricted delivery, test-recipient rewriting, and final
-actor/target checks remain above the transport. Selecting a mailbox changes the
-identity fingerprint: old drafts and in-flight outreach must be reviewed again.
-A paused configured mailbox blocks sending; it never falls back silently to Resend.
-Retired Resend inboxes remain known for inbound replies. Existing sequences are
-not automatically relaunched from a different address.
+`mailboxTransport.ts` rejects create, send and reply attempts for `gmail:` inbox IDs.
+Historical Google reads remain available, and unknown sends remain locked instead
+of being replayed via Resend. Old Google inbox records stay known for inbound mail;
+ensuring the operator’s Resend inbox reactivates its prior record and retires the
+Google inbox. Reply planning excludes retired Google senders and uses the existing
+cross-inbox quoted reply behavior where necessary. Existing approved initial
+outreach and saved drafts retain their identity checks; the switch never authorizes
+a send under a different From address. Already-sent messages and shared inbox
+history are retained.
 
-Google drafts have durable immutable payloads and deterministic RFC Message-IDs.
-The quota mutation reserves a slot before SMTP (20/day, 10 minute gap by default;
-fixed defaults, without per-mailbox controls in the UI). Counters include unresolved reservations,
-not just accepted messages. Provider outreach quota refusals and paused mailboxes reschedule without
-burning delivery retry attempts. Reconnecting an existing mailbox also pauses it
-until the operator explicitly resumes sending. Manual replies retain a saved draft when throttled.
-Warmups and messages outside Spot are not counted; allow for those separately.
-
-A crash/SMTP error after the send boundary leaves the draft locked as unknown.
-A matching Message-ID in Gmail's Sent folder can reconcile a single-recipient send
-to sent; absence never authorizes a replay. A multi-recipient unknown remains
-locked for manual review because a Sent copy cannot exclude partial rejection. An accepted SMTP response is not proof of inbox delivery.
-Partial recipient rejection is also held for reconciliation.
-
-A two-minute cron reads new INBOX and Spam UIDs without marking messages read.
-Only reference chains matching a Spot message owned by the connected operator
-are imported. Initial connection starts from the current UID, leaving historical,
-unrelated and warmup mail alone. The bounded scan handles 25 new messages per folder
-per run, rejects oversized MIME with a visible error, stores up to 20 attachments,
-and reuses canonical team-email mirroring, file ownership and notification paths.
-RFC Message-ID reply references preserve Google conversations. Matched inbound
-messages conservatively stop follow-ups and hand off to an operator, including
-automatic acknowledgments; the richer Resend auto-reply classifier is not applied
-to this transport yet. New conversations without reply references and delivery
-reports without a matching reference require review in Gmail. This limitation must
-be checked before live rollout.
-
-Local capture always prevents outbound delivery. By default it also prevents SMTP verification and IMAP reads; `OPERATOR_MAILBOX_CONNECTIONS_ENABLED=true` explicitly enables connection verification and reply synchronization independently, allowing connected-inbox QA without sending real mail. Live prerequisites are:
-review/release through CI, explicit mailbox access, verified connection, realistic
-Gmail and Microsoft seed sends with authentication/placement checks, a reply with
-an attachment, and review of existing approved sequences before resuming traffic.
+This restores transport, not the reputation or placement of the Resend sending
+domain. Instantly campaigns and warmups are not changed by this rollback.

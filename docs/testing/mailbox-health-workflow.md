@@ -1,3 +1,7 @@
+> Historical rollout evidence: Google SMTP sending was retired on 2026-10-27.
+> Current sending uses Resend; see [team email](../architecture/team-email.md).
+> These cases describe the original rollout, not current activation instructions.
+
 # Dedicated mailbox delivery and health
 
 Actor: authenticated operator without impersonation. Local target: localhost:8080,
