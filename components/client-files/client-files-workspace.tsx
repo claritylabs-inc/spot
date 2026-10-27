@@ -780,7 +780,7 @@ export function ClientFilesWorkspace({
   useEffect(() => {
     const panelKind = panel?.kind;
     let node: ReactNode = null;
-    if (panelKind === "upload") {
+    if (panelKind === "upload" && canUpload) {
       node = (
         <ClientFileUploadPanel
           clientOrgId={clientOrgId}
@@ -811,6 +811,7 @@ export function ClientFilesWorkspace({
   }, [
     canEdit,
     canManage,
+    canUpload,
     clientOrgId,
     closeRightPanel,
     onRightPanel,
@@ -870,7 +871,6 @@ export function ClientFilesWorkspace({
           inline: true,
           allLabel: "Active",
           options: [
-            { value: "active", label: "Active" },
             { value: "archived", label: "Archived" },
           ],
           value: archivedView ? ["archived"] : [],
