@@ -29,6 +29,7 @@ import {
   OperationalItem,
   OperationalPanel,
 } from "@claritylabs-inc/ui/components/operational-panel";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   Select,
@@ -610,6 +611,15 @@ export function ClientFileUploadPanel({
   );
 }
 
+function UploadFilesButton({ onClick }: { onClick: () => void }) {
+  return (
+    <PillButton type="button" onClick={onClick}>
+      <Upload className="size-3.5" />
+      Upload files
+    </PillButton>
+  );
+}
+
 export function ClientFilesWorkspace({
   clientOrgId,
   readOnly = false,
@@ -621,6 +631,10 @@ export function ClientFilesWorkspace({
   readOnly?: boolean;
   /** Page-level notice (such as read-only), shown under the view tabs. */
   notice?: ReactNode;
+  /**
+   * Navbar actions for a workspace without view tabs. With tabs, the upload
+   * action lives in the selected tab's toolbar and this receives `null`.
+   */
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
 }) {
@@ -666,7 +680,11 @@ export function ClientFilesWorkspace({
     () => (policyRows ?? []) as ClientFilePolicyOption[],
     [policyRows],
   );
-  const operatorView = Boolean(result?.canManage);
+  // Both lists must settle before the tab set, and so the action home, is known.
+  const listsReady = activeResult !== undefined && archivedResult !== undefined;
+  const operatorView = Boolean(activeResult?.canManage);
+  const hasViewTabs =
+    listsReady && operatorView && (hasSharedFiles || hasArchivedFiles);
   const canManage = operatorView && !readOnly;
   const archivedView = view === "archived";
   const canEdit = canManage && !archivedView;
@@ -677,17 +695,13 @@ export function ClientFilesWorkspace({
     setPanel({ kind: "upload" });
   }, [closePdf, setPanel]);
 
+  const navbarUpload = listsReady && canManage && !hasViewTabs;
   useEffect(() => {
     onActions?.(
-      canManage ? (
-        <PillButton type="button" onClick={openUpload}>
-          <Upload className="size-3.5" />
-          Upload files
-        </PillButton>
-      ) : null,
+      navbarUpload ? <UploadFilesButton onClick={openUpload} /> : null,
     );
     return () => onActions?.(null);
-  }, [canManage, onActions, openUpload]);
+  }, [navbarUpload, onActions, openUpload]);
 
   const preview = useCallback(
     (file: ClientFileRow) => {
@@ -744,7 +758,9 @@ export function ClientFilesWorkspace({
         />
       );
     } else if (panelFile && panelKind === "image") {
-      node = <ClientFileImagePanel file={panelFile} onClose={closeRightPanel} />;
+      node = (
+        <ClientFileImagePanel file={panelFile} onClose={closeRightPanel} />
+      );
     } else if (panelFile && panelKind === "edit") {
       node = (
         <ClientFileEditor
@@ -787,7 +803,7 @@ export function ClientFilesWorkspace({
     CLIENT_FILE_SORT_COLUMNS,
   );
 
-  if (result === undefined || policyRows === undefined) {
+  if (!listsReady || result === undefined || policyRows === undefined) {
     return (
       <OperationalPanel
         as="div"
@@ -798,42 +814,49 @@ export function ClientFilesWorkspace({
     );
   }
 
-  const visibilityTabs =
-    operatorView && (hasSharedFiles || hasArchivedFiles || result.truncated) ? (
-      <>
-        {hasSharedFiles || hasArchivedFiles ? (
-          <PageTabsRail
-            value={view}
-            onValueChange={(value) => {
-              if (
-                value === "private" ||
-                value === "shared" ||
-                value === "archived"
-              ) {
-                setView(value);
-              }
-            }}
-          >
-            <PageTabsList aria-label="Client files view">
-              <TabsTrigger value="private">Private</TabsTrigger>
-              {hasSharedFiles ? (
-                <TabsTrigger value="shared">Shared</TabsTrigger>
-              ) : null}
-              {hasArchivedFiles ? (
-                <TabsTrigger value="archived">Archived</TabsTrigger>
-              ) : null}
-            </PageTabsList>
-          </PageTabsRail>
+  const viewTabs = hasViewTabs ? (
+    <PageTabsRail
+      value={view}
+      onValueChange={(value) => {
+        if (value === "private" || value === "shared" || value === "archived") {
+          setView(value);
+        }
+      }}
+    >
+      <PageTabsList aria-label="Client files view">
+        <TabsTrigger value="private">Private</TabsTrigger>
+        {hasSharedFiles ? (
+          <TabsTrigger value="shared">Shared</TabsTrigger>
         ) : null}
+        {hasArchivedFiles ? (
+          <TabsTrigger value="archived">Archived</TabsTrigger>
+        ) : null}
+      </PageTabsList>
+    </PageTabsRail>
+  ) : null;
+  const viewActions =
+    hasViewTabs && (canManage || result.truncated) ? (
+      <>
         {result.truncated ? (
-          <p
+          <span
             className={`text-muted-foreground ${typeStyle("caption.default")}`}
           >
             Showing the latest 200
-          </p>
+          </span>
         ) : null}
+        {canManage ? <UploadFilesButton onClick={openUpload} /> : null}
       </>
     ) : null;
+  const viewToolbar = viewActions ? (
+    <ListToolbar
+      followKey={`clients:${clientOrgId}:files`}
+      tabsPlacement="navbar"
+      tabs={viewTabs}
+      actions={viewActions}
+    />
+  ) : (
+    viewTabs
+  );
 
   if (visibleFiles.length === 0) {
     if (!operatorView) {
@@ -847,14 +870,12 @@ export function ClientFilesWorkspace({
     }
     return (
       <div className="space-y-4">
-        {visibilityTabs}
+        {viewToolbar}
         {notice}
         <EmptyStateCard
           title={CLIENT_FILE_EMPTY_STATES[view].title}
           description={CLIENT_FILE_EMPTY_STATES[view].description}
           icon={<FileText className="size-6" />}
-          actionLabel={canEdit ? "Upload files" : undefined}
-          onAction={canEdit ? openUpload : undefined}
         />
       </div>
     );
@@ -862,7 +883,7 @@ export function ClientFilesWorkspace({
 
   return (
     <div className="space-y-4">
-      {visibilityTabs}
+      {viewToolbar}
       {notice}
       <OperationalPanel as="div">
         <Table storageKey="spot:client-files:columns">
