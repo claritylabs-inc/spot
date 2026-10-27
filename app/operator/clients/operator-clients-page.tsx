@@ -8,8 +8,6 @@ import { api } from "@/convex/_generated/api";
 import { AppShell } from "@/components/app-shell";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { ListToolbar } from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
@@ -221,22 +219,22 @@ export default function OperatorClientsScreen() {
       <main className="flex w-full flex-col gap-4">
         <ListToolbar
           followKey="clients:list"
-          tabsPlacement="navbar"
-          tabs={
-            <PageTabsRail
-              value={filter}
-              onValueChange={(value) => {
-                if (value) setFilter(value as ClientFilter);
-              }}
-            >
-              <PageTabsList aria-label="Client status">
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="active">Active</TabsTrigger>
-                <TabsTrigger value="limited">Limited</TabsTrigger>
-                <TabsTrigger value="archived">Archived</TabsTrigger>
-              </PageTabsList>
-            </PageTabsRail>
-          }
+          filters={[
+            {
+              id: "status",
+              label: "Status",
+              inline: true,
+              value: filter === "all" ? [] : [filter],
+              onChange: (value) =>
+                setFilter((value[0] ?? "all") as ClientFilter),
+              options: [
+                { value: "active", label: "Active" },
+                { value: "limited", label: "Limited" },
+                { value: "archived", label: "Archived" },
+              ],
+            },
+          ]}
+          onClearFilters={() => setFilter("all")}
           search={{
             value: search,
             onChange: setSearch,
