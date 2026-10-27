@@ -138,9 +138,10 @@ export function useOperatorPresenceHeartbeat({
   }, [leave]);
 }
 
-/** Operators with a recent heartbeat, including the viewer (`self`). */
-export function useActiveOperators() {
-  const rows = useQuery(api.operatorPresence.listActive, {});
+const NO_ROWS: never[] = [];
+
+/** Rows whose heartbeat is still within the active window. */
+function useRecent<T extends { lastSeen: number }>(rows: T[] | undefined) {
   const [now, setNow] = useState(() => dayjs().valueOf());
   useEffect(() => {
     const interval = window.setInterval(
@@ -150,9 +151,19 @@ export function useActiveOperators() {
     return () => window.clearInterval(interval);
   }, []);
   return useMemo(
-    () => (rows ?? []).filter((row) => row.lastSeen > now - ACTIVE_WINDOW_MS),
+    () => rows?.filter((row) => row.lastSeen > now - ACTIVE_WINDOW_MS),
     [now, rows],
   );
+}
+
+/** Operators with a recent heartbeat, including the viewer (`self`). */
+export function useActiveOperators() {
+  return useRecent(useQuery(api.operatorPresence.listActive, {})) ?? NO_ROWS;
+}
+
+/** Active operators with their open chat and email titles; undefined while loading. */
+export function useOperatorSessions() {
+  return useRecent(useQuery(api.operatorPresence.listSessions, {}));
 }
 
 export type ActiveOperator = ReturnType<typeof useActiveOperators>[number];
@@ -176,4 +187,28 @@ export function groupEmailThreadPeople(operators: ActiveOperator[]) {
 /** Whether anyone in `people` is mid-reply on their thread. */
 export function replyingOperators(people: ActiveOperator[] | undefined) {
   return (people ?? []).filter((operator) => operator.activity === "replying");
+}
+
+// The followed operator is shared so the top bar and the team page drive the
+// same follow session.
+let followingUserId: Id<"users"> | null = null;
+const followingListeners = new Set<() => void>();
+
+function subscribeFollowing(listener: () => void) {
+  followingListeners.add(listener);
+  return () => void followingListeners.delete(listener);
+}
+
+export function setFollowingOperator(userId: Id<"users"> | null) {
+  followingUserId = userId;
+  followingListeners.forEach((listener) => listener());
+}
+
+/** The operator this one follows, set from the top bar or the team page. */
+export function useFollowingOperator() {
+  return useSyncExternalStore(
+    subscribeFollowing,
+    () => followingUserId,
+    () => null,
+  );
 }

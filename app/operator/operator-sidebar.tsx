@@ -13,6 +13,7 @@ import {
   Radio,
   User,
   Users,
+  UsersRound,
 } from "lucide-react";
 import {
   SectionHeader,
@@ -60,6 +61,13 @@ export function OperatorSidebar({
               shortcut={commandShortcut("j")}
             />
           ) : null}
+          <SidebarMenuItem
+            href="/operator/team"
+            label="Team"
+            icon={UsersRound}
+            active={active === "team"}
+            collapsed={collapsed}
+          />
           <SectionHeader label="Accounts" collapsed={collapsed} />
           <div className="flex flex-col gap-1">
             <SidebarMenuItem
