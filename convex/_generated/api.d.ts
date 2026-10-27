@@ -337,6 +337,7 @@ import type * as lib_operatorEmailAuthentication from "../lib/operatorEmailAuthe
 import type * as lib_operatorEmailTools from "../lib/operatorEmailTools.js";
 import type * as lib_operatorEntitySuggestions from "../lib/operatorEntitySuggestions.js";
 import type * as lib_operatorGlobalSuggestions from "../lib/operatorGlobalSuggestions.js";
+import type * as lib_operatorGmail from "../lib/operatorGmail.js";
 import type * as lib_operatorIdentity from "../lib/operatorIdentity.js";
 import type * as lib_operatorInbox from "../lib/operatorInbox.js";
 import type * as lib_operatorInboxSend from "../lib/operatorInboxSend.js";
@@ -510,6 +511,7 @@ import type * as operatorCursors from "../operatorCursors.js";
 import type * as operatorEmail from "../operatorEmail.js";
 import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
 import type * as operatorEmailSettings from "../operatorEmailSettings.js";
+import type * as operatorGmail from "../operatorGmail.js";
 import type * as operatorGoogleWorkspace from "../operatorGoogleWorkspace.js";
 import type * as operatorImessage from "../operatorImessage.js";
 import type * as operatorInboxes from "../operatorInboxes.js";
@@ -914,6 +916,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorEmailTools": typeof lib_operatorEmailTools;
   "lib/operatorEntitySuggestions": typeof lib_operatorEntitySuggestions;
   "lib/operatorGlobalSuggestions": typeof lib_operatorGlobalSuggestions;
+  "lib/operatorGmail": typeof lib_operatorGmail;
   "lib/operatorIdentity": typeof lib_operatorIdentity;
   "lib/operatorInbox": typeof lib_operatorInbox;
   "lib/operatorInboxSend": typeof lib_operatorInboxSend;
@@ -1087,6 +1090,7 @@ declare const fullApi: ApiFromModules<{
   operatorEmail: typeof operatorEmail;
   operatorEmailDrafts: typeof operatorEmailDrafts;
   operatorEmailSettings: typeof operatorEmailSettings;
+  operatorGmail: typeof operatorGmail;
   operatorGoogleWorkspace: typeof operatorGoogleWorkspace;
   operatorImessage: typeof operatorImessage;
   operatorInboxes: typeof operatorInboxes;
