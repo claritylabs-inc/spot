@@ -16,6 +16,7 @@ import {
 import { api } from "@/convex/_generated/api";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
+import type { OperatorToolIntegration } from "@/convex/lib/operatorAgentToolRegistry";
 import type { OperatorExecutionPlan } from "@/convex/lib/operatorRunPlan";
 import {
   toolActivityCategory,
@@ -79,32 +80,30 @@ export type ChatActivity = {
   }[];
 };
 
-const STAGE_LABELS: Record<
-  StageName,
-  { running: string; completed: string }
-> = {
-  assessing_workflow: {
-    running: "Checking workflow",
-    completed: "Workflow checked",
-  },
-  planning: { running: "Creating plan", completed: "Plan ready" },
-  preparing_context: {
-    running: "Preparing context",
-    completed: "Context ready",
-  },
-  screening_request: {
-    running: "Checking request",
-    completed: "Request checked",
-  },
-  selecting_tools: {
-    running: "Loading tools",
-    completed: "Tools loaded",
-  },
-  selecting_model: {
-    running: "Selecting model",
-    completed: "Model selected",
-  },
-};
+const STAGE_LABELS: Record<StageName, { running: string; completed: string }> =
+  {
+    assessing_workflow: {
+      running: "Checking workflow",
+      completed: "Workflow checked",
+    },
+    planning: { running: "Creating plan", completed: "Plan ready" },
+    preparing_context: {
+      running: "Preparing context",
+      completed: "Context ready",
+    },
+    screening_request: {
+      running: "Checking request",
+      completed: "Request checked",
+    },
+    selecting_tools: {
+      running: "Loading tools",
+      completed: "Tools loaded",
+    },
+    selecting_model: {
+      running: "Selecting model",
+      completed: "Model selected",
+    },
+  };
 
 export function stageLabel(stage: StageName) {
   return STAGE_LABELS[stage].running;
@@ -336,7 +335,6 @@ function WebsiteTargets({ websites }: { websites: string[] }) {
   );
 }
 
-
 /** Brand marks render as 16px circles with a hairline edge. */
 const BRAND_ICON = "size-4 shrink-0 rounded-full ring-1 ring-border-subtle";
 /* Marks drawn edge to edge on a transparent canvas are inset so the circle
@@ -345,12 +343,47 @@ const PADDED_BRAND_ICON = `${BRAND_ICON} p-[2px]`;
 
 type ToolBrand = { key: string; icon: ReactNode };
 
+/** Integrations with a fixed brand; MCP servers resolve their own logo. */
+const INTEGRATION_BRANDS: Partial<
+  Record<OperatorToolIntegration, { name: string; website: string }>
+> = {
+  google_workspace: { name: "Gmail", website: "mail.google.com" },
+  slack: { name: "Slack", website: "slack.com" },
+  mapbox: { name: "Mapbox", website: "mapbox.com" },
+};
+
+/** An approval decided on the row of the call that is waiting for it. */
+export type ToolApproval = {
+  toolName: string;
+  /** What the call will do, shown under the row. */
+  detail?: ReactNode;
+  /** Decision buttons, shown beside the row's status. */
+  actions: ReactNode;
+};
+
+/** True when a call in this activity is waiting on approval for `toolName`. */
+export function hasAwaitingApprovalCall(
+  activity: ChatActivity | undefined,
+  toolName: string,
+) {
+  return Boolean(
+    activity?.tools.some(
+      (tool) =>
+        tool.status === "awaiting_approval" && tool.toolName === toolName,
+    ),
+  );
+}
+
 /**
- * The mark of what a call touched: the MCP server, the website, Slack, or
- * Spot for platform records. A category glyph remains only where no brand
- * is known (mail provider, unscoped web search, client-side tools).
+ * The mark of what a call touched: the MCP server, the website, the
+ * integration (Gmail, Slack, Mapbox), or Spot for platform records. A
+ * category glyph remains only where no brand is known (client mailboxes,
+ * unscoped web search, client-side tools).
  */
-function toolBrand(call: ActivityCall): ToolBrand {
+function toolBrand(
+  call: ActivityCall,
+  integration?: OperatorToolIntegration,
+): ToolBrand {
   const mcp = mcpInput(call);
   if (mcp)
     return {
@@ -370,13 +403,14 @@ function toolBrand(call: ActivityCall): ToolBrand {
         />
       ),
     };
-  if (call.name === "send_operator_slack_message")
+  const brand = integration ? INTEGRATION_BRANDS[integration] : undefined;
+  if (brand)
     return {
-      key: "slack",
+      key: `integration:${integration}`,
       icon: (
         <OrgBrandIcon
-          name="Slack"
-          website="slack.com"
+          name={brand.name}
+          website={brand.website}
           size="xs"
           className={PADDED_BRAND_ICON}
         />
@@ -486,54 +520,83 @@ function CallStatus({
   );
 }
 
-function CallRow({ call, working }: { call: ActivityCall; working: boolean }) {
+function CallRow({
+  call,
+  integration,
+  approval,
+  working,
+}: {
+  call: ActivityCall;
+  integration?: OperatorToolIntegration;
+  approval?: ToolApproval;
+  working: boolean;
+}) {
   const mcp = mcpInput(call);
   const context = callContext(call);
   const running = working && call.status === "running";
   const label = toolActivityLabel(
     mcp?.toolName ?? call.name,
-    running ? "progressive" : "past",
+    running
+      ? "progressive"
+      : call.status === "awaiting_approval" ||
+          call.status === "skipped" ||
+          (!working && call.status === "requested")
+        ? "imperative"
+        : "past",
   );
   return (
-    <li className="flex min-w-0 items-start gap-2.5 px-3.5 py-2">
-      <span className="flex h-6 shrink-0 items-center">
-        {toolBrand(call).icon}
-      </span>
-      <div
-        className={cn(
-          "flex min-h-6 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1",
-          typeStyle("body.default"),
-        )}
-      >
-        <span
+    <li className="px-3.5 py-2">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <span className="flex h-6 shrink-0 items-center">
+          {toolBrand(call, integration).icon}
+        </span>
+        <div
           className={cn(
-            "break-words",
-            running ? "text-shimmer" : "text-foreground",
+            "flex min-h-6 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1",
+            typeStyle("body.default"),
           )}
         >
-          {label}
+          <span
+            className={cn(
+              "break-words",
+              running ? "text-shimmer" : "text-foreground",
+            )}
+          >
+            {label}
+          </span>
+          {context?.websites?.length ? (
+            <WebsiteTargets websites={context.websites} />
+          ) : context && !context.website ? (
+            <span
+              title={context.label}
+              className="line-clamp-2 min-w-0 break-words text-muted-foreground/70"
+            >
+              {context.label}
+            </span>
+          ) : context ? (
+            <span
+              title={context.label}
+              className="max-w-full truncate text-muted-foreground/70"
+            >
+              {context.label}
+            </span>
+          ) : null}
+        </div>
+        <span className="flex min-h-6 shrink-0 items-center gap-2">
+          <CallStatus status={call.status} working={working} />
+          {approval?.actions}
         </span>
-        {context?.websites?.length ? (
-          <WebsiteTargets websites={context.websites} />
-        ) : context && !context.website ? (
-          <span
-            title={context.label}
-            className="line-clamp-2 min-w-0 break-words text-muted-foreground/70"
-          >
-            {context.label}
-          </span>
-        ) : context ? (
-          <span
-            title={context.label}
-            className="max-w-full truncate text-muted-foreground/70"
-          >
-            {context.label}
-          </span>
-        ) : null}
       </div>
-      <span className="flex h-6 shrink-0 items-center">
-        <CallStatus status={call.status} working={working} />
-      </span>
+      {approval?.detail ? (
+        <div
+          className={cn(
+            "mt-1.5 ml-6.5 border-l-2 border-border pl-2.5 break-words text-muted-foreground",
+            typeStyle("caption.default"),
+          )}
+        >
+          {approval.detail}
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -569,11 +632,16 @@ export function ToolActivityCard({
   tools = [],
   toolCalls,
   activity,
+  integrations,
+  approval,
   working,
 }: {
   tools?: string[];
   toolCalls?: ActivityCall[];
   activity?: ChatActivity;
+  /** External system each tool reaches, by tool name. */
+  integrations?: Record<string, OperatorToolIntegration>;
+  approval?: ToolApproval;
   working: boolean;
 }) {
   const contentId = useId();
@@ -584,7 +652,7 @@ export function ToolActivityCard({
   const brands = [
     ...new Map(
       calls.map((call) => {
-        const brand = toolBrand(call);
+        const brand = toolBrand(call, integrations?.[call.name]);
         return [brand.key, brand] as const;
       }),
     ).values(),
@@ -595,6 +663,13 @@ export function ToolActivityCard({
   const needsApproval = calls.some(
     (call) => call.status === "awaiting_approval",
   );
+  const approvalIndex = approval
+    ? calls.findLastIndex(
+        (call) =>
+          call.status === "awaiting_approval" &&
+          call.name === approval.toolName,
+      )
+    : -1;
   const summary = active
     ? `${toolActivityLabel(mcpInput(active)?.toolName ?? active.name, "progressive")}…`
     : needsApproval
@@ -641,6 +716,8 @@ export function ToolActivityCard({
             <CallRow
               key={`${call.name}-${index}`}
               call={call}
+              integration={integrations?.[call.name]}
+              approval={index === approvalIndex ? approval : undefined}
               working={working}
             />
           ))}

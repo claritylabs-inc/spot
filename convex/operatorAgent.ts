@@ -102,6 +102,7 @@ import {
   operatorUpdateFieldLabel,
   operatorUpdateValue,
   type OperatorAgentToolName,
+  type OperatorToolIntegration,
   type OperatorToolRole,
 } from "./lib/operatorAgentToolRegistry";
 import type { OperatorGoogleWorkspaceToolName } from "./lib/googleWorkspace";
@@ -5081,6 +5082,18 @@ export const clearThreadContext = mutation({
   },
 });
 
+/** External system each named tool reaches, for branded activity rows. */
+function toolIntegrations(names: string[]) {
+  const integrations: Record<string, OperatorToolIntegration> = {};
+  for (const name of new Set(names)) {
+    const integration = isOperatorAgentToolName(name)
+      ? getOperatorAgentToolSpec(name).integration
+      : undefined;
+    if (integration) integrations[name] = integration;
+  }
+  return integrations;
+}
+
 export const getThread = query({
   args: { threadId: v.id("operatorAgentThreads") },
   handler: async (ctx, args) => {
@@ -5162,6 +5175,12 @@ export const getThread = query({
                   ? getOperatorAgentToolSpec(call.name).effect
                   : undefined,
               })),
+              toolIntegrations: toolIntegrations([
+                ...(message.toolCalls ?? []).map((call) => call.name),
+                ...(message.activity?.tools ?? []).map(
+                  (tool) => tool.toolName,
+                ),
+              ]),
             };
           }),
         )

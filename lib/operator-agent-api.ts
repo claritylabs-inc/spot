@@ -3,6 +3,7 @@ import { makeFunctionReference } from "convex/server";
 import type { Infer } from "convex/values";
 import type { operatorEmailContentValidator } from "@/convex/lib/threadMessageValidators";
 import type { MessageActivity } from "@/convex/lib/messageActivity";
+import type { OperatorToolIntegration } from "@/convex/lib/operatorAgentToolRegistry";
 import type { RouterJobFailure } from "@/convex/lib/routerJobFailure";
 
 import type { Id } from "@/convex/_generated/dataModel";
@@ -49,6 +50,8 @@ type BackendMessage = {
   replyToMessageId?: string;
   dedupeKey?: string;
   toolCalls?: OperatorAgentToolCall[];
+  /** External system each tool reaches (operator registry), by tool name. */
+  toolIntegrations?: Record<string, OperatorToolIntegration>;
   attachments?: BackendAttachment[];
 };
 
@@ -171,6 +174,7 @@ export type OperatorAgentConfirmation = {
   approvalMode?: "automatic";
   id: string;
   promptMessageId: string;
+  toolName: string;
   title: string;
   destructive: boolean;
   state: BackendConfirmation["state"];
@@ -200,6 +204,8 @@ export type OperatorAgentMessage = {
   replyToMessageId?: string;
   isDirectToolRequest?: boolean;
   toolCalls?: OperatorAgentToolCall[];
+  /** External system each tool reaches (operator registry), by tool name. */
+  toolIntegrations?: Record<string, OperatorToolIntegration>;
   attachments?: BackendAttachment[];
 };
 
@@ -326,6 +332,7 @@ function normalizeConfirmation(
   return {
     id: confirmation._id,
     promptMessageId: confirmation.promptMessageId,
+    toolName: confirmation.toolName,
     title: confirmation.summary,
     approvalMode: confirmation.approvalMode,
     destructive: confirmation.effect === "destructive",
@@ -384,6 +391,7 @@ export function normalizeOperatorAgentThread(
         message.role === "user" &&
         Boolean(message.dedupeKey?.startsWith("operator-tool:")),
       toolCalls: message.toolCalls,
+      toolIntegrations: message.toolIntegrations,
       attachments: message.attachments,
     })),
     activeRun: value.activeRun !== null,
