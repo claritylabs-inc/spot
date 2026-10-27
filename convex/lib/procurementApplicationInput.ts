@@ -157,12 +157,12 @@ export const procurementApplicationToolInputSchema = z
     expectedUpdatedAt: z.number(),
     answers: strictObjectField(applicationAnswers, {
       label: "answers",
-      hint: `Changed text fields only. Keys: ${fieldNames(applicationAnswers).join(", ")}.`,
+      hint: `Changed text keys only: ${fieldNames(applicationAnswers).join(", ")}.`,
       named: APPLICATION_NAMES,
     }),
     details: strictObjectField(applicationDetails, {
       label: "details",
-      hint: `Changed typed sections only; each supplied key replaces its whole value. Keys: ${fieldNames(applicationDetails).join(", ")}. Shapes and coverage limit keys: describe_record_fields.`,
+      hint: `Changed sections only (replaces whole value). Keys: ${fieldNames(applicationDetails).join(", ")}. See describe_record_fields.`,
       named: APPLICATION_NAMES,
     }),
   })

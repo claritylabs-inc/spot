@@ -4,6 +4,7 @@ import {
   OPERATOR_AGENT_TOOL_REGISTRY,
   type OperatorToolRole,
 } from "./operatorAgentToolRegistry";
+import { compactToolJsonSchema } from "./toolJsonSchema";
 
 function oauthSecuritySchemes(scopes: Array<"read" | "write">) {
   return [{ type: "oauth2" as const, scopes }];
@@ -25,10 +26,9 @@ export function buildOperatorMcpToolCatalog(args: {
     })
     .map(([name, spec]) => {
       const write = spec.effect !== "read";
-      const inputSchema = z.toJSONSchema(spec.inputSchema, {
-        io: "input",
-      }) as Record<string, unknown>;
-      delete inputSchema.$schema;
+      const inputSchema = compactToolJsonSchema(
+        z.toJSONSchema(spec.inputSchema, { io: "input" }),
+      ) as Record<string, unknown>;
       inputSchema.properties = {
         ...((inputSchema.properties as Record<string, unknown> | undefined) ??
           {}),

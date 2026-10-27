@@ -135,12 +135,12 @@ export const companyProfileToolInputSchema = z
     expectedVersion: z.number().int().min(0),
     answers: strictObjectField(companyAnswers, {
       label: "answers",
-      hint: `Changed text fields only. Keys: ${fieldNames(companyAnswers).join(", ")}.`,
+      hint: `Changed text keys only: ${fieldNames(companyAnswers).join(", ")}.`,
       named: COMPANY_PROFILE_SHAPES.named,
     }),
     details: strictObjectField(companyDetails, {
       label: "details",
-      hint: `Changed typed sections only; each supplied key replaces its whole value. Keys: ${fieldNames(companyDetails).join(", ")}. Shapes: describe_record_fields.`,
+      hint: `Changed sections only (replaces whole value). Keys: ${fieldNames(companyDetails).join(", ")}. See describe_record_fields.`,
       named: COMPANY_PROFILE_SHAPES.named,
     }),
   })

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { OMITTABLE_JSON_SCHEMA_MARKER } from "./toolJsonSchema";
 
 /**
  * Keeps heavy nested inputs out of the per-turn tool catalog. The model-facing
@@ -199,6 +200,7 @@ export function strictObjectField<TSchema extends AnyZod>(
     .record(z.string(), z.unknown())
     .describe(options.hint)
     .nullish()
+    .meta({ [OMITTABLE_JSON_SCHEMA_MARKER]: true })
     .transform((value, context): z.output<TSchema> | undefined => {
       if (value == null) return undefined;
       const result = strict.safeParse(dropNestedNulls(value));
