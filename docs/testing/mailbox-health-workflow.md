@@ -120,3 +120,12 @@ Artifacts: .context/qa/mailbox-live-20261027/ (gitignored): gmail-delivered.png,
 auth-pass.png, spot-reply-imported.png, gmail-roundtrip-complete.png,
 spot-roundtrip-complete.png and health-restricted.png. Full CI lint, typecheck,
 test and root checks passed on 0f938abe before this documentation-only checkpoint.
+
+## Mailbox connection ownership presentation
+
+The mailbox table no longer repeats the connecting operator’s name beneath each
+address. Connection details retain that useful ownership fact as a clearly
+labelled Connected by row, using OperationalLabelValueRow. Helium verified all
+five clean mailbox rows and Zac’s Connected by details locally; the sender
+address, default selection and dynamic signature behavior are unchanged.
+Evidence: .context/qa/mailbox-production-20261027/connected-by-details.png.
