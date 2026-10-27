@@ -17,7 +17,7 @@ import { isOperatorEmailDraft } from "./lib/actionConfirmationFingerprint";
 import { extractEmailAddress } from "./lib/emailAddress";
 import { gmailAddressOf, isOperatorGmailInbox } from "./lib/operatorGmail";
 import { normalizeProcurementSubject } from "./lib/procurement";
-import { MAX_EMAIL_ATTACHMENTS, teamTargetProblem, bindTeamInboxThread } from "./lib/teamEmailStore";
+import { MAX_EMAIL_ATTACHMENTS, teamTargetProblem, bindTeamInboxThread, outboundByMessageId } from "./lib/teamEmailStore";
 import {
   cancelDraftOrPendingEmail,
   invalidateDraftConfirmations,
@@ -713,12 +713,7 @@ export const recordOperatorInboxSentInternal = internalMutation({
         )
         .first()) ??
       (attempt.inboxId && isOperatorGmailInbox(attempt.inboxId)
-        ? (
-            await ctx.db
-              .query("teamEmailMessages")
-              .withIndex("by_messageId", (q) => q.eq("messageId", args.emailId))
-              .take(5)
-          ).find((message) => message.direction === "outbound") ?? null
+        ? await outboundByMessageId(ctx, args.emailId)
         : null);
     const provisional = existingMessage
       ? await ctx.db.get(existingMessage.threadId)

@@ -88,9 +88,15 @@ import {
   createProcurementOutreachByOperator,
   requireDirectOperatorWrite,
 } from "./procurementRequests";
-import { mirrorTeamEmail, type NewTeamThread, type TeamThread } from "./lib/teamEmailStore";
+import {
+  messageIdForms,
+  mirrorTeamEmail,
+  outboundByMessageId,
+  type NewTeamThread,
+  type TeamThread,
+} from "./lib/teamEmailStore";
 import { emitOperatorNotification } from "./lib/operatorNotify";
-import { normalizeGmailAddress } from "./lib/operatorGmail";
+import { gmailConnectionForAddress } from "./gmailInbound";
 import { mintPacketLinkForOperator, previewBrokerPacket } from "./procurementPacket";
 import { providerOutreachSummary, type OutreachSummaryItem } from "./lib/providerOutreachSummary";
 import { submittedIntakeApplication } from "../lib/intake-application";
@@ -3685,32 +3691,26 @@ export const applyInboundInboxEmailInternal = internalMutation({
   },
 });
 
-/** The active connected Gmail for `address`, or null. */
-async function activeGmailConnection(ctx: MutationCtx, address: string) {
-  const rows = await ctx.db
-    .query("operatorGmailConnections")
-    .withIndex("by_address", (q) => q.eq("address", normalizeGmailAddress(address)))
-    .take(20);
-  return rows.find((row) => row.status === "active") ?? null;
-}
-
-/** Whether a Gmail send is drafted under this Message-ID but its message is not stored yet. */
-async function gmailSendAwaitsRecord(ctx: MutationCtx, messageId: string | undefined) {
-  if (!messageId) return false;
-  const stored = await ctx.db
-    .query("teamEmailMessages")
-    .withIndex("by_messageId", (q) => q.eq("messageId", messageId.slice(0, 500)))
-    .take(5);
-  if (stored.some((message) => message.direction === "outbound")) return false;
-  const bare = messageId.replace(/^<|>$/g, "");
-  for (const candidate of new Set([messageId, bare, `<${bare}>`])) {
+/**
+ * Whether a Gmail send of this connection is drafted under the Message-ID
+ * (positive evidence that a copy is the operator's own send), and whether its
+ * outbound message is already stored.
+ */
+async function gmailOwnSend(
+  ctx: MutationCtx,
+  connectionId: Id<"operatorGmailConnections">,
+  messageId: string | undefined,
+) {
+  if (!messageId) return { drafted: false, stored: false };
+  for (const form of messageIdForms(messageId)) {
     const draft = await ctx.db
       .query("operatorGmailDrafts")
-      .withIndex("by_messageId", (q) => q.eq("messageId", candidate))
+      .withIndex("by_messageId", (q) => q.eq("messageId", form))
       .first();
-    if (draft) return true;
+    if (draft?.connectionId === connectionId)
+      return { drafted: true, stored: (await outboundByMessageId(ctx, messageId)) !== null };
   }
-  return false;
+  return { drafted: false, stored: false };
 }
 
 /**
@@ -3728,6 +3728,8 @@ export const applyTeamInboxEmailInternal = internalMutation({
     email: inboxEmailValidator,
     /** Uploaded attachment bytes; empty while Resend exposes no byte download. */
     attachments: v.optional(v.array(inboxAttachmentValidator)),
+    /** The action verified aligned DKIM on the original MIME for a From that is a connected Gmail. */
+    gmailSenderAuthenticated: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const now = dayjs().valueOf();
@@ -3751,19 +3753,29 @@ export const applyTeamInboxEmailInternal = internalMutation({
     const route = await routeInboxEvent(ctx, event);
     if (route.kind !== "thread" && route.kind !== "team") return await reject("event_route_mismatch");
     const received = event.eventType === "inbox.email.received";
-    // An operator's own Gmail send captured by CC/BCC is their outbound mail,
-    // not something to answer. Other mail on a Gmail conversation stays inbound.
-    const gmailSender = received
-      ? await activeGmailConnection(ctx, args.email.fromEmail)
+    // A From that is a connected Gmail (any status: only sending needs `active`)
+    // marks the conversation, but the From header is unauthenticated: it is the
+    // operator's own outbound copy only with proof (a drafted send of that
+    // connection under this Message-ID, or aligned DKIM checked by the action).
+    // Anything else, and every other message on a Gmail conversation, stays inbound.
+    const senderConnection = received
+      ? await gmailConnectionForAddress(ctx, args.email.fromEmail)
       : null;
+    const sendRecord = senderConnection
+      ? await gmailOwnSend(ctx, senderConnection._id, args.email.messageId)
+      : null;
+    const gmailSender =
+      senderConnection && (sendRecord?.drafted || args.gmailSenderAuthenticated)
+        ? senderConnection
+        : null;
     const inbound = received && !gmailSender;
-    const gmailAddress = gmailSender
-      ? gmailSender.address
+    const gmailAddress = senderConnection
+      ? senderConnection.address
       : received
         ? (
             await Promise.all(
               [...args.email.toAddresses, ...args.email.ccAddresses].map((address) =>
-                activeGmailConnection(ctx, address),
+                gmailConnectionForAddress(ctx, address),
               ),
             )
           ).find(Boolean)?.address
@@ -3771,15 +3783,12 @@ export const applyTeamInboxEmailInternal = internalMutation({
     // Mail from one of our own inboxes may be the copy of a send whose
     // `inbox.email.sent` has not landed to supply its Message-ID: wait briefly,
     // then treat it as ordinary (internal) mail. The sender address only delays.
-    // A Gmail copy waits only while its send is recorded as a draft but its
-    // message is not stored yet.
+    // A Gmail copy waits only while its send is drafted but its message is not stored yet.
     if (
       route.kind === "team" &&
       received &&
       now - event.createdAt < SENT_EVENT_BINDING_WAIT_MS &&
-      ((gmailSender
-        ? await gmailSendAwaitsRecord(ctx, args.email.messageId)
-        : false) ||
+      ((gmailSender && sendRecord?.drafted && !sendRecord.stored) ||
         (await ctx.db
           .query("operatorOutreachInboxes")
           .withIndex("by_emailAddress", (q) =>

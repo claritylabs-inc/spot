@@ -169,6 +169,43 @@ async function unfiledUploadRoom(ctx: Ctx, threadId: Id<"teamEmailThreads">) {
 }
 
 // ---------------------------------------------------------------------------
+// RFC Message-IDs
+// ---------------------------------------------------------------------------
+
+const MAX_MESSAGE_ID_CHARS = 500;
+
+export const asRfcId = (messageId: string) =>
+  messageId.startsWith("<") ? messageId : `<${messageId}>`;
+
+/**
+ * Every stored spelling an RFC Message-ID may take: Spot records its own sends
+ * bracketed, Resend reports the header as it arrived (bracketed or bare, and
+ * possibly re-cased). Each form is a candidate for a `by_messageId` lookup.
+ */
+export function messageIdForms(messageId: string) {
+  const bare = messageId.trim().replace(/^<|>$/g, "");
+  if (!bare) return [];
+  return [
+    ...new Set(
+      [bare, bare.toLowerCase()].flatMap((form) => [`<${form}>`, form]),
+    ),
+  ].map((form) => form.slice(0, MAX_MESSAGE_ID_CHARS));
+}
+
+/** The outbound message stored under this Message-ID in any spelling, or null. */
+export async function outboundByMessageId(ctx: Ctx, messageId: string) {
+  for (const form of messageIdForms(messageId)) {
+    const stored = await ctx.db
+      .query("teamEmailMessages")
+      .withIndex("by_messageId", (q) => q.eq("messageId", form))
+      .take(5);
+    const own = stored.find((message) => message.direction === "outbound");
+    if (own) return own;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Inbox bindings and live-target validation
 // ---------------------------------------------------------------------------
 
@@ -337,11 +374,7 @@ export async function mirrorTeamEmail(
     return { duplicate: true, threadId: duplicate.threadId, messageId: duplicate._id, internalCopy: false };
   }
   if ((args.direction === "inbound" || args.ownCopyCheck) && email.messageId) {
-    const sent = await ctx.db
-      .query("teamEmailMessages")
-      .withIndex("by_messageId", (q) => q.eq("messageId", email.messageId!.slice(0, 500)))
-      .take(5);
-    const own = sent.find((message) => message.direction === "outbound");
+    const own = await outboundByMessageId(ctx, email.messageId);
     if (own) {
       await dropUploads();
       if (args.inboxId && args.resendThreadId)
