@@ -41,6 +41,8 @@ type ActivityCall = {
   input?: string;
   status?: ActivityStatus;
   context?: ToolActivityContext;
+  startedAt?: number;
+  endedAt?: number;
 };
 
 export type ActivityStatus =
@@ -70,6 +72,9 @@ export type ChatActivity = {
     toolName: string;
     status: ActivityStatus;
     context?: ToolActivityContext;
+    /** Observed running → settled span; absent on older messages. */
+    startedAt?: number;
+    endedAt?: number;
   }[];
   stages?: {
     stageId: string;
@@ -77,6 +82,8 @@ export type ChatActivity = {
     status: StageStatus;
     /** Concise factual outcome; absent on older messages. */
     detail?: string;
+    startedAt?: number;
+    endedAt?: number;
   }[];
 };
 
@@ -242,6 +249,16 @@ function callContext(call: ActivityCall): ToolActivityContext | undefined {
  * authoritative for what ran; observed entries add status and any call the
  * audit missed (for example one that failed or never started).
  */
+function observedCall(tool: ChatActivity["tools"][number]): ActivityCall {
+  return {
+    name: tool.toolName,
+    status: tool.status,
+    context: tool.context,
+    startedAt: tool.startedAt,
+    endedAt: tool.endedAt,
+  };
+}
+
 function mergeCalls(
   tools: string[],
   toolCalls: ActivityCall[] | undefined,
@@ -254,28 +271,53 @@ function mergeCalls(
       const index = pool.findIndex((tool) => tool.toolName === call.name);
       if (index < 0) return call;
       const [match] = pool.splice(index, 1);
-      return { ...call, status: match.status, context: match.context };
+      return { ...call, ...observedCall(match), name: call.name };
     });
-    return [
-      ...merged,
-      ...pool.map((tool) => ({
-        name: tool.toolName,
-        status: tool.status,
-        context: tool.context,
-      })),
-    ];
+    return [...merged, ...pool.map(observedCall)];
   }
   const seen = new Set(observed.map((tool) => tool.toolName));
   return [
-    ...observed.map((tool) => ({
-      name: tool.toolName,
-      status: tool.status,
-      context: tool.context,
-    })),
+    ...observed.map(observedCall),
     ...[...new Set(tools)]
       .filter((name) => !seen.has(name))
       .map((name) => ({ name })),
   ];
+}
+
+/** Compact elapsed time: "0.4s", "12s", "1m 5s". */
+function formatDuration(ms: number) {
+  if (ms < 10_000) return `${Math.max(0.1, ms / 1000).toFixed(1)}s`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+/** Span from the first observed start to the last observed end. */
+function spanOf(entries: { startedAt?: number; endedAt?: number }[]) {
+  const timed = entries.filter(
+    (entry) => entry.startedAt !== undefined && entry.endedAt !== undefined,
+  );
+  if (timed.length === 0) return;
+  return (
+    Math.max(...timed.map((entry) => entry.endedAt!)) -
+    Math.min(...timed.map((entry) => entry.startedAt!))
+  );
+}
+
+function Duration({
+  entries,
+}: {
+  entries: { startedAt?: number; endedAt?: number }[];
+}) {
+  const span = spanOf(entries);
+  if (span === undefined) return null;
+  return (
+    <span
+      className={`shrink-0 text-muted-foreground/70 ${typeStyle("data.numeric")}`}
+    >
+      {formatDuration(span)}
+    </span>
+  );
 }
 
 function hostOf(website: string) {
@@ -583,6 +625,7 @@ function CallRow({
           ) : null}
         </div>
         <span className="flex min-h-6 shrink-0 items-center gap-2">
+          <Duration entries={[call]} />
           <CallStatus status={call.status} working={working} />
           {approval?.actions}
         </span>
@@ -709,6 +752,11 @@ export function ToolActivityCard({
         <span className="sr-only">
           {calls.length} tool call{calls.length === 1 ? "" : "s"}
         </span>
+        {working ? null : (
+          <span className="ml-auto pr-[22px]">
+            <Duration entries={calls} />
+          </span>
+        )}
       </button>
       <DisclosurePanel id={contentId} open={open}>
         <ul className="border-t border-border py-1">
@@ -747,6 +795,17 @@ export function ThinkingTrace({
     ? stages.findLast(({ entry }) => entry.status === "running")
     : undefined;
   const steps = executionPlan?.steps.length ?? 0;
+  // Stages recur between tool steps (model selection), so their own spans
+  // are summed rather than measured end to end.
+  const timedStages = (activity?.stages ?? []).filter(
+    (entry) => entry.startedAt !== undefined && entry.endedAt !== undefined,
+  );
+  const thoughtFor = timedStages.length
+    ? timedStages.reduce(
+        (total, entry) => total + entry.endedAt! - entry.startedAt!,
+        0,
+      )
+    : undefined;
   return (
     <ChatDisclosure
       working={Boolean(running)}
@@ -762,7 +821,9 @@ export function ThinkingTrace({
           </span>
         ) : (
           <span>
-            Thought process
+            {thoughtFor === undefined
+              ? "Thought process"
+              : `Thought for ${formatDuration(thoughtFor)}`}
             {steps ? ` · ${steps}-step plan` : ""}
           </span>
         )

@@ -44,6 +44,14 @@ export const messageActivityStageValidator = v.object({
   ),
 });
 
+/** Set by `applyMessageActivity` from its clock, never by the caller. */
+const activityTimingFields = {
+  /** When the entry was first observed running. */
+  startedAt: v.optional(v.number()),
+  /** When an entry observed running settled. */
+  endedAt: v.optional(v.number()),
+};
+
 export const messageActivityValidator = v.object({
   phase: v.union(v.literal("model"), v.literal("tools")),
   tools: v.array(
@@ -52,9 +60,17 @@ export const messageActivityValidator = v.object({
       toolName: v.string(),
       status: messageActivityToolStatusValidator,
       context: v.optional(toolContextValidator),
+      ...activityTimingFields,
     }),
   ),
-  stages: v.optional(v.array(messageActivityStageValidator)),
+  stages: v.optional(
+    v.array(
+      v.object({
+        ...messageActivityStageValidator.fields,
+        ...activityTimingFields,
+      }),
+    ),
+  ),
   updatedAt: v.number(),
 });
 
@@ -83,6 +99,7 @@ export const messageActivityUpdateValidator = v.union(
 );
 
 export type MessageActivityStage = Infer<typeof messageActivityStageValidator>;
+type StoredActivityStage = NonNullable<MessageActivity["stages"]>[number];
 export type MessageActivity = Infer<typeof messageActivityValidator>;
 export type MessageActivityUpdate = Infer<
   typeof messageActivityUpdateValidator
@@ -176,12 +193,22 @@ export function applyMessageActivity(
       return current ?? { phase, tools, updatedAt: now };
     stages = [...(stages ?? [])];
     const index = stages.findIndex((stage) => stage.stageId === update.stageId);
-    const entry = {
+    const startedAt =
+      index < 0
+        ? update.status === "running"
+          ? now
+          : undefined
+        : stages[index].startedAt;
+    const entry: StoredActivityStage = {
       stageId: update.stageId,
       stage: update.stage,
       status: update.status,
       ...(update.detail?.trim()
         ? { detail: update.detail.trim().slice(0, 200) }
+        : {}),
+      ...(startedAt !== undefined ? { startedAt } : {}),
+      ...(startedAt !== undefined && update.status !== "running"
+        ? { endedAt: now }
         : {}),
     };
     if (index < 0) stages.push(entry);
@@ -223,15 +250,25 @@ export function applyMessageActivity(
         toolName: update.toolName,
         status: update.status,
         ...(context ? { context } : {}),
+        ...(update.status === "running" ? { startedAt: now } : {}),
       });
     } else if (
       !SETTLED.has(tools[index].status) ||
       SETTLED.has(update.status)
     ) {
+      const previous = tools[index];
+      const startedAt =
+        previous.startedAt ?? (update.status === "running" ? now : undefined);
       tools[index] = {
-        ...tools[index],
+        ...previous,
         status: update.status,
         ...(context ? { context } : {}),
+        ...(startedAt !== undefined ? { startedAt } : {}),
+        ...(startedAt !== undefined &&
+        previous.endedAt === undefined &&
+        SETTLED.has(update.status)
+          ? { endedAt: now }
+          : {}),
       };
     }
   }

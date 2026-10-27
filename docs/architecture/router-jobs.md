@@ -120,7 +120,10 @@ operator and client web renderers share these preferences. Show thinking display
 the live status line, a text-only thought-process trace (decision stages and the
 plan when one was made; a workflow check that found no plan is hidden), and a
 separate tool card with one branded row per call, not raw reasoning or tool
-payloads.
+payloads. `applyMessageActivity` stamps `startedAt` when an entry is first
+observed running and `endedAt` when it settles, from its own clock; rows show
+call durations, the card the end-to-end span, and the trace the summed stage
+time ("Thought for 3s"). Older entries without timestamps show none.
 
 `threadMessages.activity` and `operatorAgentMessages.activity` hold bounded live
 status and a retained activity history: a `model`/`tools` phase, up to 32 decision
