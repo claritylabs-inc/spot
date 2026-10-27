@@ -58,6 +58,7 @@ async function withBoundedRetry<T>(
     } catch (error) {
       const retryable =
         isResendInboxError(error) &&
+        error.code !== "mailbox_throttled" &&
         (error.outcome === "transient" ||
           (options.retryUnknown && error.outcome === "unknown"));
       if (!retryable || attempt >= MAX_TRANSIENT_RETRIES) throw error;
@@ -74,7 +75,10 @@ async function withBoundedRetry<T>(
 /** What the person sees: only text written for them, never a provider body or internal message. */
 function userMessage(error: unknown): string {
   if (isResendInboxError(error)) {
-    if(error.code === "mailbox_throttled") return "This mailbox has reached its sending allowance. The draft is saved; try again after its next sending time in Email health.";
+    if (error.code === "mailbox_throttled") {
+      const minutes = Math.max(1, Math.ceil((error.retryAfterMs ?? 60000) / 60000));
+      return `This mailbox is pacing its sends. Your draft is saved. Try again in about ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
+    }
     if(error.code === "mailbox_paused") return "This mailbox is paused. Resume it in Email health before sending.";
     return error.outcome === "blocked"
       ? "Restricted email delivery blocked a recipient of this email."

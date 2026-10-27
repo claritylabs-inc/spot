@@ -78,3 +78,28 @@ Memory pressure interrupted earlier checks. Our duplicate/heavy processes and
 local services were stopped without touching the unrelated Ollama workload. After
 the user freed memory, services were restarted normally and interrupted local
 checks were rerun. Earlier incomplete/OOM checks are not counted as passes.
+
+## Controlled live seed workflow — October 27
+
+Actor: Zac, local operator UI. Sender: zac@insurewithspot.com, selected and
+resumed; other four mailboxes remain paused. Recipient-restricted mode permits
+only Zac's three existing seed addresses; no redirect or domain-wide allowlist.
+
+1. Send a synthetic provider-style message from Spot to the seed addresses.
+2. Verify the Gmail message, original authentication and observed folder.
+3. Reply from Gmail with a synthetic attachment; check replies in Spot and verify
+   conversation threading and the attachment.
+4. Reply from Spot and verify receipt; exercise default pacing rather than bypass it.
+5. Record placement honestly, restore capture after the live run and retain the
+   local server. Release code through a reviewed PR and CI; do not copy local
+   mailbox credentials into production implicitly.
+
+Pending outcomes are recorded below after browser verification.
+
+Observed so far: the 12:50 PM seed arrived in personal Gmail Inbox within one
+second. Show original reported SPF PASS, aligned DKIM PASS for insurewithspot.com
+and DMARC PASS. A Gmail reply with spot-mailbox-test.txt arrived in the original
+Spot thread; opening the stored attachment showed the exact synthetic marker.
+An immediate Spot reply was refused by the ten-minute pacing guard with its
+editable draft retained. The refusal now skips futile short retries and reports
+the approximate wait directly. Return-send verification follows once due.
