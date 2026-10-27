@@ -2061,7 +2061,7 @@ async function recordDeliveryAttempt(
   await ctx.db.insert("emailDeliveryAttempts", {
     orgId: args.sequence.clientOrgId,
     source: "procurement_outreach",
-    provider: "resend",
+    provider: args.sequence.inboxId?.startsWith("gmail:") ? "google_smtp" : "resend",
     deliveryMode: process.env.EMAIL_DELIVERY_MODE,
     status: args.status,
     recipientEmail: args.sequence.recipient.email,
@@ -2634,12 +2634,29 @@ async function recordSentFacts(
     updatedAt: now,
   });
   await recordDeliveryAttempt(ctx, {
-    sequence,
+    sequence: {...sequence,inboxId:outcome.inboxId??sequence.inboxId},
     step,
     status: "sent",
     now,
     resendEmailId: outcome.resendEmailId,
   });
+  if ((outcome.inboxId ?? sequence.inboxId)?.startsWith("gmail:") && step.draft) {
+    const request = await mirrorableRequest(ctx, sequence);
+    if (request) {
+      const sentInboxId = outcome.inboxId ?? sequence.inboxId!;
+      const threadId = (!moved && sequence.resendThreadId) || outcome.resendEmailId;
+      await ctx.db.patch(sequence._id, { resendThreadId: threadId });
+      await mirrorInboxEmail(ctx, {
+        sequence, request, resendThreadId: threadId, inboxId: outcome.inboxId ?? sequence.inboxId,
+        inbound: false, attachments: [], now,
+        email: { resendInboxEmailId: outcome.resendEmailId, messageId: outcome.resendEmailId,
+          fromEmail: sentInboxId.slice("gmail:".length),
+          toAddresses: [sequence.recipient.email], ccAddresses: step.draft.cc ?? [], bccAddresses: [],
+          subject: step.draft.subject, text: step.draft.text, html: step.draft.html, references: [], occurredAt: now },
+      });
+    }
+  }
+
   if (step.index !== 0) return;
   if (isClientSequence(sequence)) {
     await writeOperatorAudit(ctx, {
@@ -2805,6 +2822,14 @@ export const failStepInternal = internalMutation({
         updatedAt: now,
       });
       return { applied: true as const, outcome: "cancelled" as const };
+    }
+    // Google quota refusals happen before SMTP. They are queue delays, not failed
+    // delivery attempts; preserve the durable draft and its exact message id.
+    if((args.failure.kind === "transient" && args.failure.code === "mailbox_throttled") || (args.failure.kind === "blocked" && args.failure.code === "mailbox_paused")) {
+      const runAt = dayjs(now).add(Math.max(1000,args.failure.retryAfterMs??600000),"millisecond").valueOf();
+      await ctx.db.patch(step._id,{status:"scheduled",dueAt:runAt,attempts:Math.max(0,step.attempts-1),firstAttemptAt:undefined,error:args.failure.code === "mailbox_paused" ? "Waiting for mailbox to resume" : "Queued for mailbox sending allowance",leaseToken:undefined,leaseUntil:undefined,updatedAt:now});
+      await ctx.scheduler.runAt(runAt,internal.actions.providerOutreach.sendStep,{stepId:step._id});
+      return {applied:true as const,outcome:"retry" as const,runAt};
     }
     const retryable = args.failure.kind === "transient" || args.failure.kind === "unknown";
     if (retryable) {
@@ -4084,4 +4109,14 @@ export const stopFollowUpsForOperatorReplyInternal = internalMutation({
     }
     return { stopped };
   },
+});
+
+/** A matched Google reply hands the conversation to the operator conservatively. */
+export const recordGoogleMailboxReplyInternal = internalMutation({
+ args:{teamEmailThreadId:v.id("teamEmailThreads")},
+ handler:async(ctx,args)=>{
+  const thread=await ctx.db.get(args.teamEmailThreadId);if(!thread||thread.deletedAt)return;
+  const sequences=await sequencesForTeamThread(ctx,thread);const now=dayjs().valueOf();
+  for(const sequence of sequences)if(isLiveOrHandoffTarget(sequence.status)||sequence.status==="completed")await terminalizeSequence(ctx,sequence,{status:"responded",reason:repliedReason(sequence),now});
+ }
 });

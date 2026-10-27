@@ -54,7 +54,7 @@ export function getTeamEmailDomain(): string {
  */
 export function teamOwnedDomains(): string[] {
   const { team, outreach } = configuredTeamEmailDomains();
-  return Array.from(new Set([team, outreach].filter((d): d is string => d !== null)));
+  return Array.from(new Set([team, outreach, "insurewithspot.com"].filter((d): d is string => d !== null)));
 }
 
 const MAX_LOCALPART_LENGTH = 64;

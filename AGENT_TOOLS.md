@@ -633,3 +633,13 @@ before/after estimates and skipped-attempt status.
 Completed operator turns schedule a bounded rolling conversation summary,
 using the existing `summary` model task and thread-continuity helpers. See
 [operator context compaction](docs/architecture/operator-context-compaction.md).
+
+
+Operator outbound email transport follows the calling operator’s configured sending
+mailbox. A reserved `insurewithspot.com` Google connection takes precedence over
+the legacy Resend team inbox, including a paused connection (sending then blocks).
+The existing email and outreach tools retain exact sender/content/recipient
+approval. Identity changes invalidate prior approvals; do not retry an unknown SMTP
+send. Operators inspect connection, allowance and observed seed placement in
+`/operator/email-health`. No new model-callable mailbox configuration tools are
+exposed. Existing Resend replies remain receivable. See `docs/architecture/team-email.md`.

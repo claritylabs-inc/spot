@@ -1,3 +1,4 @@
+import { sendingMailboxFor } from "./lib/sendingMailbox";
 import { v } from "convex/values";
 import dayjs from "dayjs";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -84,6 +85,7 @@ export const getTeamIdentityInternal = internalQuery({
       teamEmailLocalpart: profile.teamEmailLocalpart ?? null,
       alwaysCcEmail: profile.alwaysCcEmail ?? null,
       inbox: inbox ? toRecord(inbox) : null,
+      sendingMailbox: await sendingMailboxFor(ctx, args.userId),
     };
   },
 });
@@ -175,7 +177,7 @@ export const recordOperatorInboxInternal = internalMutation({
     const emailAddress = args.inbox.emailAddress.toLowerCase();
     let intended: string;
     try {
-      intended = operatorTeamAddressFor({
+      intended = (await sendingMailboxFor(ctx, args.userId))?.address ?? operatorTeamAddressFor({
         email: user.email ?? null,
         teamEmailLocalpart: profile.teamEmailLocalpart ?? null,
       });

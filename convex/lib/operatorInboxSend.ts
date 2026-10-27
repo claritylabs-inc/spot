@@ -17,7 +17,7 @@ import {
   isResendInboxError,
   sendDraft,
   type ResendInboxError,
-} from "./resendInbox";
+} from "./mailboxTransport";
 
 /**
  * Sends an approved operator draft from the signing operator's own Resend
@@ -58,6 +58,7 @@ async function withBoundedRetry<T>(
     } catch (error) {
       const retryable =
         isResendInboxError(error) &&
+        error.code !== "mailbox_throttled" &&
         (error.outcome === "transient" ||
           (options.retryUnknown && error.outcome === "unknown"));
       if (!retryable || attempt >= MAX_TRANSIENT_RETRIES) throw error;
@@ -74,6 +75,11 @@ async function withBoundedRetry<T>(
 /** What the person sees: only text written for them, never a provider body or internal message. */
 function userMessage(error: unknown): string {
   if (isResendInboxError(error)) {
+    if (error.code === "mailbox_throttled") {
+      const minutes = Math.max(1, Math.ceil((error.retryAfterMs ?? 60000) / 60000));
+      return `This mailbox is pacing its sends. Your draft is saved. Try again in about ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
+    }
+    if(error.code === "mailbox_paused") return "This mailbox is paused. Resume it in Email health before sending.";
     return error.outcome === "blocked"
       ? "Restricted email delivery blocked a recipient of this email."
       : "Delivery failed. Review the reply and try again.";
@@ -241,7 +247,7 @@ export async function reconcileOperatorAttempt(
     return await retry();
   }
   try {
-    const read = await getDraft(attempt.inboxId, attempt.draftId);
+    const read = await getDraft(ctx, attempt.inboxId, attempt.draftId);
     if (read.status !== "ok") return await retry();
     if (read.data.emailId) {
       await ctx.runMutation(
@@ -425,7 +431,7 @@ export async function sendOperatorInboxDraft(
     // No response or a server error on the send itself: it may have gone out.
     await advance({ stage: "unknown", error: describeFailure(error) });
     throw teamReplyError(
-      "Delivery outcome unknown. The draft stays locked while Spot checks Resend for evidence it was sent, and it will not be sent again.",
+      "Delivery outcome unknown. The draft stays locked while Spot checks the sending mailbox for evidence it was sent, and it will not be sent again.",
     );
   }
 

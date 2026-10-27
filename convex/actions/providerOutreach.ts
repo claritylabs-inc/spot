@@ -53,7 +53,7 @@ import {
   replyToThreadEmail,
   sendDraft,
   type ResendThreadEmail,
-} from "../lib/resendInbox";
+} from "../lib/mailboxTransport";
 import {
   verifySvixWebhook,
   SvixWebhookVerificationError,
@@ -81,6 +81,7 @@ function sanitizedFailure(error: unknown): StepFailure {
   if (isResendInboxError(error)) {
     return {
       kind: error.outcome,
+      ...((error.code === "mailbox_throttled" || error.code === "mailbox_paused") ? {code: error.code} : {}),
       message: `Resend ${error.operation} ${error.outcome}${
         error.status
           ? ` (${error.status}${error.code ? ` ${error.code}` : ""})`
@@ -997,6 +998,7 @@ export const handleInboxEvent = internalAction({
       let fetched: Awaited<ReturnType<typeof getThreadEmail>>;
       try {
         fetched = await getThreadEmail(
+          ctx,
           event.inboxId,
           event.threadId,
           event.emailId,

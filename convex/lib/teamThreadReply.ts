@@ -52,7 +52,9 @@ export async function teamThreadReplyPlan(
       .take(50),
     ctx.db
       .query("teamEmailMessages")
-      .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
+      .withIndex("by_threadId_and_receivedAt", (q) =>
+        q.eq("threadId", thread._id),
+      )
       .order("desc")
       .take(50),
   ]);
@@ -60,17 +62,22 @@ export async function teamThreadReplyPlan(
     ? links.find((candidate) => candidate.inboxId === inbox.inboxId)
     : undefined;
   const resendThreadId = link?.resendThreadId;
-  const replyToEmailId = resendThreadId
+  const replyMessage = resendThreadId
     ? messages.find(
         (message) =>
           message.resendInboxEmailId &&
           message.resendThreadId === resendThreadId,
-      )?.resendInboxEmailId
+      )
     : undefined;
+  const replyToEmailId = inbox?.inboxId.startsWith("gmail:")
+    ? replyMessage?.messageId
+    : replyMessage?.resendInboxEmailId;
   const latestInbound = messages.find((m) => m.direction === "inbound");
   return {
     threaded: Boolean(
-      link && replyToEmailId && inbox &&
+      link &&
+      replyToEmailId &&
+      inbox &&
       messages[0]?.resendThreadId === resendThreadId,
     ),
     inboxId: inbox?.inboxId,
