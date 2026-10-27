@@ -2,7 +2,7 @@
 
 Operators share one inbox in Spot. Operator correspondence sends through the
 existing Resend inbox on `TEAM_EMAIL_DOMAIN`. Full names and the `Name / Spot`
-signature remain dynamic. The default production domain is `team.spot.insure`; isolated
+signature remain dynamic. Operator signatures contain only the name and “Spot”, with no logo or image. The default production domain is `team.spot.insure`; isolated
 development uses `team.dev.spot.insure`. Client agents retain their agent-domain
 addresses. The shared command address is `agent@<TEAM_EMAIL_DOMAIN>`.
 

@@ -1,4 +1,4 @@
-import { buildSpotEmailIconHtml, escapeHtml } from "./emailTemplate";
+import { escapeHtml } from "./emailTemplate";
 import { extractEmailAddress } from "./emailAddress";
 
 /**
@@ -246,7 +246,7 @@ export function operatorFromHeader(
   return `${operatorFromName(name)} <${address}>`;
 }
 
-/** Person signature for operator email: Spot mark, the operator's name, "Spot". */
+/** Text-only operator signature: the operator's name followed by "Spot". */
 export function buildOperatorSignature(operator: { name: string | null | undefined }): {
   text: string;
   html: string;
@@ -257,6 +257,6 @@ export function buildOperatorSignature(operator: { name: string | null | undefin
     `<strong style="font-weight:600">${escapeHtml(name)}</strong>`,
     `<span style="color:#6b6b6b">Spot</span>`,
   ];
-  const html = `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 0;border-collapse:collapse"><tr><td style="padding:2px 10px 0 0;vertical-align:top">${buildSpotEmailIconHtml({ size: 32, borderRadius: 8 })}</td><td style="font-size:13px;line-height:19px;vertical-align:top">${lines.join("<br>")}</td></tr></table>`;
+  const html = `<div style="margin:4px 0 0;font-size:13px;line-height:19px">${lines.join("<br>")}</div>`;
   return { text, html };
 }
