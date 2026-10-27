@@ -16,6 +16,7 @@ import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
+import { formatDisplayDateTime } from "@/lib/date-format";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 /** Messages for the `reason` the OAuth callback adds to `?gmail=error`. */
@@ -107,6 +108,19 @@ export function GmailConnectionSettings() {
                 </span>
               </InlineFieldRow>
             ) : null}
+            {connection.syncError || connection.lastSyncAt ? (
+              <InlineFieldRow label="Reply sync">
+                {connection.syncError ? (
+                  <span role="alert" className="text-destructive">
+                    {connection.syncError}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    Last checked {formatDisplayDateTime(connection.lastSyncAt, "—")}
+                  </span>
+                )}
+              </InlineFieldRow>
+            ) : null}
             <InlineFieldRow label="Actions">
               <div className="flex flex-wrap items-center gap-2">
                 <PillButton
@@ -147,8 +161,9 @@ export function GmailConnectionSettings() {
         )}
         <InlineFieldRow label="How it works">
           <span className="text-muted-foreground">
-            Spot only sees Gmail mail that copies your team address. Emails you
-            send from Gmail in Spot copy it automatically.
+            Spot sees Gmail mail that copies your team address, plus replies on
+            conversations you started from Spot, even if they drop the Cc. Emails
+            you send from Gmail in Spot copy your team address automatically.
           </span>
         </InlineFieldRow>
       </InlineFieldCard>

@@ -3565,9 +3565,19 @@ export default defineSchema({
     scopes: v.array(v.string()),
     status: v.union(v.literal("active"), v.literal("needs_reconnect"), v.literal("disconnected")),
     sendError: v.optional(v.string()),
+    /** Mailbox history cursor for Pub/Sub catch-up; only ever moves forward. */
+    historyId: v.optional(v.string()),
+    /** Epoch ms at which the Gmail `watch` lapses; unset when no watch is running. */
+    watchExpiresAt: v.optional(v.number()),
+    /** Short user-facing note on the latest sync problem; cleared by a successful sync. */
+    syncError: v.optional(v.string()),
+    lastSyncAt: v.optional(v.number()),
+    /** One history-processing run per connection at a time. */
+    syncLeaseToken: v.optional(v.string()),
+    syncLeaseUntil: v.optional(v.number()),
     connectedAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_ownerUserId", ["ownerUserId"]).index("by_address", ["address"]),
+  }).index("by_ownerUserId", ["ownerUserId"]).index("by_address", ["address"]).index("by_status", ["status"]),
   operatorGmailOAuthStates: defineTable({
     stateHash: v.string(),
     userId: v.id("users"),
@@ -3710,6 +3720,29 @@ export default defineSchema({
     .index("by_threadId", ["threadId"])
     .index("by_inboxId_and_resendThreadId", ["inboxId", "resendThreadId"])
     .index("by_resendThreadId", ["resendThreadId"]),
+
+  /**
+   * A Spot conversation bound to a Gmail thread of a connected Gmail. Only
+   * messages on a bound Gmail thread are ever read from the mailbox. Separate
+   * from `teamEmailThreadLinks`, which holds Resend inbox threads and feeds
+   * Resend reply planning.
+   */
+  teamEmailGmailThreads: defineTable({
+    threadId: v.id("teamEmailThreads"),
+    connectionId: v.id("operatorGmailConnections"),
+    /** The connection's address when bound; a reused connection row for another address no longer matches. */
+    address: v.string(),
+    gmailThreadId: v.string(),
+    /** The single scheduled follow-up check; unset when none is pending. */
+    nextCheckAt: v.optional(v.number()),
+    /** Follow-up checks completed since the latest send. */
+    checks: v.number(),
+    lastRefreshedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_connectionId_and_gmailThreadId", ["connectionId", "gmailThreadId"])
+    .index("by_threadId", ["threadId"])
+    .index("by_nextCheckAt", ["nextCheckAt"]),
 
   teamInboxReads: defineTable({
     userId: v.id("users"),

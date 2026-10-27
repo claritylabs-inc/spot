@@ -1,6 +1,9 @@
 import { Migrations } from "@convex-dev/migrations";
+import dayjs from "dayjs";
 import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
+import { bindGmailThread } from "./lib/gmailThreadBinding";
+import { messageIdForms } from "./lib/messageId";
 import {
   submittedIntakeApplication,
   companyApplicationProfile,
@@ -83,6 +86,37 @@ export const releaseUntouchedIntakeFiles = migrations.define({
     await ctx.db.patch(request._id, {
       packetRevision: (request.packetRevision ?? 0) + 1,
     });
+  },
+});
+/**
+ * Binds Gmail sends recorded before Gmail thread bindings existed: each sent
+ * draft's Gmail thread is joined, through its Message-ID, to the team email
+ * message (and so the conversation) Spot recorded for it. Idempotent and
+ * resumable, one draft per step; drafts with no recorded message are left
+ * alone. No follow-up checks are scheduled for old sends.
+ */
+export const bindEarlierGmailSends = migrations.define({
+  table: "operatorGmailDrafts",
+  migrateOne: async (ctx, draft) => {
+    if (draft.status !== "sent" || !draft.gmailThreadId) return;
+    const connection = await ctx.db.get(draft.connectionId);
+    if (!connection || connection.status === "disconnected") return;
+    for (const form of messageIdForms(draft.messageId)) {
+      const message = await ctx.db
+        .query("teamEmailMessages")
+        .withIndex("by_messageId", (q) => q.eq("messageId", form))
+        .first();
+      if (!message) continue;
+      const thread = await ctx.db.get(message.threadId);
+      if (!thread || thread.deletedAt) return;
+      await bindGmailThread(ctx, {
+        threadId: thread._id,
+        connection,
+        gmailThreadId: draft.gmailThreadId,
+        now: dayjs().valueOf(),
+      });
+      return;
+    }
   },
 });
 export const run = migrations.runner();

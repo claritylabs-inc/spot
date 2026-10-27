@@ -5,6 +5,15 @@ import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
 import { normalizeGmailAddress } from "./lib/inboxIds";
 
+/** Mailbox sync state, which belongs to one address and one grant. */
+const SYNC_STATE_RESET = {
+  historyId: undefined,
+  watchExpiresAt: undefined,
+  lastSyncAt: undefined,
+  syncLeaseToken: undefined,
+  syncLeaseUntil: undefined,
+};
+
 /** The active connection for a Gmail address, or null. */
 export const getActiveByAddressInternal = internalQuery({
   args: { address: v.string() },
@@ -40,6 +49,8 @@ export const myConnection = query({
       address: row.address,
       status: row.status,
       sendError: row.sendError,
+      syncError: row.syncError,
+      lastSyncAt: row.lastSyncAt,
       connectedAt: row.connectedAt,
     };
   },
@@ -122,6 +133,7 @@ export const upsertConnectionInternal = internalMutation({
       scopes: args.scopes,
       status: "active" as const,
       sendError: undefined,
+      syncError: undefined,
       connectedAt: now,
       updatedAt: now,
     };
@@ -129,7 +141,13 @@ export const upsertConnectionInternal = internalMutation({
       .query("operatorGmailConnections")
       .withIndex("by_ownerUserId", (q) => q.eq("ownerUserId", args.userId))
       .first();
-    if (existing) await ctx.db.patch(existing._id, fields);
+    // A reconnect keeps the history cursor so mail from the gap is caught up;
+    // another address is another mailbox, with its own history.
+    if (existing)
+      await ctx.db.patch(existing._id, {
+        ...fields,
+        ...(existing.address !== address ? SYNC_STATE_RESET : {}),
+      });
     else await ctx.db.insert("operatorGmailConnections", { ownerUserId: args.userId, ...fields });
     return { ok: true };
   },
@@ -173,6 +191,8 @@ export const disconnectInternal = internalMutation({
       status: "disconnected",
       encryptedRefreshToken: "",
       sendError: undefined,
+      syncError: undefined,
+      ...SYNC_STATE_RESET,
       updatedAt: dayjs().valueOf(),
     });
   },

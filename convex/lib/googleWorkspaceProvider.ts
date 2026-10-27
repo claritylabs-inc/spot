@@ -48,6 +48,13 @@ export type GoogleWorkspaceMessage = {
   payload: GoogleWorkspaceMessagePart | null;
 };
 
+export type GoogleWorkspaceMessageSummary = {
+  id: string;
+  /** Epoch ms as Gmail records it. */
+  internalDate: number | null;
+  labelIds: string[];
+};
+
 export type GoogleWorkspaceRawMessage = {
   id: string;
   threadId: string;
@@ -102,6 +109,11 @@ export type GoogleWorkspaceProvider = {
     mailbox: string;
     threadId: string;
   }): Promise<string[]>;
+  /** A thread's messages in `minimal` format: no headers or bodies. */
+  getThreadMessageSummaries(args: {
+    mailbox: string;
+    threadId: string;
+  }): Promise<GoogleWorkspaceMessageSummary[]>;
   getMessageMetadata(args: {
     mailbox: string;
     messageId: string;
@@ -133,6 +145,8 @@ export type GoogleWorkspaceProvider = {
     mailbox: string;
     topicName: string;
     labelIds?: string[];
+    /** `include` notifies only for the listed labels. */
+    labelFilterBehavior?: "include" | "exclude";
   }): Promise<{ historyId: string | null; expiration: string | null }>;
   stop(args: { mailbox: string }): Promise<void>;
   getProfile(args: { mailbox: string }): Promise<{
@@ -144,7 +158,13 @@ export type GoogleWorkspaceProvider = {
 };
 
 export class GoogleWorkspaceProviderError extends Error {
-  constructor(message: string, readonly status: number | null = null) {
+  constructor(
+    message: string,
+    readonly status: number | null = null,
+    /** Google's lower-cased error reasons (for example `ratelimitexceeded`). */
+    readonly reasons: string[] = [],
+    readonly retryAfterMs: number | null = null,
+  ) {
     super(message);
     this.name = "GoogleWorkspaceProviderError";
   }
@@ -294,7 +314,12 @@ export function createGoogleWorkspaceProvider(
     try {
       return await operation();
     } catch (error) {
-      throw new GoogleWorkspaceProviderError(sanitizeGoogleWorkspaceError(error), googleWorkspaceErrorStatus(error));
+      throw new GoogleWorkspaceProviderError(
+        sanitizeGoogleWorkspaceError(error),
+        googleWorkspaceErrorStatus(error),
+        googleWorkspaceErrorReasons(error),
+        googleWorkspaceRetryAfterMs(error),
+      );
     }
   };
   // Client resolution stays outside `request` so a connected account's
@@ -391,6 +416,31 @@ export function createGoogleWorkspaceProvider(
       );
     },
 
+    async getThreadMessageSummaries({ mailbox, threadId }) {
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.threads.get(
+          {
+            userId: "me",
+            id: threadId,
+            format: "minimal",
+            fields: "messages(id,internalDate,labelIds)",
+          },
+          GOOGLE_REQUEST_OPTIONS,
+        ),
+      );
+      return (response.data.messages ?? []).flatMap((message) => {
+        if (!message.id) return [];
+        const internalDate = Number(message.internalDate);
+        return [
+          {
+            id: message.id,
+            internalDate: Number.isFinite(internalDate) ? internalDate : null,
+            labelIds: message.labelIds ?? [],
+          },
+        ];
+      });
+    },
+
     async getMessageMetadata({ mailbox, messageId }) {
       const response = await gmailRequest(mailbox, (gmail) =>
         gmail.users.messages.get(
@@ -482,10 +532,10 @@ export function createGoogleWorkspaceProvider(
       };
     },
 
-    async watch({ mailbox, topicName, labelIds }) {
+    async watch({ mailbox, topicName, labelIds, labelFilterBehavior }) {
       const response = await gmailRequest(mailbox, (gmail) =>
         gmail.users.watch(
-          { userId: "me", requestBody: { topicName, labelIds } },
+          { userId: "me", requestBody: { topicName, labelIds, labelFilterBehavior } },
           GOOGLE_REQUEST_OPTIONS,
         ),
       );
@@ -523,6 +573,35 @@ export function googleWorkspaceErrorStatus(error: unknown): number | null {
   if (!error || typeof error !== "object") return null;
   const record = error as {code?: unknown; response?: {status?: unknown}};
   return typeof record.response?.status === "number" ? record.response.status : typeof record.code === "number" ? record.code : null;
+}
+
+type GoogleErrorShape = {
+  errors?: Array<{ reason?: unknown }>;
+  response?: {
+    headers?: Record<string, unknown>;
+    data?: { error?: { errors?: Array<{ reason?: unknown }> } | unknown };
+  };
+};
+
+/** Lower-cased Google error reasons, for telling rate limits from other 403s. */
+export function googleWorkspaceErrorReasons(error: unknown): string[] {
+  if (error instanceof GoogleWorkspaceProviderError) return error.reasons;
+  if (!error || typeof error !== "object") return [];
+  const record = error as GoogleErrorShape;
+  const body = record.response?.data?.error;
+  const nested = body && typeof body === "object" ? (body as GoogleErrorShape).errors : undefined;
+  return [...(record.errors ?? []), ...(nested ?? [])].flatMap((entry) =>
+    typeof entry.reason === "string" ? [entry.reason.toLowerCase()] : [],
+  );
+}
+
+/** The `Retry-After` of a throttled response, in ms. */
+export function googleWorkspaceRetryAfterMs(error: unknown): number | null {
+  if (error instanceof GoogleWorkspaceProviderError) return error.retryAfterMs;
+  if (!error || typeof error !== "object") return null;
+  const header = (error as GoogleErrorShape).response?.headers?.["retry-after"];
+  const seconds = Number(Array.isArray(header) ? header[0] : header);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
 }
 
 export function sanitizeGoogleWorkspaceError(error: unknown): string {
