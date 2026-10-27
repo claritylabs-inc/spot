@@ -73,6 +73,47 @@ The saved-business choice shows a compact identity summary. New company detaches
 
 Final review requires an explicit accuracy and insurance-shopping authorization checkbox before submit or resubmit. The server checks the owner’s consent and exact application revision, then records the consenting user, timestamp, statement, and submitted content hash. Editing clears the local confirmation; existing submissions are never retroactively marked as consented.
 
+Quote intake consent version `2026-10-27-v2` explicitly includes electronic signing
+using the applicant's entered name. `intakeTermsAcceptance` binds the recorded
+statement and timestamp to that owner's name and email; changing either clears
+consent. Previous-version drafts can still save and navigate to fresh consent.
+`/intake/terms?version=2026-10-21` and `?version=2026-10-27` retain their earlier
+wording. The current version explicitly authorizes creating a PDF bearing the
+applicant's electronic signature, including it in the Spot Packet and sharing
+the PDF or its link with brokers/insurers to demonstrate representation and
+obtain quotes. It describes the included identity/contact and acceptance data,
+distinguishes checkbox acceptance from captured handwriting, and preserves the
+separate approval required for a purchase. The Coverage checkbox presents the
+same PDF-generation/sharing consent; older drafts must accept this new revision.
+Savings reviews do not generate authorization
+declarations, and existing submissions are not backfilled or marked signed.
+
+The owner-authorized submit transaction creates an immutable
+`requestIntakeAuthorizations` snapshot through `convex/intakeAuthorizations.ts`:
+business name, signer, exact consent/scope, acceptance/submission times, terms
+version and URL, and the hash of the applicant's submitted content (before any
+profile fill). `convex/actions/intakeAuthorization.ts` renders the branded PDF
+through `convex/lib/intakeAuthorizationPdf.ts`, with up to three safe rendering
+attempts and atomic, idempotent publication. The final signature panel reserves
+signing space and displays a black cursive name in a white signature field beside
+the acceptance date, on a pale blue background. A compact provenance note below
+the terms links identifies the cursive name as a placeholder and records the
+acceptance/submission times, declaration/request references and submitted hash.
+The exact consent statement is retained in the immutable snapshot and PDF metadata.
+The renderer bundles the OFL-licensed Allura and existing Geist fonts and reuses
+Spot's canonical vector branding, with spacing matching the supplied reference.
+
+The PDF is a client-visible client file and provider-attached request file, so
+existing request Files, manual email attachment tools, and the Spot Packet all
+use the same artifact. Its hosted download uses the existing `/packet-file`
+capability, rechecking packet-token and file-release access on each request.
+Draft edits never replace signed evidence. An accepted resubmission creates a new
+snapshot and hides the previous request-file publication; stored historical PDFs
+remain unchanged. Stale rendering cannot republish an older declaration. Active
+packet links pick up the current PDF without rotation. Initial automated broker
+outreach retains its empty attachment list; the PDF is available through the
+packet link, with manual attachment available for later correspondence.
+
 ### Client workspace activation
 
 Client organizations use `clientAccessStatus: "intake" | "active"`. An unset status defaults to intake. The client shell redirects intake clients to `/signup` (the application picker) before rendering workspace routes. Active clients land on `/requests` from `/`. Operators can manually change the status with `orgs:setClientAccessStatus` using `{orgId, status}`; clients cannot activate themselves. This rollout flag is separate from email verification and existing server resource authorization.

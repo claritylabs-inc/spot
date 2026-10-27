@@ -1,5 +1,15 @@
 # Platform workflow QA
 
+## Quote authorization PDF - October 27, 2026
+
+Local submit/resubmit produced immutable authorization snapshots and one current
+PDF in the shared packet. Visible Chrome confirmed the download; HTTP delivery,
+replaced/invalid capability rejection, draft preservation and signer-change
+consent checks passed. The final one-page PDF includes a bottom signature box
+with a labeled cursive name placeholder. Root/Convex types and five existing
+intake tests passed; no tests or migrations were written. See
+[workflow, evidence and limits](intake-authorization-workflow.md).
+
 ## Tab actions and status filters — October 27, 2026
 
 Local browser acceptance verifies empty/populated tab actions, primary/secondary navbar presentation, client and file status filters, shared-upload defaults, compliance view actions and policy action placement at desktop and narrow widths. Reuses shared UI 0.18.0; no backend changes or new unit tests. See [audit, repeatable workflow and limits](tab-action-layout-audit.md); evidence: `.context/action-audit/`.
