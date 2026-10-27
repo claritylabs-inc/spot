@@ -680,7 +680,6 @@ export function TeamSection({
         primaryContactId={primaryContactId}
         showActivationStatus={!!operatorClientOrgId}
         onEditMember={openEditMember}
-        onInviteMember={() => setInviteOpen(true)}
         onOpenInvitation={(invitation) => {
           setEditingMemberId(null);
           setSelectedInvitationId(invitation._id);

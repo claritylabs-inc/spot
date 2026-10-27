@@ -19,6 +19,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { Id } from "@/convex/_generated/dataModel";
 import { buildCoverageBreakdown } from "@/convex/lib/coverageBreakdown";
 import { lobLabel, policyLobCodes } from "@/convex/lib/linesOfBusiness";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { PillButton } from "@/components/ui/pill-button";
 import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
@@ -722,6 +723,26 @@ export function PolicyDetailBody({
     }
   };
 
+  const hasViewTabs = visibleTabs.length > 1;
+  const generateAction = useMemo(() => !readOnly && !isArchived ? (
+          <PillButton
+            size="compact"
+            onClick={() => {
+              if (!isPolicyFinal) {
+                toast.message(
+                  "Available once Spot finishes reading this policy",
+                );
+                return;
+              }
+              setSelectedCertificateId(null);
+              setShowCertificateSheet(true);
+            }}
+          >
+            <Plus className="size-3.5" />
+            Generate COI
+          </PillButton>
+  ) : null, [readOnly, isArchived, isPolicyFinal, setSelectedCertificateId, setShowCertificateSheet]);
+
   useEffect(() => {
     if (!onActions) return;
     if (!policy) {
@@ -745,30 +766,15 @@ export function PolicyDetailBody({
             <Archive className="size-3.5" strokeWidth={2} />
           </PillButton>
         )}
-        {!readOnly && !isArchived && (
-          <PillButton
-            size="compact"
-            onClick={() => {
-              if (!isPolicyFinal) {
-                toast.message(
-                  "Available once Spot finishes reading this policy",
-                );
-                return;
-              }
-              setSelectedCertificateId(null);
-              setShowCertificateSheet(true);
-            }}
-          >
-            <Plus className="size-3.5" />
-            Generate COI
-          </PillButton>
-        )}
+        {!hasViewTabs ? generateAction : null}
       </>,
     );
     return () => onActions(null);
   }, [
     onActions,
     policy,
+    hasViewTabs,
+    generateAction,
     readOnly,
     canManageUpload,
     canControlExtraction,
@@ -1105,6 +1111,11 @@ export function PolicyDetailBody({
             ))}
           </PageTabsList>
           <TabsContent value={visibleActiveTab}>
+            {generateAction && (visibleActiveTab === "certificates" || (!hasCertificates && visibleActiveTab === "details")) ? (
+              <div className="mb-4">
+                <ListToolbar followKey={`policy:${policy._id}:actions`} actions={generateAction} />
+              </div>
+            ) : null}
             {notices}
             {views}
           </TabsContent>

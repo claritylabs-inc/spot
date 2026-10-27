@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Loader2, RefreshCw } from "lucide-react";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { useEffect, useState } from "react";
@@ -267,6 +268,24 @@ export function WebsiteTechSection({
             }. Rescanning only adds new findings.`;
   return (
     <div className="space-y-3">
+      {!readOnly && scan.canRescan ? (
+        <ListToolbar followKey="profile:tech-stack:actions" actions={
+          <PillButton
+            variant="secondary"
+            size="compact"
+            className="shrink-0"
+            disabled={scanning}
+            onClick={scan.rescan}
+          >
+            {scanning ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+            Rescan
+          </PillButton>
+        } />
+      ) : null}
       {error && <p className={`text-destructive ${typeStyle("body.default")}`}>{error}</p>}
       <InlineFieldsContext.Provider value={true}>
         <InlineFieldCard>
@@ -315,27 +334,12 @@ export function WebsiteTechSection({
           </InlineFieldRow>
         </InlineFieldCard>
       </InlineFieldsContext.Provider>
-      <div className="flex items-center justify-between gap-3">
+      <div>
         <p className={`flex items-center gap-2 text-muted-foreground ${typeStyle("caption.default")}`}>
           {scanning && <Loader2 className="size-3.5 animate-spin" />}
           {scanNote}
         </p>
-        {!readOnly && scan.canRescan ? (
-          <PillButton
-            variant="secondary"
-            size="compact"
-            className="shrink-0"
-            disabled={scanning}
-            onClick={scan.rescan}
-          >
-            {scanning ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <RefreshCw className="size-4" />
-            )}
-            Rescan
-          </PillButton>
-        ) : null}
+
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 import { IntakeUnknownRow } from "./unknown-choice";
 import { IntakeRadioChoices } from "./radio-choices";
 export { IntakeRadioChoices } from "./radio-choices";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { RemoveButton } from "@/components/ui/remove-button";
 import {
   InlineFieldCard,
@@ -977,10 +978,10 @@ export function IntakeLocations({
   if (inline)
     return (
       <div className="space-y-4">
-        {!externalActions && details.locations.length > 0 && (
-          <div className="flex justify-end">
+        {!externalActions && !disabled && (
+          <ListToolbar followKey="intake:locations:actions" actions={
             <PillButton
-              variant="secondary"
+              variant="primary"
               size="compact"
               disabled={disabled || details.locations.length >= 30}
               onClick={addLocation}
@@ -988,17 +989,13 @@ export function IntakeLocations({
               <Plus className="size-4" />
               Add location
             </PillButton>
-          </div>
+          } />
         )}
         {!details.locations.length && (
           <EmptyStateCard
             icon={<MapPin className="size-6" />}
             title="No locations yet"
             description="Add the places where this company operates."
-            actionLabel={
-              externalActions || disabled ? undefined : "Add location"
-            }
-            onAction={addLocation}
           />
         )}
         {details.locations.map((location, index) => {
@@ -1313,10 +1310,10 @@ export function IntakeRelatedEntities({
       });
     return (
       <div className="space-y-4">
-        {!externalActions && details.relatedEntities.length > 0 && (
-          <div className="flex justify-end">
+        {!externalActions && !disabled && (
+          <ListToolbar followKey="intake:relatedEntities:actions" actions={
             <PillButton
-              variant="secondary"
+              variant="primary"
               size="compact"
               disabled={disabled || details.relatedEntities.length >= 30}
               onClick={add}
@@ -1324,15 +1321,13 @@ export function IntakeRelatedEntities({
               <Plus className="size-4" />
               Add entity
             </PillButton>
-          </div>
+          } />
         )}
         {!details.relatedEntities.length && (
           <EmptyStateCard
             icon={<Building2 className="size-6" />}
             title="No related entities yet"
             description="Add parents, subsidiaries or affiliates of this company."
-            actionLabel={externalActions || disabled ? undefined : "Add entity"}
-            onAction={add}
           />
         )}
         {details.relatedEntities.map((entity, index) => {

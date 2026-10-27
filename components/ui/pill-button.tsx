@@ -35,7 +35,7 @@ type PillButtonProps = AdaptLegacyProps<
 
 const IconOnlyActionsContext = React.createContext(false);
 
-/** Renders icon-plus-text buttons inside it as icon-only pills with a tooltip. */
+/** Compacts secondary navbar actions while preserving primary action labels. */
 function PillButtonIconOnlyProvider({
   enabled = true,
   children,
@@ -74,7 +74,7 @@ function PillButton(props: PillButtonProps) {
   } = props;
   const iconOnlyActions = React.useContext(IconOnlyActionsContext);
   const split =
-    iconOnlyActions && !iconOnly && variant !== "icon"
+    iconOnlyActions && !iconOnly && variant !== "icon" && variant !== "primary"
       ? iconAndText(restProps.children)
       : null;
   const autoIcon = Boolean(split?.text && split.icons.length);

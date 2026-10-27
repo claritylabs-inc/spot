@@ -644,12 +644,6 @@ function PolicyTagList({
   );
 }
 
-const VIEW_HEADINGS: Partial<Record<ComplianceView, string>> = {
-  requirements: "Coverage requirements",
-  sources: "Requirement sources",
-  certificates: "Certificates",
-};
-
 function EmptyState() {
   return (
     <OperationalPanel as="div" className="p-5">
@@ -3690,12 +3684,10 @@ function ComplianceWorkspace({
       {tabbed &&
       viewActions &&
       !(view === "requirements" && surface !== "operator") ? (
-        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-          <h2 className={typeStyle("heading.item")}>
-            {VIEW_HEADINGS[view] ?? ""}
-          </h2>
-          <div className="flex items-center gap-2">{viewActions}</div>
-        </div>
+        <ListToolbar
+          followKey={`${uiKey}:${view}:actions`}
+          actions={viewActions}
+        />
       ) : null}
       {view === "certificates" && renderCertificatesTab ? (
         renderCertificatesTab({

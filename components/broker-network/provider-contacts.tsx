@@ -8,7 +8,7 @@ import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
-import { FormSection } from "@claritylabs-inc/ui/components/form-section";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { PillButton } from "@/components/ui/pill-button";
 import { RemoveButton } from "@/components/ui/remove-button";
@@ -44,12 +44,12 @@ export function ProviderContacts({
     }
   }
   return (
-    <FormSection
-      title="Contacts"
-      divided={false}
-      action={
+    <div className="space-y-4">
+      <ListToolbar
+      followKey={`provider:${brokerOrgId}:contacts:actions`}
+      actions={
         <PillButton
-          variant="secondary"
+          variant="primary"
           size="compact"
           disabled={
             adding || result === undefined || result.contacts.length >= 200
@@ -59,7 +59,7 @@ export function ProviderContacts({
           {adding ? "Adding…" : "Add contact"}
         </PillButton>
       }
-    >
+      />
       <div className="space-y-5">
         {result === undefined ? (
           <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
@@ -80,7 +80,7 @@ export function ProviderContacts({
           </p>
         )}
       </div>
-    </FormSection>
+    </div>
   );
 }
 
