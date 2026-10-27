@@ -6,7 +6,8 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { gmailFor } from "./gmailClient";
-import { gmailAddressOf } from "./operatorGmail";
+import { gmailAddressOf } from "./inboxIds";
+import { bareRfcId } from "./messageId";
 import { gmailReconnectError } from "./operatorInbox";
 import {
   evaluateRecipientDeliveryPolicy,
@@ -229,13 +230,11 @@ export async function createGmailDraft(
   return { status: "ok", data: { id: DRAFT_PREFIX + stored.id }, replayed: stored.replayed };
 }
 
-const rfcId = (messageId: string) => messageId.replace(/^<|>$/g, "");
-
 /** The messages in the account carrying this RFC Message-ID (read-only). */
 async function findByMessageId(gmail: gmail_v1.Gmail, messageId: string) {
   const found = await gmail.users.messages.list({
     userId: "me",
-    q: `rfc822msgid:${rfcId(messageId)}`,
+    q: `rfc822msgid:${bareRfcId(messageId)}`,
     maxResults: 1,
   });
   return found.data.messages?.[0] ?? null;
@@ -404,21 +403,4 @@ export async function readGmailDraft(
       emailId: current?.status === "sent" ? draft.messageId : null,
     },
   };
-}
-
-/** Gmail replies are sent from reviewed drafts; the Resend-derived reply path does not apply. */
-export function replyToGmailThreadEmail(): never {
-  throw new ResendInboxError(
-    "permanent",
-    "replyToThreadEmail",
-    "Gmail replies are sent from a reviewed draft",
-    { code: "gmail_reply_unsupported" },
-  );
-}
-
-/** Gmail messages are not stored as inbox thread emails; the team inbox holds them. */
-export function getGmailThreadEmail(): never {
-  throw new ResendInboxError("permanent", "getThreadEmail", "Message not found in this mailbox", {
-    code: "gmail_thread_email_unsupported",
-  });
 }

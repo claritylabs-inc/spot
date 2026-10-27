@@ -12,6 +12,7 @@ import {
   resolveImapDestination,
   type ResolvedImapDestination,
 } from "./imapDestination";
+import { comparableRfcId } from "./messageId";
 
 export type ConnectedEmailAccount = Doc<"connectedEmailAccounts">;
 
@@ -233,10 +234,6 @@ function searchableMailboxPaths(
     .slice(0, MAX_MESSAGE_ID_SEARCH_MAILBOXES);
 }
 
-function normalizedMessageId(messageId?: string) {
-  return messageId?.trim().replace(/^<|>$/g, "").trim().toLowerCase();
-}
-
 export async function resolveParsedMessage(
   client: ImapFlow,
   args: {
@@ -248,10 +245,10 @@ export async function resolveParsedMessage(
 ): Promise<{ parsed: ParsedMail; mailbox: string; uid: number }> {
   const maxBytes = args.maxBytes ?? SEARCH_DOWNLOAD_MAX_BYTES;
   const messageId = args.messageId?.trim();
-  const expectedMessageId = normalizedMessageId(messageId);
+  const expectedMessageId = comparableRfcId(messageId);
   try {
     const parsed = await fetchParsedMessage(client, args.mailbox, args.uid, maxBytes);
-    if (!expectedMessageId || normalizedMessageId(parsed.messageId) === expectedMessageId) {
+    if (!expectedMessageId || comparableRfcId(parsed.messageId) === expectedMessageId) {
       return { parsed, mailbox: args.mailbox, uid: args.uid };
     }
   } catch (error) {
@@ -283,7 +280,7 @@ export async function resolveParsedMessage(
     for (const uid of uids) {
       try {
         const parsed = await fetchParsedMessage(client, mailbox, uid, maxBytes);
-        if (normalizedMessageId(parsed.messageId) === expectedMessageId) {
+        if (comparableRfcId(parsed.messageId) === expectedMessageId) {
           return { parsed, mailbox, uid };
         }
       } catch (error) {

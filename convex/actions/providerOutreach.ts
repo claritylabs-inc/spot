@@ -8,7 +8,7 @@ import type { DecisionQuestion } from "../../contracts/cl-router/policy";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { internalAction, type ActionCtx } from "../_generated/server";
-import { extractEmailAddress } from "../lib/emailAddress";
+import { canonicalAddress } from "../lib/emailAddress";
 import { clRouterDecide } from "../lib/clRouterClient";
 import {
   jevChoiceConfidence,
@@ -55,7 +55,7 @@ import {
   type ResendThreadEmail,
 } from "../lib/mailboxTransport";
 import { gmailFor } from "../lib/gmailClient";
-import { asRfcId } from "../lib/teamEmailStore";
+import { bareRfcId } from "../lib/messageId";
 import { hasAlignedSenderDkim } from "../lib/gmailSenderAuthentication";
 import { MAX_OPERATOR_EMAIL_RAW_BYTES } from "../lib/operatorEmailAuthentication";
 import { fetchReceivedEmailRaw, ReceivedEmailRejectedError } from "../lib/receivingEmail";
@@ -833,7 +833,7 @@ export const classifyReply = internalAction({
 
 function addressList(values: string[]): string[] {
   return values
-    .map((value) => extractEmailAddress(value) ?? value.trim().toLowerCase())
+    .map(canonicalAddress)
     .filter(Boolean);
 }
 
@@ -960,7 +960,7 @@ async function inGmailSentFolder(ctx: ActionCtx, address: string, messageId: str
   try {
     const listed = await gmail.users.messages.list({
       userId: "me",
-      q: `rfc822msgid:${asRfcId(messageId).slice(1, -1)} in:sent`,
+      q: `rfc822msgid:${bareRfcId(messageId)} in:sent`,
       maxResults: 1,
     });
     return (listed.data.messages?.length ?? 0) > 0;

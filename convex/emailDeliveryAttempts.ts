@@ -12,7 +12,7 @@ import {
   pendingEmailDraftFingerprint,
 } from "./lib/actionConfirmationFingerprint";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
-import { isOperatorGmailInbox } from "./lib/operatorGmail";
+import { inboxKind } from "./lib/inboxIds";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { replyContextProblem } from "./lib/teamEmailReply";
 import {
@@ -434,9 +434,9 @@ export const advanceOperatorInboxAttemptInternal = internalMutation({
       ...(args.inboxId
         ? {
             inboxId: args.inboxId,
-            ...(args.inboxId.startsWith("gmail:")
+            ...(inboxKind(args.inboxId) === "legacy_google"
               ? { provider: "google_smtp" as const }
-              : isOperatorGmailInbox(args.inboxId)
+              : inboxKind(args.inboxId) === "gmail"
                 ? { provider: "gmail" as const }
                 : {}),
           }

@@ -1,5 +1,5 @@
 import { buildSpotEmailIconHtml, escapeHtml } from "./emailTemplate";
-import { extractEmailAddress } from "./emailAddress";
+import { canonicalAddress } from "./emailAddress";
 
 /**
  * Pure identity rules for operator team email (no Convex context, no network).
@@ -151,8 +151,7 @@ export function assertTeamLocalpart(input: string): string {
 
 /** Default localpart from the login email (`+` tags and rejected characters dropped); throws when unusable or reserved. */
 export function deriveOperatorLocalpart(operatorEmail: string): string {
-  const full =
-    extractEmailAddress(operatorEmail) ?? operatorEmail.trim().toLowerCase();
+  const full = canonicalAddress(operatorEmail);
   const raw = full.split("@")[0]?.split("+")[0] ?? "";
   const local = raw
     .replace(/[^a-z0-9._-]/g, "")

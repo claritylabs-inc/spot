@@ -10,6 +10,7 @@ import {
   uniqueProcurementEmails,
   type ProcurementEmailCategory,
 } from "./procurement";
+import { messageIdForms } from "./messageId";
 import type { InboxEmail } from "./providerOutreachValidators";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -171,26 +172,6 @@ async function unfiledUploadRoom(ctx: Ctx, threadId: Id<"teamEmailThreads">) {
 // ---------------------------------------------------------------------------
 // RFC Message-IDs
 // ---------------------------------------------------------------------------
-
-const MAX_MESSAGE_ID_CHARS = 500;
-
-export const asRfcId = (messageId: string) =>
-  messageId.startsWith("<") ? messageId : `<${messageId}>`;
-
-/**
- * Every stored spelling an RFC Message-ID may take: Spot records its own sends
- * bracketed, Resend reports the header as it arrived (bracketed or bare, and
- * possibly re-cased). Each form is a candidate for a `by_messageId` lookup.
- */
-export function messageIdForms(messageId: string) {
-  const bare = messageId.trim().replace(/^<|>$/g, "");
-  if (!bare) return [];
-  return [
-    ...new Set(
-      [bare, bare.toLowerCase()].flatMap((form) => [`<${form}>`, form]),
-    ),
-  ].map((form) => form.slice(0, MAX_MESSAGE_ID_CHARS));
-}
 
 /** The outbound message stored under this Message-ID in any spelling, or null. */
 export async function outboundByMessageId(ctx: Ctx, messageId: string) {

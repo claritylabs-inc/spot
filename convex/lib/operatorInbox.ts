@@ -2,8 +2,8 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { RecordInboxResult } from "../operatorInboxes";
-import { extractEmailAddress } from "./emailAddress";
-import { gmailInboxId } from "./operatorGmail";
+import { canonicalAddress, extractEmailAddress } from "./emailAddress";
+import { gmailInboxId } from "./inboxIds";
 import type { InboxRecord } from "./providerOutreachValidators";
 import { getEmailDeliveryMode, isSpotOutboundAddress } from "./resend";
 import {
@@ -280,7 +280,7 @@ export function validateAlwaysCcEmail(
     throw invalid("Always CC cannot be a Spot address");
   }
   const own = new Set(
-    ownAddresses.map((a) => (extractEmailAddress(a) ?? a.trim().toLowerCase())),
+    ownAddresses.map(canonicalAddress),
   );
   if (own.has(address)) {
     throw invalid("Always CC cannot be your own address");

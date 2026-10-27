@@ -18,7 +18,7 @@ import {
   SpotCopyHint,
   isGmailReconnectMessage,
   useSendFromOptions,
-} from "@/components/inbox/reply-composer";
+} from "@/components/inbox/send-from";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { PillButton } from "@/components/ui/pill-button";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
