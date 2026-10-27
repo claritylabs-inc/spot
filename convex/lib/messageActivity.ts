@@ -1,19 +1,29 @@
 import { v, type Infer } from "convex/values";
+import { TOOL_RESULT_SUMMARY_PATTERN } from "./toolResultSummary";
 
 /**
  * Live execution status for a processing agent message. It records what the
- * app itself observed: tool names, call ids and bounded web-search labels,
- * never full arguments, results or model reasoning. "returned" means the tool
+ * app itself observed: tool names, call ids, bounded web-search labels,
+ * structural result counts and, for operator writes, a bounded change
+ * summary; never full arguments, results or model reasoning. "returned" means the tool
  * function returned without an error marker; only an explicit success marker
  * becomes "completed".
  */
 export const MESSAGE_ACTIVITY_MAX_TOOLS = 128;
 export const MESSAGE_ACTIVITY_MAX_STRING = 200;
+/** Change summaries carry names and short quoted values, so allow more. */
+export const MESSAGE_ACTIVITY_MAX_CHANGE = 280;
 
 const toolContextValidator = v.object({
   label: v.string(),
   website: v.optional(v.string()),
   websites: v.optional(v.array(v.string())),
+});
+
+/** Record a call acted on, as an id the viewer's query resolves to a brand. */
+export const toolTargetValidator = v.object({
+  kind: v.union(v.literal("organization"), v.literal("procurement_request")),
+  id: v.string(),
 });
 
 export const messageActivityToolStatusValidator = v.union(
@@ -44,6 +54,14 @@ export const messageActivityStageValidator = v.object({
   ),
 });
 
+/** Set by `applyMessageActivity` from its clock, never by the caller. */
+const activityTimingFields = {
+  /** When the entry was first observed running. */
+  startedAt: v.optional(v.number()),
+  /** When an entry observed running settled. */
+  endedAt: v.optional(v.number()),
+};
+
 export const messageActivityValidator = v.object({
   phase: v.union(v.literal("model"), v.literal("tools")),
   tools: v.array(
@@ -52,9 +70,24 @@ export const messageActivityValidator = v.object({
       toolName: v.string(),
       status: messageActivityToolStatusValidator,
       context: v.optional(toolContextValidator),
+      /** Count summary of a settled call ("3 threads"); see toolResultSummary. */
+      result: v.optional(v.string()),
+      target: v.optional(toolTargetValidator),
+      /** Operator-only: what a completed write did, names not ids. */
+      change: v.optional(v.string()),
+      /** A stored preview of the result exists for this call. */
+      preview: v.optional(v.boolean()),
+      ...activityTimingFields,
     }),
   ),
-  stages: v.optional(v.array(messageActivityStageValidator)),
+  stages: v.optional(
+    v.array(
+      v.object({
+        ...messageActivityStageValidator.fields,
+        ...activityTimingFields,
+      }),
+    ),
+  ),
   updatedAt: v.number(),
 });
 
@@ -79,10 +112,15 @@ export const messageActivityUpdateValidator = v.union(
     toolName: v.string(),
     status: messageActivityToolStatusValidator,
     context: v.optional(toolContextValidator),
+    result: v.optional(v.string()),
+    target: v.optional(toolTargetValidator),
+    change: v.optional(v.string()),
+    preview: v.optional(v.boolean()),
   }),
 );
 
 export type MessageActivityStage = Infer<typeof messageActivityStageValidator>;
+type StoredActivityStage = NonNullable<MessageActivity["stages"]>[number];
 export type MessageActivity = Infer<typeof messageActivityValidator>;
 export type MessageActivityUpdate = Infer<
   typeof messageActivityUpdateValidator
@@ -91,6 +129,7 @@ export type MessageActivityToolStatus = Infer<
   typeof messageActivityToolStatusValidator
 >;
 export type RequestedToolCall = Infer<typeof requestedToolCallValidator>;
+export type MessageActivityToolTarget = Infer<typeof toolTargetValidator>;
 
 const SETTLED: ReadonlySet<MessageActivityToolStatus> = new Set([
   "returned",
@@ -176,12 +215,22 @@ export function applyMessageActivity(
       return current ?? { phase, tools, updatedAt: now };
     stages = [...(stages ?? [])];
     const index = stages.findIndex((stage) => stage.stageId === update.stageId);
-    const entry = {
+    const startedAt =
+      index < 0
+        ? update.status === "running"
+          ? now
+          : undefined
+        : stages[index].startedAt;
+    const entry: StoredActivityStage = {
       stageId: update.stageId,
       stage: update.stage,
       status: update.status,
       ...(update.detail?.trim()
         ? { detail: update.detail.trim().slice(0, 200) }
+        : {}),
+      ...(startedAt !== undefined ? { startedAt } : {}),
+      ...(startedAt !== undefined && update.status !== "running"
+        ? { endedAt: now }
         : {}),
     };
     if (index < 0) stages.push(entry);
@@ -217,21 +266,59 @@ export function applyMessageActivity(
     const index = tools.findIndex(
       (tool) => tool.toolCallId === update.toolCallId,
     );
+    const result =
+      update.result &&
+      SETTLED.has(update.status) &&
+      TOOL_RESULT_SUMMARY_PATTERN.test(update.result)
+        ? { result: update.result }
+        : {};
+    const change =
+      update.change?.trim() &&
+      update.status === "completed" &&
+      update.change.length <= MESSAGE_ACTIVITY_MAX_CHANGE
+        ? { change: update.change.trim() }
+        : {};
+    const target =
+      update.target && validText(update.target.id)
+        ? { target: { kind: update.target.kind, id: update.target.id } }
+        : {};
     if (index < 0) {
       tools.push({
         toolCallId: update.toolCallId,
         toolName: update.toolName,
         status: update.status,
         ...(context ? { context } : {}),
+        ...result,
+        ...target,
+        ...change,
+        ...(update.preview && SETTLED.has(update.status)
+          ? { preview: true }
+          : {}),
+        ...(update.status === "running" ? { startedAt: now } : {}),
       });
     } else if (
       !SETTLED.has(tools[index].status) ||
       SETTLED.has(update.status)
     ) {
+      const previous = tools[index];
+      const startedAt =
+        previous.startedAt ?? (update.status === "running" ? now : undefined);
       tools[index] = {
-        ...tools[index],
+        ...previous,
         status: update.status,
         ...(context ? { context } : {}),
+        ...result,
+        ...target,
+        ...change,
+        ...(update.preview && SETTLED.has(update.status)
+          ? { preview: true }
+          : {}),
+        ...(startedAt !== undefined ? { startedAt } : {}),
+        ...(startedAt !== undefined &&
+        previous.endedAt === undefined &&
+        SETTLED.has(update.status)
+          ? { endedAt: now }
+          : {}),
       };
     }
   }
@@ -241,6 +328,16 @@ export function applyMessageActivity(
     ...(stages ? { stages } : {}),
     updatedAt: now,
   };
+}
+
+/** The activity target for a registry target, when it has a brand to show. */
+export function toolActivityTarget(target: {
+  kind?: string;
+  id?: string;
+}): MessageActivityToolTarget | undefined {
+  if (!validText(target.id)) return;
+  if (target.kind === "organization" || target.kind === "procurement_request")
+    return { kind: target.kind, id: target.id };
 }
 
 /** Classifies a tool function's return value without claiming business success. */

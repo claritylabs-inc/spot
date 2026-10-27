@@ -18,15 +18,17 @@ import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { ChatMessageBubble, type ChatChannel } from "./message-bubble";
-import { ChatDisclosure } from "./disclosure";
 import type { OperatorExecutionPlan } from "@/convex/lib/operatorRunPlan";
 import { ChatErrorDetails } from "./error-details";
 import type { RouterJobFailure } from "@/convex/lib/routerJobFailure";
 import {
   activityStatusLabel,
   hasActiveActivity,
-  ThinkingSummary,
+  hasAwaitingApprovalCall,
+  ThinkingTrace,
+  ToolActivityCard,
   type ChatActivity,
+  type ToolApproval,
 } from "./thinking-summary";
 
 export { ChatErrorNotice } from "./message-bubble";
@@ -65,6 +67,10 @@ export function ChatAssistantTurn({
   tools,
   toolCalls,
   activity,
+  toolIntegrations,
+  toolEntities,
+  toolPreview,
+  toolApproval,
   executionPlan,
   failure,
   routerRequestId,
@@ -98,6 +104,14 @@ export function ChatAssistantTurn({
   toolCalls?: { name: string; input?: string }[];
   /** Observed stages and tool status; retained as evidence once settled. */
   activity?: ChatActivity;
+  toolIntegrations?: ComponentProps<typeof ToolActivityCard>["integrations"];
+  toolEntities?: ComponentProps<typeof ToolActivityCard>["entities"];
+  toolPreview?: ComponentProps<typeof ToolActivityCard>["renderPreview"];
+  /**
+   * Approval for a call in this turn. Decided on the call's row when the
+   * tool card shows it; otherwise `fallback` renders after the answer.
+   */
+  toolApproval?: ToolApproval & { fallback: ReactNode };
   executionPlan?: OperatorExecutionPlan;
   /** Operator-only diagnostics for a failed turn; ignored for other audiences. */
   failure?: RouterJobFailure;
@@ -123,6 +137,12 @@ export function ChatAssistantTurn({
   // standalone indicator would repeat it. It stays for Show thinking off, no
   // activity, and waiting on the model with no row in progress.
   const rowShowsProgress = showThinking && hasActiveActivity(activity);
+  const inlineApproval =
+    toolApproval &&
+    showThinking &&
+    hasAwaitingApprovalCall(activity, toolApproval.toolName)
+      ? toolApproval
+      : undefined;
   const answer =
     working && (!streamResponses || !content) ? (
       rowShowsProgress ? (
@@ -169,41 +189,26 @@ export function ChatAssistantTurn({
     );
   return (
     <div className="w-full">
-      {audience === "operator" && executionPlan ? (
-        <ChatDisclosure
-          working={working}
-          summary={<span>Plan · {executionPlan.steps.length} steps</span>}
-          className={`max-w-3xl text-muted-foreground/50 ${typeStyle("caption.default")}`}
-          summaryClassName="hover:text-muted-foreground"
-        >
-          <div
-            className={`space-y-2.5 pt-2.5 pb-1 text-muted-foreground/70 ${typeStyle("body.default")}`}
-          >
-            <p className="text-foreground">{executionPlan.summary}</p>
-            {executionPlan.targets.length ? (
-              <p className="break-words">
-                Targets: {executionPlan.targets.join(", ")}
-              </p>
-            ) : null}
-            <ol className="list-outside list-decimal space-y-2.5 pl-7">
-              {executionPlan.steps.map((step, index) => (
-                <li key={index} className="break-words pl-1">
-                  <p className="text-foreground">{step.title}</p>
-                  <p>{step.detail}</p>
-                  <p className="mt-1">Done when: {step.completionCriteria}</p>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </ChatDisclosure>
-      ) : null}
       {showThinking ? (
-        <ThinkingSummary
-          tools={tools}
-          toolCalls={toolCalls}
-          activity={activity}
-          working={turnActive}
-        />
+        <>
+          <ThinkingTrace
+            activity={activity}
+            executionPlan={
+              audience === "operator" ? executionPlan : undefined
+            }
+            working={turnActive}
+          />
+          <ToolActivityCard
+            tools={tools}
+            toolCalls={toolCalls}
+            activity={activity}
+            integrations={toolIntegrations}
+            entities={toolEntities}
+            renderPreview={toolPreview}
+            approval={inlineApproval}
+            working={turnActive}
+          />
+        </>
       ) : null}
       {aside ? (
         <div className="flex items-start gap-2">
@@ -222,6 +227,7 @@ export function ChatAssistantTurn({
           activity={activity}
         />
       ) : null}
+      {toolApproval && !inlineApproval ? toolApproval.fallback : null}
       {after}
     </div>
   );

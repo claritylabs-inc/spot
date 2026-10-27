@@ -117,8 +117,23 @@ effort and never restarts inference. The router schema/API and router-owned work
 Profile settings store personal `users.streamResponses` (default on) and
 `users.showThinking` (default on; only an explicit false hides activity). Both
 operator and client web renderers share these preferences. Show thinking displays
-the live status line and a collapsible summary of tool activity, not raw
-reasoning or tool payloads.
+the live status line, a text-only thought-process trace (decision stages and the
+plan when one was made; a workflow check that found no plan is hidden), and a
+separate tool card with one branded row per call, not raw reasoning or tool
+payloads. `applyMessageActivity` stamps `startedAt` when an entry is first
+observed running and `endedAt` when it settles, from its own clock; rows show
+call durations, the card the end-to-end span, and the trace the summed stage
+time ("Thought for 3s"). Older entries without timestamps show none.
+
+Settled calls may also carry a structural `result` count ("3 threads", from
+`convex/lib/toolResultSummary.ts`), and operator calls a registry `target`
+(organization or request id, resolved to the client's brand by
+`operatorAgent.getThread`), a bounded `change` summary for completed writes
+(`changeSummaryInternal`, ids replaced by names) and a `preview` flag. Previews
+live in `operatorAgentToolPreviews` (up to ten title/subtitle/date/website
+items per call, kept with the thread) and load lazily through
+`operatorAgent.getToolPreview` for any operator who can read the thread. Client
+thread reads omit tool outputs from `toolCalls` and tool `agentSteps`.
 
 `threadMessages.activity` and `operatorAgentMessages.activity` hold bounded live
 status and a retained activity history: a `model`/`tools` phase, up to 32 decision

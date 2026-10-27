@@ -70,6 +70,14 @@ import { cancelRouterJobForInvocation } from "./routerJobs";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
+  TOOL_PREVIEW_MAX_ITEMS,
+  toolPreviewItemValidator,
+} from "./lib/toolResultPreview";
+import {
+  MESSAGE_ACTIVITY_MAX_CHANGE,
+  type MessageActivityToolTarget,
+} from "./lib/messageActivity";
+import {
   internalMutation,
   internalQuery,
   internalAction,
@@ -102,6 +110,7 @@ import {
   operatorUpdateFieldLabel,
   operatorUpdateValue,
   type OperatorAgentToolName,
+  type OperatorToolIntegration,
   type OperatorToolRole,
 } from "./lib/operatorAgentToolRegistry";
 import type { OperatorGoogleWorkspaceToolName } from "./lib/googleWorkspace";
@@ -525,7 +534,7 @@ const DISPLAY_REFERENCE_FALLBACKS: Record<string, string> = {
 };
 
 async function referenceDisplayName(
-  ctx: MutationCtx,
+  ctx: QueryCtx,
   key: string,
   value: string,
 ): Promise<string | undefined> {
@@ -584,7 +593,7 @@ async function referenceDisplayName(
 }
 
 async function operatorDisplaySummary(
-  ctx: MutationCtx,
+  ctx: QueryCtx,
   summary: string,
   input: Record<string, unknown>,
 ) {
@@ -5081,6 +5090,63 @@ export const clearThreadContext = mutation({
   },
 });
 
+const MAX_ACTIVITY_ENTITIES = 40;
+
+/**
+ * Brands for the records tool calls acted on, keyed `kind:id`, so activity
+ * rows can show the client's mark. Requests resolve to their client
+ * organization; deleted or unknown records are omitted.
+ */
+async function activityEntities(
+  ctx: QueryCtx,
+  messages: Doc<"operatorAgentMessages">[],
+) {
+  const targets = new Map<string, MessageActivityToolTarget>();
+  for (const message of messages)
+    for (const tool of message.activity?.tools ?? [])
+      if (tool.target && targets.size < MAX_ACTIVITY_ENTITIES)
+        targets.set(`${tool.target.kind}:${tool.target.id}`, tool.target);
+  const entities: Record<
+    string,
+    { name: string; website?: string; iconUrl?: string }
+  > = {};
+  await Promise.all(
+    [...targets].map(async ([key, target]) => {
+      let orgId: Id<"organizations"> | null | undefined;
+      if (target.kind === "organization") {
+        orgId = ctx.db.normalizeId("organizations", target.id);
+      } else {
+        const requestId = ctx.db.normalizeId("procurementRequests", target.id);
+        const request = requestId ? await ctx.db.get(requestId) : null;
+        orgId = request && !request.deletedAt ? request.clientOrgId : null;
+      }
+      const org = orgId ? await ctx.db.get(orgId) : null;
+      if (!org || org.deletedAt) return;
+      const iconUrl = org.iconStorageId
+        ? await ctx.storage.getUrl(org.iconStorageId)
+        : null;
+      entities[key] = {
+        name: org.name,
+        ...(org.website ? { website: org.website } : {}),
+        ...(iconUrl ? { iconUrl } : {}),
+      };
+    }),
+  );
+  return entities;
+}
+
+/** External system each named tool reaches, for branded activity rows. */
+function toolIntegrations(names: string[]) {
+  const integrations: Record<string, OperatorToolIntegration> = {};
+  for (const name of new Set(names)) {
+    const integration = isOperatorAgentToolName(name)
+      ? getOperatorAgentToolSpec(name).integration
+      : undefined;
+    if (integration) integrations[name] = integration;
+  }
+  return integrations;
+}
+
 export const getThread = query({
   args: { threadId: v.id("operatorAgentThreads") },
   handler: async (ctx, args) => {
@@ -5137,8 +5203,10 @@ export const getThread = query({
       thread.ownerUserId,
       ...messages.flatMap((message) => (message.userId ? [message.userId] : [])),
     ]);
+    const entities = await activityEntities(ctx, messages);
     return {
       thread: { ...thread, initialContext, pageContext: pageContext ?? null },
+      entities,
       viewerUserId: operator.userId,
       creator: people.get(thread.ownerUserId)!,
       people: [...people.values()],
@@ -5162,6 +5230,12 @@ export const getThread = query({
                   ? getOperatorAgentToolSpec(call.name).effect
                   : undefined,
               })),
+              toolIntegrations: toolIntegrations([
+                ...(message.toolCalls ?? []).map((call) => call.name),
+                ...(message.activity?.tools ?? []).map(
+                  (tool) => tool.toolName,
+                ),
+              ]),
             };
           }),
         )
@@ -7709,6 +7783,78 @@ export const requestToolConfirmationInternal = internalMutation({
   },
 });
 
+/**
+ * What a completed write did, for its activity row: the registry summary
+ * with record ids replaced by names. Reads never get one.
+ */
+export const changeSummaryInternal = internalQuery({
+  args: { toolName: v.string(), input: v.record(v.string(), v.any()) },
+  handler: async (ctx, args): Promise<string | null> => {
+    if (!isOperatorAgentToolName(args.toolName)) return null;
+    const spec = getOperatorAgentToolSpec(args.toolName);
+    if (spec.effect === "read") return null;
+    // Batch summaries resolve nested ids to names the same way approvals do.
+    const summary = isClientBatchToolName(args.toolName)
+      ? await clientBatchConfirmationSummary(ctx, args.toolName, args.input)
+      : isRemainingBatchToolName(args.toolName)
+        ? await remainingBatchConfirmationSummary(
+            ctx,
+            args.toolName,
+            args.input,
+          )
+        : await operatorDisplaySummary(
+            ctx,
+            spec.summarize(args.input),
+            args.input,
+          );
+    return boundedDisplayText(summary, MESSAGE_ACTIVITY_MAX_CHANGE, true) || null;
+  },
+});
+
+/** Stores a call's result preview; replays of the same call keep the first. */
+export const recordToolPreviewInternal = internalMutation({
+  args: {
+    messageId: v.id("operatorAgentMessages"),
+    toolCallId: v.string(),
+    items: v.array(toolPreviewItemValidator),
+  },
+  handler: async (ctx, args) => {
+    if (args.items.length === 0 || args.items.length > TOOL_PREVIEW_MAX_ITEMS)
+      return false;
+    const existing = await ctx.db
+      .query("operatorAgentToolPreviews")
+      .withIndex("by_messageId_and_toolCallId", (index) =>
+        index.eq("messageId", args.messageId).eq("toolCallId", args.toolCallId),
+      )
+      .unique();
+    if (!existing) await ctx.db.insert("operatorAgentToolPreviews", args);
+    return true;
+  },
+});
+
+/** Preview items for one call, for any operator who can read the thread. */
+export const getToolPreview = query({
+  args: {
+    messageId: v.id("operatorAgentMessages"),
+    toolCallId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    const message = await ctx.db.get(args.messageId);
+    if (!message) return null;
+    await requireOperatorThread(ctx, message.threadId, operator.userId, {
+      anyOperator: true,
+    });
+    const preview = await ctx.db
+      .query("operatorAgentToolPreviews")
+      .withIndex("by_messageId_and_toolCallId", (index) =>
+        index.eq("messageId", args.messageId).eq("toolCallId", args.toolCallId),
+      )
+      .unique();
+    return preview?.items ?? null;
+  },
+});
+
 export const executeToolInternal = internalMutation({
   args: {
     ...operatorToolExecutionArgs,
@@ -7730,6 +7876,7 @@ export const completeRunInternal = internalMutation({
     toolCalls: v.array(
       v.object({
         name: v.string(),
+        toolCallId: v.optional(v.string()),
         input: v.optional(v.string()),
         output: v.optional(v.string()),
       }),
@@ -8034,6 +8181,7 @@ export const continueRunInternal = internalMutation({
     toolCalls: v.array(
       v.object({
         name: v.string(),
+        toolCallId: v.optional(v.string()),
         input: v.optional(v.string()),
         output: v.optional(v.string()),
       }),

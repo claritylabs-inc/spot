@@ -3,6 +3,7 @@ import { makeFunctionReference } from "convex/server";
 import type { Infer } from "convex/values";
 import type { operatorEmailContentValidator } from "@/convex/lib/threadMessageValidators";
 import type { MessageActivity } from "@/convex/lib/messageActivity";
+import type { OperatorToolIntegration } from "@/convex/lib/operatorAgentToolRegistry";
 import type { RouterJobFailure } from "@/convex/lib/routerJobFailure";
 
 import type { Id } from "@/convex/_generated/dataModel";
@@ -49,6 +50,8 @@ type BackendMessage = {
   replyToMessageId?: string;
   dedupeKey?: string;
   toolCalls?: OperatorAgentToolCall[];
+  /** External system each tool reaches (operator registry), by tool name. */
+  toolIntegrations?: Record<string, OperatorToolIntegration>;
   attachments?: BackendAttachment[];
 };
 
@@ -102,8 +105,15 @@ type ListThreadsArgs = {
 };
 type GetThreadArgs = { threadId: string };
 type SetThreadArchiveArgs = { threadId: string };
+/** Brand of a record a tool call acted on, keyed `kind:id`. */
+export type OperatorActivityEntity = {
+  name: string;
+  website?: string;
+  iconUrl?: string;
+};
 type GetThreadResult = {
   thread: BackendThread;
+  entities: Record<string, OperatorActivityEntity>;
   viewerUserId: string;
   creator: OperatorPerson;
   people: OperatorPerson[];
@@ -171,6 +181,7 @@ export type OperatorAgentConfirmation = {
   approvalMode?: "automatic";
   id: string;
   promptMessageId: string;
+  toolName: string;
   title: string;
   destructive: boolean;
   state: BackendConfirmation["state"];
@@ -200,11 +211,14 @@ export type OperatorAgentMessage = {
   replyToMessageId?: string;
   isDirectToolRequest?: boolean;
   toolCalls?: OperatorAgentToolCall[];
+  /** External system each tool reaches (operator registry), by tool name. */
+  toolIntegrations?: Record<string, OperatorToolIntegration>;
   attachments?: BackendAttachment[];
 };
 
 type OperatorAgentToolCall = {
   name: string;
+  toolCallId?: string;
   effect?: BackendConfirmation["effect"];
   input?: string;
   output?: string;
@@ -212,13 +226,26 @@ type OperatorAgentToolCall = {
 
 export type OperatorAgentThreadDetail = {
   thread: OperatorAgentThread | null;
+  entities: Record<string, OperatorActivityEntity>;
   viewerUserId: string | null;
   messages: OperatorAgentMessage[];
   activeRun: boolean;
   confirmations: OperatorAgentConfirmation[];
 };
 
+export type OperatorToolPreviewItem = {
+  title: string;
+  subtitle?: string;
+  date?: string;
+  website?: string;
+};
+
 export const operatorAgentApi = {
+  getToolPreview: makeFunctionReference<
+    "query",
+    { messageId: string; toolCallId: string },
+    OperatorToolPreviewItem[] | null
+  >("operatorAgent:getToolPreview"),
   listThreads: makeFunctionReference<"query", ListThreadsArgs, BackendThread[]>(
     "operatorAgent:listThreads",
   ),
@@ -326,6 +353,7 @@ function normalizeConfirmation(
   return {
     id: confirmation._id,
     promptMessageId: confirmation.promptMessageId,
+    toolName: confirmation.toolName,
     title: confirmation.summary,
     approvalMode: confirmation.approvalMode,
     destructive: confirmation.effect === "destructive",
@@ -346,6 +374,7 @@ export function normalizeOperatorAgentThread(
   if (!value) {
     return {
       thread: null,
+      entities: {},
       viewerUserId: null,
       messages: [],
       activeRun: false,
@@ -355,6 +384,7 @@ export function normalizeOperatorAgentThread(
   const people = new Map(value.people.map((person) => [person.userId, person]));
   return {
     thread: normalizeThread(value.thread, value.creator),
+    entities: value.entities,
     viewerUserId: value.viewerUserId,
     messages: value.messages.map((message) => ({
       id: message._id,
@@ -384,6 +414,7 @@ export function normalizeOperatorAgentThread(
         message.role === "user" &&
         Boolean(message.dedupeKey?.startsWith("operator-tool:")),
       toolCalls: message.toolCalls,
+      toolIntegrations: message.toolIntegrations,
       attachments: message.attachments,
     })),
     activeRun: value.activeRun !== null,
