@@ -1,3 +1,4 @@
+import { sendingMailboxFor } from "./sendingMailbox";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { actionConfirmationFingerprint } from "./actionConfirmationFingerprint";
@@ -73,7 +74,8 @@ export async function outreachSenderIdentity(
   try {
     const name = (user.name ?? "").replace(/\s+/g, " ").trim();
     const fromName = operatorFromName(name);
-    const address = operatorTeamAddressFor({
+    const mailbox = await sendingMailboxFor(ctx, operatorUserId);
+    const address = mailbox?.address ?? operatorTeamAddressFor({
       email: user.email ?? null,
       teamEmailLocalpart: profile.teamEmailLocalpart ?? null,
     });

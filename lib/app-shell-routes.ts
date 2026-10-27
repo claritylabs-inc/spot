@@ -4,6 +4,7 @@ export type OperatorNavSection =
   | "brokers"
   | "clients"
   | "procurement"
+  | "email-health"
   | "inbox"
   | "channels"
   | "audit"
@@ -55,6 +56,7 @@ function operatorActiveSection(
     case "brokers":
     case "clients":
     case "procurement":
+    case "email-health":
     case "inbox":
     case "channels":
     case "audit":

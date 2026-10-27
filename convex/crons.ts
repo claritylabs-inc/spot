@@ -80,4 +80,6 @@ crons.interval("recover operator notification deliveries", { minutes: 1 }, inter
 
 crons.interval("recover provider outreach", { minutes: 1 }, internal.providerOutreach.recoverInternal, {});
 
+crons.interval("sync operator sending mailboxes", { minutes: 2 }, internal.actions.operatorSendingMailboxes.syncAll, {});
+
 export default crons;

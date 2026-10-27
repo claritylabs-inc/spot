@@ -16,7 +16,7 @@ import type { MutationCtx } from "./_generated/server";
 import { isOperatorEmailDraft } from "./lib/actionConfirmationFingerprint";
 import { extractEmailAddress } from "./lib/emailAddress";
 import { normalizeProcurementSubject } from "./lib/procurement";
-import { MAX_EMAIL_ATTACHMENTS, teamTargetProblem } from "./lib/teamEmailStore";
+import { MAX_EMAIL_ATTACHMENTS, teamTargetProblem, bindTeamInboxThread } from "./lib/teamEmailStore";
 import {
   cancelDraftOrPendingEmail,
   invalidateDraftConfirmations,
@@ -782,6 +782,8 @@ export const recordOperatorInboxSentInternal = internalMutation({
       });
     }
 
+    const gmailThreadId = attempt.inboxId?.startsWith("gmail:") ? (intended?.resendThreadId ?? args.emailId) : undefined;
+    if(gmailThreadId && attempt.inboxId) await bindTeamInboxThread(ctx,{threadId,inboxId:attempt.inboxId,resendThreadId:gmailThreadId});
     if (existingMessage) {
       await ctx.db.patch(existingMessage._id, {
         sentByUserId: senderUserId,
@@ -804,6 +806,7 @@ export const recordOperatorInboxSentInternal = internalMutation({
         sentByUserId: senderUserId,
         pendingEmailId: pending._id,
         resendInboxEmailId: args.emailId,
+        ...(gmailThreadId ? { messageId: args.emailId, resendThreadId:gmailThreadId } : {}),
         threadId,
         clientOrgId: pending.orgId,
         addressedRequestId: pending.procurementRequestId,

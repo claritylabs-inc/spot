@@ -430,7 +430,7 @@ export const advanceOperatorInboxAttemptInternal = internalMutation({
     }
     await ctx.db.patch(attempt._id, {
       operatorStage: args.stage,
-      ...(args.inboxId ? { inboxId: args.inboxId } : {}),
+      ...(args.inboxId ? { inboxId: args.inboxId, ...(args.inboxId.startsWith("gmail:") ? { provider: "google_smtp" as const } : {}) } : {}),
       ...(args.draftId ? { draftId: args.draftId } : {}),
       ...(args.resendEmailId ? { resendEmailId: args.resendEmailId } : {}),
       ...(args.stage === "sent"

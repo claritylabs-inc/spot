@@ -118,6 +118,7 @@ export const stepFailureValidator = v.object({
   ),
   message: v.string(),
   retryAfterMs: v.optional(v.number()),
+  code: v.optional(v.union(v.literal("mailbox_throttled"),v.literal("mailbox_paused"))),
 });
 export type StepFailure = Infer<typeof stepFailureValidator>;
 

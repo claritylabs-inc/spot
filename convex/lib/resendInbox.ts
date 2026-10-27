@@ -895,7 +895,7 @@ function base64DecodedBytes(content: string): number {
   return Math.floor((content.length * 3) / 4) - padding;
 }
 
-function validateDraftAttachments(
+export function validateDraftAttachments(
   operation: ResendInboxOperation,
   attachments: DraftAttachment[],
 ): void {
