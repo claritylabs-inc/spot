@@ -39,12 +39,20 @@ const child = spawn(
       NEXT_PUBLIC_APP_URL: `http://localhost:${web}`,
     },
     stdio: "inherit",
+    detached: true,
   },
 );
 
+// The child leads its own process group; signal the group so next's workers die with it.
+const killGroup = (signal) => {
+  try {
+    process.kill(-child.pid, signal);
+  } catch {}
+};
 for (const signal of ["SIGHUP", "SIGINT", "SIGTERM"]) {
-  process.once(signal, () => child.kill(signal));
+  process.once(signal, () => killGroup(signal));
 }
+process.on("exit", () => killGroup("SIGTERM"));
 child.on("error", (error) => {
   console.error(error);
   process.exitCode = 1;
