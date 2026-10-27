@@ -117,8 +117,10 @@ effort and never restarts inference. The router schema/API and router-owned work
 Profile settings store personal `users.streamResponses` (default on) and
 `users.showThinking` (default on; only an explicit false hides activity). Both
 operator and client web renderers share these preferences. Show thinking displays
-the live status line and a collapsible summary of tool activity, not raw
-reasoning or tool payloads.
+the live status line, a text-only thought-process trace (decision stages and the
+plan when one was made; a workflow check that found no plan is hidden), and a
+separate tool card with one branded row per call, not raw reasoning or tool
+payloads.
 
 `threadMessages.activity` and `operatorAgentMessages.activity` hold bounded live
 status and a retained activity history: a `model`/`tools` phase, up to 32 decision
