@@ -930,6 +930,8 @@ function Application({
     )
       state.current.answers.requirements = "";
     state.current.details=invalidateIntakePrefills(previousAnswers,previousDetails,state.current.answers,state.current.details ?? details);
+    if ((field === "name" || field === "email") && previousAnswers[field]?.trim() !== value.trim())
+      state.current.details = { ...state.current.details, termsAcceptedVersion: undefined };
     setDetails(state.current.details);
     cache();
     setAnswers(state.current.answers);

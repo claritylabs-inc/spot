@@ -3678,6 +3678,30 @@ export default defineSchema({
     .index("by_userId_and_threadId", ["userId", "threadId"])
     .index("by_threadId", ["threadId"]),
 
+  // The signed facts are immutable; only PDF generation/publication state changes.
+  requestIntakeAuthorizations: defineTable({
+    requestId: v.id("procurementRequests"),
+    clientOrgId: v.id("organizations"),
+    userId: v.id("users"),
+    signerName: v.string(),
+    signerEmail: v.string(),
+    legalName: v.string(),
+    dba: v.optional(v.string()),
+    acceptedAt: v.number(),
+    submittedAt: v.number(),
+    contentHash: v.string(),
+    termsVersion: v.string(),
+    termsUrl: v.string(),
+    statement: v.string(),
+    representationTerms: v.string(),
+    authorityStatement: v.string(),
+    status: v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
+    attempts: v.number(),
+    fileId: v.optional(v.id("_storage")),
+    fileItemId: v.optional(v.id("procurementFileItems")),
+    createdAt: v.number(),
+  }).index("by_requestId", ["requestId"]),
+
   procurementFileItems: defineTable({
     removedAt: v.optional(v.number()),
     documentCategory: v.optional(

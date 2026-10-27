@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { Field, FieldLabel, FieldTitle, FieldDescription } from "@claritylabs-inc/ui/components/field";
-import { INTAKE_TERMS_URL } from "@/lib/intake-terms";
+import { INTAKE_TERMS_URL, INTAKE_TERMS_TITLE, INTAKE_AUTHORIZATION_CONSENT, INTAKE_SIGNATURE_CONSENT } from "@/lib/intake-terms";
 import { typeStyle } from "@/lib/typography";
 import { INTAKE_SECTION_INTRODUCTIONS } from "@/lib/intake-sections";
 import { PillButton } from "@/components/ui/pill-button";
@@ -153,10 +153,10 @@ export function IntakeSectionIntroduction({
               />
               <div className="min-w-0 space-y-2">
                 <FieldTitle className={typeStyle("body.root")}>
-                  By continuing, I agree to Spot’s Terms of Service.
+                  {INTAKE_TERMS_TITLE}
                 </FieldTitle>
                 <FieldDescription id="intake-terms-description">
-                  I authorize Spot to act as my legal representative to obtain quotes and purchase insurance on my behalf, subject to my approval of the coverage and cost.{" "}
+                  {INTAKE_AUTHORIZATION_CONSENT} {INTAKE_SIGNATURE_CONSENT}{" "}
                   <a href={INTAKE_TERMS_URL} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} className="underline underline-offset-4">
                     Read the Terms of Service (opens in a new tab)
                   </a>.

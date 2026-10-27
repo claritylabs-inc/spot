@@ -1,4 +1,4 @@
-import { INTAKE_TERMS_VERSION, INTAKE_TERMS_URL, INTAKE_TERMS_STATEMENT } from "../lib/intake-terms";
+import { INTAKE_TERMS_VERSION, intakeTermsForVersion, INTAKE_TERMS_URL, INTAKE_TERMS_STATEMENT } from "../lib/intake-terms";
 import { INTAKE_QUESTION_REFERENCE_VERSION } from "../lib/intake-question-reference";
 import { workforcePolicyQuestion } from "../lib/intake-workforce-policy";
 import { vehicleRelevanceKey, vehicleRelevanceEvidence, vehicleRelevanceCandidates } from "../lib/intake-vehicle-relevance";
@@ -71,6 +71,7 @@ import { seedRequestIntake } from "./lib/procurementNarrative";
 import { publicResearchUrl } from "./lib/companyResearch";
 import { scheduleCompanyResearch } from "./companyResearch";
 import { scheduleWebsiteTechScan } from "./websiteTech";
+import { createIntakeAuthorization } from "./intakeAuthorizations";
 
 function validateContact(name: string, email: string, phone: string, validatePhone = true) {
   const contact = {
@@ -797,7 +798,7 @@ export const save = mutation({
     )
       throw new Error("This question cannot be skipped");
     if (args.details) {
-      if (args.details.termsAcceptedVersion && args.details.termsAcceptedVersion !== INTAKE_TERMS_VERSION)
+      if (args.details.termsAcceptedVersion && !intakeTermsForVersion(args.details.termsAcceptedVersion))
         throw new Error("Review and accept the current Spot Terms of Service");
       validateIntakeDetails(args.details);
       const approved = [
@@ -841,6 +842,9 @@ export const save = mutation({
       }
     }
     let details = args.details ?? request.intakeDetails;
+    // Older drafts can navigate to the new consent without autosave blocking them.
+    if (details?.termsAcceptedVersion && details.termsAcceptedVersion !== INTAKE_TERMS_VERSION)
+      details = { ...details, termsAcceptedVersion: undefined };
     if (!args.details && details) {
       const legacy = detailsFromAnswers({
         ...request.intakeAnswers,
@@ -879,6 +883,11 @@ export const save = mutation({
       ...args.answers,
       ...(args.details ? detailsAnswers(args.details) : {}),
     };
+    const signerChanged = !!request.intakeTermsAcceptance?.signerName && (
+      request.intakeTermsAcceptance.signerName !== answers.name?.trim() ||
+      request.intakeTermsAcceptance.signerEmail !== answers.email?.trim().toLowerCase()
+    );
+    if (signerChanged && details) details = { ...details, termsAcceptedVersion: undefined };
     if(details && !request.intakeSubmittedAt)details=invalidateIntakePrefills(request.intakeAnswers ?? {},request.intakeDetails ?? detailsFromAnswers(request.intakeAnswers ?? {}),answers,details);
     const website = answers.website?.trim() ?? "";
     const name = answers.legalName?.trim() || answers.dba?.trim() || "";
@@ -969,12 +978,13 @@ export const save = mutation({
           }
         : {}),
       ...(details ? { intakeDetails: details } : {}),
-      ...(args.details ? { intakeTermsAcceptance:
-        args.details.termsAcceptedVersion === INTAKE_TERMS_VERSION
+      ...(args.details || signerChanged ? { intakeTermsAcceptance:
+        details?.termsAcceptedVersion === INTAKE_TERMS_VERSION
           ? request.intakeTermsAcceptance?.version === INTAKE_TERMS_VERSION
             ? request.intakeTermsAcceptance
             : { userId: user._id, acceptedAt: dayjs().valueOf(), version: INTAKE_TERMS_VERSION,
-                url: INTAKE_TERMS_URL, statement: INTAKE_TERMS_STATEMENT }
+                url: `${INTAKE_TERMS_URL}?version=${INTAKE_TERMS_VERSION}`, statement: INTAKE_TERMS_STATEMENT,
+                signerName: answers.name?.trim(), signerEmail: answers.email?.trim().toLowerCase() }
           : undefined,
       } : {}),
       intakeSkippedSteps: [
@@ -1439,6 +1449,11 @@ export const submit = mutation({
     const savings = answers.intakeGoal === "savings";
     if (!savings && request.intakeTermsAcceptance?.version !== INTAKE_TERMS_VERSION)
       throw new Error("Accept Spot’s Terms of Service in the Coverage section before submitting");
+    if (!savings && (
+      request.intakeTermsAcceptance?.userId !== user._id ||
+      request.intakeTermsAcceptance.signerName !== answers.name?.trim() ||
+      request.intakeTermsAcceptance.signerEmail !== answers.email?.trim().toLowerCase()
+    )) throw new Error("Review your name and electronically sign the authorization in the Coverage section before submitting");
     const details = activeIntakeDetails(request.intakeDetails ?? detailsFromAnswers(answers),answers.intakeGoal);
     const problems=intakeSubmissionProblems(answers,details);
     if(problems.length)throw new Error(`Please complete: ${problems.map(problem=>problem.label).join(", ")}`);
@@ -1493,6 +1508,7 @@ export const submit = mutation({
           updatedAt: dayjs().valueOf(),
         });
         await fillRequestFromClientProfile(ctx, (await ctx.db.get(request._id))!);
+        await createIntakeAuthorization(ctx, request._id, submissionBaseline, contentHash);
         await ctx.scheduler.runAfter(0, internal.requestIntake.preparePremiumEstimateInternal, { requestId: request._id });
         if (request.clientOrgId)
           await saveIntakeBusinessProfile(
@@ -1616,6 +1632,7 @@ export const submit = mutation({
       userId: user._id,
       source: "client",
     });
+    await createIntakeAuthorization(ctx, request._id, submissionBaseline, contentHash);
     if (writeCompanyProfile)
       await saveIntakeBusinessProfile(
         ctx,

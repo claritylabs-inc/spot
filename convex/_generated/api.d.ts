@@ -33,6 +33,7 @@ import type * as actions_handleInboundOperatorEmail from "../actions/handleInbou
 import type * as actions_handleInboundOperatorImessage from "../actions/handleInboundOperatorImessage.js";
 import type * as actions_handleInboundSlack from "../actions/handleInboundSlack.js";
 import type * as actions_imessageWebhook from "../actions/imessageWebhook.js";
+import type * as actions_intakeAuthorization from "../actions/intakeAuthorization.js";
 import type * as actions_intakeCompanyResearch from "../actions/intakeCompanyResearch.js";
 import type * as actions_intakeCoverage from "../actions/intakeCoverage.js";
 import type * as actions_intakeCyberResearch from "../actions/intakeCyberResearch.js";
@@ -134,6 +135,7 @@ import type * as imessagePrivacy from "../imessagePrivacy.js";
 import type * as imessageTransportClaims from "../imessageTransportClaims.js";
 import type * as imessageWebhookHttp from "../imessageWebhookHttp.js";
 import type * as intakeApplicationMigrations from "../intakeApplicationMigrations.js";
+import type * as intakeAuthorizations from "../intakeAuthorizations.js";
 import type * as intakeSlack from "../intakeSlack.js";
 import type * as lib_access from "../lib/access.js";
 import type * as lib_acordForms_select from "../lib/acordForms/select.js";
@@ -274,6 +276,7 @@ import type * as lib_insuranceIntakeSchema from "../lib/insuranceIntakeSchema.js
 import type * as lib_insuredNameDecisions from "../lib/insuredNameDecisions.js";
 import type * as lib_intakeAcordQuestions from "../lib/intakeAcordQuestions.js";
 import type * as lib_intakeApplication from "../lib/intakeApplication.js";
+import type * as lib_intakeAuthorizationPdf from "../lib/intakeAuthorizationPdf.js";
 import type * as lib_intakeDetailsSchema from "../lib/intakeDetailsSchema.js";
 import type * as lib_intakeDiagnostics from "../lib/intakeDiagnostics.js";
 import type * as lib_intakeFollowupInputs from "../lib/intakeFollowupInputs.js";
@@ -607,6 +610,7 @@ declare const fullApi: ApiFromModules<{
   "actions/handleInboundOperatorImessage": typeof actions_handleInboundOperatorImessage;
   "actions/handleInboundSlack": typeof actions_handleInboundSlack;
   "actions/imessageWebhook": typeof actions_imessageWebhook;
+  "actions/intakeAuthorization": typeof actions_intakeAuthorization;
   "actions/intakeCompanyResearch": typeof actions_intakeCompanyResearch;
   "actions/intakeCoverage": typeof actions_intakeCoverage;
   "actions/intakeCyberResearch": typeof actions_intakeCyberResearch;
@@ -708,6 +712,7 @@ declare const fullApi: ApiFromModules<{
   imessageTransportClaims: typeof imessageTransportClaims;
   imessageWebhookHttp: typeof imessageWebhookHttp;
   intakeApplicationMigrations: typeof intakeApplicationMigrations;
+  intakeAuthorizations: typeof intakeAuthorizations;
   intakeSlack: typeof intakeSlack;
   "lib/access": typeof lib_access;
   "lib/acordForms/select": typeof lib_acordForms_select;
@@ -848,6 +853,7 @@ declare const fullApi: ApiFromModules<{
   "lib/insuredNameDecisions": typeof lib_insuredNameDecisions;
   "lib/intakeAcordQuestions": typeof lib_intakeAcordQuestions;
   "lib/intakeApplication": typeof lib_intakeApplication;
+  "lib/intakeAuthorizationPdf": typeof lib_intakeAuthorizationPdf;
   "lib/intakeDetailsSchema": typeof lib_intakeDetailsSchema;
   "lib/intakeDiagnostics": typeof lib_intakeDiagnostics;
   "lib/intakeFollowupInputs": typeof lib_intakeFollowupInputs;

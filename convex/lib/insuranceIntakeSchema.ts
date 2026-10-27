@@ -28,7 +28,9 @@ export const requestIntakeFields = {
   intakeTermsAcceptance: v.optional(v.object({
     userId: v.id("users"), acceptedAt: v.number(), version: v.string(),
     url: v.string(), statement: v.string(),
+    signerName: v.optional(v.string()), signerEmail: v.optional(v.string()),
   })),
+  intakeAuthorizationId: v.optional(v.id("requestIntakeAuthorizations")),
   intakePremiumEstimate: v.optional(v.object({
     contentHash: v.string(), token: v.string(), startedAt: v.number(), provisional: v.optional(v.boolean()),
     status: v.union(v.literal("pending"), v.literal("running"), v.literal("completed"), v.literal("failed")),
