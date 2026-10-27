@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import { internalQuery } from "./_generated/server";
-import { normalizeGmailAddress } from "./lib/operatorGmail";
+import { normalizeGmailAddress } from "./lib/inboxIds";
 
 /**
  * The connection an inbound address belongs to, in any status (newest first,

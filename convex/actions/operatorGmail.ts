@@ -7,7 +7,7 @@ import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getAuthSiteUrl } from "../lib/domains";
 import { decryptPassword, encryptPassword } from "../lib/imapMailbox";
-import { allowedGmailDomains, GMAIL_SCOPES } from "../lib/operatorGmail";
+import { allowedGmailDomains, GMAIL_SCOPES } from "../lib/inboxIds";
 import { gmailOAuthClient, gmailOAuthConfigured } from "../lib/operatorGmailOAuth";
 import { oauthStateHash } from "../lib/operatorMcpOAuth";
 import { mailboxConnectionsAllowed } from "../lib/sendingMailbox";

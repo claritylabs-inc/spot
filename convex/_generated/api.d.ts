@@ -277,6 +277,7 @@ import type * as lib_imessageTransport_responseDelivery from "../lib/imessageTra
 import type * as lib_imessageVoice from "../lib/imessageVoice.js";
 import type * as lib_inboundEmailDeterministicControls from "../lib/inboundEmailDeterministicControls.js";
 import type * as lib_inboundEmailParser from "../lib/inboundEmailParser.js";
+import type * as lib_inboxIds from "../lib/inboxIds.js";
 import type * as lib_insuranceIntakeSchema from "../lib/insuranceIntakeSchema.js";
 import type * as lib_insuredNameDecisions from "../lib/insuredNameDecisions.js";
 import type * as lib_intakeAcordQuestions from "../lib/intakeAcordQuestions.js";
@@ -316,6 +317,7 @@ import type * as lib_mcpEventWebhook from "../lib/mcpEventWebhook.js";
 import type * as lib_mcpProtocol from "../lib/mcpProtocol.js";
 import type * as lib_mergePdfs from "../lib/mergePdfs.js";
 import type * as lib_messageActivity from "../lib/messageActivity.js";
+import type * as lib_messageId from "../lib/messageId.js";
 import type * as lib_modelCallTelemetry from "../lib/modelCallTelemetry.js";
 import type * as lib_modelCatalog from "../lib/modelCatalog.js";
 import type * as lib_models from "../lib/models.js";
@@ -342,7 +344,6 @@ import type * as lib_operatorEmailAuthentication from "../lib/operatorEmailAuthe
 import type * as lib_operatorEmailTools from "../lib/operatorEmailTools.js";
 import type * as lib_operatorEntitySuggestions from "../lib/operatorEntitySuggestions.js";
 import type * as lib_operatorGlobalSuggestions from "../lib/operatorGlobalSuggestions.js";
-import type * as lib_operatorGmail from "../lib/operatorGmail.js";
 import type * as lib_operatorGmailOAuth from "../lib/operatorGmailOAuth.js";
 import type * as lib_operatorIdentity from "../lib/operatorIdentity.js";
 import type * as lib_operatorInbox from "../lib/operatorInbox.js";
@@ -863,6 +864,7 @@ declare const fullApi: ApiFromModules<{
   "lib/imessageVoice": typeof lib_imessageVoice;
   "lib/inboundEmailDeterministicControls": typeof lib_inboundEmailDeterministicControls;
   "lib/inboundEmailParser": typeof lib_inboundEmailParser;
+  "lib/inboxIds": typeof lib_inboxIds;
   "lib/insuranceIntakeSchema": typeof lib_insuranceIntakeSchema;
   "lib/insuredNameDecisions": typeof lib_insuredNameDecisions;
   "lib/intakeAcordQuestions": typeof lib_intakeAcordQuestions;
@@ -902,6 +904,7 @@ declare const fullApi: ApiFromModules<{
   "lib/mcpProtocol": typeof lib_mcpProtocol;
   "lib/mergePdfs": typeof lib_mergePdfs;
   "lib/messageActivity": typeof lib_messageActivity;
+  "lib/messageId": typeof lib_messageId;
   "lib/modelCallTelemetry": typeof lib_modelCallTelemetry;
   "lib/modelCatalog": typeof lib_modelCatalog;
   "lib/models": typeof lib_models;
@@ -928,7 +931,6 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorEmailTools": typeof lib_operatorEmailTools;
   "lib/operatorEntitySuggestions": typeof lib_operatorEntitySuggestions;
   "lib/operatorGlobalSuggestions": typeof lib_operatorGlobalSuggestions;
-  "lib/operatorGmail": typeof lib_operatorGmail;
   "lib/operatorGmailOAuth": typeof lib_operatorGmailOAuth;
   "lib/operatorIdentity": typeof lib_operatorIdentity;
   "lib/operatorInbox": typeof lib_operatorInbox;

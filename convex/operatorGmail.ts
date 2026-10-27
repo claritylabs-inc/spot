@@ -3,7 +3,7 @@ import dayjs from "dayjs";
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
-import { normalizeGmailAddress } from "./lib/operatorGmail";
+import { normalizeGmailAddress } from "./lib/inboxIds";
 
 /** The active connection for a Gmail address, or null. */
 export const getActiveByAddressInternal = internalQuery({

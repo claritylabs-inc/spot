@@ -4,7 +4,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { actionConfirmationFingerprint } from "./actionConfirmationFingerprint";
 import { validateAlwaysCcEmail } from "./operatorInbox";
 import { operatorEmailAliases, requireOperatorForUser } from "./operatorIdentity";
-import { normalizeGmailAddress } from "./operatorGmail";
+import { normalizeGmailAddress } from "./inboxIds";
 import {
   isTeamEmailError,
   operatorFromHeader,

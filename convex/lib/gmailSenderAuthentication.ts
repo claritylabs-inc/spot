@@ -3,12 +3,10 @@
 import { Resolver } from "node:dns/promises";
 import { dkimVerify } from "mailauth";
 import { simpleParser } from "mailparser";
-import { normalizeGmailAddress } from "./operatorGmail";
+import { normalizeGmailAddress } from "./inboxIds";
+import { comparableRfcId } from "./messageId";
 
 const MESSAGE_HEADERS = ["from", "to", "cc", "subject", "in-reply-to", "references"];
-
-const bare = (value: string | undefined | null) =>
-  value?.trim().replace(/^<|>$/g, "").toLowerCase() || null;
 
 /**
  * Whether the original MIME of a received email carries a DKIM signature
@@ -50,7 +48,7 @@ export async function hasAlignedSenderDkim(
     !address ||
     !domain ||
     address !== normalizeGmailAddress(expected.address) ||
-    (expected.messageId !== undefined && bare(parsed.messageId) !== bare(expected.messageId))
+    (expected.messageId !== undefined && comparableRfcId(parsed.messageId) !== comparableRfcId(expected.messageId))
   )
     return false;
 

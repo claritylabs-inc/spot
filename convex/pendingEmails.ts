@@ -15,7 +15,7 @@ import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import { isOperatorEmailDraft } from "./lib/actionConfirmationFingerprint";
 import { extractEmailAddress } from "./lib/emailAddress";
-import { gmailAddressOf, isOperatorGmailInbox } from "./lib/operatorGmail";
+import { gmailAddressOf, inboxKind } from "./lib/inboxIds";
 import { normalizeProcurementSubject } from "./lib/procurement";
 import { MAX_EMAIL_ATTACHMENTS, teamTargetProblem, bindTeamInboxThread, outboundByMessageId } from "./lib/teamEmailStore";
 import {
@@ -712,7 +712,7 @@ export const recordOperatorInboxSentInternal = internalMutation({
           q.eq("resendInboxEmailId", args.emailId),
         )
         .first()) ??
-      (attempt.inboxId && isOperatorGmailInbox(attempt.inboxId)
+      (attempt.inboxId && inboxKind(attempt.inboxId) === "gmail"
         ? await outboundByMessageId(ctx, args.emailId)
         : null);
     const provisional = existingMessage
@@ -788,12 +788,12 @@ export const recordOperatorInboxSentInternal = internalMutation({
       });
     }
 
-    const gmailThreadId = attempt.inboxId?.startsWith("gmail:") ? (intended?.resendThreadId ?? args.emailId) : undefined;
+    const gmailThreadId = attempt.inboxId && inboxKind(attempt.inboxId) === "legacy_google" ? (intended?.resendThreadId ?? args.emailId) : undefined;
     if(gmailThreadId && attempt.inboxId) await bindTeamInboxThread(ctx,{threadId,inboxId:attempt.inboxId,resendThreadId:gmailThreadId});
     // A connected-Gmail send is recorded under its deterministic Message-ID (the emailId), so the
     // Cc copy that returns through Resend is recognised as our own outbound and not stored twice.
     const gmailAddress =
-      attempt.inboxId && isOperatorGmailInbox(attempt.inboxId)
+      attempt.inboxId && inboxKind(attempt.inboxId) === "gmail"
         ? gmailAddressOf(attempt.inboxId)
         : undefined;
     if (existingMessage) {

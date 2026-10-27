@@ -7,7 +7,7 @@ import type { ActionCtx } from "../_generated/server";
 import { toInboxDraftAttachments } from "./emailDelivery";
 import { extractEmailAddress } from "./emailAddress";
 import { GMAIL_RECONNECT_MESSAGE, resolveOperatorSender } from "./operatorInbox";
-import { isOperatorGmailInbox } from "./operatorGmail";
+import { inboxKind } from "./inboxIds";
 import { isTeamEmailError } from "./teamEmail";
 import { teamReplyError, teamReplyErrorMessage } from "./teamEmailReply";
 import {
@@ -376,7 +376,7 @@ export async function sendOperatorInboxDraft(
               }
             : {}),
           // Gmail threads by the RFC References chain approved with the reply.
-          ...(isOperatorGmailInbox(inboxId) && pending.references
+          ...(inboxKind(inboxId) === "gmail" && pending.references
             ? { references: pending.references.split(/\s+/).filter(Boolean) }
             : {}),
           idempotencyKey: `opdraft:${keyId}`,

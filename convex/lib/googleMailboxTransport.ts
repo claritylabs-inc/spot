@@ -5,7 +5,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { withClient } from "./imapMailbox";
-import { MAILBOX_PREFIX } from "./sendingMailbox";
+import { MAILBOX_PREFIX } from "./inboxIds";
 import {
   type CreateDraftParams,
   type ResendInboxDraft,

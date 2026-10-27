@@ -19,6 +19,11 @@ export function extractEmailAddress(value: string | undefined): string | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** The bare lowercase address of a possibly display-named value; the trimmed lowercase input when it holds no valid address. */
+export function canonicalAddress(value: string): string {
+  return extractEmailAddress(value) ?? value.trim().toLowerCase();
+}
+
 /**
  * Reply-To is stored as one string; operator drafts keep a comma-separated
  * list of bare addresses. A value with a display name stays a single address.
