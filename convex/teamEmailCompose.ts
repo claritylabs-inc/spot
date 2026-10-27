@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import { mutation, query } from "./_generated/server";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { requireOperator } from "./lib/operatorIdentity";
+import { sendFromValidator } from "./lib/outreachIdentity";
 import { COMPOSE_KEY_PREFIX, composeTeamEmail } from "./lib/teamEmailCompose";
 import { teamReplyError } from "./lib/teamEmailReply";
 
@@ -26,6 +27,8 @@ const composeArgs = {
   message: v.string(),
   clientOrgId: v.optional(v.id("organizations")),
   requestId: v.optional(v.id("procurementRequests")),
+  /** Defaults to the Spot team address. */
+  sendFrom: v.optional(sendFromValidator),
 };
 
 /** The exact email that would be sent: From, To, Cc, Bcc, subject, signed body and its fingerprint. */

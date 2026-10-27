@@ -19,7 +19,13 @@ import { extractEmailAddress, parseReplyToAddresses } from "./lib/emailAddress";
 import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
 import { NoWriteInputError } from "./lib/noWriteInputError";
 import { isComposeKey } from "./lib/teamEmailReply";
-import { operatorSenderIdentity, type OperatorSenderIdentity } from "./lib/outreachIdentity";
+import { GMAIL_RECONNECT_MESSAGE } from "./lib/operatorInbox";
+import {
+  operatorGmailConnection,
+  operatorSenderIdentity,
+  senderFromHeader,
+  type OperatorSenderIdentity,
+} from "./lib/outreachIdentity";
 import {
   quotedHistory,
   teamThreadOwnerAddress,
@@ -485,7 +491,20 @@ export async function operatorDraftBlocker(
       "The signing operator is no longer available — update the draft to re-sign.",
     );
   }
-  if (draft.fromHeader !== identity.fromHeader) return redo(SENDER_CHANGED_REASON);
+  // A draft is signed from the Spot team address or the operator's own connected Gmail.
+  const teamAddress = identity.teamAddress.toLowerCase();
+  const fromAddress = extractEmailAddress(draft.fromHeader ?? "");
+  let gmailAddress: string | undefined;
+  if (fromAddress && fromAddress !== teamAddress) {
+    const connection = await operatorGmailConnection(ctx, draft.senderUserId);
+    if (connection?.address === fromAddress) {
+      if (connection.status !== "active") return redo(GMAIL_RECONNECT_MESSAGE);
+      gmailAddress = connection.address;
+    }
+  }
+  if (draft.fromHeader !== senderFromHeader(identity, gmailAddress)) {
+    return redo(SENDER_CHANGED_REASON);
+  }
   const copied = new Set(
     [draft.recipientEmail, ...(draft.ccAddresses ?? [])].map((address) =>
       address.trim().toLowerCase(),
@@ -498,6 +517,10 @@ export async function operatorDraftBlocker(
     (identity.alwaysCc && !copied.has(identity.alwaysCc))
   ) {
     return redo("Always CC changed — update draft to re-sign.");
+  }
+  // From Gmail the team address is a visible Cc that was approved with the email.
+  if (gmailAddress && !copied.has(teamAddress)) {
+    return redo("Your Spot address is no longer copied — preview the email again before sending.");
   }
   if (draft.orgId) {
     const organization = await ctx.db.get(draft.orgId);
@@ -536,7 +559,7 @@ export async function operatorDraftBlocker(
         "The conversation was linked to a different client or request — update the draft to re-sign.",
       );
     }
-    const plan = await teamThreadReplyPlan(ctx, thread, draft.senderUserId);
+    const plan = await teamThreadReplyPlan(ctx, thread, draft.senderUserId, gmailAddress);
     if (!plan.threaded && thread.ownerUserId !== draft.senderUserId) {
       const ownerAddress = await teamThreadOwnerAddress(ctx, thread.ownerUserId);
       if (ownerAddress && !copied.has(ownerAddress)) {

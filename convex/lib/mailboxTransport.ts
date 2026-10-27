@@ -1,11 +1,17 @@
 "use node";
-/** Resend sends all correspondence; retired Google messages remain readable. */
+/**
+ * Resend sends team correspondence. `google:` inbox ids are an operator's
+ * connected Gmail (OAuth) and go through the Gmail transport; the retired
+ * `gmail:` app-password mailboxes remain readable only.
+ */
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import * as resend from "./resendInbox";
 import { readGoogleDraft } from "./googleMailboxTransport";
 import { isGoogleMailbox } from "./sendingMailbox";
+import { isOperatorGmailInbox } from "./operatorGmail";
+import * as gmail from "./gmailTransport";
 export * from "./resendInbox";
 function assertResendSender(
   inboxId: string,
@@ -23,16 +29,23 @@ function assertResendSender(
 export async function createDraft(
   ctx: ActionCtx,
   actor: Id<"users">,
-  params: resend.CreateDraftParams,
+  params: gmail.GmailCreateDraftParams,
 ) {
+  if (isOperatorGmailInbox(params.inboxId)) {
+    return gmail.createGmailDraft(ctx, actor, params);
+  }
   assertResendSender(params.inboxId, "createDraft");
-  return resend.createDraft(ctx, actor, params);
+  const { references: _references, ...resendParams } = params;
+  return resend.createDraft(ctx, actor, resendParams);
 }
 export async function sendDraft(
   ctx: ActionCtx,
   actor: Id<"users">,
   params: resend.SendDraftParams,
 ) {
+  if (isOperatorGmailInbox(params.inboxId)) {
+    return gmail.sendGmailDraft(ctx, actor, params);
+  }
   assertResendSender(params.inboxId, "sendDraft");
   return resend.sendDraft(ctx, actor, params);
 }
@@ -41,6 +54,7 @@ export async function getDraft(
   inboxId: string,
   draftId: string,
 ) {
+  if (isOperatorGmailInbox(inboxId)) return gmail.readGmailDraft(ctx, inboxId, draftId);
   return isGoogleMailbox(inboxId)
     ? readGoogleDraft(ctx, inboxId, draftId)
     : resend.getDraft(inboxId, draftId);
@@ -51,6 +65,7 @@ export async function getThreadEmail(
   threadId: string,
   emailId: string,
 ): Promise<resend.ResendInboxResult<resend.ResendThreadEmail>> {
+  if (isOperatorGmailInbox(inboxId)) return gmail.getGmailThreadEmail();
   if (!isGoogleMailbox(inboxId))
     return resend.getThreadEmail(inboxId, threadId, emailId);
   const email = await ctx.runQuery(internal.operatorSendingMailboxes.message, {
@@ -70,6 +85,7 @@ export async function replyToThreadEmail(
   actor: Id<"users">,
   params: resend.ReplyToThreadEmailParams,
 ) {
+  if (isOperatorGmailInbox(params.inboxId)) return gmail.replyToGmailThreadEmail();
   assertResendSender(params.inboxId, "replyToThreadEmail");
   return resend.replyToThreadEmail(ctx, actor, params);
 }
@@ -78,7 +94,7 @@ export function addThreadLabels(
   threadId: string,
   labelIds: string[],
 ): Promise<resend.ResendInboxResult<resend.ResendInboxLabel[]>> {
-  return isGoogleMailbox(inboxId)
+  return isGoogleMailbox(inboxId) || isOperatorGmailInbox(inboxId)
     ? Promise.resolve({ status: "ok", data: [], replayed: false })
     : resend.addThreadLabels(inboxId, threadId, labelIds);
 }

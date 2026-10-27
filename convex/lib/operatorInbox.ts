@@ -3,6 +3,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import type { RecordInboxResult } from "../operatorInboxes";
 import { extractEmailAddress } from "./emailAddress";
+import { gmailInboxId } from "./operatorGmail";
 import type { InboxRecord } from "./providerOutreachValidators";
 import { getEmailDeliveryMode, isSpotOutboundAddress } from "./resend";
 import {
@@ -183,6 +184,57 @@ export async function ensureOperatorInbox(
       }),
   );
   return { inbox, captured: false, alwaysCcEmail: identity.alwaysCcEmail };
+}
+
+export const GMAIL_RECONNECT_MESSAGE =
+  "Your connected Gmail needs to be reconnected before Spot can send from it. Reconnect it in Profile, or send from your Spot address.";
+
+/** A Gmail send is refused locally: nothing was sent and it never falls back to Resend. */
+export function gmailReconnectError(operation: string) {
+  return new ResendInboxError("blocked", operation, GMAIL_RECONNECT_MESSAGE, {
+    code: "gmail_needs_reconnect",
+  });
+}
+
+/** The sender a send resolved to: a Resend team inbox or the operator's connected Gmail. */
+export type ResolvedOperatorSender = {
+  inbox: Pick<InboxRecord, "inboxId" | "emailAddress" | "fromName">;
+  /** Capture mode: placeholder ids, no provider call. */
+  captured: boolean;
+};
+
+/**
+ * The inbox an operator send goes out from. `fromAddress` is the address in the
+ * draft's From: the operator's ACTIVE connected Gmail resolves to its
+ * `google:` inbox (same `fromName` as the team inbox); a connected Gmail that
+ * is not active blocks with a visible error, never falling back to Resend;
+ * anything else is the team inbox, which `ensureOperatorInbox` reconciles with
+ * Resend as always.
+ */
+export async function resolveOperatorSender(
+  ctx: ActionCtx,
+  userId: Id<"users">,
+  fromAddress: string | null | undefined,
+): Promise<ResolvedOperatorSender> {
+  const from = fromAddress?.trim().toLowerCase();
+  const connection = from
+    ? await ctx.runQuery(internal.operatorGmail.getByOwnerInternal, { userId })
+    : null;
+  if (!from || !connection || connection.address !== from) {
+    return await ensureOperatorInbox(ctx, userId);
+  }
+  if (connection.status !== "active") throw gmailReconnectError("sendDraft");
+  const identity = await ctx.runQuery(
+    internal.operatorInboxes.getTeamIdentityInternal,
+    { userId },
+  );
+  const fromName = operatorFromName(identity.name);
+  return getEmailDeliveryMode() === "capture"
+    ? { inbox: capturedInbox(`${userId}:gmail`, connection.address, fromName), captured: true }
+    : {
+        inbox: { inboxId: gmailInboxId(connection.address), emailAddress: connection.address, fromName },
+        captured: false,
+      };
 }
 
 /**
