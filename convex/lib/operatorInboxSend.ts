@@ -79,7 +79,7 @@ function userMessage(error: unknown): string {
       const minutes = Math.max(1, Math.ceil((error.retryAfterMs ?? 60000) / 60000));
       return `This mailbox is pacing its sends. Your draft is saved. Try again in about ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
     }
-    if(error.code === "mailbox_paused") return "This mailbox is paused. Resume it in Email health before sending.";
+    if (error.code === "google_sending_retired") return "Google sending has been retired. Review this message using your Resend team address.";
     return error.outcome === "blocked"
       ? "Restricted email delivery blocked a recipient of this email."
       : "Delivery failed. Review the reply and try again.";

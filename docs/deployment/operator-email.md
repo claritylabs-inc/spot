@@ -109,8 +109,8 @@ All five records and the domain are verified for sending and receiving. The root
 Google Workspace MX was left intact.
 
 The existing production webhook `ed00bba2-8977-48c7-bf27-7e0b03a7cba3` is enabled
-for `email.received` at `https://merry-platypus-82.convex.site/resend-inbound`,
-which reaches the same deployment as `https://actions.spot.insure`. Reuse this
+for `email.received` at `https://actions.spot.insure/resend-inbound` (deployment
+`merry-platypus-82`). Reuse this
 account-wide webhook; no separate inbox object or duplicate webhook is needed.
 
 1. Confirm every DNS record for `agent.spot.insure` is verified in Resend.

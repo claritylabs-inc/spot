@@ -23,6 +23,7 @@ import {
 } from "./lib/clientFiles";
 import { createProcurementInboxToken } from "./lib/procurement";
 import { seedRequestIntake } from "./lib/procurementNarrative";
+import { linkClientIntakeAuthorization } from "./intakeAuthorizations";
 import { assemblePacketMarkdown } from "./lib/procurementPacket";
 
 async function createUniqueInboxToken(ctx: MutationCtx) {
@@ -270,6 +271,7 @@ export const create = mutation({
       userId: access.userId,
       source: "client",
     });
+    await linkClientIntakeAuthorization(ctx, requestId);
     await ctx.scheduler.runAfter(
       0,
       internal.procurementPacket.ensureRequestLinkInternal,

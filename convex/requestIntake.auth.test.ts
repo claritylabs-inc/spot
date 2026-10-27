@@ -1,13 +1,16 @@
 /// <reference types="vite/client" />
 // Failure modes are recorded before implementation in docs/testing/insurance-intake.md.
 import { convexTest } from "convex-test";
-import { expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import dayjs from "dayjs";
 import { detailsFromAnswers } from "../lib/insurance-intake-details";
 import { INTAKE_TERMS_VERSION } from "../lib/intake-terms";
 import schema from "./schema";
 import { api, internal } from "./_generated/api";
 const modules = import.meta.glob("./**/*.ts");
+// Fake timers keep scheduled functions from running after the test ends.
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
 async function fixture() {
   const t = convexTest(schema, modules);
   const token = "intake_fixture_token_0000000000000000000000000001";

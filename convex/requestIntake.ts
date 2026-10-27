@@ -71,7 +71,7 @@ import { seedRequestIntake } from "./lib/procurementNarrative";
 import { publicResearchUrl } from "./lib/companyResearch";
 import { scheduleCompanyResearch } from "./companyResearch";
 import { scheduleWebsiteTechScan } from "./websiteTech";
-import { createIntakeAuthorization } from "./intakeAuthorizations";
+import { ensureClientIntakeAuthorization } from "./intakeAuthorizations";
 
 function validateContact(name: string, email: string, phone: string, validatePhone = true) {
   const contact = {
@@ -1508,7 +1508,7 @@ export const submit = mutation({
           updatedAt: dayjs().valueOf(),
         });
         await fillRequestFromClientProfile(ctx, (await ctx.db.get(request._id))!);
-        await createIntakeAuthorization(ctx, request._id, submissionBaseline, contentHash);
+        await ensureClientIntakeAuthorization(ctx, request._id, submissionBaseline, contentHash);
         await ctx.scheduler.runAfter(0, internal.requestIntake.preparePremiumEstimateInternal, { requestId: request._id });
         if (request.clientOrgId)
           await saveIntakeBusinessProfile(
@@ -1632,7 +1632,7 @@ export const submit = mutation({
       userId: user._id,
       source: "client",
     });
-    await createIntakeAuthorization(ctx, request._id, submissionBaseline, contentHash);
+    await ensureClientIntakeAuthorization(ctx, request._id, submissionBaseline, contentHash);
     if (writeCompanyProfile)
       await saveIntakeBusinessProfile(
         ctx,

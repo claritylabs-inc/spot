@@ -17,8 +17,6 @@ import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import {
   MAILBOX_PREFIX,
   SENDING_ADDRESSES,
-  DEFAULT_MAILBOX_DAILY_LIMIT,
-  DEFAULT_MAILBOX_GAP_MINUTES,
   mailboxConnectionsAllowed,
 } from "./lib/sendingMailbox";
 import { emitOperatorNotification } from "./lib/operatorNotify";
@@ -113,39 +111,6 @@ export const overview = query({
     };
   },
 });
-export const pause = mutation({
-  args: { id: v.id("operatorSendingMailboxes"), paused: v.boolean() },
-  handler: async (ctx, args) => {
-    const operator = await requireOperator(ctx);
-    await assertNoOperatorImpersonation(ctx, operator.user._id);
-    const box = await ctx.db.get(args.id);
-    if (!box || box.ownerUserId !== operator.user._id)
-      throw new Error("Mailbox is not connected to your operator account");
-    await ctx.db.patch(box._id, {
-      enabled: !args.paused,
-      updatedAt: dayjs().valueOf(),
-    });
-  },
-});
-export const makeDefault = mutation({
-  args: { id: v.id("operatorSendingMailboxes") },
-  handler: async (ctx, args) => {
-    const op = await requireOperator(ctx);
-    await assertNoOperatorImpersonation(ctx, op.user._id);
-    const box = await ctx.db.get(args.id);
-    if (!box || box.ownerUserId !== op.user._id)
-      throw new Error("Choose a mailbox connected to your operator account.");
-    const rows = await ctx.db
-      .query("operatorSendingMailboxes")
-      .withIndex("by_ownerUserId", (q) => q.eq("ownerUserId", op.user._id))
-      .take(6);
-    for (const row of rows)
-      await ctx.db.patch(row._id, {
-        isDefault: row._id === box._id,
-        updatedAt: dayjs().valueOf(),
-      });
-  },
-});
 export const authorize = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -173,128 +138,6 @@ export const draftByKey = internalQuery({
       .query("operatorMailboxDrafts")
       .withIndex("by_key", (q) => q.eq("key", args.key))
       .unique(),
-});
-export const saveConnection = internalMutation({
-  args: {
-    address: v.string(),
-    ownerUserId: v.id("users"),
-    encryptedPassword: v.string(),
-  },
-  handler: async (ctx, args) => {
-    await requireOperatorForUser(ctx, args.ownerUserId);
-    if (!SENDING_ADDRESSES.includes(args.address))
-      throw new Error("Use a reserved insurewithspot.com mailbox.");
-    const existing = await ctx.db
-      .query("operatorSendingMailboxes")
-      .withIndex("by_address", (q) => q.eq("address", args.address))
-      .unique();
-    const owned = await ctx.db
-      .query("operatorSendingMailboxes")
-      .withIndex("by_ownerUserId", (q) => q.eq("ownerUserId", args.ownerUserId))
-      .take(6);
-    if (existing && existing.ownerUserId !== args.ownerUserId)
-      throw new Error("Mailbox is connected to another operator.");
-    const now = dayjs().valueOf();
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        encryptedPassword: args.encryptedPassword,
-        enabled: false,
-        verifiedAt: now,
-        updatedAt: now,
-      });
-      return existing._id;
-    }
-    return await ctx.db.insert("operatorSendingMailboxes", {
-      ...args,
-      enabled: false,
-      isDefault: owned.length === 0,
-      dailyLimit: DEFAULT_MAILBOX_DAILY_LIMIT,
-      gapMinutes: DEFAULT_MAILBOX_GAP_MINUTES,
-      verifiedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    });
-  },
-});
-export const storeDraft = internalMutation({
-  args: {
-    mailboxId: v.id("operatorSendingMailboxes"),
-    key: v.string(),
-    fingerprint: v.string(),
-    payloadId: v.id("_storage"),
-    messageId: v.string(),
-    recipients: v.array(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const old = await ctx.db
-      .query("operatorMailboxDrafts")
-      .withIndex("by_key", (q) => q.eq("key", args.key))
-      .unique();
-    if (old) {
-      await ctx.storage.delete(args.payloadId);
-      if (old.fingerprint !== args.fingerprint)
-        throw new Error("Draft key does not match its approved content");
-      return old._id;
-    }
-    return await ctx.db.insert("operatorMailboxDrafts", {
-      ...args,
-      status: "draft",
-      createdAt: dayjs().valueOf(),
-    });
-  },
-});
-export const claimDraft = internalMutation({
-  args: { id: v.id("operatorMailboxDrafts") },
-  handler: async (ctx, args) => {
-    const draft = await ctx.db.get(args.id);
-    if (!draft) throw new Error("Draft not found");
-    const box = await ctx.db.get(draft.mailboxId);
-    if (!box || !box.enabled)
-      throw new Error("Sending mailbox is paused. Review Email health.");
-    await requireOperatorForUser(ctx, box.ownerUserId);
-    if (draft.status !== "draft" && draft.status !== "failed")
-      return { status: draft.status };
-    const health = await ctx.db
-      .query("operatorMailboxHealth")
-      .withIndex("by_mailboxId", (q) => q.eq("mailboxId", box._id))
-      .unique();
-    const now = dayjs().valueOf();
-    const day = today();
-    const count = health?.day === day ? health.acceptedToday : 0;
-    if (
-      count >= DEFAULT_MAILBOX_DAILY_LIMIT ||
-      (health && health.nextSendAt > now)
-    )
-      return {
-        status: "throttled" as const,
-        retryAt:
-          count >= DEFAULT_MAILBOX_DAILY_LIMIT
-            ? dayjs()
-                .tz("America/Toronto")
-                .add(1, "day")
-                .startOf("day")
-                .add(9, "hour")
-                .valueOf()
-            : health!.nextSendAt,
-      };
-    // Reserve before any network write. Unknown sends keep their quota slot and never replay.
-    const patch = {
-      day,
-      acceptedToday: count + 1,
-      lastAttemptAt: now,
-      nextSendAt: dayjs(now)
-        .add(DEFAULT_MAILBOX_GAP_MINUTES, "minute")
-        .valueOf(),
-    };
-    if (health) await ctx.db.patch(health._id, patch);
-    else
-      await ctx.db.insert("operatorMailboxHealth", {
-        mailboxId: box._id,
-        ...patch,
-      });
-    await ctx.db.patch(draft._id, { status: "sending", error: undefined });
-    return { status: "claimed" as const };
-  },
 });
 export const finishDraft = internalMutation({
   args: {

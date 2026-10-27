@@ -88,11 +88,16 @@ same PDF-generation/sharing consent; older drafts must accept this new revision.
 Savings reviews do not generate authorization
 declarations, and existing submissions are not backfilled or marked signed.
 
-The owner-authorized submit transaction creates an immutable
-`requestIntakeAuthorizations` snapshot through `convex/intakeAuthorizations.ts`:
+The owner-authorized submit transaction ensures one client-owned grant through
+`convex/intakeAuthorizations.ts`. `organizations.intakeAuthorizationId` owns the
+canonical immutable `requestIntakeAuthorizations` snapshot (the table's legacy
+name is retained for compatibility):
 business name, signer, exact consent/scope, acceptance/submission times, terms
 version and URL, and the hash of the applicant's submitted content (before any
-profile fill). `convex/actions/intakeAuthorization.ts` renders the branded PDF
+profile fill). The source request and its hash are acceptance provenance, not
+ownership or regeneration keys. Later requests and accepted resubmissions reuse
+the same grant and PDF without changing the original signer or consent.
+`convex/actions/intakeAuthorization.ts` renders the branded PDF
 through `convex/lib/intakeAuthorizationPdf.ts`, with up to three safe rendering
 attempts and atomic, idempotent publication. The final signature panel reserves
 signing space and displays a black cursive name in a white signature field beside
@@ -103,14 +108,25 @@ The exact consent statement is retained in the immutable snapshot and PDF metada
 The renderer bundles the OFL-licensed Allura and existing Geist fonts and reuses
 Spot's canonical vector branding, with spacing matching the supplied reference.
 
-The PDF is a client-visible client file and provider-attached request file, so
-existing request Files, manual email attachment tools, and the Spot Packet all
-use the same artifact. Its hosted download uses the existing `/packet-file`
+The grant's `clientFileId` points to one client-visible client file, available in
+operator **Clients → client → Files → Shared**. Each submitted quote request has
+only a provider-attached reference to that same file, so request Files, manual
+email attachment tools, and Spot Packets reuse the same PDF. Submissions while
+rendering is pending and existing client requests are linked in bounded batches
+after publication; unsubmitted intake drafts and savings reviews are excluded.
+Direct client/operator request creation also reuses an existing grant. Deleting
+the source request does not delete the client's grant or prevent its rendering.
+Its hosted download uses the existing `/packet-file`
 capability, rechecking packet-token and file-release access on each request.
-Draft edits never replace signed evidence. An accepted resubmission creates a new
-snapshot and hides the previous request-file publication; stored historical PDFs
-remain unchanged. Stale rendering cannot republish an older declaration. Active
-packet links pick up the current PDF without rotation. Initial automated broker
+Draft edits and resubmissions never replace signed evidence. A valid submission
+for a client with legacy request-owned grants adopts the latest existing grant;
+bounded lazy reconciliation repoints existing request entries and archives older
+generated client files without changing their stored PDFs. Existing release,
+visibility and removal choices survive adoption. No consent is backfilled, and
+there is no standalone data migration. Atomic client ownership prevents concurrent
+submissions or stale rendering from publishing duplicate forms. A failed renderer
+can retry the same immutable grant on a later authorized submission. Archived or
+deleted client files are not regenerated or republished by submission. Initial automated broker
 outreach retains its empty attachment list; the PDF is available through the
 packet link, with manual attachment available for later correspondence.
 

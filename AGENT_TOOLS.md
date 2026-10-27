@@ -635,11 +635,10 @@ using the existing `summary` model task and thread-continuity helpers. See
 [operator context compaction](docs/architecture/operator-context-compaction.md).
 
 
-Operator outbound email transport follows the calling operator’s configured sending
-mailbox. A reserved `insurewithspot.com` Google connection takes precedence over
-the legacy Resend team inbox, including a paused connection (sending then blocks).
-The existing email and outreach tools retain exact sender/content/recipient
-approval. Identity changes invalidate prior approvals; do not retry an unknown SMTP
-send. Operators inspect connection, allowance and observed seed placement in
-`/operator/email-health`. No new model-callable mailbox configuration tools are
-exposed. Existing Resend replies remain receivable. See `docs/architecture/team-email.md`.
+Operator outbound email uses the calling operator’s Resend team inbox. The direct
+Google SMTP rollout is retired; there are no connect, select-sender, resume or SMTP
+send paths. Existing tools keep exact sender/content/recipient approval. A previous
+Google draft must be reviewed under the Resend identity; never replay an unknown
+send. Read-only IMAP sync and historical message/draft reads remain available for
+old Google correspondence. `/operator/email-health` redirects to Inbox. See
+`docs/architecture/team-email.md`.
