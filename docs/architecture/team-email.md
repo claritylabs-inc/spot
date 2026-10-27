@@ -14,6 +14,11 @@ addresses. The shared command address is `agent@<TEAM_EMAIL_DOMAIN>`.
 | Provisioning and active/retired inbox records | `convex/lib/operatorInbox.ts`, `convex/operatorInboxes.ts` |
 | Profile settings | `convex/operatorEmailSettings.ts` |
 | Resend transport and delivery-mode enforcement | `convex/lib/resendInbox.ts` |
+| Transport selection by inbox id (Resend, retired `gmail:`) | `convex/lib/mailboxTransport.ts` (`transportFor`) |
+| Inbox id formats (`inboxKind`, the retired `gmail:` prefix) | `convex/lib/inboxIds.ts` |
+| Inbox webhook ingress, event leases, routing and the team-thread mirror (sequence-owned events are applied in `convex/providerOutreach.ts`) | `convex/teamInboxEvents.ts`, `convex/actions/teamInboxEvents.ts`, `convex/lib/teamInboxEventLease.ts` |
+| Aligned DKIM verification for command ingress | `convex/lib/dkim.ts` |
+| RFC Message-ID spellings and address canonicalisation | `convex/lib/messageId.ts`, `convex/lib/emailAddress.ts` |
 | Shared conversations, mirroring and attachments | `convex/lib/teamEmailStore.ts` |
 | Inbox reads and projection | `convex/lib/teamInboxProjection.ts`, `convex/teamInbox.ts` |
 | Sender identity and reply context | `convex/lib/outreachIdentity.ts`, `convex/lib/teamThreadReply.ts` |
@@ -192,7 +197,9 @@ mailbox traffic. No schema/data migration or credential deletion is needed.
 
 `mailboxTransport.ts` rejects create, send and reply attempts for `gmail:` inbox IDs.
 Historical Google reads remain available, and unknown sends remain locked instead
-of being replayed via Resend. Old Google inbox records stay known for inbound mail;
+of being replayed via Resend. `googleMailboxTransport.ts`'s `readGoogleDraft` is
+kept only so unresolved legacy attempts can still be reconciled; nothing creates
+`gmail:` drafts any more. Old Google inbox records stay known for inbound mail;
 ensuring the operator’s Resend inbox reactivates its prior record and retires the
 Google inbox. Reply planning excludes retired Google senders and uses the existing
 cross-inbox quoted reply behavior where necessary. Existing approved initial
