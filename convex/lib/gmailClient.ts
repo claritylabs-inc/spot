@@ -4,16 +4,14 @@ import { google, type gmail_v1 } from "googleapis";
 import type { ActionCtx } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { decryptPassword } from "./imapMailbox";
+import { decryptSecret } from "./secretBox";
 import { gmailOAuthClient, isInvalidGrant } from "./operatorGmailOAuth";
+import { gmailReconnectError } from "./operatorInbox";
 import { ResendInboxError } from "./resendInbox";
 
 const RECONNECT_MESSAGE = "Reconnect your Gmail in Profile to send from it.";
 
-const needsReconnect = () =>
-  new ResendInboxError("blocked", "gmail", RECONNECT_MESSAGE, {
-    code: "gmail_needs_reconnect",
-  });
+const needsReconnect = () => gmailReconnectError("gmail", RECONNECT_MESSAGE);
 
 /** Authorised Gmail client for a connected address; blocks unless the connection is active. */
 export async function gmailFor(
@@ -30,7 +28,7 @@ export async function gmailFor(
   if (!connection) throw needsReconnect();
   const auth = gmailOAuthClient();
   auth.setCredentials({
-    refresh_token: decryptPassword(connection.encryptedRefreshToken),
+    refresh_token: decryptSecret(connection.encryptedRefreshToken),
   });
   try {
     await auth.getAccessToken();

@@ -14,7 +14,7 @@ import type {
 import type { ActionCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { encryptPassword, decryptPassword } from "./imapMailbox";
+import { encryptSecret, decryptSecret } from "./secretBox";
 import { mcpOAuthFetch } from "./operatorMcpClient";
 import { resolvePublicAddress } from "./websiteBrand";
 
@@ -43,7 +43,7 @@ export function oauthStateHash(state: string) {
   return createHash("sha256").update(state).digest("hex");
 }
 export function readOAuthData(encrypted: string): McpOAuthData {
-  return JSON.parse(decryptPassword(encrypted)) as McpOAuthData;
+  return JSON.parse(decryptSecret(encrypted)) as McpOAuthData;
 }
 
 export async function authorizeMcp(args: {
@@ -123,7 +123,7 @@ export async function mcpServerToken(
 ): Promise<string | undefined> {
   if (server.authType !== "oauth")
     return server.encryptedToken
-      ? decryptPassword(server.encryptedToken)
+      ? decryptSecret(server.encryptedToken)
       : undefined;
   if (!server.encryptedOAuth)
     throw new Error("Connect this MCP server with OAuth in Settings.");
@@ -160,7 +160,7 @@ export async function mcpServerToken(
     await ctx.runMutation(internal.operatorMcpOAuth.finishRefresh, {
       serverId: server._id,
       lease,
-      encryptedOAuth: encryptPassword(JSON.stringify(data)),
+      encryptedOAuth: encryptSecret(JSON.stringify(data)),
     });
     return data.tokens.access_token;
   } catch (error) {

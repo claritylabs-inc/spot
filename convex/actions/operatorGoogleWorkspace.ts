@@ -54,9 +54,13 @@ function providerFor(
     Awaited<ReturnType<typeof googleWorkspaceCredentialEnvelope>>["credentials"]
   >,
 ) {
-  return createGoogleWorkspaceProvider(credentials, {
-    gmail: [GOOGLE_WORKSPACE_GMAIL_READONLY_SCOPE],
-    directory: [GOOGLE_WORKSPACE_DIRECTORY_USER_READONLY_SCOPE],
+  return createGoogleWorkspaceProvider({
+    kind: "delegated",
+    credentials,
+    scopes: {
+      gmail: [GOOGLE_WORKSPACE_GMAIL_READONLY_SCOPE],
+      directory: [GOOGLE_WORKSPACE_DIRECTORY_USER_READONLY_SCOPE],
+    },
   });
 }
 
