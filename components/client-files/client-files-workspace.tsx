@@ -29,7 +29,10 @@ import {
   OperationalItem,
   OperationalPanel,
 } from "@claritylabs-inc/ui/components/operational-panel";
-import { ListToolbar } from "@/components/ui/list-toolbar";
+import {
+  ListToolbar,
+  type FilterDefinition,
+} from "@/components/ui/list-toolbar";
 import { PillButton } from "@/components/ui/pill-button";
 import {
   Select,
@@ -57,31 +60,36 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 const NO_POLICY = "__none__";
 const MAX_CLIENT_FILE_BYTES = 50 * 1024 * 1024;
 
-type ClientFilesView = "private" | "shared" | "archived";
+type ClientFilesView = "private" | "shared";
+type ClientFilesStatus = "active" | "archived";
 
 type ClientFilesPanel =
-  | { kind: "upload" }
+  | { kind: "upload"; clientVisible?: boolean }
   | { kind: "edit" | "image"; fileId: string }
   | null;
 
-const CLIENT_FILE_EMPTY_STATES: Record<
-  ClientFilesView,
-  { title: string; description: string }
-> = {
-  private: {
-    title: "No private files",
-    description:
-      "Keep quotes, appraisals, roof reports, and other documents here for this client.",
-  },
-  shared: {
-    title: "No shared files",
-    description: "Files shared with the client will appear here.",
-  },
-  archived: {
-    title: "No archived files",
-    description: "Archived files stay here until you restore them.",
-  },
-};
+function clientFilesEmptyState(
+  status: ClientFilesStatus,
+  view: ClientFilesView,
+  separated: boolean,
+) {
+  if (status === "archived") {
+    return {
+      title: separated ? `No archived ${view} files` : "No archived files",
+      description: "Archived files stay here until you restore them.",
+    };
+  }
+  return view === "shared"
+    ? {
+        title: "No shared files",
+        description: "Files shared with the client will appear here.",
+      }
+    : {
+        title: "No private files",
+        description:
+          "Keep quotes, appraisals, roof reports, and other documents here for this client.",
+      };
+}
 
 type ClientFilePolicyOption = {
   _id: Id<"policies">;
@@ -378,11 +386,13 @@ function ClientFileEditor({
 export function ClientFileUploadPanel({
   clientOrgId,
   showBrokerVisibility = false,
+  defaultClientVisible = false,
   onClose,
   onUploaded,
 }: {
   clientOrgId: Id<"organizations">;
   showBrokerVisibility?: boolean;
+  defaultClientVisible?: boolean;
   onClose: () => void;
   onUploaded?: (
     files: Array<{
@@ -397,7 +407,7 @@ export function ClientFileUploadPanel({
   const discardUpload = useMutation(api.clientFiles.discardUpload);
   const [files, setFiles] = useState<File[]>([]);
   const [hint, setHint] = useState("");
-  const [clientVisible, setClientVisible] = useState(false);
+  const [clientVisible, setClientVisible] = useState(defaultClientVisible);
   const [brokerVisible, setBrokerVisible] = useState(showBrokerVisibility);
   const [uploading, setUploading] = useState(false);
 
@@ -638,9 +648,13 @@ export function ClientFilesWorkspace({
   onActions?: (node: ReactNode) => void;
   onRightPanel: (node: ReactNode) => void;
 }) {
-  const [requestedView, setView] = useFollowedState<ClientFilesView>(
-    `clients:${clientOrgId}:files:view`,
-    "private",
+  // Older sessions stored "archived" as a view; it now maps to Archived status.
+  const [requestedView, setView] = useFollowedState<
+    ClientFilesView | "archived"
+  >(`clients:${clientOrgId}:files:view`, "private");
+  const [requestedStatus, setStatus] = useFollowedState<ClientFilesStatus>(
+    `clients:${clientOrgId}:files:status`,
+    "active",
   );
   const [panel, setPanel] = useFollowedState<ClientFilesPanel>(
     `clients:${clientOrgId}:files:panel`,
@@ -656,21 +670,24 @@ export function ClientFilesWorkspace({
     limit: 200,
     archived: true,
   });
-  const hasSharedFiles = Boolean(
-    activeResult?.truncated ||
-    activeResult?.files.some((file) => file.clientVisible),
+  // Both lists must settle before the tab set, and so the action home, is known.
+  const listsReady = activeResult !== undefined && archivedResult !== undefined;
+  // Shared availability spans both sources so switching status never removes
+  // the selected view.
+  const hasSharedFiles = [activeResult, archivedResult].some((list) =>
+    Boolean(list?.truncated || list?.files.some((file) => file.clientVisible)),
   );
   const hasArchivedFiles = (archivedResult?.files.length ?? 0) > 0;
-  const view =
-    (requestedView === "shared" &&
-      activeResult !== undefined &&
-      !hasSharedFiles) ||
-    (requestedView === "archived" &&
-      archivedResult !== undefined &&
-      !hasArchivedFiles)
-      ? "private"
-      : requestedView;
-  const result = view === "archived" ? archivedResult : activeResult;
+  const status: ClientFilesStatus =
+    (requestedStatus === "archived" || requestedView === "archived") &&
+    !(listsReady && !hasArchivedFiles)
+      ? "archived"
+      : "active";
+  const view: ClientFilesView =
+    requestedView === "shared" && !(listsReady && !hasSharedFiles)
+      ? "shared"
+      : "private";
+  const result = status === "archived" ? archivedResult : activeResult;
   const policyRows = useQuery(api.policies.listForOrg, {
     orgId: clientOrgId,
     documentType: "policy",
@@ -680,22 +697,33 @@ export function ClientFilesWorkspace({
     () => (policyRows ?? []) as ClientFilePolicyOption[],
     [policyRows],
   );
-  // Both lists must settle before the tab set, and so the action home, is known.
-  const listsReady = activeResult !== undefined && archivedResult !== undefined;
   const operatorView = Boolean(activeResult?.canManage);
-  const hasViewTabs =
-    listsReady && operatorView && (hasSharedFiles || hasArchivedFiles);
+  const hasViewTabs = listsReady && operatorView && hasSharedFiles;
+  const showStatusFilter = listsReady && operatorView && hasArchivedFiles;
   const canManage = operatorView && !readOnly;
-  const archivedView = view === "archived";
+  const archivedView = status === "archived";
   const canEdit = canManage && !archivedView;
+  // Uploads create active files, so archived views offer none.
+  const canUpload = canManage && !archivedView;
 
   const closeRightPanel = useCallback(() => setPanel(null), [setPanel]);
   const openUpload = useCallback(() => {
     closePdf();
-    setPanel({ kind: "upload" });
-  }, [closePdf, setPanel]);
+    setPanel({
+      kind: "upload",
+      ...(view === "shared" ? { clientVisible: true } : {}),
+    });
+  }, [closePdf, setPanel, view]);
+  const changeStatus = useCallback(
+    (next: ClientFilesStatus) => {
+      setStatus(next);
+      if (requestedView === "archived") setView("private");
+      if (next === "archived" && panel?.kind === "upload") setPanel(null);
+    },
+    [panel?.kind, requestedView, setPanel, setStatus, setView],
+  );
 
-  const navbarUpload = listsReady && canManage && !hasViewTabs;
+  const navbarUpload = listsReady && canUpload && !hasViewTabs;
   useEffect(() => {
     onActions?.(
       navbarUpload ? <UploadFilesButton onClick={openUpload} /> : null,
@@ -747,6 +775,8 @@ export function ClientFilesWorkspace({
     if (panelFileGone) setPanel(null);
   }, [panelFileGone, setPanel]);
 
+  const uploadClientVisible =
+    panel?.kind === "upload" ? panel.clientVisible : undefined;
   useEffect(() => {
     const panelKind = panel?.kind;
     let node: ReactNode = null;
@@ -754,6 +784,7 @@ export function ClientFilesWorkspace({
       node = (
         <ClientFileUploadPanel
           clientOrgId={clientOrgId}
+          defaultClientVisible={uploadClientVisible}
           onClose={closeRightPanel}
         />
       );
@@ -787,18 +818,19 @@ export function ClientFilesWorkspace({
     panelFile,
     policies,
     preview,
+    uploadClientVisible,
   ]);
 
   const visibleFiles = useMemo(() => {
     const files = (result?.files ?? []) as ClientFileRow[];
-    return operatorView && !archivedView
+    return hasViewTabs
       ? files.filter((file) =>
           view === "shared" ? file.clientVisible : !file.clientVisible,
         )
       : files;
-  }, [archivedView, operatorView, result, view]);
+  }, [hasViewTabs, result, view]);
   const tableSort = useTableSort(
-    `clients:${clientOrgId}:files:${view}`,
+    `clients:${clientOrgId}:files:${status}:${view}`,
     visibleFiles,
     CLIENT_FILE_SORT_COLUMNS,
   );
@@ -818,45 +850,65 @@ export function ClientFilesWorkspace({
     <PageTabsRail
       value={view}
       onValueChange={(value) => {
-        if (value === "private" || value === "shared" || value === "archived") {
+        if (value === "private" || value === "shared") {
+          if (requestedView === "archived") setStatus("archived");
           setView(value);
         }
       }}
     >
       <PageTabsList aria-label="Client files view">
         <TabsTrigger value="private">Private</TabsTrigger>
-        {hasSharedFiles ? (
-          <TabsTrigger value="shared">Shared</TabsTrigger>
-        ) : null}
-        {hasArchivedFiles ? (
-          <TabsTrigger value="archived">Archived</TabsTrigger>
-        ) : null}
+        <TabsTrigger value="shared">Shared</TabsTrigger>
       </PageTabsList>
     </PageTabsRail>
   ) : null;
-  const viewActions =
-    hasViewTabs && (canManage || result.truncated) ? (
-      <>
-        {result.truncated ? (
-          <span
-            className={`text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            Showing the latest 200
-          </span>
-        ) : null}
-        {canManage ? <UploadFilesButton onClick={openUpload} /> : null}
-      </>
+  const statusFilters: FilterDefinition[] = showStatusFilter
+    ? [
+        {
+          id: "status",
+          label: "Status",
+          inline: true,
+          allLabel: "Active",
+          options: [
+            { value: "active", label: "Active" },
+            { value: "archived", label: "Archived" },
+          ],
+          value: archivedView ? ["archived"] : [],
+          onChange: (next) =>
+            changeStatus(next[0] === "archived" ? "archived" : "active"),
+        },
+      ]
+    : [];
+  const truncatedNote =
+    operatorView && result.truncated ? (
+      <span className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+        Showing the latest 200
+      </span>
     ) : null;
-  const viewToolbar = viewActions ? (
-    <ListToolbar
-      followKey={`clients:${clientOrgId}:files`}
-      tabsPlacement="navbar"
-      tabs={viewTabs}
-      actions={viewActions}
-    />
-  ) : (
-    viewTabs
-  );
+  const tabUpload =
+    hasViewTabs && canUpload ? (
+      <UploadFilesButton onClick={openUpload} />
+    ) : null;
+  const viewToolbar =
+    statusFilters.length > 0 || truncatedNote || tabUpload ? (
+      <ListToolbar
+        followKey={`clients:${clientOrgId}:files`}
+        tabsPlacement="navbar"
+        tabs={viewTabs}
+        filters={statusFilters}
+        onClearFilters={() => changeStatus("active")}
+        actions={
+          truncatedNote || tabUpload ? (
+            <>
+              {truncatedNote}
+              {tabUpload}
+            </>
+          ) : undefined
+        }
+      />
+    ) : (
+      viewTabs
+    );
 
   if (visibleFiles.length === 0) {
     if (!operatorView) {
@@ -868,13 +920,14 @@ export function ClientFilesWorkspace({
         />
       );
     }
+    const emptyState = clientFilesEmptyState(status, view, hasViewTabs);
     return (
       <div className="space-y-4">
         {viewToolbar}
         {notice}
         <EmptyStateCard
-          title={CLIENT_FILE_EMPTY_STATES[view].title}
-          description={CLIENT_FILE_EMPTY_STATES[view].description}
+          title={emptyState.title}
+          description={emptyState.description}
           icon={<FileText className="size-6" />}
         />
       </div>
