@@ -53,6 +53,7 @@ import type * as actions_operationalRouterSmoke from "../actions/operationalRout
 import type * as actions_operatorAgentRichTools from "../actions/operatorAgentRichTools.js";
 import type * as actions_operatorChannelDelivery from "../actions/operatorChannelDelivery.js";
 import type * as actions_operatorEmailDrafts from "../actions/operatorEmailDrafts.js";
+import type * as actions_operatorGmail from "../actions/operatorGmail.js";
 import type * as actions_operatorGoogleWorkspace from "../actions/operatorGoogleWorkspace.js";
 import type * as actions_operatorMcp from "../actions/operatorMcp.js";
 import type * as actions_operatorMcpOAuth from "../actions/operatorMcpOAuth.js";
@@ -242,6 +243,7 @@ import type * as lib_extractionTraceRouterFields from "../lib/extractionTraceRou
 import type * as lib_featureFlags from "../lib/featureFlags.js";
 import type * as lib_fetchPublicUrl from "../lib/fetchPublicUrl.js";
 import type * as lib_forwardReplyDirection from "../lib/forwardReplyDirection.js";
+import type * as lib_gmailClient from "../lib/gmailClient.js";
 import type * as lib_googleMailboxTransport from "../lib/googleMailboxTransport.js";
 import type * as lib_googleWorkspace from "../lib/googleWorkspace.js";
 import type * as lib_googleWorkspaceCredentials from "../lib/googleWorkspaceCredentials.js";
@@ -338,6 +340,7 @@ import type * as lib_operatorEmailTools from "../lib/operatorEmailTools.js";
 import type * as lib_operatorEntitySuggestions from "../lib/operatorEntitySuggestions.js";
 import type * as lib_operatorGlobalSuggestions from "../lib/operatorGlobalSuggestions.js";
 import type * as lib_operatorGmail from "../lib/operatorGmail.js";
+import type * as lib_operatorGmailOAuth from "../lib/operatorGmailOAuth.js";
 import type * as lib_operatorIdentity from "../lib/operatorIdentity.js";
 import type * as lib_operatorInbox from "../lib/operatorInbox.js";
 import type * as lib_operatorInboxSend from "../lib/operatorInboxSend.js";
@@ -632,6 +635,7 @@ declare const fullApi: ApiFromModules<{
   "actions/operatorAgentRichTools": typeof actions_operatorAgentRichTools;
   "actions/operatorChannelDelivery": typeof actions_operatorChannelDelivery;
   "actions/operatorEmailDrafts": typeof actions_operatorEmailDrafts;
+  "actions/operatorGmail": typeof actions_operatorGmail;
   "actions/operatorGoogleWorkspace": typeof actions_operatorGoogleWorkspace;
   "actions/operatorMcp": typeof actions_operatorMcp;
   "actions/operatorMcpOAuth": typeof actions_operatorMcpOAuth;
@@ -821,6 +825,7 @@ declare const fullApi: ApiFromModules<{
   "lib/featureFlags": typeof lib_featureFlags;
   "lib/fetchPublicUrl": typeof lib_fetchPublicUrl;
   "lib/forwardReplyDirection": typeof lib_forwardReplyDirection;
+  "lib/gmailClient": typeof lib_gmailClient;
   "lib/googleMailboxTransport": typeof lib_googleMailboxTransport;
   "lib/googleWorkspace": typeof lib_googleWorkspace;
   "lib/googleWorkspaceCredentials": typeof lib_googleWorkspaceCredentials;
@@ -917,6 +922,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorEntitySuggestions": typeof lib_operatorEntitySuggestions;
   "lib/operatorGlobalSuggestions": typeof lib_operatorGlobalSuggestions;
   "lib/operatorGmail": typeof lib_operatorGmail;
+  "lib/operatorGmailOAuth": typeof lib_operatorGmailOAuth;
   "lib/operatorIdentity": typeof lib_operatorIdentity;
   "lib/operatorInbox": typeof lib_operatorInbox;
   "lib/operatorInboxSend": typeof lib_operatorInboxSend;

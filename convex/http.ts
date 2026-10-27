@@ -225,6 +225,20 @@ http.route({
 });
 
 http.route({
+  path: "/operator-gmail/oauth/callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const redirect = await ctx.runAction(internal.actions.operatorGmail.callback, {
+      state: url.searchParams.get("state") ?? "",
+      code: url.searchParams.get("code") ?? undefined,
+      error: url.searchParams.get("error") ?? undefined,
+    });
+    return new Response(null, { status: 302, headers: { Location: redirect, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+  }),
+});
+
+http.route({
   path: "/slack/oauth/callback",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
