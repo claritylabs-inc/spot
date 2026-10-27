@@ -28,11 +28,12 @@ const BREADCRUMB_MAP: Record<string, { label: string; href?: string }> = {
   "/operator/brokers": { label: "Insurance providers" },
   "/operator/channels": { label: "Channels" },
   "/operator/audit": { label: "Audit log" },
+  "/operator/team": { label: "Team" },
   "/operator/profile": { label: "Profile" },
   "/operator/settings": { label: "Settings" },
 };
 
-function resolveAppBreadcrumb(pathname: string) {
+export function resolveAppBreadcrumb(pathname: string) {
   const normalizedPathname =
     pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
 
@@ -63,7 +64,7 @@ export interface PresenceUser {
   avatarUrl?: string | null;
 }
 
-/** Overlapping avatars of people active right now, each with a live dot. */
+/** Overlapping avatars of people active right now, each ringed as live. */
 export function PresenceAvatars({
   users,
   max = 4,
@@ -75,7 +76,7 @@ export function PresenceAvatars({
   users: PresenceUser[];
   max?: number;
   size?: "sm" | "md";
-  /** Ringed, for example the person being followed. */
+  /** Ringed in the brand color, for example the person being followed. */
   selectedUserId?: string | null;
   /** Makes each avatar a button. */
   onSelect?: (user: PresenceUser) => void;
@@ -85,23 +86,21 @@ export function PresenceAvatars({
   if (users.length === 0) return null;
   const avatarSize = size === "sm" ? "size-5" : "size-7";
   return (
-    <div className="flex shrink-0 items-center -space-x-1.5">
+    <div className="flex shrink-0 items-center -space-x-1">
       {users.slice(0, max).map((u) => {
         const selected = u.userId === selectedUserId;
         const avatar = (
-          <>
-            <Avatar
-              name={u.name}
-              title={onSelect ? undefined : u.name}
-              imageUrl={u.avatarUrl}
-              className={cn(
-                avatarSize,
-                "border-2 border-background",
-                selected && "ring-2 ring-brand",
-              )}
-            />
-            <span className="absolute -right-px -bottom-px size-2 rounded-full border border-background bg-emerald-400" />
-          </>
+          <Avatar
+            name={u.name}
+            title={onSelect ? undefined : u.name}
+            imageUrl={u.avatarUrl}
+            className={cn(
+              avatarSize,
+              size === "sm" ? "ring-[1.5px]" : "ring-2",
+              "border-2 border-background",
+              selected ? "ring-brand" : "ring-emerald-400",
+            )}
+          />
         );
         return onSelect ? (
           <button
