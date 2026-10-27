@@ -109,7 +109,11 @@ export function ListToolbar({
         open: openChip === id,
         onOpenChange: (open) => setOpenChip(open ? id : null),
       })}
-      trailing={actions}
+      trailing={actions ? (
+        <div data-slot="list-toolbar-actions" className="contents">
+          {actions}
+        </div>
+      ) : undefined}
     />
   );
   if (!tabs) return filterBar;
