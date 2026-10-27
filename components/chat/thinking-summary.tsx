@@ -46,6 +46,8 @@ type ActivityCall = {
   result?: string;
   /** Record the call acted on; resolved through `entities`. */
   target?: { kind: string; id: string };
+  /** What a completed write did ("Assign Sarah Chen to Ramp"). */
+  change?: string;
   startedAt?: number;
   endedAt?: number;
 };
@@ -79,6 +81,7 @@ export type ChatActivity = {
     context?: ToolActivityContext;
     result?: string;
     target?: { kind: string; id: string };
+    change?: string;
     /** Observed running → settled span; absent on older messages. */
     startedAt?: number;
     endedAt?: number;
@@ -264,6 +267,7 @@ function observedCall(tool: ChatActivity["tools"][number]): ActivityCall {
     context: tool.context,
     result: tool.result,
     target: tool.target,
+    change: tool.change,
     startedAt: tool.startedAt,
     endedAt: tool.endedAt,
   };
@@ -693,16 +697,27 @@ function CallRow({
         </span>
       </div>
       {approval?.detail ? (
-        <div
-          className={cn(
-            "mt-1.5 ml-6.5 border-l-2 border-border pl-2.5 break-words text-muted-foreground",
-            typeStyle("caption.default"),
-          )}
-        >
-          {approval.detail}
-        </div>
+        <RowDetail>{approval.detail}</RowDetail>
+      ) : call.change ? (
+        <RowDetail>
+          <p className="line-clamp-3 whitespace-pre-line">{call.change}</p>
+        </RowDetail>
       ) : null}
     </li>
+  );
+}
+
+/** Indented, left-ruled detail under a call row. */
+function RowDetail({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className={cn(
+        "mt-1.5 ml-6.5 border-l-2 border-border pl-2.5 break-words text-muted-foreground",
+        typeStyle("caption.default"),
+      )}
+    >
+      {children}
+    </div>
   );
 }
 

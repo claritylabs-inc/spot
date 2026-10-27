@@ -924,6 +924,7 @@ export const run = internalAction({
               toolCallId: options.toolCallId,
               toolName: name,
             };
+            let parsedInput: Record<string, unknown> | undefined;
             const execution = toolQueue.then(async () => {
               if (pendingConfirmation) {
                 return {
@@ -937,6 +938,7 @@ export const run = internalAction({
               let input: Record<string, unknown>;
               try {
                 input = parseOperatorAgentToolInput(name, rawInput);
+                parsedInput = input;
               } catch (error) {
                 return preflightOperatorToolFailure(
                   name as OperatorAgentToolName,
@@ -1023,11 +1025,24 @@ export const run = internalAction({
             toolQueue = execution
               .then(
                 async (output) => {
+                  const status = toolOutcomeStatus(output);
                   const result = summarizeToolResult(output);
+                  const change =
+                    status === "completed" &&
+                    parsedInput &&
+                    spec.effect !== "read"
+                      ? await ctx
+                          .runQuery(
+                            internal.operatorAgent.changeSummaryInternal,
+                            { toolName: name, input: parsedInput },
+                          )
+                          .catch(() => null)
+                      : null;
                   await recordActivity({
                     ...activity,
-                    status: toolOutcomeStatus(output),
+                    status,
                     ...(result ? { result } : {}),
+                    ...(change ? { change } : {}),
                   });
                   if (thread.channel === "chat") {
                     const tool = capturePresentationTool(name, output);

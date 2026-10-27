@@ -69,7 +69,10 @@ import { v, type Infer } from "convex/values";
 import { cancelRouterJobForInvocation } from "./routerJobs";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import type { MessageActivityToolTarget } from "./lib/messageActivity";
+import {
+  MESSAGE_ACTIVITY_MAX_CHANGE,
+  type MessageActivityToolTarget,
+} from "./lib/messageActivity";
 import {
   internalMutation,
   internalQuery,
@@ -527,7 +530,7 @@ const DISPLAY_REFERENCE_FALLBACKS: Record<string, string> = {
 };
 
 async function referenceDisplayName(
-  ctx: MutationCtx,
+  ctx: QueryCtx,
   key: string,
   value: string,
 ): Promise<string | undefined> {
@@ -586,7 +589,7 @@ async function referenceDisplayName(
 }
 
 async function operatorDisplaySummary(
-  ctx: MutationCtx,
+  ctx: QueryCtx,
   summary: string,
   input: Record<string, unknown>,
 ) {
@@ -7773,6 +7776,34 @@ export const requestToolConfirmationInternal = internalMutation({
       confirmationId,
       summary,
     };
+  },
+});
+
+/**
+ * What a completed write did, for its activity row: the registry summary
+ * with record ids replaced by names. Reads never get one.
+ */
+export const changeSummaryInternal = internalQuery({
+  args: { toolName: v.string(), input: v.record(v.string(), v.any()) },
+  handler: async (ctx, args): Promise<string | null> => {
+    if (!isOperatorAgentToolName(args.toolName)) return null;
+    const spec = getOperatorAgentToolSpec(args.toolName);
+    if (spec.effect === "read") return null;
+    // Batch summaries resolve nested ids to names the same way approvals do.
+    const summary = isClientBatchToolName(args.toolName)
+      ? await clientBatchConfirmationSummary(ctx, args.toolName, args.input)
+      : isRemainingBatchToolName(args.toolName)
+        ? await remainingBatchConfirmationSummary(
+            ctx,
+            args.toolName,
+            args.input,
+          )
+        : await operatorDisplaySummary(
+            ctx,
+            spec.summarize(args.input),
+            args.input,
+          );
+    return boundedDisplayText(summary, MESSAGE_ACTIVITY_MAX_CHANGE, true) || null;
   },
 });
 
