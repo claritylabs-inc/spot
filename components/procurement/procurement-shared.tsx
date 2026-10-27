@@ -433,6 +433,15 @@ export function ProcurementEmailMessage({
                 {message.fromEmail}
               </span>
             ) : null}
+            {message.gmailAddress ? (
+              <Badge
+                variant="outline"
+                className="ml-1.5 align-middle text-muted-foreground"
+                title={message.gmailAddress}
+              >
+                via Gmail
+              </Badge>
+            ) : null}
           </p>
           <time
             dateTime={dayjs(message.receivedAt).toISOString()}
