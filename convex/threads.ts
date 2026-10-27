@@ -248,9 +248,21 @@ async function clientVisibleMessage(
     { audience: "client", orgId },
     budget,
   );
-  const toolSteps = agentSteps?.filter((step) => step.type === "tool");
+  const toolSteps = agentSteps?.flatMap((step) => {
+    if (step.type !== "tool") return [];
+    const { output: _output, ...call } = step;
+    return [call];
+  });
   return {
     ...visible,
+    // Clients see which tools ran, not what they returned.
+    ...(visible.toolCalls
+      ? {
+          toolCalls: visible.toolCalls.map(
+            ({ output: _output, ...call }) => call,
+          ),
+        }
+      : {}),
     ...(presentation ? { presentation } : {}),
     ...(toolSteps?.length ? { agentSteps: toolSteps } : {}),
   };
@@ -863,6 +875,7 @@ export const updateAgentMessage = internalMutation({
       v.array(
         v.object({
           name: v.string(),
+          toolCallId: v.optional(v.string()),
           input: v.optional(v.string()),
           output: v.optional(v.string()),
         }),
@@ -1075,6 +1088,7 @@ export const streamAgentProgress = internalMutation({
       v.array(
         v.object({
           name: v.string(),
+          toolCallId: v.optional(v.string()),
           input: v.optional(v.string()),
           output: v.optional(v.string()),
         }),
@@ -1495,6 +1509,7 @@ export const insertImessageMessage = internalMutation({
       v.array(
         v.object({
           name: v.string(),
+          toolCallId: v.optional(v.string()),
           input: v.optional(v.string()),
           output: v.optional(v.string()),
         }),

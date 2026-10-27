@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { PresenceAvatars } from "@/components/app-top-bar";
-import { ChatAvatar } from "@/components/chat/chat-message";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { PillButton } from "@/components/ui/pill-button";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
@@ -56,7 +56,7 @@ function HistoryRow({
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
       >
         {thread.creator ? (
-          <ChatAvatar
+          <Avatar
             name={thread.creator.name}
             title={`Started by ${thread.creator.name}`}
             imageUrl={thread.creator.avatarUrl}

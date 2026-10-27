@@ -7,14 +7,33 @@ import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
 /**
- * Shared activity disclosure. While `working` it is forced open. When work
- * finishes in this session it stays open so the trace does not vanish; the
- * user can then collapse it. Disclosures that mount idle start collapsed.
+ * Open state shared by activity disclosures. While `working` it is forced
+ * open. When work finishes in this session it stays open (unless `stayOpen`
+ * is false) so the trace does not vanish; the user can then collapse it.
+ * Disclosures that mount idle start collapsed.
  */
+export function useActivityDisclosure(working: boolean, stayOpen = true) {
+  const [expanded, setExpanded] = useState(false);
+  const [wasWorking, setWasWorking] = useState(working);
+  if (wasWorking !== working) {
+    setWasWorking(working);
+    if (!working) setExpanded(stayOpen);
+  }
+  return {
+    open: working || expanded,
+    toggle: () => {
+      if (!working) setExpanded(!expanded);
+    },
+  };
+}
+
+/** Shared activity disclosure; open state follows `useActivityDisclosure`. */
 export function ChatDisclosure({
   summary,
   working = false,
   compact = false,
+  trailingCaret = false,
+  collapseWhenDone = false,
   className,
   summaryClassName,
   children,
@@ -22,19 +41,29 @@ export function ChatDisclosure({
   summary: ReactNode;
   working?: boolean;
   compact?: boolean;
+  /** Caret after the summary instead of before it. */
+  trailingCaret?: boolean;
+  /** Collapse once work finishes instead of staying open. */
+  collapseWhenDone?: boolean;
   className?: string;
   summaryClassName?: string;
   children: ReactNode;
 }) {
   const contentId = useId();
-  const reduceMotion = useReducedMotion();
-  const [expanded, setExpanded] = useState(false);
-  const [wasWorking, setWasWorking] = useState(working);
-  if (wasWorking !== working) {
-    setWasWorking(working);
-    if (!working) setExpanded(true);
-  }
-  const open = working || expanded;
+  const { open, toggle } = useActivityDisclosure(
+    working,
+    !collapseWhenDone,
+  );
+  const caret = (
+    <ChevronRight
+      aria-hidden
+      className={cn(
+        "shrink-0 transition-transform duration-200 motion-reduce:transition-none",
+        open && "rotate-90",
+        compact ? "size-3.5" : "size-4",
+      )}
+    />
+  );
 
   return (
     <div className={cn("min-w-0", className)}>
@@ -43,9 +72,7 @@ export function ChatDisclosure({
         aria-expanded={open}
         aria-controls={contentId}
         aria-disabled={working}
-        onClick={() => {
-          if (!working) setExpanded(!expanded);
-        }}
+        onClick={toggle}
         className={cn(
           "flex w-fit items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring",
           working ? "cursor-default" : "cursor-pointer",
@@ -54,29 +81,41 @@ export function ChatDisclosure({
           summaryClassName,
         )}
       >
-        <ChevronRight
-          aria-hidden
-          className={cn(
-            "shrink-0 transition-transform duration-200 motion-reduce:transition-none",
-            open && "rotate-90",
-            compact ? "size-3.5" : "size-4",
-          )}
-        />
+        {trailingCaret ? null : caret}
         {summary}
+        {trailingCaret ? caret : null}
       </button>
-      <motion.div
-        id={contentId}
-        inert={!open}
-        aria-hidden={!open}
-        initial={false}
-        animate={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }}
-        transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.32, 0.72, 0, 1] }}
-        // Positioned so absolute descendants (e.g. sr-only text) stay clipped
-        // instead of extending the transcript's scroll height while collapsed.
-        className="relative overflow-hidden"
-      >
+      <DisclosurePanel id={contentId} open={open}>
         {children}
-      </motion.div>
+      </DisclosurePanel>
     </div>
+  );
+}
+
+/** Animated height/opacity panel controlled by a disclosure trigger. */
+export function DisclosurePanel({
+  id,
+  open,
+  children,
+}: {
+  id: string;
+  open: boolean;
+  children: ReactNode;
+}) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <motion.div
+      id={id}
+      inert={!open}
+      aria-hidden={!open}
+      initial={false}
+      animate={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }}
+      transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.32, 0.72, 0, 1] }}
+      // Positioned so absolute descendants (e.g. sr-only text) stay clipped
+      // instead of extending the transcript's scroll height while collapsed.
+      className="relative overflow-hidden"
+    >
+      {children}
+    </motion.div>
   );
 }

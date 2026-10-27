@@ -97,29 +97,30 @@ can continue as ordinary PRs targeting `main`.
 
 ### Branches and previews
 
-`vercel.json` owns automatic Git deployment selection:
+`vercel.json` owns automatic Git deployment selection. `"**": false` turns off
+automatic deployments by default, and only `main` and `preview/**` are enabled:
 
 | Branch | Vercel behavior |
 | --- | --- |
-| `stack/<topic>/<layer>` | No automatic deployment; CI still runs. |
-| `preview/<topic>` | Preview of the combined stack. |
 | `main` | Production candidate with the existing readiness gate. |
-| Other branches | Existing automatic preview behavior. |
+| `preview/<topic>` | Preview of the combined stack, or of a single change that needs one. |
+| All other branches, including `stack/<topic>/<layer>` and Conductor workspace branches | No automatic deployment; CI still runs. |
 
-Each branch must contain this configuration before it is pushed. These are
-explicit branch rules, not automatic detection of the top PR. For existing
-branches with other names, add each intermediate branch to
-`git.deploymentEnabled` with `false`; do not rename workspace branches without
-the author's authorization. If adding a layer above the preview branch,
-disable the former preview branch and enable the new top branch before pushing.
-Keep exactly one preview branch enabled for each stack. Remove obsolete exact
-branch rules after the stack lands. Avoid broad `true` patterns overlapping
-`stack/**`: Vercel enables a branch when any matching rule is `true`.
+Vercel reads these rules from the pushed commit, so a branch based on an older
+`main` keeps the old rules until it is rebased. These are branch
+name rules, not automatic detection of the top PR. To get a preview for a
+workspace branch, push the same commit to `preview/<topic>` instead of
+renaming the workspace branch; do not rename workspace branches without the
+author's authorization. If adding a layer above the preview branch, give the
+new top branch the `preview/` name and move the former top to `stack/`. Keep
+one preview branch for each stack. Do not add exact `false` rules for
+`preview/` branches: Vercel enables a branch when any matching rule is `true`,
+so `preview/**` still wins.
 
 CI runs on PRs regardless of their immediate base branch.
 New updates cancel superseded CI for the same PR or ref. Every PR still needs
 the required CI checks and reviews. A Vercel preview must not be a required
-merge check for intermediate PRs whose deployments are disabled.
+merge check, because most PRs have no deployment.
 
 ### Create and merge a stack
 
@@ -179,7 +180,7 @@ JSON
 
 Read the project back and verify those two fields after changing the setting.
 The active build finishes; superseded queued commits are skipped and the newest
-commit builds next. Different branches can still build concurrently. GitHub
+commit builds next. Different branches can still build concurrently.
 Because Convex deploys inside the Vercel build, this queue also serializes
 production Convex deploys; keep it enabled.
 

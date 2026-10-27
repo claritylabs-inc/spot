@@ -1,4 +1,4 @@
-import { buildSpotEmailIconHtml, escapeHtml } from "./emailTemplate";
+import { escapeHtml } from "./emailTemplate";
 import { canonicalAddress } from "./emailAddress";
 
 /**
@@ -245,17 +245,17 @@ export function operatorFromHeader(
   return `${operatorFromName(name)} <${address}>`;
 }
 
-/** Person signature for operator email: Spot mark, the operator's name, "Spot". */
-export function buildOperatorSignature(operator: { name: string | null | undefined }): {
+/** Unstyled operator signature, using the same address as the email's From header. */
+export function buildOperatorSignature(operator: {
+  name: string | null | undefined;
+  address: string;
+}): {
   text: string;
   html: string;
 } {
   const name = requirePersonName(operator.name).slice(0, MAX_SIGNATURE_NAME_LENGTH);
-  const text = `${name}\nSpot`;
-  const lines = [
-    `<strong style="font-weight:600">${escapeHtml(name)}</strong>`,
-    `<span style="color:#6b6b6b">Spot</span>`,
-  ];
-  const html = `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 0;border-collapse:collapse"><tr><td style="padding:2px 10px 0 0;vertical-align:top">${buildSpotEmailIconHtml({ size: 32, borderRadius: 8 })}</td><td style="font-size:13px;line-height:19px;vertical-align:top">${lines.join("<br>")}</td></tr></table>`;
+  const lines = [name, "Spot", operator.address];
+  const text = lines.join("\n");
+  const html = `<p>${lines.map(escapeHtml).join("<br>")}</p>`;
   return { text, html };
 }

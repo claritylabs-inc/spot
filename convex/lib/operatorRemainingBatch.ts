@@ -1,5 +1,5 @@
 import type { Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { normalizeDeclarationValue } from "./declarationFacts";
 import { prepareOperatorBatch } from "./operatorBatch";
 import {
@@ -162,7 +162,7 @@ const referenceTables: Record<string, ReferenceTable> = {
 };
 
 export async function remainingBatchConfirmationSummary(
-  ctx: MutationCtx,
+  ctx: QueryCtx,
   toolName: RemainingBatchToolName,
   input: Record<string, unknown>,
 ) {

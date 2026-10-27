@@ -7,6 +7,8 @@ type OrgBrandIconProps = {
   iconUrl?: string | null;
   website?: string | null;
   size?: "xs" | "sm" | "md" | "lg" | "xl";
+  /** `circle` crops round and insets marks the crop would clip. */
+  shape?: "rounded" | "circle";
   className?: string;
 };
 
@@ -15,6 +17,7 @@ export function OrgBrandIcon({
   iconUrl,
   website,
   size = "sm",
+  shape,
   className,
 }: OrgBrandIconProps) {
   return (
@@ -23,6 +26,7 @@ export function OrgBrandIcon({
       name={name}
       alt=""
       size={size}
+      shape={shape}
       className={className}
     />
   );

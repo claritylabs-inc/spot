@@ -1,25 +1,29 @@
 "use client";
 
-import type { ReactNode } from "react";
-import {
-  Cpu,
-  Globe,
-  Layers,
-  ListChecks,
-  Route,
-  ShieldCheck,
-  Wrench,
-} from "lucide-react";
+import { useId, type ReactNode } from "react";
+import { Check, ChevronRight, Globe } from "lucide-react";
 import { useQuery } from "convex/react";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
+import {
+  StatusTag,
+  type StatusPresentation,
+} from "@claritylabs-inc/ui/components/status-tag";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@claritylabs-inc/ui/components/tooltip";
 import { api } from "@/convex/_generated/api";
+import { useFollowedState } from "@/hooks/use-followed-state";
+import { LogoIcon } from "@/components/ui/logo-icon";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
-import { toolActivityIcon } from "@/lib/tool-activity-icons";
+import type { OperatorToolIntegration } from "@/convex/lib/operatorAgentToolRegistry";
+import type { OperatorExecutionPlan } from "@/convex/lib/operatorRunPlan";
+import {
+  toolActivityCategory,
+  toolActivityIcon,
+} from "@/lib/tool-activity-icons";
+import { toolActivityLabel } from "@/lib/tool-activity-label";
 import {
   isWebActivityTool,
   toolActivityContext,
@@ -27,13 +31,28 @@ import {
 } from "@/lib/tool-activity-context";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
-import { ChatDisclosure } from "./disclosure";
+import {
+  ChatDisclosure,
+  DisclosurePanel,
+  useActivityDisclosure,
+} from "./disclosure";
 
 type ActivityCall = {
   name: string;
+  toolCallId?: string;
   input?: string;
   status?: ActivityStatus;
   context?: ToolActivityContext;
+  /** Count summary of the returned result ("3 threads"). */
+  result?: string;
+  /** Record the call acted on; resolved through `entities`. */
+  target?: { kind: string; id: string };
+  /** What a completed write did ("Assign Sarah Chen to Ramp"). */
+  change?: string;
+  /** A stored preview of the result can be shown under the row. */
+  preview?: boolean;
+  startedAt?: number;
+  endedAt?: number;
 };
 
 export type ActivityStatus =
@@ -63,6 +82,13 @@ export type ChatActivity = {
     toolName: string;
     status: ActivityStatus;
     context?: ToolActivityContext;
+    result?: string;
+    target?: { kind: string; id: string };
+    change?: string;
+    preview?: boolean;
+    /** Observed running → settled span; absent on older messages. */
+    startedAt?: number;
+    endedAt?: number;
   }[];
   stages?: {
     stageId: string;
@@ -70,40 +96,35 @@ export type ChatActivity = {
     status: StageStatus;
     /** Concise factual outcome; absent on older messages. */
     detail?: string;
+    startedAt?: number;
+    endedAt?: number;
   }[];
 };
 
-const STAGE_LABELS: Record<
-  StageName,
-  { running: string; completed: string; icon: typeof Route }
-> = {
-  assessing_workflow: {
-    running: "Checking workflow",
-    completed: "Workflow checked",
-    icon: ListChecks,
-  },
-  planning: { running: "Creating plan", completed: "Plan ready", icon: Route },
-  preparing_context: {
-    running: "Preparing context",
-    completed: "Context ready",
-    icon: Layers,
-  },
-  screening_request: {
-    running: "Checking request",
-    completed: "Request checked",
-    icon: ShieldCheck,
-  },
-  selecting_tools: {
-    running: "Loading tools",
-    completed: "Tools loaded",
-    icon: Wrench,
-  },
-  selecting_model: {
-    running: "Selecting model",
-    completed: "Model selected",
-    icon: Cpu,
-  },
-};
+const STAGE_LABELS: Record<StageName, { running: string; completed: string }> =
+  {
+    assessing_workflow: {
+      running: "Checking workflow",
+      completed: "Workflow checked",
+    },
+    planning: { running: "Creating plan", completed: "Plan ready" },
+    preparing_context: {
+      running: "Preparing context",
+      completed: "Context ready",
+    },
+    screening_request: {
+      running: "Checking request",
+      completed: "Request checked",
+    },
+    selecting_tools: {
+      running: "Loading tools",
+      completed: "Tools loaded",
+    },
+    selecting_model: {
+      running: "Selecting model",
+      completed: "Model selected",
+    },
+  };
 
 export function stageLabel(stage: StageName) {
   return STAGE_LABELS[stage].running;
@@ -119,6 +140,14 @@ type StageEntry = NonNullable<ChatActivity["stages"]>[number];
  */
 function groupStages(stages: readonly StageEntry[]) {
   const rows: { entry: StageEntry; count: number }[] = [];
+  // A workflow check only matters when it calls for a plan; a check that
+  // found none (or predates outcomes) is noise once it has completed.
+  stages = stages.filter(
+    (entry) =>
+      entry.stage !== "assessing_workflow" ||
+      entry.status !== "completed" ||
+      entry.detail?.startsWith("Plan "),
+  );
   // A generic completed row adds nothing once another completed entry of the
   // same stage states its outcome. It is hidden, not merged: it is not
   // identical to the detailed outcome.
@@ -149,27 +178,6 @@ function groupStages(stages: readonly StageEntry[]) {
   return rows;
 }
 
-type RowStatus = ActivityStatus | StageStatus;
-
-/**
- * Accessible status text plus whether it is worth showing. Ordinary success is
- * screen-reader only; failures, approvals, and a turn that ended while an item
- * was open are explicit.
- */
-function rowStatus(status: RowStatus, working: boolean) {
-  if (!working && status === "running")
-    return { text: "Interrupted", visible: true };
-  if (!working && status === "requested")
-    return { text: "Not run", visible: true };
-  if (status === "running") return { text: "Running", visible: false };
-  if (status === "completed")
-    return { text: working ? "Completed" : "Done", visible: false };
-  if (status === "returned") return { text: "Finished", visible: false };
-  const text =
-    status in STATUS_LABELS ? STATUS_LABELS[status as ActivityStatus] : status;
-  return { text, visible: true };
-}
-
 /** True when a visible row already shows what the turn is doing right now. */
 export function hasActiveActivity(activity?: ChatActivity): boolean {
   return Boolean(
@@ -178,20 +186,6 @@ export function hasActiveActivity(activity?: ChatActivity): boolean {
       (tool) => tool.status === "running" || tool.status === "requested",
     ),
   );
-}
-
-const STATUS_LABELS: Record<ActivityStatus, string> = {
-  requested: "Requested",
-  running: "Running",
-  returned: "Finished",
-  completed: "Completed",
-  failed: "Failed",
-  awaiting_approval: "Awaiting approval",
-  skipped: "Not run",
-};
-
-function toolLabel(name: string) {
-  return name.charAt(0).toUpperCase() + name.slice(1).replaceAll("_", " ");
 }
 
 /**
@@ -208,7 +202,7 @@ export function activityStatusLabel(activity?: ChatActivity): string {
     const active = activity.tools.filter((tool) => tool.status === status);
     if (active.length > 0) {
       const more = active.length > 1 ? ` +${active.length - 1} more` : "";
-      return `${STATUS_LABELS[status]} ${toolLabel(active[0].toolName)}${more}…`;
+      return `${toolActivityLabel(active[0].toolName, "progressive")}${more}…`;
     }
   }
   return activity.phase === "model" ? "Waiting for model…" : "Working…";
@@ -240,7 +234,8 @@ function McpToolActivityIcon({ serverId }: { serverId: string }) {
       iconUrl={server?.logoUrl}
       website={server?.url}
       size="xs"
-      className="shrink-0"
+      shape="circle"
+      className={BRAND_ICON}
     />
   );
 }
@@ -269,6 +264,21 @@ function callContext(call: ActivityCall): ToolActivityContext | undefined {
  * authoritative for what ran; observed entries add status and any call the
  * audit missed (for example one that failed or never started).
  */
+function observedCall(tool: ChatActivity["tools"][number]): ActivityCall {
+  return {
+    name: tool.toolName,
+    toolCallId: tool.toolCallId,
+    status: tool.status,
+    context: tool.context,
+    result: tool.result,
+    target: tool.target,
+    change: tool.change,
+    preview: tool.preview,
+    startedAt: tool.startedAt,
+    endedAt: tool.endedAt,
+  };
+}
+
 function mergeCalls(
   tools: string[],
   toolCalls: ActivityCall[] | undefined,
@@ -278,31 +288,86 @@ function mergeCalls(
   if (toolCalls?.length) {
     const pool = [...observed];
     const merged = toolCalls.map((call) => {
-      const index = pool.findIndex((tool) => tool.toolName === call.name);
+      // Calls stored with their id join exactly; older ones by name and order.
+      const byId = call.toolCallId
+        ? pool.findIndex((tool) => tool.toolCallId === call.toolCallId)
+        : -1;
+      const index =
+        byId >= 0
+          ? byId
+          : pool.findIndex(
+              (tool) =>
+                tool.toolName === call.name &&
+                !toolCalls.some(
+                  (other) => other.toolCallId === tool.toolCallId,
+                ),
+            );
       if (index < 0) return call;
       const [match] = pool.splice(index, 1);
-      return { ...call, status: match.status, context: match.context };
+      return { ...call, ...observedCall(match), name: call.name };
     });
-    return [
-      ...merged,
-      ...pool.map((tool) => ({
-        name: tool.toolName,
-        status: tool.status,
-        context: tool.context,
-      })),
-    ];
+    return [...merged, ...pool.map(observedCall)];
   }
   const seen = new Set(observed.map((tool) => tool.toolName));
   return [
-    ...observed.map((tool) => ({
-      name: tool.toolName,
-      status: tool.status,
-      context: tool.context,
-    })),
+    ...observed.map(observedCall),
     ...[...new Set(tools)]
       .filter((name) => !seen.has(name))
       .map((name) => ({ name })),
   ];
+}
+
+/** Compact elapsed time: "0.4s", "12s", "1m 5s". */
+function formatDuration(ms: number) {
+  if (ms < 10_000) return `${Math.max(0.1, ms / 1000).toFixed(1)}s`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+/** Span from the first observed start to the last observed end. */
+function spanOf(entries: { startedAt?: number; endedAt?: number }[]) {
+  const timed = entries.filter(
+    (entry) => entry.startedAt !== undefined && entry.endedAt !== undefined,
+  );
+  if (timed.length === 0) return;
+  return (
+    Math.max(...timed.map((entry) => entry.endedAt!)) -
+    Math.min(...timed.map((entry) => entry.startedAt!))
+  );
+}
+
+function Duration({
+  entries,
+}: {
+  entries: { startedAt?: number; endedAt?: number }[];
+}) {
+  const span = spanOf(entries);
+  if (span === undefined) return null;
+  return (
+    <span
+      className={`shrink-0 text-muted-foreground/70 ${typeStyle("data.numeric")}`}
+    >
+      {formatDuration(span)}
+    </span>
+  );
+}
+
+/** Result count and duration for one call: "3 threads · 0.4s". */
+function CallMeta({ call }: { call: ActivityCall }) {
+  const span = spanOf([call]);
+  const parts = [
+    call.result,
+    span === undefined ? undefined : formatDuration(span),
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  return (
+    <span
+      className={`shrink-0 whitespace-nowrap text-muted-foreground/70 ${typeStyle("data.numeric")}`}
+    >
+      {parts.join(" · ")}
+    </span>
+  );
 }
 
 function hostOf(website: string) {
@@ -335,8 +400,9 @@ function WebsiteTargets({ websites }: { websites: string[] }) {
               name={hosts[index]}
               website={website}
               size="xs"
+              shape="circle"
               className={cn(
-                "size-4 rounded-full ring-2 ring-background",
+                "size-4 ring-2 ring-background",
                 index > 0 && "-ml-1.5",
               )}
             />
@@ -362,191 +428,610 @@ function WebsiteTargets({ websites }: { websites: string[] }) {
   );
 }
 
-function ActivityRow({
-  icon,
-  label,
-  context,
-  count = 1,
+/** Brand marks render as 16px circles with a hairline edge; `BrandIcon`'s
+ * circle shape insets marks the round crop would clip. */
+const BRAND_ICON = "size-4 shrink-0 ring-1 ring-border-subtle";
+
+type ToolBrand = { key: string; icon: ReactNode };
+
+/** Integrations with a fixed brand; MCP servers resolve their own logo. */
+const INTEGRATION_BRANDS: Partial<
+  Record<OperatorToolIntegration, { name: string; website: string }>
+> = {
+  google_workspace: { name: "Gmail", website: "mail.google.com" },
+  slack: { name: "Slack", website: "slack.com" },
+  mapbox: { name: "Mapbox", website: "mapbox.com" },
+};
+
+/** An approval decided on the row of the call that is waiting for it. */
+/** Brand of a record a call acted on, keyed `kind:id`. */
+export type ToolEntity = { name: string; website?: string; iconUrl?: string };
+
+export type ToolApproval = {
+  toolName: string;
+  /** What the call will do, shown under the row. */
+  detail?: ReactNode;
+  /** Decision buttons, shown beside the row's status. */
+  actions: ReactNode;
+};
+
+/** True when a call in this activity is waiting on approval for `toolName`. */
+export function hasAwaitingApprovalCall(
+  activity: ChatActivity | undefined,
+  toolName: string,
+) {
+  return Boolean(
+    activity?.tools.some(
+      (tool) =>
+        tool.status === "awaiting_approval" && tool.toolName === toolName,
+    ),
+  );
+}
+
+/**
+ * The mark of what a call touched: the MCP server, the client it acted on,
+ * the website, the integration (Gmail, Slack, Mapbox), or Spot for other
+ * platform records. A
+ * category glyph remains only where no brand is known (client mailboxes,
+ * unscoped web search, client-side tools).
+ */
+function toolBrand(
+  call: ActivityCall,
+  integration?: OperatorToolIntegration,
+  entities?: Record<string, ToolEntity>,
+): ToolBrand {
+  const mcp = mcpInput(call);
+  if (mcp)
+    return {
+      key: `mcp:${mcp.serverId}`,
+      icon: <McpToolActivityIcon serverId={mcp.serverId} />,
+    };
+  const entityKey = call.target && `${call.target.kind}:${call.target.id}`;
+  const entity = entityKey ? entities?.[entityKey] : undefined;
+  if (entity)
+    return {
+      key: `entity:${entityKey}`,
+      icon: (
+        <OrgBrandIcon
+          name={entity.name}
+          iconUrl={entity.iconUrl}
+          website={entity.website}
+          size="xs"
+          shape="circle"
+          className={BRAND_ICON}
+        />
+      ),
+    };
+  const context = callContext(call);
+  if (context?.website)
+    return {
+      key: `site:${hostOf(context.website)}`,
+      icon: (
+        <OrgBrandIcon
+          name={context.label}
+          website={context.website}
+          size="xs"
+          shape="circle"
+          className={BRAND_ICON}
+        />
+      ),
+    };
+  const brand = integration ? INTEGRATION_BRANDS[integration] : undefined;
+  if (brand)
+    return {
+      key: `integration:${integration}`,
+      icon: (
+        <OrgBrandIcon
+          name={brand.name}
+          website={brand.website}
+          size="xs"
+          shape="circle"
+          className={BRAND_ICON}
+        />
+      ),
+    };
+  const category = toolActivityCategory(call.name);
+  if (category === "web" || isWebActivityTool(call.name))
+    return { key: "web", icon: <GlyphIcon icon={Globe} /> };
+  if (!category || category === "email" || category === "send")
+    return {
+      key: `glyph:${category ?? call.name}`,
+      icon: <GlyphIcon icon={toolActivityIcon(call.name)} />,
+    };
+  return {
+    key: "spot",
+    icon: (
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-background">
+        <LogoIcon size={16} />
+      </span>
+    ),
+  };
+}
+
+function GlyphIcon({ icon: Icon }: { icon: typeof Globe }) {
+  return (
+    <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+      <Icon aria-hidden className="size-2.5" strokeWidth={2} />
+    </span>
+  );
+}
+
+/** Overlapping marks for every distinct brand a turn touched. */
+function BrandStack({ brands }: { brands: ToolBrand[] }) {
+  return (
+    <span className="flex shrink-0 items-center" aria-hidden>
+      {brands.slice(0, 5).map((brand, index) => (
+        <span
+          key={brand.key}
+          className={cn(
+            "flex rounded-full ring-2 ring-card",
+            index > 0 && "-ml-1.5",
+          )}
+        >
+          {brand.icon}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * Non-success states get a status tag; ordinary success is a check. A turn
+ * that ended while a call was open says so explicitly.
+ */
+function callStatus(
+  status: ActivityStatus | undefined,
+  working: boolean,
+): ({ label: string } & StatusPresentation) | "done" | "running" | undefined {
+  if (!status) return working ? undefined : "done";
+  if (status === "running" || status === "requested") {
+    if (working) return "running";
+    return status === "running"
+      ? { label: "Interrupted", tone: "neutral", indicator: "cancelled" }
+      : { label: "Not run", tone: "neutral", indicator: "inactive" };
+  }
+  if (status === "failed") return { label: "Failed", tone: "danger" };
+  if (status === "awaiting_approval")
+    return { label: "Needs approval", tone: "warning", indicator: "waiting" };
+  if (status === "skipped")
+    return { label: "Not run", tone: "neutral", indicator: "inactive" };
+  return "done";
+}
+
+function CallStatus({
   status,
   working,
 }: {
-  icon: ReactNode;
-  label: string;
-  context?: ToolActivityContext;
-  /** Identical completed rows merged for display. */
-  count?: number;
-  status?: RowStatus;
+  status?: ActivityStatus;
   working: boolean;
 }) {
-  const shown = status ? rowStatus(status, working) : undefined;
-  const active = working && status === "running";
+  const shown = callStatus(status, working);
+  if (shown === "running")
+    return (
+      <>
+        <span className="sr-only">Running</span>
+        <Spinner
+          aria-hidden="true"
+          role="presentation"
+          aria-label={undefined}
+          className="size-3.5 shrink-0 text-muted-foreground motion-reduce:animate-none"
+        />
+      </>
+    );
+  if (shown === "done")
+    return (
+      <>
+        <span className="sr-only">Done</span>
+        <Check aria-hidden className="size-3.5 shrink-0 text-success" />
+      </>
+    );
+  if (!shown) return null;
+  const { label, ...presentation } = shown;
   return (
-    <li className="flex min-w-0 items-start gap-2.5">
-      <span className="flex h-6 w-4 shrink-0 items-center justify-center">
-        {icon}
-      </span>
-      <div
-        className={cn(
-          "flex min-h-6 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1",
-          typeStyle("body.default"),
-        )}
-      >
-        <span className="break-words text-foreground">{label}</span>
-        {count > 1 ? (
-          <span className="text-muted-foreground/70">×{count}</span>
-        ) : null}
-        {context?.websites?.length ? (
-          <WebsiteTargets websites={context.websites} />
-        ) : context ? (
-          context.website ? (
-            <span
-              title={context.label}
-              className="max-w-full truncate rounded-full bg-muted px-2 py-0.5 text-muted-foreground/80"
-            >
-              {context.label}
-            </span>
-          ) : (
+    <StatusTag {...presentation} className="shrink-0">
+      {label}
+    </StatusTag>
+  );
+}
+
+function CallRow({
+  call,
+  integration,
+  entities,
+  approval,
+  renderPreview,
+  working,
+}: {
+  call: ActivityCall;
+  integration?: OperatorToolIntegration;
+  entities?: Record<string, ToolEntity>;
+  approval?: ToolApproval;
+  renderPreview?: (toolCallId: string) => ReactNode;
+  working: boolean;
+}) {
+  const previewId = useId();
+  const [previewOpen, setPreviewOpen] = useFollowedState(
+    `tool-activity:${call.toolCallId ?? ""}:preview`,
+    false,
+  );
+  const previewCallId =
+    renderPreview && call.preview && call.toolCallId
+      ? call.toolCallId
+      : undefined;
+  const mcp = mcpInput(call);
+  const context = callContext(call);
+  const running = working && call.status === "running";
+  const label = toolActivityLabel(
+    mcp?.toolName ?? call.name,
+    running
+      ? "progressive"
+      : call.status === "awaiting_approval" ||
+          call.status === "skipped" ||
+          (!working && call.status === "requested")
+        ? "imperative"
+        : "past",
+  );
+  return (
+    <li className="px-3.5 py-2">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <span className="flex h-6 shrink-0 items-center">
+          {toolBrand(call, integration, entities).icon}
+        </span>
+        <LabelGroup
+          expandable={Boolean(previewCallId) && !context?.websites?.length}
+          open={previewOpen}
+          controls={previewId}
+          onToggle={() => setPreviewOpen(!previewOpen)}
+        >
+          <span
+            className={cn(
+              "break-words",
+              running ? "text-shimmer" : "text-foreground",
+            )}
+          >
+            {label}
+          </span>
+          {context?.websites?.length ? (
+            <WebsiteTargets websites={context.websites} />
+          ) : context && !context.website ? (
             <span
               title={context.label}
               className="line-clamp-2 min-w-0 break-words text-muted-foreground/70"
             >
               {context.label}
             </span>
-          )
-        ) : null}
-        {shown ? (
-          <span
-            className={cn(
-              shown.visible
-                ? status === "failed"
-                  ? "text-destructive"
-                  : "text-muted-foreground/70"
-                : "sr-only",
-            )}
-          >
-            {shown.text}
-          </span>
-        ) : null}
-        {active ? (
-          <Spinner
-            aria-hidden="true"
-            role="presentation"
-            aria-label={undefined}
-            className="size-3.5 shrink-0 motion-reduce:animate-none"
-          />
-        ) : null}
+          ) : context ? (
+            <span
+              title={context.label}
+              className="max-w-full truncate text-muted-foreground/70"
+            >
+              {context.label}
+            </span>
+          ) : null}
+        </LabelGroup>
+        <span className="flex min-h-6 shrink-0 items-center gap-2">
+          <CallMeta call={call} />
+          <CallStatus status={call.status} working={working} />
+          {approval?.actions}
+        </span>
       </div>
+      {approval?.detail ? (
+        <RowDetail>{approval.detail}</RowDetail>
+      ) : call.change ? (
+        <RowDetail>
+          <p className="line-clamp-3 whitespace-pre-line">{call.change}</p>
+        </RowDetail>
+      ) : null}
+      {previewCallId ? (
+        <DisclosurePanel id={previewId} open={previewOpen}>
+          <div className="mt-2 ml-6.5">
+            {previewOpen ? renderPreview?.(previewCallId) : null}
+          </div>
+        </DisclosurePanel>
+      ) : null}
     </li>
   );
 }
 
-export function ThinkingSummary({
+/** A row's label and context; a toggle with a trailing caret when the call
+ * has a result preview. */
+function LabelGroup({
+  expandable,
+  open,
+  controls,
+  onToggle,
+  children,
+}: {
+  expandable: boolean;
+  open: boolean;
+  controls: string;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const className = cn(
+    "flex min-h-6 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1",
+    typeStyle("body.default"),
+  );
+  if (!expandable) return <div className={className}>{children}</div>;
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={controls}
+      onClick={onToggle}
+      className={cn(
+        className,
+        "cursor-pointer rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      {children}
+      <ChevronRight
+        aria-hidden
+        className={cn(
+          "-ml-1 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-200 motion-reduce:transition-none",
+          open && "rotate-90",
+        )}
+      />
+    </button>
+  );
+}
+
+/** Indented, left-ruled detail under a call row. */
+function RowDetail({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className={cn(
+        "mt-1.5 ml-6.5 border-l-2 border-border pl-2.5 break-words text-muted-foreground",
+        typeStyle("caption.default"),
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Lowercases a label's first letter for use mid-sentence. */
+function midSentence(label: string) {
+  return label.charAt(0).toLowerCase() + label.slice(1);
+}
+
+/** One sentence naming what the turn did, from its distinct call labels. */
+function callsSentence(calls: ActivityCall[]) {
+  const labels = [
+    ...new Set(
+      calls.map((call) =>
+        toolActivityLabel(mcpInput(call)?.toolName ?? call.name, "past"),
+      ),
+    ),
+  ];
+  const shown = labels.slice(0, 3);
+  const more = labels.length - shown.length;
+  const sentence = shown
+    .map((label, index) => (index === 0 ? label : midSentence(label)))
+    .join(", ");
+  return more > 0 ? `${sentence} and ${more} more` : sentence;
+}
+
+/**
+ * Tool calls only: what the turn did in real systems. Collapsed it is one
+ * line of brand marks and a sentence; expanded, one row per call with its
+ * outcome. Internal decisions belong to `ThinkingTrace`.
+ */
+export function ToolActivityCard({
   tools = [],
   toolCalls,
   activity,
+  integrations,
+  entities,
+  approval,
+  renderPreview,
   working,
 }: {
   tools?: string[];
   toolCalls?: ActivityCall[];
   activity?: ChatActivity;
+  /** External system each tool reaches, by tool name. */
+  integrations?: Record<string, OperatorToolIntegration>;
+  entities?: Record<string, ToolEntity>;
+  approval?: ToolApproval;
+  /** Renders a call's stored result preview; rows without one never expand. */
+  renderPreview?: (toolCallId: string) => ReactNode;
   working: boolean;
 }) {
-  const activities = mergeCalls(tools, toolCalls, activity);
-  const stages = activity?.stages ?? [];
-  if (activities.length === 0 && stages.length === 0) return null;
-  const hasCalls =
-    Boolean(toolCalls?.length) || Boolean(activity?.tools.length);
+  const contentId = useId();
+  const { open, toggle } = useActivityDisclosure(working);
+  const calls = mergeCalls(tools, toolCalls, activity);
+  if (calls.length === 0) return null;
 
-  const mcpServerIds = [
-    ...new Set(activities.flatMap((call) => mcpInput(call)?.serverId ?? [])),
+  const brands = [
+    ...new Map(
+      calls.map((call) => {
+        const brand = toolBrand(call, integrations?.[call.name], entities);
+        return [brand.key, brand] as const;
+      }),
+    ).values(),
   ];
-  const icons = [
-    ...new Set(
-      activities
-        .filter((call) => !mcpInput(call))
-        .map((call) => toolActivityIcon(call.name)),
-    ),
-  ];
-  const noun = hasCalls ? "tool call" : "tool";
+  const active = working
+    ? calls.findLast((call) => call.status === "running")
+    : undefined;
+  const needsApproval = calls.some(
+    (call) => call.status === "awaiting_approval",
+  );
+  const approvalIndex = approval
+    ? calls.findLastIndex(
+        (call) =>
+          call.status === "awaiting_approval" &&
+          call.name === approval.toolName,
+      )
+    : -1;
+  const summary = active
+    ? `${toolActivityLabel(mcpInput(active)?.toolName ?? active.name, "progressive")}…`
+    : needsApproval
+      ? "Needs your approval"
+      : callsSentence(calls);
+
+  return (
+    <div className="mb-3 overflow-hidden rounded-2xl border border-border bg-card">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
+        aria-disabled={working}
+        onClick={toggle}
+        className={cn(
+          "flex w-full min-w-0 items-center gap-2.5 px-3.5 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+          working ? "cursor-default" : "cursor-pointer",
+          typeStyle("body.default"),
+        )}
+      >
+        <BrandStack brands={brands} />
+        <span
+          className={cn(
+            "min-w-0 truncate",
+            active ? "text-shimmer" : "text-muted-foreground",
+          )}
+        >
+          {summary}
+        </span>
+        <ChevronRight
+          aria-hidden
+          className={cn(
+            "-ml-1 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-200 motion-reduce:transition-none",
+            open && "rotate-90",
+          )}
+        />
+        <span className="sr-only">
+          {calls.length} tool call{calls.length === 1 ? "" : "s"}
+        </span>
+        {working ? null : (
+          <span className="ml-auto pr-[22px]">
+            <Duration entries={calls} />
+          </span>
+        )}
+      </button>
+      <DisclosurePanel id={contentId} open={open}>
+        <ul className="border-t border-border py-1">
+          {calls.map((call, index) => (
+            <CallRow
+              key={`${call.name}-${index}`}
+              call={call}
+              integration={integrations?.[call.name]}
+              entities={entities}
+              renderPreview={renderPreview}
+              approval={index === approvalIndex ? approval : undefined}
+              working={working}
+            />
+          ))}
+        </ul>
+      </DisclosurePanel>
+    </div>
+  );
+}
+
+/**
+ * Internal decisions, not tool calls: context, tool loading, model choice,
+ * request and workflow checks, and the plan when one was made. Prose with a
+ * left rule, without brand marks or per-row status.
+ */
+export function ThinkingTrace({
+  activity,
+  executionPlan,
+  working,
+}: {
+  activity?: ChatActivity;
+  executionPlan?: OperatorExecutionPlan;
+  working: boolean;
+}) {
+  const stages = groupStages(activity?.stages ?? []);
+  if (stages.length === 0 && !executionPlan) return null;
+  const running = working
+    ? stages.findLast(({ entry }) => entry.status === "running")
+    : undefined;
+  const steps = executionPlan?.steps.length ?? 0;
+  // Stages recur between tool steps (model selection), so their own spans
+  // are summed rather than measured end to end.
+  const timedStages = (activity?.stages ?? []).filter(
+    (entry) => entry.startedAt !== undefined && entry.endedAt !== undefined,
+  );
+  const thoughtFor = timedStages.length
+    ? timedStages.reduce(
+        (total, entry) => total + entry.endedAt! - entry.startedAt!,
+        0,
+      )
+    : undefined;
   return (
     <ChatDisclosure
-      working={working}
-      className={`mb-3 text-muted-foreground/50 ${typeStyle("caption.default")}`}
+      working={Boolean(running)}
+      compact
+      trailingCaret
+      collapseWhenDone
+      className={`mb-2 text-muted-foreground/70 ${typeStyle("caption.default")}`}
       summaryClassName="hover:text-muted-foreground"
       summary={
-        <>
+        running ? (
+          <span className="text-shimmer">
+            {STAGE_LABELS[running.entry.stage].running}…
+          </span>
+        ) : (
           <span>
-            {[
-              stages.length > 0
-                ? `${stages.length} step${stages.length === 1 ? "" : "s"}`
-                : undefined,
-              activities.length > 0
-                ? `${activities.length} ${noun}${activities.length === 1 ? "" : "s"}`
-                : undefined,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
+            {thoughtFor === undefined
+              ? "Thought process"
+              : `Thought for ${formatDuration(thoughtFor)}`}
+            {steps ? ` · ${steps}-step plan` : ""}
           </span>
-          <span className="flex flex-wrap items-center gap-1.5" aria-hidden>
-            {mcpServerIds.map((serverId) => (
-              <McpToolActivityIcon key={serverId} serverId={serverId} />
-            ))}
-            {icons.map((Icon, index) => (
-              <Icon key={index} className="size-3.5 shrink-0" />
-            ))}
-          </span>
-        </>
+        )
       }
     >
-      <ul className="space-y-2.5 py-2.5">
-        {groupStages(stages).map(({ entry, count }) => {
-          const meta = STAGE_LABELS[entry.stage];
-          const Icon = meta.icon;
-          return (
-            <ActivityRow
-              key={entry.stageId}
-              icon={<Icon aria-hidden className="size-4" />}
-              label={
-                entry.status === "completed" ? meta.completed : meta.running
-              }
-              context={entry.detail ? { label: entry.detail } : undefined}
-              count={count}
-              status={entry.status}
-              working={working}
-            />
-          );
-        })}
-        {activities.map((call, index) => {
-          const mcp = mcpInput(call);
-          const context = callContext(call);
-          const Icon = toolActivityIcon(call.name);
-          return (
-            <ActivityRow
-              key={`${call.name}-${index}`}
-              icon={
-                mcp ? (
-                  <McpToolActivityIcon serverId={mcp.serverId} />
-                ) : context?.website ? (
-                  <OrgBrandIcon
-                    name={context.label}
-                    website={context.website}
-                    size="xs"
-                    className="size-4 rounded-full"
-                  />
-                ) : isWebActivityTool(call.name) ? (
-                  <Globe aria-hidden className="size-4" />
-                ) : (
-                  <Icon aria-hidden className="size-4" />
-                )
-              }
-              label={mcp?.toolName ?? toolLabel(call.name)}
-              context={context}
-              status={call.status}
-              working={working}
-            />
-          );
-        })}
-      </ul>
+      <div
+        className={`mt-1 mb-1 ml-1 space-y-2 border-l-2 border-border pl-3.5 text-muted-foreground ${typeStyle("caption.default")}`}
+      >
+        {stages.length > 0 ? (
+          <ul className="space-y-1">
+            {stages.map(({ entry, count }) => {
+              const meta = STAGE_LABELS[entry.stage];
+              const label =
+                entry.status === "completed"
+                  ? meta.completed
+                  : entry.status === "failed"
+                    ? `${meta.running} failed`
+                    : `${meta.running}…`;
+              return (
+                <li
+                  key={entry.stageId}
+                  className={cn(
+                    "break-words",
+                    entry.status === "failed" && "text-destructive",
+                  )}
+                >
+                  {label}
+                  {entry.detail ? `: ${entry.detail}` : ""}
+                  {count > 1 ? ` (×${count})` : ""}
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+        {executionPlan ? (
+          <div className="space-y-1">
+            <p className="break-words text-foreground">
+              {executionPlan.summary}
+            </p>
+            {executionPlan.targets.length ? (
+              <p className="break-words">
+                Targets: {executionPlan.targets.join(", ")}
+              </p>
+            ) : null}
+            <ol className="list-outside list-decimal space-y-1 pl-5">
+              {executionPlan.steps.map((step, index) => (
+                <li key={index} className="break-words pl-0.5">
+                  <span className="text-foreground">{step.title}</span>
+                  <span> — {step.detail}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
+      </div>
     </ChatDisclosure>
   );
 }

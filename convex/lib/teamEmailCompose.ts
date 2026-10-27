@@ -148,7 +148,7 @@ export async function composeTeamEmail(
   let signature: ReturnType<typeof buildOperatorSignature>;
   try {
     identity = await operatorSenderIdentity(ctx, args.operatorUserId);
-    signature = buildOperatorSignature({ name: identity.name });
+    signature = buildOperatorSignature({ name: identity.name, address: identity.teamAddress });
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : "You cannot send email yet." };
   }

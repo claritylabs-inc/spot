@@ -1,25 +1,27 @@
 "use client";
 
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { operatorBatchApprovalDetails } from "@/lib/operator-batch-approval";
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, useMemo, type ComponentProps, type ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { ChevronRight, RotateCcw } from "lucide-react";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import type { StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
 import {
+  ChatApprovalActions,
   ChatApprovalCard,
   type ChatApprovalDecision,
 } from "@/components/chat/approval-card";
 import { ChatAttachmentList } from "@/components/chat/attachment-chip";
 import {
   ChatAssistantTurn,
-  ChatAvatar,
   ChatCopyButton,
   ChatUserTurn,
 } from "@/components/chat/chat-message";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { MessageContextTag } from "@/components/chat/message-context-tag";
 import { ChatDisclosure } from "@/components/chat/disclosure";
+import { hasAwaitingApprovalCall } from "@/components/chat/thinking-summary";
 import { useChatAction } from "@/components/chat/use-chat-action";
 import { AppShellPortal, useOptionalAppShellSlots } from "@/components/app-shell-slots";
 import { AgentDockSuggestions } from "@/components/agent-dock/agent-dock-suggestions";
@@ -42,6 +44,7 @@ import {
   useOperatorEmailDrafts,
 } from "./operator-email-drafts";
 import { OperatorEmailMessage } from "./operator-email-message";
+import { OperatorToolPreview } from "./operator-tool-preview";
 import { OperatorThreadChannelIcon } from "./operator-thread-channel";
 import {
   operatorConversationEntries,
@@ -228,6 +231,22 @@ function EmptyThread({
   );
 }
 
+/** What an approval will do, under the waiting call's row. */
+function ApprovalDetail({ title }: { title: string }) {
+  const batch = operatorBatchApprovalDetails(title);
+  if (!batch) return <p className="whitespace-pre-line">{title}</p>;
+  return (
+    <>
+      <p>{batch.header}</p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-4">
+        {batch.items.map((item, index) => (
+          <li key={index}>{item}</li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 function OperatorMessageRow({
   threadId,
   message,
@@ -240,6 +259,8 @@ function OperatorMessageRow({
   emailDrafts,
   openEmailDraftId,
   onOpenEmailDraft,
+  toolApproval,
+  toolEntities,
 }: {
   threadId: string;
   message: OperatorAgentMessage;
@@ -253,6 +274,8 @@ function OperatorMessageRow({
   emailDrafts: OperatorEmailDraftView[];
   openEmailDraftId: string | null;
   onOpenEmailDraft: (draftId: string) => void;
+  toolApproval?: ComponentProps<typeof ChatAssistantTurn>["toolApproval"];
+  toolEntities?: ComponentProps<typeof ChatAssistantTurn>["toolEntities"];
 }) {
   const bubbleChannel = message.channel === "mcp" ? "chat" : message.channel;
   const content =
@@ -274,6 +297,7 @@ function OperatorMessageRow({
   if (message.role === "assistant") {
     if (
       !working &&
+      !toolApproval &&
       !content &&
       !attachments &&
       !message.presentation &&
@@ -287,6 +311,12 @@ function OperatorMessageRow({
         tools={message.usedTools}
         toolCalls={message.toolCalls}
         activity={message.activity}
+        toolIntegrations={message.toolIntegrations}
+        toolEntities={toolEntities}
+        toolPreview={(toolCallId) => (
+          <OperatorToolPreview messageId={message.id} toolCallId={toolCallId} />
+        )}
+        toolApproval={toolApproval}
         executionPlan={message.executionPlan}
         failure={message.failure}
         errorCode={message.errorCode}
@@ -327,7 +357,7 @@ function OperatorMessageRow({
       showSender={showSender}
       name={senderName}
       avatar={
-        <ChatAvatar
+        <Avatar
           name={senderName}
           title={senderName}
           imageUrl={message.sender?.avatarUrl}
@@ -499,6 +529,39 @@ export function OperatorConversation({
             message.role === "assistant" &&
             message.status !== "processing" &&
             !message.isDirectToolRequest;
+          // A pending approval for a call shown in this turn's tool card is
+          // decided on that call's row; ChatAssistantTurn falls back to the
+          // card when the row is not visible.
+          const rowConfirmation = message.isDirectToolRequest
+            ? undefined
+            : confirmations.find(
+                (confirmation) =>
+                  confirmation.state === "pending" &&
+                  !isAutoApproved(confirmation) &&
+                  hasAwaitingApprovalCall(
+                    message.activity,
+                    confirmation.toolName,
+                  ),
+              );
+          const rowApproval = rowConfirmation
+            ? {
+                toolName: rowConfirmation.toolName,
+                detail: (
+                  <ApprovalDetail title={rowConfirmation.title} />
+                ),
+                actions:
+                  rowConfirmation.actionable ? (
+                    <ChatApprovalActions
+                      destructive={rowConfirmation.destructive}
+                      busy={confirmationBusyId === rowConfirmation.id}
+                      onDecision={(decision) =>
+                        onDecision(rowConfirmation, decision)
+                      }
+                    />
+                  ) : null,
+                fallback: confirmationCard(rowConfirmation),
+              }
+            : undefined;
           const renderConfirmation = (
             confirmation: OperatorAgentConfirmation,
           ) => (
@@ -559,6 +622,8 @@ export function OperatorConversation({
                   emailDrafts={emailDraftsByMessage?.[message.id] ?? []}
                   openEmailDraftId={openEmailDraftId}
                   onOpenEmailDraft={setOpenEmailDraftId}
+                  toolApproval={rowApproval}
+                  toolEntities={detail.entities}
                   presentationDisabled={
                     presentationDisabled || hasPendingConfirmation
                   }
@@ -577,11 +642,11 @@ export function OperatorConversation({
                 />
               ) : null}
               {groupOperatorConfirmations(
-                settledAnswer
-                  ? confirmations.filter(
-                      (confirmation) => !isAutoApproved(confirmation),
-                    )
-                  : confirmations,
+                confirmations.filter(
+                  (confirmation) =>
+                    confirmation !== rowConfirmation &&
+                    !(settledAnswer && isAutoApproved(confirmation)),
+                ),
               ).map((group) =>
                 isAutoApproved(group[0]) ? (
                   <ChatDisclosure

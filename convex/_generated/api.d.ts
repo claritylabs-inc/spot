@@ -488,6 +488,8 @@ import type * as lib_threadAccess from "../lib/threadAccess.js";
 import type * as lib_threadActionConfirmationValidators from "../lib/threadActionConfirmationValidators.js";
 import type * as lib_threadMessageValidators from "../lib/threadMessageValidators.js";
 import type * as lib_threadPageContext from "../lib/threadPageContext.js";
+import type * as lib_toolResultPreview from "../lib/toolResultPreview.js";
+import type * as lib_toolResultSummary from "../lib/toolResultSummary.js";
 import type * as lib_transportRenderers from "../lib/transportRenderers.js";
 import type * as lib_userFacingErrors from "../lib/userFacingErrors.js";
 import type * as lib_userPhone from "../lib/userPhone.js";
@@ -1087,6 +1089,8 @@ declare const fullApi: ApiFromModules<{
   "lib/threadActionConfirmationValidators": typeof lib_threadActionConfirmationValidators;
   "lib/threadMessageValidators": typeof lib_threadMessageValidators;
   "lib/threadPageContext": typeof lib_threadPageContext;
+  "lib/toolResultPreview": typeof lib_toolResultPreview;
+  "lib/toolResultSummary": typeof lib_toolResultSummary;
   "lib/transportRenderers": typeof lib_transportRenderers;
   "lib/userFacingErrors": typeof lib_userFacingErrors;
   "lib/userPhone": typeof lib_userPhone;

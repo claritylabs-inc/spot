@@ -38,9 +38,12 @@ import {
   selectBoundedAgentHistory,
 } from "./lib/agentMessageHistory";
 import { collectToolAudit, mergeToolAudits } from "./lib/agentToolAudit";
+import { summarizeToolResult } from "./lib/toolResultSummary";
+import { toolResultPreview } from "./lib/toolResultPreview";
 import {
   toolOutcomeStatus,
   type MessageActivityUpdate,
+  toolActivityTarget,
 } from "./lib/messageActivity";
 import { traceStage } from "./lib/agentActivityTrace";
 import {
@@ -74,6 +77,7 @@ import {
   expandOperatorToolsSpec,
   isOperatorToolFamily,
   OPERATOR_AGENT_TOOL_REGISTRY,
+  getOperatorAgentToolSpec,
   OPERATOR_TOOL_FAMILY_CATALOG,
   operatorAgentToolNamesForFamilies,
   operatorToolFamiliesOf,
@@ -921,6 +925,7 @@ export const run = internalAction({
               toolCallId: options.toolCallId,
               toolName: name,
             };
+            let parsedInput: Record<string, unknown> | undefined;
             const execution = toolQueue.then(async () => {
               if (pendingConfirmation) {
                 return {
@@ -934,6 +939,7 @@ export const run = internalAction({
               let input: Record<string, unknown>;
               try {
                 input = parseOperatorAgentToolInput(name, rawInput);
+                parsedInput = input;
               } catch (error) {
                 return preflightOperatorToolFailure(
                   name as OperatorAgentToolName,
@@ -942,10 +948,14 @@ export const run = internalAction({
               }
               // Tools run serially; mark running only once this call's turn starts.
               const activityContext = toolActivityContext(name, input);
+              const activityTarget = toolActivityTarget(
+                getOperatorAgentToolSpec(name).target(input),
+              );
               await recordActivity({
                 ...activity,
                 status: "running",
                 ...(activityContext ? { context: activityContext } : {}),
+                ...(activityTarget ? { target: activityTarget } : {}),
               });
               const inputHash = await actionConfirmationFingerprint({
                 toolName: name,
@@ -1016,9 +1026,41 @@ export const run = internalAction({
             toolQueue = execution
               .then(
                 async (output) => {
+                  const status = toolOutcomeStatus(output);
+                  const result = summarizeToolResult(output);
+                  const change =
+                    status === "completed" &&
+                    parsedInput &&
+                    spec.effect !== "read"
+                      ? await ctx
+                          .runQuery(
+                            internal.operatorAgent.changeSummaryInternal,
+                            { toolName: name, input: parsedInput },
+                          )
+                          .catch(() => null)
+                      : null;
+                  const previewItems =
+                    status === "completed" || status === "returned"
+                      ? toolResultPreview(output)
+                      : [];
+                  const preview =
+                    previewItems.length > 0 &&
+                    (await ctx
+                      .runMutation(
+                        internal.operatorAgent.recordToolPreviewInternal,
+                        {
+                          messageId: run.agentMessageId,
+                          toolCallId: options.toolCallId,
+                          items: previewItems,
+                        },
+                      )
+                      .catch(() => false));
                   await recordActivity({
                     ...activity,
-                    status: toolOutcomeStatus(output),
+                    status,
+                    ...(result ? { result } : {}),
+                    ...(change ? { change } : {}),
+                    ...(preview ? { preview: true } : {}),
                   });
                   if (thread.channel === "chat") {
                     const tool = capturePresentationTool(name, output);
@@ -1044,8 +1086,20 @@ export const run = internalAction({
                   toolEvidence = mergeToolAudits(
                     toolEvidence,
                     collectToolAudit({
-                      toolCalls: [{ toolName: name, input: rawInput }],
-                      toolResults: [{ toolName: name, output }],
+                      toolCalls: [
+                        {
+                          toolName: name,
+                          toolCallId: options.toolCallId,
+                          input: rawInput,
+                        },
+                      ],
+                      toolResults: [
+                        {
+                          toolName: name,
+                          toolCallId: options.toolCallId,
+                          output,
+                        },
+                      ],
                     }),
                   );
                 },

@@ -51,7 +51,7 @@ export type OutreachEmailInput = {
   providerName: string;
   recipientName?: string;
   /** The sender's full name, as signed. */
-  operator: { name: string };
+  operator: { name: string; address: string };
   /** Explicit client summary. Never pass `private.md`, notes or raw files. */
   client: {
     name: string;

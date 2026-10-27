@@ -1289,6 +1289,7 @@ export const recordAgentActions = internalMutation({
     toolCalls: v.array(
       v.object({
         name: v.string(),
+        toolCallId: v.optional(v.string()),
         input: v.optional(v.string()),
         output: v.optional(v.string()),
       }),

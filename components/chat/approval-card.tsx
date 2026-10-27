@@ -67,26 +67,45 @@ export function ChatApprovalCard({
         ) : null}
       </div>
       {actionable ? (
-        <div className="flex shrink-0 items-center gap-2">
-          <PillButton
-            size="compact"
-            variant="secondary"
-            disabled={busy}
-            onClick={() => onDecision("reject")}
-          >
-            Cancel
-          </PillButton>
-          <PillButton
-            size="compact"
-            variant={destructive ? "destructive" : "primary"}
-            disabled={busy}
-            onClick={() => onDecision("approve")}
-          >
-            {busy ? <Spinner className="size-3.5" /> : null}
-            Confirm
-          </PillButton>
-        </div>
+        <ChatApprovalActions
+          destructive={destructive}
+          busy={busy}
+          onDecision={onDecision}
+        />
       ) : null}
     </OperationalPanel>
+  );
+}
+
+/** Cancel / Confirm for an action awaiting the viewer's approval. */
+export function ChatApprovalActions({
+  destructive = false,
+  busy,
+  onDecision,
+}: {
+  destructive?: boolean;
+  busy: boolean;
+  onDecision: (decision: ChatApprovalDecision) => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <PillButton
+        size="compact"
+        variant="secondary"
+        disabled={busy}
+        onClick={() => onDecision("reject")}
+      >
+        Cancel
+      </PillButton>
+      <PillButton
+        size="compact"
+        variant={destructive ? "destructive" : "primary"}
+        disabled={busy}
+        onClick={() => onDecision("approve")}
+      >
+        {busy ? <Spinner className="size-3.5" /> : null}
+        Confirm
+      </PillButton>
+    </div>
   );
 }

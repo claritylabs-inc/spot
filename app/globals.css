@@ -458,3 +458,28 @@ input[type="number"]:not(:focus)::-webkit-outer-spin-button {
     animation: spot-skeleton-in 200ms ease-out 150ms both;
   }
 }
+
+/* In-progress activity text: a highlight sweeps across muted text. */
+@keyframes spot-text-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.text-shimmer {
+  color: var(--muted-foreground);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .text-shimmer {
+    background: linear-gradient(
+        90deg,
+        var(--muted-foreground) 0%,
+        var(--foreground) 50%,
+        var(--muted-foreground) 100%
+      )
+      0 0 / 200% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    animation: spot-text-shimmer 1.6s linear infinite;
+  }
+}

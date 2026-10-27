@@ -15,7 +15,7 @@ import { FileInput, FolderInput, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { PresenceAvatars } from "@/components/app-top-bar";
-import { ChatAvatar } from "@/components/chat/chat-message";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import {
   LinkSuggestionBar,
@@ -399,7 +399,7 @@ export function ProcurementEmailMessage({
         <LogoIcon size={16} />
       </span>
     ) : (
-      <ChatAvatar
+      <Avatar
         name={person?.name ?? sender}
         imageUrl={person?.avatarUrl}
         className="size-8 shrink-0"

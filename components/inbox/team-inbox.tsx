@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
-import { ChatAvatar } from "@/components/chat/chat-message";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
@@ -133,7 +133,7 @@ function outboxStatus(sequence: ClientSequence) {
 function OutboxRow({ sequence }: { sequence: ClientSequence }) {
   return (
     <div className="flex items-start gap-3 px-4 py-2.5 @2xl:items-center">
-      <ChatAvatar
+      <Avatar
         name={sequence.recipient.name ?? sequence.recipient.email}
         className="size-6"
       />
@@ -225,7 +225,7 @@ function ThreadRow({
         className="flex min-w-0 flex-1 items-start gap-3 py-2.5 pr-4 pl-2 text-left outline-none focus-visible:bg-muted @2xl:items-center"
       >
         <span className="relative shrink-0">
-          <ChatAvatar name={avatar.name} imageUrl={avatar.avatarUrl} className="size-6" />
+          <Avatar name={avatar.name} imageUrl={avatar.avatarUrl} className="size-6" />
           {thread.unread ? (
             <span
               aria-hidden="true"
