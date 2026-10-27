@@ -174,7 +174,71 @@ The repeatable local acceptance cases and actual outcomes belong in
 restricted delivery with an explicit allowlist. Never test through Vercel previews.
 
 
+## Connected Gmail
+
+An operator can connect one Google Workspace Gmail account by OAuth as a second
+account beside their Resend team inbox `<localpart>@team.spot.insure`. The Inbox
+stays unified: Gmail-related conversations are shared team mail like any other, and
+threads and messages involving a connected Gmail carry `gmailAddress` (shown as a
+Gmail badge in the list and "via Gmail" in the reader). A connected Gmail's inbox id
+is `google:<address>`, distinct from the retired `gmail:` ids below.
+
+**Connection.** Profile → Gmail starts the flow (`actions/operatorGmail:start`, a
+PKCE authorization-code flow modeled on the operator MCP OAuth); the callback is
+`/operator-gmail/oauth/callback` and redirects to `/operator/profile?gmail=…`. The
+Google app is Internal, so only accounts in the organization can consent, and the
+callback additionally requires the verified address and hosted domain to be in
+`GOOGLE_MAILBOX_ALLOWED_DOMAINS`. Scopes are `openid email gmail.send
+gmail.readonly`. `gmail.readonly` is used only to find a Gmail thread or message by
+`rfc822msgid:` (threading replies, reconciling an unknown send). There is no mailbox
+sync, Pub/Sub or polling. Each operator has one connection, and an address belongs
+to one operator. The refresh token is encrypted with
+`EMAIL_CONNECTIONS_ENCRYPTION_KEY`. Connecting is disabled in capture mode unless
+`OPERATOR_MAILBOX_CONNECTIONS_ENABLED=true`. Revocation or `invalid_grant` marks the
+connection `needs_reconnect`; a missing, `needs_reconnect` or disconnected
+connection blocks Gmail sends with a visible error and never falls back to Resend.
+Disconnect revokes the token at Google; stored mail is kept.
+
+**Capture.** Spot never reads the Gmail mailbox. Mail enters only when the operator's
+team address is on To, Cc or Bcc, and it arrives through the existing Resend inbox
+webhook. A received email whose From is the operator's active connected Gmail is the
+operator's own outbound mail (attributed to them, not something to answer); any
+other received mail that names a connected Gmail on To/Cc is ordinary inbound mail
+marked with `gmailAddress`. Copies deduplicate by RFC Message-ID against the stored
+outbound message when Spot sent the original, and a copy waits briefly while its
+send is drafted but not yet recorded. Replies and reply-all from external people
+land in the same thread only while the team address stays on the recipient list.
+
+**Sending.** In the Inbox, a reply or new email can be sent From either the Spot
+team address or the connected Gmail. A reply defaults to Gmail when the thread's
+`gmailAddress` is the caller's active connected address, otherwise to the Spot
+address; a new email defaults to the Spot address. Gmail sends always add the
+operator's own team address as a visible Cc so recipients' reply-all returns to
+Spot. That Cc is part of the reviewed payload and approval fingerprint, never added
+secretly, exactly like Always CC. Provider-outreach sequences and agent/MCP saved
+drafts keep sending from the Spot team address through Resend.
+
+**Known limitation.** A reply that drops the team address (a plain Reply to the
+Gmail user, or forwarding without it) never reaches Spot.
+
+**Setup (once per Google Cloud project/deployment).**
+
+1. Enable the Gmail API.
+2. Set the OAuth consent screen user type to Internal.
+3. Add the scopes `openid`, `email`, `gmail.send` and `gmail.readonly`.
+4. Create a Web application OAuth client whose redirect URI is
+   `<CONVEX_SITE_URL>/operator-gmail/oauth/callback`, one per deployment.
+5. Set the Convex env vars `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`
+   and `GOOGLE_MAILBOX_ALLOWED_DOMAINS` (comma-separated domains). The existing
+   `EMAIL_CONNECTIONS_ENCRYPTION_KEY` is reused.
+
+Manual QA is in [operator Gmail workflow](../testing/operator-gmail-workflow.md).
+
 ## Retired Google sender rollout
+
+This section describes the retired app-password path (`gmail:` inbox ids,
+`operatorSendingMailboxes`, IMAP); it is unrelated to the OAuth-connected Gmail
+above, whose inbox ids are `google:<address>`.
 
 On 2026-10-27 operator sending returned to Resend. The operator’s saved team
 localpart and `TEAM_EMAIL_DOMAIN` select the sender, without consulting Google
