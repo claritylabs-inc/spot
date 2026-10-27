@@ -3,13 +3,16 @@ import { TOOL_RESULT_SUMMARY_PATTERN } from "./toolResultSummary";
 
 /**
  * Live execution status for a processing agent message. It records what the
- * app itself observed: tool names, call ids, bounded web-search labels and
- * structural result counts, never full arguments, results or model reasoning. "returned" means the tool
+ * app itself observed: tool names, call ids, bounded web-search labels,
+ * structural result counts and, for operator writes, a bounded change
+ * summary; never full arguments, results or model reasoning. "returned" means the tool
  * function returned without an error marker; only an explicit success marker
  * becomes "completed".
  */
 export const MESSAGE_ACTIVITY_MAX_TOOLS = 128;
 export const MESSAGE_ACTIVITY_MAX_STRING = 200;
+/** Change summaries carry names and short quoted values, so allow more. */
+export const MESSAGE_ACTIVITY_MAX_CHANGE = 280;
 
 const toolContextValidator = v.object({
   label: v.string(),
@@ -70,6 +73,8 @@ export const messageActivityValidator = v.object({
       /** Count summary of a settled call ("3 threads"); see toolResultSummary. */
       result: v.optional(v.string()),
       target: v.optional(toolTargetValidator),
+      /** Operator-only: what a completed write did, names not ids. */
+      change: v.optional(v.string()),
       ...activityTimingFields,
     }),
   ),
@@ -107,6 +112,7 @@ export const messageActivityUpdateValidator = v.union(
     context: v.optional(toolContextValidator),
     result: v.optional(v.string()),
     target: v.optional(toolTargetValidator),
+    change: v.optional(v.string()),
   }),
 );
 
@@ -263,6 +269,12 @@ export function applyMessageActivity(
       TOOL_RESULT_SUMMARY_PATTERN.test(update.result)
         ? { result: update.result }
         : {};
+    const change =
+      update.change?.trim() &&
+      update.status === "completed" &&
+      update.change.length <= MESSAGE_ACTIVITY_MAX_CHANGE
+        ? { change: update.change.trim() }
+        : {};
     const target =
       update.target && validText(update.target.id)
         ? { target: { kind: update.target.kind, id: update.target.id } }
@@ -275,6 +287,7 @@ export function applyMessageActivity(
         ...(context ? { context } : {}),
         ...result,
         ...target,
+        ...change,
         ...(update.status === "running" ? { startedAt: now } : {}),
       });
     } else if (
@@ -290,6 +303,7 @@ export function applyMessageActivity(
         ...(context ? { context } : {}),
         ...result,
         ...target,
+        ...change,
         ...(startedAt !== undefined ? { startedAt } : {}),
         ...(startedAt !== undefined &&
         previous.endedAt === undefined &&
