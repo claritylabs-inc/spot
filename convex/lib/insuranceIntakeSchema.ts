@@ -30,6 +30,7 @@ export const requestIntakeFields = {
     url: v.string(), statement: v.string(),
     signerName: v.optional(v.string()), signerEmail: v.optional(v.string()),
   })),
+  // Packet reference to the client's grant; organizations owns the canonical ID.
   intakeAuthorizationId: v.optional(v.id("requestIntakeAuthorizations")),
   intakePremiumEstimate: v.optional(v.object({
     contentHash: v.string(), token: v.string(), startedAt: v.number(), provisional: v.optional(v.boolean()),
