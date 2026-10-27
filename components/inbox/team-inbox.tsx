@@ -35,7 +35,6 @@ import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { PresenceAvatars } from "@/components/app-top-bar";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -567,11 +566,26 @@ export function TeamInbox({
       })),
     [clients],
   );
-  // Mailbox tabs are shared by team and request views; ownership is a filter.
   const filtered =
     category !== ALL_CATEGORIES ||
     (scope.kind === "team" && !!clientOrgId);
   const filters: FilterDefinition[] = [
+    {
+      id: "mailbox",
+      label: "Mailbox",
+      inline: true,
+      allLabel: "Inbox",
+      value: mailbox === "inbox" ? [] : [mailbox],
+      onChange: (value) => {
+        setMailbox((value[0] ?? "inbox") as Mailbox);
+        setChecked(new Set());
+      },
+      options: [
+        { value: "sent", label: "Sent" },
+        { value: "all", label: "All mail" },
+        { value: "archived", label: "Archived" },
+      ],
+    },
     ...(scope.kind === "team"
       ? [
           {
@@ -770,20 +784,6 @@ export function TeamInbox({
     );
   }
 
-  const tabs = (
-    <Tabs value={mailbox} onValueChange={(value) => {
-      setMailbox(value as Mailbox);
-      setChecked(new Set());
-    }}>
-      <TabsList variant="pill" aria-label="Mailbox">
-        <TabsTrigger value="inbox">Inbox</TabsTrigger>
-        <TabsTrigger value="sent">Sent</TabsTrigger>
-        <TabsTrigger value="all">All mail</TabsTrigger>
-        <TabsTrigger value="archived">Archived</TabsTrigger>
-      </TabsList>
-    </Tabs>
-  );
-
   return (
     <section className="@container space-y-3">
       {scope.kind === "team" ? (
@@ -800,7 +800,6 @@ export function TeamInbox({
       ) : null}
       <ListToolbar
         followKey={uiKey}
-        tabs={tabs}
         filters={filters}
         search={searchProps}
       />

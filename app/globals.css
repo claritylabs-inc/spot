@@ -109,8 +109,9 @@
   margin-block-end: 1.5rem;
 }
 
-/* Admin navbar actions have one size, regardless of page-local pill size props. */
-[data-app-surface="operator"] [data-slot="app-top-bar-actions"]
+/* Navbar and on-page toolbar actions share one size, regardless of local props. */
+[data-app-surface="operator"]
+  :is([data-slot="app-top-bar-actions"], [data-slot="list-toolbar-actions"])
   :is([data-pill-preset="spot"], [data-slot="button"]) {
   height: 2rem !important;
   min-height: 2rem !important;
@@ -126,13 +127,15 @@
   line-height: 1rem !important;
   font-weight: 500 !important;
 }
-[data-app-surface="operator"] [data-slot="app-top-bar-actions"]
+[data-app-surface="operator"]
+  :is([data-slot="app-top-bar-actions"], [data-slot="list-toolbar-actions"])
   [data-icon-only="true"] {
   width: 2rem !important;
   min-width: 2rem !important;
   padding-inline: 0 !important;
 }
-[data-app-surface="operator"] [data-slot="app-top-bar-actions"]
+[data-app-surface="operator"]
+  :is([data-slot="app-top-bar-actions"], [data-slot="list-toolbar-actions"])
   :is([data-pill-preset="spot"], [data-slot="button"]) svg {
   width: 0.875rem !important;
   height: 0.875rem !important;
@@ -206,12 +209,13 @@
   font-size: 0.8125rem;
   line-height: 1.125rem;
 }
-[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]),
-[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]) * {
+/* Folder tabs keep their shared 30px / 14px geometry inside operator forms. */
+[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]):not([data-slot="tabs-trigger"]),
+[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]):not([data-slot="tabs-trigger"]) * {
   font-size: 0.8125rem;
   line-height: 1.125rem;
 }
-[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]) {
+[data-operator-form] button:not([role="checkbox"]):not([role="switch"]):not([data-pill-preset]):not([data-slot="tabs-trigger"]) {
   min-height: 2rem;
   height: auto;
   padding-block: 0.375rem;

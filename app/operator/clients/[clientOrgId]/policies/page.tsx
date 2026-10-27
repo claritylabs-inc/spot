@@ -13,7 +13,7 @@ import {
   OperationalPanelHeader,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { api } from "@/convex/_generated/api";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -70,21 +70,25 @@ export default function OperatorClientPoliciesPage() {
   );
 
   const statusNavigation = (
-    <Tabs
-      value={policyStatus}
-      onValueChange={(value) => {
-        if (!value) return;
-        setPreviewPolicyId(null);
-        router.push(
-          value === "archived" ? `${basePath}?view=archived` : basePath,
-        );
-      }}
-    >
-      <TabsList variant="pill" aria-label="Policy status" className="min-w-max">
-        <TabsTrigger value="active">Active</TabsTrigger>
-        <TabsTrigger value="archived">Archived</TabsTrigger>
-      </TabsList>
-    </Tabs>
+    <ListToolbar
+      followKey={`clients:${clientOrgId}:policies`}
+      filters={[
+        {
+          id: "status",
+          label: "Status",
+          inline: true,
+          allLabel: "Active",
+          value: policyStatus === "archived" ? ["archived"] : [],
+          onChange: (value) => {
+            setPreviewPolicyId(null);
+            router.push(
+              value[0] === "archived" ? `${basePath}?view=archived` : basePath,
+            );
+          },
+          options: [{ value: "archived", label: "Archived" }],
+        },
+      ]}
+    />
   );
 
   return (
@@ -126,9 +130,7 @@ export default function OperatorClientPoliciesPage() {
         </OperationalPanel>
       ) : (
         <main className="w-full space-y-6">
-          {hasArchivedPolicies ? (
-            <div className="overflow-x-auto">{statusNavigation}</div>
-          ) : null}
+          {hasArchivedPolicies ? statusNavigation : null}
           {activeImpersonation ? (
             <OperationalPanel
               as="div"

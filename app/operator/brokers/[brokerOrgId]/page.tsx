@@ -3,7 +3,7 @@
 import { normalizeWebsiteUrl } from "@claritylabs-inc/ui/lib/website";
 import { WebsiteInput } from "@claritylabs-inc/ui/components/website-input";
 import { useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Loader2 } from "lucide-react";
@@ -24,7 +24,6 @@ import {
   brokerRegionCountry,
 } from "@/convex/lib/brokerProfileValidation";
 import { AcordLinesField } from "@/components/broker-network/acord-lines-field";
-import { DeleteOrganizationButton } from "@/components/operator/delete-organization-button";
 import { AddressAutofillInput } from "@/components/ui/address-autofill-input";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -45,12 +44,8 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 import { StatusLabel } from "@claritylabs-inc/ui/components/status-tag";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -93,7 +88,6 @@ export default function OperatorBrokerPage() {
 }
 
 function BrokerEditor({ row }: { row: BrokerRow }) {
-  const router = useRouter();
   const update = useMutation(api.brokerProfiles.upsert);
   const office = row.profile?.officeAddress;
   const [tab, setTab] = useFollowedState(`brokers:${row.broker._id}:tab`, "profile");
@@ -187,21 +181,14 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
     >
       <AppShellPortal slot="actions">
         <AutoSaveStatus status={autoSave.status} />
-        <DeleteOrganizationButton
-          orgId={row.broker._id}
-          name={row.broker.name}
-          type="broker"
-          beforeDelete={autoSave.saveNow}
-          onDeleted={() => router.push("/operator/brokers")}
-        />
       </AppShellPortal>
-      <Tabs value={tab} onValueChange={setTab} className="gap-5">
-        <TabsList variant="pill" aria-label="Provider">
+      <PageTabs value={tab} onValueChange={setTab}>
+        <PageTabsList aria-label="Provider">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="appetite">Appetite</TabsTrigger>
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
-        </TabsList>
+        </PageTabsList>
         <TabsContent value="profile" className="space-y-5">
           <InlineFieldCard>
             <InlineFieldRow label="Provider name">
@@ -409,7 +396,7 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
         <TabsContent value="activity">
           <BrokerActivity brokerOrgId={row.broker._id} />
         </TabsContent>
-      </Tabs>
+      </PageTabs>
     </main>
   );
 }

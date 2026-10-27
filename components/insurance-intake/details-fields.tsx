@@ -2,6 +2,7 @@
 import { IntakeUnknownRow } from "./unknown-choice";
 import { IntakeRadioChoices } from "./radio-choices";
 export { IntakeRadioChoices } from "./radio-choices";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { RemoveButton } from "@/components/ui/remove-button";
 import {
   InlineFieldCard,
@@ -962,33 +963,33 @@ export function IntakeLocations({
 }: Props & { defaultActivities?: string; identityOnly?: boolean }) {
   const inline = useContext(InlineFieldsContext);
   const externalActions = useContext(InlineCollectionActionsContext);
+  const addLocation = () =>
+    onChange({
+      ...details,
+      locations: [
+        ...details.locations,
+        {
+          address: {},
+          details: defaultActivities,
+          activitiesPrefilled: !!defaultActivities,
+        },
+      ],
+    });
   if (inline)
     return (
       <div className="space-y-4">
-        {!externalActions && (
-          <div className="flex justify-end">
+        {!externalActions && !disabled && (
+          <ListToolbar followKey="intake:locations:actions" actions={
             <PillButton
-              variant="secondary"
+              variant="primary"
               size="compact"
               disabled={disabled || details.locations.length >= 30}
-              onClick={() =>
-                onChange({
-                  ...details,
-                  locations: [
-                    ...details.locations,
-                    {
-                      address: {},
-                      details: defaultActivities,
-                      activitiesPrefilled: !!defaultActivities,
-                    },
-                  ],
-                })
-              }
+              onClick={addLocation}
             >
               <Plus className="size-4" />
               Add location
             </PillButton>
-          </div>
+          } />
         )}
         {!details.locations.length && (
           <EmptyStateCard
@@ -1309,10 +1310,10 @@ export function IntakeRelatedEntities({
       });
     return (
       <div className="space-y-4">
-        {!externalActions && (
-          <div className="flex justify-end">
+        {!externalActions && !disabled && (
+          <ListToolbar followKey="intake:relatedEntities:actions" actions={
             <PillButton
-              variant="secondary"
+              variant="primary"
               size="compact"
               disabled={disabled || details.relatedEntities.length >= 30}
               onClick={add}
@@ -1320,7 +1321,7 @@ export function IntakeRelatedEntities({
               <Plus className="size-4" />
               Add entity
             </PillButton>
-          </div>
+          } />
         )}
         {!details.relatedEntities.length && (
           <EmptyStateCard

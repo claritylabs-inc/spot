@@ -802,8 +802,6 @@ export function ConnectedOrgsSection({
       <EmptyStateCard
         title="No vendors yet"
         description="Request access from a vendor to monitor their insurance records against your standards."
-        actionLabel={canManage ? "Add Vendor" : undefined}
-        onAction={canManage ? () => setRequestOpen(true) : undefined}
       />
     ) : (
       <EmptyStateCard

@@ -78,28 +78,32 @@ export default function OperatorClientFilesPage() {
         </OperationalPanel>
       ) : (
         <main className="w-full space-y-6">
-          {activeImpersonation ? (
-            <OperationalPanel
-              as="div"
-              className="flex items-start gap-3 px-4 py-3"
-            >
-              <AlertCircle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-              <div>
-                <p className={`text-foreground ${typeStyle("body.medium")}`}>
-                  File management is read-only
-                </p>
-                <p
-                  className={`text-muted-foreground ${typeStyle("body.default")}`}
-                >
-                  Stop the current impersonation session to upload or edit
-                  client files directly as an operator.
-                </p>
-              </div>
-            </OperationalPanel>
-          ) : null}
           <ClientFilesWorkspace
             clientOrgId={clientOrgId as Id<"organizations">}
             readOnly={Boolean(activeImpersonation)}
+            notice={
+              activeImpersonation ? (
+                <OperationalPanel
+                  as="div"
+                  className="flex items-start gap-3 px-4 py-3"
+                >
+                  <AlertCircle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <div>
+                    <p
+                      className={`text-foreground ${typeStyle("body.medium")}`}
+                    >
+                      File management is read-only
+                    </p>
+                    <p
+                      className={`text-muted-foreground ${typeStyle("body.default")}`}
+                    >
+                      Stop the current impersonation session to upload or edit
+                      client files directly as an operator.
+                    </p>
+                  </div>
+                </OperationalPanel>
+              ) : null
+            }
             onActions={setWorkspaceActions}
             onRightPanel={setRightPanel}
           />

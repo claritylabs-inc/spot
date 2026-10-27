@@ -19,12 +19,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { Id } from "@/convex/_generated/dataModel";
 import { buildCoverageBreakdown } from "@/convex/lib/coverageBreakdown";
 import { lobLabel, policyLobCodes } from "@/convex/lib/linesOfBusiness";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { PillButton } from "@/components/ui/pill-button";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import {
@@ -725,6 +723,28 @@ export function PolicyDetailBody({
     }
   };
 
+  const hasViewTabs = visibleTabs.length > 1;
+  const hasCertificatesView = visibleTabs.some((tab) => tab.id === "certificates");
+  const generateAction = useMemo(
+    () => !readOnly && !isArchived ? (
+      <PillButton
+        size="compact"
+        onClick={() => {
+          if (!isPolicyFinal) {
+            toast.message("Available once Spot finishes reading this policy");
+            return;
+          }
+          setSelectedCertificateId(null);
+          setShowCertificateSheet(true);
+        }}
+      >
+        <Plus className="size-3.5" />
+        Generate COI
+      </PillButton>
+    ) : null,
+    [readOnly, isArchived, isPolicyFinal, setSelectedCertificateId, setShowCertificateSheet],
+  );
+
   useEffect(() => {
     if (!onActions) return;
     if (!policy) {
@@ -748,30 +768,15 @@ export function PolicyDetailBody({
             <Archive className="size-3.5" strokeWidth={2} />
           </PillButton>
         )}
-        {!readOnly && !isArchived && (
-          <PillButton
-            size="compact"
-            onClick={() => {
-              if (!isPolicyFinal) {
-                toast.message(
-                  "Available once Spot finishes reading this policy",
-                );
-                return;
-              }
-              setSelectedCertificateId(null);
-              setShowCertificateSheet(true);
-            }}
-          >
-            <Plus className="size-3.5" />
-            Generate COI
-          </PillButton>
-        )}
+        {!hasViewTabs ? generateAction : null}
       </>,
     );
     return () => onActions(null);
   }, [
     onActions,
     policy,
+    hasViewTabs,
+    generateAction,
     readOnly,
     canManageUpload,
     canControlExtraction,
@@ -902,7 +907,7 @@ export function PolicyDetailBody({
     );
   }
 
-  return (
+  const notices = (
     <>
       <FadeIn when={true} staggerIndex={0} duration={0.6}>
         {isArchived && (
@@ -928,40 +933,6 @@ export function PolicyDetailBody({
         )}
       </FadeIn>
 
-      <Dialog
-        open={showArchiveDialog}
-        onOpenChange={(v) => !v && setShowArchiveDialog(false)}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Archive policy</DialogTitle>
-            <DialogDescription>
-              Archive <strong>{policyNumber}</strong>? It will be excluded from
-              active policy lists, compliance, search, and Spot tools until
-              restored.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <PillButton
-              variant="secondary"
-              onClick={() => setShowArchiveDialog(false)}
-              disabled={archiving}
-            >
-              Cancel
-            </PillButton>
-            <PillButton
-              variant="secondary"
-              onClick={handleArchive}
-              disabled={archiving}
-            >
-              {archiving ? "Archiving..." : "Archive"}
-            </PillButton>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {reextractDialog}
-
       {!operatorMode ? (
         <PolicyExtractionBanner
           policyId={policy._id}
@@ -973,34 +944,10 @@ export function PolicyDetailBody({
           cancelling={reextract.cancelling}
         />
       ) : null}
-
-      {visibleTabs.length > 1 ? (
-        <Tabs
-          value={visibleActiveTab}
-          onValueChange={(value) => setActiveTab(value as PolicyDetailTab)}
-          className="mb-6"
-        >
-          <TabsList variant="pill">
-            {visibleTabs.map((tab) => (
-              <TabsTrigger key={tab.id} value={tab.id}>
-                {tab.id === "review" ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    Review
-                    <span
-                      className={`rounded-full border border-border-emphasized px-1.5 text-muted-foreground ${typeStyle("label.tag")}`}
-                    >
-                      {reviewQuestions.length}
-                    </span>
-                  </span>
-                ) : (
-                  tab.label
-                )}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-      ) : null}
-
+    </>
+  );
+  const views = (
+    <>
       {visibleActiveTab === "details" &&
         (operatorMode && canEditPolicyDetails && fullPolicy ? (
           <div className="space-y-5">
@@ -1102,6 +1049,89 @@ export function PolicyDetailBody({
 
       {visibleActiveTab === "history" && (
         <PolicyHistoryTab policyId={policy._id} />
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <Dialog
+        open={showArchiveDialog}
+        onOpenChange={(v) => !v && setShowArchiveDialog(false)}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Archive policy</DialogTitle>
+            <DialogDescription>
+              Archive <strong>{policyNumber}</strong>? It will be excluded from
+              active policy lists, compliance, search, and Spot tools until
+              restored.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <PillButton
+              variant="secondary"
+              onClick={() => setShowArchiveDialog(false)}
+              disabled={archiving}
+            >
+              Cancel
+            </PillButton>
+            <PillButton
+              variant="secondary"
+              onClick={handleArchive}
+              disabled={archiving}
+            >
+              {archiving ? "Archiving..." : "Archive"}
+            </PillButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {reextractDialog}
+
+      {visibleTabs.length > 1 ? (
+        <PageTabs
+          value={visibleActiveTab}
+          onValueChange={(value) => setActiveTab(value as PolicyDetailTab)}
+        >
+          <PageTabsList>
+            {visibleTabs.map((tab) => (
+              <TabsTrigger key={tab.id} value={tab.id}>
+                {tab.id === "review" ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    Review
+                    <span
+                      className={`rounded-full border border-border-emphasized px-1.5 text-muted-foreground ${typeStyle("label.tag")}`}
+                    >
+                      {reviewQuestions.length}
+                    </span>
+                  </span>
+                ) : (
+                  tab.label
+                )}
+              </TabsTrigger>
+            ))}
+          </PageTabsList>
+          <TabsContent value={visibleActiveTab}>
+            {generateAction &&
+            (visibleActiveTab === "certificates" ||
+              (!hasCertificatesView && visibleActiveTab === "details")) ? (
+              <div className="mb-4">
+                <ListToolbar
+                  followKey={`policy:${policy._id}:actions`}
+                  actions={generateAction}
+                />
+              </div>
+            ) : null}
+            {notices}
+            {views}
+          </TabsContent>
+        </PageTabs>
+      ) : (
+        <>
+          {notices}
+          {views}
+        </>
       )}
     </>
   );

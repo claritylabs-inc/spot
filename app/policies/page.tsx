@@ -9,7 +9,7 @@ import { PolicyEmptyState } from "@/components/policy-empty-state";
 import { PolicyListItem } from "@/components/policy-list-item";
 import { PolicyUploadDrawer } from "@/components/policy-upload-drawer";
 import { PillButton } from "@/components/ui/pill-button";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { ListToolbar } from "@/components/ui/list-toolbar";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePolicyUpload } from "@/hooks/use-policy-upload";
@@ -113,25 +113,31 @@ export default function PoliciesPage() {
     >
       <div className="space-y-4">
         {hasArchivedPolicies ? (
-          <Tabs
-            value={showArchived ? "archived" : "active"}
-            onValueChange={(value) =>
-              router.push(
-                value === "archived" ? "/policies?view=archived" : "/policies",
-              )
-            }
-          >
-            <TabsList variant="pill">
-              <TabsTrigger value="active">Active</TabsTrigger>
-              <TabsTrigger value="archived">Archived</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <ListToolbar
+            followKey="policy:list"
+            filters={[
+              {
+                id: "status",
+                label: "Status",
+                inline: true,
+                allLabel: "Active",
+                value: showArchived ? ["archived"] : [],
+                onChange: (value) =>
+                  router.push(
+                    value[0] === "archived"
+                      ? "/policies?view=archived"
+                      : "/policies",
+                  ),
+                options: [{ value: "archived", label: "Archived" }],
+              },
+            ]}
+          />
         ) : null}
 
         {policies === undefined ? (
           <div className="min-h-32" aria-hidden="true" />
         ) : rows.length === 0 && !showArchived ? (
-          <PolicyEmptyState uploading={uploading} onUpload={upload} />
+          <PolicyEmptyState />
         ) : rows.length === 0 ? (
           <div
             className={`py-16 text-center text-muted-foreground/50 ${typeStyle("body.default")}`}

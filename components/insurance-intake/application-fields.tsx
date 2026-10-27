@@ -14,6 +14,7 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@claritylabs-inc/ui/components/tabs";
+import { cn } from "@/lib/utils";
 
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { INDUSTRIES } from "@/lib/insurance-intake-industries";
@@ -303,7 +304,9 @@ export function IntakeApplicationFields({
     return activeSection ? (
       <div className="space-y-5">{fields}</div>
     ) : (
-      <TabsContent value={title}>{fields}</TabsContent>
+      <TabsContent value={title} className="pt-4">
+        {fields}
+      </TabsContent>
     );
   };
   const sections = (
@@ -312,14 +315,13 @@ export function IntakeApplicationFields({
         data-operator-inline-fields
         value={visible}
         onValueChange={(value) => setSelected(String(value))}
-        className="gap-5 [&_input:not([type=checkbox])]:h-9 [&_[data-slot=select-trigger]]:h-9"
+        className={cn(
+          "[&_input:not([type=checkbox])]:h-9 [&_[data-slot=select-trigger]]:h-9",
+          activeSection ? "gap-5" : "gap-0",
+        )}
       >
         {!activeSection && (
-          <TabsList
-            variant="pill"
-            aria-label="Application details"
-            className="max-w-full flex-wrap"
-          >
+          <TabsList variant="folder" aria-label="Application details">
             {titles.map((title) => (
               <TabsTrigger key={title} value={title}>
                 {title}

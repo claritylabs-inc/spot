@@ -1,5 +1,13 @@
 # Platform workflow QA
 
+## Tab actions and status filters — October 27, 2026
+
+Local browser acceptance verifies empty/populated tab actions, primary/secondary navbar presentation, client and file status filters, shared-upload defaults, compliance view actions and policy action placement at desktop and narrow widths. Reuses shared UI 0.18.0; no backend changes or new unit tests. See [audit, repeatable workflow and limits](tab-action-layout-audit.md); evidence: `.context/action-audit/`.
+
+## Shared navbar tabs and filter toolbars — October 26, 2026
+
+Published UI 0.18.0 installed from the registry. Local browser acceptance and production build passed; code-head CI lint, tests and typecheck passed. Verified responsive navbar geometry, active-tab visibility, optional client navigation, selected-view actions and one-search toolbars with actions right and no divider. See [workflow and limits](folder-tabs-workflow.md); artifacts: `.context/folder-tabs-rollout/`. Secondary Shared/Archived rails lacked fixtures; local field tabs have no live caller. No Vercel preview testing or new unit tests.
+
 ## Operator tool consolidation — October 26, 2026
 
 Native-local backend: catalog/schema compatibility, 22 workflow calls, 13

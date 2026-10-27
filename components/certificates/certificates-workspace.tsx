@@ -16,22 +16,13 @@ import {
   type CertificateHolderDraft,
   type PolicyCertificateRecord,
 } from "@/components/certificates/certificate-workspace";
-import { StatusLabel, type StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
 import {
   OperationalPanel,
   OperationalPanelBody,
   OperationalSkeletonList,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import { ListToolbar } from "@/components/ui/list-toolbar";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@claritylabs-inc/ui/components/select";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { ListToolbar, type FilterDefinition } from "@/components/ui/list-toolbar";
 import { useCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { usePageContext } from "@/hooks/use-page-context";
@@ -46,7 +37,6 @@ type CertificatePolicyFilter = `policy:${string}`;
 type CertificatesWorkspaceShellArgs = {
   actions: ReactNode;
   rightPanel: ReactNode;
-  toolbar: ReactNode;
   children: ReactNode;
 };
 
@@ -60,11 +50,6 @@ const TABS: Array<{ value: CertificateWorkspaceTab; label: string }> = [
   { value: "active", label: "Active" },
   { value: "archived", label: "Archived" },
 ];
-
-const TAB_STATUS: Record<CertificateWorkspaceTab, StatusPresentation> = {
-  active: { tone: "success" },
-  archived: { tone: "neutral", indicator: "inactive" },
-};
 
 function certificatePolicyFilterValue(row: PolicyCertificateRecord): CertificatePolicyFilter {
   return `policy:${String(row.policyId)}`;
@@ -348,72 +333,42 @@ export function CertificatesWorkspace({
         Generate certificate
       </PillButton>
     ) : null, [orgId, readOnly, setGenerateOpen, setSelectedCertificateId]);
-  const toolbar = visibleTabs.length > 1 ? (
-    <Select
-      value={visibleTab}
-      onValueChange={(value) => {
-        if (value) setTab(value as CertificateWorkspaceTab);
-      }}
-    >
-      <SelectTrigger className="w-40" aria-label="Certificate status">
-        <SelectValue>
-          <StatusLabel {...TAB_STATUS[visibleTab]}>
-            {visibleTabs.find((item) => item.value === visibleTab)?.label ?? "Active"}
-          </StatusLabel>
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {visibleTabs.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            <StatusLabel {...TAB_STATUS[item.value]}>{item.label}</StatusLabel>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  ) : null;
+  const certificateFilters: FilterDefinition[] = [
+    ...(visibleTabs.length > 1
+      ? [
+          {
+            id: "status",
+            label: "Status",
+            inline: true,
+            allLabel: "Active",
+            value: visibleTab === "archived" ? ["archived"] : [],
+            onChange: (value: string[]) =>
+              setTab(value[0] === "archived" ? "archived" : "active"),
+            options: [{ value: "archived", label: "Archived" }],
+          },
+        ]
+      : []),
+    ...(!isLoading && tableCertificates.length > 0
+      ? [
+          {
+            id: "policy",
+            label: "Policy",
+            inline: true,
+            multiple: true,
+            allLabel: "All policies",
+            value: effectivePolicyFilter,
+            onChange: setPolicyFilter,
+            options: policyFilters,
+          },
+        ]
+      : []),
+  ];
   const content = (
     <>
       <CertificatesPageContext activeCount={activeCertificates.length} />
       <div className="space-y-4">
-        {(!renderShell && visibleTabs.length > 1) ||
-        (!isLoading && tableCertificates.length > 0) ? (
-          <ListToolbar
-            followKey={uiKey}
-            tabs={
-              !renderShell && visibleTabs.length > 1 ? (
-                <Tabs
-                  value={visibleTab}
-                  onValueChange={(value) =>
-                    setTab(value as CertificateWorkspaceTab)
-                  }
-                >
-                  <TabsList variant="pill">
-                    {visibleTabs.map((item) => (
-                      <TabsTrigger key={item.value} value={item.value}>
-                        {item.label}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
-              ) : undefined
-            }
-            filters={
-              !isLoading && tableCertificates.length > 0
-                ? [
-                    {
-                      id: "policy",
-                      label: "Policy",
-                      inline: true,
-                      multiple: true,
-                      allLabel: "All policies",
-                      value: effectivePolicyFilter,
-                      onChange: setPolicyFilter,
-                      options: policyFilters,
-                    },
-                  ]
-                : []
-            }
-          />
+        {certificateFilters.length > 0 ? (
+          <ListToolbar followKey={uiKey} filters={certificateFilters} />
         ) : null}
 
         {isLoading ? (
@@ -446,7 +401,7 @@ export function CertificatesWorkspace({
   );
 
   if (renderShell) {
-    return renderShell({ actions, rightPanel, toolbar, children: content });
+    return renderShell({ actions, rightPanel, children: content });
   }
 
   return <AppShell actions={actions} rightPanel={rightPanel}>{content}</AppShell>;

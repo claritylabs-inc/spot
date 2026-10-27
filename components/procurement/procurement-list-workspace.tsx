@@ -59,7 +59,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import {
   Table,
   TableBody,
@@ -657,7 +656,10 @@ export function ProcurementListWorkspace({
   readOnly,
   onActions,
   onRightPanel,
+  notice,
 }: {
+  /** Page-level notice (such as read-only), shown under the view tabs. */
+  notice?: ReactNode;
   /** Omit to list every client's requests. */
   clientOrgId?: Id<"organizations">;
   /** The client's procurement route; rows of the all-clients list use their own client's. */
@@ -867,15 +869,18 @@ export function ProcurementListWorkspace({
 
   if (requests.length === 0)
     return (
-      <EmptyStateCard
-        title="No procurement requests yet"
-        description={
-          allClients
-            ? "Requests from every client show up here once they are created or submitted."
-            : "Create a request to centralize client requirements, provider outreach, documents, quotes, and forwarded email."
-        }
-        icon={<FileSearch className="size-6" />}
-      />
+      <div className="space-y-4">
+        {notice}
+        <EmptyStateCard
+          title="No procurement requests yet"
+          description={
+            allClients
+              ? "Requests from every client show up here once they are created or submitted."
+              : "Create a request to centralize client requirements, provider outreach, documents, quotes, and forwarded email."
+          }
+          icon={<FileSearch className="size-6" />}
+        />
+      </div>
     );
 
   const clientOptions = Array.from(
@@ -889,6 +894,17 @@ export function ProcurementListWorkspace({
     ([value, label]) => ({ value: value as string, label }),
   ).sort((left, right) => left.label.localeCompare(right.label));
   const filters: FilterDefinition[] = [
+    {
+      id: "state",
+      label: "State",
+      inline: true,
+      value: filter === "all" ? [] : [filter],
+      onChange: (value) => setFilter((value[0] ?? "all") as StatusFilter),
+      options: [
+        { value: "open", label: "Open" },
+        { value: "closed", label: "Closed" },
+      ],
+    },
     ...(allClients
       ? [
           {
@@ -927,20 +943,6 @@ export function ProcurementListWorkspace({
       <ListToolbar
         followKey={`procurement:${scopeKey}:list`}
         filters={filters}
-        tabs={
-          <Tabs
-            value={filter}
-            onValueChange={(value) => {
-              if (value) setFilter(value as StatusFilter);
-            }}
-          >
-            <TabsList variant="pill" aria-label="Request status">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="open">Open</TabsTrigger>
-              <TabsTrigger value="closed">Closed</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        }
         search={{
           value: search,
           onChange: setSearch,
@@ -957,6 +959,7 @@ export function ProcurementListWorkspace({
           )
         }
       />
+      {notice}
       <OperationalPanel as="div">
         <Table storageKey="spot:procurement:list:columns">
           <TableHeader>
