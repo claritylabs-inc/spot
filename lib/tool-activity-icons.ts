@@ -204,14 +204,18 @@ const clientToolCategories: Record<
   expand_tools: "settings",
 };
 
+export type ToolActivityCategory = keyof typeof toolActivityCategories;
+
+export function toolActivityCategory(
+  name: string,
+): ToolActivityCategory | undefined {
+  if (Object.hasOwn(clientToolCategories, name))
+    return clientToolCategories[name];
+  if (Object.hasOwn(operatorToolCategories, name))
+    return operatorToolCategories[name as OperatorAgentToolName];
+}
+
 export function toolActivityIcon(name: string) {
-  if (Object.hasOwn(clientToolCategories, name)) {
-    return toolActivityCategories[clientToolCategories[name]].icon;
-  }
-  if (Object.hasOwn(operatorToolCategories, name)) {
-    return toolActivityCategories[
-      operatorToolCategories[name as OperatorAgentToolName]
-    ].icon;
-  }
-  return Wrench;
+  const category = toolActivityCategory(name);
+  return category ? toolActivityCategories[category].icon : Wrench;
 }
