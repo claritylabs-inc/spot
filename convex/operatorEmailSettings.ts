@@ -53,7 +53,6 @@ type TeamIdentity = {
   teamEmailLocalpart: string | null;
   alwaysCcEmail: string | null;
   inbox: { emailAddress: string } | null;
-  sendingMailbox?: {address:string;enabled:boolean}|null;
 };
 
 function teamDomainOrNull() {
@@ -105,28 +104,24 @@ export const get = query({
     const localpart = identity.teamEmailLocalpart ?? defaultLocalpart ?? "";
     const address = localpart ? operatorTeamAddress(localpart, domain) : null;
     const activeAddress = identity.inbox?.emailAddress.toLowerCase() ?? null;
-    const legacy = address && identity.sendingMailbox ? await ctx.db.query("operatorOutreachInboxes").withIndex("by_emailAddress",q=>q.eq("emailAddress",address)).first() : null;
     const status: TeamInboxSetupStatus = !address
       ? "needs_setup"
       : !hasUsableName(identity.name)
         ? "needs_name"
         : getEmailDeliveryMode() === "capture"
           ? "captured"
-          : activeAddress === address || legacy?.userId===operator.userId
+          : activeAddress === address
             ? "ready"
             : "needs_setup";
     return {
       configured: true as const,
-      sendingAddress:identity.sendingMailbox?.address??address,
-      sendingViaGoogle:!!identity.sendingMailbox,
-      sendingPaused:identity.sendingMailbox ? !identity.sendingMailbox.enabled : false,
       domain,
       localpart,
       defaultLocalpart,
       customLocalpart: identity.teamEmailLocalpart !== null,
       address,
       previousAddress:
-        !identity.sendingMailbox && activeAddress && activeAddress !== address ? activeAddress : null,
+        activeAddress && activeAddress !== address ? activeAddress : null,
       status,
       alwaysCcEmail: identity.alwaysCcEmail,
       commandAddress: agentInboxAddress(domain),

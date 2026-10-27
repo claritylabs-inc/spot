@@ -188,8 +188,7 @@ function TeamEmailFields({ settings }: { settings: TeamEmailSettingsData }) {
   return (
     <div className="mt-4">
       <InlineFieldCard title="Team email">
-        {settings.sendingViaGoogle?<InlineFieldRow label="Sending mailbox"><div className="space-y-1"><p>{settings.sendingAddress}{settings.sendingPaused?" · Paused":" · Google Workspace"}</p><a className="text-muted-foreground underline" href="/operator/email-health">Manage sending and email health</a></div></InlineFieldRow>:null}
-        <InlineFieldRow label={settings.sendingViaGoogle?"Legacy forwarding address":"Team address"}>
+        <InlineFieldRow label="Team address">
           <div className="space-y-1">
             <div className="flex min-w-0 flex-wrap items-center gap-x-1">
               <Input

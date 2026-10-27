@@ -1,35 +1,40 @@
 "use node";
-/** Provider routing for operator correspondence. Legacy Resend inboxes remain readable. */
+/** Resend sends all correspondence; retired Google messages remain readable. */
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import * as resend from "./resendInbox";
-import {
-  createGoogleDraft,
-  readGoogleDraft,
-  sendGoogleDraft,
-} from "./googleMailboxTransport";
+import { readGoogleDraft } from "./googleMailboxTransport";
 import { isGoogleMailbox } from "./sendingMailbox";
 export * from "./resendInbox";
+function assertResendSender(
+  inboxId: string,
+  operation: "createDraft" | "sendDraft" | "replyToThreadEmail",
+) {
+  if (isGoogleMailbox(inboxId)) {
+    throw new resend.ResendInboxError(
+      "blocked",
+      operation,
+      "Google sending has been retired. Review this message using your Resend team address.",
+      { code: "google_sending_retired" },
+    );
+  }
+}
 export async function createDraft(
   ctx: ActionCtx,
   actor: Id<"users">,
   params: resend.CreateDraftParams,
 ) {
-  if (!isGoogleMailbox(params.inboxId))
-    return resend.createDraft(ctx, actor, params);
-  if ((await import("./resend")).getEmailDeliveryMode() === "capture")
-    return resend.createDraft(ctx, actor, params);
-  return createGoogleDraft(ctx, actor, params);
+  assertResendSender(params.inboxId, "createDraft");
+  return resend.createDraft(ctx, actor, params);
 }
 export async function sendDraft(
   ctx: ActionCtx,
   actor: Id<"users">,
   params: resend.SendDraftParams,
 ) {
-  if (!isGoogleMailbox(params.inboxId))
-    return resend.sendDraft(ctx, actor, params);
-  return sendGoogleDraft(ctx, actor, params.inboxId, params.draftId);
+  assertResendSender(params.inboxId, "sendDraft");
+  return resend.sendDraft(ctx, actor, params);
 }
 export async function getDraft(
   ctx: ActionCtx,
@@ -65,35 +70,8 @@ export async function replyToThreadEmail(
   actor: Id<"users">,
   params: resend.ReplyToThreadEmailParams,
 ) {
-  if (!isGoogleMailbox(params.inboxId))
-    return resend.replyToThreadEmail(ctx, actor, params);
-  const target = await getThreadEmail(
-    ctx,
-    params.inboxId,
-    params.threadId,
-    params.emailId,
-  );
-  if (target.status !== "ok") throw new Error("Reply target unavailable");
-  const to =
-    target.data.direction === "outbound" ? target.data.to : [target.data.from];
-  const created = await createDraft(ctx, actor, {
-    inboxId: params.inboxId,
-    to,
-    cc: params.cc,
-    bcc: params.bcc,
-    subject: params.subject ?? `Re: ${target.data.subject ?? ""}`,
-    text: params.text,
-    html: params.html,
-    threadId: params.threadId,
-    replyToEmailId: params.emailId,
-    idempotencyKey: params.idempotencyKey + ":draft",
-  });
-  if (created.status !== "ok") return created;
-  return sendDraft(ctx, actor, {
-    inboxId: params.inboxId,
-    draftId: created.data.id,
-    idempotencyKey: params.idempotencyKey,
-  });
+  assertResendSender(params.inboxId, "replyToThreadEmail");
+  return resend.replyToThreadEmail(ctx, actor, params);
 }
 export function addThreadLabels(
   inboxId: string,

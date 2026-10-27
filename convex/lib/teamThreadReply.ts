@@ -26,7 +26,7 @@ async function activeSenderInbox(ctx: Ctx, userId: Id<"users">) {
   ]);
   return (
     [explicit, legacy]
-      .filter((row) => row !== null && row.kind !== "agent")
+      .filter((row) => row !== null && row.kind !== "agent" && !row.inboxId.startsWith("gmail:"))
       .sort((a, b) => (b?._creationTime ?? 0) - (a?._creationTime ?? 0))[0] ??
     null
   );
