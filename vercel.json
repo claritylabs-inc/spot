@@ -3,14 +3,9 @@
   "buildCommand": "if [ \"$VERCEL_ENV\" = production ]; then npx convex deploy --typecheck=disable --cmd 'npm run build'; else npm run build; fi",
   "git": {
     "deploymentEnabled": {
-      "stack/**": false,
-      "preview/workspace-ui": false,
+      "**": false,
       "main": true,
-      "preview/workspace-chat-ui": false,
-      "preview/operator-mcp-servers": false,
-      "preview/workspace-jev": false,
-      "preview/operator-model-console": true,
-      "conductor/spot-shared-background-tasks": false
+      "preview/**": true
     }
   }
 }
