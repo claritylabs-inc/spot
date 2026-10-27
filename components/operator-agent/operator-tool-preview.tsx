@@ -37,7 +37,8 @@ export function OperatorToolPreview({
               name={item.title}
               website={item.website}
               size="xs"
-              className="size-4 shrink-0 rounded-full ring-1 ring-border-subtle"
+              shape="circle"
+              className="size-4 shrink-0 ring-1 ring-border-subtle"
             />
           ) : null}
           <div className="min-w-0 flex-1">

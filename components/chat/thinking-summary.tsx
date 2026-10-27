@@ -234,6 +234,7 @@ function McpToolActivityIcon({ serverId }: { serverId: string }) {
       iconUrl={server?.logoUrl}
       website={server?.url}
       size="xs"
+      shape="circle"
       className={BRAND_ICON}
     />
   );
@@ -399,8 +400,9 @@ function WebsiteTargets({ websites }: { websites: string[] }) {
               name={hosts[index]}
               website={website}
               size="xs"
+              shape="circle"
               className={cn(
-                "size-4 rounded-full ring-2 ring-background",
+                "size-4 ring-2 ring-background",
                 index > 0 && "-ml-1.5",
               )}
             />
@@ -426,11 +428,9 @@ function WebsiteTargets({ websites }: { websites: string[] }) {
   );
 }
 
-/** Brand marks render as 16px circles with a hairline edge. */
-const BRAND_ICON = "size-4 shrink-0 rounded-full ring-1 ring-border-subtle";
-/* Marks drawn edge to edge on a transparent canvas are inset so the circle
-   does not clip them; marks that already fill a circle render full size. */
-const PADDED_BRAND_ICON = `${BRAND_ICON} p-[2px]`;
+/** Brand marks render as 16px circles with a hairline edge; `BrandIcon`'s
+ * circle shape insets marks the round crop would clip. */
+const BRAND_ICON = "size-4 shrink-0 ring-1 ring-border-subtle";
 
 type ToolBrand = { key: string; icon: ReactNode };
 
@@ -497,6 +497,7 @@ function toolBrand(
           iconUrl={entity.iconUrl}
           website={entity.website}
           size="xs"
+          shape="circle"
           className={BRAND_ICON}
         />
       ),
@@ -510,6 +511,7 @@ function toolBrand(
           name={context.label}
           website={context.website}
           size="xs"
+          shape="circle"
           className={BRAND_ICON}
         />
       ),
@@ -523,7 +525,8 @@ function toolBrand(
           name={brand.name}
           website={brand.website}
           size="xs"
-          className={PADDED_BRAND_ICON}
+          shape="circle"
+          className={BRAND_ICON}
         />
       ),
     };
