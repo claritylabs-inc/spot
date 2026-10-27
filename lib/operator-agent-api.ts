@@ -233,7 +233,19 @@ export type OperatorAgentThreadDetail = {
   confirmations: OperatorAgentConfirmation[];
 };
 
+export type OperatorToolPreviewItem = {
+  title: string;
+  subtitle?: string;
+  date?: string;
+  website?: string;
+};
+
 export const operatorAgentApi = {
+  getToolPreview: makeFunctionReference<
+    "query",
+    { messageId: string; toolCallId: string },
+    OperatorToolPreviewItem[] | null
+  >("operatorAgent:getToolPreview"),
   listThreads: makeFunctionReference<"query", ListThreadsArgs, BackendThread[]>(
     "operatorAgent:listThreads",
   ),

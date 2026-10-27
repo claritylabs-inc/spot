@@ -75,6 +75,8 @@ export const messageActivityValidator = v.object({
       target: v.optional(toolTargetValidator),
       /** Operator-only: what a completed write did, names not ids. */
       change: v.optional(v.string()),
+      /** A stored preview of the result exists for this call. */
+      preview: v.optional(v.boolean()),
       ...activityTimingFields,
     }),
   ),
@@ -113,6 +115,7 @@ export const messageActivityUpdateValidator = v.union(
     result: v.optional(v.string()),
     target: v.optional(toolTargetValidator),
     change: v.optional(v.string()),
+    preview: v.optional(v.boolean()),
   }),
 );
 
@@ -288,6 +291,9 @@ export function applyMessageActivity(
         ...result,
         ...target,
         ...change,
+        ...(update.preview && SETTLED.has(update.status)
+          ? { preview: true }
+          : {}),
         ...(update.status === "running" ? { startedAt: now } : {}),
       });
     } else if (
@@ -304,6 +310,9 @@ export function applyMessageActivity(
         ...result,
         ...target,
         ...change,
+        ...(update.preview && SETTLED.has(update.status)
+          ? { preview: true }
+          : {}),
         ...(startedAt !== undefined ? { startedAt } : {}),
         ...(startedAt !== undefined &&
         previous.endedAt === undefined &&

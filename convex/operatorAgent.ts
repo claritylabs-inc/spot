@@ -70,6 +70,10 @@ import { cancelRouterJobForInvocation } from "./routerJobs";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
+  TOOL_PREVIEW_MAX_ITEMS,
+  toolPreviewItemValidator,
+} from "./lib/toolResultPreview";
+import {
   MESSAGE_ACTIVITY_MAX_CHANGE,
   type MessageActivityToolTarget,
 } from "./lib/messageActivity";
@@ -7804,6 +7808,50 @@ export const changeSummaryInternal = internalQuery({
             args.input,
           );
     return boundedDisplayText(summary, MESSAGE_ACTIVITY_MAX_CHANGE, true) || null;
+  },
+});
+
+/** Stores a call's result preview; replays of the same call keep the first. */
+export const recordToolPreviewInternal = internalMutation({
+  args: {
+    messageId: v.id("operatorAgentMessages"),
+    toolCallId: v.string(),
+    items: v.array(toolPreviewItemValidator),
+  },
+  handler: async (ctx, args) => {
+    if (args.items.length === 0 || args.items.length > TOOL_PREVIEW_MAX_ITEMS)
+      return false;
+    const existing = await ctx.db
+      .query("operatorAgentToolPreviews")
+      .withIndex("by_messageId_and_toolCallId", (index) =>
+        index.eq("messageId", args.messageId).eq("toolCallId", args.toolCallId),
+      )
+      .unique();
+    if (!existing) await ctx.db.insert("operatorAgentToolPreviews", args);
+    return true;
+  },
+});
+
+/** Preview items for one call, for any operator who can read the thread. */
+export const getToolPreview = query({
+  args: {
+    messageId: v.id("operatorAgentMessages"),
+    toolCallId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    const message = await ctx.db.get(args.messageId);
+    if (!message) return null;
+    await requireOperatorThread(ctx, message.threadId, operator.userId, {
+      anyOperator: true,
+    });
+    const preview = await ctx.db
+      .query("operatorAgentToolPreviews")
+      .withIndex("by_messageId_and_toolCallId", (index) =>
+        index.eq("messageId", args.messageId).eq("toolCallId", args.toolCallId),
+      )
+      .unique();
+    return preview?.items ?? null;
   },
 });
 

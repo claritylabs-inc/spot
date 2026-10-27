@@ -64,17 +64,29 @@ function unwrap(output: unknown): unknown {
   return output;
 }
 
-export function summarizeToolResult(output: unknown): string | undefined {
+/** The one unambiguous list in a result, with its field name. */
+export function singleResultList(
+  output: unknown,
+):
+  | { key: string; items: unknown[]; record?: Record<string, unknown> }
+  | undefined {
   const result = unwrap(output);
-  if (Array.isArray(result)) return label(result.length, "results", false);
+  if (Array.isArray(result)) return { key: "results", items: result };
   if (!result || typeof result !== "object") return;
   const record = result as Record<string, unknown>;
   const lists = Object.entries(record).filter(
     ([key, value]) => Array.isArray(value) && !IGNORED_KEYS.has(key),
   );
-  // Only an unambiguous single list is summarized.
   if (lists.length !== 1) return;
-  const [key, value] = lists[0] as [string, unknown[]];
+  const [key, items] = lists[0] as [string, unknown[]];
+  return { key, items, record };
+}
+
+export function summarizeToolResult(output: unknown): string | undefined {
+  const list = singleResultList(output);
+  if (!list) return;
+  const { key, items, record } = list;
+  if (!record) return label(items.length, key, false);
   const more = MORE_KEYS.some(
     (field) => typeof record[field] === "string" && record[field],
   );
@@ -82,7 +94,7 @@ export function summarizeToolResult(output: unknown): string | undefined {
     (field): field is number =>
       typeof field === "number" &&
       Number.isInteger(field) &&
-      field >= value.length,
+      field >= items.length,
   );
-  return label(total ?? value.length, key, more && total === undefined);
+  return label(total ?? items.length, key, more && total === undefined);
 }

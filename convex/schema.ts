@@ -43,6 +43,7 @@ import { authTables } from "@convex-dev/auth/server";
 import { pipelineFields } from "@claritylabs/cl-pipelines/convex";
 import { acordTaxonomyBackfillReportValidator } from "./lib/acordTaxonomyBackfillReport";
 import { agentStepsValidator } from "./lib/agentSteps";
+import { toolPreviewItemValidator } from "./lib/toolResultPreview";
 import { policyProductIdentityValidator } from "./lib/policyProductIdentity";
 import { certificateRequirementSnapshotValidator } from "./lib/certificateRequirementPlan";
 import {
@@ -5019,6 +5020,13 @@ export default defineSchema({
     refreshRequestedAt: v.optional(v.number()),
   }).index("operator_context", ["operatorUserId", "contextKey"]),
 
+  // What an operator agent tool call returned, reduced to a bounded typed
+  // preview for its activity row (convex/lib/toolResultPreview.ts).
+  operatorAgentToolPreviews: defineTable({
+    messageId: v.id("operatorAgentMessages"),
+    toolCallId: v.string(),
+    items: v.array(toolPreviewItemValidator),
+  }).index("by_messageId_and_toolCallId", ["messageId", "toolCallId"]),
   operatorAgentMessages: defineTable({
     threadId: v.id("operatorAgentThreads"),
     ownerUserId: v.id("users"),
