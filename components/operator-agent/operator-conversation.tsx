@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { operatorBatchApprovalDetails } from "@/lib/operator-batch-approval";
 import { Fragment, useMemo, type ReactNode } from "react";
 import { useMutation } from "convex/react";
@@ -13,7 +14,6 @@ import {
 import { ChatAttachmentList } from "@/components/chat/attachment-chip";
 import {
   ChatAssistantTurn,
-  ChatAvatar,
   ChatCopyButton,
   ChatUserTurn,
 } from "@/components/chat/chat-message";
@@ -327,7 +327,7 @@ function OperatorMessageRow({
       showSender={showSender}
       name={senderName}
       avatar={
-        <ChatAvatar
+        <Avatar
           name={senderName}
           title={senderName}
           imageUrl={message.sender?.avatarUrl}

@@ -6,7 +6,7 @@ import { AppTopBar as SharedAppTopBar } from "@claritylabs-inc/ui/components/app
 import type { Ref } from "react";
 import { typeStyle } from "@/lib/typography";
 import { OperatorClientSwitcher } from "@/components/operator-client-switcher";
-import { ChatAvatar } from "@/components/chat/chat-message";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { cn } from "@/lib/utils";
 
 const BREADCRUMB_MAP: Record<string, { label: string; href?: string }> = {
@@ -91,7 +91,7 @@ export function PresenceAvatars({
         const selected = u.userId === selectedUserId;
         const avatar = (
           <>
-            <ChatAvatar
+            <Avatar
               name={u.name}
               title={onSelect ? undefined : u.name}
               imageUrl={u.avatarUrl}
