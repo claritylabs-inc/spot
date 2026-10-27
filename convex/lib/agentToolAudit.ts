@@ -4,7 +4,13 @@ import { parseWorkflowOutcome } from "./workflows/types";
 export type AgentToolAudit = {
   usedTools: string[];
   completedTools: string[];
-  toolCalls: Array<{ name: string; input?: string; output?: string }>;
+  toolCalls: Array<{
+    name: string;
+    /** Provider call id; joins the call to its live activity entry. */
+    toolCallId?: string;
+    input?: string;
+    output?: string;
+  }>;
   workflowOutcomes: WorkflowOutcome[];
 };
 
@@ -93,6 +99,9 @@ export function collectToolAudit(result: unknown): AgentToolAudit {
     const input = call.input ?? call.args ?? call.parameters;
     toolCalls.push({
       name,
+      ...(typeof call.toolCallId === "string" && call.toolCallId
+        ? { toolCallId: call.toolCallId }
+        : {}),
       input: serializeToolActivityInput(name, input),
     });
   };
@@ -119,9 +128,16 @@ export function collectToolAudit(result: unknown): AgentToolAudit {
       );
       if (workflowOutcome) workflowOutcomes.push(workflowOutcome);
     }
-    const target = [...toolCalls]
-      .reverse()
-      .find((candidate) => candidate.name === name && !candidate.output);
+    const callId =
+      typeof resultPart.toolCallId === "string" ? resultPart.toolCallId : "";
+    const target =
+      (callId &&
+        toolCalls.find(
+          (candidate) => candidate.toolCallId === callId && !candidate.output,
+        )) ||
+      [...toolCalls]
+        .reverse()
+        .find((candidate) => candidate.name === name && !candidate.output);
     if (target) {
       target.output = serializeToolAuditValue(
         resultPart.type === "tool-error"

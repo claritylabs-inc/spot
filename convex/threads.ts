@@ -863,6 +863,7 @@ export const updateAgentMessage = internalMutation({
       v.array(
         v.object({
           name: v.string(),
+          toolCallId: v.optional(v.string()),
           input: v.optional(v.string()),
           output: v.optional(v.string()),
         }),
@@ -1075,6 +1076,7 @@ export const streamAgentProgress = internalMutation({
       v.array(
         v.object({
           name: v.string(),
+          toolCallId: v.optional(v.string()),
           input: v.optional(v.string()),
           output: v.optional(v.string()),
         }),
@@ -1495,6 +1497,7 @@ export const insertImessageMessage = internalMutation({
       v.array(
         v.object({
           name: v.string(),
+          toolCallId: v.optional(v.string()),
           input: v.optional(v.string()),
           output: v.optional(v.string()),
         }),

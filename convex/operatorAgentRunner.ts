@@ -1044,8 +1044,20 @@ export const run = internalAction({
                   toolEvidence = mergeToolAudits(
                     toolEvidence,
                     collectToolAudit({
-                      toolCalls: [{ toolName: name, input: rawInput }],
-                      toolResults: [{ toolName: name, output }],
+                      toolCalls: [
+                        {
+                          toolName: name,
+                          toolCallId: options.toolCallId,
+                          input: rawInput,
+                        },
+                      ],
+                      toolResults: [
+                        {
+                          toolName: name,
+                          toolCallId: options.toolCallId,
+                          output,
+                        },
+                      ],
                     }),
                   );
                 },
