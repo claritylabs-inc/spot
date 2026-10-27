@@ -71,7 +71,7 @@ export function InformationRequestActions(props: Actions) {
 }
 
 export function InformationRequests(props: Actions) {
-  const { requestId, readOnly } = props;
+  const { requestId, readOnly, onOpenDrawer: open } = props;
   const panel = useQuery(api.procurementInformation.panel, { requestId });
   const archive = useMutation(api.procurementInformation.archiveQuestion);
   const [search, setSearch] = useFollowedState(
