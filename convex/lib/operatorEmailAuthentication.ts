@@ -1,8 +1,13 @@
 "use node";
 
-import { Resolver } from "node:dns/promises";
-import { dkimVerify } from "mailauth";
 import { simpleParser, type ParsedMail } from "mailparser";
+import {
+  MAX_DKIM_SIGNATURES,
+  MIME_PARSE_OPTIONS,
+  parseMimeHeaders,
+  signedHeaderNames,
+  verifyAlignedDkim,
+} from "./dkim";
 import { OPERATOR_EMAIL_DOMAINS } from "./operatorIdentity";
 import { isOperatorEmailRecipient } from "./operatorEmailAddress";
 import { getAgentDomains } from "./resend";
@@ -81,25 +86,20 @@ export async function authenticateOperatorEmail(
   if (!raw.length || raw.length > MAX_OPERATOR_EMAIL_RAW_BYTES) {
     throw invalid("Operator email exceeds the raw message size limit");
   }
-  const separator = /\r?\n\r?\n/.exec(raw.toString("latin1"));
-  if (!separator) throw invalid("Operator email has no header/body separator");
-  const body = raw.subarray(separator.index + separator[0].length);
-  const parseOptions = {
-    skipHtmlToText: true,
-    skipTextToHtml: true,
-    skipImageLinks: true,
-  };
-  const parsed = await parseMime(raw.subarray(0, separator.index), parseOptions);
-  const headers = new Map<string, number>();
-  for (const header of parsed.headerLines) {
-    headers.set(header.key, (headers.get(header.key) ?? 0) + 1);
-  }
+  const mime = await parseMimeHeaders(raw);
+  if (mime.status !== "ok")
+    throw invalid(
+      mime.status === "no_separator"
+        ? "Operator email has no header/body separator"
+        : "Operator email could not be parsed",
+    );
+  const { parsed, counts: headers, body } = mime;
   if (
     REQUIRED_HEADERS.some((name) => headers.get(name) !== 1) ||
     [...headers].some(([name, count]) =>
       count > 1 && (PROTECTED_HEADERS.includes(name) || name.startsWith("content-")),
     ) ||
-    (headers.get("dkim-signature") ?? 0) > 8
+    (headers.get("dkim-signature") ?? 0) > MAX_DKIM_SIGNATURES
   ) {
     throw invalid("Operator email has missing or ambiguous authentication headers");
   }
@@ -109,6 +109,7 @@ export async function authenticateOperatorEmail(
   if (
     sender?.length !== 1 ||
     !senderAddress ||
+    !senderDomain ||
     !/^[^@\s]+@[^@\s]+$/.test(senderAddress) ||
     !OPERATOR_EMAIL_DOMAINS.some((domain) => domain === senderDomain)
   ) {
@@ -136,60 +137,29 @@ export async function authenticateOperatorEmail(
     throw invalid("Operator email requires a valid signed message ID");
   }
 
-  const resolver = new Resolver({ timeout: 3_000, tries: 1 });
-  try {
-    const verified = await dkimVerify(raw, {
-      resolver: (domain, rrtype) => {
-        if (rrtype !== "TXT")
-          throw new Error("Unexpected DKIM DNS record type");
-        return resolver.resolveTxt(domain);
-      },
-    });
-    const protectedHeaders = PROTECTED_HEADERS.filter((name) =>
-      headers.has(name) && !MIME_HEADERS.includes(name),
+  const protectedHeaders = PROTECTED_HEADERS.filter((name) =>
+    headers.has(name) && !MIME_HEADERS.includes(name),
+  );
+  const dkim = await verifyAlignedDkim(raw, { senderDomain, protectedHeaders });
+  if (dkim.status !== "pass") {
+    // A DNS temperror is not a failed signature: report it so callers retry
+    // instead of treating the message as unauthenticated.
+    throw new OperatorEmailAuthenticationError(
+      dkim.status === "temperror" ? "temporary" : "invalid",
+      "Operator email requires an aligned DKIM signature covering its body and routing headers",
     );
-    const authenticated = verified.results.find((signature) => {
-      const signedHeaders = new Set(
-        signature.signingHeaders?.keys
-          .toLowerCase()
-          .split(":")
-          .map((name) => name.trim()),
-      );
-      return (
-        signature.status.result === "pass" &&
-        signature.signingDomain.toLowerCase() === senderDomain &&
-        ["rsa-sha256", "ed25519-sha256"].includes(signature.algo ?? "") &&
-        signature.canonBodyLengthLimited === false &&
-        signature.signatureTimeValid === true &&
-        protectedHeaders.every((name) => signedHeaders.has(name))
-      );
-    });
-    if (!authenticated) {
-      // A DNS temperror is not a failed signature: report it so callers retry
-      // instead of treating the message as unauthenticated.
-      throw new OperatorEmailAuthenticationError(
-        verified.results.some((signature) => signature.status.result === "temperror")
-          ? "temporary"
-          : "invalid",
-        "Operator email requires an aligned DKIM signature covering its body and routing headers",
-      );
-    }
-    const signedHeaders = new Set(
-      authenticated.signingHeaders?.keys.toLowerCase().split(":").map((name) => name.trim()),
-    );
-    const safeHeaders = parsed.headerLines
-      .filter(({ key }) => !key.startsWith("content-") || signedHeaders.has(key))
-      .map(({ line }) => line);
-    if (!signedHeaders.has("content-type")) {
-      safeHeaders.push(`Content-Type: ${bodyContentType(body)}`);
-    }
-    // Unsigned outer encodings/dispositions never control decoding. Preserve
-    // their original body bytes as text instead of guessing an encoding.
-    return await parseMime(Buffer.concat([
-      Buffer.from(`${safeHeaders.join("\r\n")}\r\n\r\n`, "latin1"),
-      body,
-    ]), parseOptions);
-  } finally {
-    resolver.cancel();
   }
+  const signedHeaders = signedHeaderNames(dkim.signature);
+  const safeHeaders = parsed.headerLines
+    .filter(({ key }) => !key.startsWith("content-") || signedHeaders.has(key))
+    .map(({ line }) => line);
+  if (!signedHeaders.has("content-type")) {
+    safeHeaders.push(`Content-Type: ${bodyContentType(body)}`);
+  }
+  // Unsigned outer encodings/dispositions never control decoding. Preserve
+  // their original body bytes as text instead of guessing an encoding.
+  return await parseMime(Buffer.concat([
+    Buffer.from(`${safeHeaders.join("\r\n")}\r\n\r\n`, "latin1"),
+    body,
+  ]), MIME_PARSE_OPTIONS);
 }

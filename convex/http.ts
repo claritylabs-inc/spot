@@ -603,7 +603,7 @@ http.route({
       return new Response("Invalid body", { status: 400 });
     }
     if (payload === null) return new Response("Body too large", { status: 413 });
-    const result = await ctx.runAction(internal.actions.providerOutreach.handleInboxWebhook, {
+    const result = await ctx.runAction(internal.actions.teamInboxEvents.handleInboxWebhook, {
       payload,
       svixId: request.headers.get("svix-id") ?? "",
       svixTimestamp: request.headers.get("svix-timestamp") ?? "",

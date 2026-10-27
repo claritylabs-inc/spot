@@ -45,10 +45,8 @@ import {
   CADENCE_PENDING_TIMEOUT_MS,
   DELIVERY_RETRY_WINDOW_MS,
   IMPERSONATION_DEFER_MS,
-  INBOX_EVENT_GIVE_UP_MS,
   INBOX_EVENT_LEASE_MS,
   INBOX_EVENT_MAPPING_WINDOW_MS,
-  INBOX_EVENT_RETRY_MS,
   LAUNCH_STAGGER_MS,
   MAX_CONTACTS_PER_PROVIDER,
   MAX_PANEL_PROVIDERS,
@@ -60,7 +58,6 @@ import {
   cadencePicksValidator,
   inboxAttachmentValidator,
   inboxEmailValidator,
-  inboxEventTypeValidator,
   outreachCadenceSourceValidator,
   outreachCadenceValidator,
   replyClassificationValidator,
@@ -68,7 +65,6 @@ import {
   stepFailureValidator,
   stepFinishOutcomeValidator,
   type InboxEmail,
-  type InboxRecord,
   type OutreachCadenceInput,
   type OutreachCadenceSource,
   type StepDraft,
@@ -89,8 +85,13 @@ import {
   createProcurementOutreachByOperator,
   requireDirectOperatorWrite,
 } from "./procurementRequests";
-import { mirrorTeamEmail, type NewTeamThread, type TeamThread } from "./lib/teamEmailStore";
+import {
+  mirrorTeamEmail,
+  type NewTeamThread,
+  type TeamThread,
+} from "./lib/teamEmailStore";
 import { emitOperatorNotification } from "./lib/operatorNotify";
+import { fencedEvent, finishEvent, knownInbox } from "./lib/teamInboxEventLease";
 import { mintPacketLinkForOperator, previewBrokerPacket } from "./procurementPacket";
 import { providerOutreachSummary, type OutreachSummaryItem } from "./lib/providerOutreachSummary";
 import { submittedIntakeApplication } from "../lib/intake-application";
@@ -100,8 +101,6 @@ const OUTREACH_REGION_NAMES: Readonly<Record<string, string>> = { ...USPS_STATE_
 const OUTREACH_COUNTRY_NAMES = new Intl.DisplayNames(["en"], { type: "region" });
 
 type Ctx = QueryCtx | MutationCtx;
-/** How long a sent event with no conversation yet waits for the send that created it to be mirrored. */
-const SENT_EVENT_BINDING_WAIT_MS = 30 * 1000;
 type Sequence = Doc<"procurementOutreachSequences">;
 type Step = Doc<"procurementOutreachSteps">;
 type SequenceStatus = Sequence["status"];
@@ -2941,7 +2940,7 @@ export const releaseStepInternal = internalMutation({
  * known provider time replaces the arrival-time fallback. Timestamps are only
  * recorded (clamped to now) and never decide a timeout: recovery uses `updatedAt`.
  */
-async function holdForInboundReply(
+export async function holdForInboundReply(
   ctx: MutationCtx,
   sequence: Sequence,
   args: { emailId: string; occurredAt: number | null; fallbackAt: number; now: number },
@@ -2970,125 +2969,6 @@ async function holdForInboundReply(
   return { isPending: false, status: "responded" };
 }
 
-/**
- * Persists a verified webhook event once and schedules `handleInboxEvent`.
- * A newly recorded `received` event for a known thread holds the sequence in
- * `reply_check` in this same transaction. `occurredAt` is the email's Resend
- * `received_at` (epoch ms), used only to order replies.
- */
-export const recordInboxEventInternal = internalMutation({
-  args: {
-    emailId: v.string(),
-    eventType: inboxEventTypeValidator,
-    inboxId: v.string(),
-    threadId: v.string(),
-    occurredAt: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    // The Resend webhook is account-wide; only inboxes this deployment created
-    // matter (retired ones included, so replies to old threads still map).
-    const known = await knownInbox(ctx, args.inboxId);
-    if (!known) return { recorded: false as const, reason: "unknown_inbox" as const };
-    const now = dayjs().valueOf();
-    const existing = await ctx.db
-      .query("providerOutreachWebhookEvents")
-      .withIndex("by_emailId_and_eventType", (q) =>
-        q.eq("emailId", args.emailId).eq("eventType", args.eventType),
-      )
-      .first();
-    if (existing) {
-      if (existing.status === "failed") {
-        await ctx.db.patch(existing._id, {
-          status: "pending",
-          error: undefined,
-          leaseToken: undefined,
-          leaseUntil: undefined,
-          updatedAt: now,
-        });
-        await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.handleInboxEvent, {
-          eventId: existing._id,
-        });
-      }
-      return { recorded: true as const, eventId: existing._id, duplicate: true as const };
-    }
-    const eventId = await ctx.db.insert("providerOutreachWebhookEvents", {
-      emailId: args.emailId,
-      eventType: args.eventType,
-      inboxId: args.inboxId,
-      threadId: args.threadId,
-      status: "pending",
-      createdAt: now,
-      updatedAt: now,
-    });
-    if (args.eventType === "inbox.email.received") {
-      // Includes a reply on the old thread of a sequence that moved to a new inbox.
-      const owned = await sequenceForInboxEvent(ctx, args);
-      if (owned)
-        await holdForInboundReply(ctx, owned.sequence, {
-          emailId: args.emailId,
-          occurredAt: args.occurredAt ?? null,
-          fallbackAt: now,
-          now,
-        });
-    }
-    await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.handleInboxEvent, {
-      eventId,
-    });
-    return { recorded: true as const, eventId, duplicate: false as const };
-  },
-});
-
-type InboxEventRoute =
-  | {
-      kind: "sequence";
-      sequenceId: Id<"procurementOutreachSequences">;
-      stepId: Id<"procurementOutreachSteps"> | null;
-      requestId: Id<"procurementRequests">;
-      outreachId: Id<"procurementBrokerOutreaches"> | null;
-      sequenceStatus: SequenceStatus;
-      recipientEmail: string;
-      resendThreadId: string | null;
-      senderUserId: Id<"users">;
-    }
-  /** An existing team conversation: by thread id, by a linked extra thread, or by the sent email it was bound from. */
-  | {
-      kind: "thread";
-      threadId: Id<"teamEmailThreads">;
-      via: "thread" | "link" | "sent_binding";
-    }
-  /** Normal mail in a known operator inbox that no conversation owns: becomes an unlinked team thread. */
-  | { kind: "team" }
-  /** The shared command-channel inbox: never imported as mail. */
-  | { kind: "agent" }
-  | { kind: "unmatched" };
-
-export type ClaimInboxEventResult =
-  | { status: "skipped"; reason: string }
-  | { status: "retry_scheduled"; runAt: number }
-  | {
-      status: "claimed";
-      leaseToken: string;
-      event: {
-        eventId: Id<"providerOutreachWebhookEvents">;
-        emailId: string;
-        eventType: "inbox.email.received" | "inbox.email.sent";
-        inboxId: string;
-        threadId: string;
-      };
-      route: InboxEventRoute;
-      /** The operator who owns the inbox; null for the agent inbox. */
-      inboxOwnerUserId: Id<"users"> | null;
-      inbox: InboxRecord | null;
-    };
-
-/** A row for an inbox this deployment created (active or retired), else null. */
-async function knownInbox(ctx: Ctx, inboxId: string) {
-  return await ctx.db
-    .query("operatorOutreachInboxes")
-    .withIndex("by_inboxId", (q) => q.eq("inboxId", inboxId))
-    .first();
-}
-
 /** Exact pointers keep retired-inbox replies and manual takeover independent of request size. */
 async function sequencesForTeamThread(ctx: Ctx, thread: TeamThread): Promise<Sequence[]> {
   const current = await ctx.db
@@ -3107,7 +2987,7 @@ async function sequencesForTeamThread(ctx: Ctx, thread: TeamThread): Promise<Seq
  * conversation, and the inbox belongs to the sequence's sender. Both the inbox
  * and the thread id must match; a thread id alone never attributes an event.
  */
-async function sequenceForInboxEvent(
+export async function sequenceForInboxEvent(
   ctx: Ctx,
   event: { inboxId: string; threadId: string; eventType: string; emailId: string },
 ): Promise<{ sequence: Sequence; step: Step | null } | null> {
@@ -3144,96 +3024,12 @@ async function sequenceForInboxEvent(
 }
 
 /**
- * Routing order: the known-inbox guard, then the outreach sequence, a team
- * thread by Resend thread id, a link row, the sent email a conversation was
- * bound from, and finally an unlinked team thread. Unknown inboxes are never
- * imported and the command-channel inbox is reserved.
- */
-async function routeInboxEvent(
-  ctx: Ctx,
-  event: Doc<"providerOutreachWebhookEvents">,
-): Promise<InboxEventRoute> {
-  const inbox = await knownInbox(ctx, event.inboxId);
-  if (!inbox) return { kind: "unmatched" };
-  if (inbox.kind === "agent") return { kind: "agent" };
-  const owned = await sequenceForInboxEvent(ctx, event);
-  if (owned) {
-    const { sequence, step } = owned;
-    return {
-      kind: "sequence",
-      sequenceId: sequence._id,
-      stepId: step?._id ?? null,
-      requestId: sequence.requestId,
-      outreachId: sequence.outreachId ?? null,
-      sequenceStatus: sequence.status,
-      recipientEmail: sequence.recipient.email,
-      resendThreadId: sequence.resendThreadId ?? null,
-      senderUserId: sequence.senderUserId,
-    };
-  }
-  const byThread = await ctx.db
-    .query("teamEmailThreads")
-    .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", event.threadId))
-    .first();
-  if (byThread && !byThread.deletedAt)
-    return { kind: "thread", threadId: byThread._id, via: "thread" };
-  const link = await ctx.db
-    .query("teamEmailThreadLinks")
-    .withIndex("by_inboxId_and_resendThreadId", (q) =>
-      q.eq("inboxId", event.inboxId).eq("resendThreadId", event.threadId),
-    )
-    .first();
-  const linked = link ? await ctx.db.get(link.threadId) : null;
-  if (linked && !linked.deletedAt) return { kind: "thread", threadId: linked._id, via: "link" };
-  if (event.eventType === "inbox.email.sent") {
-    const sent = await ctx.db
-      .query("teamEmailMessages")
-      .withIndex("by_resendInboxEmailId", (q) => q.eq("resendInboxEmailId", event.emailId))
-      .first();
-    const bound = sent ? await ctx.db.get(sent.threadId) : null;
-    if (bound && !bound.deletedAt)
-      return { kind: "thread", threadId: bound._id, via: "sent_binding" };
-  }
-  return { kind: "team" };
-}
-
-/**
- * Whether a conversation event that nothing owns yet could still gain an owner:
- * an inbound email can be the copy of a sent email (in any inbox) whose own
- * event has not been processed, and a sent email can belong to a send that has
- * not been mirrored.
- */
-async function teamBindingMayAppear(
-  ctx: MutationCtx,
-  event: Doc<"providerOutreachWebhookEvents">,
-  now: number,
-) {
-  if (event.eventType === "inbox.email.sent")
-    return now - event.createdAt < SENT_EVENT_BINDING_WAIT_MS;
-  const LIMIT = 100;
-  for (const status of ["pending", "processing"] as const) {
-    const open = await ctx.db
-      .query("providerOutreachWebhookEvents")
-      .withIndex("by_status_and_updatedAt", (q) => q.eq("status", status))
-      .take(LIMIT);
-    if (open.length >= LIMIT) return true;
-    if (
-      open.some(
-        (row) => row._id !== event._id && row.eventType === "inbox.email.sent",
-      )
-    )
-      return true;
-  }
-  return false;
-}
-
-/**
  * Whether an unmapped event could still gain a sequence: only if a recently
  * updated sequence in the same inbox has no thread id yet (its first
  * email's sent-event or finish has not landed, including a send stopped in flight). Bounded scan; if the bound is
  * hit, waiting is assumed. Anything else is unmatched immediately.
  */
-async function mappingMayAppear(
+export async function mappingMayAppear(
   ctx: MutationCtx,
   event: Doc<"providerOutreachWebhookEvents">,
   now: number,
@@ -3251,96 +3047,6 @@ async function mappingMayAppear(
   }
   return false;
 }
-
-/**
- * Leases a webhook event and resolves its sequence. Until the outbound
- * email/thread mapping exists the claim reschedules itself (bounded); after the
- * window an unmapped event is returned as `unmatched` so the action can label
- * it for the operator.
- */
-export const claimInboxEventInternal = internalMutation({
-  args: { eventId: v.id("providerOutreachWebhookEvents") },
-  handler: async (ctx, { eventId }): Promise<ClaimInboxEventResult> => {
-    const now = dayjs().valueOf();
-    const event = await ctx.db.get(eventId);
-    if (!event) return { status: "skipped", reason: "event_missing" };
-    if (event.status === "completed" || event.status === "failed")
-      return { status: "skipped", reason: `event_${event.status}` };
-    if (event.status === "processing" && (event.leaseUntil ?? 0) > now)
-      return { status: "skipped", reason: "leased" };
-    if (now - event.createdAt > INBOX_EVENT_GIVE_UP_MS) {
-      await ctx.db.patch(event._id, {
-        status: "failed",
-        error: "event_expired",
-        leaseToken: undefined,
-        leaseUntil: undefined,
-        updatedAt: now,
-      });
-      return { status: "skipped", reason: "event_expired" };
-    }
-    let route = await routeInboxEvent(ctx, event);
-    if (route.kind === "sequence" && event.eventType === "inbox.email.received") {
-      const sequence = await ctx.db.get(route.sequenceId);
-      if (sequence) {
-        const held = await holdForInboundReply(ctx, sequence, {
-          emailId: event.emailId,
-          occurredAt: null,
-          fallbackAt: event.createdAt,
-          now,
-        });
-        route = { ...route, sequenceStatus: held.status };
-      }
-    }
-    if (
-      (route.kind === "unmatched" || route.kind === "team") &&
-      now - event.createdAt < INBOX_EVENT_MAPPING_WINDOW_MS &&
-      ((await mappingMayAppear(ctx, event, now)) ||
-        (route.kind === "team" && (await teamBindingMayAppear(ctx, event, now))))
-    ) {
-      const runAt = now + INBOX_EVENT_RETRY_MS;
-      await ctx.db.patch(event._id, {
-        status: "pending",
-        leaseToken: undefined,
-        leaseUntil: undefined,
-        updatedAt: now,
-      });
-      await ctx.scheduler.runAt(runAt, internal.actions.providerOutreach.handleInboxEvent, {
-        eventId: event._id,
-      });
-      return { status: "retry_scheduled", runAt };
-    }
-    const leaseToken = crypto.randomUUID();
-    await ctx.db.patch(event._id, {
-      status: "processing",
-      leaseToken,
-      leaseUntil: now + INBOX_EVENT_LEASE_MS,
-      updatedAt: now,
-    });
-    const operatorInbox = await knownInbox(ctx, event.inboxId);
-    return {
-      status: "claimed",
-      leaseToken,
-      event: {
-        eventId: event._id,
-        emailId: event.emailId,
-        eventType:
-          event.eventType === "inbox.email.sent" ? "inbox.email.sent" : "inbox.email.received",
-        inboxId: event.inboxId,
-        threadId: event.threadId,
-      },
-      route,
-      inboxOwnerUserId: operatorInbox?.userId ?? null,
-      inbox: operatorInbox
-        ? {
-            inboxId: operatorInbox.inboxId,
-            emailAddress: operatorInbox.emailAddress,
-            fromName: operatorInbox.fromName,
-            labelIds: operatorInbox.labelIds,
-          }
-        : null,
-    };
-  },
-});
 
 /**
  * The event, sequence, inbox and thread must agree; the caller-supplied
@@ -3365,71 +3071,6 @@ async function eventCorrelatesWithSequence(
     .first();
   return step?.sequenceId === sequence._id;
 }
-
-async function fencedEvent(
-  ctx: MutationCtx,
-  eventId: Id<"providerOutreachWebhookEvents">,
-  leaseToken: string,
-  now: number,
-) {
-  const event = await ctx.db.get(eventId);
-  if (!event || event.status !== "processing" || event.leaseToken !== leaseToken || (event.leaseUntil ?? 0) <= now)
-    return null;
-  return event;
-}
-
-async function finishEvent(
-  ctx: MutationCtx,
-  event: Doc<"providerOutreachWebhookEvents">,
-  now: number,
-  error?: string,
-) {
-  await ctx.db.patch(event._id, {
-    status: error ? "failed" : "completed",
-    error: error ? shorten(error) : undefined,
-    leaseToken: undefined,
-    leaseUntil: undefined,
-    updatedAt: now,
-  });
-}
-
-/** Completes (or fails) an event that needs no state change, e.g. an unmatched event. */
-export const completeInboxEventInternal = internalMutation({
-  args: {
-    eventId: v.id("providerOutreachWebhookEvents"),
-    leaseToken: v.string(),
-    error: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const now = dayjs().valueOf();
-    const event = await fencedEvent(ctx, args.eventId, args.leaseToken, now);
-    if (!event) return { applied: false as const };
-    await finishEvent(ctx, event, now, args.error);
-    return { applied: true as const };
-  },
-});
-
-/** Returns an event whose handling failed transiently to `pending` for recovery. */
-export const releaseInboxEventInternal = internalMutation({
-  args: {
-    eventId: v.id("providerOutreachWebhookEvents"),
-    leaseToken: v.string(),
-    error: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const now = dayjs().valueOf();
-    const event = await fencedEvent(ctx, args.eventId, args.leaseToken, now);
-    if (!event) return { applied: false as const };
-    await ctx.db.patch(event._id, {
-      status: "pending",
-      error: shorten(args.error),
-      leaseToken: undefined,
-      leaseUntil: undefined,
-      updatedAt: now,
-    });
-    return { applied: true as const };
-  },
-});
 
 /**
  * Idempotent mirror of one sequence email into its request's conversation. The
@@ -3685,166 +3326,6 @@ export const applyInboundInboxEmailInternal = internalMutation({
   },
 });
 
-/**
- * `inbox.email.received` / `inbox.email.sent` for mail no outreach sequence
- * owns: mirrors it into its team conversation (found by thread id, link, or
- * the send it was bound from) or into a new unlinked conversation owned by the
- * inbox's operator. The route is recomputed here from the stored event; the
- * action's claim is never trusted. A copy of mail Spot itself sent (for example
- * a CC in another inbox) is bound to the original conversation, not stored again.
- */
-export const applyTeamInboxEmailInternal = internalMutation({
-  args: {
-    eventId: v.id("providerOutreachWebhookEvents"),
-    leaseToken: v.string(),
-    email: inboxEmailValidator,
-    /** Uploaded attachment bytes; empty while Resend exposes no byte download. */
-    attachments: v.optional(v.array(inboxAttachmentValidator)),
-  },
-  handler: async (ctx, args) => {
-    const now = dayjs().valueOf();
-    const attachments = args.attachments ?? [];
-    const dropUploads = () =>
-      Promise.all(attachments.map((file) => ctx.storage.delete(file.fileId)));
-    const event = await fencedEvent(ctx, args.eventId, args.leaseToken, now);
-    if (!event) {
-      await dropUploads();
-      return { applied: false as const, reason: "stale_lease" };
-    }
-    const reject = async (reason: string) => {
-      await dropUploads();
-      await finishEvent(ctx, event, now, reason);
-      return { applied: false as const, reason };
-    };
-    if (event.emailId !== args.email.resendInboxEmailId) return await reject("event_email_mismatch");
-    const inbox = await knownInbox(ctx, event.inboxId);
-    if (!inbox) return await reject("unknown_inbox");
-    if (inbox.kind === "agent") return await reject("agent_inbox_reserved");
-    const route = await routeInboxEvent(ctx, event);
-    if (route.kind !== "thread" && route.kind !== "team") return await reject("event_route_mismatch");
-    const inbound = event.eventType === "inbox.email.received";
-    // Mail from one of our own inboxes may be the copy of a send whose
-    // `inbox.email.sent` has not landed to supply its Message-ID: wait briefly,
-    // then treat it as ordinary (internal) mail. The sender address only delays.
-    if (
-      route.kind === "team" &&
-      inbound &&
-      now - event.createdAt < SENT_EVENT_BINDING_WAIT_MS &&
-      (await ctx.db
-        .query("operatorOutreachInboxes")
-        .withIndex("by_emailAddress", (q) =>
-          q.eq("emailAddress", normalizeProcurementEmail(args.email.fromEmail)),
-        )
-        .first())
-    ) {
-      await dropUploads();
-      const retryAt = now + INBOX_EVENT_RETRY_MS;
-      await ctx.db.patch(event._id, {
-        status: "pending",
-        leaseToken: undefined,
-        leaseUntil: undefined,
-        updatedAt: now,
-      });
-      await ctx.scheduler.runAt(retryAt, internal.actions.providerOutreach.handleInboxEvent, {
-        eventId: event._id,
-      });
-      return { applied: false as const, reason: "awaiting_sent_event" };
-    }
-    let target: { thread: TeamThread } | { create: NewTeamThread };
-    if (route.kind === "thread") {
-      const thread = await ctx.db.get(route.threadId);
-      if (!thread || thread.deletedAt) return await reject("thread_missing");
-      target = { thread };
-    } else {
-      target = {
-        create: {
-          source: "team",
-          ownerUserId: inbox.userId,
-          resendThreadId: event.threadId,
-          category: "other",
-          categoryReason: "Unlinked team mail",
-        },
-      };
-    }
-    const mirrored = await mirrorTeamEmail(ctx, {
-      target,
-      email: args.email,
-      direction: inbound ? "inbound" : "outbound",
-      attachments,
-      resendThreadId: event.threadId,
-      inboxId: event.inboxId,
-      sentByUserId: inbound ? undefined : inbox.userId,
-      now,
-    });
-    // A dead client/request target takes nothing (uploads already deleted); the event is final.
-    if ("rejected" in mirrored) {
-      await finishEvent(ctx, event, now, mirrored.reason);
-      return { applied: false as const, reason: mirrored.reason };
-    }
-    let notifyOwner = false;
-    if (inbound && !mirrored.duplicate) {
-      await ctx.scheduler.runAfter(0, internal.actions.teamEmailForwarding.process, {
-        threadId: mirrored.threadId,
-        inboxId: event.inboxId,
-        emailId: event.emailId,
-      });
-    }
-    const senderAddress = normalizeProcurementEmail(args.email.fromEmail);
-    const operatorSender = inbound && (
-      (await resolveActiveOperatorEmail(ctx, senderAddress)) ||
-      (await ctx.db.query("operatorOutreachInboxes")
-        .withIndex("by_emailAddress", (q) => q.eq("emailAddress", senderAddress))
-        .first())
-    );
-    if (inbound && !mirrored.duplicate && !operatorSender) {
-      await emitOperatorNotification(ctx, {
-        eventKey: `inbox:team_mail:${mirrored.messageId}`,
-        category: "inbox",
-        target: { kind: "inbox", threadId: mirrored.threadId },
-      });
-      const thread = (await ctx.db.get(mirrored.threadId))!;
-      const ownerUserId = thread.ownerUserId ?? inbox.userId;
-      if (ownerUserId) {
-        if (thread.clientOrgId && thread.requestId) {
-          // Linked conversations reach the owner the same way outreach handoffs do.
-          await ctx.scheduler.runAfter(0, internal.lib.notify.notifyInternal, {
-            orgId: thread.clientOrgId,
-            userId: ownerUserId,
-            type: "mailbox_attention",
-            severity: "warning",
-            actionType: "view_operator_procurement",
-            actionPayload: {
-              clientOrgId: thread.clientOrgId,
-              requestId: thread.requestId,
-              view: "email",
-              emailThreadId: thread._id,
-            },
-            title: "New email in your conversation",
-            body: `${thread.subject.slice(0, 200)}: review it in the request Inbox.`,
-            coalesceKeyParts: ["team_email_thread", String(thread._id)],
-            nowMs: now,
-          });
-        } else {
-          // No client to file a notification under: the badge shows it and the owner is emailed.
-          await ctx.scheduler.runAfter(0, internal.actions.teamInbox.notifyOwnerOfUnlinkedMail, {
-            userId: ownerUserId,
-            threadId: thread._id,
-          });
-          notifyOwner = true;
-        }
-      }
-    }
-    await finishEvent(ctx, event, now);
-    return {
-      applied: true as const,
-      duplicate: mirrored.duplicate,
-      internalCopy: mirrored.internalCopy,
-      threadId: mirrored.threadId,
-      notifyOwner,
-    };
-  },
-});
-
 // ---------------------------------------------------------------------------
 // Reply classification
 // ---------------------------------------------------------------------------
@@ -4081,7 +3562,7 @@ export const recoverInternal = internalMutation({
         : [];
     const eventBatch = [...stuckEvents, ...pendingEvents];
     for (const event of eventBatch)
-      await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.handleInboxEvent, {
+      await ctx.scheduler.runAfter(0, internal.actions.teamInboxEvents.handleInboxEvent, {
         eventId: event._id,
       });
 
