@@ -38,6 +38,7 @@ import {
 
 type ActivityCall = {
   name: string;
+  toolCallId?: string;
   input?: string;
   status?: ActivityStatus;
   context?: ToolActivityContext;
@@ -252,6 +253,7 @@ function callContext(call: ActivityCall): ToolActivityContext | undefined {
 function observedCall(tool: ChatActivity["tools"][number]): ActivityCall {
   return {
     name: tool.toolName,
+    toolCallId: tool.toolCallId,
     status: tool.status,
     context: tool.context,
     startedAt: tool.startedAt,
@@ -268,7 +270,20 @@ function mergeCalls(
   if (toolCalls?.length) {
     const pool = [...observed];
     const merged = toolCalls.map((call) => {
-      const index = pool.findIndex((tool) => tool.toolName === call.name);
+      // Calls stored with their id join exactly; older ones by name and order.
+      const byId = call.toolCallId
+        ? pool.findIndex((tool) => tool.toolCallId === call.toolCallId)
+        : -1;
+      const index =
+        byId >= 0
+          ? byId
+          : pool.findIndex(
+              (tool) =>
+                tool.toolName === call.name &&
+                !toolCalls.some(
+                  (other) => other.toolCallId === tool.toolCallId,
+                ),
+            );
       if (index < 0) return call;
       const [match] = pool.splice(index, 1);
       return { ...call, ...observedCall(match), name: call.name };

@@ -850,6 +850,7 @@ export const run = internalAction({
       const { usedTools } = turn.audit;
       const toolCalls = turn.audit.toolCalls.map((call) => ({
         name: call.name,
+        ...(call.toolCallId ? { toolCallId: call.toolCallId } : {}),
         input: call.input,
       }));
       const agentSteps = agentToolStepsFromAudit(turn.audit, new Set());

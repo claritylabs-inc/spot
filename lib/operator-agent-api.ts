@@ -211,6 +211,7 @@ export type OperatorAgentMessage = {
 
 type OperatorAgentToolCall = {
   name: string;
+  toolCallId?: string;
   effect?: BackendConfirmation["effect"];
   input?: string;
   output?: string;
