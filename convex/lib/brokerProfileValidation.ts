@@ -1,6 +1,8 @@
 import {
   ACORD_LOB_CODES,
   ProviderAcordLobCodeSchema,
+  PROVIDER_ACORD_LOB_CODES,
+  lobLabel,
   type AcordLobCode,
 } from "./linesOfBusiness";
 import { getCountries } from "libphonenumber-js";
@@ -225,16 +227,42 @@ export function brokerWritingCountries(
   );
 }
 
+function closestCodes(value: string, codes: readonly string[]) {
+  const query = value.slice(0, 64);
+  const distance = (candidate: string) => {
+    const target = candidate.toUpperCase();
+    let previous = Array.from({ length: target.length + 1 }, (_, index) => index);
+    for (let i = 0; i < query.length; i++) {
+      const next = [i + 1];
+      for (let j = 0; j < target.length; j++) {
+        next.push(
+          Math.min(
+            next[j] + 1,
+            previous[j + 1] + 1,
+            previous[j] + (query[i] === target[j] ? 0 : 1),
+          ),
+        );
+      }
+      previous = next;
+    }
+    return previous[target.length];
+  };
+  return [...codes]
+    .sort((a, b) => distance(a) - distance(b) || a.localeCompare(b))
+    .slice(0, 3);
+}
+
 export function normalizeBrokerWritingCountries(values: readonly string[]) {
   const countries = [
     ...new Set(
       values.map((value) => value.trim().toUpperCase()).filter(Boolean),
     ),
   ].sort();
-  if (countries.some((code) => !countryCodes.has(code)))
+  const invalid = countries.find((code) => !countryCodes.has(code));
+  if (invalid)
     throw new NoWriteInputError(
       "invalid_writing_country",
-      "Use exact ISO two-letter country codes for countries serviced.",
+      `Invalid writing country ${invalid}. Use ISO two-letter codes. Closest allowed values: ${closestCodes(invalid, BROKER_COUNTRY_CODES).join(", ")}.`,
     );
   return countries;
 }
@@ -331,7 +359,7 @@ export function normalizeBrokerWritingStates(values: readonly string[]) {
   if (invalid.length > 0) {
     throw new NoWriteInputError(
       "invalid_writing_state",
-      `Invalid writing state ${invalid.join(", ")}. Use exact two-letter US state or Canadian province/territory codes.`,
+      `Invalid writing state ${invalid.join(", ")}. Use two-letter US/Canadian codes. Closest allowed values: ${closestCodes(invalid[0], BROKER_REGION_CODES).join(", ")}.`,
     );
   }
   return states.sort();
@@ -359,7 +387,7 @@ export function normalizeBrokerLineOfBusinessCodes(
   if (invalid.length > 0) {
     throw new NoWriteInputError(
       "invalid_acord_lob",
-      `Invalid ACORD LOBCd ${invalid.join(", ")}. Use exact coverage-line codes; leave the list empty when unknown. Common commercial codes include CGL (General Liability), PROP (Commercial Property), and AUTOB (Business Automobile).`,
+      `Invalid ACORD LOBCd ${invalid.join(", ")}. Closest allowed values: ${closestCodes(invalid[0], PROVIDER_ACORD_LOB_CODES).map((code) => `${code} (${lobLabel(code)})`).join(", ")}. Use exact coverage-line codes; leave the list empty when unknown. Common commercial codes: CGL, PROP, AUTOB.`,
     );
   }
   return lines.sort() as AcordLobCode[];

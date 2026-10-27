@@ -33,15 +33,53 @@ type PillButtonProps = AdaptLegacyProps<
   React.ComponentProps<typeof BasePillButton>
 >;
 
+const IconOnlyActionsContext = React.createContext(false);
+
+/** Renders icon-plus-text buttons inside it as icon-only pills with a tooltip. */
+function PillButtonIconOnlyProvider({
+  enabled = true,
+  children,
+}: {
+  enabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <IconOnlyActionsContext.Provider value={enabled}>
+      {children}
+    </IconOnlyActionsContext.Provider>
+  );
+}
+
+/** Splits `[<Icon />, "Label"]` children into icon nodes and their text. */
+function iconAndText(children: React.ReactNode) {
+  const parts = React.Children.toArray(children);
+  const text = parts
+    .filter((part) => typeof part === "string" || typeof part === "number")
+    .join("")
+    .trim();
+  const icons = parts.filter(
+    (part) => typeof part !== "string" && typeof part !== "number",
+  );
+  return { text, icons };
+}
+
 function PillButton(props: PillButtonProps) {
   const {
     variant = "primary",
     size,
     iconOnly,
     expandLabel,
-    label,
-    ...rest
+    label: labelProp,
+    ...restProps
   } = props;
+  const iconOnlyActions = React.useContext(IconOnlyActionsContext);
+  const split =
+    iconOnlyActions && !iconOnly && variant !== "icon"
+      ? iconAndText(restProps.children)
+      : null;
+  const autoIcon = Boolean(split?.text && split.icons.length);
+  const label = autoIcon ? (labelProp ?? split!.text) : labelProp;
+  const rest = autoIcon ? { ...restProps, children: split!.icons } : restProps;
   const resolvedVariant =
     variant === "icon" || variant === "iconLabel" ? "ghost" : variant;
   const resolvedSize = size === "small" ? "xs" : size;
@@ -57,10 +95,11 @@ function PillButton(props: PillButtonProps) {
   // `expandLabel` used to grow the pill on hover, which shifted neighbouring
   // controls. Render those as icon-only pills with a tooltip instead.
   const withTooltip =
-    !iconOnly &&
-    (variant === "icon" || variant === "secondary") &&
-    expandLabel &&
-    Boolean(label);
+    autoIcon ||
+    (!iconOnly &&
+      (variant === "icon" || variant === "secondary") &&
+      expandLabel &&
+      Boolean(label));
   const icon = Boolean(iconOnly || variant === "icon" || withTooltip);
   const content = icon
     ? {
@@ -104,6 +143,7 @@ function PillButton(props: PillButtonProps) {
 
 export {
   PillButton,
+  PillButtonIconOnlyProvider,
   PillButtonSizeProvider,
   usePillButtonSize,
   type PillButtonProps,

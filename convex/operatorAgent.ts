@@ -1,3 +1,4 @@
+import { resolveOperatorToolDispatch } from "./lib/operatorToolConsolidation";
 import { getProviderOutreachPanel, launchProviderOutreachByOperator, stopProviderOutreachByOperator } from "./providerOutreach";
 import { getClientOutreachPanel, launchClientOutreachByOperator } from "./clientOutreach";
 import {
@@ -24,7 +25,6 @@ import {
 } from "./procurementRequests";
 import { clientAccessStatus } from "./lib/clientAccess";
 import { routerJobFailureValidator } from "./lib/routerJobFailure";
-import { readIntakeBusinessProfile } from "./lib/intakeApplication";
 import {
   prepareBusinessProfileToolUpdate,
   updateBusinessProfileByOperator,
@@ -43,8 +43,23 @@ import {
   scheduleWebsiteTechScan,
 } from "./websiteTech";
 import { websiteTechDomain } from "./lib/websiteTech";
+import { clientRecipientOptions } from "./lib/clientOutreach";
+import { appendWikiSection } from "./lib/wikiAppend";
+import {
+  companyResearchStatus,
+  techStackResearchStatus,
+  type ResearchStatus,
+} from "./lib/researchStatus";
 import { normalizeCompletionOutcome } from "./lib/procurementCompletionOutcome";
+import {
+  getClientAttention,
+  getOperatorProcurementRequest,
+  listOperatorProcurementProposals,
+  listOperatorProcurementRequests,
+  procurementApplicationSummary,
+} from "./lib/operatorProcurementReads";
 import dayjs from "dayjs";
+import { scheduleOperatorHistoryCompaction } from "./operatorAgentHistory";
 import { operatorEmailContentValidator } from "./lib/threadMessageValidators";
 import {
   assertExternalBrokerIdentity,
@@ -116,7 +131,6 @@ import {
   getProcurementEmailThreadDetails,
   getProcurementRequestDetails,
   listProcurementEmailThreads,
-  listProcurementRequestSummaries,
   previewProcurementEmailReconciliation,
   updateProcurementEmailThreadByOperator,
   updateProcurementFileItemByOperator,
@@ -132,16 +146,19 @@ import {
   fileProcurementProposalByOperator,
   getProcurementProposalDetails,
   listProposalExtractionIssues,
-  listProcurementProposals,
   retryProcurementProposalExtractionByOperator,
   selectProcurementProposalByOperator,
 } from "./procurementProposals";
 import {
   getBrokerProfileDetails,
-  listBrokerProfiles,
   createStandaloneBrokerByOperator,
   updateBrokerProfileByOperator,
 } from "./brokerProfiles";
+import type { ProviderBatchResult } from "./operatorBrokerBatches";
+import {
+  listProviderPage,
+  validateProviderCreate,
+} from "./lib/operatorBrokerProfiles";
 import { readOrgWiki, upsertOrgWikiDocumentByOperator } from "./orgWiki";
 import {
   listPacketLinksForOperator,
@@ -153,7 +170,15 @@ import {
   updatePacketDocumentByOperator,
 } from "./procurementPacket";
 import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
-import { preflightOperatorToolConfirmation } from "./lib/operatorAgentConfirmationPreflight";
+import { applyOperatorBatch } from "./lib/operatorBatch";
+import { isRemainingBatchToolName, remainingBatchConfirmationSummary, REMAINING_BATCH_TOOLS, type RemainingBatchResult } from "./lib/operatorRemainingBatch";
+import { assertNoOperatorImpersonation } from "./lib/clientFiles";
+import { preflightOperatorToolConfirmation, prepareRemainingBatchForConfirmation, providerLaunchApprovalLines } from "./lib/operatorAgentConfirmationPreflight";
+import { clientBatchConfirmationSummary, isClientBatchToolName, type ClientBatchResult } from "./lib/operatorClientBatch";
+import {
+  describeOperatorRecordFields,
+  type OperatorDescribableRecord,
+} from "./lib/operatorRecordFieldCatalog";
 import { previewTeamEmailReply } from "./lib/teamEmailReply";
 import { assertOutreachIdentity } from "./lib/outreachIdentity";
 import { composeClientOutreachEmail } from "./lib/clientOutreachEmail";
@@ -184,6 +209,13 @@ import {
   threadPageContext,
 } from "./lib/threadPageContext";
 import { operatorPeople, operatorPerson } from "./lib/operatorAvatar";
+import {
+  loadOrganizationAssignees,
+  organizationDetail,
+  organizationIncludeSet,
+  organizationRow,
+} from "./lib/operatorOrganizationReads";
+import { compactProposal, compactTeamThread, readMany, uniqueIds } from "./lib/operatorReadViews";
 
 const operatorChannelValidator = v.union(
   v.literal("chat"),
@@ -316,6 +348,7 @@ type OperatorActionToolResult = {
 const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "import_policy_files",
   "web_search",
+  "fetch_url",
   "lookup_policy",
   "compare_coverages",
   "lookup_policy_section",
@@ -326,6 +359,7 @@ const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "attach_client_file",
   "search_thread_history",
   "read_thread_attachment",
+  "save_email_draft",
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
@@ -350,6 +384,7 @@ function isOperatorGoogleWorkspaceTool(
     toolName === "list_company_mailboxes" ||
     toolName === "search_company_email" ||
     toolName === "read_company_email_thread" ||
+    toolName === "read_company_email_threads" ||
     toolName === "get_company_email_attachment" ||
     toolName === "scan_workspace_mailbox"
   );
@@ -358,11 +393,24 @@ function isOperatorGoogleWorkspaceTool(
 function serializedOperatorActionOutput(toolName: string, result: unknown) {
   return isOperatorGoogleWorkspaceTool(toolName) ||
     toolName === "web_search" ||
+    toolName === "fetch_url" ||
     toolName === "list_operator_conversations" ||
     toolName === "read_operator_conversation" ||
     toolName === "list_team_inbox_threads" ||
     toolName === "get_team_inbox_thread" ||
-    toolName === "get_procurement_email_thread"
+    toolName === "get_procurement_email_thread" ||
+    isClientBatchToolName(toolName) ||
+    toolName === "list_broker_network_profiles" ||
+    toolName === "ensure_broker_network_profiles" ||
+    toolName === "update_broker_network_profiles" ||
+    toolName === "get_procurement_proposal" ||
+    toolName === "list_procurement_provider_matches" ||
+    toolName === "get_platform_status" ||
+    toolName === "get_procurement_information" ||
+    toolName === "get_procurement_packet" ||
+    toolName === "get_channel_health" ||
+    toolName === "list_email_drafts" ||
+    toolName === "search_thread_history"
     ? JSON.stringify(result)
     : boundedJson(result);
 }
@@ -559,6 +607,18 @@ async function operatorConfirmationSummary(
     threadId: Id<"operatorAgentThreads">;
   },
 ) {
+  if (isRemainingBatchToolName(toolName)) {
+    return remainingBatchConfirmationSummary(ctx, toolName, input);
+  }
+  if (isClientBatchToolName(toolName)) {
+    return clientBatchConfirmationSummary(ctx, toolName, input);
+  }
+  if (
+    toolName === "ensure_broker_network_profiles" ||
+    toolName === "update_broker_network_profiles"
+  ) {
+    return getOperatorAgentToolSpec(toolName).summarize(input);
+  }
   if (toolName === "reply_email_thread" || toolName === "reply_procurement_email_thread") {
     return (await operatorReplyConfirmation(ctx, input, context.operatorUserId)).summary;
   }
@@ -569,6 +629,15 @@ async function operatorConfirmationSummary(
       `From: ${identity.fromHeader}`,
       `Always CC: ${identity.alwaysCc ?? "None"}`,
     ];
+    if (toolName === "launch_procurement_provider_outreach") {
+      lines.push(
+        "",
+        ...(await providerLaunchApprovalLines(ctx, {
+          operatorUserId: context.operatorUserId,
+          input,
+        })),
+      );
+    }
     if (toolName === "send_procurement_client_email") {
       const panel = await getClientOutreachPanel(ctx, normalizeProcurementRequestId(ctx, input.procurementRequestId));
       const recipient = panel?.recipients.find((person) => person.email === input.recipientEmail);
@@ -600,6 +669,10 @@ async function operatorConfirmationSummary(
     });
     const client = await ctx.db.get(orgId);
     return `Import into ${client!.name}'s policy library\nFiles: ${files.map((file) => file.fileName).join(", ")}\nGrouping: ${input.mode === "combined" ? "one policy containing all selected PDFs" : `${files.length} separate policies (one per PDF)`}\nQueue extraction; duplicate PDFs reuse existing policies.`;
+  }
+  if (toolName === "update_client_wiki" && input.mode === "append") {
+    const client = await ctx.db.get(normalizeOrganizationId(ctx, input.orgId));
+    return `Append to ${client?.name ?? "the organization"}'s company notes:\n\n${boundedDisplayText(String(input.markdown), 2_000, true)}`;
   }
   if (toolName === "send_email_draft") {
     const { summary } = await operatorEmailSendConfirmation(ctx, {
@@ -980,20 +1053,6 @@ function normalizedOptionalText(value: unknown) {
   return value.trim() || undefined;
 }
 
-/** The applicant's own contact details, for addressing email from records. */
-function applicantContactFromAnswers(...sources: unknown[]) {
-  for (const source of sources) {
-    const answers = recordValue(source);
-    const contact = {
-      name: normalizedOptionalText(answers?.name),
-      email: normalizedOptionalText(answers?.email),
-      phone: normalizedOptionalText(answers?.phone),
-    };
-    if (contact.name || contact.email || contact.phone) return contact;
-  }
-  return null;
-}
-
 function normalizeOperatorConversationKey(value: string) {
   const conversationKey = value.trim();
   if (!conversationKey) throw new Error("Conversation key is required");
@@ -1029,6 +1088,40 @@ function normalizePolicyId(ctx: QueryCtx | MutationCtx, value: unknown) {
   if (!policyId)
     throw new NoWriteInputError("invalid_identifier", "Invalid policy ID");
   return policyId;
+}
+
+function alreadyRunningExtraction(policyId: Id<"policies">) {
+  return {
+    status: "already_running" as const,
+    policyId,
+    message:
+      "An extraction is already running; no new one was queued. Check get_policy_status for progress.",
+  };
+}
+
+const CLIENT_FILE_SCAN_LIMIT = 1_000;
+const RESEARCH_POLL_MS = 3_000;
+
+/** Offset into the sorted match list of one bounded policy scan. */
+function listCursorOffset(value: unknown) {
+  if (value === undefined) return 0;
+  if (typeof value !== "string" || !/^\d{1,4}$/.test(value))
+    throw new NoWriteInputError(
+      "invalid_continuation",
+      "Cursor is invalid. Restart without a cursor using the original filters.",
+    );
+  return Number(value);
+}
+
+function fileListCursor(value: unknown) {
+  if (value === undefined) return undefined;
+  const match = typeof value === "string" ? /^(\d{1,16}):(\d{1,4})$/.exec(value) : null;
+  if (!match)
+    throw new NoWriteInputError(
+      "invalid_continuation",
+      "Cursor is invalid. Restart without a cursor using the original filters.",
+    );
+  return { createdAt: Number(match[1]), skip: Number(match[2]) };
 }
 
 function normalizeClientFileId(ctx: QueryCtx | MutationCtx, value: unknown) {
@@ -1709,44 +1802,214 @@ export async function enqueueOperatorMessage(
   return { messageId: userMessageId, runId, duplicate: false };
 }
 
-async function executeToolDomain(
-  ctx: MutationCtx,
-  args: {
-    operatorUserId: Id<"users">;
-    threadId: Id<"operatorAgentThreads">;
-    channel: OperatorChannel;
-    toolName: OperatorAgentToolName;
-    input: Record<string, unknown>;
-    sourceFingerprint?: string;
-  },
+const OPERATOR_CONVERSATION_FAILURE_WINDOW = 20;
+const OPERATOR_CONVERSATION_MAX_TOOL_CALLS = 40;
+const OPERATOR_CONVERSATION_INPUT_PREVIEW = 200;
+
+function operatorChannelFilter(value: unknown): OperatorChannel | undefined {
+  return value === "chat" ||
+    value === "slack" ||
+    value === "imessage" ||
+    value === "email" ||
+    value === "mcp"
+    ? value
+    : undefined;
+}
+
+/**
+ * Compact execution trace of one agent message for conversation reads: tool
+ * names, truncated inputs (never outputs), failure and the run that produced
+ * it, so a caller can follow up with get_operator_run.
+ */
+async function operatorConversationAgentTrace(
+  ctx: QueryCtx | MutationCtx,
+  message: Doc<"operatorAgentMessages">,
 ) {
+  const candidates = message.replyToMessageId
+    ? await ctx.db
+        .query("operatorAgentRuns")
+        .withIndex("message", (q) =>
+          q.eq("userMessageId", message.replyToMessageId!),
+        )
+        .take(5)
+    : [];
+  const run = candidates.find(
+    (candidate) => candidate.agentMessageId === message._id,
+  );
+  const toolCalls = message.toolCalls ?? [];
+  const usedTools =
+    message.usedTools ??
+    (message.activity
+      ? [...new Set(message.activity.tools.map((tool) => tool.toolName))]
+      : undefined);
+  return {
+    status: message.status,
+    runId: run?._id,
+    run: run
+      ? {
+          status: run.status,
+          iteration: run.checkpoint?.iteration,
+          executionCount: run.checkpoint?.executionCount,
+          lastToolName: run.checkpoint?.lastToolName,
+        }
+      : undefined,
+    usedTools,
+    toolCalls: toolCalls.length
+      ? toolCalls
+          .slice(-OPERATOR_CONVERSATION_MAX_TOOL_CALLS)
+          .map((call) => ({
+            name: call.name,
+            input: call.input?.slice(0, OPERATOR_CONVERSATION_INPUT_PREVIEW),
+          }))
+      : undefined,
+    toolCallCount: toolCalls.length || undefined,
+    failure:
+      message.failure || message.status === "error"
+        ? {
+            category: message.failure?.code ?? "error",
+            message: message.error?.slice(0, 300),
+            retryable: message.failure?.retryable,
+            executionStarted: message.failure?.executionStarted,
+          }
+        : undefined,
+  };
+}
+
+/** Reads a thread detail in its own function run; the read paginates and a function may paginate once. */
+async function readTeamThreadOwnRun(
+  ctx: MutationCtx,
+  threadId: Id<"teamEmailThreads">,
+  viewerUserId: Id<"users">,
+): Promise<Awaited<ReturnType<typeof getTeamThreadDetails>>> {
+  return await ctx.runQuery(internal.operatorBulkReads.teamThreadDetailsInternal, {
+    threadId,
+    viewerUserId,
+  });
+}
+
+type OperatorToolDomainArgs = {
+  runId?: Id<"operatorAgentRuns">;
+  operatorUserId: Id<"users">;
+  threadId: Id<"operatorAgentThreads">;
+  channel: OperatorChannel;
+  toolName: OperatorAgentToolName;
+  input: Record<string, unknown>;
+  sourceFingerprint?: string;
+};
+
+async function executeToolDomain(ctx: MutationCtx, args: OperatorToolDomainArgs) {
+  const { toolName, input } = resolveOperatorToolDispatch(args.toolName, args.input);
+  if (toolName === "get_platform_status") {
+    const sections = [...new Set(stringList(input.sections) ?? ["overview"])];
+    const entries = await Promise.all(sections.map(async (section) => {
+      const name = section === "overview" ? "get_operator_overview" : section === "routing" ? "get_routing_status" : "get_channel_health";
+      return [section, await executeToolDomainSingle(ctx, { ...args, toolName: name, input })];
+    }));
+    return Object.fromEntries(entries);
+  }
+  if (toolName === "get_procurement_information") {
+    if (!input.include) {
+      const information = await procurementInformationOverview(
+        ctx, normalizeProcurementRequestId(ctx, input.procurementRequestId),
+      );
+      return {
+        providers: information.providers,
+        questionCount: information.questions.length,
+        formCount: information.forms.length,
+      };
+    }
+    const sections = [...new Set(stringList(input.include) ?? [])];
+    const entries = await Promise.all(sections.map(async (section) => [
+      section,
+      await executeToolDomainSingle(ctx, { ...args, toolName: section === "information" ? "list_procurement_information" : "list_procurement_client_outreach", input }),
+    ]));
+    return Object.fromEntries(entries);
+  }
+  return executeToolDomainSingle(ctx, { ...args, toolName, input });
+}
+
+async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomainArgs) {
   const { toolName, input } = args;
+  if (toolName === "compact_context") {
+    const run = args.runId ? await ctx.db.get(args.runId) : null;
+    return run?.executionKind === "direct_tool"
+      ? { status: "not_applicable", note: "Direct MCP tools have no model working context. Use compact_context inside run_operator_task." }
+      : { status: "compaction_requested", ...input };
+  }
   if (toolName === "list_operator_conversations") {
     const archived = input.archived === true;
+    const archiveState = archived ? "archived" : undefined;
+    const channel = operatorChannelFilter(input.channel);
+    const sinceMs =
+      typeof input.since === "string"
+        ? dayjs(`${input.since}T00:00:00Z`).valueOf()
+        : undefined;
     const threads =
       input.scope === "all"
-        ? ctx.db
-            .query("operatorAgentThreads")
-            .withIndex("archive_last_message", (q) =>
-              q.eq("archiveState", archived ? "archived" : undefined),
-            )
+        ? channel
+          ? ctx.db
+              .query("operatorAgentThreads")
+              .withIndex("archive_channel_last_message", (q) => {
+                const channelScope = q
+                  .eq("archiveState", archiveState)
+                  .eq("channel", channel);
+                return sinceMs === undefined
+                  ? channelScope
+                  : channelScope.gte("lastMessageAt", sinceMs);
+              })
+          : ctx.db
+              .query("operatorAgentThreads")
+              .withIndex("archive_last_message", (q) => {
+                const archiveScope = q.eq("archiveState", archiveState);
+                return sinceMs === undefined
+                  ? archiveScope
+                  : archiveScope.gte("lastMessageAt", sinceMs);
+              })
         : ctx.db
             .query("operatorAgentThreads")
-            .withIndex("owner_archive", (q) =>
-              q
+            .withIndex("owner_archive", (q) => {
+              const ownerScope = q
                 .eq("ownerUserId", args.operatorUserId)
-                .eq("archiveState", archived ? "archived" : undefined),
+                .eq("archiveState", archiveState);
+              return sinceMs === undefined
+                ? ownerScope
+                : ownerScope.gte("lastMessageAt", sinceMs);
+            })
+            .filter((q) =>
+              channel ? q.eq(q.field("channel"), channel) : true,
             );
     const page = await threads.order("desc").paginate({
       cursor: typeof input.cursor === "string" ? input.cursor : null,
       numItems: typeof input.limit === "number" ? input.limit : 15,
     });
+    const wantFailure =
+      typeof input.hasFailure === "boolean" ? input.hasFailure : undefined;
+    const failureFlags =
+      wantFailure === undefined
+        ? undefined
+        : await Promise.all(
+            page.page.map(async (thread) => {
+              const recent = await ctx.db
+                .query("operatorAgentMessages")
+                .withIndex("thread", (q) => q.eq("threadId", thread._id))
+                .order("desc")
+                .take(OPERATOR_CONVERSATION_FAILURE_WINDOW);
+              return recent.some(
+                (message) =>
+                  message.role === "agent" &&
+                  (message.status === "error" || Boolean(message.failure)),
+              );
+            }),
+          );
+    const visible = failureFlags
+      ? page.page.filter((_thread, index) => failureFlags[index] === wantFailure)
+      : page.page;
     const people = await operatorPeople(
       ctx,
-      page.page.map((thread) => thread.ownerUserId),
+      visible.map((thread) => thread.ownerUserId),
     );
     return {
-      conversations: page.page.map((thread) => ({
+      conversations: visible.map((thread) => ({
         threadId: thread._id,
         title: thread.title,
         channel: thread.channel,
@@ -1778,10 +2041,8 @@ async function executeToolDomain(
         cursor: typeof input.cursor === "string" ? input.cursor : null,
         numItems: typeof input.limit === "number" ? input.limit : 5,
       });
-    return {
-      threadId,
-      title: thread.title,
-      messages: page.page.map((message) => ({
+    const messages = await Promise.all(
+      page.page.map(async (message) => ({
         messageId: message._id,
         role: message.role,
         author: message.userName,
@@ -1795,87 +2056,200 @@ async function executeToolDomain(
             size,
           }),
         ),
+        ...(message.role === "agent"
+          ? await operatorConversationAgentTrace(ctx, message)
+          : {}),
       })),
+    );
+    return {
+      threadId,
+      title: thread.title,
+      messages,
       nextCursor: page.isDone ? null : page.continueCursor,
       isDone: page.isDone,
     };
   }
   if (toolName === "search_organizations") {
     const queryText = typeof input.query === "string" ? input.query.trim() : "";
-    const requestedType =
-      input.type === "broker" || input.type === "client"
-        ? input.type
+    const queryList = Array.isArray(input.queries)
+      ? input.queries.flatMap((value: unknown) =>
+          typeof value === "string" && value.trim() ? [value.trim()] : [],
+        )
+      : undefined;
+    const statusFilter = Array.isArray(input.clientAccessStatus)
+      ? new Set<unknown>(input.clientAccessStatus)
+      : undefined;
+    const assigneeFilter =
+      typeof input.assigneeUserId === "string"
+        ? ctx.db.normalizeId("users", input.assigneeUserId)
         : undefined;
-    const limit = typeof input.limit === "number" ? input.limit : 15;
-    const organizations = requestedType
-      ? requestedType === "client"
-        ? (
-            await Promise.all([
-              ctx.db
-                .query("organizations")
-                .withIndex("deletion_type", (index) =>
-                  index.eq("deletedAt", undefined).eq("type", "client"),
-                )
-                .take(500),
-              ctx.db
-                .query("organizations")
-                .withIndex("deletion_type", (index) =>
-                  index.eq("deletedAt", undefined).eq("type", undefined),
-                )
-                .take(500),
-            ])
-          ).flat()
-        : await ctx.db
-            .query("organizations")
-            .withIndex("deletion_type", (index) =>
-              index.eq("deletedAt", undefined).eq("type", "broker"),
-            )
-            .take(500)
-      : await ctx.db
-          .query("organizations")
-          .withIndex("deletion_type", (q) => q.eq("deletedAt", undefined))
-          .take(1_000);
-    const matches = organizations
-      .filter(
-        (organization) =>
-          organization.type !== "broker" ||
-          !isSpotOwnedBrokerIdentity(organization),
-      )
-      .map((organization) => ({
-        organization,
-        score: organizationSearchScore(organization, queryText),
-      }))
-      .filter(({ score }) => score > 0)
-      .sort(
-        (left, right) =>
-          right.score - left.score ||
-          left.organization.name.localeCompare(right.organization.name),
-      )
-      .map(({ organization }) => ({
-        orgId: organization._id,
-        name: organization.name,
-        type: organization.type ?? "client",
-        ...(organization.type === "client"
-          ? { clientAccessStatus: clientAccessStatus(organization) }
-          : {}),
-        slug: organization.slug,
-        website: organization.website,
-        brokerOrgId: organization.brokerOrgId,
-      }));
-    const scanBounded =
+    if (assigneeFilter === null)
+      throw new NoWriteInputError(
+        "invalid_identifier",
+        "Invalid assignee user ID",
+      );
+    const clientFilters = Boolean(statusFilter || assigneeFilter);
+    if (clientFilters && input.type === "broker")
+      throw new NoWriteInputError(
+        "invalid_filter",
+        "clientAccessStatus and assigneeUserId apply to clients only",
+      );
+    const requestedType =
+      input.type === "client" || clientFilters
+        ? "client"
+        : input.type === "broker"
+          ? "broker"
+          : undefined;
+    const sort = input.sort === "created_desc" ? "created_desc" : "name";
+    const limit =
+      typeof input.limit === "number" ? input.limit : queryList ? 5 : 15;
+    const order = sort === "created_desc" ? "desc" : "asc";
+    const takeType = (type: "client" | "broker" | undefined) =>
+      ctx.db
+        .query("organizations")
+        .withIndex("deletion_type", (index) =>
+          index.eq("deletedAt", undefined).eq("type", type),
+        )
+        .order(order)
+        .take(500);
+    const ranges =
       requestedType === "client"
-        ? ["client", undefined].some(
-            (type) =>
-              organizations.filter((org) => org.type === type).length >= 500,
+        ? await Promise.all(
+            clientFilters
+              ? [takeType("client")]
+              : [takeType("client"), takeType(undefined)],
           )
-        : organizations.length >= (requestedType ? 500 : 1_000);
+        : requestedType === "broker"
+          ? [await takeType("broker")]
+          : [
+              await ctx.db
+                .query("organizations")
+                .withIndex("deletion_type", (q) => q.eq("deletedAt", undefined))
+                .order(order)
+                .take(1_000),
+            ];
+    const organizations = ranges.flat();
+    const scanBounded = ranges.some(
+      (range) => range.length >= (requestedType ? 500 : 1_000),
+    );
+    const candidates = organizations.filter(
+      (organization) =>
+        (organization.type !== "broker" ||
+          !isSpotOwnedBrokerIdentity(organization)) &&
+        (!statusFilter ||
+          statusFilter.has(clientAccessStatus(organization))) &&
+        (!assigneeFilter ||
+          organization.assignedOperatorUserId === assigneeFilter),
+    );
+    const byQuery = (query: string) =>
+      candidates
+        .map((organization) => ({
+          organization,
+          score: organizationSearchScore(organization, query),
+        }))
+        .filter(({ score }) => score > 0)
+        .sort(
+          (left, right) =>
+            right.score - left.score ||
+            left.organization.name.localeCompare(right.organization.name),
+        )
+        .map(({ organization }) => organization);
+    const presentRows = async (groups: Doc<"organizations">[][]) => {
+      const assignees = await loadOrganizationAssignees(ctx, groups.flat());
+      return groups.map((group) =>
+        group.map((organization) => organizationRow(organization, assignees)),
+      );
+    };
+
+    if (queryList) {
+      const matched = queryList.map(byQuery);
+      const rows = await presentRows(
+        matched.map((matches) => matches.slice(0, limit)),
+      );
+      const results = queryList.map((query, index) => ({
+        query,
+        organizations: rows[index],
+        matchedInScan: matched[index].length,
+        bounded: scanBounded || matched[index].length > limit,
+      }));
+      return {
+        results,
+        scanned: organizations.length,
+        bounded: results.some((result) => result.bounded),
+        scanBounded,
+        limit,
+      };
+    }
+
+    if (queryText) {
+      const matches = byQuery(queryText);
+      const [rows] = await presentRows([matches.slice(0, limit)]);
+      return {
+        organizations: rows,
+        matchedInScan: matches.length,
+        scanned: organizations.length,
+        bounded: scanBounded || matches.length > limit,
+        scanBounded,
+        limit,
+      };
+    }
+
+    // Listing: keyset pagination over the bounded scan, stable under inserts.
+    const sorted = [...candidates].sort((left, right) =>
+      sort === "created_desc"
+        ? right._creationTime - left._creationTime ||
+          left._id.localeCompare(right._id)
+        : left.name.localeCompare(right.name) ||
+          left._id.localeCompare(right._id),
+    );
+    let remaining = sorted;
+    if (typeof input.cursor === "string") {
+      let position: { s?: unknown; k?: unknown; id?: unknown } | null = null;
+      try {
+        position = JSON.parse(input.cursor);
+      } catch {
+        position = null;
+      }
+      if (
+        !position ||
+        position.s !== sort ||
+        (typeof position.k !== "string" && typeof position.k !== "number") ||
+        typeof position.id !== "string"
+      )
+        throw new NoWriteInputError(
+          "invalid_cursor",
+          "Invalid cursor; restart the listing without a cursor using the same sort",
+        );
+      const { k, id } = position;
+      remaining = sorted.filter((organization) =>
+        sort === "created_desc"
+          ? organization._creationTime < Number(k) ||
+            (organization._creationTime === Number(k) &&
+              organization._id.localeCompare(id) > 0)
+          : organization.name.localeCompare(String(k)) > 0 ||
+            (organization.name.localeCompare(String(k)) === 0 &&
+              organization._id.localeCompare(id) > 0),
+      );
+    }
+    const page = remaining.slice(0, limit);
+    const last = page.at(-1);
+    const nextCursor =
+      last && remaining.length > limit
+        ? JSON.stringify({
+            s: sort,
+            k: sort === "created_desc" ? last._creationTime : last.name,
+            id: last._id,
+          })
+        : null;
+    const [rows] = await presentRows([page]);
     return {
-      organizations: matches.slice(0, limit),
-      matchedInScan: matches.length,
+      organizations: rows,
+      matchedInScan: sorted.length,
       scanned: organizations.length,
-      bounded: scanBounded || matches.length > limit,
+      bounded: scanBounded || nextCursor !== null,
       scanBounded,
       limit,
+      nextCursor,
     };
   }
 
@@ -1884,59 +2258,49 @@ async function executeToolDomain(
     const organization = await ctx.db.get(orgId);
     if (!organization || organization.deletedAt !== undefined)
       throw new Error("Organization not found");
-    const [memberships, policies] = await Promise.all([
-      ctx.db
-        .query("orgMemberships")
-        .withIndex("organization", (index) => index.eq("orgId", orgId))
-        .take(5_001),
-      ctx.db
-        .query("policies")
-        .withIndex("organization", (index) => index.eq("orgId", orgId))
-        .take(5_001),
-    ]);
+    return await organizationDetail(
+      ctx,
+      organization,
+      await loadOrganizationAssignees(ctx, [organization]),
+      organizationIncludeSet(input.include),
+      5_000,
+    );
+  }
+
+  if (toolName === "get_organizations") {
+    const requested: unknown[] = Array.isArray(input.orgIds)
+      ? input.orgIds
+      : [];
+    const loaded = await Promise.all(
+      requested.map(async (value) => {
+        const orgId =
+          typeof value === "string"
+            ? ctx.db.normalizeId("organizations", value)
+            : null;
+        const organization = orgId ? await ctx.db.get(orgId) : null;
+        return organization && organization.deletedAt === undefined
+          ? organization
+          : null;
+      }),
+    );
+    const found = [
+      ...new Map(
+        loaded.flatMap((organization) =>
+          organization ? [[organization._id, organization] as const] : [],
+        ),
+      ).values(),
+    ];
+    const assignees = await loadOrganizationAssignees(ctx, found);
+    const include = organizationIncludeSet(input.include);
     return {
-      orgId,
-      name: organization.name,
-      type:
-        organization.type === "broker" &&
-        isSpotOwnedBrokerIdentity(organization)
-          ? "spot"
-          : (organization.type ?? "client"),
-      ...(organization.type === "client"
-        ? {
-            clientAccessStatus: clientAccessStatus(organization),
-            assignee: organization.assignedOperatorUserId
-              ? await operatorPerson(ctx, organization.assignedOperatorUserId)
-              : null,
-          }
-        : {}),
-      slug: organization.slug,
-      website: organization.website,
-      companyResearch: organization.companyResearch ?? null,
-      ...(organization.type === "client"
-        ? {
-            businessProfile: await readIntakeBusinessProfile(ctx, orgId),
-            websiteTech: await readWebsiteTechProfile(
-              ctx,
-              organization.website,
-            ),
-          }
-        : {}),
-      ...(organization.type === "broker"
-        ? { companyWiki: await readOrgWiki(ctx, orgId) }
-        : {}),
-      brokerOrgId: organization.brokerOrgId,
-      featureFlags: organization.featureFlags,
-      onboardingComplete: organization.onboardingComplete,
-      memberCount: Math.min(memberships.length, 5_000),
-      policyCount: policies
-        .slice(0, 5_000)
-        .filter((policy) => !policy.deletedAt).length,
-      archivedPolicyCount: policies
-        .slice(0, 5_000)
-        .filter((policy) => policy.deletedAt).length,
-      countsAreLowerBounds:
-        memberships.length > 5_000 || policies.length > 5_000,
+      organizations: await Promise.all(
+        found.map((organization) =>
+          organizationDetail(ctx, organization, assignees, include, 100),
+        ),
+      ),
+      notFound: requested.flatMap((value, index) =>
+        loaded[index] ? [] : [String(value)],
+      ),
     };
   }
 
@@ -2027,6 +2391,12 @@ async function executeToolDomain(
     };
   }
 
+  if (toolName === "describe_record_fields") {
+    return describeOperatorRecordFields(
+      input.record as OperatorDescribableRecord,
+    );
+  }
+
   if (toolName === "get_operator_overview") {
     const [organizations, policies, extractionRuns, agentRuns] =
       await Promise.all([
@@ -2085,12 +2455,28 @@ async function executeToolDomain(
       typeof input.query === "string" ? input.query.trim().toLowerCase() : "";
     const limit = typeof input.limit === "number" ? input.limit : 15;
     const includeArchived = input.includeArchived === true;
+    const expiringBefore =
+      typeof input.expiringBefore === "string"
+        ? dayjs(input.expiringBefore).endOf("day")
+        : undefined;
+    const offset = listCursorOffset(input.cursor);
     const policies = await ctx.db
       .query("policies")
       .withIndex("organization", (index) => index.eq("orgId", orgId))
       .take(2_000);
+    const expirationOf = (policy: (typeof policies)[number]) => {
+      if (!policy.expirationDate || policy.policyTermType === "continuous")
+        return undefined;
+      const expiration = dayjs(policy.expirationDate);
+      return expiration.isValid() ? expiration : undefined;
+    };
     const matches = policies
       .filter((policy) => includeArchived || !policy.deletedAt)
+      .filter((policy) => {
+        if (!expiringBefore) return true;
+        const expiration = expirationOf(policy);
+        return Boolean(expiration && !expiration.isAfter(expiringBefore));
+      })
       .filter((policy) => {
         if (!queryText) return true;
         return [
@@ -2105,8 +2491,23 @@ async function executeToolDomain(
             .toLowerCase()
             .includes(queryText),
         );
-      })
-      .map((policy) => ({
+      });
+    if (input.sort === "expiration_asc") {
+      matches.sort(
+        (left, right) =>
+          (expirationOf(left)?.valueOf() ?? Number.MAX_SAFE_INTEGER) -
+          (expirationOf(right)?.valueOf() ?? Number.MAX_SAFE_INTEGER),
+      );
+    } else if (input.sort === "updated_desc") {
+      const changedAt = (policy: (typeof policies)[number]) =>
+        Math.max(policy.extractionDataStageUpdatedAt ?? 0, policy._creationTime);
+      matches.sort((left, right) => changedAt(right) - changedAt(left));
+    }
+    const page = matches.slice(offset, offset + limit);
+    const nextCursor =
+      offset + limit < matches.length ? String(offset + limit) : null;
+    return {
+      policies: page.map((policy) => ({
         policyId: policy._id,
         policyNumber: policy.policyNumber,
         carrier: policy.carrier,
@@ -2116,39 +2517,55 @@ async function executeToolDomain(
         linesOfBusiness: policy.linesOfBusiness,
         extractionDataStage: policy.extractionDataStage,
         pipelineStatus: policy.pipelineStatus,
+        pipelineError: policy.pipelineError?.slice(0, 200),
+        sourceTreeStatus: policy.sourceTreeStatus,
         archived: Boolean(policy.deletedAt),
-      }));
-    return {
-      policies: matches.slice(0, limit),
+      })),
       matchedInScan: matches.length,
       scanned: policies.length,
-      bounded: policies.length >= 2_000 || matches.length > limit,
+      bounded: policies.length >= 2_000 || nextCursor !== null,
       scanBounded: policies.length >= 2_000,
+      nextCursor,
       limit,
     };
   }
 
   if (toolName === "get_policy_status") {
-    const policyId = normalizePolicyId(ctx, input.policyId);
-    const policy = await ctx.db.get(policyId);
-    if (!policy) throw new Error("Policy not found");
-    const extractionRun = await ctx.db
-      .query("policyExtractionRuns")
-      .withIndex("policy", (index) => index.eq("policyId", policyId))
-      .order("desc")
-      .first();
-    return {
-      policyId,
-      orgId: policy.orgId,
-      policyNumber: policy.policyNumber,
-      carrier: policy.carrier,
-      extractionDataStage: policy.extractionDataStage,
-      pipelineStatus: extractionRun?.pipelineStatus ?? policy.pipelineStatus,
-      pipelineError: extractionRun?.pipelineError ?? policy.pipelineError,
-      sourceTreeStatus: policy.sourceTreeStatus,
-      archived: Boolean(policy.deletedAt),
-      fileName: policy.fileName,
+    const readStatus = async (policyId: Id<"policies">) => {
+      const policy = await ctx.db.get(policyId);
+      if (!policy) return null;
+      const extractionRun = await ctx.db
+        .query("policyExtractionRuns")
+        .withIndex("policy", (index) => index.eq("policyId", policyId))
+        .order("desc")
+        .first();
+      return {
+        policyId,
+        orgId: policy.orgId,
+        policyNumber: policy.policyNumber,
+        carrier: policy.carrier,
+        extractionDataStage: policy.extractionDataStage,
+        pipelineStatus: extractionRun?.pipelineStatus ?? policy.pipelineStatus,
+        pipelineError: extractionRun?.pipelineError ?? policy.pipelineError,
+        sourceTreeStatus: policy.sourceTreeStatus,
+        archived: Boolean(policy.deletedAt),
+        fileName: policy.fileName,
+      };
     };
+    if (Array.isArray(input.policyIds)) {
+      const items = [];
+      const notFound: string[] = [];
+      for (const value of input.policyIds as string[]) {
+        const policyId = ctx.db.normalizeId("policies", value);
+        const status = policyId ? await readStatus(policyId) : null;
+        if (status) items.push(status);
+        else notFound.push(value);
+      }
+      return { items, notFound };
+    }
+    const status = await readStatus(normalizePolicyId(ctx, input.policyId));
+    if (!status) throw new Error("Policy not found");
+    return status;
   }
 
   if (toolName === "list_client_files") {
@@ -2162,14 +2579,90 @@ async function executeToolDomain(
       throw new Error("Client organization not found");
     }
     const limit = typeof input.limit === "number" ? input.limit : 25;
-    const files = await ctx.db
-      .query("clientFiles")
-      .withIndex("organization", (index) => index.eq("orgId", orgId))
-      .order("desc")
-      .take(limit);
+    const policyId =
+      typeof input.policyId === "string"
+        ? normalizePolicyId(ctx, input.policyId)
+        : undefined;
+    const clientVisible =
+      typeof input.clientVisible === "boolean" ? input.clientVisible : undefined;
+    const queryText =
+      typeof input.query === "string" ? input.query.trim().toLowerCase() : "";
+    const contentType =
+      typeof input.contentType === "string"
+        ? input.contentType.trim().toLowerCase()
+        : "";
+    const createdAfter =
+      typeof input.createdAfter === "string"
+        ? dayjs(input.createdAfter).valueOf() - 1
+        : -1;
+    // Cursor "<createdAt>:<scanned at that instant>" resumes inside a
+    // millisecond that bulk uploads can share.
+    const cursor = fileListCursor(input.cursor);
+    const upper = cursor?.createdAt ?? Number.MAX_SAFE_INTEGER;
+    const files = policyId
+      ? ctx.db
+          .query("clientFiles")
+          .withIndex("policy", (index) =>
+            index
+              .eq("policyId", policyId)
+              .gt("createdAt", createdAfter)
+              .lte("createdAt", upper),
+          )
+      : clientVisible !== undefined
+        ? ctx.db
+            .query("clientFiles")
+            .withIndex("visibility", (index) =>
+              index
+                .eq("orgId", orgId)
+                .eq("clientVisible", clientVisible)
+                .gt("createdAt", createdAfter)
+                .lte("createdAt", upper),
+            )
+        : ctx.db
+            .query("clientFiles")
+            .withIndex("organization", (index) =>
+              index
+                .eq("orgId", orgId)
+                .gt("createdAt", createdAfter)
+                .lte("createdAt", upper),
+            );
+    const matches: Array<{ file: Doc<"clientFiles">; sameInstant: number }> = [];
+    let scanned = 0;
+    let skip = cursor?.skip ?? 0;
+    let sameInstant = 0;
+    let lastCreatedAt = -1;
+    let scanBounded = false;
+    for await (const file of files.order("desc")) {
+      if (++scanned > CLIENT_FILE_SCAN_LIMIT) {
+        scanBounded = true;
+        break;
+      }
+      sameInstant = file.createdAt === lastCreatedAt ? sameInstant + 1 : 1;
+      lastCreatedAt = file.createdAt;
+      if (skip > 0 && file.createdAt === cursor?.createdAt) {
+        skip -= 1;
+        continue;
+      }
+      if (
+        file.orgId !== orgId ||
+        file.archivedAt ||
+        file.deletedAt ||
+        (clientVisible !== undefined && file.clientVisible !== clientVisible) ||
+        (contentType && !file.contentType.toLowerCase().includes(contentType)) ||
+        (queryText &&
+          !`${file.name} ${file.originalName}`.toLowerCase().includes(queryText))
+      ) {
+        continue;
+      }
+      matches.push({ file, sameInstant });
+      if (matches.length > limit) break;
+    }
+    const page = matches.slice(0, limit);
+    const hasMore = matches.length > limit;
+    const last = page.at(-1);
     return {
       files: await Promise.all(
-        files.map(async (file) => {
+        page.map(async ({ file }) => {
           const policy = file.policyId ? await ctx.db.get(file.policyId) : null;
           return {
             clientFileId: file._id,
@@ -2186,7 +2679,9 @@ async function executeToolDomain(
           };
         }),
       ),
-      bounded: files.length === limit,
+      nextCursor:
+        hasMore && last ? `${last.file.createdAt}:${last.sameInstant}` : null,
+      bounded: hasMore || scanBounded,
     };
   }
 
@@ -2203,11 +2698,17 @@ async function executeToolDomain(
   }
 
   if (toolName === "update_client_wiki") {
+    const orgId = normalizeOrganizationId(ctx, input.orgId);
+    // Append reads the current revision in this same transaction, so it cannot conflict.
+    const current =
+      input.mode === "append" ? await readOrgWiki(ctx, orgId) : null;
     return await upsertOrgWikiDocumentByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      orgId: normalizeOrganizationId(ctx, input.orgId),
-      markdown: String(input.markdown),
-      expectedRevision: Number(input.expectedRevision),
+      orgId,
+      markdown: current
+        ? appendWikiSection(current.markdown, String(input.markdown))
+        : String(input.markdown),
+      expectedRevision: current ? current.revision : Number(input.expectedRevision),
       source: args.channel === "mcp" ? "mcp" : "operator",
     });
   }
@@ -2246,15 +2747,54 @@ async function executeToolDomain(
   }
 
   if (toolName === "list_procurement_requests") {
-    const clientOrgId = normalizeOrganizationId(ctx, input.orgId);
-    const limit = typeof input.limit === "number" ? input.limit : 50;
-    const requests = await listProcurementRequestSummaries(ctx, {
-      clientOrgId,
+    const after = normalizedOptionalText(input.updatedAfter);
+    const before = normalizedOptionalText(input.updatedBefore);
+    const updatedAfter = after ? dayjs(after).valueOf() : undefined;
+    const updatedBefore = before
+      ? (before.length === 10
+          ? dayjs(before).endOf("day")
+          : dayjs(before)
+        ).valueOf()
+      : undefined;
+    if (
+      updatedAfter !== undefined &&
+      updatedBefore !== undefined &&
+      updatedAfter > updatedBefore
+    ) {
+      throw new Error("updatedAfter must not be later than updatedBefore");
+    }
+    const assigneeUserId = input.assigneeUserId
+      ? ctx.db.normalizeId("users", String(input.assigneeUserId))
+      : undefined;
+    if (assigneeUserId === null) throw new Error("Invalid assignee user ID");
+    const statuses = Array.isArray(input.status)
+      ? input.status
+      : input.status
+        ? [input.status]
+        : undefined;
+    return await listOperatorProcurementRequests(ctx, {
+      clientOrgId: input.orgId
+        ? normalizeOrganizationId(ctx, input.orgId)
+        : undefined,
       query: normalizedOptionalText(input.query),
-      status: writableProcurementRequestStatus(input.status),
-      limit,
+      status: statuses?.map(
+        (status) => writableProcurementRequestStatus(status)!,
+      ),
+      assigneeUserId,
+      updatedAfter,
+      updatedBefore,
+      sort: input.sort === "created_desc" ? "created_desc" : "updated_desc",
+      view: input.view === "full" ? "full" : "summary",
+      cursor: normalizedOptionalText(input.cursor),
+      limit: typeof input.limit === "number" ? input.limit : 50,
     });
-    return { requests, bounded: requests.length === limit };
+  }
+
+  if (toolName === "get_client_attention") {
+    return await getClientAttention(
+      ctx,
+      normalizeOrganizationId(ctx, input.orgId),
+    );
   }
 
   if (toolName === "get_procurement_request") {
@@ -2262,48 +2802,82 @@ async function executeToolDomain(
       ctx,
       input.procurementRequestId,
     );
+    const include = Array.isArray(input.include)
+      ? input.include.map(String)
+      : [];
     const intake = await readUnlinkedIntakeByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       requestId,
     });
     if (intake) {
+      if (input.view === "full") return intake;
+      const request = (await ctx.db.get(requestId))!;
       return {
-        ...intake,
-        applicantContact: applicantContactFromAnswers(
-          intake.application?.answers,
-          intake.intakeAnswers,
-        ),
+        procurementRequestId: intake._id,
+        title: intake.title,
+        diagnosticStatus: intake.diagnosticStatus,
+        clientOrgId: null,
+        intakeStep: intake.intakeStep,
+        intakeRevision: intake.intakeRevision,
+        createdAt: intake.createdAt,
+        updatedAt: intake.updatedAt,
+        fulfillmentAvailable: false,
+        application: include.includes("application")
+          ? intake.application
+          : procurementApplicationSummary(request),
+        ...(include.includes("application")
+          ? {
+              intakeAnswers: intake.intakeAnswers,
+              intakeDetails: intake.intakeDetails,
+            }
+          : {}),
+        ...(include.includes("audit")
+          ? {
+              slackEvents: intake.slackEvents,
+              bounded: intake.slackEventsBounded,
+            }
+          : {}),
       };
     }
-    const details = await getProcurementRequestDetails(ctx, requestId);
-    return {
-      ...details,
-      applicantContact: applicantContactFromAnswers(
-        details.request.application?.answers,
-        details.request.intakeAnswers,
-      ),
-    };
+    return await getOperatorProcurementRequest(ctx, requestId, {
+      include,
+      view: input.view === "full" ? "full" : "summary",
+    });
   }
 
   if (toolName === "list_procurement_proposals") {
-    const requestId = normalizeProcurementRequestId(
+    return await listOperatorProcurementProposals(
       ctx,
-      input.procurementRequestId,
+      normalizeProcurementRequestId(ctx, input.procurementRequestId),
+      {
+        view: input.view === "full" ? "full" : "summary",
+        limit: typeof input.limit === "number" ? input.limit : undefined,
+        cursor: normalizedOptionalText(input.cursor),
+      },
     );
-    return {
-      proposals: await listProcurementProposals(ctx, requestId),
-      private: true,
-    };
   }
 
   if (toolName === "get_procurement_proposal") {
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.get_procurement_proposal.inputSchema.parse(input);
+    const view = parsed.view ?? (parsed.procurementProposalIds ? "compact" : "full");
+    const present = (proposal: NonNullable<Awaited<ReturnType<typeof getProcurementProposalDetails>>>) => ({
+      ...(view === "compact" ? compactProposal(proposal) : proposal),
+      private: true,
+    });
+    if (parsed.procurementProposalIds)
+      return await readMany(uniqueIds(parsed.procurementProposalIds), async (id) => {
+        const proposalId = ctx.db.normalizeId("procurementProposals", id);
+        const proposal = proposalId ? await getProcurementProposalDetails(ctx, proposalId) : null;
+        return proposal ? present(proposal) : null;
+      });
     const proposalId = normalizeProcurementProposalId(
       ctx,
-      input.procurementProposalId,
+      parsed.procurementProposalId,
     );
     const proposal = await getProcurementProposalDetails(ctx, proposalId);
     if (!proposal) throw new Error("Procurement proposal not found");
-    return { ...proposal, private: true };
+    return present(proposal);
   }
 
   if (toolName === "get_broker_network_profile") {
@@ -2314,21 +2888,9 @@ async function executeToolDomain(
   }
 
   if (toolName === "list_broker_network_profiles") {
-    const limit = typeof input.limit === "number" ? input.limit : 50;
-    const profiles = await listBrokerProfiles(ctx, {
-      search: normalizedOptionalText(input.query),
-      status:
-        input.status === "prospect" ||
-        input.status === "active" ||
-        input.status === "inactive" ||
-        input.status === "blacklisted"
-          ? input.status
-          : undefined,
-      writingState: normalizedOptionalText(input.writingState),
-      lineOfBusinessCode: normalizedOptionalText(input.lineOfBusinessCode),
-      limit,
-    });
-    return { profiles, bounded: profiles.length === limit };
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.list_broker_network_profiles.inputSchema.parse(input);
+    return await listProviderPage(ctx, parsed);
   }
 
   if (toolName === "list_team_inbox_threads") {
@@ -2348,10 +2910,22 @@ async function executeToolDomain(
   }
 
   if (toolName === "get_team_inbox_thread") {
-    const thread = await getTeamThreadDetails(ctx, {
-      threadId: await normalizeProcurementEmailThreadId(ctx, input.teamEmailThreadId),
-      viewerUserId: args.operatorUserId,
-    });
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.get_team_inbox_thread.inputSchema.parse(input);
+    const view = parsed.view ?? (parsed.teamEmailThreadIds ? "compact" : "full");
+    const present = <T extends Parameters<typeof compactTeamThread>[0]>(thread: T | null) =>
+      thread && view === "compact" ? compactTeamThread(thread) : thread;
+    if (parsed.teamEmailThreadIds)
+      return await readMany(uniqueIds(parsed.teamEmailThreadIds), async (id) => {
+        const threadId = ctx.db.normalizeId("teamEmailThreads", id);
+        return threadId ? present(await readTeamThreadOwnRun(ctx, threadId, args.operatorUserId)) : null;
+      });
+    const thread = present(
+      await getTeamThreadDetails(ctx, {
+        threadId: await normalizeProcurementEmailThreadId(ctx, parsed.teamEmailThreadId),
+        viewerUserId: args.operatorUserId,
+      }),
+    );
     if (!thread) throw new Error("Email conversation not found");
     return thread;
   }
@@ -2383,11 +2957,24 @@ async function executeToolDomain(
   }
 
   if (toolName === "get_procurement_email_thread") {
-    const emailThreadId = await normalizeProcurementEmailThreadId(
-      ctx,
-      input.procurementEmailThreadId,
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.get_procurement_email_thread.inputSchema.parse(input);
+    const view = parsed.view ?? (parsed.procurementEmailThreadIds ? "compact" : "full");
+    const present = <T extends Parameters<typeof compactTeamThread>[0]>(thread: T | null) =>
+      thread && view === "compact" ? compactTeamThread(thread) : thread;
+    if (parsed.procurementEmailThreadIds)
+      return await readMany(uniqueIds(parsed.procurementEmailThreadIds), async (id) => {
+        const emailThreadId = ctx.db.normalizeId("teamEmailThreads", id);
+        return emailThreadId ? present(await readTeamThreadOwnRun(ctx, emailThreadId, args.operatorUserId)) : null;
+      });
+    const thread = present(
+      await getProcurementEmailThreadDetails(
+        ctx,
+        await normalizeProcurementEmailThreadId(ctx, parsed.procurementEmailThreadId),
+        undefined,
+        args.operatorUserId,
+      ),
     );
-    const thread = await getProcurementEmailThreadDetails(ctx, emailThreadId, undefined, args.operatorUserId);
     if (!thread) throw new Error("Procurement email thread not found");
     return thread;
   }
@@ -2632,12 +3219,99 @@ async function executeToolDomain(
   }
 
   if (toolName === "get_channel_health") {
-    const orgId = input.orgId
-      ? normalizeOrganizationId(ctx, input.orgId)
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.get_channel_health.inputSchema.parse(input);
+    const orgId = parsed.orgId
+      ? normalizeOrganizationId(ctx, parsed.orgId)
       : undefined;
     if (orgId && !(await ctx.db.get(orgId))) {
       throw new Error("Organization not found");
     }
+    const problemsOnly = parsed.problemsOnly === true;
+    // Problem rows mirror the platform health suggestion.
+    const connectionRow = (connection: Doc<"slackWorkspaceConnections">) => ({
+      connectionId: connection._id,
+      clientOrgId: connection.clientOrgId,
+      teamName: connection.teamName,
+      status: connection.status,
+      healthStatus: connection.healthStatus,
+      healthReason: connection.healthReason,
+      lastVerifiedAt: connection.lastVerifiedAt,
+    });
+    const bindingRow = (binding: Doc<"slackChannelBindings">) => ({
+      bindingId: binding._id,
+      clientOrgId: binding.clientOrgId,
+      channelName: binding.channelName,
+      status: binding.status,
+      healthStatus: binding.healthStatus,
+      unavailableReason: binding.unavailableReason,
+      lastVerifiedAt: binding.lastVerifiedAt,
+    });
+    const emailRow = (account: Doc<"connectedEmailAccounts">) => ({
+      accountId: account._id,
+      orgId: account.orgId,
+      label: account.label,
+      status: account.status,
+      lastError: account.lastError,
+      lastTestedAt: account.lastTestedAt,
+      updatedAt: account.updatedAt,
+    });
+    const connectionProblem = (connection: Doc<"slackWorkspaceConnections">) =>
+      connection.status === "active" && connection.healthStatus === "degraded";
+    const bindingProblem = (binding: Doc<"slackChannelBindings">) =>
+      binding.status === "unavailable" ||
+      (binding.status === "active" && binding.healthStatus === "degraded");
+    const emailProblem = (account: Doc<"connectedEmailAccounts">) =>
+      account.status === "error";
+
+    if (parsed.section) {
+      const paginationOpts = {
+        cursor: parsed.cursor ?? null,
+        numItems: parsed.limit ?? 50,
+      };
+      const page =
+        parsed.section === "slack_connections"
+          ? await (orgId
+              ? ctx.db
+                  .query("slackWorkspaceConnections")
+                  .withIndex("client_status", (index) => index.eq("clientOrgId", orgId))
+              : ctx.db.query("slackWorkspaceConnections")
+            ).paginate(paginationOpts)
+          : parsed.section === "slack_bindings"
+            ? await (orgId
+                ? ctx.db
+                    .query("slackChannelBindings")
+                    .withIndex("client_status", (index) => index.eq("clientOrgId", orgId))
+                : ctx.db.query("slackChannelBindings")
+              ).paginate(paginationOpts)
+            : await (orgId
+                ? ctx.db
+                    .query("connectedEmailAccounts")
+                    .withIndex("organization", (index) => index.eq("orgId", orgId))
+                : ctx.db.query("connectedEmailAccounts")
+              ).paginate(paginationOpts);
+      // Problem filtering happens inside the page, so a page may hold fewer rows than the limit.
+      const rows =
+        parsed.section === "slack_connections"
+          ? (page.page as Doc<"slackWorkspaceConnections">[])
+              .filter((row) => !problemsOnly || connectionProblem(row))
+              .map(connectionRow)
+          : parsed.section === "slack_bindings"
+            ? (page.page as Doc<"slackChannelBindings">[])
+                .filter((row) => !problemsOnly || bindingProblem(row))
+                .map(bindingRow)
+            : (page.page as Doc<"connectedEmailAccounts">[])
+                .filter((row) => !problemsOnly || emailProblem(row))
+                .map(emailRow);
+      return {
+        orgId,
+        section: parsed.section,
+        rows,
+        nextCursor: page.isDone ? null : page.continueCursor,
+        bounded: !page.isDone,
+      };
+    }
+
     const [settings, connections, bindings, emailAccounts, hostInstalls] =
       await Promise.all([
         orgId
@@ -2683,26 +3357,18 @@ async function executeToolDomain(
           }
         : undefined,
       slack: {
-        connections: connections.map((connection) => ({
-          connectionId: connection._id,
-          clientOrgId: connection.clientOrgId,
-          teamName: connection.teamName,
-          status: connection.status,
-          healthStatus: connection.healthStatus,
-          healthReason: connection.healthReason,
-          lastVerifiedAt: connection.lastVerifiedAt,
-        })),
-        bindings: bindings.map((binding) => ({
-          bindingId: binding._id,
-          clientOrgId: binding.clientOrgId,
-          channelName: binding.channelName,
-          status: binding.status,
-          healthStatus: binding.healthStatus,
-          unavailableReason: binding.unavailableReason,
-          lastVerifiedAt: binding.lastVerifiedAt,
-        })),
+        connections: connections
+          .filter((row) => !problemsOnly || connectionProblem(row))
+          .map(connectionRow),
+        bindings: bindings
+          .filter((row) => !problemsOnly || bindingProblem(row))
+          .map(bindingRow),
         hostInstallations: hostInstalls
-          .filter((installation) => installation.kind === "host")
+          .filter(
+            (installation) =>
+              installation.kind === "host" &&
+              (!problemsOnly || installation.status !== "active"),
+          )
           .map((installation) => ({
             installationId: installation._id,
             teamName: installation.teamName,
@@ -2710,15 +3376,10 @@ async function executeToolDomain(
             updatedAt: installation.updatedAt,
           })),
       },
-      email: emailAccounts.map((account) => ({
-        accountId: account._id,
-        orgId: account.orgId,
-        label: account.label,
-        status: account.status,
-        lastError: account.lastError,
-        lastTestedAt: account.lastTestedAt,
-        updatedAt: account.updatedAt,
-      })),
+      email: emailAccounts
+        .filter((row) => !problemsOnly || emailProblem(row))
+        .map(emailRow),
+      // Whether the unfiltered scan hit its cap, so rows may be missing.
       bounded: {
         connections: connections.length >= (orgId ? 25 : 250),
         bindings: bindings.length >= (orgId ? 25 : 250),
@@ -2737,10 +3398,9 @@ async function executeToolDomain(
       .order("desc")
       .first();
     const status = run?.pipelineStatus ?? policy.pipelineStatus;
-    if (status === "running" || status === "paused") {
-      throw new Error(
-        "An extraction is already running or paused for this policy",
-      );
+    if (status === "running") return alreadyRunningExtraction(policyId);
+    if (status === "paused") {
+      throw new Error("An extraction is paused for this policy");
     }
     if (!policy.fileId) throw new Error("Policy source file is missing");
     await ctx.scheduler.runAfter(
@@ -2992,7 +3652,19 @@ async function executeToolDomain(
     });
   }
 
+  if (
+    toolName === "ensure_broker_network_profiles" ||
+    toolName === "update_broker_network_profiles"
+  ) {
+    const result: ProviderBatchResult = await ctx.runMutation(
+      internal.operatorBrokerBatches.execute,
+      { operatorUserId: args.operatorUserId, toolName, input },
+    );
+    return result;
+  }
+
   if (toolName === "create_broker_network_profile") {
+    await validateProviderCreate(ctx, input);
     const name = normalizedOptionalText(input.name);
     if (!name) throw new Error("Provider name is required");
     return await createStandaloneBrokerByOperator(ctx, {
@@ -3034,11 +3706,39 @@ async function executeToolDomain(
   }
 
   if (toolName === "list_procurement_provider_matches") {
-    return await getProviderOutreachPanel(
+    const parsed =
+      OPERATOR_AGENT_TOOL_REGISTRY.list_procurement_provider_matches.inputSchema.parse(input);
+    const panel = await getProviderOutreachPanel(
       ctx,
-      normalizeProcurementRequestId(ctx, input.procurementRequestId),
+      normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
       args.operatorUserId,
+      {
+        cursor: parsed.cursor,
+        limit: parsed.limit ?? 20,
+        verdict: parsed.verdict,
+        coverage: parsed.coverage,
+        state: parsed.state,
+        role: parsed.role,
+      },
     );
+    if (!panel) return null;
+    const { paging, candidates, ...context } = panel;
+    const compact = (rows: typeof candidates.matched) =>
+      rows.map(({ iconUrl: _iconUrl, ...row }) => row);
+    const next = {
+      candidates: {
+        matched: compact(candidates.matched),
+        unknown: compact(candidates.unknown),
+        excluded: compact(candidates.excluded),
+      },
+      total: paging?.total ?? 0,
+      nextCursor: paging?.nextCursor ?? null,
+      bounded: panel.providersBounded || Boolean(paging?.nextCursor),
+    };
+    // Request context and sequences are sent once, on the first page.
+    return parsed.cursor
+      ? { providersBounded: panel.providersBounded, ...next }
+      : { ...context, ...next };
   }
 
   if (toolName === "launch_procurement_provider_outreach") {
@@ -3326,6 +4026,7 @@ async function executeToolDomain(
     return {
       queued,
       domain,
+      research: await techStackResearchStatus(ctx, website),
       current: await readWebsiteTechProfile(ctx, website),
     };
   }
@@ -3341,11 +4042,33 @@ async function executeToolDomain(
       throw new Error("Research organization not found");
     if (org.type === "broker") assertExternalBrokerIdentity(org);
     const queued = await scheduleCompanyResearch(ctx, orgId, { force: true });
+    const researched = (await ctx.db.get(orgId))!;
     return {
       queued,
-      status: (await ctx.db.get(orgId))!.companyResearch!.status,
+      status: researched.companyResearch!.status,
+      research: companyResearchStatus(researched),
       orgId,
     };
+  }
+
+  if (isRemainingBatchToolName(toolName)) {
+    const result: RemainingBatchResult = await ctx.runMutation(internal.operatorAgent.applyRemainingBatchInternal, {
+      operatorUserId: args.operatorUserId,
+      threadId: args.threadId,
+      channel: args.channel,
+      toolName,
+      input,
+    });
+    return result;
+  }
+
+  if (isClientBatchToolName(toolName)) {
+    const result: ClientBatchResult = await ctx.runMutation(internal.operatorClientBatchWrites.applyInternal, {
+      operatorUserId: args.operatorUserId,
+      toolName,
+      input,
+    });
+    return result;
   }
 
   if (toolName === "set_client_access_status") {
@@ -3478,6 +4201,108 @@ export const forwardingContextInternal = internalQuery({
   },
 });
 
+export const researchStatusInternal = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    orgId: v.optional(v.string()),
+    website: v.optional(v.string()),
+    kind: v.union(
+      v.literal("company"),
+      v.literal("tech_stack"),
+      v.literal("all"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    // A prospect has no organization, only a scanned website.
+    if (!args.orgId) {
+      const techStack = await techStackResearchStatus(ctx, args.website);
+      return { research: [techStack], settled: techStack.settled };
+    }
+    const orgId = normalizeOrganizationId(ctx, args.orgId);
+    const organization = await ctx.db.get(orgId);
+    if (
+      !organization ||
+      organization.deletedAt !== undefined ||
+      (organization.type !== "client" && organization.type !== "broker")
+    ) {
+      throw new NoWriteInputError(
+        "target_not_found",
+        "Client or provider organization not found",
+      );
+    }
+    const statuses: ResearchStatus[] = [];
+    if (args.kind !== "tech_stack")
+      statuses.push(companyResearchStatus(organization));
+    // Provider organizations have no tech-stack scan.
+    if (args.kind !== "company" && organization.type === "client")
+      statuses.push(await techStackResearchStatus(ctx, organization.website));
+    return {
+      orgId,
+      research: statuses,
+      settled: statuses.every((status) => status.settled),
+    };
+  },
+});
+
+/** Participants for scoping company-email search to a client or request. */
+export const emailScopeParticipantsInternal = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    orgId: v.optional(v.string()),
+    procurementRequestId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    const participants = new Set<string>();
+    const request = args.procurementRequestId
+      ? await ctx.db.get(
+          normalizeProcurementRequestId(ctx, args.procurementRequestId),
+        )
+      : null;
+    if (args.procurementRequestId && (!request || request.deletedAt)) {
+      throw new NoWriteInputError(
+        "target_not_found",
+        "Procurement request not found",
+      );
+    }
+    const orgId = args.orgId
+      ? normalizeOrganizationId(ctx, args.orgId)
+      : request?.clientOrgId;
+    const organization = orgId ? await ctx.db.get(orgId) : null;
+    if (orgId && (!organization || organization.deletedAt !== undefined)) {
+      throw new NoWriteInputError(
+        "target_not_found",
+        "Organization not found",
+      );
+    }
+    const domain = websiteTechDomain(organization?.website);
+    if (domain) participants.add(domain);
+    if (request && orgId) {
+      for (const option of await clientRecipientOptions(ctx, request, orgId))
+        participants.add(option.email);
+      const outreaches = await ctx.db
+        .query("procurementBrokerOutreaches")
+        .withIndex("request", (q) => q.eq("requestId", request._id))
+        .take(25);
+      for (const outreach of outreaches)
+        if (outreach.contactEmail)
+          participants.add(outreach.contactEmail.trim().toLowerCase());
+    } else if (orgId) {
+      const memberships = await ctx.db
+        .query("orgMemberships")
+        .withIndex("organization", (q) => q.eq("orgId", orgId))
+        .take(20);
+      for (const membership of memberships) {
+        const user = await ctx.db.get(membership.userId);
+        if (user?.email && !user.isAnonymous)
+          participants.add(user.email.trim().toLowerCase());
+      }
+    }
+    return [...participants].slice(0, 20);
+  },
+});
+
 export const teamEmailThreadForToolInternal = internalQuery({
   args: { operatorUserId: v.id("users"), threadId: v.string() },
   handler: async (ctx, args) => {
@@ -3502,6 +4327,7 @@ async function executeToolActionDomain(
     threadMessageId?: Id<"operatorAgentMessages">;
   },
 ): Promise<OperatorActionToolResult> {
+  args = { ...args, ...resolveOperatorToolDispatch(args.toolName, args.input) };
   if (args.toolName === "get_procurement_forwarding_address") {
     const parsed = OPERATOR_AGENT_TOOL_REGISTRY.get_procurement_forwarding_address.inputSchema.parse(args.input);
     const context = await ctx.runQuery(internal.operatorAgent.forwardingContextInternal, {
@@ -3520,6 +4346,29 @@ async function executeToolActionDomain(
     };
   }
 
+  if (args.toolName === "get_research_status") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.get_research_status.inputSchema.parse(args.input);
+    const startedAt = dayjs().valueOf();
+    const deadline = startedAt + (parsed.waitSeconds ?? 0) * 1_000;
+    for (;;) {
+      const status = await ctx.runQuery(internal.operatorAgent.researchStatusInternal, {
+        operatorUserId: args.operatorUserId,
+        orgId: parsed.orgId,
+        website: parsed.website,
+        kind: parsed.kind ?? "all",
+      });
+      const now = dayjs().valueOf();
+      if (status.settled || now >= deadline) {
+        return {
+          result: { ...status, waitedSeconds: Math.round((now - startedAt) / 1_000) },
+        };
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(RESEARCH_POLL_MS, deadline - now)),
+      );
+    }
+  }
+
   if (args.toolName === "list_mcp_tools" || args.toolName === "call_mcp_tool") {
     return await ctx.runAction(internal.actions.operatorMcp.run, {
       operatorUserId: args.operatorUserId,
@@ -3529,13 +4378,40 @@ async function executeToolActionDomain(
   }
 
   if (isOperatorGoogleWorkspaceTool(args.toolName)) {
+    let input = args.input;
+    if (
+      args.toolName === "search_company_email" &&
+      (input.orgId || input.procurementRequestId)
+    ) {
+      const scoped = await ctx.runQuery(
+        internal.operatorAgent.emailScopeParticipantsInternal,
+        {
+          operatorUserId: args.operatorUserId,
+          orgId: normalizedOptionalText(input.orgId),
+          procurementRequestId: normalizedOptionalText(
+            input.procurementRequestId,
+          ),
+        },
+      );
+      const explicit = Array.isArray(input.participants)
+        ? (input.participants as string[])
+        : [];
+      const participants = [...new Set([...explicit, ...scoped])].slice(0, 20);
+      if (!participants.length) {
+        throw new NoWriteInputError(
+          "invalid_input",
+          "No website domain or contact email is on record for that scope. Pass participants explicitly.",
+        );
+      }
+      input = { ...input, participants };
+    }
     return await ctx.runAction(
       internal.actions.operatorGoogleWorkspace.runToolInternal,
       {
         operatorUserId: args.operatorUserId,
         threadId: args.threadId,
         toolName: args.toolName,
-        input: args.input,
+        input,
         channel: args.channel,
       },
     );
@@ -3742,6 +4618,156 @@ async function executeToolActionDomain(
   throw new Error(`Unsupported operator action tool: ${args.toolName}`);
 }
 
+// Keep all item writes, scheduled research and audits in a nested transaction:
+// the runner catches tool failures, so a failed batch must roll back independently.
+export const applyRemainingBatchInternal = internalMutation({
+  args: {
+    operatorUserId: v.id("users"),
+    threadId: v.id("operatorAgentThreads"),
+    channel: operatorChannelValidator,
+    toolName: v.string(),
+    input: v.any(),
+  },
+  handler: async (ctx, args): Promise<RemainingBatchResult> => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    await requireOperatorThread(ctx, args.threadId, args.operatorUserId, {
+      anyOperator: true,
+    });
+    await assertNoOperatorImpersonation(ctx, args.operatorUserId);
+    if (!isRemainingBatchToolName(args.toolName))
+      throw new Error("Unsupported batch tool");
+    const toolName = args.toolName;
+    const prepared = await prepareRemainingBatchForConfirmation(ctx, {
+      ...args,
+      toolName,
+    });
+    const single = REMAINING_BATCH_TOOLS[toolName].single;
+    return applyOperatorBatch(prepared, async (input) => {
+      if (single === "create_client_organization") {
+        const created: { clientOrgId: Id<"organizations"> } =
+          await ctx.runMutation(internal.operator.createSoloClientInternal, {
+            operatorUserId: args.operatorUserId,
+            users: [],
+            client: {
+              name: String(input.name),
+              website: normalizedOptionalText(input.website),
+            },
+          });
+        return {
+          ...created,
+          status: "created",
+          deepLink: `/operator/clients/${created.clientOrgId}`,
+        };
+      }
+      if (single === "add_client_file") {
+        return createClientFileFromOperatorAttachment(ctx, {
+          operatorUserId: args.operatorUserId,
+          threadId: args.threadId,
+          orgId: normalizeOrganizationId(ctx, input.orgId),
+          attachmentFileId: await resolveThreadAttachmentFileId(
+            ctx,
+            args.threadId,
+            input.attachmentFileId,
+          ),
+          name: String(input.name),
+          policyId: input.policyId
+            ? normalizePolicyId(ctx, input.policyId)
+            : undefined,
+          auditAlreadyFiled: true,
+        });
+      }
+      if (single === "cancel_email_draft") {
+        const draftId = ctx.db.normalizeId(
+          "pendingEmails",
+          String(input.draftId),
+        )!;
+        const draft = (await ctx.db.get(draftId))!;
+        await ctx.runMutation(internal.pendingEmails.cancelInternal, {
+          id: draftId,
+        });
+        await writeOperatorAudit(ctx, {
+          operatorUserId: args.operatorUserId,
+          type: "setup_write",
+          targetOrgId: draft.orgId,
+          summary: `Cancelled email draft ${draft.subject}`,
+          metadata: {
+            domain: "operator_agent",
+            toolName,
+            draftId,
+            threadId: args.threadId,
+          },
+        });
+        return { draftId, status: "cancelled" };
+      }
+      if (single === "archive_procurement_proposal") {
+        const result = await archiveProcurementProposalByOperator(ctx, {
+          operatorUserId: args.operatorUserId,
+          proposalId: normalizeProcurementProposalId(
+            ctx,
+            input.procurementProposalId,
+          ),
+          reason: normalizedOptionalText(input.reason),
+          preserveEmptyDraft: true,
+        });
+        if (result.outcome === "unchanged")
+          await writeOperatorAudit(ctx, {
+            operatorUserId: args.operatorUserId,
+            type: "setup_write",
+            summary: `Proposal ${result.proposalId} already archived`,
+            metadata: {
+              domain: "operator_agent",
+              toolName,
+              proposalId: result.proposalId,
+              outcome: result.outcome,
+            },
+          });
+        return result;
+      }
+      // Shared writers retain their existing authorization and per-item audits.
+      const result = await executeToolDomain(ctx, {
+        ...args,
+        toolName: single,
+        input,
+      });
+      if (
+        single === "update_organization_profile" &&
+        result &&
+        "companyResearch" in result
+      ) {
+        const { companyResearch: _research, ...compact } = result;
+        return compact;
+      }
+      if (single === "research_broker") {
+        await writeOperatorAudit(ctx, {
+          operatorUserId: args.operatorUserId,
+          type: "setup_write",
+          targetOrgId: normalizeOrganizationId(ctx, input.orgId),
+          summary: `Requested provider research for ${input.orgId}`,
+          metadata: { domain: "operator_agent", toolName, input },
+        });
+      }
+      if (
+        single === "link_team_inbox_thread" &&
+        result &&
+        "linked" in result &&
+        result.linked === false
+      )
+        await writeOperatorAudit(ctx, {
+          operatorUserId: args.operatorUserId,
+          type: "setup_write",
+          summary: `Email conversation ${input.teamEmailThreadId} already linked`,
+          metadata: {
+            domain: "operator_agent",
+            toolName,
+            input,
+            unchanged: true,
+          },
+        });
+      return result;
+    });
+  },
+});
+
 async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
   const operator = await requireOperatorForUser(ctx, args.operatorUserId);
   const run = await ctx.db.get(args.runId);
@@ -3899,6 +4925,7 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
 
   try {
     const result = await executeToolDomain(ctx, {
+      runId: args.runId,
       operatorUserId: args.operatorUserId,
       threadId: args.threadId,
       channel: args.channel,
@@ -4678,6 +5705,7 @@ async function confirmOperatorAction(
       await ctx.db.patch(run._id, {
         status: "queued",
         checkpoint: {
+          compaction: run.checkpoint?.compaction,
           iteration: run.checkpoint?.iteration ?? 0,
           executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
           // The resumed step reuses this iteration's router invocation key.
@@ -4860,6 +5888,7 @@ async function confirmOperatorAction(
     await ctx.db.patch(run._id, {
       status: "running",
       checkpoint: {
+        compaction: run.checkpoint?.compaction,
         iteration: run.checkpoint?.iteration ?? 0,
         executionCount: run.checkpoint?.executionCount ?? 0,
         summary: run.checkpoint?.summary,
@@ -5178,6 +6207,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
         lastError: error,
         completedAt: now,
         checkpoint: {
+          compaction: run.checkpoint?.compaction,
           iteration: run.checkpoint?.iteration ?? 0,
           executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
           summary: content.slice(0, 1_000),
@@ -5199,6 +6229,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
       await ctx.db.patch(run._id, {
         status: "queued",
         checkpoint: {
+          compaction: run.checkpoint?.compaction,
           iteration: run.checkpoint?.iteration ?? 0,
           executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
           // The resumed step reuses this iteration's router invocation key.
@@ -5234,6 +6265,7 @@ export const finishConfirmedActionToolInternal = internalMutation({
       status: "completed",
       completedAt: now,
       checkpoint: {
+        compaction: run.checkpoint?.compaction,
         iteration: run.checkpoint?.iteration ?? 0,
         executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
         summary: content,
@@ -5515,33 +6547,99 @@ export const enqueueMessageInternal = internalMutation({
   },
 });
 
+function ownerRunResponse(response: Doc<"operatorAgentMessages"> | null) {
+  return response
+    ? {
+        messageId: response._id,
+        content: response.content,
+        status: response.status,
+        attachments: response.attachments,
+        usedTools: response.usedTools,
+        toolCalls: response.toolCalls,
+      }
+    : undefined;
+}
+
+async function loadOperatorRunResult(
+  ctx: QueryCtx,
+  args: {
+    operatorUserId: Id<"users">;
+    runId: Id<"operatorAgentRuns">;
+    anyOperator?: boolean;
+  },
+) {
+  await requireOperatorForUser(ctx, args.operatorUserId);
+  const run = await ctx.db.get(args.runId);
+  const owner = run?.operatorUserId === args.operatorUserId;
+  if (!run || (!owner && !args.anyOperator)) {
+    throw new Error("Operator agent run not found");
+  }
+  await requireOperatorThread(ctx, run.threadId, args.operatorUserId, {
+    anyOperator: true,
+  });
+  const response = await ctx.db.get(run.agentMessageId);
+  const progress = {
+    runId: run._id,
+    threadId: run.threadId,
+    status: run.status,
+    iteration: run.checkpoint?.iteration,
+    executionCount: run.checkpoint?.executionCount,
+    lastToolName: run.checkpoint?.lastToolName,
+    steps: response?.toolCalls?.map((call) => call.name),
+    failure: response
+      ? (await operatorConversationAgentTrace(ctx, response)).failure
+      : undefined,
+  };
+  return { run, owner, response, progress };
+}
+
 export const getRunResultForOperatorInternal = internalQuery({
   args: {
     operatorUserId: v.id("users"),
     runId: v.id("operatorAgentRuns"),
   },
   handler: async (ctx, args) => {
-    await requireOperatorForUser(ctx, args.operatorUserId);
-    const run = await ctx.db.get(args.runId);
-    if (!run || run.operatorUserId !== args.operatorUserId) {
-      throw new Error("Operator agent run not found");
-    }
-    await requireOperatorThread(ctx, run.threadId, args.operatorUserId, {
-      anyOperator: true,
-    });
-    const response = await ctx.db.get(run.agentMessageId);
+    const { run, response, progress } = await loadOperatorRunResult(ctx, args);
     return {
       run,
-      response: response
-        ? {
-            messageId: response._id,
-            content: response.content,
-            status: response.status,
-            attachments: response.attachments,
-            usedTools: response.usedTools,
-            toolCalls: response.toolCalls,
-          }
-        : undefined,
+      progress,
+      response: ownerRunResponse(response),
+    };
+  },
+});
+
+/**
+ * get_operator_run view that follows a runId surfaced by any operator's
+ * conversation: the owner gets the full run, other operators a compact view
+ * without tool outputs or the stored run document.
+ */
+export const getRunViewForOperatorInternal = internalQuery({
+  args: {
+    operatorUserId: v.id("users"),
+    runId: v.id("operatorAgentRuns"),
+  },
+  handler: async (ctx, args) => {
+    const { run, owner, response, progress } = await loadOperatorRunResult(
+      ctx,
+      { ...args, anyOperator: true },
+    );
+    if (!owner) {
+      return {
+        progress,
+        response: response
+          ? {
+              messageId: response._id,
+              content: response.content,
+              status: response.status,
+              usedTools: response.usedTools,
+            }
+          : undefined,
+      };
+    }
+    return {
+      run,
+      progress,
+      response: ownerRunResponse(response),
     };
   },
 });
@@ -6198,6 +7296,10 @@ export const searchThreadHistoryInternal = internalQuery({
     threadId: v.id("operatorAgentThreads"),
     query: v.string(),
     limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+    /** Inclusive start and exclusive end of the message creation time. */
+    fromTime: v.optional(v.number()),
+    toTime: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.operatorUserId);
@@ -6205,24 +7307,33 @@ export const searchThreadHistoryInternal = internalQuery({
       anyOperator: true,
     });
     const limit = Math.max(1, Math.min(args.limit ?? 5, 8));
-    const messages = await ctx.db
+    const page = await ctx.db
       .query("operatorAgentMessages")
       .withSearchIndex("content", (index) =>
         index.search("content", args.query).eq("threadId", args.threadId),
       )
-      .take(limit);
-    return messages.map((message) => ({
-      messageId: message._id,
-      role: message.role,
-      userName: message.userName,
-      content: message.content.slice(0, 2_000),
-      attachments: (message.attachments ?? []).map((attachment) => ({
-        filename: attachment.filename,
-        contentType: attachment.contentType,
-        size: attachment.size,
-      })),
-      createdAt: message.createdAt,
-    }));
+      .paginate({ cursor: args.cursor ?? null, numItems: limit });
+    return {
+      matches: page.page
+        .filter(
+          (message) =>
+            (args.fromTime === undefined || message.createdAt >= args.fromTime) &&
+            (args.toTime === undefined || message.createdAt < args.toTime),
+        )
+        .map((message) => ({
+          messageId: message._id,
+          role: message.role,
+          userName: message.userName,
+          content: message.content.slice(0, 2_000),
+          attachments: (message.attachments ?? []).map((attachment) => ({
+            filename: attachment.filename,
+            contentType: attachment.contentType,
+            size: attachment.size,
+          })),
+          createdAt: message.createdAt,
+        })),
+      nextCursor: page.isDone ? null : page.continueCursor,
+    };
   },
 });
 
@@ -6445,6 +7556,24 @@ export const requestToolConfirmationInternal = internalMutation({
         expiresAt: blockingConfirmation.expiresAt,
       };
     }
+    // Nothing to approve when the work is already underway.
+    if (args.toolName === "retry_failed_policy_extraction") {
+      const policy = await ctx.db.get(normalizePolicyId(ctx, input.policyId));
+      const run = policy
+        ? await ctx.db
+            .query("policyExtractionRuns")
+            .withIndex("policy", (index) => index.eq("policyId", policy._id))
+            .order("desc")
+            .first()
+        : null;
+      if (policy && (run?.pipelineStatus ?? policy.pipelineStatus) === "running") {
+        return {
+          status: "succeeded" as const,
+          result: alreadyRunningExtraction(policy._id),
+          idempotent: false,
+        };
+      }
+    }
     try {
       await preflightOperatorToolConfirmation(ctx, {
         operatorUserId: args.operatorUserId,
@@ -6557,6 +7686,7 @@ export const requestToolConfirmationInternal = internalMutation({
     await ctx.db.patch(args.runId, {
       status: "waiting_confirmation",
       checkpoint: {
+        compaction: run.checkpoint?.compaction,
         iteration: (run.checkpoint?.iteration ?? 0) + 1,
         executionCount: (run.checkpoint?.executionCount ?? 0) + 1,
         summary:
@@ -6692,6 +7822,7 @@ export const completeRunInternal = internalMutation({
         modelContinuationStorageId: undefined,
         completedAt: now,
         checkpoint: {
+          compaction: run.checkpoint?.compaction,
           iteration: (run.checkpoint?.iteration ?? 0) + 1,
           executionCount:
             (run.checkpoint?.executionCount ?? 0) + args.toolCalls.length,
@@ -6701,6 +7832,7 @@ export const completeRunInternal = internalMutation({
         updatedAt: now,
       });
     }
+    if (!waiting) await scheduleOperatorHistoryCompaction(ctx, run.threadId);
     if (!waiting && run.executionKind !== "direct_tool") {
       const message = await ctx.db.get(run.agentMessageId);
       if (message) {
@@ -6957,6 +8089,7 @@ export const continueRunInternal = internalMutation({
         ? { modelContinuationStorageId: args.modelContinuationStorageId }
         : {}),
       checkpoint: {
+        compaction: run.checkpoint?.compaction,
         iteration: (run.checkpoint?.iteration ?? 0) + 1,
         executionCount:
           (run.checkpoint?.executionCount ?? 0) + args.toolCalls.length,
@@ -7052,6 +8185,7 @@ export const failRunInternal = internalMutation({
       completedAt: now,
       checkpoint: run.checkpoint
         ? {
+            compaction: run.checkpoint.compaction,
             iteration: run.checkpoint.iteration,
             executionCount: run.checkpoint.executionCount,
             summary: "Operator run failed",

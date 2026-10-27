@@ -73,6 +73,7 @@ function unknownValue(value: unknown) {
 
 /** Email draft tools whose unsent-draft metadata (never the body) is retained as evidence. */
 export const EMAIL_DRAFT_EVIDENCE_TOOLS = new Set([
+  "save_email_draft",
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
@@ -923,7 +924,9 @@ function addProposals(builder: Candidates, name: string, output: unknown) {
   const proposals = (
     name === "list_procurement_proposals"
       ? collection(output, "proposals")
-      : [record(output)]
+      : Array.isArray(record(output).items)
+        ? collection(output, "items")
+        : [record(output)]
   ).slice(0, 6);
   const resolved = proposals.flatMap((proposal) => {
     const id = identifier(proposal._id);
@@ -1155,12 +1158,17 @@ function proposalSources(
 function addProviders(builder: Candidates, name: string, output: unknown) {
   builder.partial ||= hasBoundedEvidence(output);
   const result = record(output);
+  const organizationRead =
+    name === "get_organization" || name === "get_organizations";
   const providers =
-    name === "list_broker_network_profiles" ? rows(result.profiles) : [result];
+    name === "list_broker_network_profiles"
+      ? rows(result.profiles)
+      : name === "get_organizations"
+        ? rows(result.organizations)
+        : [result];
   for (const provider of providers) {
-    const broker =
-      name === "get_organization" ? provider : record(provider.broker);
-    if (name === "get_organization" && broker.type !== "broker") continue;
+    const broker = organizationRead ? provider : record(provider.broker);
+    if (organizationRead && broker.type !== "broker") continue;
     const id = identifier(broker._id ?? broker.orgId);
     const label = literal(broker.name, 200);
     if (!id || !label) continue;
@@ -1385,6 +1393,7 @@ export function buildPresentationCandidates(evidence: PresentationEvidence): {
         "list_procurement_requests",
         "get_procurement_request",
         "preview_broker_packet",
+        "get_procurement_packet",
       ].includes(tool.name)
     )
       addRequests(builder, tool.name, output);
@@ -1399,6 +1408,7 @@ export function buildPresentationCandidates(evidence: PresentationEvidence): {
         "get_broker_network_profile",
         "list_broker_network_profiles",
         "get_organization",
+        "get_organizations",
       ].includes(tool.name)
     )
       addProviders(builder, tool.name, output);

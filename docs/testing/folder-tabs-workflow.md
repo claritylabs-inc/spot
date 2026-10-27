@@ -19,8 +19,8 @@ Page-wide actions stay in the top bar; actions that only apply to the selected v
 
 | Surface | Stays above (page-wide) | In the selected view | Reason |
 | --- | --- | --- | --- |
-| Operator client profile (`/operator/clients/:id`) | Notes, autosave status, Delete client | Tech stack: Rescan beside the scan status; Related entities / Locations: Add entity / Add location in the collection (empty-state action when empty, a right-aligned row once items exist) | Notes, autosave and delete act on the whole record; the rest act on one collection. `InlineCollectionActionsContext` is no longer provided here so the collections own their add controls. |
-| Operator provider (`/operator/brokers/:id`) | autosave status, Delete provider | Contacts: existing Add contact | Record-wide; Contacts already owns its action. |
+| Operator client profile (`/operator/clients/:id`) | Notes, autosave status | Tech stack: Rescan beside the scan status; Related entities / Locations: Add entity / Add location in the collection (empty-state action when empty, a right-aligned row once items exist) | Notes and autosave act on the whole record; the rest act on one collection. `InlineCollectionActionsContext` is no longer provided here so the collections own their add controls. |
+| Operator provider (`/operator/brokers/:id`) | autosave status | Contacts: existing Add contact | Record-wide; Contacts already owns its action. |
 | Operator client settings | Invite member (Team section, not a tab) | none | Sidebar section, not a tab. |
 | Policy detail (client, operator, vendor) | Archive, Generate certificate/COI, extraction and archived notices stay in the panel body under every tab | none | Record-wide. Notices render in the panel body, so they show under every tab. |
 | Settings → Agent (Channels / Behavior / Company wiki) | autosave status | Company wiki editor controls render inside the editor card (no longer portaled to the top bar) | Editor controls act on the notes document only. |
@@ -71,7 +71,7 @@ Local Conductor stack (`npm run conductor:dev`, Convex deploy credentials unset)
 | Leaving a tab page clears `data-tabs` and the tab list; page body has no phantom row above it (content starts at 72px) | Passed |
 | Selecting a tab swaps the panel; panel state kept while the page lives | Passed |
 | Keyboard: arrow keys move between tabs; underline only for keyboard focus | Passed |
-| Profile Tech stack / Related entities / Locations actions in their panels; Notes, Delete client stay in the bar | Passed |
+| Profile Tech stack / Related entities / Locations actions in their panels; Notes and autosave stay in the bar | Passed |
 | Compliance Requirements and Certificates actions beside the view heading | Passed |
 | `ListToolbar` order at 1440 (clients with a selected row, procurement, inbox) and 390: search left of filters, selection actions right, inline inbox tabs in their own row above, chips wrap under a full-width search, no horizontal overflow | Passed |
 | Search narrows clients and requests; the Filters menu opens; no divider beside the actions | Passed |
@@ -87,3 +87,5 @@ October 26, 2026: registry 0.18.0, Spot code head `8fba8bd0`. Manager script `.c
 - Clients has one search; selecting a row places bulk actions right with no divider, and search narrows results. Search precedes combined FilterBar criteria wherever filters exist. Named text predicates belong in the shared Filters popover, not extra page search bars.
 - Local production build passed. Exact code-head CI lint, tests and typecheck passed (run 40417754369). A concurrent local typecheck was killed by memory pressure; no local final typecheck pass is claimed.
 - Earlier worker evidence above covers additional operator/client routes. Shared 0.18.0 browser acceptance also covers text-filter Apply/Enter/clear, keyboard focus and responsive active-tab visibility. No new unit tests or Vercel preview testing.
+
+Merge integration with main PR #600 preserves icon-only client navbar actions and deletion only from index lists. Profile collection actions remain in their selected panel.
