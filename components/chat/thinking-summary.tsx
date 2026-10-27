@@ -44,6 +44,8 @@ type ActivityCall = {
   context?: ToolActivityContext;
   /** Count summary of the returned result ("3 threads"). */
   result?: string;
+  /** Record the call acted on; resolved through `entities`. */
+  target?: { kind: string; id: string };
   startedAt?: number;
   endedAt?: number;
 };
@@ -76,6 +78,7 @@ export type ChatActivity = {
     status: ActivityStatus;
     context?: ToolActivityContext;
     result?: string;
+    target?: { kind: string; id: string };
     /** Observed running → settled span; absent on older messages. */
     startedAt?: number;
     endedAt?: number;
@@ -260,6 +263,7 @@ function observedCall(tool: ChatActivity["tools"][number]): ActivityCall {
     status: tool.status,
     context: tool.context,
     result: tool.result,
+    target: tool.target,
     startedAt: tool.startedAt,
     endedAt: tool.endedAt,
   };
@@ -431,6 +435,9 @@ const INTEGRATION_BRANDS: Partial<
 };
 
 /** An approval decided on the row of the call that is waiting for it. */
+/** Brand of a record a call acted on, keyed `kind:id`. */
+export type ToolEntity = { name: string; website?: string; iconUrl?: string };
+
 export type ToolApproval = {
   toolName: string;
   /** What the call will do, shown under the row. */
@@ -453,20 +460,37 @@ export function hasAwaitingApprovalCall(
 }
 
 /**
- * The mark of what a call touched: the MCP server, the website, the
- * integration (Gmail, Slack, Mapbox), or Spot for platform records. A
+ * The mark of what a call touched: the MCP server, the client it acted on,
+ * the website, the integration (Gmail, Slack, Mapbox), or Spot for other
+ * platform records. A
  * category glyph remains only where no brand is known (client mailboxes,
  * unscoped web search, client-side tools).
  */
 function toolBrand(
   call: ActivityCall,
   integration?: OperatorToolIntegration,
+  entities?: Record<string, ToolEntity>,
 ): ToolBrand {
   const mcp = mcpInput(call);
   if (mcp)
     return {
       key: `mcp:${mcp.serverId}`,
       icon: <McpToolActivityIcon serverId={mcp.serverId} />,
+    };
+  const entityKey = call.target && `${call.target.kind}:${call.target.id}`;
+  const entity = entityKey ? entities?.[entityKey] : undefined;
+  if (entity)
+    return {
+      key: `entity:${entityKey}`,
+      icon: (
+        <OrgBrandIcon
+          name={entity.name}
+          iconUrl={entity.iconUrl}
+          website={entity.website}
+          size="xs"
+          className={BRAND_ICON}
+        />
+      ),
     };
   const context = callContext(call);
   if (context?.website)
@@ -601,11 +625,13 @@ function CallStatus({
 function CallRow({
   call,
   integration,
+  entities,
   approval,
   working,
 }: {
   call: ActivityCall;
   integration?: OperatorToolIntegration;
+  entities?: Record<string, ToolEntity>;
   approval?: ToolApproval;
   working: boolean;
 }) {
@@ -626,7 +652,7 @@ function CallRow({
     <li className="px-3.5 py-2">
       <div className="flex min-w-0 items-start gap-2.5">
         <span className="flex h-6 shrink-0 items-center">
-          {toolBrand(call, integration).icon}
+          {toolBrand(call, integration, entities).icon}
         </span>
         <div
           className={cn(
@@ -712,6 +738,7 @@ export function ToolActivityCard({
   toolCalls,
   activity,
   integrations,
+  entities,
   approval,
   working,
 }: {
@@ -720,6 +747,7 @@ export function ToolActivityCard({
   activity?: ChatActivity;
   /** External system each tool reaches, by tool name. */
   integrations?: Record<string, OperatorToolIntegration>;
+  entities?: Record<string, ToolEntity>;
   approval?: ToolApproval;
   working: boolean;
 }) {
@@ -731,7 +759,7 @@ export function ToolActivityCard({
   const brands = [
     ...new Map(
       calls.map((call) => {
-        const brand = toolBrand(call, integrations?.[call.name]);
+        const brand = toolBrand(call, integrations?.[call.name], entities);
         return [brand.key, brand] as const;
       }),
     ).values(),
@@ -801,6 +829,7 @@ export function ToolActivityCard({
               key={`${call.name}-${index}`}
               call={call}
               integration={integrations?.[call.name]}
+              entities={entities}
               approval={index === approvalIndex ? approval : undefined}
               working={working}
             />
