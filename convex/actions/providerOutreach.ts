@@ -346,7 +346,7 @@ function emailInputFor(
   claim: Claimed,
   broker: NonNullable<Claimed["broker"]>,
   packet: NonNullable<Claimed["packet"]>,
-  operator: { name: string },
+  operator: { name: string; address: string },
 ): OutreachEmailInput {
   const { step, request, sequence } = claim;
   const initialSubject =
@@ -392,6 +392,8 @@ function withQuotedHistory(
 type SenderIdentity = {
   /** Full name, as signed. */
   name: string;
+  /** The active sending inbox, also shown in the signature. */
+  address: string;
   /** Binds the saved draft to this identity and the inbox it is composed for. */
   snapshot: { fingerprint: string; inboxId: string };
   /** Exactly the CC list this step sends. */
@@ -414,7 +416,7 @@ async function resolveDraft(
   identity: SenderIdentity,
 ): Promise<StepDraft | null> {
   const { stepId } = claim.step;
-  const operator = { name: identity.name };
+  const operator = { name: identity.name, address: identity.address };
   const prepared = await ctx.runMutation(
     internal.providerOutreach.prepareDraftInternal,
     {
@@ -596,6 +598,7 @@ export const sendStep = internalAction({
       const senderName = (claim.sender.name ?? "").replace(/\s+/g, " ").trim();
       const identity: SenderIdentity = {
         name: senderName,
+        address: inbox.emailAddress,
         snapshot: {
           fingerprint: await outreachIdentityFingerprint({
             senderUserId: claim.sender.userId,
