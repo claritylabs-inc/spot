@@ -37,7 +37,7 @@ Google app passwords were connected through the local UI and stored encrypted.
 | Focused ESLint / diff whitespace | Passed | Changed email UI/transport/settings modules; git diff --check |
 | Existing email tool regression tests | Passed | 32 existing tests, convex/lib/emailTools.test.ts; no tests added |
 | Five real mailbox connections / initial reply checks | Passed locally | All five passed SMTP/IMAP verification, persisted after reload and show Last checked; all-five-connected.png |
-| SMTP send / quota / reply import / attachments | Not run live | Requires isolated live seed verification; no live readiness claim |
+| SMTP send / pacing / reply import / attachments | Passed for Gmail seed | Spot UI sent at 12:50 PM; Gmail Inbox with SPF/DKIM/DMARC PASS; reply and attachment imported; paced final reply received at 1:00 PM in the same Gmail conversation |
 | Unknown / partial recipient acceptance | Reviewed, not live-tested | Unknown sends never replay. Sent-folder reconciliation only for a single-recipient envelope; multi-recipient unknowns stay locked |
 
 ## Primitive UI revision
@@ -90,11 +90,11 @@ only Zac's three existing seed addresses; no redirect or domain-wide allowlist.
 3. Reply from Gmail with a synthetic attachment; check replies in Spot and verify
    conversation threading and the attachment.
 4. Reply from Spot and verify receipt; exercise default pacing rather than bypass it.
-5. Record placement honestly, restore capture after the live run and retain the
-   local server. Release code through a reviewed PR and CI; do not copy local
+5. Record placement honestly; retain recipient-restricted delivery and the
+   local server for the operator’s continuing UI review. Release code through a reviewed PR and CI; do not copy local
    mailbox credentials into production implicitly.
 
-Pending outcomes are recorded below after browser verification.
+Outcomes below were verified through the browser.
 
 Observed so far: the 12:50 PM seed arrived in personal Gmail Inbox within one
 second. Show original reported SPF PASS, aligned DKIM PASS for insurewithspot.com
@@ -102,8 +102,21 @@ and DMARC PASS. A Gmail reply with spot-mailbox-test.txt arrived in the original
 Spot thread; opening the stored attachment showed the exact synthetic marker.
 An immediate Spot reply was refused by the ten-minute pacing guard with its
 editable draft retained. The refusal now skips futile short retries and reports
-the approximate wait directly. Return-send verification follows once due.
+the approximate wait directly. At 1:00 PM, the saved Spot reply sent successfully and appeared as the third
+message in the same Gmail conversation. No duplicate messages resulted from the
+pacing refusals.
 
 After syncing the latest main, Email health now uses the shared top-bar page tabs.
 Restricted recipient mode is explicitly labelled "Test recipients only". Incoming
 Gmail replies appear in Inbox with Needs reply, independently of the Sent filter.
+
+Final state: Zac remains enabled as the selected local sender; the other four
+mailboxes remain paused. Local delivery remains restricted to zacyungblut@gmail.com,
+zac@spot.insure and zac@yungblut.ca, with no redirect or allowed domains. The
+conductor dev server stays running. Production mailbox credentials and activation
+remain separate. Microsoft placement and production SMTP egress were not tested.
+
+Artifacts: .context/qa/mailbox-live-20261027/ (gitignored): gmail-delivered.png,
+auth-pass.png, spot-reply-imported.png, gmail-roundtrip-complete.png,
+spot-roundtrip-complete.png and health-restricted.png. Full CI lint, typecheck,
+test and root checks passed on 0f938abe before this documentation-only checkpoint.
