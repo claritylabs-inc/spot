@@ -54,6 +54,8 @@ import {
   sendDraft,
   type ResendThreadEmail,
 } from "../lib/mailboxTransport";
+import { gmailFor } from "../lib/gmailClient";
+import { asRfcId } from "../lib/teamEmailStore";
 import { hasAlignedSenderDkim } from "../lib/gmailSenderAuthentication";
 import { MAX_OPERATOR_EMAIL_RAW_BYTES } from "../lib/operatorEmailAuthentication";
 import { fetchReceivedEmailRaw, ReceivedEmailRejectedError } from "../lib/receivingEmail";
@@ -914,9 +916,11 @@ async function downloadInboundAttachments(
  */
 /**
  * Whether a received email from a connected Gmail address is provably that
- * operator's own: aligned DKIM on the original MIME. Without raw MIME or a
- * passing signature the mail stays ordinary inbound; a DNS temperror throws so
- * the event is retried.
+ * operator's own: it is in their Gmail Sent folder (looked up by Message-ID),
+ * or its original MIME carries aligned DKIM. A lapsed connection or a missing
+ * Sent copy falls through to DKIM; without proof the mail stays ordinary
+ * inbound. A transient Google error or DNS temperror throws so the event is
+ * retried. The Sent lookup is a single immediate check.
  */
 async function gmailSenderAuthenticated(
   ctx: ActionCtx,
@@ -928,6 +932,8 @@ async function gmailSenderAuthenticated(
     address: email.fromEmail,
   });
   if (!connection) return false;
+  if (email.messageId && (await inGmailSentFolder(ctx, connection.address, email.messageId)))
+    return true;
   try {
     const received = await fetchReceivedEmailRaw(event.emailId, MAX_OPERATOR_EMAIL_RAW_BYTES);
     return (
@@ -939,6 +945,29 @@ async function gmailSenderAuthenticated(
     );
   } catch (error) {
     if (error instanceof ReceivedEmailRejectedError) return false;
+    throw error;
+  }
+}
+
+async function inGmailSentFolder(ctx: ActionCtx, address: string, messageId: string) {
+  let gmail: Awaited<ReturnType<typeof gmailFor>>["gmail"];
+  try {
+    ({ gmail } = await gmailFor(ctx, address));
+  } catch (error) {
+    if (isResendInboxError(error) && error.outcome === "blocked") return false;
+    throw error;
+  }
+  try {
+    const listed = await gmail.users.messages.list({
+      userId: "me",
+      q: `rfc822msgid:${asRfcId(messageId).slice(1, -1)} in:sent`,
+      maxResults: 1,
+    });
+    return (listed.data.messages?.length ?? 0) > 0;
+  } catch (error) {
+    const status = (error as { code?: unknown; status?: unknown }).status ?? (error as { code?: unknown }).code;
+    // Only an outage or throttling is worth a retry; a revoked or unauthorised grant just means no proof.
+    if (typeof status === "number" && status >= 400 && status < 500 && status !== 429) return false;
     throw error;
   }
 }
