@@ -279,7 +279,7 @@ function emailInputFor(
     operator,
     client: { name: request.clientName, applicantName: request.applicantName ?? undefined, summary: request.title },
     request: {
-      coverageLines: request.coverageLines,
+      coverageLines: request.coverageLabels.length ? request.coverageLabels : request.coverageLines,
       regions: request.regions,
       effectiveDate: request.targetEffectiveDate ?? undefined,
       isRenewal: request.isRenewal,

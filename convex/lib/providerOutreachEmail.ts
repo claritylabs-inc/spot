@@ -7,7 +7,6 @@ import { generateObjectForOrg } from "./models";
 import { buildOperatorSignature } from "./teamEmail";
 import type { OutreachStyle } from "./providerOutreachSchedule";
 import type { OutreachSummaryItem } from "./providerOutreachSummary";
-import dayjs from "dayjs";
 
 /**
  * Provider outreach email composition.
@@ -17,7 +16,7 @@ import dayjs from "dayjs";
  * inference-start marker, makes a single follow-up generation call, and never repeats
  * it after an unknown outcome. Composition is pure and deterministic: it adds
  * the greeting, packet section and operator signature in code and escapes HTML.
- * Initial emails use the deterministic applicant summary; follow-ups retain a
+ * Initial emails use the deterministic business summary; follow-ups retain a
  * deterministic template fallback.
  */
 
@@ -108,7 +107,7 @@ function boundedContext(input: OutreachEmailInput) {
     provider: { name: clean(input.providerName, LIMITS.contextItem) },
     recipientFirstName: firstName(input.recipientName),
     client: {
-      name: clean(client.applicantName ?? client.name, LIMITS.contextItem),
+      name: clean(client.name, LIMITS.contextItem),
       industry: clean(client.industry, LIMITS.contextItem),
       summary: clean(client.summary, LIMITS.contextText),
     },
@@ -285,7 +284,7 @@ function templateSubject(input: OutreachEmailInput): string {
       : `Re: ${input.initialSubject}`;
   }
   const lines = cleanList(input.request.coverageLines);
-  const base = `${clean(input.client.applicantName, LIMITS.contextItem) ?? "Client"} submission`;
+  const base = `${clean(input.client.name, LIMITS.contextItem) ?? "Client"} submission`;
   return clean(
     lines.length ? `${base}: ${joinList(lines)}` : base,
     LIMITS.subjectChars,
@@ -294,7 +293,7 @@ function templateSubject(input: OutreachEmailInput): string {
 
 function templateBody(input: OutreachEmailInput): string {
   const { client, request } = input;
-  const name = clean(client.applicantName, LIMITS.contextItem) ?? "our client";
+  const name = clean(client.name, LIMITS.contextItem) ?? "our client";
   const lines = joinList(cleanList(request.coverageLines));
   const regions = joinList(cleanList(request.regions));
   const effective = clean(request.effectiveDate, 40);
@@ -314,13 +313,19 @@ function templateBody(input: OutreachEmailInput): string {
     : "";
 
   if (input.kind === "initial") {
-    const bullets = [
-      lines ? `- Coverage requested: ${lines}` : "",
-      regions ? `- Location: ${regions}` : "",
-      effective ? `- Requested effective date: ${dayjs(effective).isValid() ? dayjs(effective).format("MMMM D, YYYY") : effective}` : "",
-      ...summaryItems(input).map((item) => `- ${item.label}: ${item.value}`),
-    ].filter(Boolean).join("\n");
-    return [`I’m reaching out on behalf of ${name}, who is looking for insurance options.`, bullets].filter(Boolean).join("\n\n");
+    const facts = summaryItems(input);
+    if (!facts.some((item) => item.label === "Location") && regions) {
+      facts.push({ label: "Location", value: regions });
+    }
+    if (!facts.some((item) => item.label === "Coverage requested") && lines) {
+      facts.push({ label: "Coverage requested", value: lines });
+    }
+    const bullets = facts.map((item) => `- ${item.label}: ${item.value}`).join("\n");
+    return [
+      `I’m with Spot, coordinating ${name}'s commercial insurance search.`,
+      "Could you confirm whether the following business fits your appetite?",
+      bullets,
+    ].filter(Boolean).join("\n\n");
   }
   if (input.style === "brief_nudge") {
     return `Following up on my earlier note about ${name}. ${ask}${closer}`;
@@ -409,9 +414,13 @@ export function composeOutreachEmail(
     ? "Hi there,"
     : `Hi ${firstName(input.recipientName) ?? "there"},`;
   const link = assertHttpsUrl(packetUrl);
-  const linkIntro = "Submission packet";
-  const packetDescription = "The application and released supporting documents are available here:";
-  const initialAsk = "Could you let me know whether this fits your appetite and what additional information you need to quote? A quick pass or referral to the appropriate desk would also be helpful.";
+  const linkIntro = input.kind === "initial"
+    ? "View the full application below, with more specific information"
+    : "Submission packet";
+  const packetDescription = input.kind === "initial"
+    ? "Review the application and available supporting documents"
+    : "The application and released supporting documents are available here:";
+  const initialAsk = "Could you let me know whether this fits your appetite and what additional information you need to quote?";
   const signature = buildOperatorSignature(input.operator);
 
   const text = [
@@ -429,7 +438,9 @@ export function composeOutreachEmail(
     paragraph(greeting),
     bodyHtml(body),
     `<p style="margin:0 0 8px"><strong>${linkIntro}</strong></p>`,
-    `<p style="margin:0 0 16px">${packetDescription}<br><a href="${escapeHtml(link)}">View secure submission packet</a></p>`,
+    input.kind === "initial"
+      ? `<p style="margin:0 0 16px"><a href="${escapeHtml(link)}">${packetDescription}</a></p>`
+      : `<p style="margin:0 0 16px">${packetDescription}<br><a href="${escapeHtml(link)}">View secure submission packet</a></p>`,
     ...(input.kind === "initial" ? [paragraph(initialAsk)] : []),
     paragraph("Thanks,"),
     signature.html,
