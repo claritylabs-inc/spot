@@ -2,13 +2,7 @@ import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { pendingEmailDraftFingerprint } from "./actionConfirmationFingerprint";
 import { extractEmailAddress } from "./emailAddress";
-import {
-  operatorSenderIdentity,
-  resolveSendFrom,
-  senderFromHeader,
-  type SendFrom,
-  type SendFromOptions,
-} from "./outreachIdentity";
+import { operatorSenderIdentity } from "./outreachIdentity";
 import { buildOperatorSignature } from "./teamEmail";
 import { teamTargetProblem } from "./teamEmailStore";
 import {
@@ -68,9 +62,6 @@ export type TeamComposePreview = {
   client: { _id: Id<"organizations">; name: string } | null;
   /** The request this email is filed under, if any. */
   request: { _id: Id<"procurementRequests">; title: string } | null;
-  /** The account this email goes out from; From, Cc and the fingerprint follow it. */
-  sendFrom: SendFrom;
-  sendFromOptions: SendFromOptions;
   fingerprint: string;
 };
 
@@ -85,16 +76,15 @@ function addresses(values: string[]) {
 }
 
 /**
- * The new email `operatorUserId` would send from their own team inbox (default)
- * or their connected Gmail, signed as them, with their Always CC. From Gmail
- * their team address is a visible Cc, so replies to everyone come back to Spot. Pure over current state: the preview, the
+ * The new email `operatorUserId` would send from their own team inbox, signed
+ * as them, with their Always CC. Pure over current state: the preview, the
  * approval fingerprint and the stored draft all come from this one function,
  * so what is approved is what is sent. Recipients are exactly what the
  * operator typed (one To, any Cc/Bcc); Spot's own machine addresses are refused.
  */
 export async function composeTeamEmail(
   ctx: Ctx,
-  args: TeamComposeInput & { operatorUserId: Id<"users">; sendFrom?: SendFrom },
+  args: TeamComposeInput & { operatorUserId: Id<"users"> },
 ): Promise<TeamComposition> {
   const message = normalizeReplyMessage(args.message);
   const subject = args.subject.replace(/\s+/g, " ").trim();
@@ -152,19 +142,11 @@ export async function composeTeamEmail(
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : "You cannot send email yet." };
   }
-  const choice = await resolveSendFrom(ctx, identity, args.sendFrom ?? "spot");
-  if (!choice.ok) return choice;
-  const { gmailAddress } = choice;
-  const teamAddress = identity.teamAddress.toLowerCase();
-  const own = (gmailAddress ?? teamAddress).toLowerCase();
+  const own = identity.teamAddress.toLowerCase();
   const copies = (list: string[], taken: string[]) =>
     [...new Set(list)].filter((address) => address !== own && !taken.includes(address));
   const ccAddresses = copies(
-    [
-      ...cc.valid,
-      ...(identity.alwaysCc ? [identity.alwaysCc.toLowerCase()] : []),
-      ...(gmailAddress ? [teamAddress] : []),
-    ],
+    [...cc.valid, ...(identity.alwaysCc ? [identity.alwaysCc.toLowerCase()] : [])],
     [recipientEmail],
   );
   const bccAddresses = copies(bcc.valid, [recipientEmail, ...ccAddresses]);
@@ -174,7 +156,7 @@ export async function composeTeamEmail(
     ...(bccAddresses.length ? { bccAddresses } : {}),
     subject,
     emailBody: message,
-    fromHeader: senderFromHeader(identity, gmailAddress),
+    fromHeader: identity.fromHeader,
     renderedText: `${message}\n\n${signature.text}`,
     renderedHtml: `${paragraphsHtml(message)}${signature.html}`,
     senderUserId: args.operatorUserId,
@@ -197,8 +179,6 @@ export async function composeTeamEmail(
       html: fields.renderedHtml,
       client,
       request,
-      sendFrom: choice.sendFrom,
-      sendFromOptions: choice.options,
       fingerprint,
     },
   };

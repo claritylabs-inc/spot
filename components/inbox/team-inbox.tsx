@@ -254,15 +254,6 @@ function ThreadRow({
         {thread.needsReply ? (
           <Badge variant="outline" className="shrink-0">Needs reply</Badge>
         ) : null}
-        {thread.gmailAddress ? (
-          <Badge
-            variant="outline"
-            className="hidden shrink-0 text-muted-foreground @xl:inline-flex"
-            title={`Involves ${thread.gmailAddress}`}
-          >
-            Gmail
-          </Badge>
-        ) : null}
         {tag ? (
           <Badge variant="outline" className="hidden max-w-36 text-muted-foreground @xl:inline-flex">
             <span className="truncate">{tag}</span>

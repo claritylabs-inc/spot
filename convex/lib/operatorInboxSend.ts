@@ -6,8 +6,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { toInboxDraftAttachments } from "./emailDelivery";
 import { extractEmailAddress } from "./emailAddress";
-import { GMAIL_RECONNECT_MESSAGE, resolveOperatorSender } from "./operatorInbox";
-import { inboxKind } from "./inboxIds";
+import { ensureOperatorInbox } from "./operatorInbox";
 import { isTeamEmailError } from "./teamEmail";
 import { teamReplyError, teamReplyErrorMessage } from "./teamEmailReply";
 import {
@@ -81,7 +80,6 @@ function userMessage(error: unknown): string {
       return `This mailbox is pacing its sends. Your draft is saved. Try again in about ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
     }
     if (error.code === "google_sending_retired") return "Google sending has been retired. Review this message using your Resend team address.";
-    if (error.code === "gmail_needs_reconnect") return GMAIL_RECONNECT_MESSAGE;
     return error.outcome === "blocked"
       ? "Restricted email delivery blocked a recipient of this email."
       : "Delivery failed. Review the reply and try again.";
@@ -95,7 +93,6 @@ function userMessage(error: unknown): string {
 /** The audit text stored on the attempt. */
 function describeFailure(error: unknown): string {
   if (isResendInboxError(error)) {
-    if (error.code === "gmail_needs_reconnect") return "Connected Gmail needs to be reconnected; nothing was sent.";
     return error.outcome === "blocked"
       ? "Restricted email delivery blocked a recipient of this email."
       : `Delivery failed (${error.operation}: ${error.outcome}${error.code ? ` ${error.code}` : ""}).`;
@@ -345,9 +342,11 @@ export async function sendOperatorInboxDraft(
   let inboxId: string;
   let draftId: string;
   try {
-    const fromAddress = extractEmailAddress(pending.fromHeader);
-    const ensured = await resolveOperatorSender(ctx, claim.senderUserId, fromAddress);
-    if (fromAddress !== ensured.inbox.emailAddress.toLowerCase()) {
+    const ensured = await ensureOperatorInbox(ctx, claim.senderUserId);
+    if (
+      extractEmailAddress(pending.fromHeader) !==
+      ensured.inbox.emailAddress.toLowerCase()
+    ) {
       throw teamReplyError("Sender changed — update draft to re-sign.");
     }
     inboxId = ensured.inbox.inboxId;
@@ -374,10 +373,6 @@ export async function sendOperatorInboxDraft(
                 threadId: reply.resendThreadId,
                 replyToEmailId: reply.replyToEmailId,
               }
-            : {}),
-          // Gmail threads by the RFC References chain approved with the reply.
-          ...(inboxKind(inboxId) === "gmail" && pending.references
-            ? { references: pending.references.split(/\s+/).filter(Boolean) }
             : {}),
           idempotencyKey: `opdraft:${keyId}`,
         }),

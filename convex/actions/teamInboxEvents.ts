@@ -17,12 +17,7 @@ import {
   parseInboxWebhookEvent,
   type ResendThreadEmail,
 } from "../lib/mailboxTransport";
-import { gmailFor } from "../lib/gmailClient";
-import { bareRfcId } from "../lib/messageId";
-import { hasAlignedSenderDkim } from "../lib/gmailSenderAuthentication";
-import { MAX_OPERATOR_EMAIL_RAW_BYTES } from "../lib/operatorEmailAuthentication";
 import { labelThread, sanitizedFailure, warn } from "../lib/outreachInboxSupport";
-import { fetchReceivedEmailRaw, ReceivedEmailRejectedError } from "../lib/receivingEmail";
 import {
   verifySvixWebhook,
   SvixWebhookVerificationError,
@@ -114,64 +109,6 @@ async function downloadInboundAttachments(
     warn("inbox attachment download failed", error);
   }
   return { stored, ids };
-}
-
-/**
- * Whether a received email from a connected Gmail address is provably that
- * operator's own: it is in their Gmail Sent folder (looked up by Message-ID),
- * or its original MIME carries aligned DKIM. A lapsed connection or a missing
- * Sent copy falls through to DKIM; without proof the mail stays ordinary
- * inbound. A transient Google error or DNS temperror throws so the event is
- * retried. The Sent lookup is a single immediate check.
- */
-async function gmailSenderAuthenticated(
-  ctx: ActionCtx,
-  event: { eventType: string; emailId: string },
-  email: InboxEmail,
-) {
-  if (event.eventType !== "inbox.email.received") return false;
-  const connection = await ctx.runQuery(internal.gmailInbound.senderConnectionInternal, {
-    address: email.fromEmail,
-  });
-  if (!connection) return false;
-  if (email.messageId && (await inGmailSentFolder(ctx, connection.address, email.messageId)))
-    return true;
-  try {
-    const received = await fetchReceivedEmailRaw(event.emailId, MAX_OPERATOR_EMAIL_RAW_BYTES);
-    return (
-      received.status === "available" &&
-      (await hasAlignedSenderDkim(received.raw, {
-        address: email.fromEmail,
-        messageId: email.messageId,
-      }))
-    );
-  } catch (error) {
-    if (error instanceof ReceivedEmailRejectedError) return false;
-    throw error;
-  }
-}
-
-async function inGmailSentFolder(ctx: ActionCtx, address: string, messageId: string) {
-  let gmail: Awaited<ReturnType<typeof gmailFor>>["gmail"];
-  try {
-    ({ gmail } = await gmailFor(ctx, address));
-  } catch (error) {
-    if (isResendInboxError(error) && error.outcome === "blocked") return false;
-    throw error;
-  }
-  try {
-    const listed = await gmail.users.messages.list({
-      userId: "me",
-      q: `rfc822msgid:${bareRfcId(messageId)} in:sent`,
-      maxResults: 1,
-    });
-    return (listed.data.messages?.length ?? 0) > 0;
-  } catch (error) {
-    const status = (error as { code?: unknown; status?: unknown }).status ?? (error as { code?: unknown }).code;
-    // Only an outage or throttling is worth a retry; a revoked or unauthorised grant just means no proof.
-    if (typeof status === "number" && status >= 400 && status < 500 && status !== 429) return false;
-    throw error;
-  }
 }
 
 /**
@@ -311,14 +248,12 @@ export const handleInboxEvent = internalAction({
             leaseToken,
             email,
             attachments: downloads.stored,
-            gmailSenderAuthenticated: await gmailSenderAuthenticated(ctx, event, email),
           },
         );
         uploaded = [];
         if (
           applied.applied &&
           !applied.duplicate &&
-          !applied.gmailSent &&
           event.eventType === "inbox.email.received"
         )
           await labelThread(target, event.threadId, "needsReply");

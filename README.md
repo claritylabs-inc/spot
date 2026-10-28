@@ -203,9 +203,6 @@ Common variables used across major workflows:
 - `CLIENT_PORTAL_URL` / `APP_SITE_URL` — client portal URL. Defaults to `https://app.spot.insure`.
 - `spot.claritylabs.inc` is the legacy browser host and redirects to `app.spot.insure`.
 - `AUTH_LINK_SITE_URL` — optional override for auth, login, signup, and invite links. Defaults to `https://app.spot.insure`; `auth.spot.insure` is only the default email sender domain.
-- `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — Internal Google OAuth Web client for operators' connected Gmail (redirect URI `<CONVEX_SITE_URL>/operator-gmail/oauth/callback`); a Convex env var. Tokens are encrypted with `EMAIL_CONNECTIONS_ENCRYPTION_KEY`.
-- `GOOGLE_MAILBOX_ALLOWED_DOMAINS` — comma-separated Google Workspace domains whose Gmail accounts operators may connect
-- `GOOGLE_GMAIL_PUBSUB_TOPIC` / `GOOGLE_GMAIL_PUSH_SERVICE_ACCOUNT` / `GOOGLE_GMAIL_PUSH_AUDIENCE` — optional Gmail push for connected Gmail (full Pub/Sub topic name, the push subscription's OIDC service-account email, and an audience that defaults to `<CONVEX_SITE_URL>/operator-gmail/push`); an unset topic disables watch and push
 - `AUTH_EMAIL_FROM` — optional mailbox-address override for OTP sign-in emails. The sender name is `Spot` unless a branded sender name is supplied by the email flow; the default address is `noreply@auth.spot.insure`.
 - `SITE_URL` — legacy fallback for client-facing links when the newer portal URL variables are not set.
 

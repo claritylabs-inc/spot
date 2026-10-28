@@ -12,13 +12,6 @@ import {
   EmailComposeRow,
   parseEmailAddressList,
 } from "@/components/email/compose-fields";
-import {
-  ComposeProblem,
-  SendFromField,
-  SpotCopyHint,
-  isGmailReconnectMessage,
-  useSendFromOptions,
-} from "@/components/inbox/send-from";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { PillButton } from "@/components/ui/pill-button";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
@@ -32,7 +25,6 @@ import {
 } from "@claritylabs-inc/ui/components/select";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import type { SendFrom } from "@/convex/lib/outreachIdentity";
 import {
   useCachedOperatorClients,
   useCachedOperatorCurrent,
@@ -51,8 +43,6 @@ type Draft = {
   clientOrgId: string;
   /** Files the conversation under a procurement request (and its client). */
   requestId?: string;
-  /** Absent means the Spot team address. */
-  sendFrom?: SendFrom;
   showCopies: boolean;
 };
 const EMPTY: Draft = { to: "", cc: "", bcc: "", subject: "", message: "", clientOrgId: "", showCopies: false };
@@ -108,7 +98,6 @@ function composeArgs(draft: Draft) {
     message: draft.message,
     ...(draft.clientOrgId ? { clientOrgId: draft.clientOrgId as Id<"organizations"> } : {}),
     ...(draft.requestId ? { requestId: draft.requestId as Id<"procurementRequests"> } : {}),
-    ...(draft.sendFrom ? { sendFrom: draft.sendFrom } : {}),
   };
 }
 
@@ -169,16 +158,13 @@ function OperatorNewEmailComposer({
   );
   const [sending, setSending] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [sendError, setSendError] = useState<string | null>(null);
   const locked = attempt !== null;
-  const update = (patch: Partial<Draft>) => {
-    setSendError(null);
+  const update = (patch: Partial<Draft>) =>
     setDraft((current) => {
       const next = { ...current, ...patch };
       drafts.set(draftKey, next);
       return next;
     });
-  };
 
   const settled = useDebounced(draft, PREVIEW_DELAY_MS);
   const ready = Boolean(settled.to.trim() && settled.subject.trim() && settled.message.trim());
@@ -186,10 +172,6 @@ function OperatorNewEmailComposer({
   const current = settled === draft;
   const preview = current && result?.ok ? result.preview : null;
   const problem = current && result && !result.ok ? result.reason : null;
-  const sendFromOptions = useSendFromOptions(preview?.sendFromOptions);
-  const sendFrom = draft.sendFrom ?? preview?.sendFrom ?? "spot";
-  // A Gmail that needs reconnecting is a banner with its link; the footer line would clip it.
-  const gmailProblem = [sendError, problem].find((message) => message && isGmailReconnectMessage(message));
   const status = useQuery(
     api.teamEmailCompose.status,
     attempt ? { idempotencyKey: attempt.key } : "skip",
@@ -227,7 +209,6 @@ function OperatorNewEmailComposer({
     writeAttempt(operatorId, next);
     setAttempt(next);
     setNote(null);
-    setSendError(null);
     setSending(true);
     try {
       const outcome = await send({
@@ -239,9 +220,7 @@ function OperatorNewEmailComposer({
       else if (outcome.status === "not_sent") {
         writeAttempt(operatorId, null);
         setAttempt(null);
-        // Nothing falls back to Spot: a Gmail that needs reconnecting stays on screen with its link.
-        if (isGmailReconnectMessage(outcome.message)) setSendError(outcome.message);
-        else toast.error(outcome.message);
+        toast.error(outcome.message);
       } else setNote(outcome.message);
     } catch (error) {
       // A lost response may still be a running send: stay locked.
@@ -256,9 +235,6 @@ function OperatorNewEmailComposer({
     [clients],
   );
   const disabled = sending || locked;
-  // From Gmail the sender's Spot address is a fixed, visible Cc the reviewer cannot remove.
-  const copiesSpot = preview?.sendFrom === "gmail" ? preview.sendFromOptions.spot : undefined;
-  const otherCc = (preview?.cc ?? []).filter((address) => address.toLowerCase() !== copiesSpot?.toLowerCase());
 
   return (
     <SettingsDrawer
@@ -280,7 +256,7 @@ function OperatorNewEmailComposer({
             {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
             Send
           </PillButton>
-          {problem && !gmailProblem ? (
+          {problem ? (
             <p role="alert" className={`min-w-0 flex-1 truncate text-muted-foreground ${typeStyle("caption.default")}`}>
               {problem}
             </p>
@@ -327,19 +303,10 @@ function OperatorNewEmailComposer({
             )}
           </div>
         ) : null}
-        {gmailProblem ? (
-          <div className={`border-b border-border bg-muted/40 px-4 py-2 text-foreground ${typeStyle("caption.default")}`}>
-            <ComposeProblem message={gmailProblem} />
-          </div>
-        ) : null}
         <EmailComposeRow label="From">
-          <SendFromField
-            options={sendFromOptions}
-            value={sendFrom}
-            fallback={preview?.from ?? "Your team address"}
-            disabled={disabled}
-            onChange={(value) => update({ sendFrom: value })}
-          />
+          <p className={`truncate ${typeStyle("body.default")}`}>
+            {preview?.from ?? "Your team address"}
+          </p>
         </EmailComposeRow>
         <EmailComposeRow label="To">
           <EmailComposeInput
@@ -398,17 +365,9 @@ function OperatorNewEmailComposer({
         </EmailComposeRow>
         {draft.showCopies || preview?.cc.length ? (
           <EmailComposeRow label="Cc">
-            {copiesSpot ? (
-              <>
-                <span className="inline-flex max-w-full min-w-0 items-center truncate rounded-full bg-muted px-2.5 py-0.5">
-                  {copiesSpot}
-                </span>
-                <SpotCopyHint />
-              </>
-            ) : null}
             <EmailComposeInput
               aria-label="Cc"
-              placeholder={otherCc.length ? otherCc.join(", ") : "Separate addresses with commas"}
+              placeholder={preview?.cc.length ? preview.cc.join(", ") : "Separate addresses with commas"}
               value={draft.cc}
               disabled={disabled}
               onChange={(event) => update({ cc: event.target.value, showCopies: true })}
