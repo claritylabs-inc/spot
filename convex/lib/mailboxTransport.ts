@@ -1,9 +1,7 @@
 "use node";
 /**
- * Resend sends team correspondence. `google:` inbox ids are an operator's
- * connected Gmail (OAuth) and go through the Gmail transport; the retired
- * `gmail:` app-password mailboxes remain readable only. `transportFor` picks
- * the implementation from the inbox id.
+ * Resend sends all correspondence; retired `gmail:` app-password mailboxes
+ * remain readable only. `transportFor` picks the implementation from the inbox id.
  */
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
@@ -11,7 +9,6 @@ import { internal } from "../_generated/api";
 import * as resend from "./resendInbox";
 import { readGoogleDraft } from "./googleMailboxTransport";
 import { inboxKind, legacyAddressOf } from "./inboxIds";
-import * as gmail from "./gmailTransport";
 export * from "./resendInbox";
 
 type ThreadEmailOperation = "getThreadEmail" | "replyToThreadEmail" | "addThreadLabels";
@@ -20,7 +17,7 @@ type MailboxTransport = {
   createDraft(
     ctx: ActionCtx,
     actor: Id<"users">,
-    params: gmail.GmailCreateDraftParams,
+    params: resend.CreateDraftParams,
   ): Promise<resend.ResendInboxResult<{ id: string }>>;
   sendDraft(
     ctx: ActionCtx,
@@ -64,8 +61,7 @@ const retiredSending = (operation: "createDraft" | "sendDraft" | "replyToThreadE
   );
 
 const resendTransport: MailboxTransport = {
-  createDraft: (ctx, actor, { references: _references, ...params }) =>
-    resend.createDraft(ctx, actor, params),
+  createDraft: resend.createDraft,
   sendDraft: resend.sendDraft,
   getDraft: (_ctx, inboxId, draftId) => resend.getDraft(inboxId, draftId),
   getThreadEmail: (_ctx, inboxId, threadId, emailId) =>
@@ -74,29 +70,6 @@ const resendTransport: MailboxTransport = {
   addThreadLabels: resend.addThreadLabels,
   unsupported: (operation) =>
     new resend.ResendInboxError("permanent", operation, "Not supported by Resend inboxes"),
-};
-
-const gmailTransport: MailboxTransport = {
-  createDraft: gmail.createGmailDraft,
-  sendDraft: gmail.sendGmailDraft,
-  getDraft: gmail.readGmailDraft,
-  addThreadLabels: noLabels,
-  // Gmail messages are not stored as inbox thread emails (the team inbox holds
-  // them) and Gmail replies are sent from a reviewed draft.
-  unsupported: (operation) =>
-    operation === "replyToThreadEmail"
-      ? new resend.ResendInboxError(
-          "permanent",
-          operation,
-          "Gmail replies are sent from a reviewed draft",
-          { code: "gmail_reply_unsupported" },
-        )
-      : new resend.ResendInboxError(
-          "permanent",
-          operation,
-          "Message not found in this mailbox",
-          { code: "gmail_thread_email_unsupported" },
-        ),
 };
 
 const legacyTransport: MailboxTransport = {
@@ -125,7 +98,6 @@ const legacyTransport: MailboxTransport = {
 
 const transports = {
   resend: resendTransport,
-  gmail: gmailTransport,
   legacy_google: legacyTransport,
 };
 
@@ -136,7 +108,7 @@ export function transportFor(inboxId: string): MailboxTransport {
 export async function createDraft(
   ctx: ActionCtx,
   actor: Id<"users">,
-  params: gmail.GmailCreateDraftParams,
+  params: resend.CreateDraftParams,
 ) {
   return transportFor(params.inboxId).createDraft(ctx, actor, params);
 }

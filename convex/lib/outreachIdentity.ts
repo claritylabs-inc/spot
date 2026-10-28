@@ -1,10 +1,8 @@
-import { v } from "convex/values";
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { actionConfirmationFingerprint } from "./actionConfirmationFingerprint";
 import { validateAlwaysCcEmail } from "./operatorInbox";
 import { operatorEmailAliases, requireOperatorForUser } from "./operatorIdentity";
-import { normalizeGmailAddress } from "./inboxIds";
 import {
   isTeamEmailError,
   operatorFromHeader,
@@ -200,74 +198,3 @@ export async function outreachSenderPanel(
     problem: null,
   };
 }
-
-/** Which of the operator's two sending accounts a browser reply or new email goes out from. */
-export const sendFromValidator = v.union(v.literal("spot"), v.literal("gmail"));
-export type SendFrom = "spot" | "gmail";
-
-export type SendFromOptions = { spot: string; gmail?: string };
-
-/** The operator's connected Gmail in any status, or null. */
-export async function operatorGmailConnection(
-  ctx: QueryCtx | MutationCtx,
-  userId: Id<"users">,
-): Promise<Doc<"operatorGmailConnections"> | null> {
-  return await ctx.db
-    .query("operatorGmailConnections")
-    .withIndex("by_ownerUserId", (q) => q.eq("ownerUserId", userId))
-    .first();
-}
-
-export type SendFromChoice =
-  | {
-      ok: true;
-      sendFrom: SendFrom;
-      /** The address in From when `sendFrom` is "gmail". */
-      gmailAddress?: string;
-      /** The connected Gmail in any status; never a correspondent to copy. */
-      connectedAddress?: string;
-      options: SendFromOptions;
-    }
-  | { ok: false; reason: string };
-
-/**
- * The sending account for a reply or new email. Gmail is offered only while
- * the connection is active, and is the reply default only when the thread
- * involves that Gmail; a request for Gmail without an active connection is
- * refused rather than sent from the Spot address.
- */
-export async function resolveSendFrom(
-  ctx: QueryCtx | MutationCtx,
-  identity: Pick<OperatorSenderIdentity, "senderUserId" | "teamAddress">,
-  requested: SendFrom | undefined,
-  threadGmailAddress?: string,
-): Promise<SendFromChoice> {
-  const connection = await operatorGmailConnection(ctx, identity.senderUserId);
-  const active = connection?.status === "active" ? connection.address : undefined;
-  const sendFrom: SendFrom =
-    requested ??
-    (active && threadGmailAddress && normalizeGmailAddress(threadGmailAddress) === active
-      ? "gmail"
-      : "spot");
-  if (sendFrom === "gmail" && !active) {
-    return {
-      ok: false,
-      reason: connection
-        ? "Your connected Gmail needs to be reconnected before you can send from it."
-        : "Connect Gmail in Profile to send from it.",
-    };
-  }
-  return {
-    ok: true,
-    sendFrom,
-    ...(sendFrom === "gmail" ? { gmailAddress: active } : {}),
-    ...(connection ? { connectedAddress: connection.address } : {}),
-    options: { spot: identity.teamAddress, ...(active ? { gmail: active } : {}) },
-  };
-}
-
-/** `Full Name <address>` for the sending account. */
-export const senderFromHeader = (
-  identity: Pick<OperatorSenderIdentity, "name" | "fromHeader">,
-  gmailAddress?: string,
-) => (gmailAddress ? operatorFromHeader(identity.name, gmailAddress) : identity.fromHeader);

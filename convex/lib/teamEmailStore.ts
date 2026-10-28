@@ -186,33 +186,6 @@ export async function outboundByMessageId(ctx: Ctx, messageId: string) {
   return null;
 }
 
-/**
- * The message of this conversation with the same RFC Message-ID (any spelling)
- * from the same address, in either direction. Mail reaches a conversation by
- * more than one path (the Resend inbox and the connected Gmail), and each path
- * recognises the other's copy by this. The sender must match so a forged
- * Message-ID cannot suppress different mail.
- */
-export async function storedCopyInThread(
-  ctx: Ctx,
-  threadId: Id<"teamEmailThreads">,
-  email: { messageId: string; fromEmail: string },
-) {
-  const from = normalizeProcurementEmail(email.fromEmail);
-  for (const form of messageIdForms(email.messageId)) {
-    const stored = await ctx.db
-      .query("teamEmailMessages")
-      .withIndex("by_messageId", (q) => q.eq("messageId", form))
-      .take(10);
-    const copy = stored.find(
-      (message) =>
-        message.threadId === threadId && normalizeProcurementEmail(message.fromEmail) === from,
-    );
-    if (copy) return copy;
-  }
-  return null;
-}
-
 // ---------------------------------------------------------------------------
 // Inbox bindings and live-target validation
 // ---------------------------------------------------------------------------
@@ -318,10 +291,7 @@ export type MirrorTeamEmailResult =
  * id learned from `inbox.email.sent`). An inbound email whose RFC Message-ID is
  * already stored as Spot's own outbound message is that message's copy
  * (for example a CC delivered to another operator inbox) and is not stored
- * again; its sender address is never what suppresses it. Into an existing
- * conversation, an email whose RFC Message-ID and sender match a message the
- * conversation already holds (either direction, stored by the Resend inbox or
- * the connected Gmail) is likewise that message's copy.
+ * again; its sender address is never what suppresses it.
  *
  * `attachments` must be NEW uploads this call may consume: linked threads file
  * them as client files (and request file items when the thread has a request),
@@ -346,14 +316,6 @@ export async function mirrorTeamEmail(
     inboxId?: string;
     sentByUserId?: Id<"users">;
     pendingEmailId?: Id<"pendingEmails">;
-    /** Connected operator Gmail on this email; kept on the thread once set, never cleared. */
-    gmailAddress?: string;
-    /**
-     * The email is a CC/BCC capture of mail the operator sent, so a stored
-     * outbound message with the same RFC Message-ID is its original (inbound
-     * mail always gets this check).
-     */
-    ownCopyCheck?: boolean;
     /** Known correspondents to add to the thread's participants (for example an outreach recipient). */
     extraParticipants?: string[];
     now: number;
@@ -374,7 +336,6 @@ export async function mirrorTeamEmail(
     if (!duplicate.resendThreadId && args.resendThreadId) fill.resendThreadId = args.resendThreadId;
     if (!duplicate.sentByUserId && args.sentByUserId) fill.sentByUserId = args.sentByUserId;
     if (!duplicate.pendingEmailId && args.pendingEmailId) fill.pendingEmailId = args.pendingEmailId;
-    if (!duplicate.gmailAddress && args.gmailAddress) fill.gmailAddress = args.gmailAddress;
     if (Object.keys(fill).length) await ctx.db.patch(duplicate._id, fill);
     if (args.inboxId && args.resendThreadId)
       await bindTeamInboxThread(ctx, {
@@ -384,7 +345,7 @@ export async function mirrorTeamEmail(
       });
     return { duplicate: true, threadId: duplicate.threadId, messageId: duplicate._id, internalCopy: false };
   }
-  if ((args.direction === "inbound" || args.ownCopyCheck) && email.messageId) {
+  if (args.direction === "inbound" && email.messageId) {
     const own = await outboundByMessageId(ctx, email.messageId);
     if (own) {
       await dropUploads();
@@ -395,23 +356,6 @@ export async function mirrorTeamEmail(
           resendThreadId: args.resendThreadId,
         });
       return { duplicate: true, threadId: own.threadId, messageId: own._id, internalCopy: true };
-    }
-  }
-
-  if (email.messageId && "thread" in args.target) {
-    const copy = await storedCopyInThread(ctx, args.target.thread._id, {
-      messageId: email.messageId,
-      fromEmail: email.fromEmail,
-    });
-    if (copy) {
-      await dropUploads();
-      if (args.inboxId && args.resendThreadId)
-        await bindTeamInboxThread(ctx, {
-          threadId: copy.threadId,
-          inboxId: args.inboxId,
-          resendThreadId: args.resendThreadId,
-        });
-      return { duplicate: true, threadId: copy.threadId, messageId: copy._id, internalCopy: false };
     }
   }
 
@@ -454,7 +398,6 @@ export async function mirrorTeamEmail(
       categorySource: "auto",
       categoryReason: create.categoryReason,
       participantEmails: participants,
-      gmailAddress: args.gmailAddress,
       latestMessageAt: 0,
       messageCount: 0,
       createdAt: now,
@@ -498,7 +441,6 @@ export async function mirrorTeamEmail(
     direction: args.direction,
     sentByUserId: args.sentByUserId,
     pendingEmailId: args.pendingEmailId,
-    gmailAddress: args.gmailAddress,
     resendThreadId: args.resendThreadId,
     unfiledAttachments: unfiled,
     resendInboxEmailId: email.resendInboxEmailId,
@@ -533,7 +475,6 @@ export async function mirrorTeamEmail(
   const newest = email.occurredAt >= thread.latestMessageAt;
   await ctx.db.patch(thread._id, {
     participantEmails: uniqueProcurementEmails([...thread.participantEmails, ...participants]),
-    ...(args.gmailAddress && !thread.gmailAddress ? { gmailAddress: args.gmailAddress } : {}),
     latestMessageAt: Math.max(thread.latestMessageAt, email.occurredAt),
     messageCount: thread.messageCount + 1,
     ...(args.resendThreadId && !thread.resendThreadId

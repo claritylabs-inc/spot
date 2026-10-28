@@ -152,7 +152,6 @@ export async function teamInboxRow(
     subject: thread.subject,
     category: thread.category,
     participantEmails: thread.participantEmails,
-    gmailAddress: thread.gmailAddress ?? null,
     latestMessageAt: thread.latestMessageAt,
     messageCount: thread.messageCount,
     source: thread.source,
@@ -467,7 +466,6 @@ export async function getTeamThreadDetails(
   const hydrated = await Promise.all(
     messages.page.reverse().map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
       ...message,
-      gmailAddress: message.gmailAddress ?? null,
       sentBy: await personFor(ctx, people, message.sentByUserId),
       fromOperator:
         message.direction === "inbound"
@@ -514,7 +512,6 @@ export async function getTeamThreadDetails(
   const forwardingAddress = liveAddressed ? requestForwardingAddressOf(liveAddressed) : null;
   return {
     thread,
-    gmailAddress: thread.gmailAddress ?? null,
     request: request ? { requestId: request._id, title: request.title } : null,
     addressedRequest: liveAddressed
       ? { requestId: liveAddressed._id, title: liveAddressed.title, forwardingAddress }

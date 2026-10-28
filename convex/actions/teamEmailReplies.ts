@@ -8,7 +8,6 @@ import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { sendOperatorInboxDraft } from "../lib/operatorInboxSend";
 import { isReplyKeyMismatch, teamReplyErrorMessage } from "../lib/teamEmailReply";
 import { getEmailDeliveryMode } from "../lib/resend";
-import { sendFromValidator } from "../lib/outreachIdentity";
 
 export type TeamReplySent = {
   status: "sent";
@@ -68,7 +67,6 @@ export const send = action({
     message: v.string(),
     expectedFingerprint: v.string(),
     idempotencyKey: v.string(),
-    sendFrom: v.optional(sendFromValidator),
   },
   handler: async (ctx, args): Promise<TeamReplySendResult> => {
     let pendingEmailId: Id<"pendingEmails">;

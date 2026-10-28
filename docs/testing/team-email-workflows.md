@@ -68,10 +68,6 @@ an established source reference, organization fact provenance, and pending draft
    IDs must not resolve or gain write authorization. Client/provider accounts
    cannot access team mail; impersonating operators cannot change it.
 
-9. **Connected Gmail.** Run the cases in
-   [operator Gmail workflow](operator-gmail-workflow.md); Gmail threads, CC
-   copies and sends must stay in the shared team inbox with the Gmail marker.
-
 For the profile, inbox, reader, linking action and draft card, exercise keyboard
 navigation, a narrow viewport, light and dark themes, and loading, empty and failed
 states. Unsent reply text must survive a failed send and switching conversations

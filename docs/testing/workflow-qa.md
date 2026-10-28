@@ -1,17 +1,5 @@
 # Platform workflow QA
 
-## Connected operator Gmail — October 27, 2026
-
-Local backend (`127.0.0.1:8084`) with the Internal OAuth client for
-`toolsforenlightenment.org`. Operator login and the profile Gmail card worked;
-Connect Google reached Google's consent screen with the four requested scopes,
-then stopped at Google's security-key verification, so connect, Gmail send,
-Message-ID preservation, reconnect and disconnect remain unverified. Domain
-rejection was skipped (no second account) and the Spot send was skipped (no local
-Resend key). Inbound CC capture cannot reach localhost and needs a hosted dev
-webhook. Root/Convex types and lint passed; no unit tests or Vercel previews. See
-[workflow](operator-gmail-workflow.md).
-
 ## Quote authorization PDF - October 27, 2026
 
 Local submit/resubmit produced immutable authorization snapshots and one current
