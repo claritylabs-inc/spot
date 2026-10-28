@@ -81,6 +81,7 @@ node_modules/
 !/docs/testing/workflow-qa.md
 !/docs/testing/intake-authorization-workflow.md
 !/docs/testing/workspace-scan.md
+!/docs/testing/operator-gmail-workflow.md
 !/docs/testing/requirements-fixtures/
 !/docs/testing/requirements-fixtures/**
 

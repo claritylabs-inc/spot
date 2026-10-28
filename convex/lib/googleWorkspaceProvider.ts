@@ -1,6 +1,8 @@
 "use node";
 
 import { google, type admin_directory_v1, type gmail_v1 } from "googleapis";
+import type { ActionCtx } from "../_generated/server";
+import { gmailFor as connectedGmailFor } from "./gmailClient";
 import type { GoogleWorkspaceServiceAccountCredentials } from "./googleWorkspaceCredentials";
 
 const GOOGLE_REQUEST_TIMEOUT_MS = 15_000;
@@ -46,15 +48,35 @@ export type GoogleWorkspaceMessage = {
   payload: GoogleWorkspaceMessagePart | null;
 };
 
-/**
- * How the provider authorises Gmail. Domain-wide delegation is the only
- * strategy today; further strategies join this union.
- */
-export type GmailAuth = {
-  kind: "delegated";
-  credentials: GoogleWorkspaceServiceAccountCredentials;
-  scopes: { gmail: readonly string[]; directory: readonly string[] };
+export type GoogleWorkspaceMessageSummary = {
+  id: string;
+  /** Epoch ms as Gmail records it. */
+  internalDate: number | null;
+  labelIds: string[];
 };
+
+export type GoogleWorkspaceRawMessage = {
+  id: string;
+  threadId: string;
+  internalDate: string | null;
+  labelIds: string[];
+  /** Base64url RFC 822 source. */
+  raw: string;
+};
+
+export type GoogleWorkspaceHistoryRecord = {
+  id: string;
+  messagesAdded: Array<{ id: string; threadId: string }>;
+};
+
+/** How the provider authorises Gmail: domain-wide delegation, or a connected account's OAuth grant. */
+export type GmailAuth =
+  | {
+      kind: "delegated";
+      credentials: GoogleWorkspaceServiceAccountCredentials;
+      scopes: { gmail: readonly string[]; directory: readonly string[] };
+    }
+  | { kind: "oauth"; ctx: ActionCtx };
 
 export type GoogleWorkspaceProvider = {
   listDirectoryUsers(args: {
@@ -87,6 +109,11 @@ export type GoogleWorkspaceProvider = {
     mailbox: string;
     threadId: string;
   }): Promise<string[]>;
+  /** A thread's messages in `minimal` format: no headers or bodies. */
+  getThreadMessageSummaries(args: {
+    mailbox: string;
+    threadId: string;
+  }): Promise<GoogleWorkspaceMessageSummary[]>;
   getMessageMetadata(args: {
     mailbox: string;
     messageId: string;
@@ -100,10 +127,44 @@ export type GoogleWorkspaceProvider = {
     messageId: string;
     attachmentId: string;
   }): Promise<{ data: string; size: number }>;
+  getMessageRaw(args: {
+    mailbox: string;
+    messageId: string;
+  }): Promise<GoogleWorkspaceRawMessage>;
+  listHistory(args: {
+    mailbox: string;
+    startHistoryId: string;
+    pageToken?: string;
+    maxResults?: number;
+  }): Promise<{
+    history: GoogleWorkspaceHistoryRecord[];
+    nextPageToken: string | null;
+    historyId: string | null;
+  }>;
+  watch(args: {
+    mailbox: string;
+    topicName: string;
+    labelIds?: string[];
+    /** `include` notifies only for the listed labels. */
+    labelFilterBehavior?: "include" | "exclude";
+  }): Promise<{ historyId: string | null; expiration: string | null }>;
+  stop(args: { mailbox: string }): Promise<void>;
+  getProfile(args: { mailbox: string }): Promise<{
+    emailAddress: string;
+    messagesTotal: number;
+    threadsTotal: number;
+    historyId: string | null;
+  }>;
 };
 
 export class GoogleWorkspaceProviderError extends Error {
-  constructor(message: string, readonly status: number | null = null) {
+  constructor(
+    message: string,
+    readonly status: number | null = null,
+    /** Google's lower-cased error reasons (for example `ratelimitexceeded`). */
+    readonly reasons: string[] = [],
+    readonly retryAfterMs: number | null = null,
+  ) {
     super(message);
     this.name = "GoogleWorkspaceProviderError";
   }
@@ -220,17 +281,26 @@ export function createGoogleWorkspaceProvider(
 ): GoogleWorkspaceProvider {
   const gmailClients = new Map<string, gmail_v1.Gmail>();
   const directoryClients = new Map<string, admin_directory_v1.Admin>();
-  const gmailFor = (mailbox: string) => {
+  const buildGmail = async (mailbox: string) =>
+    auth.kind === "delegated"
+      ? google.gmail({
+          version: "v1",
+          auth: delegatedAuth(auth.credentials, mailbox, auth.scopes.gmail),
+        })
+      : (await connectedGmailFor(auth.ctx, mailbox)).gmail;
+  const gmailFor = async (mailbox: string) => {
     const existing = gmailClients.get(mailbox);
     if (existing) return existing;
-    const client = google.gmail({
-      version: "v1",
-      auth: delegatedAuth(auth.credentials, mailbox, auth.scopes.gmail),
-    });
+    const client = await buildGmail(mailbox);
     gmailClients.set(mailbox, client);
     return client;
   };
   const directoryFor = (subject: string) => {
+    if (auth.kind !== "delegated") {
+      throw new GoogleWorkspaceProviderError(
+        "The Google Workspace directory is only available with domain-wide delegation, not a connected Gmail account.",
+      );
+    }
     const existing = directoryClients.get(subject);
     if (existing) return existing;
     const client = google.admin({
@@ -244,8 +314,22 @@ export function createGoogleWorkspaceProvider(
     try {
       return await operation();
     } catch (error) {
-      throw new GoogleWorkspaceProviderError(sanitizeGoogleWorkspaceError(error), googleWorkspaceErrorStatus(error));
+      throw new GoogleWorkspaceProviderError(
+        sanitizeGoogleWorkspaceError(error),
+        googleWorkspaceErrorStatus(error),
+        googleWorkspaceErrorReasons(error),
+        googleWorkspaceRetryAfterMs(error),
+      );
     }
+  };
+  // Client resolution stays outside `request` so a connected account's
+  // reconnect error reaches the caller instead of a generic provider error.
+  const gmailRequest = async <T>(
+    mailbox: string,
+    operation: (gmail: gmail_v1.Gmail) => Promise<T>,
+  ) => {
+    const gmail = await gmailFor(mailbox);
+    return request(() => operation(gmail));
   };
 
   return {
@@ -280,8 +364,8 @@ export function createGoogleWorkspaceProvider(
     },
 
     async getMailboxProfile(mailbox, options) {
-      const response = await request(() =>
-        gmailFor(mailbox).users.getProfile(
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.getProfile(
           { userId: "me" },
           { ...GOOGLE_REQUEST_OPTIONS, signal: options?.signal },
         ),
@@ -293,8 +377,8 @@ export function createGoogleWorkspaceProvider(
     },
 
     async listMessages({ mailbox, query, pageToken, maxResults }) {
-      const response = await request(() =>
-        gmailFor(mailbox).users.messages.list(
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.messages.list(
           {
             userId: "me",
             q: query,
@@ -316,8 +400,8 @@ export function createGoogleWorkspaceProvider(
     },
 
     async getThreadMessageIds({ mailbox, threadId }) {
-      const response = await request(() =>
-        gmailFor(mailbox).users.threads.get(
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.threads.get(
           {
             userId: "me",
             id: threadId,
@@ -332,9 +416,34 @@ export function createGoogleWorkspaceProvider(
       );
     },
 
+    async getThreadMessageSummaries({ mailbox, threadId }) {
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.threads.get(
+          {
+            userId: "me",
+            id: threadId,
+            format: "minimal",
+            fields: "messages(id,internalDate,labelIds)",
+          },
+          GOOGLE_REQUEST_OPTIONS,
+        ),
+      );
+      return (response.data.messages ?? []).flatMap((message) => {
+        if (!message.id) return [];
+        const internalDate = Number(message.internalDate);
+        return [
+          {
+            id: message.id,
+            internalDate: Number.isFinite(internalDate) ? internalDate : null,
+            labelIds: message.labelIds ?? [],
+          },
+        ];
+      });
+    },
+
     async getMessageMetadata({ mailbox, messageId }) {
-      const response = await request(() =>
-        gmailFor(mailbox).users.messages.get(
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.messages.get(
           {
             userId: "me",
             id: messageId,
@@ -348,8 +457,8 @@ export function createGoogleWorkspaceProvider(
     },
 
     async getMessageFull({ mailbox, messageId }) {
-      const response = await request(() =>
-        gmailFor(mailbox).users.messages.get(
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.messages.get(
           { userId: "me", id: messageId, format: "full" },
           GOOGLE_REQUEST_OPTIONS,
         ),
@@ -358,8 +467,8 @@ export function createGoogleWorkspaceProvider(
     },
 
     async getAttachment({ mailbox, messageId, attachmentId }) {
-      const response = await request(() =>
-        gmailFor(mailbox).users.messages.attachments.get(
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.messages.attachments.get(
           { userId: "me", messageId, id: attachmentId },
           GOOGLE_REQUEST_OPTIONS,
         ),
@@ -369,6 +478,93 @@ export function createGoogleWorkspaceProvider(
       }
       return { data: response.data.data, size: response.data.size ?? 0 };
     },
+
+    async getMessageRaw({ mailbox, messageId }) {
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.messages.get(
+          { userId: "me", id: messageId, format: "raw" },
+          GOOGLE_REQUEST_OPTIONS,
+        ),
+      );
+      const { id, threadId, raw } = response.data;
+      if (!id || !threadId || !raw) {
+        throw new Error("Google Workspace returned an invalid raw Gmail message.");
+      }
+      return {
+        id,
+        threadId,
+        internalDate: response.data.internalDate ?? null,
+        labelIds: response.data.labelIds ?? [],
+        raw,
+      };
+    },
+
+    async listHistory({ mailbox, startHistoryId, pageToken, maxResults }) {
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.history.list(
+          {
+            userId: "me",
+            startHistoryId,
+            historyTypes: ["messageAdded"],
+            pageToken,
+            maxResults,
+          },
+          GOOGLE_REQUEST_OPTIONS,
+        ),
+      );
+      return {
+        history: (response.data.history ?? []).flatMap((record) =>
+          record.id
+            ? [
+                {
+                  id: record.id,
+                  messagesAdded: (record.messagesAdded ?? []).flatMap((added) =>
+                    added.message?.id && added.message.threadId
+                      ? [{ id: added.message.id, threadId: added.message.threadId }]
+                      : [],
+                  ),
+                },
+              ]
+            : [],
+        ),
+        nextPageToken: response.data.nextPageToken ?? null,
+        historyId: response.data.historyId ?? null,
+      };
+    },
+
+    async watch({ mailbox, topicName, labelIds, labelFilterBehavior }) {
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.watch(
+          { userId: "me", requestBody: { topicName, labelIds, labelFilterBehavior } },
+          GOOGLE_REQUEST_OPTIONS,
+        ),
+      );
+      return {
+        historyId: response.data.historyId ?? null,
+        expiration: response.data.expiration ?? null,
+      };
+    },
+
+    async stop({ mailbox }) {
+      await gmailRequest(mailbox, (gmail) =>
+        gmail.users.stop({ userId: "me" }, GOOGLE_REQUEST_OPTIONS),
+      );
+    },
+
+    async getProfile({ mailbox }) {
+      const response = await gmailRequest(mailbox, (gmail) =>
+        gmail.users.getProfile({ userId: "me" }, GOOGLE_REQUEST_OPTIONS),
+      );
+      if (!response.data.emailAddress) {
+        throw new Error("Google Workspace returned an invalid mailbox profile.");
+      }
+      return {
+        emailAddress: response.data.emailAddress.toLowerCase(),
+        messagesTotal: response.data.messagesTotal ?? 0,
+        threadsTotal: response.data.threadsTotal ?? 0,
+        historyId: response.data.historyId ?? null,
+      };
+    },
   };
 }
 
@@ -377,6 +573,35 @@ export function googleWorkspaceErrorStatus(error: unknown): number | null {
   if (!error || typeof error !== "object") return null;
   const record = error as {code?: unknown; response?: {status?: unknown}};
   return typeof record.response?.status === "number" ? record.response.status : typeof record.code === "number" ? record.code : null;
+}
+
+type GoogleErrorShape = {
+  errors?: Array<{ reason?: unknown }>;
+  response?: {
+    headers?: Record<string, unknown>;
+    data?: { error?: { errors?: Array<{ reason?: unknown }> } | unknown };
+  };
+};
+
+/** Lower-cased Google error reasons, for telling rate limits from other 403s. */
+export function googleWorkspaceErrorReasons(error: unknown): string[] {
+  if (error instanceof GoogleWorkspaceProviderError) return error.reasons;
+  if (!error || typeof error !== "object") return [];
+  const record = error as GoogleErrorShape;
+  const body = record.response?.data?.error;
+  const nested = body && typeof body === "object" ? (body as GoogleErrorShape).errors : undefined;
+  return [...(record.errors ?? []), ...(nested ?? [])].flatMap((entry) =>
+    typeof entry.reason === "string" ? [entry.reason.toLowerCase()] : [],
+  );
+}
+
+/** The `Retry-After` of a throttled response, in ms. */
+export function googleWorkspaceRetryAfterMs(error: unknown): number | null {
+  if (error instanceof GoogleWorkspaceProviderError) return error.retryAfterMs;
+  if (!error || typeof error !== "object") return null;
+  const header = (error as GoogleErrorShape).response?.headers?.["retry-after"];
+  const seconds = Number(Array.isArray(header) ? header[0] : header);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : null;
 }
 
 export function sanitizeGoogleWorkspaceError(error: unknown): string {

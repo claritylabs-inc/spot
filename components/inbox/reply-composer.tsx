@@ -10,9 +10,17 @@ import {
   EmailComposeMessage,
   EmailComposeRow,
 } from "@/components/email/compose-fields";
+import {
+  ComposeProblem,
+  SendFromField,
+  SpotCopyHint,
+  isGmailReconnectMessage,
+  useSendFromOptions,
+} from "@/components/inbox/send-from";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import type { SendFrom } from "@/convex/lib/outreachIdentity";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
@@ -21,7 +29,14 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 const PREVIEW_DELAY_MS = 450;
 
 /** One send of one exact email. It lives from before the action starts until a definitive outcome. */
-type SendAttempt = { key: string; text: string; fingerprint: string; startedAt: number };
+type SendAttempt = {
+  key: string;
+  text: string;
+  fingerprint: string;
+  startedAt: number;
+  /** The account the reviewed email goes out from; absent on attempts stored before Gmail sending. */
+  sendFrom?: SendFrom;
+};
 
 // Storage is scoped to the signed-in operator and the conversation, so a
 // reload keeps a locked send and a sign-out never hands it to the next user.
@@ -29,6 +44,8 @@ const scope = (operatorId: string, threadId: string) => `${operatorId}:${threadI
 const attemptStorageKey = (id: string) => `teamReply:attempt:${id}`;
 const memoryAttempts = new Map<string, SendAttempt>();
 const replyDrafts = new Map<string, string>();
+// An explicit From choice for a conversation; absent means the server's default.
+const replySendFrom = new Map<string, SendFrom>();
 
 function readAttempt(id: string): SendAttempt | null {
   try {
@@ -39,7 +56,10 @@ function readAttempt(id: string): SendAttempt | null {
       typeof value.text === "string" &&
       typeof value.fingerprint === "string" &&
       typeof value.startedAt === "number"
-      ? (value as SendAttempt)
+      ? ({
+          ...value,
+          sendFrom: value.sendFrom === "spot" || value.sendFrom === "gmail" ? value.sendFrom : undefined,
+        } as SendAttempt)
       : null;
   } catch {
     return memoryAttempts.get(id) ?? null;
@@ -120,11 +140,15 @@ function OperatorReplyComposer({
   const [attempt, setAttempt] = useState<SendAttempt | null>(() => readAttempt(id));
   const [text, setText] = useState(() => readAttempt(id)?.text ?? replyDrafts.get(id) ?? "");
   const [serverNote, setServerNote] = useState<string | null>(null);
+  const [sendFromChoice, setSendFromChoice] = useState<SendFrom | undefined>(
+    () => readAttempt(id)?.sendFrom ?? replySendFrom.get(id),
+  );
+  const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [focused, setFocused] = useState(false);
   const [showFull, setShowFull] = useFollowedState(`inbox:reply:${threadId}:show-full`, false);
   // A key belongs to one exact text and fingerprint: unchanged, it is reused.
-  const sendKey = useRef<{ key: string; text: string; fingerprint: string } | null>(null);
+  const sendKey = useRef<{ key: string; text: string; fingerprint: string; sendFrom: SendFrom } | null>(null);
 
   const locked = attempt !== null;
   const hasText = text.trim().length > 0;
@@ -136,7 +160,9 @@ function OperatorReplyComposer({
   const settled = useDebounced(text, PREVIEW_DELAY_MS);
   const previewResult = useQuery(
     api.teamEmailReplies.preview,
-    !locked && settled.trim() ? { threadId, message: settled } : "skip",
+    !locked && settled.trim()
+      ? { threadId, message: settled, ...(sendFromChoice ? { sendFrom: sendFromChoice } : {}) }
+      : "skip",
   );
   const current = !locked && settled === text && hasText;
   const preview = current && previewResult?.ok ? previewResult.preview : null;
@@ -147,6 +173,9 @@ function OperatorReplyComposer({
   const [open, setOpen] = useFollowedState(`inbox:reply:${threadId}:open`, false);
   const previewError = current && previewResult && !previewResult.ok ? previewResult.reason : null;
   const previewing = !locked && hasText && !preview && !previewError;
+  const sendFromOptions = useSendFromOptions(preview?.sendFromOptions);
+  // Unknown until the first preview: the server picks the default for this conversation.
+  const sendFrom = attempt?.sendFrom ?? sendFromChoice ?? headers?.sendFrom;
 
   // The server's record of this key; only `sent` is a positive answer.
   const status = useQuery(
@@ -154,8 +183,15 @@ function OperatorReplyComposer({
     attempt ? { idempotencyKey: attempt.key } : "skip",
   );
 
+  function chooseSendFrom(value: SendFrom) {
+    setSendFromChoice(value);
+    replySendFrom.set(id, value);
+    setSendError(null);
+  }
+
   function update(value: string) {
     setText(value);
+    setSendError(null);
     if (value) replyDrafts.set(id, value);
     else replyDrafts.delete(id);
   }
@@ -166,10 +202,12 @@ function OperatorReplyComposer({
   useEffect(() => {
     if (!confirmedSent) return;
     replyDrafts.delete(id);
+    replySendFrom.delete(id);
     sendKey.current = null;
     writeAttempt(id, null);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setText("");
+    setSendFromChoice(undefined);
     setAttempt(null);
     setServerNote(null);
   }, [confirmedSent, id]);
@@ -178,11 +216,14 @@ function OperatorReplyComposer({
     if (sending) return;
     let next = retry ?? null;
     if (!next && preview) {
+      // From is part of the fingerprint; it is also compared here so a changed account never reuses a key.
       const reusable =
-        sendKey.current?.text === text && sendKey.current.fingerprint === preview.fingerprint;
+        sendKey.current?.text === text &&
+        sendKey.current.fingerprint === preview.fingerprint &&
+        sendKey.current.sendFrom === preview.sendFrom;
       sendKey.current = reusable
         ? sendKey.current
-        : { key: crypto.randomUUID(), text, fingerprint: preview.fingerprint };
+        : { key: crypto.randomUUID(), text, fingerprint: preview.fingerprint, sendFrom: preview.sendFrom };
       next = { ...sendKey.current!, startedAt: dayjs().valueOf() };
     }
     if (!next) return;
@@ -190,6 +231,7 @@ function OperatorReplyComposer({
     writeAttempt(id, next);
     setAttempt(next);
     setServerNote(null);
+    setSendError(null);
     setSending(true);
     onSendingChange(true);
     try {
@@ -198,10 +240,13 @@ function OperatorReplyComposer({
         message: next.text,
         expectedFingerprint: next.fingerprint,
         idempotencyKey: next.key,
+        ...(next.sendFrom ? { sendFrom: next.sendFrom } : {}),
       });
       if (result.status === "sent") {
         setText("");
         replyDrafts.delete(id);
+        replySendFrom.delete(id);
+        setSendFromChoice(undefined);
         sendKey.current = null;
         writeAttempt(id, null);
         setAttempt(null);
@@ -213,7 +258,9 @@ function OperatorReplyComposer({
         sendKey.current = null;
         writeAttempt(id, null);
         setAttempt(null);
-        toast.error(result.message);
+        // A Gmail that needs reconnecting stays on screen with its link; nothing falls back to Spot.
+        if (isGmailReconnectMessage(result.message)) setSendError(result.message);
+        else toast.error(result.message);
       } else {
         setServerNote(result.message);
       }
@@ -248,7 +295,17 @@ function OperatorReplyComposer({
         // Flush with the panel footer: the footer is already the frame.
         <div className="-mx-4 -my-3">
           <EmailComposeRow label="From">
-            <span className="min-w-0 truncate">{headers?.from ?? "You"}</span>
+            {sendFrom ? (
+              <SendFromField
+                options={sendFromOptions}
+                value={sendFrom}
+                fallback={headers?.from ?? "You"}
+                disabled={sending || locked}
+                onChange={chooseSendFrom}
+              />
+            ) : (
+              <span className="min-w-0 truncate">{headers?.from ?? "You"}</span>
+            )}
           </EmailComposeRow>
           <EmailComposeRow label="To">
             {headers ? (
@@ -262,6 +319,7 @@ function OperatorReplyComposer({
           {headers?.cc.length ? (
             <EmailComposeRow label="Cc">
               <Recipients addresses={headers.cc} />
+              {headers.sendFrom === "gmail" ? <SpotCopyHint /> : null}
             </EmailComposeRow>
           ) : null}
           {headers?.bcc.length ? (
@@ -293,10 +351,15 @@ function OperatorReplyComposer({
             }}
             className="block max-h-72 min-h-28"
           />
+          {sendError ? (
+            <div className={`px-4 pb-2 text-muted-foreground ${typeStyle("caption.default")}`}>
+              <ComposeProblem message={sendError} />
+            </div>
+          ) : null}
           {previewing || previewError || preview ? (
             <div className={`space-y-1 px-4 pb-2 text-muted-foreground ${typeStyle("caption.default")}`}>
               {previewing ? <p>Preparing preview…</p> : null}
-              {previewError ? <p role="alert">{previewError}</p> : null}
+              {previewError ? <ComposeProblem message={previewError} /> : null}
               {preview?.copiesOwner ? (
                 <p>{preview.copiesOwner} is copied as the conversation owner.</p>
               ) : null}
@@ -345,6 +408,8 @@ function OperatorReplyComposer({
               disabled={sending || locked}
               onClick={() => {
                 update("");
+                replySendFrom.delete(id);
+                setSendFromChoice(undefined);
                 setShowFull(false);
                 setOpen(false);
               }}

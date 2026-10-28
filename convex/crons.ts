@@ -82,4 +82,11 @@ crons.interval("recover provider outreach", { minutes: 1 }, internal.providerOut
 
 crons.interval("sync operator sending mailboxes", { minutes: 2 }, internal.actions.operatorSendingMailboxes.syncAll, {});
 
+crons.cron(
+  "renew operator Gmail watches and catch up",
+  "30 6 * * *",
+  internal.actions.operatorGmailSync.renewAll,
+  {},
+);
+
 export default crons;

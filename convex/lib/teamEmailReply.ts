@@ -1,7 +1,13 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { operatorSenderIdentity } from "./outreachIdentity";
+import {
+  operatorSenderIdentity,
+  resolveSendFrom,
+  senderFromHeader,
+  type SendFrom,
+  type SendFromOptions,
+} from "./outreachIdentity";
 import { quotedHistory, teamThreadOwnerAddress, teamThreadReplyPlan } from "./teamThreadReply";
 import { pendingEmailDraftFingerprint } from "./actionConfirmationFingerprint";
 import { canonicalAddress, extractEmailAddress } from "./emailAddress";
@@ -68,13 +74,17 @@ export type TeamReplyDraftFields = {
   procurementRequestId?: Id<"procurementRequests">;
   teamEmailThreadId: Id<"teamEmailThreads">;
   directReplyContext: TeamReplyContext;
+  /** Gmail replies only: the answered message and the References chain (space-separated). */
+  inReplyTo?: string;
+  references?: string;
 };
 
 /**
  * The target a reply was approved for, bound by the fingerprint. "thread"
  * names the sender's inbox and the exact Resend thread and message answered;
  * "standalone" is a new quoted "Re:" and records only the message quoted.
- * Standalone leaves the inbox out on purpose: a first send creates it.
+ * Standalone leaves the inbox out on purpose: a first send creates it. A Gmail
+ * reply names its `google:` inbox and the answered Message-ID.
  */
 export type TeamReplyContext = {
   latestMessageId: Id<"teamEmailMessages">;
@@ -100,6 +110,9 @@ export type TeamReplyPreview = {
   copiesOwner?: string;
   /** An outreach conversation: sending stops its automated follow-ups. */
   stopsFollowUps: boolean;
+  /** The account this reply goes out from; From, Cc and the fingerprint follow it. */
+  sendFrom: SendFrom;
+  sendFromOptions: SendFromOptions;
   fingerprint: string;
 };
 
@@ -138,7 +151,7 @@ export function isMachineAddress(address: string) {
 
 /**
  * Who a reply goes to: the sender of the latest message and everyone else on
- * it (reply-all), minus the sender's own address, duplicates, Bcc and Spot's
+ * it (reply-all), minus the sender's own addresses, duplicates, Bcc and Spot's
  * own machine addresses. A forward the owner sent in answers its original
  * sender and recipients, read from the forwarded header block (unauthenticated
  * text, which is why the preview is the approval); a forward whose original
@@ -148,7 +161,7 @@ async function replyCorrespondents(
   ctx: Ctx,
   thread: Doc<"teamEmailThreads">,
   latest: Doc<"teamEmailMessages">,
-  ownAddress: string,
+  ownAddresses: string[],
 ): Promise<{ ok: true; to: string[]; cc: string[] } | { ok: false; reason: string }> {
   let to: string[];
   let cc: string[];
@@ -186,7 +199,7 @@ async function replyCorrespondents(
       .filter(
         (address) =>
           extractEmailAddress(address) &&
-          address !== ownAddress &&
+          !ownAddresses.includes(address) &&
           !forwarder.includes(address) &&
           !isMachineAddress(address),
       );
@@ -198,7 +211,8 @@ async function replyCorrespondents(
 
 /**
  * The reply `operatorUserId` would send on a team thread, from their own
- * inbox and signed as them. Pure over current state: the preview, the approval
+ * inbox (or their connected Gmail, with their team address visibly on Cc) and
+ * signed as them. Pure over current state: the preview, the approval
  * fingerprint and the draft the send creates all come from this one function,
  * so what is approved is what is sent.
  */
@@ -208,6 +222,7 @@ export async function composeTeamReply(
     operatorUserId: Id<"users">;
     threadId: Id<"teamEmailThreads">;
     message: string;
+    sendFrom?: SendFrom;
   },
 ): Promise<TeamReplyComposition> {
   const message = normalizeReplyMessage(args.message);
@@ -243,12 +258,19 @@ export async function composeTeamReply(
       reason: error instanceof Error ? error.message : "You cannot send email yet.",
     };
   }
-  const plan = await teamThreadReplyPlan(ctx, thread, args.operatorUserId);
+  const choice = await resolveSendFrom(ctx, identity, args.sendFrom, thread.gmailAddress);
+  if (!choice.ok) return choice;
+  const { gmailAddress } = choice;
+  const plan = await teamThreadReplyPlan(ctx, thread, args.operatorUserId, gmailAddress);
   const latest = plan.latest;
   if (!latest) return { ok: false, reason: "There is no message to reply to yet." };
 
-  const ownAddress = identity.teamAddress.toLowerCase();
-  const correspondents = await replyCorrespondents(ctx, thread, latest, ownAddress);
+  const teamAddress = identity.teamAddress.toLowerCase();
+  const ownAddress = (gmailAddress ?? teamAddress).toLowerCase();
+  const correspondents = await replyCorrespondents(ctx, thread, latest, [
+    teamAddress,
+    ...(choice.connectedAddress ? [choice.connectedAddress] : []),
+  ]);
   if (!correspondents.ok) return correspondents;
   const [recipientEmail] = correspondents.to;
   // Only a reply that is not threaded in the sender's own inbox copies the owner.
@@ -258,7 +280,8 @@ export async function composeTeamReply(
       : await teamThreadOwnerAddress(ctx, thread.ownerUserId);
   const cc = [
     ...new Set(
-      [...correspondents.cc, identity.alwaysCc, ownerAddress]
+      // From Gmail the team address is a visible Cc, so recipients' reply-all comes back to Spot.
+      [...correspondents.cc, identity.alwaysCc, ownerAddress, gmailAddress ? teamAddress : undefined]
         .filter((address): address is string => Boolean(address))
         .map((address) => address.toLowerCase())
         .filter((address) => address !== recipientEmail && address !== ownAddress),
@@ -286,7 +309,7 @@ export async function composeTeamReply(
     ...(cc.length ? { ccAddresses: cc } : {}),
     subject: /^re:/i.test(thread.subject) ? thread.subject : `Re: ${thread.subject}`,
     emailBody: quote ? `${message}\n\n${quote.block}` : message,
-    fromHeader: identity.fromHeader,
+    fromHeader: senderFromHeader(identity, gmailAddress),
     renderedText,
     renderedHtml,
     senderUserId: args.operatorUserId,
@@ -296,6 +319,9 @@ export async function composeTeamReply(
     ...(requestId ? { procurementRequestId: requestId } : {}),
     teamEmailThreadId: thread._id,
     directReplyContext,
+    ...(gmailAddress && directReplyContext.mode === "thread" && plan.replyToEmailId
+      ? { inReplyTo: plan.replyToEmailId, references: plan.references.join(" ") }
+      : {}),
   };
   const fingerprint = await pendingEmailDraftFingerprint(fields);
   return {
@@ -314,6 +340,8 @@ export async function composeTeamReply(
       mode: directReplyContext.mode,
       ...(ownerAddress ? { copiesOwner: ownerAddress } : {}),
       stopsFollowUps: thread.source === "outreach",
+      sendFrom: choice.sendFrom,
+      sendFromOptions: choice.options,
       fingerprint,
     },
   };
@@ -333,6 +361,7 @@ export async function previewTeamEmailReply(
   ctx: Ctx,
   args: { operatorUserId: Id<"users">; teamEmailThreadId: string; message: string },
 ): Promise<TeamReplyPreviewResult> {
+  // Agent and MCP replies always send from the Spot team address.
   await requireOperatorForUser(ctx, args.operatorUserId);
   const threadId = ctx.db.normalizeId("teamEmailThreads", args.teamEmailThreadId);
   if (!threadId) {
@@ -342,6 +371,7 @@ export async function previewTeamEmailReply(
     operatorUserId: args.operatorUserId,
     threadId,
     message: args.message,
+    sendFrom: "spot",
   });
   return composed.ok
     ? { ok: true, preview: composed.preview, teamEmailThreadId: threadId }
@@ -377,10 +407,19 @@ export async function replyContextProblem(
     if (typeof input?.message === "string") message = input.message;
   }
   if (message === undefined) return "The reply can no longer be verified — preview it again.";
+  // The draft's From says which account it was approved for.
+  let sendFrom: SendFrom = "spot";
+  try {
+    const { teamAddress } = await operatorSenderIdentity(ctx, draft.senderUserId);
+    if (extractEmailAddress(draft.fromHeader ?? "") !== teamAddress.toLowerCase()) sendFrom = "gmail";
+  } catch (error) {
+    return error instanceof Error ? error.message : "You cannot send email yet.";
+  }
   const composed = await composeTeamReply(ctx, {
     operatorUserId: draft.senderUserId,
     threadId: draft.teamEmailThreadId,
     message,
+    sendFrom,
   });
   if (!composed.ok) return composed.reason;
   return composed.preview.fingerprint === (await pendingEmailDraftFingerprint(draft))
