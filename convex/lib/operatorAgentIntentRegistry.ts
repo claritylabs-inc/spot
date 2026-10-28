@@ -205,9 +205,14 @@ const linkedProcurementRequest: OperatorIntentPrefetchRead["input"] = ({
   results,
 }) => {
   const thread = results.get("get_team_inbox_thread") as
-    | { request?: { requestId?: unknown } | null }
+    | {
+        request?: { requestId?: unknown } | null;
+        addressedRequest?: { requestId?: unknown } | null;
+      }
     | undefined;
-  const requestId = thread?.request?.requestId;
+  // An unlinked thread may still be addressed to a request's forwarding address.
+  const requestId =
+    thread?.request?.requestId ?? thread?.addressedRequest?.requestId;
   return typeof requestId === "string"
     ? { procurementRequestId: requestId }
     : undefined;
