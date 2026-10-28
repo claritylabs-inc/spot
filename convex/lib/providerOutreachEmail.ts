@@ -420,7 +420,7 @@ export function composeOutreachEmail(
   const packetDescription = input.kind === "initial"
     ? "Review the application and available supporting documents"
     : "The application and released supporting documents are available here:";
-  const initialAsk = "Please reply here with your appetite and any additional information needed to quote. We can coordinate further questions from there.";
+  const initialAsk = "Could you let me know whether this fits your appetite and what additional information you need to quote?";
   const signature = buildOperatorSignature(input.operator);
 
   const text = [
