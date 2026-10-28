@@ -425,7 +425,7 @@ export function composeOutreachEmail(
   const packetDescription = input.kind === "initial"
     ? "More information and documents available at:"
     : "The application and released supporting documents are available here:";
-  const initialAsk = "If you need more information just let me know what you need.";
+  const initialAsk = "Let me know If you need more information.";
   const signature = buildOperatorSignature(input.operator);
   const spotDescription = "What's Spot? Companies hire Spot to help them with their insurance procurement.";
 
