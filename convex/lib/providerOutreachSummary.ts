@@ -1,37 +1,122 @@
 import type { IntakeApplication } from "../../lib/intake-application";
-import { followupQuestionVisible, formatIntakeFollowupAnswer } from "../../lib/intake-followups";
-import { intakeCurrency } from "../../lib/intake-money";
+import {
+  coverageRequestLabel,
+  UNKNOWN_ANSWER,
+} from "../../lib/insurance-intake-details";
+import { followupQuestionVisible } from "../../lib/intake-followups";
+import { formatIntakeMoney, intakeCurrency } from "../../lib/intake-money";
 
 export type OutreachSummaryItem = { label: string; value: string };
 
-/** Published applicant facts only. Never read draft answers, wiki prose or files. */
-export function providerOutreachSummary(application: IntakeApplication | null): {
+/** Published business facts only. Personal contact details stay in the authorized packet. */
+export function providerOutreachSummary(
+  application: IntakeApplication | null,
+): {
   applicantName: string | null;
   summaryItems: OutreachSummaryItem[];
+  coverageLabels: string[];
 } {
-  if (!application) return { applicantName: null, summaryItems: [] };
+  if (!application)
+    return { applicantName: null, summaryItems: [], coverageLabels: [] };
   const { answers, details } = application;
   const summaryItems: OutreachSummaryItem[] = [];
   const add = (label: string, value?: string) => {
     if (value?.trim()) summaryItems.push({ label, value: value.trim() });
   };
-  add("Business activities (applicant reported)", answers.description);
-  add("Request details", answers.requestDetails);
+  const currency = intakeCurrency(details.registrationCountry);
+  add("Business", answers.description);
+  // Summarize the business location without publishing its street address.
+  const address = details.registrationAddress;
+  add(
+    "Location",
+    [
+      address?.city,
+      address?.state ?? details.registrationState,
+      address?.country ?? details.registrationCountry,
+    ]
+      .filter(Boolean)
+      .join(", "),
+  );
+  add("Established", answers.yearStarted);
+  const revenue = details.revenue;
+  add(
+    "Annual revenue",
+    revenue?.annualAmount?.trim()
+      ? `${formatIntakeMoney(revenue.annualAmount, currency)}${revenue.annualPeriod?.trim() ? ` reported for ${revenue.annualPeriod.toLowerCase()}` : " (reporting period not provided)"}`
+      : answers.trailingRevenue,
+  );
+  const coverages = details.coverages.map((line) => {
+    const label = coverageRequestLabel(line);
+    const limit =
+      line.coverage === "general_liability"
+        ? line.limits.each_occurrence
+        : line.limits.policy_limit;
+    const amount =
+      limit?.trim() && limit !== UNKNOWN_ANSWER
+        ? ` (${formatIntakeMoney(limit, currency)}${line.coverage === "general_liability" ? " each occurrence" : ""})`
+        : "";
+    const scope = line.scopeDescription?.trim();
+    return `${label}${amount}${scope ? ` — ${scope}` : ""}`;
+  });
+  add("Coverage requested", coverages.join("; ") || answers.coverage);
+  add(
+    "Current insurance",
+    [
+      answers.currentInsurance,
+      answers.trigger === "Shopping for renewal" ? "shopping for renewal" : "",
+    ]
+      .filter(Boolean)
+      .join("; "),
+  );
+  if (
+    answers.claims?.trim().toLowerCase() === "no" &&
+    answers.cancellations?.trim().toLowerCase() === "no"
+  ) {
+    add("Claims or cancellations/declines", "None reported");
+  } else {
+    add("Claims history (applicant reported)", answers.claims);
+    add(
+      "Cancellations, nonrenewals, declines or uninsured periods (applicant reported)",
+      answers.cancellations,
+    );
+  }
+  const followups = (details.followups ?? []).filter(
+    (row) =>
+      !row.skipped &&
+      row.answer.trim() &&
+      followupQuestionVisible(row, details.followups),
+  );
+  const excavation = followups.find(
+    (row) =>
+      row.source?.endsWith(" · supplement.contractor.excavation") ||
+      /^(?:For your general liability insurance, )?does (?:your|the) business excavate or perform below-ground work\?$/i.test(
+        row.label.trim(),
+      ),
+  );
+  if (excavation) {
+    const depth = followups.find((row) =>
+      row.source?.endsWith(" · supplement.contractor.excavation_depth"),
+    );
+    add(
+      "Below-ground work",
+      excavation.answer.trim().toLowerCase() === "yes"
+        ? `Yes; ${depth ? `maximum excavation depth: ${depth.answer}` : "scope to be clarified"}`
+        : excavation.answer,
+    );
+  }
   const vehicles = details.coverages
     .filter((line) => line.coverage === "commercial_auto")
     .flatMap((line) => line.vehicles ?? [])
     .slice(0, 3)
-    .map((vehicle) => [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" "))
+    .map((vehicle) =>
+      [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" "),
+    )
     .filter(Boolean);
-  if (vehicles.length) add("Vehicles (applicant reported; verify against supporting documents)", vehicles.join("; "));
-  add("Claims history (applicant reported)", answers.claims);
-  add("Insurance history (applicant reported)", answers.cancellations);
-  const currency = intakeCurrency(details.registrationCountry);
-  for (const row of (details.followups ?? []).filter((row) =>
-    row.section === "additional" && !row.skipped && row.answer.trim() &&
-    followupQuestionVisible(row, details.followups),
-  ).slice(0, 6)) {
-    add(row.label, formatIntakeFollowupAnswer(row, currency));
-  }
-  return { applicantName: answers.name?.trim() || null, summaryItems };
+  if (vehicles.length)
+    add("Vehicles (applicant reported)", vehicles.join("; "));
+  return {
+    applicantName: answers.name?.trim() || null,
+    summaryItems,
+    coverageLabels: details.coverages.map(coverageRequestLabel),
+  };
 }
