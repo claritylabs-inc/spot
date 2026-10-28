@@ -25,7 +25,6 @@ import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
 import { InboxUnreadBadge } from "@/components/inbox/inbox-unread-badge";
 import { useOptionalAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import { LogoIcon } from "@/components/ui/logo-icon";
-import { PresenceSlot } from "@/components/operator-agent/presence-slot";
 import type { OperatorNavSection } from "@/lib/app-shell-routes";
 
 export function OperatorSidebar({
@@ -120,10 +119,6 @@ export function OperatorSidebar({
         </div>
       </ScrollArea>
       <div className="space-y-0.5 border-t border-border px-2 py-2">
-        <PresenceSlot
-          collapsed={collapsed}
-          className="mb-1 border-b border-border pb-2"
-        />
         <SidebarMenuItem
           href="/operator/settings"
           label="Settings"

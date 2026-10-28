@@ -45,8 +45,8 @@ import {
 
 /**
  * Multiplayer for the operator portal: sends this tab's heartbeat, runs the
- * page's room and the follow session, and shows other operators in the
- * sidebar's `PresenceSlot`. Operators on the same page see each other's
+ * page's room and the follow session, and shows other operators in the AI
+ * dock bar's `PresenceSlot`. Operators on the same page see each other's
  * pointers and carets and edit its fields together; clicking an avatar follows
  * that operator's page and panels too. Following only goes one way: following
  * a follower takes over and they stop.
@@ -152,8 +152,8 @@ export function OperatorPresence() {
   const followedOperator = leader && following ? leader : null;
   // A stable order, so avatars hold their place as pills open and close.
   const roster = [...others].sort((a, b) => a.name.localeCompare(b.name));
-  // One wrapping area of pills in each operator's color: an avatar alone, or
-  // with text for the followed operator and followers, opening in place.
+  // A row of pills in each operator's color: an avatar alone, or with text for
+  // the followed operator and followers, opening in place.
   const item = (operator: (typeof others)[number]) => {
     const isFollowed = operator === followedOperator;
     const isFollower =
@@ -175,8 +175,10 @@ export function OperatorPresence() {
             : operator.name
         }
         className={cn(
-          "flex min-w-0 items-center gap-1.5 rounded-full p-1",
-          open && "pr-1.5",
+          // Shrinks to the sidebar's width; long names end in an ellipsis.
+          "flex max-w-full min-w-0 items-center gap-1.5 rounded-full p-1",
+          // Text ends a pill evenly; the ✕ brings its own space.
+          open && (isFollowed ? "pr-1" : "pr-2.5"),
           typeStyle("caption.medium"),
         )}
         style={
@@ -231,18 +233,14 @@ export function OperatorPresence() {
       </motion.span>
     );
   };
-  // Shown in the sidebar where it has room; the room, follow session and
-  // heartbeat run here whether or not there is a sidebar. The first avatar
-  // sits on the menu icon column.
+  // Shown in the AI dock bar, on every operator page; the room, follow
+  // session and heartbeat run here either way. Compact (mobile) drops the text.
   const rosterArea = (
     <motion.div
       {...{ [FOLLOW_CONTROL_ATTRIBUTE]: "" }}
       layout
       transition={PILL_TRANSITION}
-      className={cn(
-        "flex flex-wrap gap-1",
-        collapsed ? "flex-col items-center" : "pl-1",
-      )}
+      className="flex min-w-0 items-center gap-1 overflow-x-auto scrollbar-hide"
     >
       {roster.map(item)}
     </motion.div>

@@ -13,6 +13,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import { useIsFollowing } from "@/hooks/use-followed-state";
+import { PresenceSlot } from "@/components/operator-agent/presence-slot";
 import { useAgentDock } from "./agent-dock-provider";
 import { DockErrorBoundary } from "./dock-error-boundary";
 import type { AgentDockMode, AgentDockTab } from "./dock-state";
@@ -197,6 +198,11 @@ export function AgentDockBar({
           </DockErrorBoundary>
         ))}
       </div>
+      {/* Teammates on this page, filled by OperatorPresence for operators. */}
+      <PresenceSlot
+        collapsed={mobile}
+        className="flex max-w-[55%] min-w-0 shrink-0 items-center border-l border-border pl-1.5"
+      />
       <div className="flex shrink-0 items-center gap-1">
         {open && dock.view === "chat" ? actions : null}
         <PillButton
