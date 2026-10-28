@@ -785,6 +785,7 @@ async function awaitingReplyCandidates(
             .join(" "),
           500,
         ),
+        focusIds: { teamEmailThreadId: row._id },
         urgency: Math.min(0.8, 0.55 + dayjs(now).diff(inboundAt, "hour") / 240),
         source: "live",
         evidence: {
