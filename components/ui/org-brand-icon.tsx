@@ -1,5 +1,7 @@
 "use client";
 
+import { cn } from "@/lib/utils";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { BrandIcon } from "@claritylabs-inc/ui/components/brand-icon";
 
 type OrgBrandIconProps = {
@@ -12,6 +14,14 @@ type OrgBrandIconProps = {
   className?: string;
 };
 
+const AVATAR_SIZE = {
+  xs: "size-3.5",
+  sm: "size-6",
+  md: "size-7",
+  lg: "size-8",
+  xl: "size-16",
+} as const;
+
 export function OrgBrandIcon({
   name,
   iconUrl,
@@ -20,9 +30,21 @@ export function OrgBrandIcon({
   shape,
   className,
 }: OrgBrandIconProps) {
+  const src = iconUrl || websiteFaviconUrl(website);
+  if (!src && name?.trim())
+    return (
+      <Avatar
+        name={name}
+        className={cn(
+          AVATAR_SIZE[size],
+          shape !== "circle" && "rounded-md",
+          className,
+        )}
+      />
+    );
   return (
     <BrandIcon
-      src={iconUrl || websiteFaviconUrl(website)}
+      src={src}
       name={name}
       alt=""
       size={size}
