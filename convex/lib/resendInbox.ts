@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import { z } from "zod";
-import { extractEmailAddress } from "./emailAddress";
+import { canonicalAddress } from "./emailAddress";
 import {
   deriveOperatorLocalpart,
   getTeamEmailDomain,
@@ -93,6 +93,8 @@ export class ResendInboxError extends Error {
     return this.outcome === "transient" || this.outcome === "unknown";
   }
 }
+
+export { ResendInboxError as MailTransportError };
 
 export function isResendInboxError(error: unknown): error is ResendInboxError {
   return error instanceof ResendInboxError;
@@ -1205,7 +1207,7 @@ export async function replyToThreadEmail(
         ...target.data.replyTo,
         ...target.data.to,
         ...target.data.cc,
-      ].filter((address) => (extractEmailAddress(address) ?? address.trim().toLowerCase()) !== own);
+      ].filter((address) => canonicalAddress(address) !== own);
     }
     const policy = evaluateRecipientDeliveryPolicy(
       [...derived, ...asList(params.cc), ...asList(params.bcc)],
@@ -1517,6 +1519,6 @@ export function parseInboxWebhookEvent(rawBody: string): InboxWebhookParse {
  * only the `from` address is available.
  */
 export function isBounceSender(from: string): boolean {
-  const address = extractEmailAddress(from) ?? from.trim().toLowerCase();
+  const address = canonicalAddress(from);
   return /^(?:mailer-daemon|postmaster)@/.test(address);
 }

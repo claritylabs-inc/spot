@@ -3,22 +3,9 @@ import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query,
-} from "./_generated/server";
-import {
-  requireOperator,
-  requireOperatorForUser,
-} from "./lib/operatorIdentity";
-import { assertNoOperatorImpersonation } from "./lib/clientFiles";
-import {
-  MAILBOX_PREFIX,
-  SENDING_ADDRESSES,
-  mailboxConnectionsAllowed,
-} from "./lib/sendingMailbox";
+import { internalMutation, internalQuery } from "./_generated/server";
+import { requireOperatorForUser } from "./lib/operatorIdentity";
+import { MAILBOX_PREFIX } from "./lib/inboxIds";
 import { emitOperatorNotification } from "./lib/operatorNotify";
 import { mirrorTeamEmail } from "./lib/teamEmailStore";
 import {
@@ -30,95 +17,6 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 const today = () => dayjs().tz("America/Toronto").format("YYYY-MM-DD");
 
-export const overview = query({
-  args: {},
-  handler: async (ctx) => {
-    const operator = await requireOperator(ctx);
-    const boxes = await ctx.db.query("operatorSendingMailboxes").take(6);
-    const mailboxes = await Promise.all(
-      SENDING_ADDRESSES.map(async (address) => {
-        const box = boxes.find((row) => row.address === address);
-        if (!box)
-          return {
-            address,
-            id: null,
-            owner: null,
-            isDefault: false,
-            canManage: true,
-            enabled: false,
-            verifiedAt: null,
-            dailyLimit: 20,
-            gapMinutes: 10,
-            acceptedToday: 0,
-            nextSendAt: null,
-            lastAcceptedAt: null,
-            lastSyncAt: null,
-            error: null,
-          };
-        const health = await ctx.db
-          .query("operatorMailboxHealth")
-          .withIndex("by_mailboxId", (q) => q.eq("mailboxId", box._id))
-          .unique();
-        const owner = await ctx.db.get(box.ownerUserId);
-        return {
-          address,
-          id: box._id,
-          owner: owner?.name ?? owner?.email ?? "Operator",
-          isDefault:
-            box.isDefault ??
-            boxes.filter((row) => row.ownerUserId === box.ownerUserId)
-              .length === 1,
-          canManage: box.ownerUserId === operator.user._id,
-          enabled: box.enabled,
-          verifiedAt: box.verifiedAt,
-          dailyLimit: box.dailyLimit,
-          gapMinutes: box.gapMinutes,
-          acceptedToday: health?.day === today() ? health.acceptedToday : 0,
-          nextSendAt: health?.nextSendAt ?? null,
-          lastAcceptedAt: health?.lastAcceptedAt ?? null,
-          lastSyncAt: health?.lastSyncAt ?? null,
-          error:
-            health?.sendError ?? health?.syncError ?? health?.lastError ?? null,
-        };
-      }),
-    );
-    const placementChecks = await ctx.db
-      .query("operatorEmailPlacementChecks")
-      .order("desc")
-      .take(100);
-    const attempts = await ctx.db
-      .query("emailDeliveryAttempts")
-      .order("desc")
-      .take(100);
-    return {
-      placementChecks,
-      mailboxes,
-      capture: process.env.EMAIL_DELIVERY_MODE === "capture",
-      restricted: process.env.EMAIL_DELIVERY_MODE === "restricted",
-      connectionsEnabled: mailboxConnectionsAllowed(),
-      encryptionReady: !!process.env.EMAIL_CONNECTIONS_ENCRYPTION_KEY,
-      attempts: attempts.map((row) => ({
-        id: row._id,
-        provider: row.provider,
-        status: row.status,
-        stage: row.operatorStage ?? null,
-        to: row.recipientEmail ?? null,
-        subject: row.subject ?? null,
-        at: row.startedAt,
-        error: row.error ?? null,
-      })),
-      attemptsLimited: attempts.length === 100,
-    };
-  },
-});
-export const authorize = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    const op = await requireOperator(ctx);
-    await assertNoOperatorImpersonation(ctx, op.user._id);
-    return op.user._id;
-  },
-});
 export const connection = internalQuery({
   args: { address: v.string() },
   handler: async (ctx, args) =>
@@ -309,37 +207,5 @@ export const message = internalQuery({
       read: true,
       receivedAt: dayjs(row.receivedAt).toISOString(),
     };
-  },
-});
-
-/** Manually observed seed results; never inferred from SMTP acceptance. */
-export const recordPlacement = mutation({
-  args: {
-    sender: v.string(),
-    destination: v.union(
-      v.literal("Gmail"),
-      v.literal("Microsoft"),
-      v.literal("Other"),
-    ),
-    placement: v.union(
-      v.literal("Inbox"),
-      v.literal("Spam"),
-      v.literal("Missing"),
-    ),
-    note: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const op = await requireOperator(ctx);
-    await assertNoOperatorImpersonation(ctx, op.user._id);
-    if (!SENDING_ADDRESSES.includes(args.sender) || args.note.length > 500)
-      throw new Error(
-        "Choose a reserved mailbox; keep notes under 500 characters.",
-      );
-    await ctx.db.insert("operatorEmailPlacementChecks", {
-      ...args,
-      note: args.note.trim(),
-      checkedAt: dayjs().valueOf(),
-      recordedBy: op.user._id,
-    });
   },
 });

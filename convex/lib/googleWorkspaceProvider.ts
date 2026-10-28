@@ -46,6 +46,16 @@ export type GoogleWorkspaceMessage = {
   payload: GoogleWorkspaceMessagePart | null;
 };
 
+/**
+ * How the provider authorises Gmail. Domain-wide delegation is the only
+ * strategy today; further strategies join this union.
+ */
+export type GmailAuth = {
+  kind: "delegated";
+  credentials: GoogleWorkspaceServiceAccountCredentials;
+  scopes: { gmail: readonly string[]; directory: readonly string[] };
+};
+
 export type GoogleWorkspaceProvider = {
   listDirectoryUsers(args: {
     subject: string;
@@ -206,11 +216,7 @@ function headerNames() {
 }
 
 export function createGoogleWorkspaceProvider(
-  credentials: GoogleWorkspaceServiceAccountCredentials,
-  scopes: {
-    gmail: readonly string[];
-    directory: readonly string[];
-  },
+  auth: GmailAuth,
 ): GoogleWorkspaceProvider {
   const gmailClients = new Map<string, gmail_v1.Gmail>();
   const directoryClients = new Map<string, admin_directory_v1.Admin>();
@@ -219,7 +225,7 @@ export function createGoogleWorkspaceProvider(
     if (existing) return existing;
     const client = google.gmail({
       version: "v1",
-      auth: delegatedAuth(credentials, mailbox, scopes.gmail),
+      auth: delegatedAuth(auth.credentials, mailbox, auth.scopes.gmail),
     });
     gmailClients.set(mailbox, client);
     return client;
@@ -229,7 +235,7 @@ export function createGoogleWorkspaceProvider(
     if (existing) return existing;
     const client = google.admin({
       version: "directory_v1",
-      auth: delegatedAuth(credentials, subject, scopes.directory),
+      auth: delegatedAuth(auth.credentials, subject, auth.scopes.directory),
     });
     directoryClients.set(subject, client);
     return client;

@@ -2,6 +2,7 @@ import dayjs from "dayjs";
 
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { inboxKind } from "./inboxIds";
 import { operatorSenderIdentity } from "./outreachIdentity";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -26,7 +27,7 @@ async function activeSenderInbox(ctx: Ctx, userId: Id<"users">) {
   ]);
   return (
     [explicit, legacy]
-      .filter((row) => row !== null && row.kind !== "agent" && !row.inboxId.startsWith("gmail:"))
+      .filter((row) => row !== null && row.kind !== "agent" && inboxKind(row.inboxId) !== "legacy_google")
       .sort((a, b) => (b?._creationTime ?? 0) - (a?._creationTime ?? 0))[0] ??
     null
   );
@@ -69,7 +70,7 @@ export async function teamThreadReplyPlan(
           message.resendThreadId === resendThreadId,
       )
     : undefined;
-  const replyToEmailId = inbox?.inboxId.startsWith("gmail:")
+  const replyToEmailId = inbox && inboxKind(inbox.inboxId) === "legacy_google"
     ? replyMessage?.messageId
     : replyMessage?.resendInboxEmailId;
   const latestInbound = messages.find((m) => m.direction === "inbound");
