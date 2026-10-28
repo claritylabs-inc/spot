@@ -47,11 +47,14 @@ export function replaceEditorBody(markdown: string, body: string) {
   return prefix + (prefix && !prefix.endsWith("\n") ? "\n" : "") + body;
 }
 
+/** Markdown's meaning without its formatting, for comparing documents. */
+export function canonicalMarkdown(value: string) {
+  return JSON.stringify(parser.parse(value), (key, item) =>
+    key === "position" || key === "spread" ? undefined : item,
+  );
+}
+
 /** Formatting may change; authored meaning must survive the rich-text conversion. */
 export function equivalentMarkdown(left: string, right: string) {
-  const canonical = (value: string) =>
-    JSON.stringify(parser.parse(value), (key, item) =>
-      key === "position" || key === "spread" ? undefined : item,
-    );
-  return canonical(left) === canonical(right);
+  return canonicalMarkdown(left) === canonicalMarkdown(right);
 }

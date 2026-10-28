@@ -11,6 +11,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useFollowedOpen } from "@/hooks/use-followed-state";
+import { useSharedValue } from "@/hooks/use-shared-value";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
@@ -151,6 +152,12 @@ export function ClientOutreachComposer({
       drafts.set(draftKey, next);
       return next;
     });
+  // Teammates on the request edit this draft together.
+  const scope = `client-email:${draftKey}`;
+  useSharedValue(`${scope}:recipient`, draft.recipientEmail, (recipientEmail) =>
+    update({ recipientEmail }),
+  );
+  useSharedValue(`${scope}:cadence`, draft.cadence, (cadence) => update({ cadence }));
 
   const recipients = panel?.recipients ?? [];
   const recipient =
@@ -336,7 +343,7 @@ export function ClientOutreachComposer({
           This request is not linked to a company yet.
         </p>
       ) : panel ? (
-        <div className="flex min-h-full flex-1 flex-col">
+        <div data-collab-scope={scope} className="flex min-h-full flex-1 flex-col">
           {panel.closedReason ? (
             <p
               className={`border-b border-border px-4 py-2 text-muted-foreground ${typeStyle("caption.default")}`}

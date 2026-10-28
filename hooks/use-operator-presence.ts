@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import dayjs from "dayjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -75,7 +81,28 @@ export function useReportEmailThreadPresence(
   }, [token, emailThreadId, effective]);
 }
 
-/** Reports this operator's page, open dock thread, open email thread and followed operator while the tab is visible. */
+let tabId: string | null = null;
+
+/** This browser tab, kept across reloads so a reload reuses its presence row. */
+function currentTabId() {
+  if (tabId) return tabId;
+  try {
+    tabId = window.sessionStorage.getItem("operatorPresence:tab");
+    if (!tabId) {
+      tabId = crypto.randomUUID();
+      window.sessionStorage.setItem("operatorPresence:tab", tabId);
+    }
+  } catch {
+    tabId ??= crypto.randomUUID();
+  }
+  return tabId;
+}
+
+/**
+ * Reports this tab's page, open dock thread, open email thread and followed
+ * operator while it is visible. Each tab has its own row, so closing one
+ * leaves the operator present through their others.
+ */
 export function useOperatorPresenceHeartbeat({
   pathname,
   threadId,
@@ -106,13 +133,14 @@ export function useOperatorPresenceHeartbeat({
         emailThreadId,
         activity,
         followingUserId: followingUserId ?? undefined,
+        tabId: currentTabId(),
       }).catch(() => {});
     };
     // A hidden tab stops beating, so remove its row now; otherwise others keep
     // seeing its last activity (such as "replying") until the TTL lapses.
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") beat();
-      else void leave().catch(() => {});
+      else void leave({ tabId: currentTabId() }).catch(() => {});
     };
     beat();
     const interval = window.setInterval(beat, HEARTBEAT_INTERVAL_MS);
@@ -132,7 +160,8 @@ export function useOperatorPresenceHeartbeat({
   ]);
 
   useEffect(() => {
-    const onPageHide = () => void leave().catch(() => {});
+    const onPageHide = () =>
+      void leave({ tabId: currentTabId() }).catch(() => {});
     window.addEventListener("pagehide", onPageHide);
     return () => window.removeEventListener("pagehide", onPageHide);
   }, [leave]);
@@ -199,9 +228,35 @@ function subscribeFollowing(listener: () => void) {
   return () => void followingListeners.delete(listener);
 }
 
-export function setFollowingOperator(userId: Id<"users"> | null) {
+let takingOverFrom: Id<"users"> | null = null;
+
+/**
+ * Follows `userId`, or stops with null. Following someone who follows this
+ * operator takes over: they stop following once they see it, rather than both
+ * stopping.
+ */
+export function setFollowingOperator(
+  userId: Id<"users"> | null,
+  options?: { takeOver?: boolean },
+) {
   followingUserId = userId;
+  takingOverFrom = options?.takeOver ? userId : null;
   followingListeners.forEach((listener) => listener());
+}
+
+/**
+ * Whether following `leader` has become mutual, so this operator must stop:
+ * true unless this operator started it and is waiting for the leader to let go.
+ */
+export function followIsMutual(
+  leader: { userId: Id<"users">; followingUserId: string | null },
+  selfId: string,
+) {
+  if (leader.followingUserId !== selfId) {
+    if (takingOverFrom === leader.userId) takingOverFrom = null;
+    return false;
+  }
+  return takingOverFrom !== leader.userId;
 }
 
 /** The operator this one follows, set from the top bar or the team page. */

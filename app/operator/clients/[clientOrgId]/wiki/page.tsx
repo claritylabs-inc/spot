@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -9,6 +9,7 @@ import { Loader2, StickyNote } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
+import { useSharedDoc } from "@/lib/collab/doc";
 import { api } from "@/convex/_generated/api";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AppShellPortal } from "@/components/app-shell-slots";
@@ -139,6 +140,17 @@ function LoadedProfile({
     },
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not update profile"),
+  });
+  // A teammate editing alongside saves their own edits; their save is the
+  // version this form builds on once it has nothing unsaved, or whenever the
+  // form is shared live (it then holds their edits too).
+  const serverVersion = wiki.businessProfile?.submittedAt ?? 0;
+  const sharedLive = useSharedDoc() !== null;
+  const clean = autoSave.status === "saved" || sharedLive;
+  useEffect(() => {
+    if (clean && serverVersion > version.current.version) {
+      version.current = { version: serverVersion, account };
+    }
   });
   return (
     <div data-operator-form data-operator-inline-fields className="space-y-5">

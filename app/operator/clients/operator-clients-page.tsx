@@ -257,6 +257,7 @@ export default function OperatorClientsScreen() {
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-11 pl-4 pr-0">
                   <Checkbox
+                    data-collab-ignore
                     aria-label="Select all clients"
                     checked={selection.allSelected}
                     indeterminate={selection.someSelected}
@@ -349,6 +350,7 @@ export default function OperatorClientsScreen() {
                       >
                         <TableCell className="pl-4 pr-0">
                           <Checkbox
+                            data-collab-ignore
                             aria-label={`Select ${client.dba ?? client.name}`}
                             checked={selection.isSelected(client._id)}
                             disabled={readOnly}
@@ -421,6 +423,7 @@ export default function OperatorClientsScreen() {
                     >
                       <TableCell className="pl-4 pr-0">
                         <Checkbox
+                          data-collab-ignore
                           aria-label={`Select ${applicationName(application)}`}
                           checked={selection.isSelected(application.requestId)}
                           disabled={readOnly}

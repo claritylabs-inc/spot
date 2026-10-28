@@ -62,6 +62,8 @@ export interface PresenceUser {
   userId: string;
   name: string;
   avatarUrl?: string | null;
+  /** The person's multiplayer color for their ring; live green otherwise. */
+  color?: string;
 }
 
 /** Overlapping avatars of people active right now, each ringed as live. */
@@ -90,17 +92,26 @@ export function PresenceAvatars({
       {users.slice(0, max).map((u) => {
         const selected = u.userId === selectedUserId;
         const avatar = (
-          <Avatar
-            name={u.name}
-            title={onSelect ? undefined : u.name}
-            imageUrl={u.avatarUrl}
+          // The ring sits on a wrapper: Avatar keeps its own inline style.
+          <span
             className={cn(
-              avatarSize,
+              "block rounded-full",
               size === "sm" ? "ring-[1.5px]" : "ring-2",
-              "border-2 border-background",
-              selected ? "ring-brand" : "ring-emerald-400",
+              u.color ? null : selected ? "ring-brand" : "ring-emerald-400",
             )}
-          />
+            style={
+              u.color
+                ? ({ "--tw-ring-color": u.color } as React.CSSProperties)
+                : undefined
+            }
+          >
+            <Avatar
+              name={u.name}
+              title={onSelect ? undefined : u.name}
+              imageUrl={u.avatarUrl}
+              className={cn(avatarSize, "border-2 border-background")}
+            />
+          </span>
         );
         return onSelect ? (
           <button

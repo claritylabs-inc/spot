@@ -9,7 +9,7 @@ import { AlertCircle, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { OperatorClientImpersonationAction } from "../../operator-client-impersonation-action";
-import { OperatorTestModeAction } from "@/components/operator-test-mode-action";
+import { PresenceSlot } from "@/components/operator-agent/presence-slot";
 import { ProcurementRequestWorkspace } from "@/components/procurement/procurement-request-workspace";
 import {
   OperationalPanel,
@@ -145,7 +145,7 @@ export default function OperatorProcurementRequestPage() {
             onRightPanel={setRightPanel}
             sidebarFooter={(collapsed) => (
               <div className="space-y-2">
-                <OperatorTestModeAction collapsed={collapsed} />
+                <PresenceSlot collapsed={collapsed} />
                 <OperatorClientImpersonationAction
                   clientOrgId={clientOrgId}
                   activeImpersonation={activeImpersonation}

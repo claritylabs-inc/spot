@@ -5,9 +5,9 @@ import { mutation, query, type QueryCtx } from "./_generated/server";
 import { requireOperator } from "./lib/operatorIdentity";
 
 const LEADER_TIMEOUT_MS = 45_000;
-const FIELD_TEXT_LIMIT = 5_000;
 const UI_STATE_LIMIT = 50_000;
 
+/** Retired: older clients still send it, but shared fields now sync through `collab`. */
 const fieldValidator = v.object({
   anchor: v.string(),
   text: v.string(),
@@ -20,16 +20,15 @@ const fieldValidator = v.object({
  * presence lapses (three missed heartbeats).
  */
 async function leaderActive(ctx: QueryCtx, userId: Id<"users">) {
-  const presence = await ctx.db
+  const tabs = await ctx.db
     .query("operatorPresence")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .unique();
-  return (
-    !!presence && presence.lastSeen >= dayjs().valueOf() - LEADER_TIMEOUT_MS
-  );
+    .take(20);
+  const fresh = dayjs().valueOf() - LEADER_TIMEOUT_MS;
+  return tabs.some((tab) => tab.lastSeen >= fresh);
 }
 
-/** Publishes this operator's pointer while someone follows them. */
+/** Publishes this operator's pointer while a teammate shares their page or follows them. */
 export const move = mutation({
   args: {
     href: v.string(),
@@ -47,16 +46,12 @@ export const move = mutation({
     if (!args.href.startsWith("/") || args.href.startsWith("//")) {
       throw new Error("Cursor href must be an app path");
     }
+    const { field: _retired, ...pointer } = args;
     const fields = {
-      ...args,
+      ...pointer,
       href: args.href.slice(0, 1000),
       anchor: args.anchor?.slice(0, 2000),
-      field: args.field && {
-        anchor: args.field.anchor.slice(0, 2000),
-        text: args.field.text.slice(0, FIELD_TEXT_LIMIT),
-        selectionStart: Math.min(args.field.selectionStart, FIELD_TEXT_LIMIT),
-        selectionEnd: Math.min(args.field.selectionEnd, FIELD_TEXT_LIMIT),
-      },
+      field: undefined,
       updatedAt: dayjs().valueOf(),
     };
     const existing = await ctx.db
@@ -73,7 +68,7 @@ export const move = mutation({
   },
 });
 
-/** Drops this operator's cursor and UI state once nobody follows them. */
+/** Drops this operator's cursor and UI state once nobody can see them. */
 export const clear = mutation({
   args: {},
   handler: async (ctx) => {
@@ -129,7 +124,7 @@ export const ui = query({
   },
 });
 
-/** Any operator may follow any other; no consent step. */
+/** Any operator may see or follow any other; no consent step. */
 export const get = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
@@ -148,7 +143,6 @@ export const get = query({
       viewportX: cursor.viewportX,
       viewportY: cursor.viewportY,
       visible: cursor.visible,
-      field: cursor.field ?? null,
     };
   },
 });

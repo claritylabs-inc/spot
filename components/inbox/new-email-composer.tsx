@@ -30,6 +30,7 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
+import { useSharedValue } from "@/hooks/use-shared-value";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const PREVIEW_DELAY_MS = 450;
@@ -115,6 +116,8 @@ export function NewEmailComposer(props: {
   request?: ComposerRequest;
   /** Shown above the header rows (the request composer's audience switch). */
   header?: ReactNode;
+  /** Followed id of this inbox draft, so a teammate following along edits the same one. */
+  draftId?: string;
 }) {
   const operatorId = useCachedOperatorCurrent()?.user._id;
   if (!operatorId) return null;
@@ -127,12 +130,14 @@ function OperatorNewEmailComposer({
   onSent,
   request,
   header,
+  draftId,
 }: {
   operatorId: string;
   onClose: () => void;
   onSent: (threadId: Id<"teamEmailThreads"> | null) => void;
   request?: ComposerRequest;
   header?: ReactNode;
+  draftId?: string;
 }) {
   const send = useAction(api.actions.teamEmailCompose.send);
   const clients = useCachedOperatorClients();
@@ -165,6 +170,11 @@ function OperatorNewEmailComposer({
       drafts.set(draftKey, next);
       return next;
     });
+
+  // Teammates on the request, or following this inbox draft, edit it together.
+  const scope = request ? `request-email:${request.requestId}` : `inbox-email:${draftId ?? operatorId}`;
+  useSharedValue(`${scope}:client`, draft.clientOrgId, (clientOrgId) => update({ clientOrgId }));
+  useSharedValue(`${scope}:copies`, draft.showCopies, (showCopies) => update({ showCopies }));
 
   const settled = useDebounced(draft, PREVIEW_DELAY_MS);
   const ready = Boolean(settled.to.trim() && settled.subject.trim() && settled.message.trim());
@@ -280,6 +290,7 @@ function OperatorNewEmailComposer({
       }
     >
       <div
+        data-collab-scope={scope}
         className="flex min-h-full flex-1 flex-col"
         onKeyDown={(event) => {
           if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
