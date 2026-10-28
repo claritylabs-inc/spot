@@ -105,7 +105,7 @@ function boundedContext(input: OutreachEmailInput) {
     followUpNumber: input.followUpNumber,
     isFinalFollowUp: input.isFinal,
     provider: { name: clean(input.providerName, LIMITS.contextItem) },
-    recipientFirstName: firstName(input.recipientName),
+    recipientFirstName: firstName(input.recipientName, input.providerName),
     client: {
       name: clean(client.name, LIMITS.contextItem),
       industry: clean(client.industry, LIMITS.contextItem),
@@ -126,8 +126,15 @@ function boundedContext(input: OutreachEmailInput) {
   };
 }
 
-function firstName(name: string | undefined): string | undefined {
-  return clean(name, 60)?.split(" ")[0];
+/** Routing labels are not people; greet the provider company instead. */
+function firstName(name: string | undefined, providerName?: string): string | undefined {
+  const contact = clean(name, 160)?.split(/\s+[—–-]\s+/)[0].trim();
+  if (
+    !contact ||
+    contact.toLowerCase() === clean(providerName, 160)?.toLowerCase() ||
+    /\b(?:general|inquiry|inquiries|routing|reception|support|sales|service|desk|team|department|advisors?|office|contact)\b/i.test(contact)
+  ) return undefined;
+  return contact.split(" ")[0];
 }
 
 function bodyLimit(input: Pick<OutreachEmailInput, "kind" | "style">): number {
@@ -409,9 +416,10 @@ export function composeOutreachEmail(
       ? template.subject
       : template.subject;
 
-  const greeting = input.kind === "initial"
-    ? "Hi there,"
-    : `Hi ${firstName(input.recipientName) ?? "there"},`;
+  const greetingName = firstName(input.recipientName, input.providerName)
+    ?? clean(input.providerName, 160)
+    ?? "there";
+  const greeting = `Hey ${greetingName},`;
   const link = assertHttpsUrl(packetUrl);
   const linkIntro = input.kind === "initial"
     ? "View the full application below, with more specific information"
