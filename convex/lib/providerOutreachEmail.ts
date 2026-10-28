@@ -329,7 +329,7 @@ function templateBody(input: OutreachEmailInput): string {
     }
     const bullets = facts.map((item) => `- ${item.label}: ${item.value}`).join("\n");
     return [
-      `I’m with Spot, coordinating ${name}'s commercial insurance search. Wanted to see if we fit your appetite - I've included some information.`,
+      `Can you get me a quote for ${lines ? `${lines} insurance` : "commercial insurance"} for ${name} based on the following information?`,
       bullets,
     ].filter(Boolean).join("\n\n");
   }
@@ -421,22 +421,24 @@ export function composeOutreachEmail(
     ?? "there";
   const greeting = `Hey ${greetingName},`;
   const link = assertHttpsUrl(packetUrl);
-  const linkIntro = input.kind === "initial"
-    ? "View the full application below, with more specific information"
-    : "Submission packet";
+  const linkIntro = "Submission packet";
   const packetDescription = input.kind === "initial"
-    ? "Review the application and available supporting documents"
+    ? "More information and documents available at:"
     : "The application and released supporting documents are available here:";
-  const initialAsk = "Could you let me know whether this fits your appetite and if so provide a quote? Or let me know what additional information you might need to get an initial quote.";
+  const initialAsk = "Let me know If you need more information.";
   const signature = buildOperatorSignature(input.operator);
+  const spotDescription = "What's Spot? Companies hire Spot to help them with their insurance procurement.";
 
   const text = [
     greeting,
     body,
-    `${linkIntro}\n\n${packetDescription}\n${link}`,
+    input.kind === "initial"
+      ? `${packetDescription}\n${link}`
+      : `${linkIntro}\n\n${packetDescription}\n${link}`,
     ...(input.kind === "initial" ? [initialAsk] : []),
     "Thanks,",
     signature.text,
+    `${spotDescription} Learn more at https://spot.insure`,
   ].join("\n\n");
 
   const paragraph = (value: string) =>
@@ -444,13 +446,14 @@ export function composeOutreachEmail(
   const html = [
     paragraph(greeting),
     bodyHtml(body),
-    `<p style="margin:0 0 8px"><strong>${linkIntro}</strong></p>`,
+    ...(input.kind === "initial" ? [] : [`<p style="margin:0 0 8px"><strong>${linkIntro}</strong></p>`]),
     input.kind === "initial"
-      ? `<p style="margin:0 0 16px"><a href="${escapeHtml(link)}">${packetDescription}</a></p>`
+      ? `<p style="margin:0 0 16px">${packetDescription}<br><a href="${escapeHtml(link)}">${escapeHtml(link)}</a></p>`
       : `<p style="margin:0 0 16px">${packetDescription}<br><a href="${escapeHtml(link)}">View secure submission packet</a></p>`,
     ...(input.kind === "initial" ? [paragraph(initialAsk)] : []),
     paragraph("Thanks,"),
     signature.html,
+    `<p style="margin:16px 0 0;font-size:12px">${escapeHtml(spotDescription)} Learn more at <a href="https://spot.insure">Spot.Insure</a></p>`,
   ].join("");
 
   return { subject, text, html, source };

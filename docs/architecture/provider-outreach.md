@@ -42,9 +42,12 @@ Steps are scheduled, leased for sending, and then sent, captured, failed or canc
 Initial provider emails use a deterministic company-first layout: “Hey” plus the
 contact's first name (or provider company for missing names and shared routing
 labels),
-“I’m with Spot, coordinating” the company's commercial insurance search, an
-appetite question, bounded business bullets, a prominent full-application link,
-and the authenticated operator's name, Spot and sending address. Subjects and
+an explicit quote request naming all requested coverage lines and the company,
+bounded business bullets, the secure application URL, a short invitation for
+further questions, and the authenticated operator's name, Spot and sending address.
+A small “What's Spot?” explanation and Spot.Insure link follow the signature in
+both initial emails and follow-ups. Packet URLs retain the existing revocable
+capability route; no public company-name alias is introduced. Subjects and
 follow-ups use the company name rather than the applicant's personal name.
 `providerOutreachSummary.ts` projects published business activities, city/region,
 year established, revenue with its reporting period, all requested coverage lines
