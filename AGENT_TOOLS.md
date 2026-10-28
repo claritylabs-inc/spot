@@ -57,9 +57,10 @@ output and approval behavior remain compatible.
 
 ## Inference execution
 
-Operator tools run between durable router model steps. Pending inference yields
-and resumes the same job; completed tool effects retain their existing idempotency
-keys. Exact messages and the selected model route survive operator continuation.
+Operator tools run between durable router model steps, several per runner action.
+Inference that outlasts its in-place wait yields and resumes the same job;
+completed tool effects retain their existing idempotency keys. Exact messages
+and the selected model route survive operator continuation.
 Cancellation blocks subsequent tools and revokes the pending inference job.
 Worker-loss outcomes are explicit and never cause automatic tool or model replay.
 These lifecycle controls are internal, not new agent or MCP tools.

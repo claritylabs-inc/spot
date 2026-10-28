@@ -19,7 +19,7 @@ import {
 } from "ai";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { RouterJobFailed, RouterJobPending } from "./lib/routerJobClient";
 import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
@@ -129,6 +129,10 @@ import {
 
 const OPERATOR_AGENT_MAX_OUTPUT_TOKENS = 8_192;
 const OPERATOR_AGENT_MAX_STEPS = 1;
+// One action keeps starting model steps until this budget elapses, then hands
+// the next step to a scheduled run; the last step keeps most of the 10-minute
+// action limit for its model call and tools.
+const OPERATOR_ACTION_STEP_BUDGET_MS = 4 * 60 * 1000;
 // Retries of one step after a retryable cl-router failure, including
 // candidates_exhausted (see isRetryableClRouterJobFailure).
 const OPERATOR_ROUTER_MAX_RETRIES = 5;
@@ -492,10 +496,19 @@ export const run = internalAction({
     if (expectedRunnerAttempt === null)
       return { status: "not_started" as const };
 
+    const stepDeadline = dayjs().add(
+      OPERATOR_ACTION_STEP_BUDGET_MS,
+      "millisecond",
+    );
     let expectedCheckpointIteration: number | undefined;
     let routerRetryCount = 0;
     let pendingFamilies: OperatorToolFamily[] | undefined;
-    try {
+    // The continuation this action checkpointed for its next step, reused
+    // instead of reading it back from storage.
+    let carried: { storageId: Id<"_storage">; text: string } | undefined;
+    // Runs one model step from the durable checkpoint. A step that checkpoints
+    // with "continued" leaves the run running for the next step in this action.
+    const runStep = async (): Promise<{ status: string; error?: string }> => {
       const context: {
         run: Doc<"operatorAgentRuns">;
         thread: Doc<"operatorAgentThreads">;
@@ -510,7 +523,11 @@ export const run = internalAction({
       );
       if (!context) throw new Error("Operator agent run not found");
       const { run, thread } = context;
-      if (run.runnerAttempt !== expectedRunnerAttempt)
+      if (
+        run.runnerAttempt !== expectedRunnerAttempt ||
+        run.status !== "running" ||
+        run.cancellationRequestedAt
+      )
         return { status: "superseded" };
       expectedCheckpointIteration = run.checkpoint?.iteration ?? 0;
       routerRetryCount = run.checkpoint?.routerRetryCount ?? 0;
@@ -546,11 +563,15 @@ export const run = internalAction({
         `${stagePrefix}:context`,
         "preparing_context",
         async () => {
-          const continuationBlob = run.modelContinuationStorageId
-            ? await ctx.storage.get(run.modelContinuationStorageId)
-            : null;
-          const continuation = continuationBlob
-            ? (JSON.parse(await continuationBlob.text()) as {
+          const continuationText = !run.modelContinuationStorageId
+            ? undefined
+            : carried?.storageId === run.modelContinuationStorageId
+              ? carried.text
+              : await (
+                  await ctx.storage.get(run.modelContinuationStorageId)
+                )?.text();
+          const continuation = continuationText
+            ? (JSON.parse(continuationText) as {
                 messages: ModelMessage[];
                 parentRequestId?: string;
                 recovery?: unknown;
@@ -590,13 +611,17 @@ export const run = internalAction({
       );
       const { continuation } = loaded;
       let messages = loaded.messages;
-      const threadState = await ctx.runQuery(internal.operatorAgentHistory.getState, {
-        threadId: run.threadId,
-      });
-      const threadSummary = continuation?.threadSummary ??
-        (threadState?.summaryVersion === THREAD_SUMMARY_VERSION
-          ? threadState.summary
-          : undefined);
+      const threadSummary =
+        continuation?.threadSummary ??
+        (await ctx
+          .runQuery(internal.operatorAgentHistory.getState, {
+            threadId: run.threadId,
+          })
+          .then((threadState) =>
+            threadState?.summaryVersion === THREAD_SUMMARY_VERSION
+              ? threadState.summary
+              : undefined,
+          ));
       const recovery = parseRecoveryState(continuation?.recovery);
       const exhaustedTools = new Map(
         recovery.exhausted.map((entry) => [entry.toolName, entry]),
@@ -609,14 +634,16 @@ export const run = internalAction({
       const intentFamilies = operatorIntentFamilies(run, context.messages);
       // A step resumed after its router job was submitted replays that
       // job's response, which may call any tool offered at submission.
-      // The model client suffixes the invocation key with its job step.
+      // The model client suffixes the invocation key with its job step. A
+      // step this action just checkpointed has no router job yet.
       const executionJobStarted =
-        (await ctx.runQuery(internal.routerJobs.get, {
+        !carried &&
+        ((await ctx.runQuery(internal.routerJobs.get, {
           invocationKey: `${invocationKey}:0`,
         })) !== null ||
-        (await ctx.runQuery(internal.routerJobs.get, {
-          invocationKey: `${invocationKey}:0:routed`,
-        })) !== null;
+          (await ctx.runQuery(internal.routerJobs.get, {
+            invocationKey: `${invocationKey}:0:routed`,
+          })) !== null);
       const resumed = !intentFamilies && executionJobStarted;
       const selectFamilies = () =>
         selectOperatorToolFamilies(
@@ -1329,43 +1356,41 @@ export const run = internalAction({
       const heldBackNotice = recoveryContinues
         ? RECOVERY_NOTICE_MESSAGE
         : LEAKED_TOOL_CALL_NOTICE_MESSAGE;
-      const modelContinuationStorageId =
+      const nextContinuationText =
         pendingConfirmation || shouldContinue
-          ? await ctx.storage.store(
-              new Blob(
-                [
-                  JSON.stringify({
-                    // A held-back reply stays out of history so the model
-                    // never replays its own rejected provisional text.
-                    messages:
-                      (recoveryContinues || leakContinues) && !stepHadCalls
-                        ? [
-                            ...messages.filter(
-                              (message) =>
-                                message.role !== "user" ||
-                                (message.content !== RECOVERY_NOTICE_MESSAGE &&
-                                  message.content !==
-                                    LEAKED_TOOL_CALL_NOTICE_MESSAGE),
-                            ),
-                            {
-                              role: "user" as const,
-                              content: heldBackNotice,
-                            },
-                          ]
-                        : boundToolHistory([...messages, ...result.response.messages]),
-                    threadSummary,
-                    compactionRequest: requestedCompaction,
-                    parentRequestId: result.clRouter?.requestId,
-                    recovery: nextRecovery,
-                    leakedCallRetries: leakContinues
-                      ? leakedCallRetries + 1
-                      : leakedCallRetries,
-                  }),
-                ],
-                { type: "application/json" },
-              ),
-            )
+          ? JSON.stringify({
+              // A held-back reply stays out of history so the model
+              // never replays its own rejected provisional text.
+              messages:
+                (recoveryContinues || leakContinues) && !stepHadCalls
+                  ? [
+                      ...messages.filter(
+                        (message) =>
+                          message.role !== "user" ||
+                          (message.content !== RECOVERY_NOTICE_MESSAGE &&
+                            message.content !==
+                              LEAKED_TOOL_CALL_NOTICE_MESSAGE),
+                      ),
+                      {
+                        role: "user" as const,
+                        content: heldBackNotice,
+                      },
+                    ]
+                  : boundToolHistory([...messages, ...result.response.messages]),
+              threadSummary,
+              compactionRequest: requestedCompaction,
+              parentRequestId: result.clRouter?.requestId,
+              recovery: nextRecovery,
+              leakedCallRetries: leakContinues
+                ? leakedCallRetries + 1
+                : leakedCallRetries,
+            })
           : undefined;
+      const modelContinuationStorageId = nextContinuationText
+        ? await ctx.storage.store(
+            new Blob([nextContinuationText], { type: "application/json" }),
+          )
+        : undefined;
       if (!pendingConfirmation && shouldContinue) {
         const continuation: { status: string } | null = await ctx.runMutation(
           internal.operatorAgent.continueRunInternal,
@@ -1375,6 +1400,7 @@ export const run = internalAction({
             expectedRunnerAttempt,
             modelContinuationStorageId,
             families: familySelection.families,
+            inline: dayjs().isBefore(stepDeadline),
             summary: buildOperatorRunCheckpointSummary({
               previous: run.checkpoint?.summary,
               audit,
@@ -1383,6 +1409,15 @@ export const run = internalAction({
             toolCalls: audit.toolCalls,
           },
         );
+        if (
+          continuation?.status === "continued" &&
+          modelContinuationStorageId &&
+          nextContinuationText
+        )
+          carried = {
+            storageId: modelContinuationStorageId,
+            text: nextContinuationText,
+          };
         if (continuation?.status !== "not_continued") {
           return continuation ?? { status: "missing" as const };
         }
@@ -1433,6 +1468,12 @@ export const run = internalAction({
         },
       );
       return completion ?? { status: "missing" as const };
+    };
+    try {
+      for (;;) {
+        const outcome = await runStep();
+        if (outcome.status !== "continued") return outcome;
+      }
     } catch (error) {
       if (error instanceof RouterJobPending) {
         await ctx.runMutation(internal.operatorAgent.waitForRouterInternal, {
