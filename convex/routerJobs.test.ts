@@ -372,6 +372,53 @@ test("durable routed fallback reconnects even after the pin is removed", async (
   expect(fetcher).toHaveBeenCalledTimes(1);
 });
 
+test("a yielding call waits in place for its callback, then yields without resubmitting", async () => {
+  const { t, args, row } = await fixture();
+  vi.stubEnv("SPOT_ENV", "local");
+  vi.stubEnv("CONVEX_SITE_URL", "http://127.0.0.1:3211");
+  vi.stubEnv("SPOT_ROUTER_CALLBACK_URL", "");
+  vi.stubEnv("CL_ROUTER_URL", routerEnvironment.CL_ROUTER_URL);
+  vi.stubEnv("CL_ROUTER_SECRET", "x".repeat(32));
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockImplementation(async () => Response.json({ jobId: "router-inline" }));
+  vi.stubGlobal("fetch", fetcher);
+  const call = (inlineWaitMs: number) =>
+    t.action((ctx) =>
+      executeDurableRouterRequest(
+        ctx,
+        "generate",
+        { primitive: "text", prompt: "Hello" },
+        args.invocationKey,
+        undefined,
+        { wait: "yield", inlineWaitMs },
+      ),
+    );
+  await expect(call(600)).rejects.toThrow("still running");
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  const storageId = await t.run((ctx) =>
+    ctx.storage.store(new Blob([JSON.stringify(generation)])),
+  );
+  fetcher.mockImplementation(async () =>
+    Response.json({ status: "running" }),
+  );
+  const waiting = call(10_000);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  await t.mutation(internal.routerJobs.finish, {
+    id: row._id,
+    tokenHash: args.resultTokenHash,
+    jobId: "router-inline",
+    invocationKey: args.invocationKey,
+    fingerprint: args.fingerprint,
+    status: "succeeded",
+    storageId,
+  });
+  expect(await waiting).toEqual(generation);
+  // The resumed call checked status once and never submitted again.
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(String(fetcher.mock.calls[1]![0])).toMatch(/\/v1\/jobs\/router-inline$/);
+});
+
 test("a durable unknown execution outcome cannot create a routed fallback", async () => {
   const { t, args, row } = await fixture();
   await t.run((ctx) =>
