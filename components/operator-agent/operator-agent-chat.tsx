@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Lock } from "lucide-react";
 import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input/prompt-input";
@@ -29,7 +28,6 @@ import {
   type OperatorAgentConfirmation,
 } from "@/lib/operator-agent-api";
 import { uploadPromptFiles } from "@/lib/thread-prompt";
-import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
   operatorPageContextFromPathname,
@@ -325,16 +323,6 @@ export function OperatorAgentChat({
           <ChatComposer
             ref={composerRef}
             collabScope={activeThreadId ? `chat:${activeThreadId}` : undefined}
-            banner={
-              activeThreadId ? undefined : (
-                <p
-                  className={`flex items-center gap-1 px-1 pb-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
-                >
-                  <Lock className="size-3" />
-                  Private until you send
-                </p>
-              )
-            }
             onSubmit={submit}
             onStop={() => {
               if (!activeThreadId) return;
