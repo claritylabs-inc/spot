@@ -23,6 +23,8 @@ export type AgentDockTabSummary = {
   title: string;
   lastMessageAt: number;
   status: AgentDockTabStatus;
+  /** Shown when hovering the tab, such as who started a shared chat. */
+  hint?: string;
 };
 
 export type AgentDockChatProps = {
