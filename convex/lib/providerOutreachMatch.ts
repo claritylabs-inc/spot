@@ -266,7 +266,6 @@ export type ProviderFitProfile = {
 };
 export type ProviderFitReason =
   | "blacklisted"
-  | "inactive"
   | "test_mode"
   | "no_profile"
   | "request_not_evaluable"
@@ -319,10 +318,7 @@ export function classifyProvider(
     result.reasons.push("no_profile");
     return result;
   }
-  if (
-    profile.networkStatus === "blacklisted" ||
-    profile.networkStatus === "inactive"
-  ) {
+  if (profile.networkStatus === "blacklisted") {
     result.verdict = "excluded";
     result.reasons.push(profile.networkStatus);
     return result;

@@ -463,6 +463,32 @@ export const generateLogoUploadUrl = mutation({
   },
 });
 
+/**
+ * A first email moves a new provider to "inactive" (contacted, no relationship yet).
+ * Leaves updatedAt alone so in-flight company research still applies its findings.
+ */
+export async function markProviderContacted(
+  ctx: MutationCtx,
+  brokerOrgId: Id<"organizations">,
+) {
+  const profile = await ctx.db
+    .query("brokerProfiles")
+    .withIndex("broker", (q) => q.eq("brokerOrgId", brokerOrgId))
+    .unique();
+  if (!profile) {
+    const now = dayjs().valueOf();
+    await ctx.db.insert("brokerProfiles", {
+      brokerOrgId,
+      networkStatus: "inactive",
+      writingStates: [],
+      lineOfBusinessCodes: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+  } else if (profile.networkStatus === "prospect")
+    await ctx.db.patch(profile._id, { networkStatus: "inactive" });
+}
+
 export async function createStandaloneBrokerByOperator(
   ctx: MutationCtx,
   args: {
