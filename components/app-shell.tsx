@@ -57,6 +57,7 @@ import { useCurrentOrg } from "@/hooks/use-current-org";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useSpotSync } from "@/lib/sync/spot-sync";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
+import { useAppMinWidth } from "@/hooks/use-app-container-width";
 import { EntityPreviewPanel } from "@/components/entity-preview-panel";
 import {
   appShellRoute,
@@ -219,6 +220,11 @@ function ShellFrame({
   const { filled: hasPageTabs, setTarget: setPageTabsTarget } =
     useAppShellSlot("folderRail");
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  // A tablet-width app card keeps the desktop menu, compacted to its icon rail.
+  const appIsDesktop = useAppMinWidth(1024);
+  const appIsTablet = useAppMinWidth(768) && !appIsDesktop;
+  const sidebarCollapsed =
+    sidebarPreference.preference.collapsed || appIsTablet;
   const viewer = useCachedQuery("users.viewer", api.users.viewer, {});
   const [rightPanelWide, setRightPanelWide] = useState(false);
   const hasPdfPanel = isPdfOpen && !!fileUrl;
@@ -232,10 +238,10 @@ function ShellFrame({
 
   const sidebarRenderProps = useMemo(
     () => ({
-      collapsed: sidebarPreference.preference.collapsed,
+      collapsed: sidebarCollapsed,
       onToggleCollapse: sidebarPreference.toggleCollapse,
     }),
-    [sidebarPreference.preference.collapsed, sidebarPreference.toggleCollapse],
+    [sidebarCollapsed, sidebarPreference.toggleCollapse],
   );
 
   const panelLayout = (
@@ -288,7 +294,8 @@ function ShellFrame({
         hasRightPanel ? (
           // Safari can scroll the resizable panel when a nested popup receives
           // focus. Clip at its positioned wrapper without creating a scrollport.
-          <div className="relative flex h-full min-h-0 w-full min-w-0 lg:overflow-clip">
+          // Below lg the panel is a drawer over the page, so it takes no width.
+          <div className="relative flex h-full min-h-0 w-full min-w-0 max-lg:w-0 max-lg:flex-none lg:overflow-clip">
             <div
               ref={setRightPanelTarget}
               className="flex h-full min-h-0 w-full min-w-0"
@@ -307,17 +314,21 @@ function ShellFrame({
       data-app-surface={route.surface}
       className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-background"
     >
-      <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden">
+      <div
+        data-tablet-rail={appIsTablet || undefined}
+        className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden"
+      >
         {isOperator ? (
           <>
             <AppShellSidebarLayout
               sidebar={
                 <OperatorShellSidebar
                   route={route}
-                  collapsed={sidebarPreference.preference.collapsed}
+                  collapsed={sidebarCollapsed}
                   onToggleCollapse={sidebarPreference.toggleCollapse}
                 />
               }
+              // The saved state; tablet widths only compact the content.
               collapsed={sidebarPreference.preference.collapsed}
               defaultWidth={sidebarPreference.preference.width}
               onCollapsedChange={sidebarPreference.setCollapsed}
@@ -378,7 +389,7 @@ function ShellFrame({
           <>
             <Suspense fallback={null}>
               <AppSidebar
-                collapsed={sidebarPreference.preference.collapsed}
+                collapsed={sidebarCollapsed}
                 onToggleCollapse={sidebarPreference.toggleCollapse}
                 settingsMode={route.sidebar.id === "client-settings"}
                 mobileOpen={mobileOpen}

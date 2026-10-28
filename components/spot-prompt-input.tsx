@@ -469,6 +469,8 @@ function PromptTextSegment({
       style={textIndent ? { textIndent } : undefined}
       className={cn(
         `max-w-full p-0 placeholder:text-muted-foreground/40 ${typeStyle(isDockVariant ? "body.default" : "control.input")}`,
+        // Centers the first line on the inline context chip (h-6).
+        isDockVariant && "pt-[calc(0.75rem-0.5lh)]",
         isPlaceholderSegment
           ? isCommandVariant
             ? "min-h-24 min-w-56 flex-[1_1_14rem]"

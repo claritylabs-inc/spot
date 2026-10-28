@@ -16,11 +16,11 @@ import {
   ResizableSeparator,
 } from "@claritylabs-inc/ui/components/resizable";
 import { useMediaQuery } from "@/components/app-sidebar/utils";
+import { setAppContainerWidth } from "@/hooks/use-app-container-width";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import {
   AGENT_DOCK_RAIL_WIDTH,
-  AGENT_DOCK_SIDEBAR_WIDTH,
   AgentDockBar,
   AgentDockTabSidebar,
 } from "./agent-dock-bar";
@@ -440,12 +440,26 @@ export function AgentDockLayout({
   const [dragSize, setDragSize] = useState<number | null>(null);
   const [actions, setActions] = useState<ReactNode>(null);
   const [rightSection, setRightSection] = useState<HTMLElement | null>(null);
+  const [appContainer, setAppContainer] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!appContainer) return;
+    const observer = new ResizeObserver(() =>
+      setAppContainerWidth(appContainer.offsetWidth),
+    );
+    observer.observe(appContainer);
+    return () => {
+      observer.disconnect();
+      setAppContainerWidth(null);
+    };
+  }, [appContainer]);
   const composerHeight = useComposerHeight(rightSection);
   const lifted = mode !== "collapsed";
   const viewportSize = right ? viewport.width : viewport.height;
   const barSize = !enabled ? 0 : right ? AGENT_DOCK_RAIL_WIDTH : AGENT_DOCK_BAR_HEIGHT;
   const fullDockSize = viewportSize - CARD_GAP - CARD_LIP;
-  const minExpandedWidth = AGENT_DOCK_SIDEBAR_WIDTH + RIGHT_CHAT_MIN_WIDTH;
+  const minExpandedWidth =
+    (dock.tabsCollapsed ? AGENT_DOCK_RAIL_WIDTH : dock.tabsWidth) +
+    RIGHT_CHAT_MIN_WIDTH;
   const expandedDockSize =
     dragSize ??
     (right
@@ -643,7 +657,11 @@ export function AgentDockLayout({
         inert={mode === "full"}
         aria-hidden={mode === "full" || undefined}
       >
-        <div className="h-full">{app}</div>
+        {/* The `app` container: breakpoints inside follow the card's width,
+            and fixed drawers and overlays stay within the card. */}
+        <div ref={setAppContainer} className="@container/app h-full contain-layout">
+          {app}
+        </div>
       </motion.div>
       {mode === "full" ? (
         <motion.button

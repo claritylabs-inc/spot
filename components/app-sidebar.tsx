@@ -30,7 +30,6 @@ import { SettingsSidebarContent } from "@/components/app-sidebar/settings-sideba
 import {
   getInitials,
   isEditableTarget,
-  useMediaQuery,
 } from "@/components/app-sidebar/utils";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { isFeatureEnabled } from "@/convex/lib/featureFlags";
@@ -38,6 +37,7 @@ import {
   getSettingsNavigation,
   resolveSettingsDestination,
 } from "@/lib/settings-sections";
+import { useAppMinWidth } from "@/hooks/use-app-container-width";
 
 const NO_NAV_ITEMS: NavItemConfig[] = [];
 
@@ -101,7 +101,9 @@ export function AppSidebar({
   const navItems = isBroker ? BROKER_NAV_ITEMS : INSURANCE_ITEMS;
   const connectItems =
     isBroker || !showConnectFeatures ? NO_NAV_ITEMS : CONNECT_ITEMS;
-  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const isDesktop = useAppMinWidth(1024);
+  // Tablet-width app cards show the menu as its icon rail.
+  const railOnly = collapsed || !isDesktop;
 
   const pageShortcutMap = useMemo<Record<string, string>>(
     () => ({
@@ -266,16 +268,16 @@ export function AppSidebar({
   return (
     <>
       <aside
-        className={`hidden lg:flex flex-col shrink-0 h-full overflow-hidden border-r sidebar-transition ${
-          collapsed ? "w-14" : "w-[220px]"
+        className={`hidden md:flex flex-col shrink-0 h-full overflow-hidden border-r sidebar-transition ${
+          railOnly ? "w-14" : "w-[220px]"
         } border-border bg-background`}
       >
         <SidebarVariantTransition
           variantKey={settingsMode ? "settings" : "main"}
           depth={settingsMode ? 1 : 0}
-          layoutGroupId={collapsed ? "client-collapsed" : "client"}
+          layoutGroupId={railOnly ? "client-collapsed" : "client"}
         >
-          {renderContent(collapsed)}
+          {renderContent(railOnly)}
         </SidebarVariantTransition>
       </aside>
 

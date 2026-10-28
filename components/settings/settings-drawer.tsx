@@ -91,7 +91,9 @@ export function SettingsDrawer({
                     transition={{ duration: 0.08, ease: EASE }}
                   />
                 }
-                className="max-lg:fixed! max-lg:inset-0! max-lg:z-50! flex h-full w-full shrink-0 overflow-hidden outline-none"
+                // Full screen on phones, a drawer over the page on tablets, a
+                // column beside it on desktop.
+                className="max-lg:fixed! max-lg:inset-0! max-lg:z-50! md:max-lg:left-auto! md:max-lg:w-[min(36rem,88%)]! md:max-lg:shadow-[-16px_0_40px_-24px_rgba(0,0,0,0.35)] flex h-full w-full shrink-0 overflow-hidden outline-none"
               >
                 <motion.div
                   initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: 8 }}

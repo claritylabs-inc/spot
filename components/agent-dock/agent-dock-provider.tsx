@@ -38,7 +38,9 @@ import {
   agentDockStorageKey,
   AGENT_DOCK_DEFAULT_HEIGHT,
   AGENT_DOCK_DEFAULT_WIDTH,
+  AGENT_DOCK_TABS_DEFAULT_WIDTH,
   clampAgentDockHeight,
+  clampAgentDockTabsWidth,
   clampAgentDockWidth,
   readStoredAgentDock,
   writeStoredAgentDock,
@@ -54,6 +56,11 @@ type AgentDockContextValue = AgentDockState & {
   /** Width as a fraction of the viewport when the dock sits on the right. */
   width: number;
   setWidth: (width: number) => void;
+  /** Pixel width of the right dock's tab sidebar when not collapsed. */
+  tabsWidth: number;
+  setTabsWidth: (width: number) => void;
+  tabsCollapsed: boolean;
+  setTabsCollapsed: (collapsed: boolean) => void;
   toggle: () => void;
   toggleFull: () => void;
   stepDown: () => void;
@@ -130,6 +137,8 @@ export function AgentDockProvider({
   );
   const [height, setHeightState] = useState(AGENT_DOCK_DEFAULT_HEIGHT);
   const [width, setWidthState] = useState(AGENT_DOCK_DEFAULT_WIDTH);
+  const [tabsWidth, setTabsWidthState] = useState(AGENT_DOCK_TABS_DEFAULT_WIDTH);
+  const [tabsCollapsed, setTabsCollapsed] = useState(false);
   const [detachedContextKey, setDetachedContextKey] = useFollowedState<
     string | null
   >("shell:agent-dock:detached-context", null);
@@ -155,6 +164,8 @@ export function AgentDockProvider({
     });
     setHeightState(stored.height);
     setWidthState(stored.width);
+    setTabsWidthState(stored.tabsWidth);
+    setTabsCollapsed(stored.tabsCollapsed);
   }
 
   useEffect(() => {
@@ -164,11 +175,15 @@ export function AgentDockProvider({
       activeThreadId: ownState.activeThreadId,
       height,
       width,
+      tabsWidth,
+      tabsCollapsed,
       mode: ownState.mode,
     });
   }, [
+    tabsWidth,
     height,
     width,
+    tabsCollapsed,
     restoredKey,
     ownState.activeThreadId,
     ownState.mode,
@@ -311,6 +326,10 @@ export function AgentDockProvider({
       setHeight: (next) => setHeightState(clampAgentDockHeight(next)),
       width,
       setWidth: (next) => setWidthState(clampAgentDockWidth(next)),
+      tabsWidth,
+      setTabsWidth: (next) => setTabsWidthState(clampAgentDockTabsWidth(next)),
+      tabsCollapsed,
+      setTabsCollapsed,
       toggle: () => run({ type: "toggle" }),
       toggleFull: () => run({ type: "toggleFull" }),
       stepDown: () => run({ type: "stepDown" }),
@@ -350,6 +369,8 @@ export function AgentDockProvider({
       setDetachedContextKey,
       state,
       surface,
+      tabsCollapsed,
+      tabsWidth,
       width,
     ],
   );

@@ -21,7 +21,6 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { createClientMutationId } from "@/lib/sync/client-mutation-id";
-import { useMediaQuery } from "@/components/app-sidebar/utils";
 import { stripConfidenceMarkers } from "@/lib/confidence";
 import {
   useArchivedThreadCacheActions,
@@ -70,6 +69,7 @@ import {
   type AssistantPdfAttachment,
 } from "./thread-messages";
 import { typeStyle } from "@/lib/typography";
+import { useAppMinWidth } from "@/hooks/use-app-container-width";
 
 function UnifiedThreadActions({
   threadId,
@@ -309,7 +309,7 @@ export function UnifiedThreadContent({
     [messages],
   );
   const pdf = usePdf();
-  const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const isDesktop = useAppMinWidth(1024);
   const sendMessage = useMutation(api.threads.sendMessage);
   const { appendOptimisticSend, markOptimisticSendFailed } =
     useThreadCacheActions();
