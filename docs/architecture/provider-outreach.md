@@ -39,7 +39,9 @@ Sequences move from active to completed after the final step, stopped on lifecyc
 
 Steps are scheduled, leased for sending, and then sent, captured, failed or cancelled. Drafts are persisted before sending. Inference start markers prevent automatic replay after an unknown generation outcome; a deterministic template can supply the fallback. Delivery retries reuse the saved draft and exact step idempotency keys. Unknown delivery can retry only within the provider's idempotency window (conservatively 23 hours); later recovery fails as delivery_unknown. Claims and finalization use lease fencing. Request closure, deletion, outreach status change or proposal filing cancels future steps.
 
-Initial provider emails use a deterministic company-first layout: greeting,
+Initial provider emails use a deterministic company-first layout: “Hey” plus the
+contact's first name (or provider company for missing names and shared routing
+labels),
 “I’m with Spot, coordinating” the company's commercial insurance search, an
 appetite question, bounded business bullets, a prominent full-application link,
 and the authenticated operator's name, Spot and sending address. Subjects and
