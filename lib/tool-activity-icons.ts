@@ -105,6 +105,8 @@ const operatorToolCategories = {
   get_procurement_email_thread: "email",
   list_team_inbox_threads: "email",
   get_team_inbox_thread: "email",
+  search_team_inbox: "email",
+  update_team_reply_draft: "email",
   link_team_inbox_thread: "email",
   link_team_inbox_threads: "email",
   preview_procurement_email_reconciliation: "email",

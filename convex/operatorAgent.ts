@@ -11,6 +11,8 @@ import { NoWriteInputError } from "./lib/noWriteInputError";
 import { operatorTeamAddressFor } from "./lib/teamEmail";
 import { ensureOperatorInbox } from "./lib/operatorInbox";
 import { listTeamInbox, getTeamThreadDetails, linkTeamEmailThreadByOperator } from "./teamInbox";
+import { searchTeamInbox } from "./lib/teamInboxProjection";
+import { reviseTeamReplySuggestion } from "./lib/teamReplySuggestions";
 import {
   operatorPlanningAssessmentValidator,
   operatorExecutionPlanValidator,
@@ -407,6 +409,7 @@ function serializedOperatorActionOutput(toolName: string, result: unknown) {
     toolName === "read_operator_conversation" ||
     toolName === "list_team_inbox_threads" ||
     toolName === "get_team_inbox_thread" ||
+    toolName === "search_team_inbox" ||
     toolName === "get_procurement_email_thread" ||
     isClientBatchToolName(toolName) ||
     toolName === "list_broker_network_profiles" ||
@@ -2915,6 +2918,24 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
       clientOrgId: input.clientOrgId ? normalizeOrganizationId(ctx, input.clientOrgId) : undefined,
       requestId: input.procurementRequestId ? normalizeProcurementRequestId(ctx, input.procurementRequestId) : undefined,
       category: procurementEmailCategory(input.category),
+    });
+  }
+
+  if (toolName === "search_team_inbox") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.search_team_inbox.inputSchema.parse(input);
+    return await searchTeamInbox(ctx, {
+      query: parsed.query,
+      clientOrgId: parsed.clientOrgId ? normalizeOrganizationId(ctx, parsed.clientOrgId) : undefined,
+      includeArchived: parsed.includeArchived,
+      limit: parsed.limit ?? 10,
+    });
+  }
+
+  if (toolName === "update_team_reply_draft") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.update_team_reply_draft.inputSchema.parse(input);
+    return await reviseTeamReplySuggestion(ctx, {
+      threadId: await normalizeProcurementEmailThreadId(ctx, parsed.teamEmailThreadId),
+      reply: parsed.reply,
     });
   }
 

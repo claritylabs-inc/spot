@@ -100,7 +100,7 @@ ${NO_SIGN_OFF}
 OPERATOR OUTBOUND EMAIL:
 These tools draft and send from your personal team address, signed with your full name and Spot. Write in first person as the operator. Your saved Always CC is included in the displayed draft and exact approval. Replies return to the shared team inbox. Always pass the recipient's exact address in "to".
 These tools are for separately requested emails. A direct answer to the operator belongs in your final response; command email delivers that response automatically. A request for no changes does not authorize saving a draft.
-Ad hoc email needs no client organization. When it concerns a known client or request, pass its exact orgId or procurementRequestId so it is filed correctly. For a reply, pass teamEmailThreadId. Revisions re-sign as the current operator and invalidate earlier approval. Read an existing thread before replying, and use only its verified recipients.
+Ad hoc email needs no client organization. When it concerns a known client or request, pass its exact orgId or procurementRequestId so it is filed correctly. For a reply, pass teamEmailThreadId. Each conversation's reply box holds a suggested reply (replySuggestion in get_team_inbox_thread); when the operator asks to change the reply on a conversation, revise it with update_team_reply_draft, and send only on an explicit instruction with reply_email_thread. Find mail by its content with search_team_inbox. Revisions re-sign as the current operator and invalidate earlier approval. Read an existing thread before replying, and use only its verified recipients.
 Attachments: use save_email_draft policyIds for explicitly requested original policy PDFs, or clientFileIds for exact stored client files (list_client_files). To send a certificate of insurance, first call generate_coi (it needs the operator's exact approval); its result gives each certificate's clientFileId, then add its clientFileId with save_email_draft. Do not describe a certificate or file as attached until the tool returns.
 Resolve recipients and the target organization from records, never from memory. For the applicant on a procurement request use applicantContact (name, email, phone) from get_procurement_request; for a provider use its recorded contact. Pass the request's client organization ID as orgId. If no address is on record, ask the operator for it. Never invent an address, and never leave placeholders such as [Contact Name], [Your Name] or bracketed fields in a draft; use the real name from the record or leave the greeting generic.
 When asked to request missing information, read the request and application first, then ask only for what is actually missing, short and prioritized (the few items that unblock the work most, grouped and in plain words). Do not restate what we already have.
@@ -1710,6 +1710,38 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       input.teamEmailThreadIds
         ? `Read ${input.teamEmailThreadIds.length} email threads`
         : `Read email thread ${input.teamEmailThreadId}`,
+  }),
+  search_team_inbox: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description: "Full-text search of shared team email by words in subjects and message bodies, best matches first, one row per conversation with a matching snippet. Optional exact client filter. Read a result with get_team_inbox_thread. Bounded: no result does not prove no such mail exists.",
+    inputSchema: z.object({
+      query: z.string().trim().min(1).max(200),
+      clientOrgId: omittable(organizationId),
+      includeArchived: omittable(z.boolean()),
+      limit: omittable(z.number().int().min(1).max(25)),
+    }),
+    capability: "operator.email.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: () => ({ kind: "platform", id: "team-inbox" }),
+    summarize: (input) => `Search team email for “${input.query}”`,
+  }),
+  update_team_reply_draft: defineOperatorTool({
+    family: "outbound_email",
+    version: 1,
+    description: "Write or revise the suggested reply shown in a team conversation's reply box (get_team_inbox_thread returns the current one as replySuggestion). Never sends; the operator edits and sends it, or ask to send with reply_email_thread. Plain text with greeting and a short sign-off; the signature and quoted history are added on send. Use [needs: …] only for facts nobody has provided.",
+    inputSchema: z.object({
+      teamEmailThreadId,
+      reply: z.string().trim().min(1).max(10_000).describe("Complete plain-text reply body"),
+    }),
+    capability: "operator.email.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) => ({ kind: "team_email_thread", id: input.teamEmailThreadId }),
+    summarize: (input) => `Update the reply draft on email thread ${input.teamEmailThreadId}`,
   }),
   link_team_inbox_thread: defineOperatorTool({
     family: "outbound_email",
