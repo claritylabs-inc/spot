@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import {
   Clock,
   Maximize2,
   MessageSquare,
   Minimize2,
-  PanelRightClose,
   Plus,
   X,
 } from "lucide-react";
@@ -19,6 +18,11 @@ import { PresenceSlot } from "@/components/operator-agent/presence-slot";
 import { useAgentDock } from "./agent-dock-provider";
 import { DockErrorBoundary } from "./dock-error-boundary";
 import type { AgentDockMode, AgentDockTab } from "./dock-state";
+import {
+  AGENT_DOCK_TABS_MAX_WIDTH,
+  AGENT_DOCK_TABS_MIN_WIDTH,
+  clampAgentDockTabsWidth,
+} from "./dock-storage";
 import type { AgentDockAdapter } from "./types";
 
 /** Shared by the new-chat button and chat tabs so the row reads as one set. */
@@ -27,8 +31,7 @@ const TAB_ITEM_CLASS = cn(
   typeStyle("control.buttonCompact"),
 );
 
-/** Width of the right-side tab sidebar open, and as an icon rail collapsed. */
-export const AGENT_DOCK_SIDEBAR_WIDTH = 208;
+/** Width of the right-side tab sidebar as an icon rail. */
 export const AGENT_DOCK_RAIL_WIDTH = 44;
 
 /** Vertical tabs, Arc style: full rows in the sidebar, initials in the rail. */
@@ -303,6 +306,71 @@ export function AgentDockBar({
   );
 }
 
+/** Dragging the tabs narrower than this snaps them to the rail. */
+const TABS_SNAP_WIDTH = (AGENT_DOCK_RAIL_WIDTH + AGENT_DOCK_TABS_MIN_WIDTH) / 2;
+
+/** The tab sidebar's left edge: drag to resize, or narrow it to the rail. */
+function TabsResizeHandle({
+  collapsed,
+  width,
+  onDrag,
+}: {
+  collapsed: boolean;
+  width: number;
+  onDrag: (width: number | null) => void;
+}) {
+  const dock = useAgentDock();
+  // The sidebar's right edge is the window's.
+  const widthAt = (clientX: number) =>
+    Math.min(
+      AGENT_DOCK_TABS_MAX_WIDTH,
+      Math.max(AGENT_DOCK_RAIL_WIDTH, window.innerWidth - clientX),
+    );
+  const commit = (next: number) => {
+    const snap = next < TABS_SNAP_WIDTH;
+    dock.setTabsCollapsed(snap);
+    if (!snap) dock.setTabsWidth(next);
+  };
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize chat tabs"
+      aria-valuemin={AGENT_DOCK_RAIL_WIDTH}
+      aria-valuemax={AGENT_DOCK_TABS_MAX_WIDTH}
+      aria-valuenow={width}
+      tabIndex={0}
+      className="group/tabs-resize absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize touch-none outline-none select-none"
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.currentTarget.focus({ preventScroll: true });
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+        onDrag(widthAt(event.clientX));
+      }}
+      onPointerUp={(event) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+        event.currentTarget.releasePointerCapture(event.pointerId);
+        commit(widthAt(event.clientX));
+        onDrag(null);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        if (event.key === "ArrowLeft") {
+          commit(collapsed ? AGENT_DOCK_TABS_MIN_WIDTH : width + 24);
+        } else {
+          commit(width <= AGENT_DOCK_TABS_MIN_WIDTH ? 0 : width - 24);
+        }
+      }}
+    >
+      <span className="absolute inset-y-0 left-0 w-px bg-transparent transition-colors group-hover/tabs-resize:bg-foreground/20 group-focus-visible/tabs-resize:bg-foreground/30" />
+    </div>
+  );
+}
+
 /**
  * The dock's tabs and controls as a vertical sidebar on the right edge, for
  * the right-hand placement. Open, chats are full rows like browser tabs;
@@ -320,70 +388,102 @@ export function AgentDockTabSidebar({
 }) {
   const dock = useAgentDock();
   const open = mode !== "collapsed";
-  const rail = !open;
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  // The tabs narrow to the rail with the dock, or when dragged narrower than
+  // their minimum while it's open.
+  const rail =
+    !open ||
+    (dragWidth === null
+      ? dock.tabsCollapsed
+      : dragWidth < TABS_SNAP_WIDTH);
+  const width = rail
+    ? AGENT_DOCK_RAIL_WIDTH
+    : clampAgentDockTabsWidth(dragWidth ?? dock.tabsWidth);
   const variant: TabVariant = rail ? "rail" : "row";
   const draftActive =
     open && dock.view === "chat" && dock.activeThreadId === null;
   const historyOpen = open && dock.view === "history";
-  const controls = (
-    <>
-      <PillButton
-        type="button"
-        variant="icon"
-        size="compact"
-        iconOnly
-        label="All chats (⌥H)"
-        aria-pressed={historyOpen}
-        className={cn(historyOpen && "bg-foreground/6 text-foreground")}
-        onClick={() => (historyOpen ? dock.showChat() : dock.showHistory())}
-      >
-        <Clock className="size-3.5" />
-      </PillButton>
-      <PillButton
-        type="button"
-        variant="icon"
-        size="compact"
-        iconOnly
-        label={mode === "full" ? "Restore (⌥E)" : "Expand (⌥E)"}
-        onClick={dock.toggleFull}
-      >
-        {mode === "full" ? (
-          <Minimize2 className="size-3.5" />
-        ) : (
-          <Maximize2 className="size-3.5" />
-        )}
-      </PillButton>
-      {open ? (
-        <PillButton
-          type="button"
-          variant="icon"
-          size="compact"
-          iconOnly
-          label="Minimize (⌥J)"
-          onClick={() => dock.setMode("collapsed")}
-        >
-          <PanelRightClose className="size-3.5" />
-        </PillButton>
-      ) : null}
-    </>
+  const iconButton = (
+    label: string,
+    onClick: () => void,
+    icon: ReactNode,
+    pressed?: boolean,
+  ) => (
+    <PillButton
+      type="button"
+      variant="icon"
+      size="compact"
+      iconOnly
+      label={label}
+      aria-pressed={pressed}
+      className={cn(pressed && "bg-foreground/6 text-foreground")}
+      onClick={onClick}
+    >
+      {icon}
+    </PillButton>
+  );
+  const history = iconButton(
+    "All chats (⌥H)",
+    () => (historyOpen ? dock.showChat() : dock.showHistory()),
+    <Clock className="size-3.5" />,
+    historyOpen,
+  );
+  const expand = iconButton(
+    mode === "full" ? "Restore (⌥E)" : "Expand (⌥E)",
+    dock.toggleFull,
+    mode === "full" ? (
+      <Minimize2 className="size-3.5" />
+    ) : (
+      <Maximize2 className="size-3.5" />
+    ),
+  );
+  const minimize = open
+    ? iconButton("Minimize (⌥J)", () => dock.setMode("collapsed"), (
+        <X className="size-3.5" />
+      ))
+    : null;
+  // Continues the composer's top border; its buttons sit on the send button's
+  // line (the composer row is py-2).
+  const composerFooter = (children: ReactNode) => (
+    <div
+      className={cn(
+        "flex shrink-0 items-end gap-1 border-t border-border pt-1.5 pb-2",
+        rail ? "justify-center" : "justify-end px-2",
+      )}
+      style={composerHeight ? { height: composerHeight } : undefined}
+    >
+      {children}
+    </div>
   );
 
   return (
     <motion.div
       initial={false}
-      animate={{ width: rail ? AGENT_DOCK_RAIL_WIDTH : AGENT_DOCK_SIDEBAR_WIDTH }}
-      transition={{ type: "spring", stiffness: 380, damping: 40, mass: 0.9 }}
+      animate={{ width }}
+      transition={
+        dragWidth === null
+          ? { type: "spring", stiffness: 380, damping: 40, mass: 0.9 }
+          : { duration: 0 }
+      }
       className={cn(
-        "flex h-full shrink-0 flex-col overflow-hidden",
+        "relative flex h-full shrink-0 flex-col overflow-hidden",
         open && "border-l border-border",
       )}
     >
+      {open ? (
+        <TabsResizeHandle
+          collapsed={rail}
+          width={width}
+          onDrag={setDragWidth}
+        />
+      ) : null}
       {/* Its divider continues the page's top bar border (the card sits
           CARD_GAP below the top while the dock is open). */}
       <div
         className={cn(
-          "flex shrink-0 items-center border-b border-border",
-          rail ? "h-12 justify-center" : "h-14 px-2 pt-2",
+          "flex shrink-0 items-center gap-1 border-b border-border",
+          open ? "h-14 pt-2" : "h-12",
+          rail ? "justify-center" : "px-2",
         )}
       >
         {rail ? (
@@ -400,18 +500,20 @@ export function AgentDockTabSidebar({
             <Plus className="size-3.5" />
           </button>
         ) : (
-          <button
-            type="button"
-            title={`${adapter.newChatLabel} (⌥N)`}
-            onClick={dock.newChat}
-            className={cn(
-              ROW_ITEM_CLASS,
-              "text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
-            )}
-          >
-            <Plus className="size-3.5 shrink-0" />
-            <span className="truncate">{adapter.newChatLabel}</span>
-          </button>
+          <>
+            <button
+              type="button"
+              title={`${adapter.newChatLabel} (⌥N)`}
+              onClick={dock.newChat}
+              className={cn(
+                ROW_ITEM_CLASS,
+                "min-w-0 flex-1 text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
+              )}
+            >
+              <Plus className="size-3.5 shrink-0" />
+              <span className="truncate">{adapter.newChatLabel}</span>
+            </button>
+          </>
         )}
       </div>
       <div
@@ -457,21 +559,30 @@ export function AgentDockTabSidebar({
             : "px-2 [&>div]:flex-wrap",
         )}
       />
-      {/* Its divider continues the composer's top border; the buttons sit on
-          the send button's line (the composer row is py-2). */}
-      <div
-        className={cn(
-          "flex shrink-0 gap-1 border-t border-border",
-          rail
-            ? "flex-col items-center py-1.5"
-            : "items-end justify-end px-2 pt-1.5 pb-2",
-        )}
-        style={
-          !rail && composerHeight ? { height: composerHeight } : undefined
-        }
-      >
-        {controls}
-      </div>
+      {!open ? (
+        <div className="flex shrink-0 flex-col items-center gap-1 border-t border-border py-1.5">
+          {history}
+          {expand}
+        </div>
+      ) : rail ? (
+        <>
+          {/* The rail is too narrow for a row, so only minimize sits on the
+              composer's line. */}
+          <div className="flex shrink-0 flex-col items-center gap-1 border-t border-border py-1.5">
+            {history}
+            {expand}
+          </div>
+          {composerFooter(minimize)}
+        </>
+      ) : (
+        composerFooter(
+          <>
+            {history}
+            {expand}
+            {minimize}
+          </>,
+        )
+      )}
     </motion.div>
   );
 }

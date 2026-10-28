@@ -3,6 +3,42 @@
 /* PillButton applies important modifiers to its shared typography roles. */
 @source inline("font-sans! text-label! text-base! font-medium! leading-4! leading-normal! tracking-normal! normal-case! not-italic! normal-nums!");
 
+/*
+ * Breakpoints follow the nearest `app` container rather than the viewport:
+ * the app card (which narrows beside the right agent dock) or, outside it,
+ * the root element.
+ */
+@custom-variant max-2xl (@container app (width < 96rem));
+@custom-variant max-xl (@container app (width < 80rem));
+@custom-variant max-lg (@container app (width < 64rem));
+@custom-variant max-md (@container app (width < 48rem));
+@custom-variant max-sm (@container app (width < 40rem));
+@custom-variant sm (@container app (width >= 40rem));
+@custom-variant md (@container app (width >= 48rem));
+@custom-variant lg (@container app (width >= 64rem));
+@custom-variant xl (@container app (width >= 80rem));
+@custom-variant 2xl (@container app (width >= 96rem));
+
+html {
+  container: app / inline-size;
+}
+
+/* A tablet-width app card shows the desktop menu as its icon rail (the shared
+   sidebar layout hides it below lg) instead of the hamburger drawer. */
+[data-tablet-rail] > [data-group] > [data-panel] > div:has(> aside) {
+  display: flex !important;
+  flex: none !important;
+  width: 3.5rem !important;
+}
+[data-tablet-rail] [data-slot="app-top-bar"] button[aria-label="Toggle navigation"] {
+  display: none;
+}
+/* The rail's logo sits in its expand button; the menu stays compact here. */
+[data-tablet-rail] button[aria-label="Expand navigation"] {
+  display: flex;
+  pointer-events: none;
+}
+
 /* Fonts remain owned by Spot; the package ships no font assets. */
 
 @theme inline {

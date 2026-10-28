@@ -7,12 +7,19 @@ export const AGENT_DOCK_MAX_HEIGHT = 0.9;
 export const AGENT_DOCK_DEFAULT_WIDTH = 0.45;
 export const AGENT_DOCK_MIN_WIDTH = 0.3;
 export const AGENT_DOCK_MAX_WIDTH = 0.75;
+/** Pixel width of the right dock's tab sidebar; narrower snaps to its rail. */
+export const AGENT_DOCK_TABS_DEFAULT_WIDTH = 208;
+export const AGENT_DOCK_TABS_MIN_WIDTH = 160;
+export const AGENT_DOCK_TABS_MAX_WIDTH = 360;
 
 export type StoredAgentDock = {
   tabs: AgentDockTab[];
   activeThreadId: string | null;
   height: number;
   width: number;
+  tabsWidth: number;
+  /** The right dock's tab sidebar is narrowed to its icon rail. */
+  tabsCollapsed: boolean;
   mode: AgentDockMode;
 };
 
@@ -27,6 +34,14 @@ export function clampAgentDockHeight(height: number) {
   return Math.min(AGENT_DOCK_MAX_HEIGHT, Math.max(AGENT_DOCK_MIN_HEIGHT, height));
 }
 
+export function clampAgentDockTabsWidth(width: number) {
+  if (!Number.isFinite(width)) return AGENT_DOCK_TABS_DEFAULT_WIDTH;
+  return Math.min(
+    AGENT_DOCK_TABS_MAX_WIDTH,
+    Math.max(AGENT_DOCK_TABS_MIN_WIDTH, Math.round(width)),
+  );
+}
+
 export function clampAgentDockWidth(width: number) {
   if (!Number.isFinite(width)) return AGENT_DOCK_DEFAULT_WIDTH;
   return Math.min(AGENT_DOCK_MAX_WIDTH, Math.max(AGENT_DOCK_MIN_WIDTH, width));
@@ -38,6 +53,8 @@ function parseStoredAgentDock(raw: string | null): StoredAgentDock {
     activeThreadId: null,
     height: AGENT_DOCK_DEFAULT_HEIGHT,
     width: AGENT_DOCK_DEFAULT_WIDTH,
+    tabsWidth: AGENT_DOCK_TABS_DEFAULT_WIDTH,
+    tabsCollapsed: false,
     mode: "collapsed",
   };
   if (!raw) return fallback;
@@ -63,6 +80,11 @@ function parseStoredAgentDock(raw: string | null): StoredAgentDock {
         typeof parsed.width === "number"
           ? clampAgentDockWidth(parsed.width)
           : AGENT_DOCK_DEFAULT_WIDTH,
+      tabsWidth:
+        typeof parsed.tabsWidth === "number"
+          ? clampAgentDockTabsWidth(parsed.tabsWidth)
+          : AGENT_DOCK_TABS_DEFAULT_WIDTH,
+      tabsCollapsed: parsed.tabsCollapsed === true,
       mode: AGENT_DOCK_MODES.includes(parsed.mode as AgentDockMode)
         ? (parsed.mode as AgentDockMode)
         : "collapsed",
