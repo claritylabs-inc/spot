@@ -54,6 +54,8 @@ const inputOverlayFadeStyle = {
 const INPUT_INTENT_RADIUS = 180;
 const INPUT_INTENT_EPSILON = 0.01;
 const PREPARED_ACTION_INTENT_THRESHOLD = 0.34;
+/** Dock composers narrower than this stack the text above the chip and controls. */
+const DOCK_STACKED_MAX_WIDTH = 520;
 
 function InputOverlayFade() {
   return <div className="absolute inset-0" style={inputOverlayFadeStyle} />;
@@ -650,8 +652,20 @@ export const SpotPromptInput = forwardRef<
 ) {
   const isCommandVariant = variant === "command";
   const isDockVariant = variant === "dock";
-  const hasDockChip = isDockVariant && Boolean(contextChip);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // A narrow dock gives the text its own line and moves the chip beside the
+  // send controls.
+  const [stackedDock, setStackedDock] = useState(false);
+  useEffect(() => {
+    const node = wrapperRef.current;
+    if (!isDockVariant || !node) return;
+    const observer = new ResizeObserver(() =>
+      setStackedDock(node.offsetWidth < DOCK_STACKED_MAX_WIDTH),
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isDockVariant]);
+  const hasDockChip = isDockVariant && Boolean(contextChip) && !stackedDock;
   const dockChipRef = useRef<HTMLSpanElement>(null);
   const [dockChipWidth, setDockChipWidth] = useState(0);
 
@@ -1389,7 +1403,7 @@ export const SpotPromptInput = forwardRef<
     }}
   >
     <input readOnly type="hidden" name="message" value={messageText} />
-    {isDockVariant && contextChip ? (
+    {hasDockChip ? (
       <span
         ref={dockChipRef}
         className="absolute left-0 top-0 z-10 flex max-w-full items-center"
@@ -1526,7 +1540,17 @@ export const SpotPromptInput = forwardRef<
           roomyOnMobile={roomyOnMobile || isCommandVariant}
           detailed={isCommandVariant}
         />
-        {isDockVariant ? (
+        {isDockVariant && stackedDock ? (
+          <div className="flex w-full min-w-0 flex-col gap-1.5 py-2">
+            {tokenEditor}
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center">
+                {contextChip}
+              </div>
+              {submitControls}
+            </div>
+          </div>
+        ) : isDockVariant ? (
           <div className="flex w-full min-w-0 items-center gap-2 py-2">
             {tokenEditor}
             {submitControls}
@@ -1602,6 +1626,7 @@ export function ChatInputOverlay({
       </div>
       <div
         ref={composerRef}
+        data-chat-composer=""
         className="pointer-events-auto border-t border-border bg-(--chat-surface,var(--background)) px-3 md:px-4"
       >
         {children}

@@ -450,6 +450,7 @@ export default defineSchema({
     serviceAccountKind: v.optional(v.literal("slack")),
     streamResponses: v.optional(v.boolean()),
     showThinking: v.optional(v.boolean()),
+    agentDockPlacement: v.optional(v.union(v.literal("bottom"), v.literal("right"))),
     intakeRestricted: v.optional(v.boolean()),
     // Personal profile fields
     title: v.optional(v.string()),

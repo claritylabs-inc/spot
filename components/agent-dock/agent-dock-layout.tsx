@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { motion, useReducedMotion, type Transition } from "framer-motion";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, ArrowRight } from "lucide-react";
 import { usePanelRef } from "react-resizable-panels";
 import {
   ResizablePanel,
@@ -18,12 +18,22 @@ import {
 import { useMediaQuery } from "@/components/app-sidebar/utils";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
-import { AgentDockBar } from "./agent-dock-bar";
+import {
+  AGENT_DOCK_RAIL_WIDTH,
+  AGENT_DOCK_SIDEBAR_WIDTH,
+  AgentDockBar,
+  AgentDockTabSidebar,
+} from "./agent-dock-bar";
 import { AgentDockHistory } from "./agent-dock-history";
 import { useAgentDock } from "./agent-dock-provider";
 import { DockErrorBoundary } from "./dock-error-boundary";
 import type { AgentDockMode } from "./dock-state";
-import { AGENT_DOCK_MAX_HEIGHT, AGENT_DOCK_MIN_HEIGHT } from "./dock-storage";
+import {
+  AGENT_DOCK_MAX_HEIGHT,
+  AGENT_DOCK_MAX_WIDTH,
+  AGENT_DOCK_MIN_HEIGHT,
+  AGENT_DOCK_MIN_WIDTH,
+} from "./dock-storage";
 import type { AgentDockAdapter } from "./types";
 
 const AGENT_DOCK_BAR_HEIGHT = 44;
@@ -34,6 +44,10 @@ const CARD_GAP = 8;
 const CARD_RADIUS = 12;
 /** In full screen, this much of the app card stays visible at the top. */
 const CARD_LIP = 20;
+/** The right dock's chat never gets narrower than this beside its tabs. */
+const RIGHT_CHAT_MIN_WIDTH = 360;
+
+export type AgentDockPlacement = "bottom" | "right";
 
 const SPRING: Transition = {
   type: "spring",
@@ -67,46 +81,69 @@ function useViewport() {
 }
 
 /**
- * Drags between the collapsed bar and full screen. Releasing past the midpoint
- * between a resize limit and the next mode snaps into that mode.
+ * Drags between the collapsed bar and full screen, vertically for the bottom
+ * dock and horizontally for the right one. Releasing past the midpoint between
+ * a resize limit and the next mode snaps into that mode.
  */
 function ResizeHandle({
-  viewportHeight,
-  minHeight,
-  maxHeight,
+  axis,
+  viewportSize,
+  minSize,
+  minExpandedSize = 0,
+  maxSize,
   onDrag,
-  onCommit,
 }: {
-  viewportHeight: number;
-  /** Pixel height of the collapsed bar. */
-  minHeight: number;
-  /** Pixel height of the dock in full screen. */
-  maxHeight: number;
-  onDrag: (heightPx: number | null) => void;
-  onCommit: (fraction: number) => void;
+  /** `y` resizes the bottom dock's height, `x` the right dock's width. */
+  axis: "x" | "y";
+  viewportSize: number;
+  /** Pixel size of the collapsed bar or rail. */
+  minSize: number;
+  /** Smallest expanded pixel size; dragging below it heads for collapsed. */
+  minExpandedSize?: number;
+  /** Pixel size of the dock in full screen. */
+  maxSize: number;
+  onDrag: (sizePx: number | null) => void;
 }) {
   const dock = useAgentDock();
-  const heightAt = (clientY: number) =>
-    Math.min(maxHeight, Math.max(minHeight, viewportHeight - clientY));
-  const release = (heightPx: number) => {
-    const fraction = heightPx / viewportHeight;
-    const collapseBelow =
-      (AGENT_DOCK_MIN_HEIGHT + minHeight / viewportHeight) / 2;
-    const fullAbove = (AGENT_DOCK_MAX_HEIGHT + maxHeight / viewportHeight) / 2;
-    if (fraction < collapseBelow) dock.setMode("collapsed");
-    else if (fraction > fullAbove) dock.setMode("full");
-    else onCommit(fraction);
+  const vertical = axis === "y";
+  const [fraction, baseMinFraction, maxFraction, setFraction] = vertical
+    ? [dock.height, AGENT_DOCK_MIN_HEIGHT, AGENT_DOCK_MAX_HEIGHT, dock.setHeight]
+    : [dock.width, AGENT_DOCK_MIN_WIDTH, AGENT_DOCK_MAX_WIDTH, dock.setWidth];
+  const minFraction = Math.min(
+    maxFraction,
+    Math.max(baseMinFraction, minExpandedSize / viewportSize),
+  );
+  const sizeAt = (event: { clientX: number; clientY: number }) =>
+    Math.min(
+      maxSize,
+      Math.max(
+        minSize,
+        viewportSize - (vertical ? event.clientY : event.clientX),
+      ),
+    );
+  const release = (sizePx: number) => {
+    const next = sizePx / viewportSize;
+    const collapseBelow = (minFraction + minSize / viewportSize) / 2;
+    const fullAbove = (maxFraction + maxSize / viewportSize) / 2;
+    if (next < collapseBelow) dock.setMode("collapsed");
+    else if (next > fullAbove) dock.setMode("full");
+    else setFraction(Math.max(minFraction, next));
   };
   return (
     <div
       role="separator"
-      aria-orientation="horizontal"
+      aria-orientation={vertical ? "horizontal" : "vertical"}
       aria-label="Resize agent"
-      aria-valuemin={30}
-      aria-valuemax={90}
-      aria-valuenow={Math.round(dock.height * 100)}
+      aria-valuemin={Math.round(minFraction * 100)}
+      aria-valuemax={Math.round(maxFraction * 100)}
+      aria-valuenow={Math.round(Math.max(minFraction, fraction) * 100)}
       tabIndex={0}
-      className="group/resize absolute inset-x-0 top-0 z-10 flex h-2.5 cursor-row-resize touch-none items-center select-none justify-center outline-none"
+      className={cn(
+        "group/resize absolute z-10 flex touch-none items-center select-none justify-center outline-none",
+        vertical
+          ? "inset-x-0 top-0 h-2.5 cursor-row-resize"
+          : "inset-y-0 left-0 w-2.5 cursor-col-resize",
+      )}
       onPointerDown={(event) => {
         // Dragging would otherwise start a text selection across the page.
         event.preventDefault();
@@ -115,27 +152,62 @@ function ResizeHandle({
       }}
       onPointerMove={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-        onDrag(Math.round(heightAt(event.clientY)));
+        onDrag(Math.round(Math.max(minExpandedSize, sizeAt(event))));
       }}
       onPointerUp={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
         event.currentTarget.releasePointerCapture(event.pointerId);
-        release(heightAt(event.clientY));
+        release(sizeAt(event));
         onDrag(null);
       }}
       onKeyDown={(event) => {
-        if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+        const grow = vertical ? "ArrowUp" : "ArrowLeft";
+        const shrink = vertical ? "ArrowDown" : "ArrowRight";
+        if (event.key !== grow && event.key !== shrink) return;
         event.preventDefault();
-        const up = event.key === "ArrowUp";
-        if (up && dock.height >= AGENT_DOCK_MAX_HEIGHT) dock.setMode("full");
-        else if (!up && dock.height <= AGENT_DOCK_MIN_HEIGHT)
-          dock.setMode("collapsed");
-        else dock.setHeight(dock.height + (up ? 0.05 : -0.05));
+        const up = event.key === grow;
+        if (up && fraction >= maxFraction) dock.setMode("full");
+        else if (!up && fraction <= minFraction) dock.setMode("collapsed");
+        else
+          setFraction(Math.max(minFraction, fraction + (up ? 0.05 : -0.05)));
       }}
     >
-      <span className="h-1 w-10 rounded-full bg-foreground/15 transition-colors group-hover/resize:bg-foreground/30 group-focus-visible/resize:bg-foreground/40" />
+      <span
+        className={cn(
+          "rounded-full bg-foreground/15 transition-colors group-hover/resize:bg-foreground/30 group-focus-visible/resize:bg-foreground/40",
+          vertical ? "h-1 w-10" : "h-10 w-1",
+        )}
+      />
     </div>
   );
+}
+
+/** Tracks the height of the chat composer rendered inside `container`. */
+function useComposerHeight(container: HTMLElement | null) {
+  const [height, setHeight] = useState<number | null>(null);
+  useEffect(() => {
+    if (!container) return;
+    let observed: HTMLElement | null = null;
+    const resize = new ResizeObserver(() => {
+      if (observed) setHeight(observed.offsetHeight);
+    });
+    const find = () => {
+      const next = container.querySelector<HTMLElement>("[data-chat-composer]");
+      if (next === observed) return;
+      if (observed) resize.unobserve(observed);
+      observed = next;
+      if (next) resize.observe(next);
+      else setHeight(null);
+    };
+    find();
+    const mutations = new MutationObserver(find);
+    mutations.observe(container, { childList: true, subtree: true });
+    return () => {
+      mutations.disconnect();
+      resize.disconnect();
+    };
+  }, [container]);
+  return height;
 }
 
 /** Artifact card width beside the conversation on wide screens; drag to resize. */
@@ -329,12 +401,16 @@ export function DockBody({
  * The agent lives on the base layer and the app sits above it as a card.
  * Collapsed, the card covers everything but the agent bar; expanded, the card
  * lifts and shrinks to reveal the chat underneath; full screen, it slides
- * away. Its content follows the animated card height so the sidebar and page
+ * away. Its content follows the animated card size so the sidebar and page
  * stay in sync throughout mode changes and dragging.
+ *
+ * `placement` puts the dock below the page or, on desktop, to its right with
+ * the tabs as a vertical sidebar along the right edge.
  */
 export function AgentDockLayout({
   app,
   adapter,
+  placement = "bottom",
   artifactPanelRef,
   artifactPlacement,
   artifactOpen = false,
@@ -342,6 +418,7 @@ export function AgentDockLayout({
 }: {
   app: ReactNode;
   adapter: AgentDockAdapter | null;
+  placement?: AgentDockPlacement;
   artifactPanelRef?: (element: HTMLElement | null) => void;
   artifactPlacement?: "side" | "overlay";
   artifactOpen?: boolean;
@@ -352,6 +429,7 @@ export function AgentDockLayout({
   const mobile = useMediaQuery("(max-width: 767px)");
   const reduceMotion = useReducedMotion();
   const enabled = adapter !== null;
+  const right = placement === "right" && !mobile;
   const mode: AgentDockMode = !enabled
     ? "collapsed"
     : mobile && dock.mode === "expanded"
@@ -359,33 +437,70 @@ export function AgentDockLayout({
       : dock.mode;
   const [animatedSettledMode, setSettledMode] = useState(mode);
   const settledMode = reduceMotion ? mode : animatedSettledMode;
-  const [dragHeight, setDragHeight] = useState<number | null>(null);
+  const [dragSize, setDragSize] = useState<number | null>(null);
   const [actions, setActions] = useState<ReactNode>(null);
-  const barHeight = enabled ? AGENT_DOCK_BAR_HEIGHT : 0;
-  const fullDockHeight = viewport.height - CARD_GAP - CARD_LIP;
-  const expandedDockHeight =
-    dragHeight ?? Math.round(viewport.height * dock.height);
-  const dockHeight =
-    mode === "collapsed"
-      ? barHeight
-      : mode === "full"
-        ? fullDockHeight
-        : expandedDockHeight;
+  const [rightSection, setRightSection] = useState<HTMLElement | null>(null);
+  const composerHeight = useComposerHeight(rightSection);
   const lifted = mode !== "collapsed";
-  const cardScale = lifted
-    ? (viewport.width - CARD_GAP * 2) / viewport.width
-    : 1;
-  const restingCardHeight = viewport.height - barHeight;
-  const cardHeight = lifted
-    ? (viewport.height - expandedDockHeight - CARD_GAP) / cardScale
-    : restingCardHeight;
-  // Full screen slides the card up until only its bottom lip shows.
-  const cardY =
-    mode === "full"
-      ? CARD_GAP + CARD_LIP - cardHeight * cardScale
-      : lifted
-        ? CARD_GAP
-        : 0;
+  const viewportSize = right ? viewport.width : viewport.height;
+  const barSize = !enabled ? 0 : right ? AGENT_DOCK_RAIL_WIDTH : AGENT_DOCK_BAR_HEIGHT;
+  const fullDockSize = viewportSize - CARD_GAP - CARD_LIP;
+  const minExpandedWidth = AGENT_DOCK_SIDEBAR_WIDTH + RIGHT_CHAT_MIN_WIDTH;
+  const expandedDockSize =
+    dragSize ??
+    (right
+      ? Math.max(minExpandedWidth, Math.round(viewport.width * dock.width))
+      : Math.round(viewport.height * dock.height));
+  const dockSize =
+    mode === "collapsed"
+      ? barSize
+      : mode === "full"
+        ? fullDockSize
+        : expandedDockSize;
+  // The bottom dock lifts the card by scaling it; the right one narrows it.
+  const cardScale =
+    lifted && !right ? (viewport.width - CARD_GAP * 2) / viewport.width : 1;
+  const card = right
+    ? (() => {
+        const width = lifted
+          ? viewport.width - expandedDockSize - CARD_GAP
+          : viewport.width - barSize;
+        return {
+          width,
+          height: lifted ? viewport.height - CARD_GAP * 2 : viewport.height,
+          // Full screen slides the card left until only its right lip shows.
+          x:
+            mode === "full"
+              ? CARD_GAP + CARD_LIP - width
+              : lifted
+                ? CARD_GAP
+                : 0,
+          y: lifted ? CARD_GAP : 0,
+        };
+      })()
+    : (() => {
+        const height = lifted
+          ? (viewport.height - expandedDockSize - CARD_GAP) / cardScale
+          : viewport.height - barSize;
+        return {
+          width: "100%",
+          height,
+          x: 0,
+          // Full screen slides the card up until only its bottom lip shows.
+          y:
+            mode === "full"
+              ? CARD_GAP + CARD_LIP - height * cardScale
+              : lifted
+                ? CARD_GAP
+                : 0,
+        };
+      })();
+  const restingRadius = enabled ? CARD_RADIUS : 0;
+  const cardRadius = lifted
+    ? `${CARD_RADIUS}px ${CARD_RADIUS}px ${CARD_RADIUS}px ${CARD_RADIUS}px`
+    : right
+      ? `0px ${restingRadius}px ${restingRadius}px 0px`
+      : `0px 0px ${restingRadius}px ${restingRadius}px`;
   const setMode = dock.setMode;
   const wasDetailOpenRef = useRef(detailPanelOpen);
 
@@ -406,7 +521,8 @@ export function AgentDockLayout({
   }, [detailPanelOpen, dock.mode, mobile, setMode]);
 
   const transition =
-    reduceMotion || dragHeight !== null ? { duration: 0 } : SPRING;
+    reduceMotion || dragSize !== null ? { duration: 0 } : SPRING;
+  const showBody = mode !== "collapsed" || settledMode !== "collapsed";
 
   return (
     <div
@@ -415,26 +531,78 @@ export function AgentDockLayout({
         AGENT_CHAT_SURFACE,
       )}
     >
-      {adapter ? (
+      {adapter && right ? (
         <motion.section
+          key="right"
+          ref={setRightSection}
+          data-agent-dock
+          aria-label="Spot agent"
+          className="absolute inset-y-0 right-0 flex"
+          initial={false}
+          animate={{ width: dockSize }}
+          transition={transition}
+          onAnimationComplete={() => setSettledMode(mode)}
+        >
+          {mode === "expanded" ? (
+            <ResizeHandle
+              axis="x"
+              viewportSize={viewport.width}
+              minSize={barSize}
+              minExpandedSize={minExpandedWidth}
+              maxSize={fullDockSize}
+              onDrag={setDragSize}
+            />
+          ) : null}
+          {showBody ? (
+            <motion.div
+              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.18 }}
+            >
+              {mode !== "collapsed" && dock.view === "chat" && actions ? (
+                <div className="flex h-11 shrink-0 items-center justify-end gap-1 px-3">
+                  {actions}
+                </div>
+              ) : null}
+              <DockBody
+                adapter={adapter}
+                mode={mode}
+                onActions={setActions}
+                artifactPanelRef={artifactPanelRef}
+                // Too narrow beside the page for a second column.
+                artifactPlacement="overlay"
+                artifactOpen={artifactOpen}
+              />
+            </motion.div>
+          ) : null}
+          <AgentDockTabSidebar
+            adapter={adapter}
+            mode={mode}
+            composerHeight={mode === "collapsed" ? null : composerHeight}
+          />
+        </motion.section>
+      ) : adapter ? (
+        <motion.section
+          key="bottom"
           data-agent-dock
           aria-label="Spot agent"
           className="absolute inset-x-0 bottom-0 flex flex-col"
           initial={false}
-          animate={{ height: dockHeight }}
+          animate={{ height: dockSize }}
           transition={transition}
           onAnimationComplete={() => setSettledMode(mode)}
         >
           {mode === "expanded" && !mobile ? (
             <ResizeHandle
-              viewportHeight={viewport.height}
-              minHeight={barHeight}
-              maxHeight={fullDockHeight}
-              onDrag={setDragHeight}
-              onCommit={dock.setHeight}
+              axis="y"
+              viewportSize={viewport.height}
+              minSize={barSize}
+              maxSize={fullDockSize}
+              onDrag={setDragSize}
             />
           ) : null}
-          {mode !== "collapsed" || settledMode !== "collapsed" ? (
+          {showBody ? (
             <motion.div
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
               initial={{ opacity: 0 }}
@@ -461,18 +629,15 @@ export function AgentDockLayout({
       ) : null}
       <motion.div
         className={cn(
-          "absolute inset-x-0 top-0 z-10 origin-top overflow-hidden bg-background",
+          "absolute top-0 left-0 z-10 origin-top overflow-hidden bg-background",
           enabled &&
             "shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_-14px_rgba(0,0,0,0.1)] ring-1 ring-foreground/[0.04] dark:shadow-[0_8px_24px_-14px_rgba(0,0,0,0.6)] dark:ring-foreground/20",
         )}
         initial={false}
         animate={{
-          height: cardHeight,
+          ...card,
           scale: cardScale,
-          y: cardY,
-          borderRadius: lifted
-            ? `${CARD_RADIUS}px ${CARD_RADIUS}px ${CARD_RADIUS}px ${CARD_RADIUS}px`
-            : `0px 0px ${enabled ? CARD_RADIUS : 0}px ${enabled ? CARD_RADIUS : 0}px`,
+          borderRadius: cardRadius,
         }}
         transition={transition}
         inert={mode === "full"}
@@ -485,13 +650,24 @@ export function AgentDockLayout({
           type="button"
           aria-label="Show page"
           onClick={() => setMode("expanded")}
-          className="absolute left-1/2 z-20 flex size-7 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground"
-          style={{ top: CARD_GAP + CARD_LIP - 14 }}
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
+          className={cn(
+            "absolute z-20 flex size-7 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground",
+            right ? "top-1/2 -translate-y-1/2" : "left-1/2 -translate-x-1/2",
+          )}
+          style={
+            right
+              ? { left: CARD_GAP + CARD_LIP - 14 }
+              : { top: CARD_GAP + CARD_LIP - 14 }
+          }
+          initial={right ? { opacity: 0, x: -4 } : { opacity: 0, y: -4 }}
+          animate={right ? { opacity: 1, x: 0 } : { opacity: 1, y: 0 }}
           transition={{ duration: 0.18, delay: reduceMotion ? 0 : 0.15 }}
         >
-          <ArrowDown className="size-3.5" />
+          {right ? (
+            <ArrowRight className="size-3.5" />
+          ) : (
+            <ArrowDown className="size-3.5" />
+          )}
         </motion.button>
       ) : null}
     </div>

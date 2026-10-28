@@ -5,7 +5,9 @@ import { motion } from "framer-motion";
 import {
   Clock,
   Maximize2,
+  MessageSquare,
   Minimize2,
+  PanelRightClose,
   Plus,
   X,
 } from "lucide-react";
@@ -25,6 +27,22 @@ const TAB_ITEM_CLASS = cn(
   typeStyle("control.buttonCompact"),
 );
 
+/** Width of the right-side tab sidebar open, and as an icon rail collapsed. */
+export const AGENT_DOCK_SIDEBAR_WIDTH = 208;
+export const AGENT_DOCK_RAIL_WIDTH = 44;
+
+/** Vertical tabs, Arc style: full rows in the sidebar, initials in the rail. */
+const ROW_ITEM_CLASS = cn(
+  "relative flex h-8 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
+  typeStyle("control.buttonCompact"),
+);
+const RAIL_ITEM_CLASS = cn(
+  "relative flex size-8 shrink-0 items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/40",
+  typeStyle("control.buttonCompact"),
+);
+
+type TabVariant = "bar" | "row" | "rail";
+
 function TabButton({
   active,
   label,
@@ -32,6 +50,7 @@ function TabButton({
   onClose,
   closeHint,
   hint,
+  variant = "bar",
 }: {
   closeHint?: string;
   /** Hover text beside the label, such as who started the chat. */
@@ -40,23 +59,35 @@ function TabButton({
   label: string;
   onSelect: () => void;
   onClose?: () => void;
+  variant?: TabVariant;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (active) ref.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [active]);
+  const rail = variant === "rail";
+  const closeMask =
+    "group-hover/tab:[mask-image:linear-gradient(to_left,transparent_18px,black_34px)] group-focus-within/tab:[mask-image:linear-gradient(to_left,transparent_18px,black_34px)]";
 
   return (
     <div
       ref={ref}
       role="presentation"
-      className="group/tab relative flex h-7 max-w-52 shrink-0 items-center"
+      className={cn(
+        "group/tab relative flex shrink-0 items-center",
+        variant === "bar" && "h-7 max-w-52",
+        variant === "row" && "h-8 w-full",
+        rail && "size-8",
+      )}
     >
       {active ? (
         <motion.span
           layoutId="agent-dock-active-tab"
           aria-hidden="true"
-          className="absolute inset-0 rounded-full bg-foreground/6 dark:bg-foreground/10"
+          className={cn(
+            "absolute inset-0 bg-foreground/6 dark:bg-foreground/10",
+            variant === "bar" ? "rounded-full" : "rounded-lg",
+          )}
           transition={{ type: "spring", stiffness: 520, damping: 42 }}
         />
       ) : null}
@@ -64,26 +95,36 @@ function TabButton({
         type="button"
         role="tab"
         aria-selected={active}
+        aria-label={rail ? label : undefined}
         title={hint ? `${label} · ${hint}` : label}
         onClick={onSelect}
         className={cn(
-          TAB_ITEM_CLASS,
+          variant === "bar"
+            ? TAB_ITEM_CLASS
+            : rail
+              ? RAIL_ITEM_CLASS
+              : ROW_ITEM_CLASS,
           active
             ? "text-foreground"
             : "text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
         )}
       >
-        <span
-          className={cn(
-            "truncate",
-            onClose &&
-              "group-hover/tab:[mask-image:linear-gradient(to_left,transparent_18px,black_34px)] group-focus-within/tab:[mask-image:linear-gradient(to_left,transparent_18px,black_34px)]",
-          )}
-        >
-          {label}
-        </span>
+        {rail ? (
+          <span aria-hidden="true">
+            {label.trim().charAt(0).toUpperCase() || (
+              <MessageSquare className="size-3.5" />
+            )}
+          </span>
+        ) : (
+          <>
+            {variant === "row" ? (
+              <MessageSquare className="size-3.5 shrink-0 opacity-60" />
+            ) : null}
+            <span className={cn("truncate", onClose && closeMask)}>{label}</span>
+          </>
+        )}
       </button>
-      {onClose ? (
+      {onClose && !rail ? (
         <button
           type="button"
           aria-label={`Close ${label}`}
@@ -103,11 +144,13 @@ function ThreadTab({
   tab,
   active,
   open,
+  variant,
 }: {
   adapter: AgentDockAdapter;
   tab: AgentDockTab;
   active: boolean;
   open: boolean;
+  variant?: TabVariant;
 }) {
   const dock = useAgentDock();
   const summary = adapter.useTabSummary(tab.threadId);
@@ -135,6 +178,7 @@ function ThreadTab({
       onSelect={() => dock.openThread(tab.threadId)}
       onClose={() => closeTab(tab.threadId)}
       closeHint={active ? "⌥W" : undefined}
+      variant={variant}
     />
   );
 }
@@ -256,5 +300,178 @@ export function AgentDockBar({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * The dock's tabs and controls as a vertical sidebar on the right edge, for
+ * the right-hand placement. Open, chats are full rows like browser tabs;
+ * collapsed, it narrows to an icon rail that stays beside the page.
+ */
+export function AgentDockTabSidebar({
+  adapter,
+  mode,
+  composerHeight,
+}: {
+  adapter: AgentDockAdapter;
+  mode: AgentDockMode;
+  /** The chat composer's height, so the footer's divider lines up with it. */
+  composerHeight: number | null;
+}) {
+  const dock = useAgentDock();
+  const open = mode !== "collapsed";
+  const rail = !open;
+  const variant: TabVariant = rail ? "rail" : "row";
+  const draftActive =
+    open && dock.view === "chat" && dock.activeThreadId === null;
+  const historyOpen = open && dock.view === "history";
+  const controls = (
+    <>
+      <PillButton
+        type="button"
+        variant="icon"
+        size="compact"
+        iconOnly
+        label="All chats (⌥H)"
+        aria-pressed={historyOpen}
+        className={cn(historyOpen && "bg-foreground/6 text-foreground")}
+        onClick={() => (historyOpen ? dock.showChat() : dock.showHistory())}
+      >
+        <Clock className="size-3.5" />
+      </PillButton>
+      <PillButton
+        type="button"
+        variant="icon"
+        size="compact"
+        iconOnly
+        label={mode === "full" ? "Restore (⌥E)" : "Expand (⌥E)"}
+        onClick={dock.toggleFull}
+      >
+        {mode === "full" ? (
+          <Minimize2 className="size-3.5" />
+        ) : (
+          <Maximize2 className="size-3.5" />
+        )}
+      </PillButton>
+      {open ? (
+        <PillButton
+          type="button"
+          variant="icon"
+          size="compact"
+          iconOnly
+          label="Minimize (⌥J)"
+          onClick={() => dock.setMode("collapsed")}
+        >
+          <PanelRightClose className="size-3.5" />
+        </PillButton>
+      ) : null}
+    </>
+  );
+
+  return (
+    <motion.div
+      initial={false}
+      animate={{ width: rail ? AGENT_DOCK_RAIL_WIDTH : AGENT_DOCK_SIDEBAR_WIDTH }}
+      transition={{ type: "spring", stiffness: 380, damping: 40, mass: 0.9 }}
+      className={cn(
+        "flex h-full shrink-0 flex-col overflow-hidden",
+        open && "border-l border-border",
+      )}
+    >
+      {/* Its divider continues the page's top bar border (the card sits
+          CARD_GAP below the top while the dock is open). */}
+      <div
+        className={cn(
+          "flex shrink-0 items-center border-b border-border",
+          rail ? "h-12 justify-center" : "h-14 px-2 pt-2",
+        )}
+      >
+        {rail ? (
+          <button
+            type="button"
+            aria-label={adapter.newChatLabel}
+            title={`${adapter.newChatLabel} (⌥N)`}
+            onClick={dock.newChat}
+            className={cn(
+              RAIL_ITEM_CLASS,
+              "text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
+            )}
+          >
+            <Plus className="size-3.5" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            title={`${adapter.newChatLabel} (⌥N)`}
+            onClick={dock.newChat}
+            className={cn(
+              ROW_ITEM_CLASS,
+              "text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
+            )}
+          >
+            <Plus className="size-3.5 shrink-0" />
+            <span className="truncate">{adapter.newChatLabel}</span>
+          </button>
+        )}
+      </div>
+      <div
+        role="tablist"
+        aria-label="Open chats"
+        aria-orientation="vertical"
+        className={cn(
+          "flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto py-2 scrollbar-hide",
+          rail ? "items-center" : "px-2",
+        )}
+      >
+        {draftActive ? (
+          <TabButton
+            active
+            label="New chat"
+            onSelect={dock.newChat}
+            variant={variant}
+          />
+        ) : null}
+        {dock.tabs.map((tab) => (
+          <DockErrorBoundary key={tab.threadId} fallback={null}>
+            <ThreadTab
+              adapter={adapter}
+              tab={tab}
+              active={
+                open &&
+                dock.view === "chat" &&
+                dock.activeThreadId === tab.threadId
+              }
+              open={open}
+              variant={variant}
+            />
+          </DockErrorBoundary>
+        ))}
+      </div>
+      {/* Teammates on this page, filled by OperatorPresence for operators. */}
+      <PresenceSlot
+        collapsed={rail}
+        className={cn(
+          "flex max-h-[40%] min-h-0 shrink-0 border-t border-border py-1.5",
+          rail
+            ? "w-full justify-center [&>div]:flex-col [&>div]:overflow-y-auto"
+            : "px-2 [&>div]:flex-wrap",
+        )}
+      />
+      {/* Its divider continues the composer's top border; the buttons sit on
+          the send button's line (the composer row is py-2). */}
+      <div
+        className={cn(
+          "flex shrink-0 gap-1 border-t border-border",
+          rail
+            ? "flex-col items-center py-1.5"
+            : "items-end justify-end px-2 pt-1.5 pb-2",
+        )}
+        style={
+          !rail && composerHeight ? { height: composerHeight } : undefined
+        }
+      >
+        {controls}
+      </div>
+    </motion.div>
   );
 }

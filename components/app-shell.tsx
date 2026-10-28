@@ -56,6 +56,7 @@ import {
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useSpotSync } from "@/lib/sync/spot-sync";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { EntityPreviewPanel } from "@/components/entity-preview-panel";
 import {
   appShellRoute,
@@ -218,6 +219,7 @@ function ShellFrame({
   const { filled: hasPageTabs, setTarget: setPageTabsTarget } =
     useAppShellSlot("folderRail");
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const viewer = useCachedQuery("users.viewer", api.users.viewer, {});
   const [rightPanelWide, setRightPanelWide] = useState(false);
   const hasPdfPanel = isPdfOpen && !!fileUrl;
   const hasEntityPanel = !!entityPreview;
@@ -402,6 +404,7 @@ function ShellFrame({
             : clientDockAdapter
           : null
       }
+      placement={viewer?.agentDockPlacement ?? "bottom"}
       artifactPanelRef={agentEnabled ? setArtifactPanelTarget : undefined}
       artifactPlacement={isDesktop ? "side" : "overlay"}
       artifactOpen={hasArtifactPanel}

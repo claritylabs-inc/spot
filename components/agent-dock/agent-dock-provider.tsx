@@ -37,7 +37,9 @@ import {
 import {
   agentDockStorageKey,
   AGENT_DOCK_DEFAULT_HEIGHT,
+  AGENT_DOCK_DEFAULT_WIDTH,
   clampAgentDockHeight,
+  clampAgentDockWidth,
   readStoredAgentDock,
   writeStoredAgentDock,
 } from "./dock-storage";
@@ -49,6 +51,9 @@ type AgentDockContextValue = AgentDockState & {
   /** Height as a fraction of the viewport in the expanded state. */
   height: number;
   setHeight: (height: number) => void;
+  /** Width as a fraction of the viewport when the dock sits on the right. */
+  width: number;
+  setWidth: (width: number) => void;
   toggle: () => void;
   toggleFull: () => void;
   stepDown: () => void;
@@ -124,6 +129,7 @@ export function AgentDockProvider({
     [ownState, screen],
   );
   const [height, setHeightState] = useState(AGENT_DOCK_DEFAULT_HEIGHT);
+  const [width, setWidthState] = useState(AGENT_DOCK_DEFAULT_WIDTH);
   const [detachedContextKey, setDetachedContextKey] = useFollowedState<
     string | null
   >("shell:agent-dock:detached-context", null);
@@ -148,6 +154,7 @@ export function AgentDockProvider({
       mode: standaloneOrgId ? "expanded" : stored.mode,
     });
     setHeightState(stored.height);
+    setWidthState(stored.width);
   }
 
   useEffect(() => {
@@ -156,10 +163,12 @@ export function AgentDockProvider({
       tabs: ownState.tabs,
       activeThreadId: ownState.activeThreadId,
       height,
+      width,
       mode: ownState.mode,
     });
   }, [
     height,
+    width,
     restoredKey,
     ownState.activeThreadId,
     ownState.mode,
@@ -300,6 +309,8 @@ export function AgentDockProvider({
       surface,
       height,
       setHeight: (next) => setHeightState(clampAgentDockHeight(next)),
+      width,
+      setWidth: (next) => setWidthState(clampAgentDockWidth(next)),
       toggle: () => run({ type: "toggle" }),
       toggleFull: () => run({ type: "toggleFull" }),
       stepDown: () => run({ type: "stepDown" }),
@@ -339,6 +350,7 @@ export function AgentDockProvider({
       setDetachedContextKey,
       state,
       surface,
+      width,
     ],
   );
 
