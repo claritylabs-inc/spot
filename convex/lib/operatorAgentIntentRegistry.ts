@@ -1,4 +1,7 @@
-import type { OperatorToolFamily } from "./operatorAgentToolRegistry";
+import type {
+  OperatorAgentToolName,
+  OperatorToolFamily,
+} from "./operatorAgentToolRegistry";
 
 type PageContext = {
   pageType: string;
@@ -182,5 +185,61 @@ const OPERATOR_AGENT_INTENT_FAMILIES: Record<
 export function operatorAgentIntentFamilies(intentId: string) {
   return Object.hasOwn(OPERATOR_AGENT_INTENT_FAMILIES, intentId)
     ? OPERATOR_AGENT_INTENT_FAMILIES[intentId]
+    : undefined;
+}
+
+/**
+ * A read the runner performs in code before an intent's first model step.
+ * `input` derives the tool input from the intent's structured focus ids and
+ * earlier stages' successful results; undefined skips the read.
+ */
+export type OperatorIntentPrefetchRead = {
+  toolName: OperatorAgentToolName;
+  input: (state: {
+    focus: Readonly<Record<string, string>>;
+    results: ReadonlyMap<OperatorAgentToolName, unknown>;
+  }) => Record<string, unknown> | undefined;
+};
+
+const linkedProcurementRequest: OperatorIntentPrefetchRead["input"] = ({
+  results,
+}) => {
+  const thread = results.get("get_team_inbox_thread") as
+    | { request?: { requestId?: unknown } | null }
+    | undefined;
+  const requestId = thread?.request?.requestId;
+  return typeof requestId === "string"
+    ? { procurementRequestId: requestId }
+    : undefined;
+};
+
+// Stages run in order; reads within a stage run together.
+const OPERATOR_AGENT_INTENT_PREFETCH: Record<
+  string,
+  ReadonlyArray<readonly OperatorIntentPrefetchRead[]>
+> = {
+  reply_team_email: [
+    [
+      {
+        toolName: "get_team_inbox_thread",
+        input: ({ focus }) =>
+          focus.teamEmailThreadId
+            ? { teamEmailThreadId: focus.teamEmailThreadId, view: "compact" }
+            : undefined,
+      },
+    ],
+    [
+      { toolName: "get_procurement_request", input: linkedProcurementRequest },
+      {
+        toolName: "get_procurement_information",
+        input: linkedProcurementRequest,
+      },
+    ],
+  ],
+};
+
+export function operatorAgentIntentPrefetch(intentId: string) {
+  return Object.hasOwn(OPERATOR_AGENT_INTENT_PREFETCH, intentId)
+    ? OPERATOR_AGENT_INTENT_PREFETCH[intentId]
     : undefined;
 }

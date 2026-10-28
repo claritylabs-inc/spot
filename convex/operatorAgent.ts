@@ -5376,7 +5376,11 @@ export const startIntent = mutation({
       toolArtifacts: [
         {
           type: "operator_intent",
-          data: { id: intent.id, version: intent.version },
+          data: {
+            id: intent.id,
+            version: intent.version,
+            ...(suggestion?.focusIds ? { focus: suggestion.focusIds } : {}),
+          },
         },
       ],
     });

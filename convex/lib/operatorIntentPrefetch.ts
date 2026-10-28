@@ -1,0 +1,184 @@
+import type { JSONValue, ModelMessage } from "ai";
+import { internal } from "../_generated/api";
+import type { Doc } from "../_generated/dataModel";
+import type { ActionCtx } from "../_generated/server";
+import { actionConfirmationFingerprint } from "./actionConfirmationFingerprint";
+import { collectToolAudit, type AgentToolAudit } from "./agentToolAudit";
+import {
+  toolActivityTarget,
+  toolOutcomeStatus,
+  type MessageActivityUpdate,
+} from "./messageActivity";
+import {
+  operatorAgentIntentPrefetch,
+  type OperatorIntentPrefetchRead,
+} from "./operatorAgentIntentRegistry";
+import {
+  getOperatorAgentToolSpec,
+  parseOperatorAgentToolInput,
+  type OperatorAgentToolName,
+} from "./operatorAgentToolRegistry";
+import { boundToolOutput } from "./operatorToolOutput";
+import { summarizeToolResult } from "./toolResultSummary";
+
+type PrefetchedRead = {
+  toolCallId: string;
+  toolName: OperatorAgentToolName;
+  input: Record<string, unknown>;
+  outcome: unknown;
+};
+
+/**
+ * Runs a starter intent's declared reads through the normal operator executor
+ * (authorization, audit rows, and run-scoped idempotency keys shared with
+ * model calls, so a replayed step returns the stored result) and returns them
+ * as one already-answered parallel tool step. Fails open: a failed or skipped
+ * read is left for the model to make itself.
+ */
+export async function prefetchOperatorIntentContext(
+  ctx: ActionCtx,
+  args: {
+    run: Doc<"operatorAgentRuns">;
+    messages: Array<Doc<"operatorAgentMessages">>;
+    toolNames: readonly OperatorAgentToolName[];
+    channel: "chat" | "email" | "imessage" | "slack" | "mcp";
+    recordActivity: (update: MessageActivityUpdate) => Promise<void>;
+  },
+): Promise<{ messages: ModelMessage[]; audit: AgentToolAudit } | undefined> {
+  const intent = args.messages
+    .find((message) => message._id === args.run.userMessageId)
+    ?.toolArtifacts?.find((artifact) => artifact.type === "operator_intent")
+    ?.data as { id?: unknown; focus?: unknown } | undefined;
+  const stages =
+    typeof intent?.id === "string"
+      ? operatorAgentIntentPrefetch(intent.id)
+      : undefined;
+  if (!stages) return undefined;
+  const focus = Object.fromEntries(
+    Object.entries(
+      intent?.focus && typeof intent.focus === "object" ? intent.focus : {},
+    ).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+  const results = new Map<OperatorAgentToolName, unknown>();
+  const reads: PrefetchedRead[] = [];
+  const read = async (
+    step: OperatorIntentPrefetchRead,
+  ): Promise<PrefetchedRead | undefined> => {
+    const spec = getOperatorAgentToolSpec(step.toolName);
+    // Only plain reads this operator may call are prefetched.
+    if (
+      !args.toolNames.includes(step.toolName) ||
+      spec.effect !== "read" ||
+      spec.confirmation !== "none" ||
+      spec.execution !== "mutation"
+    )
+      return undefined;
+    const rawInput = step.input({ focus, results });
+    if (!rawInput) return undefined;
+    const toolCallId = `prefetch_${step.toolName}`;
+    const activity = {
+      kind: "tool" as const,
+      toolCallId,
+      toolName: step.toolName,
+    };
+    try {
+      const input = parseOperatorAgentToolInput(step.toolName, rawInput);
+      const target = toolActivityTarget(spec.target(input));
+      await args.recordActivity({
+        ...activity,
+        status: "running",
+        ...(target ? { target } : {}),
+      });
+      const inputHash = await actionConfirmationFingerprint({
+        toolName: step.toolName,
+        toolVersion: spec.version,
+        input,
+      });
+      const outcome = await ctx.runMutation(
+        internal.operatorAgent.executeToolInternal,
+        {
+          operatorUserId: args.run.operatorUserId,
+          runId: args.run._id,
+          threadId: args.run.threadId,
+          threadMessageId: args.run.agentMessageId,
+          toolName: step.toolName,
+          input,
+          inputHash,
+          idempotencyKey: `${String(args.run._id)}:${step.toolName}:${inputHash}`,
+          channel: args.channel,
+        },
+      );
+      const result = summarizeToolResult(outcome);
+      await args.recordActivity({
+        ...activity,
+        status: toolOutcomeStatus(outcome),
+        ...(result ? { result } : {}),
+      });
+      // A replayed read returns its stored audit output, which some tools
+      // truncate to an unparseable string; the model then reads it itself.
+      if (outcome.status !== "succeeded" || typeof outcome.result === "string")
+        return undefined;
+      return { toolCallId, toolName: step.toolName, input, outcome };
+    } catch (error) {
+      console.warn("Operator intent prefetch read failed", {
+        runId: args.run._id,
+        toolName: step.toolName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await args.recordActivity({ ...activity, status: "failed" });
+      return undefined;
+    }
+  };
+  for (const stage of stages) {
+    const settled = (await Promise.all(stage.map(read))).filter(
+      (entry) => entry !== undefined,
+    );
+    for (const entry of settled) {
+      results.set(
+        entry.toolName,
+        (entry.outcome as { result?: unknown }).result,
+      );
+      reads.push(entry);
+    }
+  }
+  if (reads.length === 0) return undefined;
+  return {
+    messages: [
+      {
+        role: "assistant",
+        content: reads.map(({ toolCallId, toolName, input }) => ({
+          type: "tool-call" as const,
+          toolCallId,
+          toolName,
+          input,
+        })),
+      },
+      {
+        role: "tool",
+        content: reads.map(({ toolCallId, toolName, outcome }) => ({
+          type: "tool-result" as const,
+          toolCallId,
+          toolName,
+          output: {
+            type: "json" as const,
+            value: boundToolOutput(outcome) as JSONValue,
+          },
+        })),
+      },
+    ],
+    audit: collectToolAudit({
+      toolCalls: reads.map(({ toolCallId, toolName, input }) => ({
+        toolCallId,
+        toolName,
+        input,
+      })),
+      toolResults: reads.map(({ toolCallId, toolName, outcome }) => ({
+        toolCallId,
+        toolName,
+        output: outcome,
+      })),
+    }),
+  };
+}
