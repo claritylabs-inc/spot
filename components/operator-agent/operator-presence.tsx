@@ -1,20 +1,12 @@
 "use client";
 
-import {
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useEffect, useEffectEvent, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { useAgentDock } from "@/components/agent-dock/agent-dock-provider";
-import { PresenceAvatars } from "@/components/app-top-bar";
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
-import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
-import type { OperatorPerson } from "@/lib/operator-agent-api";
+import { MessageCircle, X } from "lucide-react";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -29,10 +21,7 @@ import {
 } from "@/components/operator-agent/page-multiplayer";
 import { trackFieldOrigins } from "@/lib/collab/field-binding";
 import { usePresenceSlot } from "@/components/operator-agent/presence-slot";
-import {
-  assignOperatorColors,
-  OperatorColorsProvider,
-} from "@/lib/collab/operator-color";
+import { operatorTint, useOperatorColor } from "@/lib/collab/operator-color";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { usePublishOperatorCursor } from "@/hooks/use-operator-cursor";
 import {
@@ -65,12 +54,7 @@ export function OperatorPresence() {
   const active = useActiveOperators();
   const others = active.filter((operator) => !operator.self);
   // Distinct colors across everyone active, the same in every browser.
-  const colors = useMemo(
-    () => assignOperatorColors(active.map((operator) => operator.userId)),
-    [active],
-  );
-  const operatorColor = (userId: string) =>
-    colors.get(userId) ?? "currentColor";
+  const operatorColor = useOperatorColor();
   const self = active.find((operator) => operator.self);
   const leader = others.find((operator) => operator.userId === followingUserId);
   const mutual = !!leader && !!self && followIsMutual(leader, self.userId);
@@ -147,9 +131,12 @@ export function OperatorPresence() {
       },
     );
   // A soft wash of the operator's color behind their pills.
-  const tint = (userId: string) =>
-    `color-mix(in srgb, ${operatorColor(userId)} 14%, transparent)`;
+  const tint = (userId: string) => operatorTint(operatorColor(userId));
   const followedOperator = leader && following ? leader : null;
+  const openChatId =
+    dock.mode !== "collapsed" && dock.view === "chat"
+      ? dock.activeThreadId
+      : null;
   // A stable order, so avatars hold their place as pills open and close.
   const roster = [...others].sort((a, b) => a.name.localeCompare(b.name));
   // A row of pills in each operator's color: an avatar alone, or with text for
@@ -160,6 +147,8 @@ export function OperatorPresence() {
       !privatePage &&
       followers.some((follower) => follower.userId === operator.userId);
     const open = (isFollowed || isFollower) && !collapsed;
+    // A teammate with the chat open in this dock gets a chat mark.
+    const inChat = !!openChatId && operator.threadId === openChatId && !open;
     const firstName = operator.name.split(" ")[0];
     const label = isFollowed
       ? `Stop following ${operator.name}`
@@ -172,13 +161,16 @@ export function OperatorPresence() {
         title={
           isFollower
             ? `${operator.name} can see your page, pointer and panels`
-            : operator.name
+            : inChat
+              ? `${operator.name} has this chat open`
+              : operator.name
         }
         className={cn(
           // Shrinks to the sidebar's width; long names end in an ellipsis.
-          "flex max-w-full min-w-0 items-center gap-1.5 rounded-full p-1",
+          "flex max-w-full min-w-0 items-center gap-1 rounded-full p-1",
           // Text ends a pill evenly; the ✕ brings its own space.
           open && (isFollowed ? "pr-1" : "pr-2.5"),
+          inChat && "pr-1.5",
           typeStyle("caption.medium"),
         )}
         style={
@@ -199,13 +191,11 @@ export function OperatorPresence() {
           }
           className="shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
-          <Avatar
-            name={operator.name}
-            imageUrl={operator.avatarUrl}
-            // Without a photo, initials take the operator's color too.
-            className="size-6 bg-[color-mix(in_srgb,var(--operator-color)_22%,transparent)] [&>span]:text-(--operator-color)"
-          />
+          <OperatorAvatar name={operator.name} imageUrl={operator.avatarUrl} />
         </motion.button>
+        {inChat ? (
+          <MessageCircle aria-hidden className="size-3 shrink-0" />
+        ) : null}
         <AnimatePresence initial={false}>
           {open ? (
             <motion.span
@@ -222,10 +212,16 @@ export function OperatorPresence() {
                   : `${firstName} is following you`}
               </span>
               {isFollowed ? (
-                <TagRemoveButton
-                  label={`Stop following ${operator.name}`}
+                // Round like the pill, hovering in its color.
+                <button
+                  type="button"
+                  title={`Stop following ${operator.name}`}
+                  aria-label={`Stop following ${operator.name}`}
                   onClick={() => setFollowingOperator(null)}
-                />
+                  className="flex size-5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[color-mix(in_srgb,var(--operator-color)_18%,transparent)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <X aria-hidden className="size-3" />
+                </button>
               ) : null}
             </motion.span>
           ) : null}
@@ -249,7 +245,7 @@ export function OperatorPresence() {
   // One tree whatever is shown, so the page's room never remounts when the
   // avatars come and go.
   return (
-    <OperatorColorsProvider value={colors}>
+    <>
       {slot && hasRoster ? createPortal(rosterArea, slot.element) : null}
       {multiplayer}
       {followedOperator ? (
@@ -260,42 +256,26 @@ export function OperatorPresence() {
           onStop={() => setFollowingOperator(null)}
         />
       ) : null}
-    </OperatorColorsProvider>
+    </>
   );
 }
 
-/** Dock header: who started the open chat and which other operators have it open. */
-export function OperatorThreadPeople({
-  threadId,
-  creator,
+/**
+ * An operator's avatar in their color: without a photo, a tinted circle with
+ * colored initials. Reads `--operator-color` from the pill around it.
+ */
+function OperatorAvatar({
+  name,
+  imageUrl,
 }: {
-  threadId: string;
-  creator?: OperatorPerson;
+  name: string;
+  imageUrl?: string | null;
 }) {
-  const viewers = useActiveOperators().filter(
-    (operator) => !operator.self && operator.threadId === threadId,
-  );
   return (
-    <span className="mr-3 flex items-center gap-2">
-      {viewers.length ? (
-        <PresenceAvatars users={viewers} max={3} size="sm" />
-      ) : null}
-      {creator ? (
-        <span
-          className={cn(
-            "flex max-w-40 items-center gap-1.5 text-muted-foreground",
-            typeStyle("caption.default"),
-          )}
-          title={`Started by ${creator.name}`}
-        >
-          <Avatar
-            name={creator.name}
-            imageUrl={creator.avatarUrl}
-            className="size-5 border-2 border-background"
-          />
-          <span className="truncate">{creator.name}</span>
-        </span>
-      ) : null}
-    </span>
+    <Avatar
+      name={name}
+      imageUrl={imageUrl}
+      className="size-5 bg-[color-mix(in_srgb,var(--operator-color)_22%,transparent)] [&>span]:text-(--operator-color)"
+    />
   );
 }

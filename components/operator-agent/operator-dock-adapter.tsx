@@ -58,6 +58,9 @@ function useOperatorTabSummary(
       title: detail.thread?.title ?? "Chat",
       lastMessageAt: detail.thread?.lastMessageAt ?? 0,
       status: waiting ? "approval" : detail.activeRun ? "working" : null,
+      hint: detail.thread?.creator
+        ? `Started by ${detail.thread.creator.name}`
+        : undefined,
     };
   }, [rawThread]);
 }

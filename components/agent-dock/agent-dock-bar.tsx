@@ -31,8 +31,11 @@ function TabButton({
   onSelect,
   onClose,
   closeHint,
+  hint,
 }: {
   closeHint?: string;
+  /** Hover text beside the label, such as who started the chat. */
+  hint?: string;
   active: boolean;
   label: string;
   onSelect: () => void;
@@ -61,6 +64,7 @@ function TabButton({
         type="button"
         role="tab"
         aria-selected={active}
+        title={hint ? `${label} · ${hint}` : label}
         onClick={onSelect}
         className={cn(
           TAB_ITEM_CLASS,
@@ -127,6 +131,7 @@ function ThreadTab({
     <TabButton
       active={active}
       label={summary?.title ?? "Chat"}
+      hint={summary?.hint}
       onSelect={() => dock.openThread(tab.threadId)}
       onClose={() => closeTab(tab.threadId)}
       closeHint={active ? "⌥W" : undefined}
@@ -201,7 +206,7 @@ export function AgentDockBar({
       {/* Teammates on this page, filled by OperatorPresence for operators. */}
       <PresenceSlot
         collapsed={mobile}
-        className="flex max-w-[55%] min-w-0 shrink-0 items-center border-l border-border pl-1.5"
+        className="mr-1 flex max-w-[55%] min-w-0 shrink-0 items-center"
       />
       <div className="flex shrink-0 items-center gap-1">
         {open && dock.view === "chat" ? actions : null}
