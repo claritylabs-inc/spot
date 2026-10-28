@@ -433,6 +433,15 @@ export function ProcurementEmailMessage({
                 {message.fromEmail}
               </span>
             ) : null}
+            {message.gmailAddress ? (
+              <Badge
+                variant="outline"
+                className="ml-1.5 align-middle text-muted-foreground"
+                title={message.gmailAddress}
+              >
+                via Gmail
+              </Badge>
+            ) : null}
           </p>
           <time
             dateTime={dayjs(message.receivedAt).toISOString()}
@@ -946,6 +955,7 @@ export function ProcurementEmailDrawer({
     ...(requestId && includeArchived ? { includeArchived: true } : {}),
   });
   const markRead = useMutation(api.teamInbox.markRead);
+  const refreshGmail = useMutation(api.operatorGmailSync.requestRefresh);
   const busy = useRef(false);
   useImperativeHandle(ref, () => ({ save: async () => !busy.current }));
   const [replying, setReplying] = useState(false);
@@ -972,6 +982,13 @@ export function ProcurementEmailDrawer({
       markedKey.current = "";
     });
   }, [emailThreadId, latestInboundAt, markRead, readAt, readOnly]);
+
+  // Opening a Gmail conversation checks its Gmail thread for replies that dropped the team address.
+  const involvesGmail = Boolean(thread?.thread.gmailAddress);
+  useEffect(() => {
+    if (readOnly || !involvesGmail) return;
+    refreshGmail({ threadId: emailThreadId }).catch(() => {});
+  }, [emailThreadId, involvesGmail, readOnly, refreshGmail]);
 
   return (
     <SettingsDrawer

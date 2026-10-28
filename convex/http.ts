@@ -225,6 +225,45 @@ http.route({
 });
 
 http.route({
+  path: "/operator-gmail/oauth/callback",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    const url = new URL(request.url);
+    const redirect = await ctx.runAction(internal.actions.operatorGmail.callback, {
+      state: url.searchParams.get("state") ?? "",
+      code: url.searchParams.get("code") ?? undefined,
+      error: url.searchParams.get("error") ?? undefined,
+    });
+    return new Response(null, { status: 302, headers: { Location: redirect, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
+  }),
+});
+
+// Gmail Pub/Sub push (OIDC-authenticated by Google): 401 when unverified, 204 otherwise.
+http.route({
+  path: "/operator-gmail/push",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const authorization = request.headers.get("authorization") ?? "";
+    // Unauthenticated callers never get as far as reading the body.
+    if (!authorization) return new Response("Unauthorized", { status: 401 });
+    let body: string | null;
+    try {
+      body = await readBoundedRequestBody(request, 64 * 1024);
+    } catch {
+      return new Response("Invalid body", { status: 400 });
+    }
+    if (body === null) return new Response("Body too large", { status: 413 });
+    const result = await ctx.runAction(internal.actions.operatorGmailSync.handlePush, {
+      authorization,
+      body,
+    });
+    return result.status === 401
+      ? new Response("Unauthorized", { status: 401 })
+      : new Response(null, { status: 204 });
+  }),
+});
+
+http.route({
   path: "/slack/oauth/callback",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
