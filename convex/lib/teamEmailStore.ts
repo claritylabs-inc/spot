@@ -12,6 +12,7 @@ import {
 } from "./procurement";
 import { messageIdForms } from "./messageId";
 import type { InboxEmail } from "./providerOutreachValidators";
+import { queueTeamReplySuggestion } from "./teamReplySuggestions";
 
 type Ctx = QueryCtx | MutationCtx;
 export type TeamThread = Doc<"teamEmailThreads">;
@@ -506,5 +507,7 @@ export async function mirrorTeamEmail(
     });
   if (args.direction === "inbound" && thread.requestId)
     await ctx.scheduler.runAfter(0, internal.procurementInformationEmail.queueEmail, {messageId});
+  if (args.direction === "inbound" && newest)
+    await queueTeamReplySuggestion(ctx, { threadId: thread._id, messageId });
   return { duplicate: false, threadId: thread._id, messageId, internalCopy: false };
 }

@@ -427,7 +427,7 @@ export async function getTeamThreadDetails(
   )
     return null;
   const people = new Map<Id<"users">, OperatorPerson>();
-  const [request, addressedRequest, client, messages, sequence, readAt, owner, drafts, linkSuggestion] =
+  const [request, addressedRequest, client, messages, sequence, readAt, owner, drafts, linkSuggestion, suggestion] =
     await Promise.all([
       thread.requestId ? ctx.db.get(thread.requestId) : null,
       thread.addressedRequestId ? ctx.db.get(thread.addressedRequestId) : null,
@@ -443,7 +443,13 @@ export async function getTeamThreadDetails(
       personFor(ctx, people, thread.ownerUserId),
       threadDraftsInProgress(ctx, thread._id),
       linkSuggestionFor(ctx, thread),
+      ctx.db
+        .query("teamEmailReplySuggestions")
+        .withIndex("by_threadId", (q) => q.eq("threadId", thread._id))
+        .unique(),
     ]);
+  // A suggestion answers the newest message only; any later message retires it.
+  const newestMessageId = messages.page[0]?._id;
   // A deleted client or request hides the conversation (its stored linkage is kept)
   // and no deleted target's metadata is returned.
   if (!targetIsLive(thread, client, request)) return null;
@@ -535,7 +541,95 @@ export async function getTeamThreadDetails(
     owner,
     readAt,
     linkSuggestion,
+    replySuggestion:
+      suggestion && suggestion.messageId === newestMessageId && suggestion.status !== "failed"
+        ? {
+            messageId: suggestion.messageId,
+            status: suggestion.status,
+            reply: suggestion.reply ?? null,
+            missing: suggestion.missing ?? [],
+            revision: suggestion.updatedAt,
+          }
+        : null,
     draftsInProgress,
     draftsLimited: drafts.limited,
   };
+}
+
+const SEARCH_SNIPPET_CHARS = 240;
+
+function searchSnippet(text: string, query: string) {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const lower = flat.toLowerCase();
+  const at = Math.min(
+    ...query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((term) => lower.indexOf(term))
+      .filter((index) => index >= 0),
+    flat.length,
+  );
+  const start = at >= flat.length ? 0 : Math.max(0, at - 60);
+  const snippet = flat.slice(start, start + SEARCH_SNIPPET_CHARS);
+  return `${start > 0 ? "…" : ""}${snippet}${start + SEARCH_SNIPPET_CHARS < flat.length ? "…" : ""}`;
+}
+
+/**
+ * Full-text search over team mail: conversation subjects and message bodies,
+ * best matches first, one row per live conversation. Bounded; an empty result
+ * does not prove no matching mail exists outside the scanned matches.
+ */
+export async function searchTeamInbox(
+  ctx: QueryCtx,
+  args: { query: string; clientOrgId?: Id<"organizations">; limit: number; includeArchived?: boolean },
+) {
+  const query = args.query.trim().slice(0, 200);
+  const scan = Math.min(args.limit * 4, 100);
+  const [subjects, bodies] = await Promise.all([
+    ctx.db
+      .query("teamEmailThreads")
+      .withSearchIndex("search_subject", (q) =>
+        args.clientOrgId ? q.search("subject", query).eq("clientOrgId", args.clientOrgId) : q.search("subject", query),
+      )
+      .take(scan),
+    ctx.db
+      .query("teamEmailMessages")
+      .withSearchIndex("search_text", (q) =>
+        args.clientOrgId ? q.search("currentText", query).eq("clientOrgId", args.clientOrgId) : q.search("currentText", query),
+      )
+      .take(scan),
+  ]);
+  const matches = new Map<Id<"teamEmailThreads">, Doc<"teamEmailMessages"> | null>();
+  for (const thread of subjects) matches.set(thread._id, null);
+  for (const message of bodies) if (!matches.get(message.threadId)) matches.set(message.threadId, message);
+  const rows = [];
+  for (const [threadId, message] of matches) {
+    if (rows.length >= args.limit) break;
+    const thread = await ctx.db.get(threadId);
+    if (!thread || thread.deletedAt !== undefined || (thread.archivedAt && !args.includeArchived)) continue;
+    const [client, request] = await Promise.all([
+      thread.clientOrgId ? ctx.db.get(thread.clientOrgId) : null,
+      thread.requestId ? ctx.db.get(thread.requestId) : null,
+    ]);
+    if (!targetIsLive(thread, client, request)) continue;
+    rows.push({
+      teamEmailThreadId: thread._id,
+      subject: thread.subject,
+      client: client ? { _id: client._id, name: client.name } : null,
+      request: request ? { requestId: request._id, title: request.title } : null,
+      latestMessageAt: thread.latestMessageAt,
+      archived: Boolean(thread.archivedAt),
+      match: message
+        ? {
+            in: "body" as const,
+            direction: message.direction,
+            from: message.fromName ? `${message.fromName} <${message.fromEmail}>` : message.fromEmail,
+            receivedAt: message.receivedAt,
+            snippet: searchSnippet(message.currentText, query),
+          }
+        : { in: "subject" as const },
+    });
+  }
+  return { threads: rows, bounded: subjects.length === scan || bodies.length === scan };
 }

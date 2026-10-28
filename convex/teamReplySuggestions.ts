@@ -1,0 +1,88 @@
+import { v } from "convex/values";
+import dayjs from "dayjs";
+
+import { internalMutation, internalQuery } from "./_generated/server";
+import { readIntakeBusinessProfile } from "./lib/intakeApplication";
+import { requestFacts } from "./lib/procurementInformationAccess";
+import { teamTargetProblem } from "./lib/teamEmailStore";
+import { intakeCatalogCoverage } from "../lib/intake-acord-questions";
+import { submittedIntakeApplication } from "../lib/intake-application";
+import { intakeMarkdown } from "../lib/insurance-intake";
+
+const MESSAGES = 12;
+const MESSAGE_CHARS = 4_000;
+const FACTS_CHARS = 12_000;
+
+/**
+ * What a suggested reply may draw on: the conversation's latest messages, the
+ * client's submitted application and the request's answered information
+ * questions. Null once the message is no longer the one to answer.
+ */
+export const contextInternal = internalQuery({
+  args: { threadId: v.id("teamEmailThreads"), messageId: v.id("teamEmailMessages") },
+  handler: async (ctx, args) => {
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread || thread.deletedAt !== undefined || thread.archivedAt) return null;
+    if (await teamTargetProblem(ctx, thread)) return null;
+    const recent = await ctx.db
+      .query("teamEmailMessages")
+      .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
+      .order("desc")
+      .take(MESSAGES);
+    if (recent[0]?._id !== args.messageId) return null;
+    const [client, request] = await Promise.all([
+      thread.clientOrgId ? ctx.db.get(thread.clientOrgId) : null,
+      thread.requestId ? ctx.db.get(thread.requestId) : null,
+    ]);
+    const application =
+      (request && submittedIntakeApplication(request)) ??
+      (thread.clientOrgId ? await readIntakeBusinessProfile(ctx, thread.clientOrgId) : null);
+    const answered = request
+      ? (await requestFacts(ctx, request._id)).flatMap((row) =>
+          row.answer && !row.answer.unsure && row.answer.answer.trim()
+            ? [{ question: row.question.label, answer: row.answer.answer }]
+            : [],
+        )
+      : [];
+    const facts = application
+      ? intakeMarkdown(application.answers, undefined, application.details, intakeCatalogCoverage)
+      : "";
+    return {
+      orgId: thread.clientOrgId ?? null,
+      subject: thread.subject,
+      clientName: client?.name ?? null,
+      requestTitle: request?.title ?? null,
+      clientFacts: facts.slice(0, FACTS_CHARS) || null,
+      answeredQuestions: answered,
+      messages: recent.reverse().map((message) => ({
+        direction: message.direction,
+        from: message.fromName ? `${message.fromName} <${message.fromEmail}>` : message.fromEmail,
+        sentAt: dayjs(message.receivedAt).toISOString(),
+        text: message.currentText.slice(0, MESSAGE_CHARS),
+      })),
+    };
+  },
+});
+
+/** Stores the outcome only if no newer inbound message replaced the suggestion meanwhile. */
+export const saveInternal = internalMutation({
+  args: {
+    threadId: v.id("teamEmailThreads"),
+    messageId: v.id("teamEmailMessages"),
+    reply: v.optional(v.string()),
+    missing: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("teamEmailReplySuggestions")
+      .withIndex("by_threadId", (q) => q.eq("threadId", args.threadId))
+      .unique();
+    if (!row || row.messageId !== args.messageId) return;
+    await ctx.db.patch(row._id, {
+      status: args.reply ? "ready" : "failed",
+      reply: args.reply,
+      missing: args.missing,
+      updatedAt: dayjs().valueOf(),
+    });
+  },
+});
