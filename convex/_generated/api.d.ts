@@ -99,6 +99,7 @@ import type * as agentTargets from "../agentTargets.js";
 import type * as appCardLinks from "../appCardLinks.js";
 import type * as auth from "../auth.js";
 import type * as brokerContacts from "../brokerContacts.js";
+import type * as brokerProfileMigrations from "../brokerProfileMigrations.js";
 import type * as brokerProfiles from "../brokerProfiles.js";
 import type * as carrierIdentityCache from "../carrierIdentityCache.js";
 import type * as certificateHolders from "../certificateHolders.js";
@@ -696,6 +697,7 @@ declare const fullApi: ApiFromModules<{
   appCardLinks: typeof appCardLinks;
   auth: typeof auth;
   brokerContacts: typeof brokerContacts;
+  brokerProfileMigrations: typeof brokerProfileMigrations;
   brokerProfiles: typeof brokerProfiles;
   carrierIdentityCache: typeof carrierIdentityCache;
   certificateHolders: typeof certificateHolders;
