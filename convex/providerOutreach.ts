@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
 import { operatorInTestMode } from "./testMode";
+import { markProviderContacted } from "./brokerProfiles";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
@@ -1776,7 +1777,7 @@ async function checkProviderWorld(
   if (!broker || outreach.brokerOrgId !== broker._id)
     return { kind: "stop", reason: "provider_unavailable" };
   const profile = await loadProfile(ctx, broker._id);
-  if (profile?.networkStatus === "blacklisted" || profile?.networkStatus === "inactive")
+  if (profile?.networkStatus === "blacklisted")
     return { kind: "stop", reason: "provider_ineligible" };
   if (!profile?.isTest && (await operatorInTestMode(ctx, sequence.senderUserId)))
     return { kind: "stop", reason: "provider_ineligible" };
@@ -2692,6 +2693,7 @@ async function recordSentFacts(
       updatedByUserId: sequence.senderUserId,
       updatedAt: now,
     });
+  if (sequence.brokerOrgId) await markProviderContacted(ctx, sequence.brokerOrgId);
   await writeOperatorAudit(ctx, {
     operatorUserId: sequence.senderUserId,
     type: "setup_write",

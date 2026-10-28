@@ -228,12 +228,11 @@ const procurementProposalConclusion = z.enum([
   "has_gaps",
   "insufficient_evidence",
 ]);
-const brokerNetworkStatus = z.enum([
-  "prospect",
-  "active",
-  "inactive",
-  "blacklisted",
-]);
+const brokerNetworkStatus = z
+  .enum(["prospect", "active", "inactive", "blacklisted"])
+  .describe(
+    "prospect = new provider, never contacted; inactive = contacted but never replied (set automatically on the first email); active = worked with us or agreed to; blacklisted = do not contact",
+  );
 const brokerWritingState = z
   .string()
   .describe("Two-letter US state/DC or Canadian province/territory code");
