@@ -436,7 +436,9 @@ export const advanceOperatorInboxAttemptInternal = internalMutation({
             inboxId: args.inboxId,
             ...(inboxKind(args.inboxId) === "legacy_google"
               ? { provider: "google_smtp" as const }
-              : {}),
+              : inboxKind(args.inboxId) === "gmail"
+                ? { provider: "gmail" as const }
+                : {}),
           }
         : {}),
       ...(args.draftId ? { draftId: args.draftId } : {}),

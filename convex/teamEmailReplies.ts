@@ -12,6 +12,7 @@ import {
 } from "./_generated/server";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
+import { sendFromValidator } from "./lib/outreachIdentity";
 import {
   composeTeamReply,
   normalizeReplyMessage,
@@ -73,15 +74,24 @@ export const status = query({
   },
 });
 
-/** The exact reply that would be sent: From, To, Cc, subject, signed body and its fingerprint. */
+/**
+ * The exact reply that would be sent: From, To, Cc, subject, signed body and its
+ * fingerprint. `sendFrom` picks the Spot team address or the connected Gmail
+ * (default: Gmail only when this conversation involves the caller's Gmail).
+ */
 export const preview = query({
-  args: { threadId: v.id("teamEmailThreads"), message: v.string() },
+  args: {
+    threadId: v.id("teamEmailThreads"),
+    message: v.string(),
+    sendFrom: v.optional(sendFromValidator),
+  },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     const composed = await composeTeamReply(ctx, {
       operatorUserId: operator.userId,
       threadId: args.threadId,
       message: args.message,
+      sendFrom: args.sendFrom,
     });
     return composed.ok
       ? ({ ok: true, preview: composed.preview } as const)
@@ -112,6 +122,7 @@ export const prepareSend = mutation({
     message: v.string(),
     expectedFingerprint: v.string(),
     idempotencyKey: v.string(),
+    sendFrom: v.optional(sendFromValidator),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -125,6 +136,7 @@ export const prepareSend = mutation({
       operatorUserId: operator.userId,
       threadId: args.threadId,
       message: args.message,
+      sendFrom: args.sendFrom,
     });
     const existing = await replyDraftByKey(ctx, operator.userId, directReplyKey);
     if (existing) {
@@ -197,10 +209,12 @@ export const prepareAgentReplyInternal = internalMutation({
     ) {
       throw new Error("The reply does not match what was approved.");
     }
+    // Agent and MCP replies always send from the Spot team address.
     const composed = await composeTeamReply(ctx, {
       operatorUserId: args.operatorUserId,
       threadId: args.teamEmailThreadId,
       message: args.message,
+      sendFrom: "spot",
     });
     if (!composed.ok) throw new Error(composed.reason);
     if (composed.preview.fingerprint !== confirmation.payload.sourceFingerprint) {

@@ -15,9 +15,10 @@ import { internal } from "./_generated/api";
 import type { MutationCtx } from "./_generated/server";
 import { isOperatorEmailDraft } from "./lib/actionConfirmationFingerprint";
 import { extractEmailAddress } from "./lib/emailAddress";
-import { inboxKind } from "./lib/inboxIds";
+import { gmailAddressOf, inboxKind } from "./lib/inboxIds";
+import { bindRecordedGmailSend } from "./lib/gmailThreadBinding";
 import { normalizeProcurementSubject } from "./lib/procurement";
-import { MAX_EMAIL_ATTACHMENTS, teamTargetProblem, bindTeamInboxThread } from "./lib/teamEmailStore";
+import { MAX_EMAIL_ATTACHMENTS, teamTargetProblem, bindTeamInboxThread, outboundByMessageId } from "./lib/teamEmailStore";
 import {
   cancelDraftOrPendingEmail,
   invalidateDraftConfirmations,
@@ -704,12 +705,17 @@ export const recordOperatorInboxSentInternal = internalMutation({
     if (pending.teamEmailThreadId && (!intended || intended.deletedAt !== undefined)) {
       throw new Error("The team email thread is no longer available.");
     }
-    const existingMessage = await ctx.db
-      .query("teamEmailMessages")
-      .withIndex("by_resendInboxEmailId", (q) =>
-        q.eq("resendInboxEmailId", args.emailId),
-      )
-      .first();
+    // A connected-Gmail send's emailId is its Message-ID: the Resend Cc copy may already hold it.
+    const existingMessage =
+      (await ctx.db
+        .query("teamEmailMessages")
+        .withIndex("by_resendInboxEmailId", (q) =>
+          q.eq("resendInboxEmailId", args.emailId),
+        )
+        .first()) ??
+      (attempt.inboxId && inboxKind(attempt.inboxId) === "gmail"
+        ? await outboundByMessageId(ctx, args.emailId)
+        : null);
     const provisional = existingMessage
       ? await ctx.db.get(existingMessage.threadId)
       : null;
@@ -785,10 +791,17 @@ export const recordOperatorInboxSentInternal = internalMutation({
 
     const gmailThreadId = attempt.inboxId && inboxKind(attempt.inboxId) === "legacy_google" ? (intended?.resendThreadId ?? args.emailId) : undefined;
     if(gmailThreadId && attempt.inboxId) await bindTeamInboxThread(ctx,{threadId,inboxId:attempt.inboxId,resendThreadId:gmailThreadId});
+    // A connected-Gmail send is recorded under its deterministic Message-ID (the emailId), so the
+    // Cc copy that returns through Resend is recognised as our own outbound and not stored twice.
+    const gmailAddress =
+      attempt.inboxId && inboxKind(attempt.inboxId) === "gmail"
+        ? gmailAddressOf(attempt.inboxId)
+        : undefined;
     if (existingMessage) {
       await ctx.db.patch(existingMessage._id, {
         sentByUserId: senderUserId,
         pendingEmailId: pending._id,
+        ...(gmailAddress ? { gmailAddress } : {}),
         ...(!existingMessage.clientOrgId && pending.orgId
           ? { clientOrgId: pending.orgId }
           : {}),
@@ -808,6 +821,7 @@ export const recordOperatorInboxSentInternal = internalMutation({
         pendingEmailId: pending._id,
         resendInboxEmailId: args.emailId,
         ...(gmailThreadId ? { messageId: args.emailId, resendThreadId:gmailThreadId } : {}),
+        ...(gmailAddress ? { messageId: args.emailId, gmailAddress } : {}),
         threadId,
         clientOrgId: pending.orgId,
         addressedRequestId: pending.procurementRequestId,
@@ -825,6 +839,11 @@ export const recordOperatorInboxSentInternal = internalMutation({
         receivedAt: now,
         createdAt: now,
       });
+    }
+    if (gmailAddress) {
+      await ctx.db.patch(threadId, { gmailAddress });
+      // Replies that drop the team Cc stay on this Gmail thread: bind it and schedule the follow-up checks.
+      await bindRecordedGmailSend(ctx, { threadId, messageId: args.emailId, now });
     }
     await ctx.db.patch(pending._id, {
       status: "sent",

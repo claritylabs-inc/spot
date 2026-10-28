@@ -7,6 +7,7 @@ import type { Id } from "../_generated/dataModel";
 import { action, type ActionCtx } from "../_generated/server";
 import { sendOperatorInboxDraft } from "../lib/operatorInboxSend";
 import { getEmailDeliveryMode } from "../lib/resend";
+import { sendFromValidator } from "../lib/outreachIdentity";
 import { isReplyKeyMismatch, teamReplyErrorMessage } from "../lib/teamEmailReply";
 
 export type TeamComposeSendResult =
@@ -60,6 +61,7 @@ export const send = action({
     message: v.string(),
     clientOrgId: v.optional(v.id("organizations")),
     requestId: v.optional(v.id("procurementRequests")),
+    sendFrom: v.optional(sendFromValidator),
     expectedFingerprint: v.string(),
     idempotencyKey: v.string(),
   },
