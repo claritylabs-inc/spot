@@ -28,6 +28,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { OPERATOR_EMAIL_ADDRESS } from "@/convex/lib/operatorEmailAddress";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
+import { OperatorTestModeSettings } from "@/components/operator-test-mode-settings";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 type OperatorCurrent = FunctionReturnType<typeof api.operator.current>;
@@ -459,6 +460,9 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
         <FadeIn when={true} staggerIndex={2} duration={0.4}>
           <PasswordSettings />
           <OperatorSecondFactorSettings />
+          <OperatorTestModeSettings
+            disabled={Boolean(current.activeImpersonation)}
+          />
           <OperationalPanel className="mt-4">
             <OperationalPanelHeader title="Appearance" />
             <OperationalPanelBody>

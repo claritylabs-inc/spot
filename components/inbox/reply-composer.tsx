@@ -227,7 +227,8 @@ function OperatorReplyComposer({
   }
 
   return (
-    <div className="w-full space-y-2">
+    // Teammates on the thread write this reply together.
+    <div data-collab-scope={`reply:${threadId}`} className="w-full space-y-2">
       {attempt ? (
         <div role="alert" className={`space-y-2 rounded-md bg-muted/50 p-3 ${typeStyle("caption.default")}`}>
           <p className="text-foreground">

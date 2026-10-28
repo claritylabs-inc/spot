@@ -26,6 +26,13 @@ crons.cron(
 );
 
 crons.interval(
+  "purge idle follow session rooms",
+  { hours: 1 },
+  internal.collab.purgeIdleRooms,
+  {},
+);
+
+crons.interval(
   "sweep stale policy extractions",
   { minutes: 5 },
   internal.actions.policyExtraction.sweepStale,

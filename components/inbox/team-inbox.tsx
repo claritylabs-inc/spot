@@ -200,6 +200,7 @@ function ThreadRow({
       {selectable ? (
         <span className="flex shrink-0 items-center pr-1 pl-4">
           <Checkbox
+            data-collab-ignore
             aria-label={`Select ${thread.subject}`}
             checked={checked}
             onCheckedChange={(value) => onCheckedChange(value === true)}
@@ -643,6 +644,7 @@ export function TeamInbox({
   const selectionBar = checkedVisible.length ? (
     <div className="flex h-10 items-center gap-3 border-b border-border pr-3 pl-4">
       <Checkbox
+        data-collab-ignore
         aria-label="Select all loaded conversations"
         checked={allChecked}
         indeterminate={!allChecked}

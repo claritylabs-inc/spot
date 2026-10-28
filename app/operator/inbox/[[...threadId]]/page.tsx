@@ -25,7 +25,8 @@ export default function OperatorInboxPage() {
   const current = useCachedOperatorCurrent();
   // Route params arrive decoded; the id is opaque.
   const selectedId = params.threadId?.[0] ?? null;
-  const [composing, setComposing] = useFollowedState("inbox:composing", false);
+  // The open draft's id; teammates following along edit the same draft.
+  const [composing, setComposing] = useFollowedState<string | null>("inbox:composing", null);
 
   const select = useCallback(
     (thread: InboxThread | null, options?: { replace?: boolean }) => {
@@ -39,7 +40,7 @@ export default function OperatorInboxPage() {
   const close = useCallback(() => select(null), [select]);
   // Opening a conversation replaces the composer; its draft is kept for the session.
   useEffect(() => {
-    if (selectedId) setComposing(false);
+    if (selectedId) setComposing(null);
   }, [selectedId, setComposing]);
   const resolved = useResolvedThreadId(selectedId);
   // A saved link with a legacy id moves to the current id.
@@ -55,9 +56,10 @@ export default function OperatorInboxPage() {
       rightPanel={
         composing ? (
           <NewEmailComposer
-            onClose={() => setComposing(false)}
+            draftId={composing}
+            onClose={() => setComposing(null)}
             onSent={(threadId) => {
-              setComposing(false);
+              setComposing(null);
               if (threadId) router.push(`/operator/inbox/${threadId}?mailbox=sent`, { scroll: false });
             }}
           />
@@ -80,7 +82,7 @@ export default function OperatorInboxPage() {
         onSelect={select}
         onCompose={() => {
           if (selectedId) router.push(`/operator/inbox${window.location.search}`, { scroll: false });
-          setComposing(true);
+          setComposing((current) => current ?? crypto.randomUUID());
         }}
       />
     </AppShell>

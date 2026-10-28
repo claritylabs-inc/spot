@@ -361,6 +361,9 @@ const UNAUDITED_MUTATIONS = new Set([
   "operatorCursors:move",
   "operatorCursors:clear",
   "operatorCursors:publishUi",
+  "collab:join",
+  "collab:push",
+  "collab:caret",
   "teamInbox:markRead",
 ]);
 

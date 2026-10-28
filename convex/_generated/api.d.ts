@@ -110,6 +110,7 @@ import type * as clientDeletion from "../clientDeletion.js";
 import type * as clientFiles from "../clientFiles.js";
 import type * as clientOutreach from "../clientOutreach.js";
 import type * as clientProcurementRequests from "../clientProcurementRequests.js";
+import type * as collab from "../collab.js";
 import type * as companyInformation from "../companyInformation.js";
 import type * as companyResearch from "../companyResearch.js";
 import type * as compliance from "../compliance.js";
@@ -703,6 +704,7 @@ declare const fullApi: ApiFromModules<{
   clientFiles: typeof clientFiles;
   clientOutreach: typeof clientOutreach;
   clientProcurementRequests: typeof clientProcurementRequests;
+  collab: typeof collab;
   companyInformation: typeof companyInformation;
   companyResearch: typeof companyResearch;
   compliance: typeof compliance;

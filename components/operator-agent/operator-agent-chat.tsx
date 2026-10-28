@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { Lock } from "lucide-react";
 import { toast } from "sonner";
 
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input/prompt-input";
@@ -28,6 +29,7 @@ import {
   type OperatorAgentConfirmation,
 } from "@/lib/operator-agent-api";
 import { uploadPromptFiles } from "@/lib/thread-prompt";
+import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
   operatorPageContextFromPathname,
@@ -294,86 +296,107 @@ export function OperatorAgentChat({
       ? operatorPageContextLabel(currentPageContext)
       : null;
 
+  // A chat being started is private until it is sent: no shared prompt and
+  // no pointer for teammates on the same page.
   return (
-    <OperatorConversation
-      activeThreadId={activeThreadId}
-      loading={Boolean(activeThreadId && rawThread === undefined)}
-      detail={detail}
-      suggestions={suggestions?.suggestions}
-      launchingSuggestionKey={launchingSuggestionKey}
-      confirmationBusyId={confirmationBusyId}
-      presentationDisabled={
-        running ||
-        Boolean(confirmationBusyId) ||
-        Boolean(launchingSuggestionKey) ||
-        Boolean(activeThread?.archivedAt)
-      }
-      onFollowUp={async (text) => {
-        if (
+    <div
+      className="contents"
+      {...(activeThreadId ? {} : { "data-follow-private": "" })}
+    >
+      <OperatorConversation
+        activeThreadId={activeThreadId}
+        loading={Boolean(activeThreadId && rawThread === undefined)}
+        detail={detail}
+        suggestions={suggestions?.suggestions}
+        launchingSuggestionKey={launchingSuggestionKey}
+        confirmationBusyId={confirmationBusyId}
+        presentationDisabled={
           running ||
-          isSubmitting() ||
-          confirmationBusyId ||
-          launchingSuggestionKey ||
-          activeThread?.archivedAt
-        )
-          throw new Error("Wait for the current task to finish.");
-        await submit({ text, files: [] });
-      }}
-      onSelectSuggestion={(suggestion) => void launchIntent(suggestion)}
-      onDecision={(confirmation, decision) =>
-        void decide(confirmation, decision)
-      }
-      composer={
-        <ChatComposer
-          ref={composerRef}
-          onSubmit={submit}
-          onStop={() => {
-            if (!activeThreadId) return;
-            void cancelRun({ threadId: activeThreadId }).catch(
-              reportError("Could not stop the task"),
-            );
-          }}
-          placeholder="Ask the operator agent…"
-          attachmentAccept={OPERATOR_ATTACHMENT_ACCEPT}
-          multipleAttachments
-          maxFileSize={OPERATOR_ATTACHMENT_MAX_BYTES}
-          onAttachmentError={(message) => toast.error(message)}
-          busy={running}
-          busyLabel="Working"
-          variant="dock"
-          contextChip={
-            <AgentDockContextChip
-              label={contextLabel}
-              href={
-                activeThread
-                  ? operatorThreadContextHref(activeThread.id, retainedThreadContext)
-                  : null
-              }
-              detached={!displayedPageContext}
-              onRemove={toggleContext}
-            />
-          }
-          toolbarEnd={
-            <>
-              <AgentDockPlanToggle
-                active={planMode}
-                onToggle={() => setPlanMode((current) => !current)}
+          Boolean(confirmationBusyId) ||
+          Boolean(launchingSuggestionKey) ||
+          Boolean(activeThread?.archivedAt)
+        }
+        onFollowUp={async (text) => {
+          if (
+            running ||
+            isSubmitting() ||
+            confirmationBusyId ||
+            launchingSuggestionKey ||
+            activeThread?.archivedAt
+          )
+            throw new Error("Wait for the current task to finish.");
+          await submit({ text, files: [] });
+        }}
+        onSelectSuggestion={(suggestion) => void launchIntent(suggestion)}
+        onDecision={(confirmation, decision) =>
+          void decide(confirmation, decision)
+        }
+        composer={
+          <ChatComposer
+            ref={composerRef}
+            collabScope={activeThreadId ? `chat:${activeThreadId}` : undefined}
+            banner={
+              activeThreadId ? undefined : (
+                <p
+                  className={`flex items-center gap-1 px-1 pb-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
+                >
+                  <Lock className="size-3" />
+                  Private until you send
+                </p>
+              )
+            }
+            onSubmit={submit}
+            onStop={() => {
+              if (!activeThreadId) return;
+              void cancelRun({ threadId: activeThreadId }).catch(
+                reportError("Could not stop the task"),
+              );
+            }}
+            placeholder="Ask the operator agent…"
+            attachmentAccept={OPERATOR_ATTACHMENT_ACCEPT}
+            multipleAttachments
+            maxFileSize={OPERATOR_ATTACHMENT_MAX_BYTES}
+            onAttachmentError={(message) => toast.error(message)}
+            busy={running}
+            busyLabel="Working"
+            variant="dock"
+            contextChip={
+              <AgentDockContextChip
+                label={contextLabel}
+                href={
+                  activeThread
+                    ? operatorThreadContextHref(
+                        activeThread.id,
+                        retainedThreadContext,
+                      )
+                    : null
+                }
+                detached={!displayedPageContext}
+                onRemove={toggleContext}
               />
-              {retainedThreadContext ? null : (
-                <AgentDockContextToggle
-                  label={
-                    currentPageContext
-                      ? operatorPageContextLabel(currentPageContext)
-                      : null
-                  }
-                  attached={Boolean(availablePageContext)}
-                  onToggle={toggleContext}
+            }
+            toolbarEnd={
+              <>
+                <AgentDockPlanToggle
+                  active={planMode}
+                  onToggle={() => setPlanMode((current) => !current)}
                 />
-              )}
-            </>
-          }
-        />
-      }
-    />
+                {retainedThreadContext ? null : (
+                  <AgentDockContextToggle
+                    label={
+                      currentPageContext
+                        ? operatorPageContextLabel(currentPageContext)
+                        : null
+                    }
+                    attached={Boolean(availablePageContext)}
+                    onToggle={toggleContext}
+                  />
+                )}
+              </>
+            }
+          />
+        }
+      />
+    </div>
   );
 }

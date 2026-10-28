@@ -12,6 +12,7 @@ import {
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
+import { useIsFollowing } from "@/hooks/use-followed-state";
 import { useAgentDock } from "./agent-dock-provider";
 import { DockErrorBoundary } from "./dock-error-boundary";
 import type { AgentDockMode, AgentDockTab } from "./dock-state";
@@ -106,7 +107,10 @@ function ThreadTab({
   const dock = useAgentDock();
   const summary = adapter.useTabSummary(tab.threadId);
   const { closeTab, markSeen } = dock;
-  const seenWhileVisible = active && open && dock.view === "chat";
+  // A follower's tabs mirror the leader's, so marking them seen never sticks.
+  const following = useIsFollowing();
+  const seenWhileVisible =
+    active && open && dock.view === "chat" && !following;
 
   useEffect(() => {
     if (summary === null) closeTab(tab.threadId);

@@ -27,7 +27,9 @@ import {
 } from "@/convex/lib/markdownDocument";
 import { useCurrentOrg } from "@/hooks/use-current-org";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import dayjs from "dayjs";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
+import { useSharedDoc } from "@/lib/collab/doc";
 
 function WikiEditor({
   sourceMarkdown,
@@ -60,16 +62,36 @@ function WikiEditor({
   const fileInput = useRef<HTMLInputElement>(null);
   const revision = useRef(sourceRevision);
   const savedMarkdown = useRef(sourceMarkdown);
+  // Shared live, the room's text is what every screen shows; the server only
+  // moves the revision. A teammate's save that missed edits (it can carry an
+  // older snapshot) is saved over with the full text, never shown.
+  const shared = useSharedDoc() !== null;
+  const current = useRef(markdown);
+  const latest = useRef({ revision: sourceRevision, markdown: sourceMarkdown });
+  const saveNow = useRef<(() => Promise<boolean>) | null>(null);
+  const lastSaveOver = useRef(0);
   useEffect(() => {
-    if (
-      sourceRevision <= revision.current ||
-      markdown !== savedMarkdown.current
-    )
+    current.current = markdown;
+    latest.current = { revision: sourceRevision, markdown: sourceMarkdown };
+  });
+  useEffect(() => {
+    if (sourceRevision <= revision.current) return;
+    if (shared) {
+      revision.current = sourceRevision;
+      savedMarkdown.current = sourceMarkdown;
+      // At most every 2s, so two browsers never trade saves in a loop.
+      const now = dayjs().valueOf();
+      if (sourceMarkdown !== markdown && now - lastSaveOver.current > 2000) {
+        lastSaveOver.current = now;
+        void saveNow.current?.();
+      }
       return;
+    }
+    if (markdown !== savedMarkdown.current) return;
     revision.current = sourceRevision;
     savedMarkdown.current = sourceMarkdown;
     setMarkdown(sourceMarkdown);
-  }, [markdown, sourceMarkdown, sourceRevision]);
+  }, [markdown, shared, sourceMarkdown, sourceRevision]);
   function edit(value: string) {
     setMarkdown(value);
     setEditSequence((sequence) => sequence + 1);
@@ -79,14 +101,39 @@ function WikiEditor({
     args: markdown,
     valueKey: String(editSequence),
     enabled: canManage,
-    flush: async (value) => {
+    flush: async (snapshot) => {
+      // Shared, save the text as it is now, not as it was when queued.
+      const value = shared ? current.current : snapshot;
       if (value === savedMarkdown.current) return;
-      const result = await onSave(value, revision.current);
-      revision.current = result.revision;
-      savedMarkdown.current = value;
+      const expected = revision.current;
+      try {
+        revision.current = (await onSave(value, expected)).revision;
+        savedMarkdown.current = value;
+      } catch (error) {
+        // A teammate's save landed first: build on their revision.
+        if (!shared) throw error;
+        const deadline = dayjs().add(3, "second");
+        while (
+          latest.current.revision <= expected &&
+          dayjs().isBefore(deadline)
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        const newer = latest.current;
+        if (newer.revision <= expected) throw error;
+        const text = current.current;
+        revision.current =
+          newer.markdown === text
+            ? newer.revision
+            : (await onSave(text, newer.revision)).revision;
+        savedMarkdown.current = text;
+      }
     },
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Failed to save the notes"),
+  });
+  useEffect(() => {
+    saveNow.current = () => autoSave.saveNow({ force: true });
   });
   return (
     <>

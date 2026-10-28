@@ -17,6 +17,7 @@ import {
   type AutoSaveRequestState,
 } from "@/lib/sync/auto-save-sequencer";
 import { createClientMutationId } from "@/lib/sync/client-mutation-id";
+import { changedByTeammate } from "@/lib/collab/doc";
 import { getPermissionErrorMessage } from "@/lib/user-facing-error";
 
 type LocalFirstAutoSaveOptions<TArgs, TResult> = {
@@ -106,9 +107,18 @@ export function useLocalFirstAutoSave<TArgs, TResult = unknown>({
       previousIntent.resetKey === resetKey &&
       previousIntent.valueKey !== valueKey
     ) {
-      const nextRevision = intentRevisionRef.current + 1;
-      intentRevisionRef.current = nextRevision;
-      setIntentRevision(nextRevision);
+      // A teammate's edit on a clean form is saved by their browser, not again here.
+      if (
+        changedByTeammate() &&
+        previousIntent.valueKey === lastSavedKeyRef.current
+      ) {
+        lastSavedKeyRef.current = valueKey;
+        setLastSavedKey(valueKey);
+      } else {
+        const nextRevision = intentRevisionRef.current + 1;
+        intentRevisionRef.current = nextRevision;
+        setIntentRevision(nextRevision);
+      }
     }
     lastIntentRef.current = { resetKey, valueKey };
     argsRef.current = args;

@@ -296,6 +296,7 @@ export default function OperatorBrokersPage() {
               <TableRow>
                 <TableHead className="w-11 pl-4 pr-0">
                   <Checkbox
+                    data-collab-ignore
                     aria-label="Select all providers"
                     checked={selection.allSelected}
                     indeterminate={selection.someSelected}
@@ -353,6 +354,7 @@ export default function OperatorBrokersPage() {
                   >
                     <TableCell className="pl-4 pr-0">
                       <Checkbox
+                        data-collab-ignore
                         aria-label={`Select ${row.broker.name}`}
                         checked={selection.isSelected(row.broker._id)}
                         onCheckedChange={(checked) =>

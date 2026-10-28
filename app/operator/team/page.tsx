@@ -31,6 +31,7 @@ export default function OperatorTeamPage() {
   const sessions = useOperatorSessions();
   const following = useFollowingOperator();
   const dock = useOptionalAgentDock();
+  const selfId = sessions?.find((session) => session.self)?.userId;
   const others = (sessions ?? []).filter((session) => !session.self);
   const names = new Map(others.map((session) => [session.userId, session.name]));
 
@@ -126,7 +127,9 @@ export default function OperatorTeamPage() {
                         size="compact"
                         variant={isFollowing ? "secondary" : "primary"}
                         onClick={() =>
-                          setFollowingOperator(isFollowing ? null : session.userId)
+                          setFollowingOperator(isFollowing ? null : session.userId, {
+                            takeOver: session.followingUserId === selfId,
+                          })
                         }
                       >
                         {isFollowing ? "Stop following" : "Join"}

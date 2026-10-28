@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@claritylabs-inc/ui/components/dropdown-menu";
 import { replaceEditorBody, splitEditorMarkdown } from "@/lib/markdown-editor";
+import { useSharedValue } from "@/hooks/use-shared-value";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
 import { MarkdownDocumentEditor } from "./markdown-document-editor";
@@ -50,6 +51,15 @@ export function MarkdownEditor({
   const [view, setView] = useState(preview ? "preview" : "document");
   const [editYaml, setEditYaml] = useState(false);
   const document = useMemo(() => splitEditorMarkdown(value), [value]);
+  // Teammates edit the body together in the rich view; front matter is a
+  // whole value. Source edits reach them through the rich view.
+  useSharedValue(
+    `markdown:${label}:front-matter`,
+    document.prefix,
+    (prefix) => {
+      if (!readOnly) onChange(prefix + document.body);
+    },
+  );
   const sourceView =
     view === "markdown" ||
     Boolean(document.error && (!editYaml || !document.prefix));
@@ -202,6 +212,7 @@ export function MarkdownEditor({
           </details>
         ) : null}
         <MarkdownDocumentEditor
+          collabKey={`markdown:${label}`}
           value={document.body}
           onChange={(body) => onChange(replaceEditorBody(value, body))}
           label={label}

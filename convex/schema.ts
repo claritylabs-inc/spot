@@ -5751,7 +5751,10 @@ export default defineSchema({
     .index("user", ["userId"]),
 
   // One row per operator; heartbeats keep it fresh while the portal is open.
+  // One row per operator per open tab, so closing one tab leaves the others.
   operatorPresence: defineTable({
+    /** The browser tab; absent on rows from clients before per-tab presence. */
+    tabId: v.optional(v.string()),
     emailThreadId: v.optional(v.id("teamEmailThreads")),
     activity: v.optional(v.union(v.literal("viewing"), v.literal("replying"))),
     userId: v.id("users"),
@@ -5762,11 +5765,12 @@ export default defineSchema({
     lastSeen: v.number(),
   })
     .index("by_userId", ["userId"])
+    .index("by_userId_and_tabId", ["userId", "tabId"])
     .index("by_lastSeen", ["lastSeen"]),
 
-  // Live cursor of an operator someone is following. Kept apart from
-  // operatorPresence because it changes many times a second; the row exists
-  // only while the operator has followers.
+  // Live cursor of an operator who shares a page with a teammate or is
+  // followed. Kept apart from operatorPresence because it changes many times a
+  // second; the row exists only while someone can see it.
   operatorCursors: defineTable({
     userId: v.id("users"),
     /** Leader's in-app URL: pathname plus search. */
@@ -5779,7 +5783,7 @@ export default defineSchema({
     viewportX: v.number(),
     viewportY: v.number(),
     visible: v.boolean(),
-    /** Text field the leader is typing in, mirrored read-only for followers. */
+    /** Retired: older clients may still send it; shared fields now sync through collabRooms. */
     field: v.optional(
       v.object({
         anchor: v.string(),
@@ -5799,4 +5803,34 @@ export default defineSchema({
     ui: v.string(),
     updatedAt: v.number(),
   }).index("by_userId", ["userId"]),
+
+  // Shared form state for operators on the same page. Members rejoin every
+  // 15s; the first to arrive after nobody has for two minutes starts a fresh
+  // room, so stale edits never merge into a later visit.
+  collabRooms: defineTable({
+    pathname: v.string(),
+    /** Updates since the room was last compacted. */
+    pendingUpdates: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_pathname", ["pathname"])
+    .index("by_updatedAt", ["updatedAt"]),
+
+  // Yjs document updates for a room, compacted into one row as they pile up.
+  collabUpdates: defineTable({
+    roomId: v.id("collabRooms"),
+    update: v.bytes(),
+  }).index("by_roomId", ["roomId"]),
+
+  // Where each room member's caret sits, keyed like the shared fields.
+  collabCarets: defineTable({
+    roomId: v.id("collabRooms"),
+    userId: v.id("users"),
+    key: v.string(),
+    selectionStart: v.number(),
+    selectionEnd: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_roomId", ["roomId"])
+    .index("by_roomId_and_userId", ["roomId", "userId"]),
 });

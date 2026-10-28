@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import CodeMirror from "@uiw/react-codemirror";
+import { useLayoutEffect, useMemo, useRef } from "react";
+import CodeMirror, { ExternalChange } from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { yaml, yamlFrontmatter } from "@codemirror/lang-yaml";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -12,6 +12,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import { editorFrontmatterRange } from "@/lib/markdown-editor";
+import { textSplice } from "@/lib/collab/doc";
 import { tags } from "@lezer/highlight";
 import {
   editableMirrorTypographyStyle,
@@ -98,9 +99,25 @@ export function MarkdownSourceEditor({
     ],
     [frontmatter, label],
   );
+  // CodeMirror replaces its whole document when `value` changes, moving the
+  // caret. Apply outside changes (a teammate's edit) as the smallest splice
+  // first, before its own sync runs, so the caret stays where it was.
+  const viewRef = useRef<EditorView | null>(null);
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    const current = view?.state.doc.toString();
+    if (!view || current === undefined || current === value) return;
+    view.dispatch({
+      changes: textSplice(current, value),
+      annotations: [ExternalChange.of(true)],
+    });
+  }, [value]);
   return (
     <CodeMirror
       value={value}
+      onCreateEditor={(view) => {
+        viewRef.current = view;
+      }}
       onChange={onChange}
       editable={!readOnly}
       extensions={extensions}

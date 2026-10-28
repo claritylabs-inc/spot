@@ -967,6 +967,7 @@ export function ProcurementListWorkspace({
               {!readOnly && (
                 <TableHead className="w-11 pr-0 pl-4">
                   <Checkbox
+                    data-collab-ignore
                     aria-label="Select all requests"
                     checked={selection.allSelected}
                     indeterminate={selection.someSelected}
@@ -1053,6 +1054,7 @@ export function ProcurementListWorkspace({
                       onClick={(event) => event.stopPropagation()}
                     >
                       <Checkbox
+                        data-collab-ignore
                         aria-label={`Select ${request.title}`}
                         checked={selection.isSelected(request._id)}
                         onCheckedChange={(checked) =>
