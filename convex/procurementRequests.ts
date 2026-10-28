@@ -96,6 +96,7 @@ import {
   scheduleClientFileCompanyInformation,
   scheduleEmailThreadCompanyInformation,
 } from "./companyInformation";
+import { queueTeamReplySuggestion } from "./lib/teamReplySuggestions";
 
 export { insertProcurementEmailFileItems, storeProcurementEmailAttachments };
 export type { ProcurementEmailAttachment };
@@ -2737,6 +2738,8 @@ export const ingestEmailInternal = internalMutation({
     });
     await scheduleEmailThreadCompanyInformation(ctx, threadId);
     await ctx.scheduler.runAfter(0, internal.procurementInformationEmail.queueEmail, {messageId:emailMessageId});
+    if (args.receivedAt >= target.latestMessageAt)
+      await queueTeamReplySuggestion(ctx, { threadId, messageId: emailMessageId });
     for (const clientFileId of restoredClientFileIds) {
       await scheduleClientFileCompanyInformation(ctx, clientFileId);
     }

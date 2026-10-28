@@ -88,6 +88,7 @@ import type * as actions_teamEmailForwarding from "../actions/teamEmailForwardin
 import type * as actions_teamEmailReplies from "../actions/teamEmailReplies.js";
 import type * as actions_teamInbox from "../actions/teamInbox.js";
 import type * as actions_teamInboxEvents from "../actions/teamInboxEvents.js";
+import type * as actions_teamReplySuggestions from "../actions/teamReplySuggestions.js";
 import type * as actions_tenantMcpTools from "../actions/tenantMcpTools.js";
 import type * as actions_threadTitle from "../actions/threadTitle.js";
 import type * as actions_vendorComplianceMonitor from "../actions/vendorComplianceMonitor.js";
@@ -476,6 +477,7 @@ import type * as lib_teamEmailReply from "../lib/teamEmailReply.js";
 import type * as lib_teamEmailStore from "../lib/teamEmailStore.js";
 import type * as lib_teamInboxEventLease from "../lib/teamInboxEventLease.js";
 import type * as lib_teamInboxProjection from "../lib/teamInboxProjection.js";
+import type * as lib_teamReplySuggestions from "../lib/teamReplySuggestions.js";
 import type * as lib_teamThreadReply from "../lib/teamThreadReply.js";
 import type * as lib_tenantMcpToolCatalog from "../lib/tenantMcpToolCatalog.js";
 import type * as lib_textChannelControls from "../lib/textChannelControls.js";
@@ -589,6 +591,7 @@ import type * as teamEmailForwarding from "../teamEmailForwarding.js";
 import type * as teamEmailReplies from "../teamEmailReplies.js";
 import type * as teamInbox from "../teamInbox.js";
 import type * as teamInboxEvents from "../teamInboxEvents.js";
+import type * as teamReplySuggestions from "../teamReplySuggestions.js";
 import type * as testMode from "../testMode.js";
 import type * as threadActionConfirmations from "../threadActionConfirmations.js";
 import type * as threads from "../threads.js";
@@ -682,6 +685,7 @@ declare const fullApi: ApiFromModules<{
   "actions/teamEmailReplies": typeof actions_teamEmailReplies;
   "actions/teamInbox": typeof actions_teamInbox;
   "actions/teamInboxEvents": typeof actions_teamInboxEvents;
+  "actions/teamReplySuggestions": typeof actions_teamReplySuggestions;
   "actions/tenantMcpTools": typeof actions_tenantMcpTools;
   "actions/threadTitle": typeof actions_threadTitle;
   "actions/vendorComplianceMonitor": typeof actions_vendorComplianceMonitor;
@@ -1070,6 +1074,7 @@ declare const fullApi: ApiFromModules<{
   "lib/teamEmailStore": typeof lib_teamEmailStore;
   "lib/teamInboxEventLease": typeof lib_teamInboxEventLease;
   "lib/teamInboxProjection": typeof lib_teamInboxProjection;
+  "lib/teamReplySuggestions": typeof lib_teamReplySuggestions;
   "lib/teamThreadReply": typeof lib_teamThreadReply;
   "lib/tenantMcpToolCatalog": typeof lib_tenantMcpToolCatalog;
   "lib/textChannelControls": typeof lib_textChannelControls;
@@ -1183,6 +1188,7 @@ declare const fullApi: ApiFromModules<{
   teamEmailReplies: typeof teamEmailReplies;
   teamInbox: typeof teamInbox;
   teamInboxEvents: typeof teamInboxEvents;
+  teamReplySuggestions: typeof teamReplySuggestions;
   testMode: typeof testMode;
   threadActionConfirmations: typeof threadActionConfirmations;
   threads: typeof threads;

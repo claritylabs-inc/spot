@@ -10,6 +10,7 @@ import {
   EmailComposeMessage,
   EmailComposeRow,
 } from "@/components/email/compose-fields";
+import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -19,6 +20,18 @@ import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const PREVIEW_DELAY_MS = 450;
+/** Left in a suggested reply where Spot lacks a fact the sender asked for. */
+const NEEDS_MARKER = "[needs:";
+
+/** Spot's suggested reply to the conversation's newest message. */
+export type ReplySuggestion = {
+  messageId: string;
+  status: "pending" | "ready";
+  reply: string | null;
+  missing: string[];
+  /** Changes whenever the suggestion is rewritten, for example from the AI panel. */
+  revision: number;
+};
 
 /** One send of one exact email. It lives from before the action starts until a definitive outcome. */
 type SendAttempt = { key: string; text: string; fingerprint: string; startedAt: number };
@@ -29,6 +42,10 @@ const scope = (operatorId: string, threadId: string) => `${operatorId}:${threadI
 const attemptStorageKey = (id: string) => `teamReply:attempt:${id}`;
 const memoryAttempts = new Map<string, SendAttempt>();
 const replyDrafts = new Map<string, string>();
+// Each suggestion revision fills the box once; discarding it never brings it back.
+const usedSuggestions = new Set<string>();
+// The text last filled from a suggestion: a box still holding it was not edited.
+const filledSuggestions = new Map<string, string>();
 
 function readAttempt(id: string): SendAttempt | null {
   try {
@@ -93,6 +110,7 @@ function Recipients({ addresses }: { addresses: string[] }) {
 export function ReplyComposer(props: {
   threadId: Id<"teamEmailThreads">;
   recipient: string | null;
+  suggestion: ReplySuggestion | null;
   onSendingChange: (sending: boolean) => void;
   /** True while the composer is focused with text, for presence. */
   onReplyingChange: (replying: boolean) => void;
@@ -106,12 +124,14 @@ function OperatorReplyComposer({
   operatorId,
   threadId,
   recipient,
+  suggestion,
   onSendingChange,
   onReplyingChange,
 }: {
   operatorId: string;
   threadId: Id<"teamEmailThreads">;
   recipient: string | null;
+  suggestion: ReplySuggestion | null;
   onSendingChange: (sending: boolean) => void;
   onReplyingChange: (replying: boolean) => void;
 }) {
@@ -128,6 +148,7 @@ function OperatorReplyComposer({
 
   const locked = attempt !== null;
   const hasText = text.trim().length > 0;
+  const needsInput = text.includes(NEEDS_MARKER);
   useEffect(() => {
     onReplyingChange(focused && hasText && !locked);
   }, [focused, hasText, locked, onReplyingChange]);
@@ -160,6 +181,26 @@ function OperatorReplyComposer({
     else replyDrafts.delete(id);
   }
 
+  // An empty or unedited box takes Spot's latest suggestion; edits are never overwritten.
+  const suggestionKey = suggestion ? `${id}:${suggestion.messageId}:${suggestion.revision}` : null;
+  const suggested = suggestion?.status === "ready" ? suggestion.reply : null;
+  const [fromSuggestion, setFromSuggestion] = useState(false);
+  const unedited = !hasText || text === filledSuggestions.get(id);
+  const pendingRevision =
+    suggestionKey && suggested && !locked && !usedSuggestions.has(suggestionKey) && text !== suggested;
+  function takeSuggestion() {
+    if (!suggestionKey || !suggested) return;
+    usedSuggestions.add(suggestionKey);
+    filledSuggestions.set(id, suggested);
+    update(suggested);
+    setFromSuggestion(true);
+  }
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (pendingRevision && unedited) takeSuggestion();
+  });
+  const drafting = suggestion?.status === "pending" && !hasText && !locked;
+
   // The server saying "sent" is the one positive answer. Clearing runs in an
   // effect so it always commits; it syncs this form to a subscription.
   const confirmedSent = attempt !== null && status?.state === "sent";
@@ -175,7 +216,7 @@ function OperatorReplyComposer({
   }, [confirmedSent, id]);
 
   async function send(retry?: SendAttempt) {
-    if (sending) return;
+    if (sending || (!retry && needsInput)) return;
     let next = retry ?? null;
     if (!next && preview) {
       const reusable =
@@ -294,8 +335,26 @@ function OperatorReplyComposer({
             }}
             className="block max-h-72 min-h-28"
           />
-          {previewing || previewError || preview ? (
+          {previewing || previewError || preview || needsInput || (fromSuggestion && hasText) || pendingRevision ? (
             <div className={`space-y-1 px-4 pb-2 text-muted-foreground ${typeStyle("caption.default")}`}>
+              {pendingRevision && !unedited ? (
+                <p className="flex items-center gap-1.5">
+                  <LogoIcon size={12} className="shrink-0" />
+                  Spot has a new draft.
+                  <button type="button" className="text-foreground underline" onClick={takeSuggestion}>
+                    Replace yours
+                  </button>
+                </p>
+              ) : null}
+              {fromSuggestion && hasText ? (
+                <p className="flex items-center gap-1.5">
+                  <LogoIcon size={12} className="shrink-0" />
+                  Drafted by Spot. Review it before sending.
+                </p>
+              ) : null}
+              {needsInput ? (
+                <p role="alert">Fill in each {NEEDS_MARKER} …] before sending.</p>
+              ) : null}
               {previewing ? <p>Preparing preview…</p> : null}
               {previewError ? <p role="alert">{previewError}</p> : null}
               {preview?.copiesOwner ? (
@@ -319,7 +378,7 @@ function OperatorReplyComposer({
               size="compact"
               type="button"
               title="Send (Ctrl or ⌘ + Enter)"
-              disabled={!preview || sending || locked}
+              disabled={!preview || sending || locked || needsInput}
               onClick={() => void send()}
             >
               {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
@@ -346,6 +405,7 @@ function OperatorReplyComposer({
               disabled={sending || locked}
               onClick={() => {
                 update("");
+                setFromSuggestion(false);
                 setShowFull(false);
                 setOpen(false);
               }}
@@ -360,8 +420,14 @@ function OperatorReplyComposer({
           onClick={() => setOpen(true)}
           className={`flex h-10 w-full items-center gap-2 rounded-lg border border-border px-3 text-left text-muted-foreground transition-colors hover:bg-muted/50 ${typeStyle("body.default")}`}
         >
-          <Reply className="size-3.5" />
-          {recipient ? `Reply to ${recipient}` : "Reply"}
+          <Reply className="size-3.5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{recipient ? `Reply to ${recipient}` : "Reply"}</span>
+          {drafting ? (
+            <span className={`flex shrink-0 items-center gap-1.5 ${typeStyle("caption.default")}`}>
+              <LogoIcon size={12} className="animate-pulse" />
+              Drafting a reply…
+            </span>
+          ) : null}
         </button>
       )}
     </div>
