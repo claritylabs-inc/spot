@@ -22,6 +22,7 @@ import {
 import { OperatorSecondFactorSettings } from "@/components/operator/operator-second-factor";
 import { PasswordSettings } from "@/components/profile/password-settings";
 import { StreamingPreference } from "@/components/profile/streaming-preference";
+import { AgentDockPlacementPreference } from "@/components/profile/agent-dock-placement-preference";
 import { ThemeModeSelector } from "@/components/ui/theme-mode-selector";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -472,6 +473,7 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
           <OperationalPanel className="mt-4">
             <OperationalPanelHeader title="Chat" />
             <OperationalPanelBody>
+              <AgentDockPlacementPreference />
               <StreamingPreference />
             </OperationalPanelBody>
           </OperationalPanel>

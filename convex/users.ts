@@ -247,6 +247,7 @@ export const updateProfile = mutation({
   args: {
     streamResponses: v.optional(v.boolean()),
     showThinking: v.optional(v.boolean()),
+    agentDockPlacement: v.optional(v.union(v.literal("bottom"), v.literal("right"))),
     name: v.optional(v.string()),
     title: v.optional(v.string()),
     phone: v.optional(v.string()),
@@ -260,8 +261,11 @@ export const updateProfile = mutation({
       phone?: string | undefined;
       streamResponses?: boolean;
       showThinking?: boolean;
+      agentDockPlacement?: "bottom" | "right";
     } = {};
     if (args.showThinking !== undefined) patch.showThinking = args.showThinking;
+    if (args.agentDockPlacement !== undefined)
+      patch.agentDockPlacement = args.agentDockPlacement;
     if (args.streamResponses !== undefined)
       patch.streamResponses = args.streamResponses;
     if (args.name !== undefined) patch.name = args.name;

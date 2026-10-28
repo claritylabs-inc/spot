@@ -8,7 +8,6 @@ import {
   History,
   Inbox,
   LogOut,
-  MessageSquare,
   Settings,
   Radio,
   User,
@@ -20,10 +19,8 @@ import {
   SidebarMenuItem,
   SidebarTooltipProvider,
 } from "@/components/app-sidebar/nav-item";
-import { commandShortcut } from "@/components/app-sidebar/nav-config";
 import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
 import { InboxUnreadBadge } from "@/components/inbox/inbox-unread-badge";
-import { useOptionalAgentDock } from "@/components/agent-dock/agent-dock-provider";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import type { OperatorNavSection } from "@/lib/app-shell-routes";
 
@@ -37,7 +34,6 @@ export function OperatorSidebar({
   active: OperatorNavSection | null;
 }) {
   const { signOut } = useAuthActions();
-  const dock = useOptionalAgentDock();
 
   return (
     <SidebarTooltipProvider>
@@ -50,16 +46,6 @@ export function OperatorSidebar({
       />
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex flex-col px-2 py-2">
-          {dock ? (
-            <SidebarMenuItem
-              onClick={dock.newChat}
-              label="Ask Spot"
-              icon={MessageSquare}
-              active={false}
-              collapsed={collapsed}
-              shortcut={commandShortcut("j")}
-            />
-          ) : null}
           <SidebarMenuItem
             href="/operator/team"
             label="Team"

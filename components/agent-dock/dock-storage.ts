@@ -4,11 +4,15 @@ import type { AgentDockMode, AgentDockTab } from "./dock-state";
 export const AGENT_DOCK_DEFAULT_HEIGHT = 0.6;
 export const AGENT_DOCK_MIN_HEIGHT = 0.3;
 export const AGENT_DOCK_MAX_HEIGHT = 0.9;
+export const AGENT_DOCK_DEFAULT_WIDTH = 0.45;
+export const AGENT_DOCK_MIN_WIDTH = 0.3;
+export const AGENT_DOCK_MAX_WIDTH = 0.75;
 
 export type StoredAgentDock = {
   tabs: AgentDockTab[];
   activeThreadId: string | null;
   height: number;
+  width: number;
   mode: AgentDockMode;
 };
 
@@ -23,11 +27,17 @@ export function clampAgentDockHeight(height: number) {
   return Math.min(AGENT_DOCK_MAX_HEIGHT, Math.max(AGENT_DOCK_MIN_HEIGHT, height));
 }
 
+export function clampAgentDockWidth(width: number) {
+  if (!Number.isFinite(width)) return AGENT_DOCK_DEFAULT_WIDTH;
+  return Math.min(AGENT_DOCK_MAX_WIDTH, Math.max(AGENT_DOCK_MIN_WIDTH, width));
+}
+
 function parseStoredAgentDock(raw: string | null): StoredAgentDock {
   const fallback: StoredAgentDock = {
     tabs: [],
     activeThreadId: null,
     height: AGENT_DOCK_DEFAULT_HEIGHT,
+    width: AGENT_DOCK_DEFAULT_WIDTH,
     mode: "collapsed",
   };
   if (!raw) return fallback;
@@ -49,6 +59,10 @@ function parseStoredAgentDock(raw: string | null): StoredAgentDock {
         typeof parsed.height === "number"
           ? clampAgentDockHeight(parsed.height)
           : AGENT_DOCK_DEFAULT_HEIGHT,
+      width:
+        typeof parsed.width === "number"
+          ? clampAgentDockWidth(parsed.width)
+          : AGENT_DOCK_DEFAULT_WIDTH,
       mode: AGENT_DOCK_MODES.includes(parsed.mode as AgentDockMode)
         ? (parsed.mode as AgentDockMode)
         : "collapsed",
