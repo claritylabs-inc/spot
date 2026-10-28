@@ -1,9 +1,8 @@
 import { Migrations } from "@convex-dev/migrations";
 import { components } from "./_generated/api";
-import type { DataModel } from "./_generated/dataModel";
 import schema from "./schema";
 
-const migrations = new Migrations<DataModel>(components.migrations, { schema });
+const migrations = new Migrations(components.migrations, { schema });
 
 /** New providers that already received an outreach email become inactive relationships. */
 export const markContactedProspectsInactive = migrations.define({
