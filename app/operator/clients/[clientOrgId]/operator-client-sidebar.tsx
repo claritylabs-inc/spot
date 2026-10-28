@@ -25,7 +25,6 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { OperatorClientImpersonationAction } from "./operator-client-impersonation-action";
-import { PresenceSlot } from "@/components/operator-agent/presence-slot";
 
 type OperatorClientNavigationSection =
   | "policies"
@@ -192,8 +191,7 @@ function OperatorClientSidebar({
           </nav>
         </ScrollArea>
 
-        <div className="shrink-0 space-y-2 border-t border-border p-2">
-          <PresenceSlot collapsed={collapsed} />
+        <div className="shrink-0 space-y-0.5 border-t border-border px-2 py-2">
           <OperatorClientImpersonationAction
             clientOrgId={clientOrgId}
             activeImpersonation={activeImpersonation}

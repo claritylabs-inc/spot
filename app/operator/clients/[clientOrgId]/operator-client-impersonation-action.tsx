@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Loader2, LogOut, UserRoundCog } from "lucide-react";
 import { toast } from "sonner";
 import { SidebarMenuItem } from "@/components/app-sidebar/nav-item";
-import { PillButton } from "@/components/ui/pill-button";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useStartOperatorImpersonation } from "@/hooks/use-start-operator-impersonation";
 import { useStopOperatorImpersonation } from "@/hooks/use-stop-operator-impersonation";
@@ -70,32 +69,15 @@ export function OperatorClientImpersonationAction({
         ? "Retry impersonation"
         : "Impersonate";
   const icon = busy ? Loader2 : isImpersonating ? LogOut : UserRoundCog;
-  const Icon = icon;
-
-  if (collapsed) {
-    return (
-      <SidebarMenuItem
-        label={label}
-        icon={icon}
-        collapsed
-        disabled={disabled || busy}
-        onClick={() => void toggleImpersonation()}
-      />
-    );
-  }
 
   return (
-    <PillButton
-      type="button"
-      size="compact"
-      variant="secondary"
+    <SidebarMenuItem
       label={label}
+      icon={icon}
+      collapsed={collapsed}
+      active={isImpersonating}
       disabled={disabled || busy}
-      className="w-full"
       onClick={() => void toggleImpersonation()}
-    >
-      <Icon className={busy ? "size-3.5 animate-spin" : "size-3.5"} />
-      {label}
-    </PillButton>
+    />
   );
 }
