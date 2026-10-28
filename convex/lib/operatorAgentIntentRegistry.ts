@@ -163,7 +163,7 @@ const OPERATOR_AGENT_INTENT_FAMILIES: Record<
   find_account_or_policy: ["policies", "broker_network", "procurement"],
   check_system_health: ["platform", "extraction"],
   search_company_email: ["company_email"],
-  reply_team_email: ["outbound_email", "company_email"],
+  reply_team_email: ["outbound_email", "company_email", "procurement"],
   investigate_recent_failures: ["platform", "extraction", "policies", "procurement"],
   review_client: ["policies", "compliance", "client_files", "wiki", "procurement"],
   update_client: ["organizations", "wiki", "web"],

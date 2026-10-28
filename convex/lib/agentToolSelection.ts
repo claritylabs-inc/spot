@@ -205,7 +205,9 @@ export function expandToolsSpec<Family extends string>(
         tools: names.optional(),
       })
       .transform((input, ctx) => {
-        const requested = Object.values(input).flatMap((value) => value ?? []);
+        const requested = Object.values(input)
+          .flatMap((value) => value ?? [])
+          .flatMap((name) => name.split(/[\s,]+/).filter(Boolean));
         const resolved = new Set<Family>();
         for (const name of requested) {
           if (coreTools.has(name)) continue;
