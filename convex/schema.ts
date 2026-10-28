@@ -3557,6 +3557,15 @@ export default defineSchema({
     error: v.optional(v.string()),
   }).index("by_key", ["key"]).index("by_messageId", ["messageId"]).index("by_mailboxId_and_createdAt", ["mailboxId", "createdAt"]),
 
+  // One suggested reply per conversation, to its latest inbound message.
+  teamEmailReplySuggestions: defineTable({
+    threadId: v.id("teamEmailThreads"),
+    messageId: v.id("teamEmailMessages"),
+    status: v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
+    reply: v.optional(v.string()),
+    missing: v.optional(v.array(v.string())),
+    updatedAt: v.number(),
+  }).index("by_threadId", ["threadId"]),
   teamEmailThreads: defineTable({
     ownerUserId: v.optional(v.id("users")),
     source: v.union(v.literal("forward"), v.literal("outreach"), v.literal("team")),
@@ -3625,7 +3634,8 @@ export default defineSchema({
     .index("by_requestId_and_latestMessageAt", ["requestId", "latestMessageAt"])
     .index("by_addressedRequestId_and_latestMessageAt", ["addressedRequestId", "latestMessageAt"])
     .index("subject", ["clientOrgId", "normalizedSubject", "latestMessageAt"])
-    .index("by_resendThreadId", ["resendThreadId"]),
+    .index("by_resendThreadId", ["resendThreadId"])
+    .searchIndex("search_subject", { searchField: "subject", filterFields: ["clientOrgId"] }),
 
   teamEmailMessages: defineTable({
     direction: v.union(v.literal("inbound"), v.literal("outbound")),
@@ -3661,6 +3671,7 @@ export default defineSchema({
   })
     .index("by_threadId_and_receivedAt", ["threadId", "receivedAt"])
     .index("by_resendEmailId", ["resendEmailId"])
+    .searchIndex("search_text", { searchField: "currentText", filterFields: ["clientOrgId"] })
     .index("by_messageId", ["messageId"])
     .index("by_resendInboxEmailId", ["resendInboxEmailId"])
     .index("request", ["addressedRequestId", "receivedAt"]),

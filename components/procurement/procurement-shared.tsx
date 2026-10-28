@@ -47,6 +47,7 @@ import {
   useReportEmailThreadPresence,
 } from "@/hooks/use-operator-presence";
 import { useFollowedOpen, useFollowedState } from "@/hooks/use-followed-state";
+import { usePageContext } from "@/hooks/use-page-context";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -550,15 +551,8 @@ function FollowUpStatus({
 
 const MAX_SHOWN_DRAFTS = 3;
 
-/** Where the conversation is filed, who else has it open, and drafts being written. */
-function ConversationContext({
-  thread,
-  showFiledUnder,
-}: {
-  thread: ProcurementEmailThreadData;
-  /** The request Inbox already says which request this is. */
-  showFiledUnder: boolean;
-}) {
+/** Who else has the conversation open, and drafts being written. */
+function ConversationContext({ thread }: { thread: ProcurementEmailThreadData }) {
   const threadId = thread.thread._id;
   const viewers = groupEmailThreadPeople(useActiveOperators()).get(threadId) ?? [];
   const replying = replyingOperators(viewers);
@@ -570,17 +564,10 @@ function ConversationContext({
     : hiddenDrafts > 0
       ? `+${hiddenDrafts} more draft${hiddenDrafts === 1 ? "" : "s"}`
       : null;
-  const filedUnder =
-    showFiledUnder && thread.client
-      ? [thread.client.name, thread.request?.title].filter(Boolean).join(" · ")
-      : "";
-  if (!filedUnder && !viewers.length && !drafts.length && !moreDrafts) return null;
+  if (!viewers.length && !drafts.length && !moreDrafts) return null;
   return (
-    <div className="space-y-1 bg-muted/30 px-4 py-2">
-      <div className="flex min-w-0 items-center justify-between gap-3">
-        <p className={`min-w-0 truncate text-muted-foreground ${typeStyle("caption.default")}`}>
-          {filedUnder}
-        </p>
+    <div className="space-y-1 px-4 py-2">
+      <div className="flex min-w-0 items-center justify-end gap-3">
         {viewers.length ? (
           <span className="flex shrink-0 items-center gap-2">
             {replying.length ? (
@@ -615,11 +602,9 @@ function ConversationContext({
 function EmailConversation({
   thread,
   readOnly,
-  requestScoped,
 }: {
   thread: ProcurementEmailThreadData;
   readOnly: boolean;
-  requestScoped: boolean;
 }) {
   // Messages flipped from their default: the newest opens, earlier ones start collapsed.
   const [toggledIds, setToggledIds] = useFollowedState<string[]>(
@@ -630,7 +615,7 @@ function EmailConversation({
   const lastId = thread.messages.at(-1)?._id;
   return (
     <div className="-mx-4 -my-4 divide-y divide-border">
-      <ConversationContext thread={thread} showFiledUnder={!requestScoped} />
+      <ConversationContext thread={thread} />
       {thread.linkSuggestion && !thread.client && !readOnly ? (
         <LinkSuggestionBar
           threadId={thread.thread._id}
@@ -950,6 +935,18 @@ export function ProcurementEmailDrawer({
   useImperativeHandle(ref, () => ({ save: async () => !busy.current }));
   const [replying, setReplying] = useState(false);
   useReportEmailThreadPresence(emailThreadId, replying ? "replying" : "viewing");
+  // The AI panel works on the open conversation while it is shown.
+  const { pushPageContext } = usePageContext();
+  const contextSubject = result?.thread.subject ?? subject;
+  useEffect(
+    () =>
+      pushPageContext({
+        pageType: "team_email_thread",
+        entityId: emailThreadId,
+        summary: `Email conversation${contextSubject ? `: ${contextSubject.slice(0, 200)}` : ""}`,
+      }),
+    [contextSubject, emailThreadId, pushPageContext],
+  );
   const thread = result?.thread._id === emailThreadId ? result : undefined;
   const latestInbound = thread?.messages.findLast(
     (message) => message.direction === "inbound",
@@ -1020,6 +1017,7 @@ export function ProcurementEmailDrawer({
               thread?.followUps?.recipient ??
               null
             }
+            suggestion={thread?.replySuggestion ?? null}
             onSendingChange={setBusy}
             onReplyingChange={setReplying}
           />
@@ -1035,7 +1033,6 @@ export function ProcurementEmailDrawer({
           key={emailThreadId}
           thread={thread}
           readOnly={readOnly}
-          requestScoped={Boolean(requestId)}
         />
       ) : null}
     </SettingsDrawer>

@@ -36,6 +36,7 @@ import {
   type CompletionOutcome,
 } from "./lib/procurementCompletionOutcome";
 import dayjs from "dayjs";
+import { markProviderContacted } from "./brokerProfiles";
 import {
   assertExternalBrokerIdentity,
   isSpotOwnedBrokerIdentity,
@@ -96,6 +97,7 @@ import {
   scheduleClientFileCompanyInformation,
   scheduleEmailThreadCompanyInformation,
 } from "./companyInformation";
+import { queueTeamReplySuggestion } from "./lib/teamReplySuggestions";
 
 export { insertProcurementEmailFileItems, storeProcurementEmailAttachments };
 export type { ProcurementEmailAttachment };
@@ -1389,6 +1391,7 @@ export async function createProcurementOutreachByOperator(
     createdAt: now,
     updatedAt: now,
   });
+  if (sent) await markProviderContacted(ctx, broker._id);
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -1508,6 +1511,8 @@ export async function updateProcurementOutreachByOperator(
   );
   if (fields.length === 0) throw new Error("No outreach fields changed");
   await ctx.db.patch(outreach._id, patch);
+  if (patch.sentAt && nextBrokerOrgId)
+    await markProviderContacted(ctx, nextBrokerOrgId);
   const stopReason = outreachLeavesRequestSent(outreach.status, patch.status)
     ? "outreach_status_changed"
     : patch.brokerOrgId && patch.brokerOrgId !== outreach.brokerOrgId
@@ -2737,6 +2742,8 @@ export const ingestEmailInternal = internalMutation({
     });
     await scheduleEmailThreadCompanyInformation(ctx, threadId);
     await ctx.scheduler.runAfter(0, internal.procurementInformationEmail.queueEmail, {messageId:emailMessageId});
+    if (args.receivedAt >= target.latestMessageAt)
+      await queueTeamReplySuggestion(ctx, { threadId, messageId: emailMessageId });
     for (const clientFileId of restoredClientFileIds) {
       await scheduleClientFileCompanyInformation(ctx, clientFileId);
     }

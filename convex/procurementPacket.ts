@@ -19,6 +19,7 @@ import {
   packetFileVisibility,
 } from "./lib/packetDocuments";
 import dayjs from "dayjs";
+import { markProviderContacted } from "./brokerProfiles";
 import {
   informationApplicability,
   informationCoverageGroups,
@@ -959,12 +960,15 @@ export const recordDeliveryInternal = internalMutation({
       const outreach = link.outreachId
         ? await ctx.db.get(link.outreachId)
         : null;
-      if (outreach)
+      if (outreach) {
         await ctx.db.patch(outreach._id, {
           sentAt: now,
           updatedByUserId: args.operatorUserId,
           updatedAt: now,
         });
+        if (outreach.brokerOrgId)
+          await markProviderContacted(ctx, outreach.brokerOrgId);
+      }
     }
     const auditEventId =
       args.status !== "pending"

@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { useMemo } from "react";
+import { useActiveOperators } from "@/hooks/use-operator-presence";
 
 /**
  * Each operator's multiplayer color: their pointer, caret, avatar ring and
@@ -52,13 +53,21 @@ export function assignOperatorColors(userIds: string[]) {
   return colors;
 }
 
-const OperatorColorsContext = createContext<Map<string, string>>(new Map());
-
-export const OperatorColorsProvider = OperatorColorsContext.Provider;
-
-/** An operator's color among those active now. */
+/**
+ * An operator's color among everyone active now. Every caller reads the same
+ * active-operator query, so the dock, pointers and chat header agree.
+ */
 export function useOperatorColor() {
-  const colors = useContext(OperatorColorsContext);
+  const active = useActiveOperators();
+  const colors = useMemo(
+    () => assignOperatorColors(active.map((operator) => operator.userId)),
+    [active],
+  );
   return (userId: string) =>
     colors.get(userId) ?? OPERATOR_COLORS[preferredIndex(userId)];
+}
+
+/** A soft wash of an operator's color, behind their pill. */
+export function operatorTint(color: string) {
+  return `color-mix(in srgb, ${color} 14%, transparent)`;
 }
