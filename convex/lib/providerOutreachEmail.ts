@@ -322,8 +322,7 @@ function templateBody(input: OutreachEmailInput): string {
     }
     const bullets = facts.map((item) => `- ${item.label}: ${item.value}`).join("\n");
     return [
-      `I’m with Spot, coordinating ${name}'s commercial insurance search.`,
-      "Could you confirm whether the following business fits your appetite?",
+      `I’m with Spot, coordinating ${name}'s commercial insurance search. Wanted to see if we fit your appetite - I've included some information.`,
       bullets,
     ].filter(Boolean).join("\n\n");
   }
@@ -420,7 +419,7 @@ export function composeOutreachEmail(
   const packetDescription = input.kind === "initial"
     ? "Review the application and available supporting documents"
     : "The application and released supporting documents are available here:";
-  const initialAsk = "Could you let me know whether this fits your appetite and what additional information you need to quote?";
+  const initialAsk = "Could you let me know whether this fits your appetite and if so provide a quote? Or let me know what additional information you might need to get an initial quote.";
   const signature = buildOperatorSignature(input.operator);
 
   const text = [
