@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { Loader2, Paperclip } from "lucide-react";
+import { Loader2, Paperclip, type LucideIcon } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePdf } from "@/components/pdf-context";
@@ -26,6 +26,14 @@ export type ChatAttachmentChipProps = {
   isLoading?: boolean;
   disabled?: boolean;
   unavailableTitle?: string;
+  /** Round icon button built into the end of the pill. */
+  action?: {
+    label: string;
+    icon: LucideIcon;
+    onClick?: () => void;
+    /** Renders the button through a trigger, e.g. a popover anchored to it. */
+    renderButton?: (button: React.ReactElement) => React.ReactElement;
+  };
 };
 
 /**
@@ -43,6 +51,7 @@ export function ChatAttachmentChip({
   isLoading = false,
   disabled = false,
   unavailableTitle,
+  action,
 }: ChatAttachmentChipProps) {
   const { openWithUrl } = usePdf();
   const storedUrl = useCachedQuery(
@@ -79,6 +88,7 @@ export function ChatAttachmentChip({
       canOpen
         ? "cursor-pointer bg-foreground/5 text-foreground/65 hover:bg-foreground/8 hover:text-foreground/80"
         : "pointer-events-none bg-foreground/3 text-muted-foreground/40",
+      action && "bg-transparent hover:bg-transparent",
       className,
     ),
     children: (
@@ -93,20 +103,16 @@ export function ChatAttachmentChip({
     ),
   };
 
-  if (handleOpen) {
-    return (
-      <button
-        type="button"
-        onClick={handleOpen}
-        disabled={disabled || loading}
-        aria-label={`${onOpen ? "Preview" : "Open"} ${attachment.filename}`}
-        aria-busy={loading || undefined}
-        {...shared}
-      />
-    );
-  }
-
-  return (
+  const chip = handleOpen ? (
+    <button
+      type="button"
+      onClick={handleOpen}
+      disabled={disabled || loading}
+      aria-label={`${onOpen ? "Preview" : "Open"} ${attachment.filename}`}
+      aria-busy={loading || undefined}
+      {...shared}
+    />
+  ) : (
     <a
       href={isPdf ? undefined : (resolvedUrl ?? undefined)}
       target={isPdf ? undefined : "_blank"}
@@ -114,6 +120,32 @@ export function ChatAttachmentChip({
       aria-label={resolvedUrl ? `Open ${attachment.filename}` : attachment.filename}
       {...shared}
     />
+  );
+
+  if (!action) return chip;
+  const ActionIcon = action.icon;
+  const actionButton = (
+    <button
+      type="button"
+      aria-label={action.label}
+      title={action.label}
+      onClick={action.onClick}
+      className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:outline-none"
+    >
+      <ActionIcon aria-hidden="true" className="size-2.5" />
+    </button>
+  );
+  return (
+    <span
+      className={cn(
+        "inline-flex min-w-0 items-center rounded-full bg-foreground/5 transition-colors hover:bg-foreground/8",
+        isCompact ? "pr-0.5" : "pr-1",
+        className,
+      )}
+    >
+      {chip}
+      {action.renderButton ? action.renderButton(actionButton) : actionButton}
+    </span>
   );
 }
 

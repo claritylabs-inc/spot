@@ -4,7 +4,6 @@ import { useFollowedOpen } from "@/hooks/use-followed-state";
 import { FileInput } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@claritylabs-inc/ui/components/popover";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
-import { PillButton } from "@/components/ui/pill-button";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AttachmentSubmissionForm } from "./attachment-submission-form";
 
@@ -42,7 +41,7 @@ export function EmailSubmissionAttachment({
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <div
-        className="inline-flex items-center gap-0.5"
+        className="inline-flex"
         onContextMenu={(event) => {
           event.preventDefault();
           onOpenChange(true);
@@ -51,19 +50,12 @@ export function EmailSubmissionAttachment({
         <ChatAttachmentChip
           attachment={{ filename: file.name, contentType: file.contentType }}
           url={file.url}
+          action={{
+            label: `Use ${file.name} as default application form`,
+            icon: FileInput,
+            renderButton: (button) => <PopoverTrigger render={button} />,
+          }}
         />
-        <PopoverTrigger
-          render={
-            <PillButton
-              variant="icon"
-              size="compact"
-              iconOnly
-              label={`Use ${file.name} as default application form`}
-            />
-          }
-        >
-          <FileInput />
-        </PopoverTrigger>
       </div>
       <PopoverContent align="start" className="w-80 p-3">
         <AttachmentSubmissionForm
