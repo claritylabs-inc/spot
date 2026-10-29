@@ -81,21 +81,52 @@ export function useReportEmailThreadPresence(
   }, [token, emailThreadId, effective]);
 }
 
+const TAB_STORAGE_KEY = "operatorPresence:tab";
 let tabId: string | null = null;
+let tabIdReady: Promise<string> | null = null;
+/** When this tab was last focused or entered; the latest is the operator's active tab. */
+let activeAt = 0;
 
-/** This browser tab, kept across reloads so a reload reuses its presence row. */
-function currentTabId() {
-  if (tabId) return tabId;
+/**
+ * Holds a Web Lock named after `id` for this page's lifetime. False when
+ * another tab already holds it; true where Web Locks are unavailable.
+ */
+function holdTabLock(id: string) {
+  if (!("locks" in navigator)) return Promise.resolve(true);
+  return new Promise<boolean>((resolve) => {
+    navigator.locks
+      .request(`operatorTab:${id}`, { ifAvailable: true }, (lock) => {
+        resolve(lock !== null);
+        return lock ? new Promise<never>(() => {}) : undefined;
+      })
+      .catch(() => resolve(true));
+  });
+}
+
+async function claimTabId() {
+  let id: string | null = null;
   try {
-    tabId = window.sessionStorage.getItem("operatorPresence:tab");
-    if (!tabId) {
-      tabId = crypto.randomUUID();
-      window.sessionStorage.setItem("operatorPresence:tab", tabId);
-    }
-  } catch {
-    tabId ??= crypto.randomUUID();
+    id = window.sessionStorage.getItem(TAB_STORAGE_KEY);
+  } catch {}
+  // A duplicated tab copies sessionStorage; its id is then held by the original.
+  if (!id || !(await holdTabLock(id))) {
+    id = crypto.randomUUID();
+    try {
+      window.sessionStorage.setItem(TAB_STORAGE_KEY, id);
+    } catch {}
+    await holdTabLock(id);
   }
-  return tabId;
+  tabId = id;
+  return id;
+}
+
+/**
+ * This browser tab, kept across reloads so a reload reuses its presence row.
+ * Its pointer, followed UI state and carets are stored under it too.
+ */
+export function browserTabId() {
+  tabIdReady ??= claimTabId();
+  return tabIdReady;
 }
 
 /**
@@ -125,29 +156,44 @@ export function useOperatorPresenceHeartbeat({
   useEffect(() => {
     const beat = () => {
       if (document.visibilityState !== "visible") return;
-      heartbeat({
-        pathname,
-        threadId: (threadId ?? undefined) as
-          | Id<"operatorAgentThreads">
-          | undefined,
-        emailThreadId,
-        activity,
-        followingUserId: followingUserId ?? undefined,
-        tabId: currentTabId(),
-      }).catch(() => {});
+      activeAt ||= dayjs().valueOf();
+      void browserTabId().then((tabId) =>
+        heartbeat({
+          pathname,
+          threadId: (threadId ?? undefined) as
+            | Id<"operatorAgentThreads">
+            | undefined,
+          emailThreadId,
+          activity,
+          followingUserId: followingUserId ?? undefined,
+          tabId,
+          activeAt,
+        }).catch(() => {}),
+      );
+    };
+    // Teammates see the pointer and panels of the tab used last, so a switch
+    // to this one is reported at once.
+    const activate = () => {
+      activeAt = dayjs().valueOf();
+      beat();
     };
     // A hidden tab stops beating, so remove its row now; otherwise others keep
     // seeing its last activity (such as "replying") until the TTL lapses.
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") beat();
-      else void leave({ tabId: currentTabId() }).catch(() => {});
+      if (document.visibilityState === "visible") activate();
+      else
+        void browserTabId().then((tabId) => leave({ tabId }).catch(() => {}));
     };
     beat();
     const interval = window.setInterval(beat, HEARTBEAT_INTERVAL_MS);
     document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", activate);
+    document.documentElement.addEventListener("pointerenter", activate);
     return () => {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", activate);
+      document.documentElement.removeEventListener("pointerenter", activate);
     };
   }, [
     heartbeat,
@@ -160,8 +206,10 @@ export function useOperatorPresenceHeartbeat({
   ]);
 
   useEffect(() => {
-    const onPageHide = () =>
-      void leave({ tabId: currentTabId() }).catch(() => {});
+    // Sent synchronously: the page may be gone before a promise settles.
+    const onPageHide = () => {
+      if (tabId) void leave({ tabId }).catch(() => {});
+    };
     window.addEventListener("pagehide", onPageHide);
     return () => window.removeEventListener("pagehide", onPageHide);
   }, [leave]);

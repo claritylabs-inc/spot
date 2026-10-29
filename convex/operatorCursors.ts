@@ -1,10 +1,9 @@
 import dayjs from "dayjs";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
-import { mutation, query, type QueryCtx } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { requireOperator } from "./lib/operatorIdentity";
+import { activeTab, clearTab } from "./lib/operatorTabs";
 
-const LEADER_TIMEOUT_MS = 45_000;
 const UI_STATE_LIMIT = 50_000;
 
 /** Retired: older clients still send it, but shared fields now sync through `collab`. */
@@ -14,19 +13,6 @@ const fieldValidator = v.object({
   selectionStart: v.number(),
   selectionEnd: v.number(),
 });
-
-/**
- * A closed or crashed tab never clears its rows; ignore them once the leader's
- * presence lapses (three missed heartbeats).
- */
-async function leaderActive(ctx: QueryCtx, userId: Id<"users">) {
-  const tabs = await ctx.db
-    .query("operatorPresence")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .take(20);
-  const fresh = dayjs().valueOf() - LEADER_TIMEOUT_MS;
-  return tabs.some((tab) => tab.lastSeen >= fresh);
-}
 
 /** Publishes this operator's pointer while a teammate shares their page or follows them. */
 export const move = mutation({
@@ -39,6 +25,7 @@ export const move = mutation({
     viewportY: v.number(),
     visible: v.boolean(),
     field: v.optional(fieldValidator),
+    tabId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -46,7 +33,8 @@ export const move = mutation({
     if (!args.href.startsWith("/") || args.href.startsWith("//")) {
       throw new Error("Cursor href must be an app path");
     }
-    const { field: _retired, ...pointer } = args;
+    const { field: _retired, tabId: _tab, ...pointer } = args;
+    const tabId = args.tabId?.slice(0, 100);
     const fields = {
       ...pointer,
       href: args.href.slice(0, 1000),
@@ -56,85 +44,92 @@ export const move = mutation({
     };
     const existing = await ctx.db
       .query("operatorCursors")
-      .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
+      .withIndex("by_userId_and_tabId", (q) =>
+        q.eq("userId", operator.userId).eq("tabId", tabId),
+      )
       .unique();
     if (existing) await ctx.db.patch(existing._id, fields);
     else
       await ctx.db.insert("operatorCursors", {
         userId: operator.userId,
+        tabId,
         ...fields,
       });
     return null;
   },
 });
 
-/** Drops this operator's cursor and UI state once nobody can see them. */
+/** Drops this tab's cursor and UI state once nobody can see them. */
 export const clear = mutation({
-  args: {},
-  handler: async (ctx) => {
+  args: { tabId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
-    const cursor = await ctx.db
-      .query("operatorCursors")
-      .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
-      .unique();
-    if (cursor) await ctx.db.delete(cursor._id);
-    const ui = await ctx.db
-      .query("operatorUiStates")
-      .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
-      .unique();
-    if (ui) await ctx.db.delete(ui._id);
+    await clearTab(ctx, operator.userId, args.tabId?.slice(0, 100));
     return null;
   },
 });
 
 /** Publishes this operator's followed UI state; called only when it changes. */
 export const publishUi = mutation({
-  args: { ui: v.string() },
+  args: { ui: v.string(), tabId: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     if (args.ui.length > UI_STATE_LIMIT) {
       throw new Error("Followed UI state is too large");
     }
+    const tabId = args.tabId?.slice(0, 100);
     const fields = { ui: args.ui, updatedAt: dayjs().valueOf() };
     const existing = await ctx.db
       .query("operatorUiStates")
-      .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
+      .withIndex("by_userId_and_tabId", (q) =>
+        q.eq("userId", operator.userId).eq("tabId", tabId),
+      )
       .unique();
     if (existing) await ctx.db.patch(existing._id, fields);
     else
       await ctx.db.insert("operatorUiStates", {
         userId: operator.userId,
+        tabId,
         ...fields,
       });
     return null;
   },
 });
 
-/** The followed operator's UI state, or null when they are away. */
+/** The UI state of the followed operator's active tab, or null when they are away. */
 export const ui = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
-    if (!(await leaderActive(ctx, args.userId))) return null;
+    const tab = await activeTab(ctx, args.userId);
+    if (!tab) return null;
     const row = await ctx.db
       .query("operatorUiStates")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId_and_tabId", (q) =>
+        q.eq("userId", args.userId).eq("tabId", tab.tabId),
+      )
       .unique();
     return row?.ui ?? null;
   },
 });
 
-/** Any operator may see or follow any other; no consent step. */
+/**
+ * The pointer of the operator's active tab. Any operator may see or follow
+ * any other; no consent step.
+ */
 export const get = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
     await requireOperator(ctx);
+    const tab = await activeTab(ctx, args.userId);
+    if (!tab) return null;
     const cursor = await ctx.db
       .query("operatorCursors")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .withIndex("by_userId_and_tabId", (q) =>
+        q.eq("userId", args.userId).eq("tabId", tab.tabId),
+      )
       .unique();
     if (!cursor) return null;
-    if (!(await leaderActive(ctx, args.userId))) return null;
     return {
       href: cursor.href,
       anchor: cursor.anchor ?? null,
