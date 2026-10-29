@@ -96,7 +96,7 @@ function DraftCard({
       >
         <span className="flex min-w-0 items-center justify-between gap-2">
           <span
-            className={`min-w-0 truncate text-muted-foreground/55 ${typeStyle("caption.medium")}`}
+            className={`min-w-0 truncate text-muted-foreground ${typeStyle("caption.medium")}`}
           >
             {draft.organizationName
               ? `Email draft · ${draft.organizationName}`
@@ -111,18 +111,18 @@ function DraftCard({
           </StatusTag>
         </span>
         <span
-          className={`block truncate text-foreground/90 ${typeStyle("body.medium")}`}
+          className={`block truncate text-foreground ${typeStyle("body.medium")}`}
         >
           {draft.subject || "(no subject)"}
         </span>
         <span
-          className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}
+          className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}
         >
           {draft.sendBlockedReason ?? draftRecipients(draft)}
         </span>
         {preview ? (
           <span
-            className={`block truncate text-muted-foreground/70 ${typeStyle("caption.default")}`}
+            className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}
           >
             {preview}
           </span>
