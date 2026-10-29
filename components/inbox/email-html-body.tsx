@@ -238,12 +238,21 @@ export function EmailHtmlBody({
 }
 
 /** The folded-history control shown under a message with hidden quoted text. */
-export function ShowQuotedButton({ onClick }: { onClick: () => void }) {
+export function ShowQuotedButton({
+  onClick,
+  label = "Show quoted text",
+  expanded,
+}: {
+  onClick: () => void;
+  label?: string;
+  expanded?: boolean;
+}) {
   return (
     <button
       type="button"
-      aria-label="Show quoted text"
-      title="Show quoted text"
+      aria-label={label}
+      aria-expanded={expanded}
+      title={label}
       onClick={onClick}
       className="flex h-4 items-center rounded-sm bg-muted px-1.5 text-muted-foreground outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring"
     >

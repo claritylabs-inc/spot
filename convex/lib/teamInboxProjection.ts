@@ -60,6 +60,14 @@ async function operatorSenderFor(
 }
 
 async function threadSequence(ctx: Ctx, thread: TeamThread) {
+  // Follow-ups an operator started on this conversation take precedence over its outreach.
+  const followUps = await ctx.db
+    .query("procurementOutreachSequences")
+    .withIndex("by_teamEmailThreadId", (q) => q.eq("teamEmailThreadId", thread._id))
+    .order("desc")
+    .take(20);
+  const started = followUps.find((sequence) => sequence.audience === "thread");
+  if (started) return started;
   if (thread.source !== "outreach" || !thread.resendThreadId) return null;
   const candidate = await ctx.db
     .query("procurementOutreachSequences")

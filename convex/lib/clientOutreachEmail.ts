@@ -33,15 +33,31 @@ function body(input: ClientOutreachEmailInput) {
 export function composeClientOutreachEmail(
   input: ClientOutreachEmailInput,
 ): ComposedOutreachEmail {
-  const subject =
-    input.kind === "initial" || /^re:/i.test(input.message.subject)
-      ? input.message.subject
-      : `Re: ${input.message.subject}`;
+  return composeSignedEmail({
+    subject:
+      input.kind === "initial" || /^re:/i.test(input.message.subject)
+        ? input.message.subject
+        : `Re: ${input.message.subject}`,
+    recipientName: input.recipientName,
+    operator: input.operator,
+    body: body(input),
+    source: input.kind === "initial" ? "operator" : "template",
+  });
+}
+
+/** A greeting, the body paragraphs, "Thanks," and the sender's signature, in text and HTML. */
+export function composeSignedEmail(input: {
+  subject: string;
+  recipientName?: string;
+  operator: { name: string; address: string };
+  body: string;
+  source: ComposedOutreachEmail["source"];
+}): ComposedOutreachEmail {
   const greeting = `Hi ${firstName(input.recipientName) ?? "there"},`;
   const signature = buildOperatorSignature(input.operator);
-  const paragraphs = [greeting, ...body(input).split(/\n{2,}/), "Thanks,"];
+  const paragraphs = [greeting, ...input.body.split(/\n{2,}/), "Thanks,"];
   return {
-    subject,
+    subject: input.subject,
     text: [...paragraphs, signature.text].join("\n\n"),
     html:
       paragraphs
@@ -50,6 +66,6 @@ export function composeClientOutreachEmail(
             `<p style="margin:0 0 16px">${escapeHtml(value).replace(/\n/g, "<br>")}</p>`,
         )
         .join("") + signature.html,
-    source: input.kind === "initial" ? "operator" : "template",
+    source: input.source,
   };
 }

@@ -834,6 +834,11 @@ export const recordOperatorInboxSentInternal = internalMutation({
       sendBlockedReason: undefined,
       explicitSendAuthorization: undefined,
     });
+    // Follow-ups start outside this transaction, so they can never undo or delay the delivery record.
+    if (pending.followUps && !pending.followUps.startedAt)
+      await ctx.scheduler.runAfter(0, internal.actions.threadFollowUps.start, {
+        pendingEmailId: pending._id,
+      });
     // Files held by this thread's messages (this send and any merged mail) are
     // filed outside this transaction by the canonical thread filing, so a
     // filing problem can never undo or repeat the delivery record; held storage

@@ -3008,10 +3008,12 @@ export default defineSchema({
   // (outreach, provider and packet link set); `client` sequences ask the
   // client for information and carry the operator's own first message.
   procurementOutreachSequences: defineTable({
-    requestId: v.id("procurementRequests"),
+    /** Absent only for `audience: "thread"`, which belongs to a team conversation instead. */
+    requestId: v.optional(v.id("procurementRequests")),
     informationFormId: v.optional(v.id("procurementInformationForms")),
-    clientOrgId: v.id("organizations"),
-    audience: v.optional(v.union(v.literal("provider"), v.literal("client"))),
+    clientOrgId: v.optional(v.id("organizations")),
+    /** `thread`: follow-up nudges after an operator's reply on any team conversation. */
+    audience: v.optional(v.union(v.literal("provider"), v.literal("client"), v.literal("thread"))),
     outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     brokerOrgId: v.optional(v.id("organizations")),
     recipient: v.object({
@@ -5606,6 +5608,16 @@ export default defineSchema({
     ),
     // For unified thread dual-write
     referencedPolicyIds: v.optional(v.array(v.id("policies"))),
+    /** A team reply sent with automatic follow-ups; started once it is recorded as sent. */
+    followUps: v.optional(v.object({
+      /** The operator's schedule; absent lets Jev pick it. */
+      cadence: v.optional(v.object({
+        followUpCount: v.number(),
+        intervalBusinessDays: v.number(),
+      })),
+      startedAt: v.optional(v.number()),
+      sequenceId: v.optional(v.id("procurementOutreachSequences")),
+    })),
   })
     .index("thread", ["threadId"])
     .index("operator_thread", ["operatorThreadId"])

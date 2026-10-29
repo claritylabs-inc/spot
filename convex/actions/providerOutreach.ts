@@ -20,6 +20,8 @@ import {
   type OutreachEmailInput,
 } from "../lib/providerOutreachEmail";
 import { composeClientOutreachEmail } from "../lib/clientOutreachEmail";
+import { composeThreadFollowUpEmail } from "../lib/threadFollowUps";
+import { writeThreadFollowUp } from "./threadFollowUps";
 import type {
   StepDraft,
   StepFailure,
@@ -262,11 +264,12 @@ function claimStep(ctx: ActionCtx, stepId: StepId) {
 
 function emailInputFor(
   claim: Claimed,
+  request: NonNullable<Claimed["request"]>,
   broker: NonNullable<Claimed["broker"]>,
   packet: NonNullable<Claimed["packet"]>,
   operator: { name: string; address: string },
 ): OutreachEmailInput {
-  const { step, request, sequence } = claim;
+  const { step, sequence } = claim;
   const initialSubject =
     claim.priorSteps.find((prior) => prior.index === 0)?.subject ?? undefined;
   return {
@@ -382,8 +385,29 @@ async function resolveDraft(
       }),
     );
   }
-  if (!claim.broker || !claim.packet) return null;
-  const input = emailInputFor(claim, claim.broker, claim.packet, operator);
+  // Conversation follow-ups: the fixed nudge, or one Jev says needs the ask restated.
+  if (claim.sequence.audience === "thread") {
+    if (!claim.conversation) return null;
+    const written =
+      prepared.mode === "generate"
+        ? await writeThreadFollowUp(ctx, {
+            stepId,
+            conversation: claim.conversation,
+            isFinal: claim.step.isFinal,
+          })
+        : null;
+    return await save(
+      composeThreadFollowUpEmail({
+        subject: claim.conversation.subject,
+        isFinal: claim.step.isFinal,
+        recipientName: claim.sequence.recipient.name,
+        operator,
+        ...(written ? { body: written } : {}),
+      }),
+    );
+  }
+  if (!claim.request || !claim.broker || !claim.packet) return null;
+  const input = emailInputFor(claim, claim.request, claim.broker, claim.packet, operator);
   let generated: Parameters<typeof composeOutreachEmail>[2];
   if (prepared.mode === "generate" && input.kind !== "initial" && input.style !== "brief_nudge") {
     const attempt = await generateOutreachDraftText(ctx, claim.request.clientOrgId, input, {
@@ -511,8 +535,10 @@ export const sendStep = internalAction({
           throw error;
         }
       }
+      // A conversation nudge replies to everyone on the operator's reply, Always CC included.
+      const replyAll = claim.sequence.audience === "thread";
       const cc =
-        alwaysCc && alwaysCc !== claim.sequence.recipient.email.trim().toLowerCase()
+        !replyAll && alwaysCc && alwaysCc !== claim.sequence.recipient.email.trim().toLowerCase()
           ? [alwaysCc]
           : [];
       const senderName = (claim.sender.name ?? "").replace(/\s+/g, " ").trim();
@@ -613,6 +639,7 @@ export const sendStep = internalAction({
           text: draft.text,
           html: draft.html,
           ...(sendCc.length ? { cc: sendCc } : {}),
+          ...(replyAll ? { replyAll: true } : {}),
           idempotencyKey: `outreach-send:${stepId}`,
         });
         if (reply.status === "captured") return await finishCaptured();
