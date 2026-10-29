@@ -130,6 +130,8 @@ export type TeamReplyPreview = {
   /** The signed message as the recipient reads it, quoted history included. */
   text: string;
   html: string;
+  /** The sender's signature, appended below the typed message. */
+  signature: string;
   /** "thread": answered inside the sender's own inbox thread; "standalone": a new quoted "Re:". */
   mode: "thread" | "standalone";
   /** The thread owner copied on a standalone reply. */
@@ -356,6 +358,7 @@ export async function composeTeamReply(
       subject: fields.subject,
       text: renderedText,
       html: renderedHtml,
+      signature: signature.text,
       mode: directReplyContext.mode,
       ...(ownerAddress ? { copiesOwner: ownerAddress } : {}),
       stopsFollowUps: thread.source === "outreach",

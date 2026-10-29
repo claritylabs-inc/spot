@@ -58,6 +58,8 @@ export type TeamComposePreview = {
   subject: string;
   text: string;
   html: string;
+  /** The sender's signature, appended below the typed message. */
+  signature: string;
   /** The client this email is filed under, if any. */
   client: { _id: Id<"organizations">; name: string } | null;
   /** The request this email is filed under, if any. */
@@ -177,6 +179,7 @@ export async function composeTeamEmail(
       subject,
       text: fields.renderedText,
       html: fields.renderedHtml,
+      signature: signature.text,
       client,
       request,
       fingerprint,
