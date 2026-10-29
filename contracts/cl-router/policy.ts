@@ -474,10 +474,14 @@ function parseAnswer(value: unknown): DecisionAnswer {
         (sum, [key, p]) => sum + Number(key) * (p as number),
         0,
       );
+      // Jev reports probabilities rounded to 0.01 but derives the score from
+      // unrounded ones, so each level index can shift the sum by half a cent.
+      const roundingTolerance =
+        0.001 + (0.005 * values.length * (values.length - 1)) / 2;
       if (
         typeof a.score !== "number" ||
         !Number.isFinite(a.score) ||
-        Math.abs(a.score - expected) > 0.001
+        Math.abs(a.score - expected) > roundingTolerance
       ) {
         invalid();
       }
