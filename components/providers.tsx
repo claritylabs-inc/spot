@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/hooks/use-theme";
 import { SpotSyncProvider } from "@/lib/sync/spot-sync";
 import { SpotAnalytics } from "@/components/analytics";
 import { SpotBackgroundTasks } from "@/components/background-tasks";
+import { installTextUndo } from "@/lib/text-undo";
 
 const convex = new ConvexReactClient(
   process.env.NEXT_PUBLIC_CONVEX_URL ?? "https://placeholder.convex.cloud"
@@ -44,11 +45,17 @@ function StaticAssetServiceWorker() {
   return null;
 }
 
+function TextUndo() {
+  useEffect(() => installTextUndo(), []);
+  return null;
+}
+
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
   return (
     <ConvexAuthNextjsProvider client={convex}>
       <SpotSyncProvider>
         <StaticAssetServiceWorker />
+        <TextUndo />
         <SpotAnalytics />
         <ThemeProvider>
           <SpotBackgroundTasks>{children}</SpotBackgroundTasks>
