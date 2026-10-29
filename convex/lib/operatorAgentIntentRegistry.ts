@@ -1,4 +1,7 @@
-import type { OperatorToolFamily } from "./operatorAgentToolRegistry";
+import type {
+  OperatorAgentToolName,
+  OperatorToolFamily,
+} from "./operatorAgentToolRegistry";
 
 type PageContext = {
   pageType: string;
@@ -163,7 +166,7 @@ const OPERATOR_AGENT_INTENT_FAMILIES: Record<
   find_account_or_policy: ["policies", "broker_network", "procurement"],
   check_system_health: ["platform", "extraction"],
   search_company_email: ["company_email"],
-  reply_team_email: ["outbound_email", "company_email"],
+  reply_team_email: ["outbound_email", "company_email", "procurement"],
   investigate_recent_failures: ["platform", "extraction", "policies", "procurement"],
   review_client: ["policies", "compliance", "client_files", "wiki", "procurement"],
   update_client: ["organizations", "wiki", "web"],
@@ -182,5 +185,66 @@ const OPERATOR_AGENT_INTENT_FAMILIES: Record<
 export function operatorAgentIntentFamilies(intentId: string) {
   return Object.hasOwn(OPERATOR_AGENT_INTENT_FAMILIES, intentId)
     ? OPERATOR_AGENT_INTENT_FAMILIES[intentId]
+    : undefined;
+}
+
+/**
+ * A read the runner performs in code before an intent's first model step.
+ * `input` derives the tool input from the intent's structured focus ids and
+ * earlier stages' successful results; undefined skips the read.
+ */
+export type OperatorIntentPrefetchRead = {
+  toolName: OperatorAgentToolName;
+  input: (state: {
+    focus: Readonly<Record<string, string>>;
+    results: ReadonlyMap<OperatorAgentToolName, unknown>;
+  }) => Record<string, unknown> | undefined;
+};
+
+const linkedProcurementRequest: OperatorIntentPrefetchRead["input"] = ({
+  results,
+}) => {
+  const thread = results.get("get_team_inbox_thread") as
+    | {
+        request?: { requestId?: unknown } | null;
+        addressedRequest?: { requestId?: unknown } | null;
+      }
+    | undefined;
+  // An unlinked thread may still be addressed to a request's forwarding address.
+  const requestId =
+    thread?.request?.requestId ?? thread?.addressedRequest?.requestId;
+  return typeof requestId === "string"
+    ? { procurementRequestId: requestId }
+    : undefined;
+};
+
+// Stages run in order; reads within a stage run together.
+const OPERATOR_AGENT_INTENT_PREFETCH: Record<
+  string,
+  ReadonlyArray<readonly OperatorIntentPrefetchRead[]>
+> = {
+  reply_team_email: [
+    [
+      {
+        toolName: "get_team_inbox_thread",
+        input: ({ focus }) =>
+          focus.teamEmailThreadId
+            ? { teamEmailThreadId: focus.teamEmailThreadId, view: "compact" }
+            : undefined,
+      },
+    ],
+    [
+      { toolName: "get_procurement_request", input: linkedProcurementRequest },
+      {
+        toolName: "get_procurement_information",
+        input: linkedProcurementRequest,
+      },
+    ],
+  ],
+};
+
+export function operatorAgentIntentPrefetch(intentId: string) {
+  return Object.hasOwn(OPERATOR_AGENT_INTENT_PREFETCH, intentId)
+    ? OPERATOR_AGENT_INTENT_PREFETCH[intentId]
     : undefined;
 }
