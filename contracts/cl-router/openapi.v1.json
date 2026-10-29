@@ -2940,7 +2940,21 @@
                                 "type": "string",
                                 "minLength": 1
                               },
-                              "input": {}
+                              "input": {},
+                              "providerMetadata": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {}
+                                },
+                                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                              }
                             },
                             "required": [
                               "type",
@@ -2971,6 +2985,51 @@
                               "toolCallId",
                               "toolName",
                               "output"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "reasoning"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "provider": {
+                                "type": "string",
+                                "enum": [
+                                  "openai",
+                                  "anthropic",
+                                  "xai",
+                                  "mistral",
+                                  "cohere",
+                                  "fireworks",
+                                  "deepseek",
+                                  "abliteration"
+                                ],
+                                "description": "Provider that produced the reasoning. Other providers never receive it."
+                              },
+                              "providerMetadata": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {}
+                                },
+                                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "text",
+                              "provider"
                             ]
                           }
                         ]
@@ -3007,7 +3066,26 @@
           "executionBudgetMs": {
             "type": "integer",
             "minimum": 100,
-            "maximum": 900000
+            "maximum": 1500000
+          },
+          "reasoning": {
+            "type": "object",
+            "properties": {
+              "effort": {
+                "description": "Reasoning effort for models that support it; omitted uses the provider default. Ignored by providers without an effort control.",
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "include": {
+                "description": "Return reasoning (`reasoning-delta`/`reasoning-end` stream events, or `message` on JSON responses) and provider continuation metadata so the next turn can send it back.",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
           },
           "tools": {
             "type": "array",
@@ -3297,6 +3375,312 @@
           "requestId": {
             "type": "string",
             "minLength": 1
+          },
+          "message": {
+            "description": "Present when `reasoning.include` is true: the assistant message to append to `messages` on the next turn, including reasoning and provider metadata in output order.",
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "system",
+                  "user",
+                  "assistant",
+                  "tool"
+                ]
+              },
+              "content": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "text"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "text"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "image"
+                                },
+                                "image": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mediaType": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "image"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "image"
+                                },
+                                "source": {
+                                  "type": "object",
+                                  "properties": {
+                                    "url": {
+                                      "type": "string",
+                                      "pattern": "^(https:\\/\\/|http:\\/\\/(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?\\/)"
+                                    },
+                                    "mediaType": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "filename": {
+                                      "type": "string"
+                                    },
+                                    "sizeBytes": {
+                                      "type": "integer",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 16777216
+                                    },
+                                    "sha256": {
+                                      "type": "string",
+                                      "pattern": "^[a-f0-9]{64}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "mediaType",
+                                    "sizeBytes"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "source"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "file"
+                                },
+                                "data": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mediaType": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "filename": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "data",
+                                "mediaType"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "file"
+                                },
+                                "source": {
+                                  "type": "object",
+                                  "properties": {
+                                    "url": {
+                                      "type": "string",
+                                      "pattern": "^(https:\\/\\/|http:\\/\\/(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?\\/)"
+                                    },
+                                    "mediaType": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "filename": {
+                                      "type": "string"
+                                    },
+                                    "sizeBytes": {
+                                      "type": "integer",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 16777216
+                                    },
+                                    "sha256": {
+                                      "type": "string",
+                                      "pattern": "^[a-f0-9]{64}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "mediaType",
+                                    "sizeBytes"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "source"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "tool-call"
+                            },
+                            "toolCallId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "toolName": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "input": {},
+                            "providerMetadata": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "toolCallId",
+                            "toolName",
+                            "input"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "tool-result"
+                            },
+                            "toolCallId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "toolName": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "output": {}
+                          },
+                          "required": [
+                            "type",
+                            "toolCallId",
+                            "toolName",
+                            "output"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "reasoning"
+                            },
+                            "text": {
+                              "type": "string"
+                            },
+                            "provider": {
+                              "type": "string",
+                              "enum": [
+                                "openai",
+                                "anthropic",
+                                "xai",
+                                "mistral",
+                                "cohere",
+                                "fireworks",
+                                "deepseek",
+                                "abliteration"
+                              ],
+                              "description": "Provider that produced the reasoning. Other providers never receive it."
+                            },
+                            "providerMetadata": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "text",
+                            "provider"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "role",
+              "content"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -3786,7 +4170,21 @@
                                 "type": "string",
                                 "minLength": 1
                               },
-                              "input": {}
+                              "input": {},
+                              "providerMetadata": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {}
+                                },
+                                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                              }
                             },
                             "required": [
                               "type",
@@ -3817,6 +4215,51 @@
                               "toolCallId",
                               "toolName",
                               "output"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "reasoning"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "provider": {
+                                "type": "string",
+                                "enum": [
+                                  "openai",
+                                  "anthropic",
+                                  "xai",
+                                  "mistral",
+                                  "cohere",
+                                  "fireworks",
+                                  "deepseek",
+                                  "abliteration"
+                                ],
+                                "description": "Provider that produced the reasoning. Other providers never receive it."
+                              },
+                              "providerMetadata": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {}
+                                },
+                                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "text",
+                              "provider"
                             ]
                           }
                         ]
@@ -3853,7 +4296,26 @@
           "executionBudgetMs": {
             "type": "integer",
             "minimum": 100,
-            "maximum": 900000
+            "maximum": 1500000
+          },
+          "reasoning": {
+            "type": "object",
+            "properties": {
+              "effort": {
+                "description": "Reasoning effort for models that support it; omitted uses the provider default. Ignored by providers without an effort control.",
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "include": {
+                "description": "Return reasoning (`reasoning-delta`/`reasoning-end` stream events, or `message` on JSON responses) and provider continuation metadata so the next turn can send it back.",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
           },
           "tools": {
             "type": "array",
@@ -4320,13 +4782,93 @@
               "toolName": {
                 "type": "string"
               },
-              "input": {}
+              "input": {},
+              "providerMetadata": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+              }
             },
             "required": [
               "type",
               "toolCallId",
               "toolName",
               "input"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "reasoning-delta"
+              },
+              "id": {
+                "type": "string"
+              },
+              "delta": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "id",
+              "delta"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "reasoning-end"
+              },
+              "id": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "openai",
+                  "anthropic",
+                  "xai",
+                  "mistral",
+                  "cohere",
+                  "fireworks",
+                  "deepseek",
+                  "abliteration"
+                ]
+              },
+              "providerMetadata": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+              }
+            },
+            "required": [
+              "type",
+              "id",
+              "provider"
             ],
             "additionalProperties": false
           },

@@ -171,6 +171,131 @@ test("an explicit live pin still uses manual generation", async () => {
   ).toEqual(["capabilities", "manual"]);
 });
 
+// Reasoning is opt-in and route-bound: only opted-in calls request or replay
+// it, each part names the provider that produced it so cl-router can withhold
+// it from others, and a pin to another model never receives it.
+test("reasoning continuity stays opt-in and bound to its producing route", async () => {
+  const call = {
+    toolCallId: "call_1",
+    toolName: "list_policies",
+    input: { status: "active" },
+  };
+  const reasoningMetadata = {
+    openai: { itemId: "rs_1", reasoningEncryptedContent: "opaque" },
+  };
+  const callMetadata = { openai: { itemId: "fc_1" } };
+  const pin = { provider: "openai" as const, model: "fixture-other-model" };
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) =>
+    Response.json(
+      String(url).endsWith("/v1/capabilities")
+        ? capabilities([pin])
+        : {
+            ...generation,
+            output: { text: "", toolCalls: [call] },
+            finishReason: "tool-calls",
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "reasoning",
+                  text: "Check policies.",
+                  provider: "openai",
+                  providerMetadata: reasoningMetadata,
+                },
+                { type: "tool-call", ...call, providerMetadata: callMetadata },
+              ],
+            },
+          },
+    ),
+  );
+  const model = (
+    options: Partial<Parameters<typeof createClRouterLanguageModel>[0]>,
+  ) =>
+    createClRouterLanguageModel({
+      task: "chat",
+      taskKind: "operator_agent",
+      sessionKey: "test",
+      client: { environment: routerEnvironment, fetch: fetcher },
+      ...options,
+    });
+  const user = {
+    role: "user" as const,
+    content: [{ type: "text" as const, text: "Renewals?" }],
+  };
+  const lastBody = () =>
+    JSON.parse(String(fetcher.mock.calls.at(-1)?.[1]?.body));
+
+  const first = await model({
+    reasoning: { include: true, effort: "low" },
+  }).doGenerate({ prompt: [user] });
+  expect(lastBody().reasoning).toEqual({ include: true, effort: "low" });
+  expect(first.content).toEqual([
+    {
+      type: "reasoning",
+      text: "Check policies.",
+      providerMetadata: { ...reasoningMetadata, "cl-router": route },
+    },
+    {
+      type: "tool-call",
+      ...call,
+      input: JSON.stringify(call.input),
+      providerMetadata: callMetadata,
+    },
+  ]);
+
+  // The next step replays the AI SDK response message as its prompt.
+  const prompt = [
+    user,
+    {
+      role: "assistant" as const,
+      content: [
+        {
+          type: "reasoning" as const,
+          text: "Check policies.",
+          providerOptions: { ...reasoningMetadata, "cl-router": route },
+        },
+        { type: "tool-call" as const, ...call, providerOptions: callMetadata },
+      ],
+    },
+    {
+      role: "tool" as const,
+      content: [
+        {
+          type: "tool-result" as const,
+          toolCallId: call.toolCallId,
+          toolName: call.toolName,
+          output: { type: "json" as const, value: [] },
+        },
+      ],
+    },
+  ];
+  const replayedCall = { type: "tool-call", ...call };
+  await model({ reasoning: { include: true } }).doGenerate({ prompt });
+  expect(lastBody().messages[1].content).toEqual([
+    {
+      type: "reasoning",
+      text: "Check policies.",
+      provider: "openai",
+      providerMetadata: reasoningMetadata,
+    },
+    { ...replayedCall, providerMetadata: callMetadata },
+  ]);
+
+  await model({
+    reasoning: { include: true },
+    initialRoutePin: pin,
+  }).doGenerate({ prompt });
+  expect(String(fetcher.mock.calls.at(-1)?.[0])).toMatch(/\/v1\/manual$/);
+  expect(lastBody().messages[1].content).toEqual([
+    { ...replayedCall, providerMetadata: callMetadata },
+  ]);
+
+  const unopted = await model({}).doGenerate({ prompt });
+  expect(lastBody()).not.toHaveProperty("reasoning");
+  expect(lastBody().messages[1].content).toEqual([replayedCall]);
+  expect(unopted.content.map((part) => part.type)).toEqual(["tool-call"]);
+});
+
 test.each([
   ["The manual route is not in the model registry.", false, true],
   ["The manual route is not in the model registry.", true, false],

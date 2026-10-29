@@ -292,23 +292,48 @@ export async function clRouterAssetReferenceFromUrl(options: {
   };
 }
 
+/** Opaque provider continuation data; cl-router expects it back unchanged. */
+export type ClRouterProviderMetadata = Record<string, Record<string, unknown>>;
+
 export type ClRouterMessagePart =
   | { type: "text"; text: string }
   | { type: "image"; image: string; mediaType?: string }
   | { type: "image"; source: ClRouterAssetReference }
   | { type: "file"; data: string; mediaType: string; filename?: string }
   | { type: "file"; source: ClRouterAssetReference }
-  | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
+  | {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+      providerMetadata?: ClRouterProviderMetadata;
+    }
   | {
       type: "tool-result";
       toolCallId: string;
       toolName: string;
       output: unknown;
+    }
+  | {
+      type: "reasoning";
+      text: string;
+      /** cl-router sends reasoning only back to the provider that produced it. */
+      provider: ModelProvider;
+      providerMetadata?: ClRouterProviderMetadata;
     };
 
 export type ClRouterMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content: string | ClRouterMessagePart[];
+};
+
+export type ClRouterReasoningEffort = "low" | "medium" | "high";
+
+export type ClRouterReasoningOptions = {
+  /** Omitted uses the routed model's default effort. */
+  effort?: ClRouterReasoningEffort;
+  /** Return the assistant `message` with reasoning and provider metadata. */
+  include?: boolean;
 };
 
 export type ClRouterGenerateRequest = {
@@ -322,6 +347,7 @@ export type ClRouterGenerateRequest = {
   schemaDialect?: "https://json-schema.org/draft/2020-12/schema";
   maxTokens?: number;
   executionBudgetMs?: number;
+  reasoning?: ClRouterReasoningOptions;
   tools?: ClRouterToolDefinition[];
   /** `caller`: Spot already chose the offered tools; cl-router skips its own tool selection. */
   toolSelection?: "router" | "caller";
@@ -341,6 +367,8 @@ export type ClRouterToolDefinition = {
 export type ClRouterGenerateResponse = ClRouterResponseMetadata & {
   output: unknown;
   finishReason?: string;
+  /** With `reasoning.include`: the assistant message to send back next turn. */
+  message?: unknown;
 };
 
 export type ClRouterStreamEvent =
@@ -1070,6 +1098,7 @@ const GENERATE_BODY_KEYS = [
   "schemaDialect",
   "maxTokens",
   "executionBudgetMs",
+  "reasoning",
   "tools",
   "toolSelection",
 ] as const satisfies readonly (keyof ClRouterGenerateRequest)[];
@@ -1273,6 +1302,7 @@ function parseGenerateResponse(payload: unknown): ClRouterGenerateResponse {
     ...(typeof payload.finishReason === "string"
       ? { finishReason: payload.finishReason }
       : {}),
+    ...(payload.message === undefined ? {} : { message: payload.message }),
   };
 }
 

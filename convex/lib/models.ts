@@ -130,6 +130,8 @@ export type AgentModelRunOptions = {
     expectedCheckpointIteration: number;
   };
   durable?: { invocationKey: string; route?: ModelRoute };
+  /** Opt-in reasoning continuity and effort; see ClRouterLanguageModelOptions. */
+  reasoning?: ClRouterLanguageModelOptions["reasoning"];
   sessionKey: string;
   taskKind: ModelCallTaskKind;
   trace: {
@@ -783,6 +785,7 @@ function agentLanguageModel(
       ...(orgId ? { orgId: String(orgId) } : {}),
       sessionKey: run.sessionKey,
       trace: run.trace,
+      ...(run.reasoning ? { reasoning: run.reasoning } : {}),
       client: {
         executeJob: async (operation, payload, abortSignal) => {
           const invocationKey =
