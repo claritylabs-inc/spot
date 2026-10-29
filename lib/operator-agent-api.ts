@@ -34,6 +34,7 @@ type BackendMessage = {
   channel: "chat" | "slack" | "imessage" | "email" | "mcp";
   content: string;
   presentation?: unknown;
+  nextMessageSuggestion?: string;
   usedTools?: string[];
   activity?: MessageActivity;
   executionPlan?: OperatorExecutionPlan;
@@ -194,6 +195,7 @@ export type OperatorAgentMessage = {
   channel: "chat" | "slack" | "imessage" | "email" | "mcp";
   content: string;
   presentation?: unknown;
+  nextMessageSuggestion?: string;
   usedTools?: string[];
   activity?: MessageActivity;
   executionPlan?: OperatorExecutionPlan;
@@ -392,6 +394,7 @@ export function normalizeOperatorAgentThread(
       channel: message.channel,
       content: message.content,
       presentation: message.presentation,
+      nextMessageSuggestion: message.nextMessageSuggestion,
       usedTools: message.usedTools,
       activity: message.activity,
       executionPlan: message.executionPlan,

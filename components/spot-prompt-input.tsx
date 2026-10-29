@@ -41,6 +41,7 @@ import {
   promptReferenceMarker,
 } from "@/components/prompt-reference-tag";
 import { typeStyle } from "@/lib/typography";
+import { Kbd } from "@/components/ui/kbd";
 import {
   PAGE_CAPTURE_FILENAME,
   usePageCapture,
@@ -624,6 +625,8 @@ export interface SpotPromptInputProps {
   contextChip?: React.ReactNode;
   /** Trailing controls before attach, e.g. the page-context toggle. */
   toolbarEnd?: React.ReactNode;
+  /** Ghost text shown while the prompt is empty; Tab accepts it. */
+  suggestion?: string;
 }
 
 export const SpotPromptInput = forwardRef<
@@ -649,6 +652,7 @@ export const SpotPromptInput = forwardRef<
     variant = "default",
     contextChip,
     toolbarEnd,
+    suggestion,
   },
   ref,
 ) {
@@ -732,6 +736,8 @@ export const SpotPromptInput = forwardRef<
   const messageText = useMemo(() => promptTokensToText(tokens), [tokens]);
   const isPromptEmpty =
     references.length === 0 && promptTokensAreTextEmpty(tokens);
+  const activeSuggestion =
+    isPromptEmpty && !disabled ? suggestion?.trim() || null : null;
   const defaultReferencesSignature = useMemo(
     () =>
       (defaultReferences ?? [])
@@ -1012,6 +1018,24 @@ export const SpotPromptInput = forwardRef<
       const currentText = event.currentTarget.value;
 
       if (
+        activeSuggestion &&
+        !activeTrigger &&
+        event.key === "Tab" &&
+        !event.shiftKey
+      ) {
+        event.preventDefault();
+        setTokens((current) =>
+          current.map((token) =>
+            token.type === "text" && token.id === textTokenId
+              ? { ...token, text: activeSuggestion }
+              : token,
+          ),
+        );
+        queueTextFocus(textTokenId, activeSuggestion.length);
+        return;
+      }
+
+      if (
         !activeTrigger &&
         isCollapsedSelection &&
         event.key === "Backspace" &&
@@ -1093,6 +1117,7 @@ export const SpotPromptInput = forwardRef<
       }
     },
     [
+      activeSuggestion,
       activeTrigger,
       queueTextFocus,
       selectTarget,
@@ -1314,6 +1339,10 @@ export const SpotPromptInput = forwardRef<
   const pickerPortalRoot =
     typeof document === "undefined" ? null : document.body;
 
+  const suggestionHint = activeSuggestion ? (
+    <Kbd keys={["tab"]} className="text-muted-foreground/60" />
+  ) : null;
+
   const submitControls = (
     <div className="flex items-center gap-1">
       {toolbarEnd}
@@ -1429,7 +1458,7 @@ export const SpotPromptInput = forwardRef<
           token={token}
           placeholder={
             isPromptEmpty && token.id === firstTextTokenId(tokens)
-              ? placeholder
+              ? (activeSuggestion ?? placeholder)
               : undefined
           }
           isCommandVariant={isCommandVariant}
@@ -1555,6 +1584,7 @@ export const SpotPromptInput = forwardRef<
         ) : isDockVariant ? (
           <div className="flex w-full min-w-0 items-center gap-2 py-2">
             {tokenEditor}
+            {suggestionHint}
             {submitControls}
           </div>
         ) : (
@@ -1599,6 +1629,7 @@ export const SpotPromptInput = forwardRef<
               </PromptInputTools>
 
               <PromptInputTools className="shrink-0">
+                {suggestionHint}
                 {submitControls}
               </PromptInputTools>
             </PromptInputFooter>

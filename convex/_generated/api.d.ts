@@ -56,6 +56,7 @@ import type * as actions_operatorEmailDrafts from "../actions/operatorEmailDraft
 import type * as actions_operatorGoogleWorkspace from "../actions/operatorGoogleWorkspace.js";
 import type * as actions_operatorMcp from "../actions/operatorMcp.js";
 import type * as actions_operatorMcpOAuth from "../actions/operatorMcpOAuth.js";
+import type * as actions_operatorNextMessage from "../actions/operatorNextMessage.js";
 import type * as actions_operatorNotifications from "../actions/operatorNotifications.js";
 import type * as actions_operatorSecondFactor from "../actions/operatorSecondFactor.js";
 import type * as actions_operatorSendingMailboxes from "../actions/operatorSendingMailboxes.js";
@@ -547,6 +548,7 @@ import type * as operatorInvitations from "../operatorInvitations.js";
 import type * as operatorMcpOAuth from "../operatorMcpOAuth.js";
 import type * as operatorMcpReadCalls from "../operatorMcpReadCalls.js";
 import type * as operatorMcpServers from "../operatorMcpServers.js";
+import type * as operatorNextMessage from "../operatorNextMessage.js";
 import type * as operatorNotifications from "../operatorNotifications.js";
 import type * as operatorPlanningCalibration from "../operatorPlanningCalibration.js";
 import type * as operatorPolicyImports from "../operatorPolicyImports.js";
@@ -670,6 +672,7 @@ declare const fullApi: ApiFromModules<{
   "actions/operatorGoogleWorkspace": typeof actions_operatorGoogleWorkspace;
   "actions/operatorMcp": typeof actions_operatorMcp;
   "actions/operatorMcpOAuth": typeof actions_operatorMcpOAuth;
+  "actions/operatorNextMessage": typeof actions_operatorNextMessage;
   "actions/operatorNotifications": typeof actions_operatorNotifications;
   "actions/operatorSecondFactor": typeof actions_operatorSecondFactor;
   "actions/operatorSendingMailboxes": typeof actions_operatorSendingMailboxes;
@@ -1161,6 +1164,7 @@ declare const fullApi: ApiFromModules<{
   operatorMcpOAuth: typeof operatorMcpOAuth;
   operatorMcpReadCalls: typeof operatorMcpReadCalls;
   operatorMcpServers: typeof operatorMcpServers;
+  operatorNextMessage: typeof operatorNextMessage;
   operatorNotifications: typeof operatorNotifications;
   operatorPlanningCalibration: typeof operatorPlanningCalibration;
   operatorPolicyImports: typeof operatorPolicyImports;
