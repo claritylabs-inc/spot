@@ -42,6 +42,14 @@ import {
 type Form = FunctionReturnType<
   typeof api.procurementInformationForms.clientForm
 >;
+function coverageGroupLabel(coverage: string) {
+  if (coverage === "unknown") return "Additional details";
+  return (
+    COVERAGE_OPTIONS.find((option) => option.id === coverage)?.label ??
+    "Additional details"
+  );
+}
+
 export function InformationForm({
   formId,
 }: {
@@ -252,8 +260,7 @@ function FormEditor({ form }: { form: Form }) {
               COVERAGE_ICONS.unknown;
             return {
               label:
-                COVERAGE_OPTIONS.find((option) => option.id === group.coverage)
-                  ?.label ?? "Additional details",
+                coverageGroupLabel(group.coverage),
               icon: (
                 <Icon
                   aria-hidden="true"
@@ -432,8 +439,7 @@ function FormEditor({ form }: { form: Form }) {
                   key={group.coverage}
                   collapsible={coverageGroups.length > 1}
                   title={
-                    COVERAGE_OPTIONS.find((c) => c.id === group.coverage)
-                      ?.label ?? "Additional details"
+                    coverageGroupLabel(group.coverage)
                   }
                   step={visible.findIndex(
                     (q) => q.questionId === group.questions[0].questionId,
