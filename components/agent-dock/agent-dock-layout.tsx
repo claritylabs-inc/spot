@@ -518,13 +518,11 @@ export function AgentDockLayout({
   const setMode = dock.setMode;
   // Mid-transition the body keeps its widest size, so the narrowing dock
   // clips it behind the card instead of reflowing the text.
-  const settledSizeRef = useRef(dockSize);
+  const [settledSize, setSettledSize] = useState(dockSize);
   const transitioning = right && mode !== settledMode;
-  useEffect(() => {
-    if (!transitioning) settledSizeRef.current = dockSize;
-  }, [transitioning, dockSize]);
+  if (!transitioning && settledSize !== dockSize) setSettledSize(dockSize);
   const bodyWidth = transitioning
-    ? Math.max(settledSizeRef.current, dockSize) -
+    ? Math.max(settledSize, dockSize) -
       (dock.tabsCollapsed ? AGENT_DOCK_RAIL_WIDTH : dock.tabsWidth)
     : undefined;
   const wasDetailOpenRef = useRef(detailPanelOpen);
