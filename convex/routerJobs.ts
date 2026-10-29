@@ -23,6 +23,10 @@ import {
 
 export const ROUTER_JOB_REQUEST_BYTES = 4 * 1024 * 1024;
 export const ROUTER_JOB_RESULT_BYTES = 18 * 1024 * 1024;
+// Succeeded results up to this many serialized bytes stay on the job row and
+// skip storage. Well under the 1 MiB document limit, and small enough that
+// pages of router job rows (up to 100 per page) stay within read limits.
+export const ROUTER_JOB_INLINE_RESULT_BYTES = 64 * 1024;
 const TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const operation = v.union(
   v.literal("generate"),
@@ -209,6 +213,8 @@ export const finish = internalMutation({
     fingerprint: v.string(),
     status: v.union(v.literal("succeeded"), v.literal("failed")),
     storageId: v.optional(v.id("_storage")),
+    /** Serialized result kept on the row instead of `storageId`. */
+    result: v.optional(v.string()),
     error: v.optional(v.string()),
     failure: v.optional(routerJobFailureValidator),
   },
@@ -232,7 +238,14 @@ export const finish = internalMutation({
         valid && row.status === args.status && row.routerJobId === args.jobId,
       );
     }
-    if (args.status === "succeeded") {
+    if (args.status === "succeeded" && args.result !== undefined) {
+      if (
+        args.storageId ||
+        new TextEncoder().encode(args.result).byteLength >
+          ROUTER_JOB_INLINE_RESULT_BYTES
+      )
+        throw new Error("Invalid inline router result");
+    } else if (args.status === "succeeded") {
       const metadata = args.storageId
         ? await ctx.db.system.get(args.storageId)
         : null;
@@ -244,6 +257,9 @@ export const finish = internalMutation({
       status: args.status,
       routerJobId: args.jobId,
       resultStorageId: args.storageId,
+      ...(args.status === "succeeded" && args.result !== undefined
+        ? { resultJson: args.result }
+        : {}),
       error: args.error?.slice(0, 1000),
       failure: args.failure,
       terminalAt: now,
@@ -330,6 +346,7 @@ export const cleanup = internalMutation({
     await ctx.db.patch(row._id, {
       requestStorageId: undefined,
       resultStorageId: undefined,
+      resultJson: undefined,
       assetStorageIds: undefined,
       requestToken: "",
       requestTokenHash: "",
@@ -615,17 +632,24 @@ export const resultHttp = httpAction(async (ctx, request) => {
     (body.status === "succeeded" && body.result === undefined)
   )
     return new Response(null, { status: 409 });
+  // Small results ride the finish mutation; larger ones go to storage first.
+  // A committed finish adopts or deletes that blob in its own transaction, so
+  // no separate cleanup schedule precedes it; a finish that throws removes
+  // the blob below.
+  const serialized =
+    body.status === "succeeded" ? JSON.stringify(body.result) : undefined;
+  const inlineResult =
+    serialized !== undefined &&
+    new TextEncoder().encode(serialized).byteLength <=
+      ROUTER_JOB_INLINE_RESULT_BYTES
+      ? serialized
+      : undefined;
   const storageId =
-    body.status === "succeeded"
+    serialized !== undefined && inlineResult === undefined
       ? await ctx.storage.store(
-          new Blob([JSON.stringify(body.result)], { type: "application/json" }),
+          new Blob([serialized], { type: "application/json" }),
         )
       : undefined;
-  if (storageId)
-    await ctx.runMutation(internal.routerJobs.scheduleUploadCleanup, {
-      invocationKey: row.invocationKey,
-      storageIds: [storageId],
-    });
   try {
     const accepted = await ctx.runMutation(internal.routerJobs.finish, {
       id: row._id,
@@ -636,6 +660,7 @@ export const resultHttp = httpAction(async (ctx, request) => {
       status: body.status,
       ...(body.status === "succeeded" ? { callResult: modelCallResult(body.result) } : {}),
       ...(storageId ? { storageId } : {}),
+      ...(inlineResult !== undefined ? { result: inlineResult } : {}),
       ...(body.status === "failed" ? parseRouterJobError(body.error) : {}),
     });
     return new Response(null, { status: accepted ? 204 : 409 });

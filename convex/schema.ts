@@ -5300,6 +5300,9 @@ export default defineSchema({
     resultTokenHash: v.string(),
     requestStorageId: v.optional(v.id("_storage")),
     resultStorageId: v.optional(v.id("_storage")),
+    // A small succeeded result kept on the row instead of in storage
+    // (ROUTER_JOB_INLINE_RESULT_BYTES); exactly one of the two is set.
+    resultJson: v.optional(v.string()),
     assetStorageIds: v.optional(v.array(v.id("_storage"))),
     routerJobId: v.optional(v.string()),
     error: v.optional(v.string()),
