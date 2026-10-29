@@ -470,37 +470,50 @@ export async function getTeamThreadDetails(
   const truncated = !messages.isDone;
   // Bound both row count and bytes, retaining the newest messages in display order.
   const hydrated = await Promise.all(
-    messages.page.reverse().map(async ({ bodyHtml: _bodyHtml, ...message }) => ({
-      ...message,
-      sentBy: await personFor(ctx, people, message.sentByUserId),
-      fromOperator:
-        message.direction === "inbound"
-          ? await operatorSenderFor(ctx, people, message.fromEmail)
-          : null,
-      files: await Promise.all(
-        message.clientFileIds.map(async (clientFileId) => {
-          const file = await ctx.db.get(clientFileId);
-          return file && !file.archivedAt && !file.deletedAt
-            ? {
-                clientFileId,
-                name: file.name,
-                contentType: file.contentType,
-                size: file.size,
-                url: await ctx.storage.getUrl(file.fileId),
-              }
-            : null;
-        }),
-      ),
-      unfiledFiles: await Promise.all(
-        (message.unfiledAttachments ?? []).map(async (file) => ({
-          storageId: file.storageId,
-          name: file.name,
-          contentType: file.contentType,
-          size: file.size,
-          url: await ctx.storage.getUrl(file.storageId),
-        })),
-      ),
-    })),
+    messages.page.reverse().map(async ({ bodyHtml, ...message }) => {
+      // Inline parts the HTML shows in place are not listed as attachments.
+      const shownInline = (contentId: string | undefined) =>
+        Boolean(contentId && bodyHtml?.includes(`cid:${contentId}`));
+      const inlineFileIds = new Set(
+        (message.inlineFiles ?? [])
+          .filter((file) => shownInline(file.contentId))
+          .map((file) => file.clientFileId),
+      );
+      return {
+        ...message,
+        hasHtml: Boolean(bodyHtml?.trim()),
+        sentBy: await personFor(ctx, people, message.sentByUserId),
+        fromOperator:
+          message.direction === "inbound"
+            ? await operatorSenderFor(ctx, people, message.fromEmail)
+            : null,
+        files: await Promise.all(
+          message.clientFileIds.map(async (clientFileId) => {
+            const file = await ctx.db.get(clientFileId);
+            return file && !file.archivedAt && !file.deletedAt
+              ? {
+                  clientFileId,
+                  name: file.name,
+                  contentType: file.contentType,
+                  size: file.size,
+                  inline: inlineFileIds.has(clientFileId),
+                  url: await ctx.storage.getUrl(file.fileId),
+                }
+              : null;
+          }),
+        ),
+        unfiledFiles: await Promise.all(
+          (message.unfiledAttachments ?? []).map(async (file) => ({
+            storageId: file.storageId,
+            name: file.name,
+            contentType: file.contentType,
+            size: file.size,
+            inline: shownInline(file.contentId),
+            url: await ctx.storage.getUrl(file.storageId),
+          })),
+        ),
+      };
+    }),
   );
   const draftsInProgress = await Promise.all(
     drafts.rows.map(async (draft) => ({

@@ -61,6 +61,20 @@ linking files them. A repeated webhook must not delete storage already owned by 
 file or draft. `teamInboxReads` tracks each operator's read position; only inbound
 mail advances unread state. Bounded queries expose continuation or limit metadata.
 
+Opened messages render their stored `bodyHtml` (`teamInbox.getMessageHtml`, loaded
+per message) in a script-free sandboxed frame (`components/inbox/email-html-body.tsx`)
+that drops active content and unsafe URLs and folds quoted history behind a toggle;
+forwards keep it open. Quote containers and attributions the server parser misses
+(`lib/email-quote.ts`: "… wrote:" lines with an address, time or year, Outlook
+header blocks) also fold plain-text bodies. When none matches, each new inbound
+message of six or more lines gets one Jev request (`convex/actions/teamEmailQuotes.ts`,
+task `team_email_quoted_history`): a Noul for whether history is quoted and a
+Choice for its first line, both at the proceed threshold. The line is stored as
+`quotedHistoryStart` (null for a confident "no history") and the reader folds
+there. Failures or uncertainty store nothing and the message shows unfolded. Ingestion records each part's MIME Content-ID (unfiled
+`contentId`, filed `inlineFiles`) so `cid:` images resolve to their files and are
+not repeated as attachment chips. Attachments are listed above the body.
+
 The shared request and main Inbox use Inbox, Sent, All mail and Archived pill
 tabs. Inbox contains conversations whose latest message is inbound; Sent contains
 those whose latest message is outbound, so a new reply returns a conversation to

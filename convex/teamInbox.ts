@@ -117,6 +117,40 @@ export const getThread = query({
   },
 });
 
+/**
+ * One message's stored HTML body with its inline `cid:` parts resolved to file
+ * URLs. Loaded per opened message so the thread query stays small.
+ */
+export const getMessageHtml = query({
+  args: { messageId: v.id("teamEmailMessages") },
+  handler: async (ctx, args) => {
+    await requireOperator(ctx);
+    const message = await ctx.db.get(args.messageId);
+    const thread = message ? await ctx.db.get(message.threadId) : null;
+    if (!message?.bodyHtml || !thread || thread.deletedAt || (await teamTargetProblem(ctx, thread)))
+      return null;
+    const inline = await Promise.all([
+      ...(message.inlineFiles ?? []).map(async (file) => {
+        const clientFile = await ctx.db.get(file.clientFileId);
+        return clientFile && !clientFile.archivedAt && !clientFile.deletedAt
+          ? { contentId: file.contentId, url: await ctx.storage.getUrl(clientFile.fileId) }
+          : null;
+      }),
+      ...(message.unfiledAttachments ?? []).map(async (file) =>
+        file.contentId
+          ? { contentId: file.contentId, url: await ctx.storage.getUrl(file.storageId) }
+          : null,
+      ),
+    ]);
+    return {
+      html: message.bodyHtml,
+      inlineImages: inline.flatMap((file) =>
+        file?.url ? [{ contentId: file.contentId, url: file.url }] : [],
+      ),
+    };
+  },
+});
+
 /** Validate saved team Inbox links without writing on navigation. */
 export const resolveThreadId = query({
   args: { threadId: v.string(), requestId: v.optional(v.id("procurementRequests")) },
