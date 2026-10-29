@@ -8,7 +8,11 @@ import { normalizeOperatorEmail, operatorEmailAliases } from "./operatorIdentity
 import { getAgentDomain } from "./resend";
 import { normalizeProcurementEmail, procurementForwardingAddress, type ProcurementEmailCategory } from "./procurement";
 import { MESSAGE_READ_BYTES, teamTargetProblem, type TeamThread } from "./teamEmailStore";
+import { MAX_BULK_READ_IDS } from "./operatorReadViews";
 import { subjectMatch } from "./teamInboxTargets";
+
+// All exact subject matches up to what one get_team_inbox_thread batch reads.
+const TEAM_INBOX_EXACT_MATCH_CAP = MAX_BULK_READ_IDS;
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -585,13 +589,16 @@ export async function searchTeamInbox(
 ) {
   const query = args.query.trim().slice(0, 200);
   const scan = Math.min(args.limit * 4, 100);
+  // Every thread sharing a named subject must be considered, not only the
+  // first page: one subject often has a thread per provider.
+  const subjectScan = 100;
   const [subjects, bodies] = await Promise.all([
     ctx.db
       .query("teamEmailThreads")
       .withSearchIndex("search_subject", (q) =>
         args.clientOrgId ? q.search("subject", query).eq("clientOrgId", args.clientOrgId) : q.search("subject", query),
       )
-      .take(scan),
+      .take(subjectScan),
     ctx.db
       .query("teamEmailMessages")
       .withSearchIndex("search_text", (q) =>
@@ -604,7 +611,6 @@ export async function searchTeamInbox(
   for (const message of bodies) if (!matches.get(message.threadId)) matches.set(message.threadId, message);
   const rows = [];
   for (const [threadId, message] of matches) {
-    if (rows.length >= args.limit) break;
     const thread = await ctx.db.get(threadId);
     if (!thread || thread.deletedAt !== undefined || (thread.archivedAt && !args.includeArchived)) continue;
     const [client, request] = await Promise.all([
@@ -640,5 +646,20 @@ export async function searchTeamInbox(
           },
     });
   }
-  return { threads: rows, bounded: subjects.length === scan || bodies.length === scan };
+  // Exact subject matches are all kept (up to the bulk read cap) ahead of the
+  // result limit, so a named thread's siblings are never cut off; the rest
+  // fill the remaining limit in search order.
+  const exact = rows.filter((row) => row.subjectMatch === "exact");
+  const keptExact = exact.slice(0, TEAM_INBOX_EXACT_MATCH_CAP);
+  const others = rows
+    .filter((row) => row.subjectMatch !== "exact")
+    .slice(0, Math.max(0, args.limit - keptExact.length));
+  return {
+    threads: [...keptExact, ...others],
+    bounded:
+      subjects.length === subjectScan ||
+      bodies.length === scan ||
+      exact.length > keptExact.length ||
+      rows.length > keptExact.length + others.length,
+  };
 }
