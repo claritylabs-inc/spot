@@ -336,6 +336,22 @@ export type ClRouterReasoningOptions = {
   include?: boolean;
 };
 
+/** Optional request fields a router advertises in `/v1/capabilities` `features`. */
+export type ClRouterFeature =
+  | "inline_job_input"
+  | "prompt_cache_key"
+  | "agent_loop"
+  | "parallel_tool_calls";
+
+/**
+ * One agent-loop step: the router asks no tool questions and offers every
+ * tool with automatic choice. On a tool-result continuation, `previous` (the
+ * prior step's `routing.route` and `routing.difficulty`) is reused without Jev.
+ */
+export type ClRouterAgentLoop = {
+  previous?: { route: ModelRoute; difficulty: ClRouterDifficulty };
+};
+
 export type ClRouterGenerateRequest = {
   tenantId?: string;
   orgId?: string;
@@ -348,6 +364,10 @@ export type ClRouterGenerateRequest = {
   maxTokens?: number;
   executionBudgetMs?: number;
   reasoning?: ClRouterReasoningOptions;
+  /** Prompt-cache affinity for requests sharing a prefix; hashed by the router. */
+  cache?: { key: string };
+  loop?: ClRouterAgentLoop;
+  parallelToolCalls?: boolean;
   tools?: ClRouterToolDefinition[];
   /** `caller`: Spot already chose the offered tools; cl-router skips its own tool selection. */
   toolSelection?: "router" | "caller";
@@ -817,6 +837,7 @@ const ROUTING_SOURCES = new Set<ClRouterRoutingSource>([
   "jev",
   "fallback",
   "manual",
+  "loop",
 ]);
 const ROUTING_DIFFICULTIES = new Set<ClRouterDifficulty>(DIFFICULTIES);
 
@@ -1099,6 +1120,9 @@ const GENERATE_BODY_KEYS = [
   "maxTokens",
   "executionBudgetMs",
   "reasoning",
+  "cache",
+  "loop",
+  "parallelToolCalls",
   "tools",
   "toolSelection",
 ] as const satisfies readonly (keyof ClRouterGenerateRequest)[];
@@ -1767,6 +1791,14 @@ export async function clRouterGenerateMaybeManual(
   return route
     ? clRouterGenerateManual({ ...request, route }, options)
     : clRouterGenerate(request, options);
+}
+
+/** Unavailable capabilities advertise no optional features. */
+export function clRouterSupports(
+  capabilities: ClRouterCapabilities | undefined,
+  feature: ClRouterFeature,
+): boolean {
+  return capabilities?.features?.includes(feature) ?? false;
 }
 
 const CAPABILITIES_CACHE_TTL_MS = 60_000;

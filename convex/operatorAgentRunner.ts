@@ -91,7 +91,9 @@ import {
 } from "./lib/operatorAgentToolRegistry";
 import {
   clRouterCapabilities,
+  clRouterSupports,
   isRetryableClRouterJobFailure,
+  type ClRouterAgentLoop,
   type ClRouterClientOptions,
   type ClRouterReasoningEffort,
 } from "./lib/clRouterClient";
@@ -252,6 +254,18 @@ function operatorRunRequiredFamilies(
     }
   }
   return [...new Set([...operatorToolFamiliesOf(toolNames), ...requested])];
+}
+
+// Tools offered on an earlier step keep their positions; newly offered tools
+// append in their current order.
+function stableToolOrder(
+  previous: readonly string[] | undefined,
+  offered: readonly string[],
+) {
+  const current = new Set(offered);
+  const kept = (previous ?? []).filter((name) => current.has(name));
+  const known = new Set(kept);
+  return [...kept, ...offered.filter((name) => !known.has(name))];
 }
 
 // A tool-routing step continues from read-only results with the run's earlier
@@ -621,6 +635,8 @@ export const run = internalAction({
                 leakedCallRetries?: number;
                 compactionRequest?: { keepRecentSteps?: number; focus?: string };
                 threadSummary?: string;
+                toolOrder?: string[];
+                loopPrevious?: ClRouterAgentLoop["previous"];
               })
             : undefined;
           if (continuation) {
@@ -1208,6 +1224,15 @@ export const run = internalAction({
         });
       }
 
+      // Tools lead the provider's cached prompt prefix, so within a run tools
+      // offered on earlier steps keep their positions and newly offered ones
+      // append. Exhausted tools still drop out.
+      const offeredTools: ToolSet = Object.fromEntries(
+        stableToolOrder(continuation?.toolOrder, Object.keys(tools)).map(
+          (name) => [name, tools[name]],
+        ),
+      );
+
       // Keys beyond the typed trace fields travel to cl-router as trace tags,
       // recording each step's tool families for evals.
       const trace = {
@@ -1240,7 +1265,7 @@ export const run = internalAction({
         recoveryPromptBlock(recovery) +
         buildThreadContinuityPrompt(threadSummary);
       const inputCatalog = await Promise.all(
-        Object.entries(tools).map(async ([name, definition]) => ({
+        Object.entries(offeredTools).map(async ([name, definition]) => ({
           name,
           description: definition.description,
           inputSchema: await asSchema(definition.inputSchema).jsonSchema,
@@ -1250,9 +1275,8 @@ export const run = internalAction({
         estimateOperatorInputTokens(system, inputCatalog, history);
       messages = boundToolHistory(messages);
       const tokensBefore = estimate(messages);
-      const capabilities = route
-        ? await clRouterCapabilities().catch(() => undefined)
-        : undefined;
+      // Also gates optional request fields: an unavailable catalog sends none.
+      const capabilities = await clRouterCapabilities().catch(() => undefined);
       const budget = operatorContextBudget(capabilities, route);
       const hardLimit = operatorContextHardLimit(capabilities, route);
       if (
@@ -1338,6 +1362,25 @@ export const run = internalAction({
       const modelTask = modelMessagesHaveRichInput(messages)
         ? "chat_vision"
         : "chat";
+      const sessionKey = `operator:${String(run.operatorUserId)}:${String(run.threadId)}`;
+      // Each step is one agent-loop request. The cache key is the thread's
+      // session key so later turns of the conversation, which usually offer
+      // the same tools and system prefix, land on the same provider cache.
+      const agentStep = {
+        ...(clRouterSupports(capabilities, "agent_loop")
+          ? {
+              loop: continuation?.loopPrevious
+                ? { previous: continuation.loopPrevious }
+                : {},
+            }
+          : {}),
+        ...(clRouterSupports(capabilities, "prompt_cache_key")
+          ? { cache: { key: sessionKey } }
+          : {}),
+        ...(clRouterSupports(capabilities, "parallel_tool_calls")
+          ? { parallelToolCalls: true }
+          : {}),
+      };
       const result = await generateAgentTextForOperatorTask(
         ctx,
         modelTask,
@@ -1345,7 +1388,7 @@ export const run = internalAction({
           maxOutputTokens: OPERATOR_AGENT_MAX_OUTPUT_TOKENS,
           system,
           messages,
-          tools,
+          tools: offeredTools,
           experimental_onStepStart: () => recordActivity({ kind: "model" }),
           onStepFinish: async (step) => {
             if (traceChannel !== "web") return;
@@ -1384,15 +1427,23 @@ export const run = internalAction({
             include: true,
             effort: operatorStepReasoningEffort(
               messages,
-              Object.keys(tools),
+              Object.keys(offeredTools),
               expectedCheckpointIteration === 0,
               recovery.pending.length > 0,
             ),
           },
-          sessionKey: `operator:${String(run.operatorUserId)}:${String(run.threadId)}`,
+          agentStep,
+          sessionKey,
           trace,
         },
       );
+      // The served route and difficulty, reused by the router on the next
+      // tool-result continuation. Pinned (manual) steps carry no difficulty.
+      const routing = result.clRouter?.routing;
+      const nextLoopPrevious =
+        routing?.difficulty && routing.decision === "routed"
+          ? { route: routing.route, difficulty: routing.difficulty }
+          : undefined;
       const audit = prefetchAudit
         ? mergeToolAudits(prefetchAudit, collectToolAudit(result))
         : collectToolAudit(result);
@@ -1458,6 +1509,8 @@ export const run = internalAction({
               leakedCallRetries: leakContinues
                 ? leakedCallRetries + 1
                 : leakedCallRetries,
+              toolOrder: Object.keys(offeredTools),
+              ...(nextLoopPrevious ? { loopPrevious: nextLoopPrevious } : {}),
             })
           : undefined;
       const modelContinuationStorageId = nextContinuationText

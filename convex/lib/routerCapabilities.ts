@@ -50,6 +50,11 @@ export type RouterCapabilities = {
   providers: RouterProviderEntry[];
   models?: RouterModelEntry[];
   webRetrieval: { providers: RouterProviderEntry[] };
+  /**
+   * Optional request fields this router accepts. Older routers omit the list
+   * and reject the fields, so callers send a field only when it is listed.
+   */
+  features?: string[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -205,5 +210,9 @@ export function parseRouterCapabilities(
     providers,
     webRetrieval: { providers: webRetrievalProviders },
     ...(models ? { models } : {}),
+    // A malformed list advertises nothing rather than invalidating the catalog.
+    ...(Array.isArray(value.features) && value.features.every(isIdentifier)
+      ? { features: value.features }
+      : {}),
   };
 }
