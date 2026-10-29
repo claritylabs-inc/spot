@@ -32,6 +32,19 @@ export const EMAIL_SKILL_GENERAL = [
   "The actual sender's signature is added after you. Never write your own signature, a Spot description, or sign as the Spot team.",
 ] as const;
 
+/** How a reply-box draft ends: the operator's signature and quoted history are added on send. */
+export const REPLY_DRAFT_SIGN_OFF =
+  'End with a one-word sign-off line such as "Thanks," and nothing after it: no name, title or signature.';
+
+/**
+ * Drops a name the model wrote under the sign-off ("Thanks,\nTerry"); the
+ * operator's signature already carries it.
+ */
+export function stripNameAfterSignOff(reply: string): string {
+  const match = /\n([A-Za-z ]{1,30},)\s*\n\s*([A-Z][\w.'-]*(?: [A-Z][\w.'-]*){0,2})\s*$/.exec(reply);
+  return match ? reply.slice(0, match.index + 1 + match[1].length) : reply;
+}
+
 /** Extra rules for emails to insurance providers (brokers, carriers, wholesalers). */
 export const EMAIL_SKILL_PROVIDER = [
   "Never email a Do Not Contact provider.",

@@ -17,7 +17,7 @@ import {
 export { EXPAND_TOOLS_NAME } from "./agentToolSelection";
 
 import { COI_DISCLAIMER, NO_OPEN_ENDED_OFFERS } from "./channelStyle";
-import { emailSkillPrompt } from "./emailSkill";
+import { emailSkillPrompt, REPLY_DRAFT_SIGN_OFF } from "./emailSkill";
 import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
 import {
   normalizeBrokerLineOfBusinessCodes,
@@ -119,7 +119,7 @@ ${emailSkillPrompt({ provider: true })}
 Provider outreach for a procurement request goes through launch_procurement_provider_outreach, which applies these rules and the provider's relationship automatically.
 
 OPERATOR OUTBOUND EMAIL:
-These tools draft and send from your personal team address, signed with your full name and Spot. Write in first person as the operator. Your saved Always CC is included in the displayed draft and exact approval. Replies return to the shared team inbox. Always pass the recipient's exact address in "to".
+These tools draft and send from your personal team address, signed with your full name and Spot. Write in first person as the operator, but never sign your name; the signature is added on send. Your saved Always CC is included in the displayed draft and exact approval. Replies return to the shared team inbox. Always pass the recipient's exact address in "to".
 These tools are for separately requested emails. A direct answer to the operator belongs in your final response; command email delivers that response automatically. A request for no changes does not authorize saving a draft.
 Ad hoc email needs no client organization. When it concerns a known client or request, pass its exact orgId or procurementRequestId so it is filed correctly. For a reply, pass teamEmailThreadId. Each conversation's reply box holds a suggested reply (replySuggestion in get_team_inbox_thread); when the operator asks to change the reply on a conversation, revise it with update_team_reply_draft, and send only on an explicit instruction with reply_email_thread. Find mail by its content with search_team_inbox. Revisions re-sign as the current operator and invalidate earlier approval. Read an existing thread before replying, and use only its verified recipients.
 Attachments: use save_email_draft policyIds for explicitly requested original policy PDFs, or clientFileIds for exact stored client files (list_client_files). To send a certificate of insurance, first call generate_coi (it needs the operator's exact approval); its result gives each certificate's clientFileId, then add its clientFileId with save_email_draft. Do not describe a certificate or file as attached until the tool returns.
@@ -1839,7 +1839,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_team_reply_draft: defineOperatorTool({
     family: "outbound_email",
     version: 1,
-    description: "Write or revise the suggested reply shown in a team conversation's reply box (get_team_inbox_thread returns the current one as replySuggestion). Never sends; the operator edits and sends it, or ask to send with reply_email_thread. Plain text with greeting and a short sign-off; the signature and quoted history are added on send. Use [needs: …] only for facts nobody has provided.",
+    description: `Write or revise the suggested reply shown in a team conversation's reply box (get_team_inbox_thread returns the current one as replySuggestion). Never sends; the operator edits and sends it, or ask to send with reply_email_thread. Follow the email writing rules, including the provider rules when replying to a provider. Plain text except for factual bullets, opening with the greeting from the rules. ${REPLY_DRAFT_SIGN_OFF} The signature and quoted history are added on send. Use [needs: …] only for facts nobody has provided.`,
     inputSchema: z.object({
       teamEmailThreadId,
       reply: z.string().trim().min(1).max(10_000).describe("Complete plain-text reply body"),

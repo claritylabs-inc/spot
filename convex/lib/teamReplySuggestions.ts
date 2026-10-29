@@ -2,6 +2,7 @@ import dayjs from "dayjs";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { stripNameAfterSignOff } from "./emailSkill";
 
 /**
  * Starts a suggested reply to a new inbound message. The conversation keeps one
@@ -37,7 +38,7 @@ export async function reviseTeamReplySuggestion(
   ctx: MutationCtx,
   args: { threadId: Id<"teamEmailThreads">; reply: string },
 ) {
-  const reply = args.reply.replace(/\r\n/g, "\n").trim();
+  const reply = stripNameAfterSignOff(args.reply.replace(/\r\n/g, "\n").trim());
   if (!reply || reply.length > MAX_SUGGESTION_CHARS) throw new Error("The draft must be 1–10,000 characters.");
   const thread = await ctx.db.get(args.threadId);
   if (!thread || thread.deletedAt !== undefined) throw new Error("Email conversation not found");
