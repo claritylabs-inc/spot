@@ -37,6 +37,7 @@ export const listRecentRunsInternal = internalQuery({
                 probabilities: assessment.probabilities,
                 targetCount: assessment.targetCount ?? null,
                 requestId: assessment.requestId ?? null,
+                plannerFallback: assessment.plannerFallback ?? false,
               }
             : null,
           planSteps: run.executionPlan?.steps.length ?? 0,
