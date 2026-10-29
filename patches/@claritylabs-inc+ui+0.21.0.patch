@@ -1,0 +1,72 @@
+diff --git a/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx b/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx
+--- a/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx
++++ b/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx
+@@ -43,22 +43,36 @@
+   alignOffset = 0,
+   side = "bottom",
+   sideOffset = 4,
++  collisionBoundary,
++  collisionPadding,
++  collisionAvoidance,
+   className,
+   ...props
+ }: MenuPrimitive.Popup.Props &
+   Pick<
+     MenuPrimitive.Positioner.Props,
+-    "align" | "alignOffset" | "side" | "sideOffset"
++    | "align"
++    | "alignOffset"
++    | "side"
++    | "sideOffset"
++    | "collisionBoundary"
++    | "collisionPadding"
++    | "collisionAvoidance"
+   >) {
+   const blink = React.useContext(BlinkContext)
+   return (
+-    <MenuPrimitive.Portal>
++    // Inline dialog portals can live inside clipped, resizable app panels.
++    // Menus need the document viewport for both rendering and collision detection.
++    <MenuPrimitive.Portal container={globalThis.document?.body}>
+       <MenuPrimitive.Positioner
+         className="isolate z-50 outline-none"
+         align={align}
+         alignOffset={alignOffset}
+         side={side}
+         sideOffset={sideOffset}
++        collisionBoundary={collisionBoundary}
++        collisionPadding={collisionPadding}
++        collisionAvoidance={collisionAvoidance}
+       >
+         <MenuPrimitive.Popup
+           data-slot="dropdown-menu-content"
+@@ -152,8 +166,10 @@
+ function DropdownMenuSubContent({
+   align = "start",
+   alignOffset = -3,
+-  side = "right",
+-  sideOffset = 0,
++  side = "inline-end",
++  sideOffset = 4,
++  collisionAvoidance = { side: "flip", align: "shift", fallbackAxisSide: "end" },
++  collisionBoundary = [],
+   className,
+   ...props
+ }: React.ComponentProps<typeof DropdownMenuContent>) {
+@@ -161,13 +177,15 @@
+     <DropdownMenuContent
+       data-slot="dropdown-menu-sub-content"
+       className={cn(
+-        "w-auto min-w-24 rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-border-emphasized duration-75 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
++        "w-auto min-w-[min(6rem,var(--available-width))] rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-border-emphasized duration-75 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+         className
+       )}
+       align={align}
+       alignOffset={alignOffset}
+       side={side}
+       sideOffset={sideOffset}
++      collisionAvoidance={collisionAvoidance}
++      collisionBoundary={collisionBoundary}
+       {...props}
+     />
+   )
