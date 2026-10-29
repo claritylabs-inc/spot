@@ -5376,7 +5376,11 @@ export const startIntent = mutation({
       toolArtifacts: [
         {
           type: "operator_intent",
-          data: { id: intent.id, version: intent.version },
+          data: {
+            id: intent.id,
+            version: intent.version,
+            ...(suggestion?.focusIds ? { focus: suggestion.focusIds } : {}),
+          },
         },
       ],
     });
@@ -8197,6 +8201,8 @@ export const continueRunInternal = internalMutation({
     expectedCheckpointIteration: v.optional(v.number()),
     modelContinuationStorageId: v.optional(v.id("_storage")),
     families: v.optional(v.array(v.string())),
+    /** The calling action runs the next step itself; the run stays running. */
+    inline: v.optional(v.boolean()),
     summary: v.string(),
     usedTools: v.array(v.string()),
     toolCalls: v.array(
@@ -8253,7 +8259,7 @@ export const continueRunInternal = internalMutation({
       updatedAt: now,
     });
     await ctx.db.patch(run._id, {
-      status: "queued",
+      ...(args.inline ? {} : { status: "queued" as const }),
       ...(args.modelContinuationStorageId
         ? { modelContinuationStorageId: args.modelContinuationStorageId }
         : {}),
@@ -8275,6 +8281,7 @@ export const continueRunInternal = internalMutation({
     ) {
       await ctx.storage.delete(run.modelContinuationStorageId);
     }
+    if (args.inline) return { status: "continued" as const };
     await ctx.scheduler.runAfter(0, internal.operatorAgentRunner.run, {
       runId: run._id,
     });
