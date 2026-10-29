@@ -14,7 +14,6 @@ import dayjs from "dayjs";
 import { FileInput, FolderInput, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { PresenceAvatars } from "@/components/app-top-bar";
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import {
   AddThreadContact,
@@ -46,12 +45,7 @@ import {
 } from "@claritylabs-inc/ui/components/status-tag";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import {
-  groupEmailThreadPeople,
-  replyingOperators,
-  useActiveOperators,
-  useReportEmailThreadPresence,
-} from "@/hooks/use-operator-presence";
+import { useReportEmailThreadPresence } from "@/hooks/use-operator-presence";
 import { useFollowedOpen, useFollowedState } from "@/hooks/use-followed-state";
 import { usePageContext } from "@/hooks/use-page-context";
 import { formatDisplayDateTime } from "@/lib/date-format";
@@ -583,55 +577,6 @@ function FollowUpStatus({
   );
 }
 
-const MAX_SHOWN_DRAFTS = 3;
-
-/** Who else has the conversation open, and drafts being written. */
-function ConversationContext({ thread }: { thread: ProcurementEmailThreadData }) {
-  const threadId = thread.thread._id;
-  const viewers = groupEmailThreadPeople(useActiveOperators()).get(threadId) ?? [];
-  const replying = replyingOperators(viewers);
-  const drafts = thread.draftsInProgress.slice(0, MAX_SHOWN_DRAFTS);
-  // The server bounds the list too, so a full list may hide more than it counts.
-  const hiddenDrafts = thread.draftsInProgress.length - drafts.length;
-  const moreDrafts = thread.draftsLimited
-    ? `${hiddenDrafts > 0 ? `${hiddenDrafts}+` : "More"} drafts not shown`
-    : hiddenDrafts > 0
-      ? `+${hiddenDrafts} more draft${hiddenDrafts === 1 ? "" : "s"}`
-      : null;
-  if (!viewers.length && !drafts.length && !moreDrafts) return null;
-  return (
-    <div className="space-y-1 px-4 py-2">
-      <div className="flex min-w-0 items-center justify-end gap-3">
-        {viewers.length ? (
-          <span className="flex shrink-0 items-center gap-2">
-            {replying.length ? (
-              <span className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-                {replying.map((person) => person.name).join(", ")} replying
-              </span>
-            ) : null}
-            <PresenceAvatars users={viewers} max={3} size="sm" />
-          </span>
-        ) : null}
-      </div>
-      {drafts.map((draft) => (
-        <p
-          key={draft._id}
-          className={`truncate text-muted-foreground ${typeStyle("caption.default")}`}
-        >
-          {draft.sender?.name ?? "Someone"}{" "}
-          {draft.status === "pending" ? "is sending" : "is drafting"} “
-          {draft.subject.slice(0, 80) || "(no subject)"}”
-        </p>
-      ))}
-      {moreDrafts ? (
-        <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-          {moreDrafts}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 /** Earlier messages start collapsed, as in a mail client; the newest stays open. */
 function EmailConversation({
   thread,
@@ -653,7 +598,6 @@ function EmailConversation({
   );
   return (
     <div className="-mx-4 -my-4 divide-y divide-border">
-      <ConversationContext thread={thread} />
       {thread.linkSuggestion && !thread.client && !readOnly ? (
         <LinkSuggestionBar
           threadId={thread.thread._id}

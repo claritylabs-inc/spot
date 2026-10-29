@@ -197,27 +197,6 @@ export function useOperatorSessions() {
 
 export type ActiveOperator = ReturnType<typeof useActiveOperators>[number];
 
-/**
- * Other operators on each email thread, from one `useActiveOperators()` result.
- * Call once per list and look rows up by id; do not subscribe per row.
- */
-export function groupEmailThreadPeople(operators: ActiveOperator[]) {
-  const byThread = new Map<string, ActiveOperator[]>();
-  for (const operator of operators) {
-    if (operator.self || !operator.emailThreadId) continue;
-    byThread.set(operator.emailThreadId, [
-      ...(byThread.get(operator.emailThreadId) ?? []),
-      operator,
-    ]);
-  }
-  return byThread;
-}
-
-/** Whether anyone in `people` is mid-reply on their thread. */
-export function replyingOperators(people: ActiveOperator[] | undefined) {
-  return (people ?? []).filter((operator) => operator.activity === "replying");
-}
-
 // The followed operator is shared so the top bar and the team page drive the
 // same follow session.
 let followingUserId: Id<"users"> | null = null;
