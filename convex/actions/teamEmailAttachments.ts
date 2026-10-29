@@ -38,11 +38,13 @@ export const classify = internalAction({
   handler: async (ctx, args) => {
     const message = await ctx.runQuery(internal.teamEmailAttachments.candidatesInternal, args);
     if (!message) return;
-    const images = message.attachments.slice(0, MAX_IMAGES);
+    // Images this sender already sent are reused from the stored verdict; only new ones reach Jev.
+    const cachedIds = message.images.filter((image) => image.decorative).map((image) => image.id);
+    const images = message.images.filter((image) => image.decorative === undefined).slice(0, MAX_IMAGES);
     if (!images.length) {
       await ctx.runMutation(internal.teamEmailAttachments.saveInternal, {
         messageId: args.messageId,
-        decorativeIds: [],
+        decorativeIds: cachedIds,
       });
       return;
     }
@@ -66,15 +68,22 @@ export const classify = internalAction({
         },
         { telemetry: ctx, abortSignal: AbortSignal.timeout(20_000) },
       );
-      const decorativeIds = images
-        .filter((image) => {
-          const answer = answers[image.id];
-          return answer?.type === "noul" && jevProceeds(answer.noul);
-        })
-        .map((image) => image.id);
+      const judged = images.flatMap((image) => {
+        const answer = answers[image.id];
+        if (answer?.type !== "noul") return [];
+        const decorative = jevProceeds(answer.noul);
+        // Only a confident verdict either way is remembered.
+        return decorative || jevProceeds(1 - answer.noul) ? [{ image, decorative }] : [];
+      });
       await ctx.runMutation(internal.teamEmailAttachments.saveInternal, {
         messageId: args.messageId,
-        decorativeIds,
+        decorativeIds: [
+          ...cachedIds,
+          ...judged.filter((item) => item.decorative).map((item) => item.image.id),
+        ],
+        judged: judged.flatMap(({ image, decorative }) =>
+          image.sha256 ? [{ sha256: image.sha256, decorative }] : [],
+        ),
       });
     } catch (error) {
       console.warn("[teamEmailAttachments] Classification unavailable", {

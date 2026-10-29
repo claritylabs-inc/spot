@@ -77,7 +77,7 @@ not repeated as attachment chips. Image attachments the HTML does not show inlin
 (signatures, logos) get one Noul each (`convex/actions/teamEmailAttachments.ts`, task
 `team_email_decorative_images`) over name, type, size and the email text; those at the
 proceed threshold are stored in `decorativeAttachmentIds` and hidden from the chips.
-Failures or uncertainty keep every attachment listed. Attachments are listed above the body.
+Confident verdicts are remembered per sender and content hash (`teamEmailImageJudgments`), so a repeated signature is never judged again. Failures or uncertainty keep every attachment listed. Attachments are listed above the body.
 
 The shared request and main Inbox use Inbox, Sent, All mail and Archived pill
 tabs. Inbox contains conversations whose latest message is inbound; Sent contains
