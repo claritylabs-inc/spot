@@ -18,6 +18,7 @@ import { sanitizeOperatorReply } from "./lib/operatorToolOutput";
 const invocationArgs = {
   operatorUserId: v.id("users"),
   conversationKey: v.string(),
+  channel: v.optional(v.literal("mcp")),
   mcpClientId: v.optional(v.string()),
   toolName: v.string(),
   input: v.any(),
