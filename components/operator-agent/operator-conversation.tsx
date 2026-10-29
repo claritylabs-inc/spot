@@ -40,6 +40,8 @@ import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import type { OperatorEmailDraftView } from "@/lib/operator-email-draft";
 import {
   OperatorEmailDraftCards,
+  OperatorThreadReplyCards,
+  threadReplyDrafts,
   OperatorEmailDraftPanel,
   useOperatorEmailDrafts,
 } from "./operator-email-drafts";
@@ -301,7 +303,8 @@ function OperatorMessageRow({
       !content &&
       !attachments &&
       !message.presentation &&
-      emailDrafts.length === 0
+      emailDrafts.length === 0 &&
+      threadReplyDrafts(message.toolCalls).length === 0
     )
       return null;
     return (
@@ -335,12 +338,17 @@ function OperatorMessageRow({
         }}
         presentationDisabled={presentationDisabled}
         after={
-          <OperatorEmailDraftCards
-            drafts={emailDrafts}
-            threadId={threadId}
-            openDraftId={openEmailDraftId}
-            onOpen={(draft) => onOpenEmailDraft(draft.id)}
-          />
+          <>
+            <OperatorEmailDraftCards
+              drafts={emailDrafts}
+              threadId={threadId}
+              openDraftId={openEmailDraftId}
+              onOpen={(draft) => onOpenEmailDraft(draft.id)}
+            />
+            <OperatorThreadReplyCards
+              drafts={threadReplyDrafts(message.toolCalls)}
+            />
+          </>
         }
       >
         {attachments}

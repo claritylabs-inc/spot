@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAction, useQuery } from "convex/react";
 import { Mail as MailIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -11,6 +12,7 @@ import {
 import {
   EmailArtifact,
   EmailCardFrame,
+  EmailCardSummary,
   EmailStackFrame,
   EmailStackRow,
   formatEmailAddressList,
@@ -309,5 +311,58 @@ export function OperatorEmailDraftPanel({
           : undefined
       }
     />
+  );
+}
+
+type ThreadReplyDraft = { threadId: string; reply: string };
+
+/** Reply drafts the agent wrote into team inbox threads this turn, newest per thread. */
+export function threadReplyDrafts(
+  toolCalls: OperatorAgentMessage["toolCalls"],
+): ThreadReplyDraft[] {
+  const byThread = new Map<string, ThreadReplyDraft>();
+  for (const call of toolCalls ?? []) {
+    if (call.name !== "update_team_reply_draft" || !call.input) continue;
+    try {
+      const input = JSON.parse(call.input) as {
+        teamEmailThreadId?: unknown;
+        reply?: unknown;
+      };
+      if (
+        typeof input.teamEmailThreadId === "string" &&
+        typeof input.reply === "string"
+      )
+        byThread.set(input.teamEmailThreadId, {
+          threadId: input.teamEmailThreadId,
+          reply: input.reply,
+        });
+    } catch {
+      continue;
+    }
+  }
+  return [...byThread.values()];
+}
+
+/** Cards that open the inbox thread holding a reply the agent drafted. */
+export function OperatorThreadReplyCards({
+  drafts,
+}: {
+  drafts: ThreadReplyDraft[];
+}) {
+  const router = useRouter();
+  if (drafts.length === 0) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      {drafts.map((draft) => (
+        <EmailCardFrame key={draft.threadId}>
+          <EmailCardSummary
+            label="Reply draft"
+            subject="Open the thread to review and send"
+            recipients={bodyPreview(draft.reply)}
+            onOpen={() => router.push(`/operator/inbox/${draft.threadId}`)}
+          />
+        </EmailCardFrame>
+      ))}
+    </div>
   );
 }

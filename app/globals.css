@@ -519,3 +519,39 @@ input[type="number"]:not(:focus)::-webkit-outer-spin-button {
     animation: spot-text-shimmer 1.6s linear infinite;
   }
 }
+
+/* Reply editor blanks: flat tinted chips, gray while empty and blue with a suggestion. */
+.reply-editor [data-blank] {
+  --blank-tone: var(--muted-foreground);
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  background-color: color-mix(in oklab, var(--blank-tone) 14%, transparent);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition: background-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+.reply-editor [data-blank][data-suggested] {
+  --blank-tone: var(--color-blue-500, #3b82f6);
+  color: var(--color-blue-700, #1d4ed8);
+}
+.dark .reply-editor [data-blank][data-suggested] {
+  color: var(--color-blue-300, #93c5fd);
+}
+@media (hover: hover) {
+  .reply-editor [data-blank]:hover {
+    background-color: color-mix(in oklab, var(--blank-tone) 22%, transparent);
+  }
+}
+.reply-editor [data-blank].ProseMirror-selectednode {
+  outline: none;
+  background-color: color-mix(in oklab, var(--blank-tone) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--blank-tone) 50%, transparent);
+}
+.reply-editor [data-blank]::selection {
+  background: transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reply-editor [data-blank] { transition: none; }
+}

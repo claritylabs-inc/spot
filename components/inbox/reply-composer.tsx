@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import dayjs from "dayjs";
 import { Loader2, Reply, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  EmailComposeMessage,
-  EmailComposeRow,
-} from "@/components/email/compose-fields";
+import { Badge } from "@claritylabs-inc/ui/components/badge";
+import { EmailComposeRow } from "@/components/email/compose-fields";
+import { ReplyEditor, replyBlanks, type BlankSuggestion } from "@/components/inbox/reply-editor";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
@@ -20,8 +19,6 @@ import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const PREVIEW_DELAY_MS = 450;
-/** Left in a suggested reply where Spot lacks a fact the sender asked for. */
-const NEEDS_MARKER = "[needs:";
 
 /** Spot's suggested reply to the conversation's newest message. */
 export type ReplySuggestion = {
@@ -46,6 +43,8 @@ const replyDrafts = new Map<string, string>();
 const usedSuggestions = new Set<string>();
 // The text last filled from a suggestion: a box still holding it was not edited.
 const filledSuggestions = new Map<string, string>();
+// Spot's value for each blank by conversation, looked up once: null when it found none.
+const blankSuggestions = new Map<string, Map<string, BlankSuggestion | null | "pending">>();
 
 function readAttempt(id: string): SendAttempt | null {
   try {
@@ -84,13 +83,11 @@ function useDebounced<T>(value: T, delayMs: number) {
   return debounced;
 }
 
-function Recipients({ addresses }: { addresses: string[] }) {
+function Recipients({ addresses, owner }: { addresses: string[]; owner?: string }) {
   return addresses.map((address) => (
-    <span
-      key={address}
-      className="inline-flex max-w-full min-w-0 items-center truncate rounded-full bg-muted px-2.5 py-0.5"
-    >
-      {address}
+    <span key={address} className="inline-flex max-w-full min-w-0 items-center gap-1.5">
+      <span className="min-w-0 truncate rounded-full bg-muted px-2.5 py-0.5">{address}</span>
+      {owner && address.toLowerCase().includes(owner.toLowerCase()) ? <Badge variant="outline">Owner</Badge> : null}
     </span>
   ));
 }
@@ -148,7 +145,8 @@ function OperatorReplyComposer({
 
   const locked = attempt !== null;
   const hasText = text.trim().length > 0;
-  const needsInput = text.includes(NEEDS_MARKER);
+  const blanks = replyBlanks(text);
+  const needsInput = blanks.length > 0;
   useEffect(() => {
     onReplyingChange(focused && hasText && !locked);
   }, [focused, hasText, locked, onReplyingChange]);
@@ -200,6 +198,31 @@ function OperatorReplyComposer({
     if (pendingRevision && unedited) takeSuggestion();
   });
   const drafting = suggestion?.status === "pending" && !hasText && !locked;
+
+  // Spot looks up a likely value for each new blank once; filling one keeps the others.
+  const suggestBlanks = useAction(api.actions.teamReplySuggestions.suggestBlanks);
+  const [, refreshBlanks] = useReducer((count: number) => count + 1, 0);
+  const settledBlanks = [...new Set(replyBlanks(settled))].sort().join("\n");
+  useEffect(() => {
+    if (locked || !settledBlanks) return;
+    const known = blankSuggestions.get(threadId) ?? new Map();
+    blankSuggestions.set(threadId, known);
+    const missing = settledBlanks.split("\n").filter((blank) => !known.has(blank));
+    if (missing.length === 0) return;
+    for (const blank of missing) known.set(blank, "pending");
+    void suggestBlanks({ threadId, blanks: missing })
+      .catch(() => [])
+      .then((values) => {
+        for (const blank of missing) known.set(blank, values.find((item) => item.blank === blank) ?? null);
+        refreshBlanks();
+      });
+  }, [locked, settledBlanks, suggestBlanks, threadId]);
+  const knownBlanks = blankSuggestions.get(threadId);
+  const blankValues = blanks.flatMap((blank) => {
+    const value = knownBlanks?.get(blank);
+    return value && value !== "pending" ? [value] : [];
+  });
+  const suggestingBlanks = blanks.some((blank) => knownBlanks?.get(blank) === "pending");
 
   // The server saying "sent" is the one positive answer. Clearing runs in an
   // effect so it always commits; it syncs this form to a subscription.
@@ -289,8 +312,19 @@ function OperatorReplyComposer({
       {open || locked || hasText ? (
         // Flush with the panel footer: the footer is already the frame.
         <div className="-mx-4 -my-3">
+          {fromSuggestion && hasText ? (
+            <div className={`flex items-center gap-1.5 border-b border-border bg-muted/50 px-4 py-2 text-foreground ${typeStyle("caption.medium")}`}>
+              <LogoIcon size={12} className="shrink-0" />
+              Draft from Spot
+            </div>
+          ) : null}
           <EmailComposeRow label="From">
             <span className="min-w-0 truncate">{headers?.from ?? "You"}</span>
+            {headers?.mode === "standalone" ? (
+              <Badge variant="outline" className="ml-auto" title="Sent from your own inbox as a new email; it stays in this conversation.">
+                New email
+              </Badge>
+            ) : null}
           </EmailComposeRow>
           <EmailComposeRow label="To">
             {headers ? (
@@ -303,7 +337,7 @@ function OperatorReplyComposer({
           </EmailComposeRow>
           {headers?.cc.length ? (
             <EmailComposeRow label="Cc">
-              <Recipients addresses={headers.cc} />
+              <Recipients addresses={headers.cc} owner={headers.copiesOwner} />
             </EmailComposeRow>
           ) : null}
           {headers?.bcc.length ? (
@@ -316,26 +350,22 @@ function OperatorReplyComposer({
               <span className="min-w-0 truncate">{headers.subject}</span>
             </EmailComposeRow>
           ) : null}
-          <EmailComposeMessage
-            aria-label="Reply"
+          <ReplyEditor
             autoFocus={!locked}
             placeholder={recipient ? `Reply to ${recipient}` : "Write a reply"}
             value={text}
             disabled={sending}
             readOnly={locked}
-            onChange={(event) => update(event.target.value)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                event.preventDefault();
-                void send();
-              }
-              if (event.key === "Escape" && !hasText && !locked) setOpen(false);
+            suggestions={blankValues}
+            suggesting={suggestingBlanks}
+            onChange={update}
+            onFocusChange={setFocused}
+            onSubmit={() => void send()}
+            onEscape={() => {
+              if (!hasText && !locked) setOpen(false);
             }}
-            className="block max-h-72 min-h-28"
           />
-          {previewing || previewError || preview || needsInput || (fromSuggestion && hasText) || pendingRevision ? (
+          {previewing || previewError || (preview && showFull) || pendingRevision ? (
             <div className={`space-y-1 px-4 pb-2 text-muted-foreground ${typeStyle("caption.default")}`}>
               {pendingRevision && !unedited ? (
                 <p className="flex items-center gap-1.5">
@@ -346,30 +376,12 @@ function OperatorReplyComposer({
                   </button>
                 </p>
               ) : null}
-              {fromSuggestion && hasText ? (
-                <p className="flex items-center gap-1.5">
-                  <LogoIcon size={12} className="shrink-0" />
-                  Drafted by Spot. Review it before sending.
-                </p>
-              ) : null}
-              {needsInput ? (
-                <p role="alert">Fill in each {NEEDS_MARKER} …] before sending.</p>
-              ) : null}
               {previewing ? <p>Preparing preview…</p> : null}
               {previewError ? <p role="alert">{previewError}</p> : null}
-              {preview?.copiesOwner ? (
-                <p>{preview.copiesOwner} is copied as the conversation owner.</p>
-              ) : null}
-              {preview?.mode === "standalone" ? (
-                <p>Sent from your own inbox as a new email; it stays in this conversation.</p>
-              ) : null}
-              {preview?.stopsFollowUps ? (
-                <p>Sending stops this conversation’s automatic follow-ups.</p>
-              ) : null}
               {preview && showFull ? (
-                <pre className="max-h-48 overflow-auto rounded-md bg-muted/50 p-2 whitespace-pre-wrap break-words text-foreground">
+                <div className="max-h-48 overflow-auto rounded-md bg-muted/50 p-2 whitespace-pre-wrap break-words text-foreground">
                   {preview.text}
-                </pre>
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -377,13 +389,18 @@ function OperatorReplyComposer({
             <PillButton
               size="compact"
               type="button"
-              title="Send (Ctrl or ⌘ + Enter)"
+              shortcut={["mod", "enter"]}
               disabled={!preview || sending || locked || needsInput}
               onClick={() => void send()}
             >
-              {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-              Send
+              {sending ? <Loader2 className="size-3.5 animate-spin" /> : needsInput ? null : <Send className="size-3.5" />}
+              {needsInput ? `Fill ${blanks.length} blank${blanks.length === 1 ? "" : "s"} to send` : "Send"}
             </PillButton>
+            {headers?.stopsFollowUps ? (
+              <span className={`text-muted-foreground/70 ${typeStyle("caption.default")}`}>
+                Stops automatic follow-ups
+              </span>
+            ) : null}
             {preview ? (
               <PillButton
                 size="compact"
