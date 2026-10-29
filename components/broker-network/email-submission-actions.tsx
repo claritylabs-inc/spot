@@ -3,18 +3,16 @@
 import { useRef } from "react";
 
 import { useFollowedOpen } from "@/hooks/use-followed-state";
-import { MoreHorizontal, NotebookPen } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@claritylabs-inc/ui/components/dropdown-menu";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import { PillButton } from "@/components/ui/pill-button";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AttachmentSubmissionMenu } from "./attachment-submission-menu";
-import { SubmissionDefaultDialog } from "./provider-submission-defaults";
 
 type Source = {
   threadId: Id<"teamEmailThreads">;
@@ -83,48 +81,6 @@ export function EmailSubmissionAttachment({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </>
-  );
-}
-
-export function EmailSubmissionNotes({
-  source,
-  brokerOrgId,
-  brokerName,
-}: Provider & { source: Source }) {
-  const { open, onOpenChange: setOpen } = useFollowedOpen(
-    `email:${source.messageId}:submission-notes`,
-  );
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <PillButton
-              variant="icon"
-              size="compact"
-              iconOnly
-              label="Message options"
-            />
-          }
-        >
-          <MoreHorizontal />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setOpen(true)}>
-            <NotebookPen /> Save submission questions or notes…
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {open ? (
-        <SubmissionDefaultDialog
-          open={open}
-          onOpenChange={setOpen}
-          source={source}
-          defaultBrokerOrgId={brokerOrgId}
-          defaultBrokerName={brokerName}
-        />
-      ) : null}
     </>
   );
 }
