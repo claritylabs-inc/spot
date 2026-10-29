@@ -21,6 +21,8 @@ import {
   LinkSuggestionBar,
   LinkThreadAction,
 } from "@/components/inbox/link-thread-action";
+import { EmailHtmlBody, EmailTextBody } from "@/components/inbox/email-html-body";
+import { splitQuotedText } from "@/lib/email-quote";
 import { ReplyComposer } from "@/components/inbox/reply-composer";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
@@ -379,14 +381,15 @@ export function ProcurementEmailMessage({
   const sender = fromSpot
     ? (message.sentBy?.name ?? "Spot")
     : (message.fromName ?? person?.name ?? message.fromEmail);
+  // Inline images render inside the HTML body instead of as attachments.
   const attachments = [
     ...message.files.flatMap((file) =>
-      file?.url
+      file?.url && !(message.hasHtml && file.inline)
         ? [{ key: String(file.clientFileId), name: file.name, contentType: file.contentType, url: file.url }]
         : [],
     ),
     ...message.unfiledFiles.flatMap((file) =>
-      file.url
+      file.url && !(message.hasHtml && file.inline)
         ? [{ key: String(file.storageId), name: file.name, contentType: file.contentType, url: file.url }]
         : [],
     ),
@@ -447,7 +450,7 @@ export function ProcurementEmailMessage({
           className={`truncate text-muted-foreground ${typeStyle("caption.default")}`}
         >
           {collapsed
-            ? body.replace(/\s+/g, " ") ||
+            ? splitQuotedText(body, message.quotedHistoryStart).current.replace(/\s+/g, " ") ||
               forwardedEmail?.subject ||
               "Forwarded message"
             : `to ${message.toAddresses.join(", ") || "—"}${
@@ -458,6 +461,19 @@ export function ProcurementEmailMessage({
         </p>
       </div>
     </div>
+  );
+
+  const textBody = (
+    <>
+      {body ? (
+        <EmailTextBody
+          text={body}
+          historyStart={message.quotedHistoryStart}
+          className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
+        />
+      ) : null}
+      {forwardedEmail ? <ForwardedEmailCard email={forwardedEmail} /> : null}
+    </>
   );
 
   if (collapsed)
@@ -475,14 +491,6 @@ export function ProcurementEmailMessage({
     <article className="space-y-3 px-4 py-4">
       {header}
       <div className="space-y-3 pl-11">
-        {body ? (
-          <p
-            className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
-          >
-            {body}
-          </p>
-        ) : null}
-        {forwardedEmail ? <ForwardedEmailCard email={forwardedEmail} /> : null}
         {attachments.length ? (
           <div className="flex flex-wrap gap-1.5">
             {attachments.map((file) => (
@@ -494,6 +502,16 @@ export function ProcurementEmailMessage({
             ))}
           </div>
         ) : null}
+        {message.hasHtml ? (
+          <EmailHtmlBody
+            messageId={message._id}
+            keepQuoted={Boolean(forwardedEmail)}
+            historyStart={message.quotedHistoryStart}
+            fallback={textBody}
+          />
+        ) : (
+          textBody
+        )}
       </div>
     </article>
   );

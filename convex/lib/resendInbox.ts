@@ -1263,6 +1263,7 @@ export type ResendReceivedAttachment = {
   filename: string | null;
   size: number | null;
   contentType: string | null;
+  contentId: string | null;
   downloadUrl: string;
 };
 
@@ -1274,6 +1275,7 @@ const receivedAttachmentsWireSchema = z
         filename: z.string().nullish(),
         size: z.number().nullish(),
         content_type: z.string().nullish(),
+        content_id: z.string().nullish(),
         download_url: z.string().url(),
       }),
     ),
@@ -1285,6 +1287,7 @@ const receivedAttachmentsWireSchema = z
         filename: a.filename ?? null,
         size: a.size ?? null,
         contentType: a.content_type ?? null,
+        contentId: a.content_id ?? null,
         downloadUrl: a.download_url,
       }),
     ),

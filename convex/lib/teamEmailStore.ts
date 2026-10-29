@@ -29,6 +29,8 @@ export type StoredUpload = {
   filename: string;
   contentType: string;
   size: number;
+  /** MIME Content-ID without angle brackets, for inline parts referenced as `cid:`. */
+  contentId?: string;
 };
 export type ProcurementEmailAttachment = StoredUpload;
 
@@ -109,6 +111,19 @@ export async function storeProcurementEmailAttachments(
     await scheduleClientFileCompanyInformation(ctx, stored.clientFileId);
   }
   return storedClientFiles.map((stored) => stored.clientFileId);
+}
+
+/** Pairs inline attachments with the client files `storeProcurementEmailAttachments` returned for them, in order. */
+export function inlineClientFiles(
+  attachments: { contentId?: string }[],
+  clientFileIds: Id<"clientFiles">[],
+) {
+  const inline = attachments
+    .slice(0, clientFileIds.length)
+    .flatMap((file, index) =>
+      file.contentId ? [{ contentId: file.contentId, clientFileId: clientFileIds[index] }] : [],
+    );
+  return inline.length ? inline : undefined;
 }
 
 /**
@@ -408,6 +423,7 @@ export async function mirrorTeamEmail(
   }
 
   let clientFileIds: Id<"clientFiles">[] = [];
+  let inlineFiles: TeamMessage["inlineFiles"];
   let unfiled: TeamMessage["unfiledAttachments"];
   let skippedNotice = "";
   if (args.attachments.length) {
@@ -417,6 +433,7 @@ export async function mirrorTeamEmail(
         attachments: args.attachments,
         subject,
       });
+      inlineFiles = inlineClientFiles(args.attachments, clientFileIds);
     } else {
       const room = await unfiledUploadRoom(ctx, thread._id);
       const kept = args.attachments.slice(0, Math.min(room, MAX_EMAIL_ATTACHMENTS));
@@ -433,6 +450,7 @@ export async function mirrorTeamEmail(
             name: file.filename,
             contentType: file.contentType,
             size: file.size,
+            ...(file.contentId ? { contentId: file.contentId } : {}),
           }))
         : undefined;
     }
@@ -461,9 +479,12 @@ export async function mirrorTeamEmail(
     forwarded: email.forwarded,
     bodyHtml: email.html?.slice(0, 180_000),
     clientFileIds,
+    inlineFiles,
     receivedAt: email.occurredAt,
     createdAt: now,
   });
+  if (args.direction === "inbound")
+    await ctx.scheduler.runAfter(0, internal.actions.teamEmailQuotes.detect, { messageId });
   if (thread.clientOrgId && thread.requestId)
     await insertProcurementEmailFileItems(ctx, {
       requestId: thread.requestId,

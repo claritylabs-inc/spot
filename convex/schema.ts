@@ -3647,6 +3647,14 @@ export default defineSchema({
       name: v.string(),
       contentType: v.string(),
       size: v.number(),
+      contentId: v.optional(v.string()),
+    }))),
+    /** Jev's first line of quoted history when no known marker finds it; null when it has none. */
+    quotedHistoryStart: v.optional(v.union(v.string(), v.null())),
+    /** Filed attachments that are inline `cid:` parts of `bodyHtml`. */
+    inlineFiles: v.optional(v.array(v.object({
+      contentId: v.string(),
+      clientFileId: v.id("clientFiles"),
     }))),
     resendInboxEmailId: v.optional(v.string()),
     threadId: v.id("teamEmailThreads"),

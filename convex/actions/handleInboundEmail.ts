@@ -3,6 +3,7 @@
 import dayjs from "dayjs";
 import { isOperatorEmailRecipient } from "../lib/operatorEmailAddress";
 import { DEFAULT_AGENT_DOMAIN } from "../lib/agentEmailDomains";
+import { normalizeContentId } from "../lib/providerOutreachValidators";
 import { isResearchEmailAddress } from "../lib/websiteTech";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
@@ -205,6 +206,7 @@ interface AttachmentMeta {
   filename: string;
   size: number;
   content_type: string;
+  content_id?: string | null;
   download_url: string;
 }
 
@@ -212,6 +214,7 @@ interface DownloadedAttachment {
   filename: string;
   content_type: string;
   size: number;
+  contentId?: string;
   buffer: Buffer;
 }
 
@@ -280,6 +283,7 @@ async function fetchAttachments(
           filename: att.filename,
           content_type: att.content_type,
           size: att.size,
+          contentId: normalizeContentId(att.content_id),
           buffer,
         });
       } catch (err) {
@@ -632,6 +636,7 @@ export const processInbound = internalAction({
           filename: attachment.filename,
           contentType: attachment.content_type,
           size: attachment.size,
+          ...(attachment.contentId ? { contentId: attachment.contentId } : {}),
         });
       }
       const receivedAt = dayjs(webhook.created_at).isValid()

@@ -85,6 +85,7 @@ import type * as actions_slackPresentation from "../actions/slackPresentation.js
 import type * as actions_slackReconciliation from "../actions/slackReconciliation.js";
 import type * as actions_teamEmailCompose from "../actions/teamEmailCompose.js";
 import type * as actions_teamEmailForwarding from "../actions/teamEmailForwarding.js";
+import type * as actions_teamEmailQuotes from "../actions/teamEmailQuotes.js";
 import type * as actions_teamEmailReplies from "../actions/teamEmailReplies.js";
 import type * as actions_teamInbox from "../actions/teamInbox.js";
 import type * as actions_teamInboxEvents from "../actions/teamInboxEvents.js";
@@ -353,6 +354,7 @@ import type * as lib_operatorGlobalSuggestions from "../lib/operatorGlobalSugges
 import type * as lib_operatorIdentity from "../lib/operatorIdentity.js";
 import type * as lib_operatorInbox from "../lib/operatorInbox.js";
 import type * as lib_operatorInboxSend from "../lib/operatorInboxSend.js";
+import type * as lib_operatorIntentPrefetch from "../lib/operatorIntentPrefetch.js";
 import type * as lib_operatorMcpAttachments from "../lib/operatorMcpAttachments.js";
 import type * as lib_operatorMcpClient from "../lib/operatorMcpClient.js";
 import type * as lib_operatorMcpOAuth from "../lib/operatorMcpOAuth.js";
@@ -589,6 +591,7 @@ import type * as sourceNodes from "../sourceNodes.js";
 import type * as sourceSpans from "../sourceSpans.js";
 import type * as teamEmailCompose from "../teamEmailCompose.js";
 import type * as teamEmailForwarding from "../teamEmailForwarding.js";
+import type * as teamEmailQuotes from "../teamEmailQuotes.js";
 import type * as teamEmailReplies from "../teamEmailReplies.js";
 import type * as teamInbox from "../teamInbox.js";
 import type * as teamInboxEvents from "../teamInboxEvents.js";
@@ -683,6 +686,7 @@ declare const fullApi: ApiFromModules<{
   "actions/slackReconciliation": typeof actions_slackReconciliation;
   "actions/teamEmailCompose": typeof actions_teamEmailCompose;
   "actions/teamEmailForwarding": typeof actions_teamEmailForwarding;
+  "actions/teamEmailQuotes": typeof actions_teamEmailQuotes;
   "actions/teamEmailReplies": typeof actions_teamEmailReplies;
   "actions/teamInbox": typeof actions_teamInbox;
   "actions/teamInboxEvents": typeof actions_teamInboxEvents;
@@ -951,6 +955,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorIdentity": typeof lib_operatorIdentity;
   "lib/operatorInbox": typeof lib_operatorInbox;
   "lib/operatorInboxSend": typeof lib_operatorInboxSend;
+  "lib/operatorIntentPrefetch": typeof lib_operatorIntentPrefetch;
   "lib/operatorMcpAttachments": typeof lib_operatorMcpAttachments;
   "lib/operatorMcpClient": typeof lib_operatorMcpClient;
   "lib/operatorMcpOAuth": typeof lib_operatorMcpOAuth;
@@ -1187,6 +1192,7 @@ declare const fullApi: ApiFromModules<{
   sourceSpans: typeof sourceSpans;
   teamEmailCompose: typeof teamEmailCompose;
   teamEmailForwarding: typeof teamEmailForwarding;
+  teamEmailQuotes: typeof teamEmailQuotes;
   teamEmailReplies: typeof teamEmailReplies;
   teamInbox: typeof teamInbox;
   teamInboxEvents: typeof teamInboxEvents;
