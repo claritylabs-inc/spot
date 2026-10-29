@@ -862,7 +862,11 @@ export default defineSchema({
   operatorSecondFactorSessions: defineTable({
     sessionId: v.id("authSessions"),
     userId: v.id("users"),
-    method: v.union(v.literal("totp"), v.literal("recovery_code")),
+    method: v.union(
+      v.literal("totp"),
+      v.literal("recovery_code"),
+      v.literal("local_dev"),
+    ),
     verifiedAt: v.number(),
   })
     .index("session", ["sessionId"])

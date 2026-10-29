@@ -352,6 +352,7 @@ import type * as lib_operatorGlobalSuggestions from "../lib/operatorGlobalSugges
 import type * as lib_operatorIdentity from "../lib/operatorIdentity.js";
 import type * as lib_operatorInbox from "../lib/operatorInbox.js";
 import type * as lib_operatorInboxSend from "../lib/operatorInboxSend.js";
+import type * as lib_operatorIntentPrefetch from "../lib/operatorIntentPrefetch.js";
 import type * as lib_operatorMcpAttachments from "../lib/operatorMcpAttachments.js";
 import type * as lib_operatorMcpClient from "../lib/operatorMcpClient.js";
 import type * as lib_operatorMcpOAuth from "../lib/operatorMcpOAuth.js";
@@ -948,6 +949,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorIdentity": typeof lib_operatorIdentity;
   "lib/operatorInbox": typeof lib_operatorInbox;
   "lib/operatorInboxSend": typeof lib_operatorInboxSend;
+  "lib/operatorIntentPrefetch": typeof lib_operatorIntentPrefetch;
   "lib/operatorMcpAttachments": typeof lib_operatorMcpAttachments;
   "lib/operatorMcpClient": typeof lib_operatorMcpClient;
   "lib/operatorMcpOAuth": typeof lib_operatorMcpOAuth;
