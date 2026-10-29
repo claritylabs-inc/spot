@@ -1,14 +1,89 @@
 import { v } from "convex/values";
 import dayjs from "dayjs";
+import type { Doc } from "./_generated/dataModel";
 import { internalQuery } from "./_generated/server";
+import {
+  EXPAND_TOOLS_NAME,
+  expandOperatorToolsSpec,
+  normalizeOperatorToolFamilies,
+  OPERATOR_TOOL_FAMILY_CATALOG,
+  operatorToolFamiliesOf,
+  type OperatorToolFamily,
+} from "./lib/operatorAgentToolRegistry";
 import { operatorPlanningLevel } from "./lib/operatorRunPlan";
 
 const MAX_RUNS = 200;
+const ALL_FAMILIES = Object.keys(
+  OPERATOR_TOOL_FAMILY_CATALOG,
+) as OperatorToolFamily[];
+const parseExpandInput = expandOperatorToolsSpec(ALL_FAMILIES).inputSchema;
+
+function parseJson(value: string | undefined): unknown {
+  try {
+    return value ? JSON.parse(value) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Replays a turn's calls in order to show which expand_tools requests asked
+ * for families already loaded. The starting set is the selecting_tools stage
+ * outcome (null when the turn had none, e.g. a starter intent or resume);
+ * newer results state `alreadyLoaded` directly, older ones are inferred.
+ */
+function expandToolsUsage(message: Doc<"operatorAgentMessages"> | null) {
+  const stage = message?.activity?.stages?.find(
+    (entry) => entry.stage === "selecting_tools" && entry.status !== "running",
+  );
+  const initialFamilies = !stage?.detail
+    ? null
+    : stage.status === "failed"
+      ? ALL_FAMILIES
+      : normalizeOperatorToolFamilies(
+          stage.detail.split(", ").map((label) => label.replaceAll(" ", "_")),
+        );
+  const loaded = new Set<OperatorToolFamily>(initialFamilies ?? []);
+  const requests: {
+    requested: OperatorToolFamily[];
+    alreadyLoaded: OperatorToolFamily[];
+    newlyLoaded: OperatorToolFamily[];
+  }[] = [];
+  for (const call of message?.toolCalls ?? []) {
+    if (call.name !== EXPAND_TOOLS_NAME) {
+      const families = operatorToolFamiliesOf([call.name]);
+      if (!families.some((family) => loaded.has(family)) && families[0])
+        loaded.add(families[0]);
+      continue;
+    }
+    const parsed = parseExpandInput.safeParse(parseJson(call.input));
+    const requested = parsed.success ? parsed.data.families : [];
+    const output = parseJson(call.output) as
+      | { alreadyLoaded?: unknown[] }
+      | undefined;
+    const alreadyLoaded = Array.isArray(output?.alreadyLoaded)
+      ? normalizeOperatorToolFamilies(output.alreadyLoaded)
+      : requested.filter((family) => loaded.has(family));
+    const newlyLoaded = requested.filter(
+      (family) => !alreadyLoaded.includes(family),
+    );
+    for (const family of newlyLoaded) loaded.add(family);
+    requests.push({ requested, alreadyLoaded, newlyLoaded });
+  }
+  return {
+    calls: requests.length,
+    callsWithNothingNew: requests.filter(
+      (request) => request.newlyLoaded.length === 0,
+    ).length,
+    initialFamilies,
+    requests,
+  };
+}
 
 /**
  * Read-only calibration view: recent operator runs with their stored planning
- * assessment beside the outcome, for checking level thresholds against
- * history. Failed tool calls approximate recovery attempts; exact recovery
+ * assessment, tool families and expand_tools usage beside the outcome, for
+ * checking planning and family-loading thresholds against history. Failed tool calls approximate recovery attempts; exact recovery
  * state lives in the run's continuation blob.
  */
 export const listRecentRunsInternal = internalQuery({
@@ -41,6 +116,8 @@ export const listRecentRunsInternal = internalQuery({
               }
             : null,
           planSteps: run.executionPlan?.steps.length ?? 0,
+          finalFamilies: run.checkpoint?.families ?? [],
+          expandTools: expandToolsUsage(message),
           outcome: {
             status: run.status,
             iterations: run.checkpoint?.iteration ?? 0,

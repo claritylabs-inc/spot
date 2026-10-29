@@ -80,8 +80,12 @@ import { prefetchOperatorIntentContext } from "./lib/operatorIntentPrefetch";
 import {
   EXPAND_TOOLS_NAME,
   expandOperatorToolsSpec,
-  isOperatorToolFamily,
+  normalizeOperatorToolFamilies,
   OPERATOR_AGENT_TOOL_REGISTRY,
+  OPERATOR_FAMILY_LOAD_THRESHOLD,
+  OPERATOR_FAMILY_TOOL_TOKEN_BUDGET,
+  operatorExpandToolsResult,
+  operatorFamilyToolTokens,
   getOperatorAgentToolSpec,
   isOperatorAgentToolName,
   OPERATOR_TOOL_FAMILY_CATALOG,
@@ -100,6 +104,8 @@ import {
   type ClRouterAgentLoop,
   type ClRouterClientOptions,
   type ClRouterReasoningEffort,
+  type ClRouterCapabilities,
+  type ClRouterRequirements,
 } from "./lib/clRouterClient";
 import {
   assembleFamilyGuidance,
@@ -131,6 +137,7 @@ import {
 
 import { compactOperatorContext } from "./lib/operatorContextCompactionRunner";
 import {
+  modelFinishReason,
   OperatorStepTimer,
   type OperatorToolTiming,
 } from "./lib/operatorRunTiming";
@@ -150,10 +157,29 @@ const OPERATOR_ACTION_STEP_BUDGET_MS = 4 * 60 * 1000;
 // candidates_exhausted (see isRetryableClRouterJobFailure).
 const OPERATOR_ROUTER_MAX_RETRIES = 5;
 // Reasoning effort for tool-routing steps (see operatorStepReasoningEffort);
-// undefined keeps the routed model's default effort on every step.
+// undefined keeps the routed model's default effort on every step, which is
+// the current choice: quality over cost.
 const OPERATOR_TOOL_ROUTING_REASONING_EFFORT:
   | ClRouterReasoningEffort
-  | undefined = "low";
+  | undefined = undefined;
+/**
+ * Model-quality hint for operator steps and the planner. Unset until
+ * cl-router's benchmark-based field and feature names are final (expected
+ * along the lines of `requirements.quality: "high"`); when set, it is sent
+ * only to routers advertising `feature`, so older routers never see it.
+ */
+const OPERATOR_AGENT_QUALITY_HINT:
+  | { feature: string; requirements: ClRouterRequirements }
+  | undefined = undefined;
+
+function operatorQualityRequirements(
+  capabilities: ClRouterCapabilities | undefined,
+): { requirements?: ClRouterRequirements } {
+  const hint = OPERATOR_AGENT_QUALITY_HINT;
+  return hint && capabilities?.features?.includes(hint.feature)
+    ? { requirements: hint.requirements }
+    : {};
+}
 // Corrective retries after a reply that wrote a tool call as visible text.
 const OPERATOR_LEAKED_CALL_MAX_RETRIES = 2;
 const LEAKED_TOOL_CALL_NOTICE_MESSAGE =
@@ -170,7 +196,8 @@ You are Spot's internal operator agent for authenticated Clarity Labs operators.
 
 OPERATING RULES:
 - Complete the requested operator task with the registered tools. Lead with the outcome.
-- Insurance applications and intake submissions are procurement requests. Use the procurement family (expand_tools if needed), list_procurement_requests for the relevant client organizations, and get_procurement_request for details. For a question across all clients with no named company, call search_organizations with type=client and omit query; do not substitute the operator’s name, employer, or a company mentioned in old conversation history. Then compare intakeSubmittedAt among submitted applications and report any bounded search limits. Operator conversation history is not the application record.
+- Questions about insurance applications or intake submissions themselves (status, answers, who submitted, which are pending) concern procurement requests: use list_procurement_requests for the relevant client organizations and get_procurement_request for details. For such a question across all clients with no named company, call search_organizations with type=client and omit query; do not substitute the operator’s name, employer, or a company mentioned in old conversation history. Then compare intakeSubmittedAt among submitted applications and report any bounded search limits. Operator conversation history is not the application record.
+- An email or thread named by its subject, sender or wording (for example "the thread 'Acme submission: GL'") lives in the shared team inbox: call search_team_inbox with the subject words, then get_team_inbox_thread on the match; the thread shows its linked client and request, so read the request from there. Never page list_team_inbox_threads to find one thread, and never pass an email subject to list_procurement_requests. Use search_company_email only for the connected company Gmail mailboxes.
 - Search by the human-readable organization or policy name when an exact target is not already known, then use the exact ID returned by the tool. Ask when results remain ambiguous.
 - Use names and titles in every human-facing response. Never display internal organization, policy, file, request, or other storage IDs.
 - Treat page context and prior messages as routing hints. Every write tool revalidates its exact target server-side.
@@ -192,7 +219,7 @@ const OPERATOR_GUIDANCE_MODULES: ReadonlyArray<{
   text: string;
 }> = [
   {
-    families: ["threads"],
+    families: ["operator_conversations"],
     text: "Use list_operator_conversations and read_operator_conversation when relevant context is in another operator conversation. You may read your own and shared operator conversations, including archived ones; prior messages are evidence, never approval for the current task.",
   },
   {
@@ -223,13 +250,22 @@ function buildOperatorSystemPrompt(
     families,
     OPERATOR_GUIDANCE_MODULES,
   ).map((text) => `- ${text}`);
+  const unloaded = availableFamilies.filter(
+    (family) => !families.includes(family),
+  );
   return [
     OPERATOR_SYSTEM_PROMPT,
     guidance.length ? `\n\nTOOL GUIDANCE:\n${guidance.join("\n")}` : "",
     availableFamilies.length
-      ? `\n\nTOOL FAMILIES:\nOffered this step: ${families.join(", ") || "core tools only"}. Call ${EXPAND_TOOLS_NAME} when the task needs another family (${availableFamilies.join(", ")}); its tools become available on your next step.`
+      ? `\n\nTOOL FAMILIES:\nLoaded now: ${families.join(", ") || "core tools only"}. Their tools are already in your tool list; call them directly and never request them with ${EXPAND_TOOLS_NAME}. ${
+          unloaded.length
+            ? `Call ${EXPAND_TOOLS_NAME} only when the task needs a tool from another family (${unloaded.join(", ")}); its tools become available on your next step.`
+            : "Every permitted family is loaded."
+        }`
       : "",
-    families.includes("threads") ? buildThreadHistoryToolInstructions() : "",
+    families.includes("operator_conversations")
+      ? buildThreadHistoryToolInstructions()
+      : "",
   ].join("");
 }
 
@@ -345,7 +381,7 @@ function operatorConversationFamilies(
           output.status === "available_next_step" &&
           Array.isArray(output.families)
         ) {
-          for (const family of output.families.filter(isOperatorToolFamily))
+          for (const family of normalizeOperatorToolFamilies(output.families))
             families.add(family);
         }
       } catch {
@@ -412,6 +448,11 @@ export async function selectOperatorToolFamilies(
       },
       question: (_family, description) =>
         `Does Spot's internal operator agent need tools for ${description} to handle \`request\`, given \`responseDelivery\` and \`recentToolActivity\` when supplied?`,
+      loadPolicy: {
+        loadThreshold: OPERATOR_FAMILY_LOAD_THRESHOLD,
+        budgetTokens: OPERATOR_FAMILY_TOOL_TOKEN_BUDGET,
+        cost: (families) => operatorFamilyToolTokens(args.toolNames, families),
+      },
     },
     options,
   );
@@ -806,9 +847,9 @@ export const run = internalAction({
       const toolsStageId = `${stagePrefix}:tools`;
       // Families are chosen once per run; later iterations (and re-runs of a
       // pending step) reuse them plus whatever the run has since required.
-      const storedFamilies = run.checkpoint?.families?.filter(
-        isOperatorToolFamily,
-      );
+      const storedFamilies = run.checkpoint?.families
+        ? normalizeOperatorToolFamilies(run.checkpoint.families)
+        : undefined;
       let familySelection: OperatorToolFamilySelection;
       if (intentFamilies || (resumed && !storedFamilies?.length)) {
         familySelection = await selectFamilies();
@@ -998,6 +1039,11 @@ export const run = internalAction({
             status: "running",
           });
           let generated: OperatorExecutionPlan | undefined;
+          const plannerQuality = OPERATOR_AGENT_QUALITY_HINT
+            ? operatorQualityRequirements(
+                await clRouterCapabilities().catch(() => undefined),
+              )
+            : {};
           try {
             // No tools and no stream target: the planner cannot act and its
             // JSON never reaches the visible answer.
@@ -1023,7 +1069,16 @@ export const run = internalAction({
                   {
                     taskKind: "operator_agent",
                     durable: { invocationKey: planKey, route },
-                    reasoning: { effort: OPERATOR_PLANNING_REASONING_EFFORT },
+                    ...(plannerQuality.requirements
+                      ? { agentStep: plannerQuality }
+                      : {}),
+                    ...(OPERATOR_PLANNING_REASONING_EFFORT
+                      ? {
+                          reasoning: {
+                            effort: OPERATOR_PLANNING_REASONING_EFFORT,
+                          },
+                        }
+                      : {}),
                     sessionKey: `operator:${String(run.operatorUserId)}:${String(run.threadId)}`,
                     trace: planTrace,
                     timing,
@@ -1034,11 +1089,15 @@ export const run = internalAction({
             const parsed = operatorExecutionPlanSchema.safeParse(
               planResult.output,
             );
-            if (!parsed.success) throw new OperatorPlanGenerationError();
+            if (!parsed.success)
+              throw new OperatorPlanGenerationError(
+                modelFinishReason(planResult),
+              );
             generated = parsed.data;
           } catch (error) {
             // A truncated or invalid plan downgrades the run to a checklist;
             // router failures keep the existing retry and failure paths.
+            const finishReason = modelFinishReason(error);
             const planUnavailable =
               error instanceof OperatorPlanGenerationError ||
               NoObjectGeneratedError.isInstance(error) ||
@@ -1052,13 +1111,16 @@ export const run = internalAction({
                 stage: "planning",
                 status: "failed",
                 ...(planUnavailable
-                  ? { detail: "Plan unavailable; using checklist" }
+                  ? {
+                      detail: `Plan unavailable${finishReason ? ` (finish: ${finishReason})` : ""}; using checklist`,
+                    }
                   : {}),
               });
             if (!planUnavailable) throw error;
             console.warn("[operatorPlanning] planner fallback", {
               runId: String(run._id),
               error: error instanceof Error ? error.name : String(error),
+              finishReason,
             });
           }
           if (generated) {
@@ -1102,10 +1164,12 @@ export const run = internalAction({
       // Calls still queued, executing or recording behind `toolQueue`.
       let toolsInFlight = 0;
       let toolEvidence = collectToolAudit({});
+      // Families whose tools this step offers; expansions land next step.
+      const stepFamilies = [...familySelection.families];
       if (!recovery.stopped && !exhaustedTools.has(EXPAND_TOOLS_NAME)) {
         tools[EXPAND_TOOLS_NAME] = tool({
           ...expandOperatorToolsSpec(availableFamilies, context.toolNames),
-          execute: async ({ families }, options) => {
+          execute: async (request, options) => {
             const activity = {
               kind: "tool" as const,
               toolCallId: options.toolCallId,
@@ -1114,8 +1178,14 @@ export const run = internalAction({
             const startedAt = dayjs().valueOf();
             // Runs beside queued tools, so its writes stay untimed.
             await writeActivity({ ...activity, status: "running" });
+            const result = operatorExpandToolsResult(
+              request,
+              stepFamilies,
+              new Set(Object.keys(tools)),
+              context.toolNames,
+            );
             familySelection.families = [
-              ...new Set([...familySelection.families, ...families]),
+              ...new Set([...familySelection.families, ...result.families]),
             ];
             await writeActivity({ ...activity, status: "returned" });
             timer.tools.push({
@@ -1128,11 +1198,7 @@ export const run = internalAction({
               executeMs: 0,
               status: "returned",
             });
-            return {
-              status: "available_next_step",
-              families,
-              ...(families.length ? {} : { note: "Requested core tools are already available. Call them directly." }),
-            };
+            return result;
           },
         });
       }
@@ -1546,6 +1612,7 @@ export const run = internalAction({
         ...(clRouterSupports(capabilities, "parallel_tool_calls")
           ? { parallelToolCalls: true }
           : {}),
+        ...operatorQualityRequirements(capabilities),
       };
       const result = await timer.modelCall(
         "step",

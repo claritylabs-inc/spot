@@ -36,6 +36,15 @@ const toolTimingValidator = v.object({
   status: v.string(),
 });
 
+/** Finish reason carried by an AI SDK result or a model output error. */
+export function modelFinishReason(value: unknown): string | undefined {
+  const reason =
+    value && typeof value === "object"
+      ? (value as { finishReason?: unknown }).finishReason
+      : undefined;
+  return typeof reason === "string" ? reason : undefined;
+}
+
 const modelCallTimingValidator = v.object({
   kind: v.union(v.literal("planner"), v.literal("step")),
   invocationKey: v.optional(v.string()),
@@ -56,6 +65,9 @@ const modelCallTimingValidator = v.object({
     v.literal("pending"),
     v.literal("failed"),
   ),
+  // The model's finish reason ("stop", "length", ...) when the result or
+  // error reports one, so truncated output is visible.
+  finishReason: v.optional(v.string()),
 });
 
 export const operatorRunTimingValidator = v.object({
@@ -189,12 +201,16 @@ export class OperatorStepTimer {
     try {
       const result = await this.time(`${prefix}.sdk`, () => run(timing));
       call.outcome = "succeeded";
+      const finishReason = modelFinishReason(result);
+      if (finishReason) call.finishReason = finishReason;
       const id = requestId(result);
       if (id) call.requestId = id;
       return result;
     } catch (error) {
       if (error instanceof Error && error.name === "RouterJobPending")
         call.outcome = "pending";
+      const finishReason = modelFinishReason(error);
+      if (finishReason) call.finishReason = finishReason;
       throw error;
     } finally {
       call.wallMs = dayjs().valueOf() - call.startedAt;

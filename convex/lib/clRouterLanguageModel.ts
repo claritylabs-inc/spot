@@ -53,7 +53,7 @@ export type ClRouterLanguageModelStep = {
 
 export type ClRouterAgentStepOptions = Pick<
   ClRouterGenerateRequest,
-  "cache" | "loop" | "parallelToolCalls"
+  "cache" | "loop" | "parallelToolCalls" | "requirements"
 >;
 
 export type ClRouterLanguageModelOptions = {

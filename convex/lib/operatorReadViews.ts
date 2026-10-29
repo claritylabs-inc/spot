@@ -1,12 +1,34 @@
+import { z } from "zod";
+
 /**
  * Compact projections for operator read tools. Bulk reads default to these so a
- * ten-item call stays small; `view: "full"` returns the complete document.
+ * large call stays inside the bounded tool output; `view: "full"` returns the
+ * complete document.
  */
 
-export const MAX_BULK_READ_IDS = 10;
+/**
+ * Bulk exact-ID cap for reads that run each item in its own query or are
+ * cheap per item. Heavier reads pass a lower per-tool cap.
+ */
+export const MAX_BULK_READ_IDS = 50;
+
+/** A bulk ID list whose overflow error states the cap, so the model splits the call. */
+export function bulkReadIds<T extends z.ZodType>(
+  id: T,
+  max: number = MAX_BULK_READ_IDS,
+) {
+  return z
+    .array(id)
+    .min(1)
+    .max(max, `At most ${max} IDs per call; split the rest into another call.`);
+}
 
 const COMPACT_THREAD_MESSAGES = 5;
 const COMPACT_BODY_CHARS = 1_200;
+// Bulk thread excerpts share this text budget so every thread fits the
+// bounded tool output; large batches show the newest two messages.
+const COMPACT_BULK_TEXT_CHARS = 16_000;
+const COMPACT_BULK_MIN_BODY_CHARS = 200;
 const OFFER_SUMMARY_FIELDS = [
   "carrier",
   "quoteNumber",
@@ -81,17 +103,28 @@ type ThreadLike<M extends ThreadMessageLike> = {
 export function compactTeamThread<
   M extends ThreadMessageLike,
   T extends ThreadLike<M>,
->(details: T) {
+>(details: T, batchSize = 1) {
   const { readAt: _readAt, messages, ...rest } = details;
-  const shown = messages.slice(-COMPACT_THREAD_MESSAGES);
+  const messageCount = batchSize > 10 ? 2 : COMPACT_THREAD_MESSAGES;
+  const bodyChars =
+    batchSize > 1
+      ? Math.min(
+          COMPACT_BODY_CHARS,
+          Math.max(
+            COMPACT_BULK_MIN_BODY_CHARS,
+            Math.floor(COMPACT_BULK_TEXT_CHARS / (batchSize * messageCount)),
+          ),
+        )
+      : COMPACT_BODY_CHARS;
+  const shown = messages.slice(-messageCount);
   return {
     ...rest,
     messages: shown.map((message) => {
       const { files, unfiledFiles, currentText, ...fields } = message;
       return {
         ...fields,
-        currentText: currentText.slice(0, COMPACT_BODY_CHARS),
-        currentTextTruncated: currentText.length > COMPACT_BODY_CHARS,
+        currentText: currentText.slice(0, bodyChars),
+        currentTextTruncated: currentText.length > bodyChars,
         files: files.map((file) => {
           if (!file) return null;
           const { url: _url, ...named } = file;

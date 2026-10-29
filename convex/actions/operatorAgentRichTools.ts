@@ -21,6 +21,10 @@ import {
 
 // Keeps ten bulk-read files within one tool result.
 const BULK_FILE_TEXT_CHARS = 8_000;
+// Default per-file text shrinks with the batch so every file fits the bounded
+// tool output; an explicit maxChars still applies to each file.
+const BULK_FILE_TEXT_BUDGET = 20_000;
+const BULK_FILE_MIN_TEXT_CHARS = 1_000;
 
 const operatorChannelValidator = v.union(
   v.literal("chat"),
@@ -248,7 +252,15 @@ export const runInternal = internalAction({
         clientFileIds: string[];
         maxChars?: number;
       };
-      const maxChars = input.maxChars ?? BULK_FILE_TEXT_CHARS;
+      const maxChars =
+        input.maxChars ??
+        Math.min(
+          BULK_FILE_TEXT_CHARS,
+          Math.max(
+            BULK_FILE_MIN_TEXT_CHARS,
+            Math.floor(BULK_FILE_TEXT_BUDGET / input.clientFileIds.length),
+          ),
+        );
       const items = [];
       const notFound: string[] = [];
       for (const clientFileId of input.clientFileIds) {
