@@ -845,7 +845,7 @@ export function ToolActivityCard({
       : callsSentence(calls);
 
   return (
-    <div className="mb-3 overflow-hidden rounded-2xl border border-border bg-card">
+    <div className="mb-3 overflow-hidden rounded-lg border border-border bg-card">
       <button
         type="button"
         aria-expanded={open}
