@@ -9,6 +9,7 @@ import { useLiveRecordDraft } from "@/lib/sync/use-live-record-draft";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { PillButton } from "@/components/ui/pill-button";
+import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   StatusTag,
   type StatusPresentation,
@@ -214,11 +215,12 @@ export function EmailCardFrame({
   children: ReactNode;
 }) {
   return (
-    <div
-      className={`${compact ? "mt-2" : ""} w-fit min-w-64 max-w-md overflow-hidden rounded-md border border-input bg-card transition-colors hover:border-border-hover hover:bg-foreground/[0.025] sm:min-w-72`}
+    <OperationalPanel
+      as="div"
+      className={`${compact ? "mt-2" : ""} w-fit min-w-64 max-w-md transition-colors hover:bg-muted/50 sm:min-w-72`}
     >
       {children}
-    </div>
+    </OperationalPanel>
   );
 }
 
@@ -243,13 +245,13 @@ export function EmailCardSummary({
       className="block w-full min-w-0 px-3 py-2.5 text-left"
     >
       <span className="min-w-0 flex-1">
-        <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.medium")}`}>
+        <span className={`block truncate text-muted-foreground ${typeStyle("caption.medium")}`}>
           {label}
         </span>
-        <span className={`block truncate text-foreground/90 ${typeStyle("body.default")}`}>
+        <span className={`block truncate text-foreground ${typeStyle("body.medium")}`}>
           {subject}
         </span>
-        <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}>
+        <span className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}>
           {recipients}
         </span>
         {children}
@@ -269,7 +271,7 @@ export function EmailStackFrame({
   children: ReactNode;
 }) {
   return (
-    <div className="w-full max-w-md overflow-hidden rounded-md border border-input bg-card">
+    <OperationalPanel as="div" className="max-w-md">
       <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
         <p className={`min-w-0 truncate text-foreground/90 ${typeStyle("body.default")}`}>
           {label}
@@ -277,7 +279,7 @@ export function EmailStackFrame({
         {action}
       </div>
       <div className="divide-y divide-border">{children}</div>
-    </div>
+    </OperationalPanel>
   );
 }
 
@@ -301,15 +303,15 @@ export function EmailStackRow({
       type="button"
       onClick={onOpen}
       className={`block w-full min-w-0 px-3 py-2.5 text-left transition-colors ${
-        isOpen ? "bg-foreground/[0.035]" : "hover:bg-foreground/[0.025]"
+        isOpen ? "bg-muted" : "hover:bg-muted/50"
       }`}
     >
       <span className="flex min-w-0 items-start justify-between gap-3">
         <span className="min-w-0">
-          <span className={`block truncate text-foreground/90 ${typeStyle("body.default")}`}>
+          <span className={`block truncate text-foreground ${typeStyle("body.medium")}`}>
             {subject}
           </span>
-          <span className={`block truncate text-muted-foreground/55 ${typeStyle("caption.default")}`}>
+          <span className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}>
             {recipients}
           </span>
         </span>
