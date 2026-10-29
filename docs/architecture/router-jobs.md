@@ -15,9 +15,22 @@ own continuation boundaries. Other callers can poll within their existing action
 that does not make their outer application workflow resumable after process loss.
 
 Before contacting the router, Spot snapshots referenced assets, writes the exact
-serialized request, and atomically creates its journal entry. Competing uploads
-that lose invocation registration are removed. SHA-256 binds the actual stored
-request bytes. The router validates this fingerprint when fetching the request.
+serialized request, and atomically creates its journal entry. A request of at
+most 512 KiB (`ROUTER_JOB_INLINE_REQUEST_BYTES`) is written to
+`routerJobRequests` by the same `prepare` mutation that creates the job row, so
+no storage upload precedes submission; a larger request is stored as a blob
+first. Either way the bytes are durable before the first `POST /v1/jobs`.
+Competing uploads that lose invocation registration are removed. SHA-256 binds
+the actual stored request bytes. The router validates this fingerprint when
+fetching the request.
+
+The call that creates the job sends `input` from the bytes it already
+serialized and fingerprinted. A later reconnect (a lost submission
+acknowledgement, or a resumed step) reads them back from the inline request or
+blob and resubmits the identical bytes, never a rebuilt payload; `requestUrl`
+serves either form. A generation call looks up its row and its routed fallback
+in one query, and `bind` returns the bound row, so the common path is lookup,
+`prepare`, POST, `bind`.
 
 ## Protocol
 

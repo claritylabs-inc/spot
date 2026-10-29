@@ -18,6 +18,7 @@ import {
 } from "./clRouterClient";
 import type { ModelRoute } from "./modelCatalog";
 import { routerAssetSigningConfiguration } from "./routerAssetSignature";
+import { ROUTER_JOB_INLINE_REQUEST_BYTES } from "./routerJobLimits";
 import { parseRouterJobError, type RouterJobFailure } from "./routerJobFailure";
 
 const REQUEST_BYTES = 4 * 1024 * 1024;
@@ -197,6 +198,14 @@ async function stageRequest(
   return serialized;
 }
 
+/**
+ * Finds or creates the job row for one invocation. A request within
+ * ROUTER_JOB_INLINE_REQUEST_BYTES rides the `prepare` mutation itself, so the
+ * row and its exact bytes commit together before anything is submitted; a
+ * larger one, and any asset, is uploaded first. `input` is returned only when
+ * this call created the row, so the submission can send the bytes it already
+ * holds.
+ */
 async function prepareJob(
   ctx: ActionCtx,
   operation: RouterJobOperation,
@@ -205,14 +214,19 @@ async function prepareJob(
   signal?: AbortSignal,
   streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">,
   trace?: ClRouterTraceInput,
-): Promise<Doc<"routerJobs">> {
-  const existing = await ctx.runQuery(internal.routerJobs.get, {
-    invocationKey,
-  });
+  timing?: RouterJobTiming,
+  known?: Doc<"routerJobs"> | null,
+): Promise<{ row: Doc<"routerJobs">; input?: string }> {
+  const existing =
+    known !== undefined
+      ? known
+      : await timed(timing, "submit.lookup", () =>
+          ctx.runQuery(internal.routerJobs.get, { invocationKey }),
+        );
   if (existing) {
     if (existing.operation !== operation)
       throw new Error("Router invocation operation conflict");
-    return existing;
+    return { row: existing };
   }
   const siteUrl = callbackSiteUrl();
   const requestToken = token();
@@ -221,43 +235,62 @@ async function prepareJob(
   let requestStorageId: Id<"_storage"> | undefined;
   let retained = false;
   try {
-    const serialized = await stageRequest(
-      ctx,
-      payload,
-      requestToken,
-      siteUrl,
-      assets,
-      signal,
+    const serialized = await timed(timing, "submit.stage", () =>
+      stageRequest(ctx, payload, requestToken, siteUrl, assets, signal),
     );
-    requestStorageId = await ctx.storage.store(
-      new Blob([serialized], { type: "application/json" }),
+    const [fingerprint, requestTokenHash, resultTokenHash] = await timed(
+      timing,
+      "submit.fingerprint",
+      () =>
+        Promise.all([
+          sha256(serialized),
+          sha256(requestToken),
+          sha256(resultToken),
+        ]),
     );
-    await ctx.runMutation(internal.routerJobs.scheduleUploadCleanup, {
-      invocationKey,
-      storageIds: [requestStorageId, ...assets],
-    });
+    const inline =
+      new TextEncoder().encode(serialized).byteLength <=
+      ROUTER_JOB_INLINE_REQUEST_BYTES;
+    if (!inline || assets.length)
+      await timed(timing, "submit.request_store", async () => {
+        if (!inline)
+          requestStorageId = await ctx.storage.store(
+            new Blob([serialized], { type: "application/json" }),
+          );
+        await ctx.runMutation(internal.routerJobs.scheduleUploadCleanup, {
+          invocationKey,
+          storageIds: [
+            ...(requestStorageId ? [requestStorageId] : []),
+            ...assets,
+          ],
+        });
+      });
     const callContext = modelCallContext(
       trace ? { ...(payload as Record<string, unknown>), trace } : payload,
       operation,
     );
     let row: Doc<"routerJobs">;
     try {
-      row = await ctx.runMutation(internal.routerJobs.prepare, {
-        ...(streamTarget ? { streamTarget } : {}),
-        invocationKey,
-        operation,
-        callContext: {
-          ...callContext,
-          orgId: callContext.orgId as Id<"organizations"> | undefined,
-        },
-        fingerprint: await sha256(serialized),
-        requestToken,
-        requestTokenHash: await sha256(requestToken),
-        resultToken,
-        resultTokenHash: await sha256(resultToken),
-        requestStorageId,
-        ...(assets.length ? { assetStorageIds: assets } : {}),
-      });
+      row = await timed(timing, "submit.prepare", () =>
+        ctx.runMutation(internal.routerJobs.prepare, {
+          ...(streamTarget ? { streamTarget } : {}),
+          invocationKey,
+          operation,
+          callContext: {
+            ...callContext,
+            orgId: callContext.orgId as Id<"organizations"> | undefined,
+          },
+          fingerprint,
+          requestToken,
+          requestTokenHash,
+          resultToken,
+          resultTokenHash,
+          ...(requestStorageId
+            ? { requestStorageId }
+            : { request: serialized }),
+          ...(assets.length ? { assetStorageIds: assets } : {}),
+        }),
+      );
     } catch (error) {
       const winner = await ctx.runQuery(internal.routerJobs.get, {
         invocationKey,
@@ -265,10 +298,11 @@ async function prepareJob(
       if (!winner || winner.operation !== operation) throw error;
       row = winner;
     }
-    retained = row.requestStorageId === requestStorageId;
-    return row;
+    // A concurrent caller's row carries its own capability tokens.
+    retained = row.requestToken === requestToken;
+    return retained ? { row, input: serialized } : { row };
   } finally {
-    if (!retained) {
+    if (!retained && (requestStorageId || assets.length)) {
       await ctx.runMutation(internal.routerJobs.cleanupUploads, {
         invocationKey,
         storageIds: [
@@ -281,27 +315,41 @@ async function prepareJob(
 }
 
 /**
- * Generation jobs send their exact stored request bytes inline when the router
+ * Generation jobs send their exact request bytes inline when the router
  * accepts it, saving the router's request fetch; the fingerprint is unchanged.
- * Other operations, older routers and unreadable bytes use `requestUrl`. A
- * resubmission after a lost acknowledgement reconnects to the same job
- * whichever source either attempt used.
+ * The call that created the job already holds those bytes; a reconnect reads
+ * them back from the job's inline request or blob. Other operations, older
+ * routers and unreadable bytes use `requestUrl`. A resubmission after a lost
+ * acknowledgement reconnects to the same job whichever source either attempt
+ * used.
  */
 async function jobInputSource(
   ctx: ActionCtx,
   row: Doc<"routerJobs">,
   siteUrl: string,
   abortSignal?: AbortSignal,
+  heldInput?: string,
+  timing?: RouterJobTiming,
 ): Promise<{ input: string } | { requestUrl: string }> {
   if (
     (row.operation === "generate" || row.operation === "manual") &&
-    row.requestStorageId &&
     clRouterSupports(
-      await clRouterCapabilities({ abortSignal }).catch(() => undefined),
+      await timed(timing, "submit.capabilities", () =>
+        clRouterCapabilities({ abortSignal }).catch(() => undefined),
+      ),
       "inline_job_input",
     )
   ) {
-    const input = await (await ctx.storage.get(row.requestStorageId))?.text();
+    const { requestStorageId } = row;
+    const input =
+      heldInput ??
+      (await timed(timing, "submit.request_read", async () =>
+        requestStorageId
+          ? await (await ctx.storage.get(requestStorageId))?.text()
+          : ((await ctx.runQuery(internal.routerJobs.getInlineRequest, {
+              id: row._id,
+            })) ?? undefined),
+      ));
     if (input !== undefined) return { input };
   }
   return {
@@ -382,13 +430,29 @@ async function routerControl(
 }
 
 /**
- * Optional metadata-only timing of one durable request: `submit` covers job
- * lookup, request staging and the submission POST, `status` a reconnect's
- * status check, `wait` the in-place wait (with its poll count) and `read` the
- * result read. Observation only; it never changes waiting or retries.
+ * Optional metadata-only timing of one durable request. `submit.*` splits job
+ * creation and submission: row lookups, request staging (serialization and
+ * asset snapshots), fingerprints, blob uploads (large requests and assets
+ * only), the `prepare` mutation, the capability check, a reconnect's request
+ * read, the POST and the bind mutation. `status` is a reconnect's status
+ * check, `wait` the in-place wait (with its poll count) and `read` the result
+ * read. Observation only; it never changes waiting or retries.
  */
+export type RouterJobPhase =
+  | "submit.lookup"
+  | "submit.stage"
+  | "submit.fingerprint"
+  | "submit.request_store"
+  | "submit.prepare"
+  | "submit.capabilities"
+  | "submit.request_read"
+  | "submit.post"
+  | "submit.bind"
+  | "status"
+  | "wait"
+  | "read";
 export type RouterJobTiming = {
-  phase(name: "submit" | "status" | "wait" | "read", ms: number, polls?: number): void;
+  phase(name: RouterJobPhase, ms: number, polls?: number): void;
   job(
     invocationKey: string,
     routerJobId: string | undefined,
@@ -504,20 +568,20 @@ async function executeRouterRequest(
     );
   }
   const routedKey = `${invocationKey}:routed`;
-  const [existing, routedExisting] = await timed(
+  const { row: existing, routed: routedExisting } = await timed(
     options.timing,
-    "submit",
-    async () => [
-      await ctx.runQuery(internal.routerJobs.get, { invocationKey }),
-      await ctx.runQuery(internal.routerJobs.get, {
-        invocationKey: routedKey,
+    "submit.lookup",
+    () =>
+      ctx.runQuery(internal.routerJobs.getWithRouted, {
+        invocationKey,
+        routedKey,
       }),
-    ],
   );
   const { route, ...routedPayload } = payload as Record<string, unknown> & {
     route?: ModelRoute;
   };
-  const runRouted = () =>
+  // `known` is a row from the lookup just above; later calls look again.
+  const runRouted = (known?: Doc<"routerJobs"> | null) =>
     executeRouterRequestOnce(
       ctx,
       "generate",
@@ -526,8 +590,9 @@ async function executeRouterRequest(
       abortSignal,
       options,
       trace,
+      known,
     );
-  if (routedExisting) return runRouted();
+  if (routedExisting) return runRouted(routedExisting);
   // Reconnect before consulting the current pin or registry. A job may already
   // have executed even if settings changed while the operator run was asleep.
   const activeOperation = existing?.operation ?? operation;
@@ -540,14 +605,17 @@ async function executeRouterRequest(
       abortSignal,
       options,
       trace,
+      existing,
     );
   }
   if (
     !existing &&
     route &&
-    !(await clRouterRouteIsAvailable(route, { abortSignal }))
+    !(await timed(options.timing, "submit.capabilities", () =>
+      clRouterRouteIsAvailable(route, { abortSignal }),
+    ))
   )
-    return runRouted();
+    return runRouted(null);
   try {
     return await executeRouterRequestOnce(
       ctx,
@@ -557,6 +625,7 @@ async function executeRouterRequest(
       abortSignal,
       options,
       trace,
+      existing,
     );
   } catch (error) {
     const failure =
@@ -586,19 +655,21 @@ async function executeRouterRequestOnce(
   abortSignal?: AbortSignal,
   options: RouterRequestWaitOptions = {},
   trace?: ClRouterTraceInput,
+  known?: Doc<"routerJobs"> | null,
 ): Promise<unknown> {
   const { timing } = options;
-  let row = await timed(timing, "submit", () =>
-    prepareJob(
-      ctx,
-      operation,
-      payload,
-      invocationKey,
-      abortSignal,
-      options.streamTarget,
-      trace,
-    ),
+  const prepared = await prepareJob(
+    ctx,
+    operation,
+    payload,
+    invocationKey,
+    abortSignal,
+    options.streamTarget,
+    trace,
+    timing,
+    known,
   );
+  let row = prepared.row;
   for (;;) {
     timing?.job(invocationKey, row.routerJobId);
     if (abortSignal?.aborted) {
@@ -635,30 +706,42 @@ async function executeRouterRequestOnce(
     if (row.status === "failed")
       throw new RouterJobFailed(row.error ?? "Router job failed", row.failure);
     if (row.status === "cancelled") throw new Error("Router job cancelled");
-    const control = row.routerJobId ? "status" : "submit";
+    const control = row.routerJobId ? "status" : "submit.lookup";
     const controlStarted = dayjs();
+    let bound: Doc<"routerJobs"> | undefined;
     try {
       if (!row.routerJobId) {
         const siteUrl = callbackSiteUrl();
-        const response = await routerControl(
-          "/v1/jobs",
-          {
-            idempotencyKey: invocationKey,
-            operation: row.operation,
-            ...(row.streamTarget ? { stream: true } : {}),
-            tenantId: "glass",
-            fingerprint: row.fingerprint,
-            ...(await jobInputSource(ctx, row, siteUrl, abortSignal)),
-            resultUrl: `${siteUrl}/router-jobs/result?token=${row.resultToken}`,
-          },
+        const source = await jobInputSource(
+          ctx,
+          row,
+          siteUrl,
           abortSignal,
+          prepared.input,
+          timing,
         );
-        if (typeof response.jobId !== "string")
+        const submitted = row;
+        const response = await timed(timing, "submit.post", () =>
+          routerControl(
+            "/v1/jobs",
+            {
+              idempotencyKey: invocationKey,
+              operation: submitted.operation,
+              ...(submitted.streamTarget ? { stream: true } : {}),
+              tenantId: "glass",
+              fingerprint: submitted.fingerprint,
+              ...source,
+              resultUrl: `${siteUrl}/router-jobs/result?token=${submitted.resultToken}`,
+            },
+            abortSignal,
+          ),
+        );
+        const jobId = response.jobId;
+        if (typeof jobId !== "string")
           throw new Error("Router submission did not return a job ID");
-        await ctx.runMutation(internal.routerJobs.bind, {
-          id: row._id,
-          jobId: response.jobId,
-        });
+        bound = await timed(timing, "submit.bind", () =>
+          ctx.runMutation(internal.routerJobs.bind, { id: submitted._id, jobId }),
+        );
       } else {
         const status = await routerControl(
           `/v1/jobs/${encodeURIComponent(row.routerJobId)}`,
@@ -690,11 +773,15 @@ async function executeRouterRequestOnce(
     } catch (error) {
       if (!(error instanceof RouterJobPending)) throw error;
     } finally {
-      timing?.phase(control, dayjs().diff(controlStarted));
+      if (control === "status")
+        timing?.phase("status", dayjs().diff(controlStarted));
     }
-    row = (await timed(timing, control, () =>
-      ctx.runQuery(internal.routerJobs.get, { invocationKey }),
-    ))!;
+    // A bound submission already returned the current row.
+    row =
+      bound ??
+      (await timed(timing, control, () =>
+        ctx.runQuery(internal.routerJobs.get, { invocationKey }),
+      ))!;
     timing?.job(invocationKey, row.routerJobId);
     if (routerJobEnded(row)) continue;
     if (options.wait !== "poll") {

@@ -72,6 +72,7 @@ import {
 } from "./lib/operatorToolOutput";
 import {
   buildOperatorRunCheckpointSummary,
+  OPERATOR_INLINE_CONTINUATION_BYTES,
   shouldContinueOperatorRun,
 } from "./lib/operatorAgentContinuation";
 import { operatorAgentIntentFamilies } from "./lib/operatorAgentIntentRegistry";
@@ -583,7 +584,8 @@ export const run = internalAction({
     let pendingFamilies: OperatorToolFamily[] | undefined;
     // The continuation this action checkpointed for its next step, reused
     // instead of reading it back from storage.
-    let carried: { storageId: Id<"_storage">; text: string } | undefined;
+    // Keyed by the blob or inline document id the run points at.
+    let carried: { key: string; text: string } | undefined;
     // Runs one model step from the durable checkpoint. A step that checkpoints
     // with "continued" leaves the run running for the next step in this action.
     const runStep = async (): Promise<{ status: string; error?: string }> => {
@@ -652,13 +654,19 @@ export const run = internalAction({
         "preparing_context",
         async () => {
           const endContinuationLoad = timer.begin("continuation_load");
-          const continuationText = !run.modelContinuationStorageId
+          const { modelContinuationStorageId, modelContinuationId } = run;
+          const continuationKey =
+            modelContinuationStorageId ?? modelContinuationId;
+          const continuationText = !continuationKey
             ? undefined
-            : carried?.storageId === run.modelContinuationStorageId
+            : carried?.key === continuationKey
               ? carried.text
-              : await (
-                  await ctx.storage.get(run.modelContinuationStorageId)
-                )?.text();
+              : modelContinuationStorageId
+                ? await (await ctx.storage.get(modelContinuationStorageId))?.text()
+                : ((await ctx.runQuery(
+                    internal.operatorAgent.getRunContinuationInternal,
+                    { id: modelContinuationId! },
+                  )) ?? undefined);
           const continuation = continuationText
             ? (JSON.parse(continuationText) as {
                 messages: ModelMessage[];
@@ -1492,6 +1500,7 @@ export const run = internalAction({
             expectedRunnerAttempt,
             expectedCheckpointIteration,
             expectedStorageId: run.modelContinuationStorageId,
+            expectedContinuationId: run.modelContinuationId,
             storageId,
             mode: compacted.mode,
             skipped: compacted.skipped,
@@ -1503,6 +1512,7 @@ export const run = internalAction({
         if (!installed) return { status: "superseded" };
         messages = compacted.messages;
         run.modelContinuationStorageId = storageId;
+        run.modelContinuationId = undefined;
         run.checkpoint = {
           iteration: 0,
           executionCount: 0,
@@ -1680,27 +1690,51 @@ export const run = internalAction({
               ...(nextLoopPrevious ? { loopPrevious: nextLoopPrevious } : {}),
             })
           : undefined;
-      endSerialize();
-      const modelContinuationStorageId = nextContinuationText
-        ? await timer.time(
-            "continuation_store",
-            () =>
-              ctx.storage.store(
-                new Blob([nextContinuationText], { type: "application/json" }),
-              ),
-            { bytes: Buffer.byteLength(nextContinuationText) },
-          )
-        : undefined;
+      const continuationBytes =
+        nextContinuationText !== undefined
+          ? Buffer.byteLength(nextContinuationText)
+          : 0;
+      endSerialize({ bytes: continuationBytes });
+      // A continuation within the inline limit rides the checkpoint mutation
+      // that points the run at it, so it is never referenced before it is
+      // written; a larger one is stored first, as before.
+      const inlineContinuation =
+        nextContinuationText !== undefined &&
+        continuationBytes <= OPERATOR_INLINE_CONTINUATION_BYTES
+          ? nextContinuationText
+          : undefined;
+      const modelContinuationStorageId =
+        nextContinuationText !== undefined && inlineContinuation === undefined
+          ? await timer.time(
+              "continuation_store",
+              () =>
+                ctx.storage.store(
+                  new Blob([nextContinuationText], {
+                    type: "application/json",
+                  }),
+                ),
+              { bytes: continuationBytes },
+            )
+          : undefined;
+      const continuationArgs =
+        inlineContinuation !== undefined
+          ? { modelContinuation: inlineContinuation }
+          : modelContinuationStorageId
+            ? { modelContinuationStorageId }
+            : {};
       if (!pendingConfirmation && shouldContinue) {
         const timing = timer.take();
         const checkpointStarted = dayjs();
-        const continuation: { status: string } | null = await ctx.runMutation(
+        const continuation: {
+          status: string;
+          modelContinuationId?: Id<"operatorRunContinuations">;
+        } | null = await ctx.runMutation(
           internal.operatorAgent.continueRunInternal,
           {
             runId: run._id,
             expectedCheckpointIteration,
             expectedRunnerAttempt,
-            modelContinuationStorageId,
+            ...continuationArgs,
             families: familySelection.families,
             inline: dayjs().isBefore(stepDeadline),
             summary: buildOperatorRunCheckpointSummary({
@@ -1713,15 +1747,14 @@ export const run = internalAction({
           },
         );
         checkpointMs = dayjs().diff(checkpointStarted);
+        const continuationKey =
+          continuation?.modelContinuationId ?? modelContinuationStorageId;
         if (
           continuation?.status === "continued" &&
-          modelContinuationStorageId &&
+          continuationKey &&
           nextContinuationText
         )
-          carried = {
-            storageId: modelContinuationStorageId,
-            text: nextContinuationText,
-          };
+          carried = { key: continuationKey, text: nextContinuationText };
         if (continuation?.status !== "not_continued") {
           return continuation ?? { status: "missing" as const };
         }
@@ -1760,7 +1793,7 @@ export const run = internalAction({
           runId: run._id,
           expectedCheckpointIteration,
           expectedRunnerAttempt,
-          ...(pendingConfirmation ? { modelContinuationStorageId } : {}),
+          ...(pendingConfirmation ? continuationArgs : {}),
           checkpointSummary: buildOperatorRunCheckpointSummary({
             previous: run.checkpoint?.summary,
             audit,
