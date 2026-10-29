@@ -5115,6 +5115,8 @@ export default defineSchema({
     ),
     presentation: v.optional(chatPresentationValidator),
     presentationRevision: v.optional(v.number()),
+    /** Jev-approved next operator message offered as Tab-to-accept composer text. */
+    nextMessageSuggestion: v.optional(v.string()),
     emailContent: v.optional(operatorEmailContentValidator),
     /** Outbound email drafts the operator agent shows under this turn. */
     pendingEmailIds: v.optional(v.array(v.id("pendingEmails"))),

@@ -126,6 +126,11 @@ export function OperatorAgentChat({
   }, [refreshSuggestions, suggestionsContextKey, suggestionsStale]);
   const [planMode, setPlanMode] = useState(false);
   const running = detail.activeRun || submitting;
+  const lastMessage = detail.messages.at(-1);
+  const nextMessageSuggestion =
+    !running && !activeThread?.archivedAt && lastMessage?.role === "assistant"
+      ? lastMessage.nextMessageSuggestion
+      : undefined;
   const toggleContext = () => {
     if (retainedThreadContext && activeThreadId) {
       // Keep the current page off too so the cleared context doesn't reattach.
@@ -331,6 +336,7 @@ export function OperatorAgentChat({
               );
             }}
             placeholder="Ask the operator agent…"
+            suggestion={nextMessageSuggestion}
             attachmentAccept={OPERATOR_ATTACHMENT_ACCEPT}
             multipleAttachments
             maxFileSize={OPERATOR_ATTACHMENT_MAX_BYTES}

@@ -45,6 +45,7 @@ import {
   schedulePresentation,
   visiblePresentation,
 } from "./chatPresentations";
+import { scheduleNextMessageSuggestion } from "./operatorNextMessage";
 import { serializeToolActivityInput } from "./lib/agentToolAudit";
 import { clientIdentity } from "./lib/clientProfile";
 import { scheduleCompanyResearch } from "./companyResearch";
@@ -8078,6 +8079,7 @@ export const completeRunInternal = internalMutation({
       content: args.content,
       presentation: undefined,
       presentationRevision: (currentMessage?.presentationRevision ?? 0) + 1,
+      nextMessageSuggestion: undefined,
       status: undefined,
       routerRequestId: args.routerRequestId,
       usedTools: usedTools.length > 0 ? usedTools : undefined,
@@ -8132,6 +8134,7 @@ export const completeRunInternal = internalMutation({
           userId: run.operatorUserId,
           operatorRunId: run._id,
         });
+        await scheduleNextMessageSuggestion(ctx, message);
       }
     }
     return {
