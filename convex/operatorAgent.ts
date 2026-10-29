@@ -370,6 +370,7 @@ type OperatorActionToolResult = {
 
 const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "import_policy_files",
+  "fill_pdf_form",
   "web_search",
   "fetch_url",
   "lookup_policy",

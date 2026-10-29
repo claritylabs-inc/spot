@@ -736,7 +736,11 @@ export function ClientFilesWorkspace({
       if (!file.url) return;
       if (isPdf(file)) {
         setPanel(null);
-        openWithUrl(file.url);
+        openWithUrl(file.url, undefined, undefined, {
+          kind: "clientFile",
+          clientFileId: file._id,
+          filename: file.name,
+        });
         return;
       }
       if (isImage(file)) {

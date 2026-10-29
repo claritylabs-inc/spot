@@ -14,6 +14,8 @@ import { runOperatorWebRetrieval } from "../lib/webRetrieval";
 import { fetchPublicUrl } from "../lib/fetchPublicUrl";
 import { parseOperatorAgentToolInput } from "../lib/operatorAgentToolRegistry";
 import { mergePdfsFromUrls, mergedFileName } from "../lib/mergePdfs";
+import { fillPdfForm } from "../lib/pdfFormFill";
+import { pdfFormFieldBox } from "../lib/pdfFormFields";
 import {
   OPERATOR_EMAIL_TOOL_NAMES,
   runOperatorEmailTool,
@@ -25,6 +27,8 @@ const BULK_FILE_TEXT_CHARS = 8_000;
 // tool output; an explicit maxChars still applies to each file.
 const BULK_FILE_TEXT_BUDGET = 20_000;
 const BULK_FILE_MIN_TEXT_CHARS = 1_000;
+// Keeps a long form's field report within one tool result.
+const MAX_REPORTED_FORM_FIELDS = 150;
 
 const operatorChannelValidator = v.union(
   v.literal("chat"),
@@ -174,6 +178,99 @@ export const runInternal = internalAction({
       } finally {
         if (mergedFileId && !committed) await ctx.storage.delete(mergedFileId);
       }
+    }
+
+    if (args.toolName === "fill_pdf_form") {
+      const input = parseOperatorAgentToolInput("fill_pdf_form", args.input);
+      const source = await ctx.runQuery(internal.pdfFormFill.getSourceInternal, {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        source: String(input.source),
+        ...(input.orgId ? { orgId: String(input.orgId) } : {}),
+        ...(input.procurementRequestId
+          ? { procurementRequestId: String(input.procurementRequestId) }
+          : {}),
+        ...(input.brokerOrgId ? { brokerOrgId: String(input.brokerOrgId) } : {}),
+      });
+      const blob = await ctx.storage.get(source.fileId);
+      const pdfBytes = blob ? new Uint8Array(await blob.arrayBuffer()) : null;
+      if (!pdfBytes || !new TextDecoder().decode(pdfBytes.slice(0, 1024)).includes("%PDF-"))
+        throw new NoWriteInputError(
+          "invalid_file_type",
+          `${source.filename} is not a readable PDF.`,
+        );
+      const filled = await fillPdfForm(ctx, {
+        pdfBytes,
+        filename: source.filename,
+        orgId: source.client?.orgId,
+        client: source.client,
+        answers: (input.answers ?? []) as Array<{ field: string; value: string }>,
+        instructions: input.instructions as string | undefined,
+        traceId: `pdf-form:${args.threadId}:${source.fileId}`,
+      });
+      const fileId = await ctx.storage.store(
+        new Blob([new Uint8Array(filled.pdfBytes)], { type: "application/pdf" }),
+      );
+      const recorded = await ctx.runMutation(internal.pdfFormFill.recordFillInternal, {
+        operatorUserId: args.operatorUserId,
+        threadId: args.threadId,
+        sourceFileId: source.fileId,
+        sourceFilename: source.filename,
+        outputFileId: fileId,
+        mode: filled.mode,
+        pageCount: filled.pageCount,
+        fields: filled.fields,
+        ...source.filing,
+      });
+      const filename = recorded.filename;
+      const answered = filled.fields.filter((field) => field.value);
+      const placed = answered.filter((field) => pdfFormFieldBox(field));
+      const report = (fields: typeof filled.fields) =>
+        fields
+          .slice(0, MAX_REPORTED_FORM_FIELDS)
+          .map(({ page, label, value, basis }) => ({ page, field: label, value, basis }));
+      const blank = [
+        ...filled.fields
+          .filter((field) => !field.value)
+          .map(({ page, label }) => ({ page, field: label })),
+        ...filled.blank,
+      ];
+      return {
+        result: {
+          status: "filled",
+          attachmentFileId: fileId,
+          filename,
+          client: source.client
+            ? { orgId: source.client.orgId, name: source.client.name }
+            : null,
+          filedUnder: {
+            clientFileId: recorded.clientFileId ?? null,
+            procurementRequest: source.request,
+            provider: source.provider,
+            procurementFileItemId: recorded.fileItemId ?? null,
+            version: 1,
+          },
+          mode: filled.mode,
+          pageCount: filled.pageCount,
+          pagesRead: filled.pagesRead,
+          filledCount: placed.length,
+          filled: report(placed),
+          unplaced: report(answered.filter((field) => !pdfFormFieldBox(field))),
+          blank: blank.slice(0, MAX_REPORTED_FORM_FIELDS),
+          truncated:
+            Math.max(answered.length, blank.length) > MAX_REPORTED_FORM_FIELDS,
+          editing:
+            "The operator can correct, move or place values in the PDF panel's editor; each save files a new version under the same client, request and provider.",
+        },
+        attachments: [
+          {
+            fileId,
+            filename,
+            contentType: "application/pdf",
+            size: filled.pdfBytes.byteLength,
+          },
+        ],
+      };
     }
 
     if (RICH_POLICY_TOOLS.has(args.toolName)) {

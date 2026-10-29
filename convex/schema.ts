@@ -5,6 +5,11 @@ import {
 } from "./lib/operatorNotificationTypes";
 import { clientAccessStatusValidator } from "./lib/clientAccess";
 import {
+  pdfFormFieldValidator,
+  pdfFormModeValidator,
+  pdfFormVersionValidator,
+} from "./lib/pdfFormFields";
+import {
   informationScopeValidator,
   informationRequirementStatus,
   informationResponseValidator,
@@ -5181,6 +5186,37 @@ export default defineSchema({
     tools: v.array(v.object({ name: v.string(), outputJson: v.string() })),
     expiresAt: v.number(),
   }).index("message", ["messageId"]),
+
+  /** A filled PDF form in an operator conversation; the editor regenerates `outputFileId` from the original. */
+  pdfFormFills: defineTable({
+    operatorUserId: v.id("users"),
+    threadId: v.id("operatorAgentThreads"),
+    sourceFileId: v.id("_storage"),
+    sourceFilename: v.string(),
+    outputFileId: v.id("_storage"),
+    outputFilename: v.string(),
+    mode: pdfFormModeValidator,
+    pageCount: v.number(),
+    fields: v.array(pdfFormFieldValidator),
+    /** Client, procurement request and provider each version is filed under. */
+    clientOrgId: v.optional(v.id("organizations")),
+    requestId: v.optional(v.id("procurementRequests")),
+    brokerOrgId: v.optional(v.id("organizations")),
+    outreachId: v.optional(v.id("procurementBrokerOutreaches")),
+    /** Set when the source is a provider's default application form. */
+    submissionDefaultId: v.optional(v.id("providerSubmissionDefaults")),
+    coverageCode: v.optional(v.string()),
+    /** The request file item that always points at the latest version. */
+    fileItemId: v.optional(v.id("procurementFileItems")),
+    version: v.number(),
+    versions: v.array(pdfFormVersionValidator),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedByUserId: v.optional(v.id("users")),
+  })
+    .index("by_outputFileId", ["outputFileId"])
+    .index("by_threadId", ["threadId"])
+    .index("by_requestId", ["requestId"]),
 
   operatorAgentAttachments: defineTable({
     fileId: v.id("_storage"),

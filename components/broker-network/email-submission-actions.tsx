@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@claritylabs-inc/ui/components/dropdown-menu";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
+import type { PdfDocumentSource } from "@/components/pdf-context";
 import { PillButton } from "@/components/ui/pill-button";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AttachmentSubmissionDialog } from "./attachment-submission-dialog";
@@ -24,6 +25,30 @@ type Provider = {
   brokerName?: string;
   coverageCodes?: string[];
 };
+
+function emailAttachmentPdfSource(
+  messageId: Id<"teamEmailMessages">,
+  file: {
+    name: string;
+    clientFileId?: Id<"clientFiles">;
+    storageId?: Id<"_storage">;
+  },
+): PdfDocumentSource | undefined {
+  if (file.clientFileId)
+    return {
+      kind: "clientFile",
+      clientFileId: file.clientFileId,
+      filename: file.name,
+    };
+  if (file.storageId)
+    return {
+      kind: "teamEmailAttachment",
+      messageId,
+      storageId: file.storageId,
+      filename: file.name,
+    };
+  return undefined;
+}
 
 /** The save button and right-click both open the default application form dialog. */
 export function EmailSubmissionAttachment({
@@ -57,6 +82,7 @@ export function EmailSubmissionAttachment({
         <ChatAttachmentChip
           attachment={{ filename: file.name, contentType: file.contentType }}
           url={file.url}
+          pdfSource={emailAttachmentPdfSource(source.messageId, file)}
         />
         <PillButton
           variant="icon"

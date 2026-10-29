@@ -85,7 +85,7 @@ async function clientFileRow(ctx: QueryCtx, file: Doc<"clientFiles">) {
   };
 }
 
-function activeClientFile(file: Doc<"clientFiles">) {
+export function activeClientFile(file: Doc<"clientFiles">) {
   return !file.archivedAt && !file.deletedAt;
 }
 

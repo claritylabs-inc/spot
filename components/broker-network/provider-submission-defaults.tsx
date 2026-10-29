@@ -254,6 +254,12 @@ function SubmissionDefaultCard({
                     contentType: form.contentType,
                   }}
                   url={form.url}
+                  pdfSource={{
+                    kind: "submissionDefaultForm",
+                    defaultId: item._id,
+                    storageId: form.storageId,
+                    filename: form.name,
+                  }}
                 />
                 <RemoveButton
                   label={`Remove ${form.name}`}

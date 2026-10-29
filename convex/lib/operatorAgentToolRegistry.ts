@@ -34,6 +34,7 @@ import {
 import { bulkReadIds } from "./operatorReadViews";
 import { estimateAgentHistoryTokens } from "./agentMessageHistory";
 import { PROCUREMENT_FAMILY_GUIDANCE } from "./operatorToolFamilyGuidance";
+import { PDF_FORM_SOURCE_FORMATS } from "./pdfFormSource";
 import {
   GENERATE_COI_DESCRIPTION,
   generateCoiInputSchema,
@@ -82,7 +83,7 @@ export const OPERATOR_TOOL_FAMILIES = {
   operator_conversations:
     "this operator chat's own older messages and attachments and other operator chats with Spot (operator conversation history, never email threads)",
   client_files:
-    "a client's stored files: listing, reading, attaching, adding or updating them",
+    "a client's stored files: listing, reading, attaching, adding or updating them, and filling out PDF forms (applications, questionnaires) open in the PDF panel or attached to the conversation",
   extraction:
     "policy and proposal extraction issues, retries and cancellations",
   platform:
@@ -2321,6 +2322,59 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     confirmation: "exact",
     target: () => ({ kind: "batch", id: "add_client_files" }),
     summarize: (input) => `add client files (${input.items.length} items)`,
+  }),
+  fill_pdf_form: defineOperatorTool({
+    family: "client_files",
+    version: 1,
+    description: `Fill out a PDF form (application, questionnaire, supplemental) and attach the filled copy to this conversation, where it opens in the PDF panel. Fillable AcroForm fields are filled by name; flat forms are read page by page and each value is placed on its answer blank. Values come only from answers, instructions and the client's business profile, notes and policies; unknown fields stay blank. source is the pdf_document page context entityId or one of ${PDF_FORM_SOURCE_FORMATS}. orgId defaults to the source's client or request. With a client, each version is filed as a hidden client file; with a procurement request it is also listed on the request for that provider (hidden from the shared packet). Use a provider's default application form (get_broker_network_profile submissionDefaults) as source:submissionDefaultForm when preparing that provider's submission. To change values, call again with corrections in answers (passing a filled copy restarts from its original), or let the operator edit in the PDF panel.`,
+    inputSchema: z.object({
+      source: z
+        .string()
+        .min(1)
+        .max(300)
+        .describe(`Exact PDF source: ${PDF_FORM_SOURCE_FORMATS}`),
+      orgId: omittable(organizationId),
+      procurementRequestId: omittable(
+        z
+          .string()
+          .min(1)
+          .describe("Exact procurement request the filled form is for; defaults to the source email thread's request"),
+      ),
+      brokerOrgId: omittable(
+        z
+          .string()
+          .min(1)
+          .describe("Exact provider organization the application goes to; defaults to the provider of a default application form source"),
+      ),
+      answers: omittable(
+        z
+          .array(
+            z.object({
+              field: z
+                .string()
+                .min(1)
+                .max(300)
+                .describe("Field label as printed, with its section when repeated, e.g. Vehicle #2 VIN"),
+              value: z.string().max(2_000),
+            }),
+          )
+          .max(200)
+          .describe("Values the operator gave in this conversation; they win over the client record"),
+      ),
+      instructions: omittable(
+        z
+          .string()
+          .max(4_000)
+          .describe("Operator guidance, e.g. which vehicles or drivers to include"),
+      ),
+    }),
+    capability: "operator.client_files.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: (input) => ({ kind: "pdf_form", id: input.source }),
+    summarize: (input) => `Fill PDF form ${input.source}`,
   }),
   import_policy_files: defineOperatorTool({
     family: "policies",

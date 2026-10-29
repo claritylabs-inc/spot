@@ -47,6 +47,7 @@ import {
 } from "./operator-email-drafts";
 import { OperatorEmailMessage } from "./operator-email-message";
 import { OperatorToolPreview } from "./operator-tool-preview";
+import { useAutoOpenOperatorPdfs } from "./operator-pdf-auto-open";
 import { OperatorThreadChannelIcon } from "./operator-thread-channel";
 import {
   operatorConversationEntries,
@@ -446,6 +447,7 @@ export function OperatorConversation({
 }) {
   const entries = useMemo(() => operatorConversationEntries(detail), [detail]);
   const threadId = activeThreadId ?? "";
+  useAutoOpenOperatorPdfs(threadId, detail.messages);
   const emailDraftsByMessage = useOperatorEmailDrafts(detail.messages);
   const [openEmailDraftId, setOpenEmailDraftId] = useFollowedState<
     string | null

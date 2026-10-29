@@ -227,6 +227,10 @@ const OPERATOR_GUIDANCE_MODULES: ReadonlyArray<{
     text: "To add bound policies to a client's library, use import_policy_files with PDFs attached to this conversation or existing client files. For company email, retrieve the original PDFs with attach_to_conversation (source emailAttachment) first, then import the returned attachment file IDs. Resolve the target client and inspect the documents before requesting confirmation. Combine only PDFs for the same policy; otherwise use separate. Filing a client file alone does not import a policy. Report extraction as queued until get_policy_status confirms completion; route quotes to procurement proposals.",
   },
   {
+    families: ["client_files"],
+    text: 'To fill out a form, call fill_pdf_form. When the thread page context has pageType "pdf_document", its entityId is the open PDF\'s source; for a conversation attachment use operatorAttachment:<fileId>. Resolve the client first when the source has none. Pass values the operator stated as answers. The filled copy opens in the PDF panel; report the filled count, then list blank and unplaced fields so the operator can supply or check them. Never describe guessed values as filled.',
+  },
+  {
     families: ["broker_network"],
     text: "For provider profile updates, include evidence with source URLs or mailbox, sender, and date. Provider lines must be ACORD LOBCd values from the schema (for example CGL, PROP, or AUTOB), never an invented abbreviation such as CAUT.",
   },

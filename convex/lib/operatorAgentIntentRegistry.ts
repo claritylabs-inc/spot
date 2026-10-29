@@ -107,6 +107,14 @@ export const OPERATOR_AGENT_INTENTS: readonly OperatorAgentIntent[] = [
       "Prepare a certificate of insurance using the policy or client in this thread's origin context. Resolve the correct active policy, holder, requirements, and any missing address details. Explain any coverage gaps and require exact confirmation before generating a certificate.",
   },
   {
+    id: "fill_pdf_form",
+    version: 1,
+    label: "Fill this form",
+    pageTypes: ["pdf_document"],
+    objective:
+      "Fill out the PDF form in this thread's page context with fill_pdf_form, passing its entityId as the source. Resolve the client the form is for first; ask me only when it is unclear. Use only the client's records and values I give. Then summarize what was filled and list blank or unplaced fields so I can supply or check them. Do not file or send the form.",
+  },
+  {
     id: "review_client_knowledge",
     version: 1,
     label: "Review client knowledge",
@@ -186,6 +194,7 @@ const OPERATOR_AGENT_INTENT_FAMILIES: Record<
   investigate_policy: ["policies", "extraction"],
   prepare_certificate: ["compliance", "policies"],
   review_client_knowledge: ["client_files", "wiki"],
+  fill_pdf_form: ["client_files", "organizations"],
 };
 
 export function operatorAgentIntentFamilies(intentId: string) {
