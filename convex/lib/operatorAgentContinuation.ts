@@ -1,6 +1,10 @@
 import type { AgentToolAudit } from "./agentToolAudit";
 
 const OPERATOR_CHECKPOINT_MAX_CHARS = 6_000;
+// Continuations up to this many serialized bytes are written as a document by
+// the checkpoint mutation itself; larger ones are stored as a blob first.
+// Well under the 1 MiB document limit.
+export const OPERATOR_INLINE_CONTINUATION_BYTES = 512 * 1024;
 
 export function shouldContinueOperatorRun(
   result: unknown,

@@ -129,7 +129,10 @@ import {
 } from "./lib/operatorAgentIntentRegistry";
 import { collectOperatorSuggestionCandidates } from "./lib/operatorSuggestionRanking";
 import type { OperatorSuggestionCandidate } from "./lib/operatorSuggestionTypes";
-import { buildOperatorRunCheckpointSummary } from "./lib/operatorAgentContinuation";
+import {
+  buildOperatorRunCheckpointSummary,
+  OPERATOR_INLINE_CONTINUATION_BYTES,
+} from "./lib/operatorAgentContinuation";
 import { googleWorkspaceCredentialEnvelope } from "./lib/googleWorkspaceCredentials";
 import { lookupMapboxAddress } from "./lib/mapboxAddress";
 import {
@@ -1505,8 +1508,7 @@ export async function cancelActiveRunsForThread(
   ).flat().filter((run) => !onlyRunId || run._id === onlyRunId);
   const now = dayjs().valueOf();
   for (const run of runs) {
-    if (run.modelContinuationStorageId)
-      await ctx.storage.delete(run.modelContinuationStorageId);
+    await deleteRunContinuation(ctx, run);
     const retry = run.checkpoint?.routerRetryCount
       ? `:r${run.checkpoint.routerRetryCount}`
       : "";
@@ -1523,6 +1525,7 @@ export async function cancelActiveRunsForThread(
     await ctx.db.patch(run._id, {
       status: "cancelled",
       modelContinuationStorageId: undefined,
+      modelContinuationId: undefined,
       cancellationRequestedAt: now,
       completedAt: now,
       lastError: reason,
@@ -7905,6 +7908,63 @@ export const executeToolInternal = internalMutation({
   handler: executeOperatorTool,
 });
 
+/** Deletes the run's current model continuation, wherever it is kept. */
+async function deleteRunContinuation(
+  ctx: MutationCtx,
+  run: Doc<"operatorAgentRuns">,
+) {
+  if (run.modelContinuationStorageId)
+    await ctx.storage.delete(run.modelContinuationStorageId);
+  if (run.modelContinuationId && (await ctx.db.get(run.modelContinuationId)))
+    await ctx.db.delete(run.modelContinuationId);
+}
+
+/**
+ * Installs the next model continuation in the same transaction that advances
+ * the checkpoint: inline text becomes a document, a blob was stored before
+ * this mutation. The previous continuation is deleted. Returns the run fields
+ * to patch; none when no continuation was supplied.
+ */
+async function replaceRunContinuation(
+  ctx: MutationCtx,
+  run: Doc<"operatorAgentRuns">,
+  next: {
+    modelContinuationStorageId?: Id<"_storage">;
+    modelContinuation?: string;
+  },
+) {
+  if (next.modelContinuation !== undefined) {
+    if (
+      new TextEncoder().encode(next.modelContinuation).byteLength >
+      OPERATOR_INLINE_CONTINUATION_BYTES
+    )
+      throw new Error("Inline operator continuation is too large");
+    const modelContinuationId = await ctx.db.insert(
+      "operatorRunContinuations",
+      { runId: run._id, body: next.modelContinuation },
+    );
+    await deleteRunContinuation(ctx, run);
+    return { modelContinuationId, modelContinuationStorageId: undefined };
+  }
+  if (!next.modelContinuationStorageId) return {};
+  if (next.modelContinuationStorageId !== run.modelContinuationStorageId)
+    await deleteRunContinuation(ctx, run);
+  else if (run.modelContinuationId)
+    await deleteRunContinuation(ctx, {
+      ...run,
+      modelContinuationStorageId: undefined,
+    });
+  return {
+    modelContinuationStorageId: next.modelContinuationStorageId,
+    modelContinuationId: undefined,
+  };
+}
+
+export const getRunContinuationInternal = internalQuery({
+  args: { id: v.id("operatorRunContinuations") },
+  handler: async (ctx, args) => (await ctx.db.get(args.id))?.body ?? null,
+});
+
 /** One runner segment's timing, written by the mutation that ends it. */
 async function recordOperatorRunTiming(
   ctx: MutationCtx,
@@ -7952,6 +8012,8 @@ export const completeRunInternal = internalMutation({
     runId: v.id("operatorAgentRuns"),
     expectedRunnerAttempt: v.optional(v.number()),
     modelContinuationStorageId: v.optional(v.id("_storage")),
+    /** Continuation text kept inline instead of `modelContinuationStorageId`. */
+    modelContinuation: v.optional(v.string()),
     expectedCheckpointIteration: v.optional(v.number()),
     checkpointSummary: v.optional(v.string()),
     content: v.string(),
@@ -8019,16 +8081,8 @@ export const completeRunInternal = internalMutation({
     });
     await ctx.db.patch(run.threadId, { lastMessageAt: now, updatedAt: now });
     if (waiting && run.checkpoint) {
-      if (
-        args.modelContinuationStorageId &&
-        run.modelContinuationStorageId &&
-        args.modelContinuationStorageId !== run.modelContinuationStorageId
-      )
-        await ctx.storage.delete(run.modelContinuationStorageId);
       await ctx.db.patch(run._id, {
-        ...(args.modelContinuationStorageId
-          ? { modelContinuationStorageId: args.modelContinuationStorageId }
-          : {}),
+        ...(await replaceRunContinuation(ctx, run, args)),
         checkpoint: {
           ...run.checkpoint,
           summary:
@@ -8048,11 +8102,11 @@ export const completeRunInternal = internalMutation({
     }
     if (!waiting) {
       await discardContinuation();
-      if (run.modelContinuationStorageId)
-        await ctx.storage.delete(run.modelContinuationStorageId);
+      await deleteRunContinuation(ctx, run);
       await ctx.db.patch(run._id, {
         status: "completed",
         modelContinuationStorageId: undefined,
+        modelContinuationId: undefined,
         completedAt: now,
         checkpoint: {
           compaction: run.checkpoint?.compaction,
@@ -8312,6 +8366,8 @@ export const continueRunInternal = internalMutation({
     expectedRunnerAttempt: v.optional(v.number()),
     expectedCheckpointIteration: v.optional(v.number()),
     modelContinuationStorageId: v.optional(v.id("_storage")),
+    /** Continuation text kept inline instead of `modelContinuationStorageId`. */
+    modelContinuation: v.optional(v.string()),
     families: v.optional(v.array(v.string())),
     /** The calling action runs the next step itself; the run stays running. */
     inline: v.optional(v.boolean()),
@@ -8378,11 +8434,10 @@ export const continueRunInternal = internalMutation({
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       updatedAt: now,
     });
+    const continuation = await replaceRunContinuation(ctx, run, args);
     await ctx.db.patch(run._id, {
       ...(args.inline ? {} : { status: "queued" as const }),
-      ...(args.modelContinuationStorageId
-        ? { modelContinuationStorageId: args.modelContinuationStorageId }
-        : {}),
+      ...continuation,
       checkpoint: {
         compaction: run.checkpoint?.compaction,
         iteration: (run.checkpoint?.iteration ?? 0) + 1,
@@ -8394,14 +8449,14 @@ export const continueRunInternal = internalMutation({
       },
       updatedAt: now,
     });
-    if (
-      args.modelContinuationStorageId &&
-      run.modelContinuationStorageId &&
-      args.modelContinuationStorageId !== run.modelContinuationStorageId
-    ) {
-      await ctx.storage.delete(run.modelContinuationStorageId);
-    }
-    if (args.inline) return { status: "continued" as const };
+    if (args.inline)
+      return {
+        status: "continued" as const,
+        ...("modelContinuationId" in continuation &&
+        continuation.modelContinuationId
+          ? { modelContinuationId: continuation.modelContinuationId }
+          : {}),
+      };
     await ctx.scheduler.runAfter(0, internal.operatorAgentRunner.run, {
       runId: run._id,
     });
@@ -8474,11 +8529,11 @@ export const failRunInternal = internalMutation({
           }),
         ),
     );
-    if (run.modelContinuationStorageId)
-      await ctx.storage.delete(run.modelContinuationStorageId);
+    await deleteRunContinuation(ctx, run);
     await ctx.db.patch(run._id, {
       status: "failed",
       modelContinuationStorageId: undefined,
+      modelContinuationId: undefined,
       lastError: args.error.slice(0, 1_000),
       completedAt: now,
       checkpoint: run.checkpoint

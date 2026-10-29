@@ -243,13 +243,9 @@ const DECISION_PHASES = new Set([
   "workflow_assessment",
   "context_compaction",
 ]);
-const MODEL_PHASES = new Set(
-  ["model", "planner"].flatMap((prefix) =>
-    ["submit", "status", "wait", "read", "sdk"].map(
-      (name) => `${prefix}.${name}`,
-    ),
-  ),
-);
+// Router and SDK time of model calls, including every `submit.*` sub-step;
+// `.telemetry` stays bookkeeping.
+const MODEL_PHASE = /^(model|planner)\.(submit(\.\w+)?|status|wait|read|sdk)$/;
 
 type OperatorRunTimingRow = OperatorRunTiming & {
   endedBy: Infer<typeof operatorRunTimingEndValidator>;
@@ -286,7 +282,7 @@ export function operatorRunTimingView(rows: OperatorRunTimingRow[]) {
     for (const { phase, ms } of row.phases) {
       byPhase[phase] = (byPhase[phase] ?? 0) + ms;
       if (TOOL_PHASES.has(phase)) totals.toolMs += ms;
-      else if (MODEL_PHASES.has(phase)) totals.modelMs += ms;
+      else if (MODEL_PHASE.test(phase)) totals.modelMs += ms;
       else if (DECISION_PHASES.has(phase)) totals.decisionMs += ms;
       else totals.bookkeepingMs += ms;
     }

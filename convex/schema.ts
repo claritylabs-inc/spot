@@ -5315,6 +5315,23 @@ export default defineSchema({
     .index("request_token", ["requestTokenHash"])
     .index("result_token", ["resultTokenHash"]),
 
+  // A router job's exact request bytes, written by the same mutation that
+  // creates the job when small enough (ROUTER_JOB_INLINE_REQUEST_BYTES);
+  // larger requests use `routerJobs.requestStorageId`. Kept off the job row,
+  // which waiting callers poll.
+  routerJobRequests: defineTable({
+    jobId: v.id("routerJobs"),
+    body: v.string(),
+  }).index("by_jobId", ["jobId"]),
+
+  // An operator run's model continuation, written by the checkpoint mutation
+  // that points the run at it when small enough
+  // (OPERATOR_INLINE_CONTINUATION_BYTES); larger ones use storage.
+  operatorRunContinuations: defineTable({
+    runId: v.id("operatorAgentRuns"),
+    body: v.string(),
+  }),
+
   operatorAgentRuns: defineTable({
     threadId: v.id("operatorAgentThreads"),
     emailReadOnly: v.optional(v.boolean()),
@@ -5359,7 +5376,9 @@ export default defineSchema({
       }),
     ),
     cancellationRequestedAt: v.optional(v.number()),
+    // At most one of these holds the current model continuation.
     modelContinuationStorageId: v.optional(v.id("_storage")),
+    modelContinuationId: v.optional(v.id("operatorRunContinuations")),
     runnerAttempt: v.optional(v.number()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),

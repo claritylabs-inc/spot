@@ -1,4 +1,5 @@
 import { readBoundedRequestBody } from "./lib/httpBody";
+import { ROUTER_JOB_INLINE_REQUEST_BYTES } from "./lib/routerJobLimits";
 import { startModelCall, finishModelCall } from "./modelRoutingEvents";
 import { callContextValidator, callResultValidator, modelCallResult } from "./lib/modelCallTelemetry";
 import dayjs from "dayjs";
@@ -56,6 +57,34 @@ export const get = internalQuery({
       .unique(),
 });
 
+/** Both rows a generation call may reconnect to, in one round trip. */
+export const getWithRouted = internalQuery({
+  args: { invocationKey: v.string(), routedKey: v.string() },
+  handler: async (ctx, args) => {
+    const lookup = (invocationKey: string) =>
+      ctx.db
+        .query("routerJobs")
+        .withIndex("invocation", (q) => q.eq("invocationKey", invocationKey))
+        .unique();
+    return {
+      row: await lookup(args.invocationKey),
+      routed: await lookup(args.routedKey),
+    };
+  },
+});
+
+/** A job's request bytes when `prepare` kept them beside the row. */
+export const getInlineRequest = internalQuery({
+  args: { id: v.id("routerJobs") },
+  handler: async (ctx, args) =>
+    (
+      await ctx.db
+        .query("routerJobRequests")
+        .withIndex("by_jobId", (q) => q.eq("jobId", args.id))
+        .unique()
+    )?.body ?? null,
+});
+
 export const prepare = internalMutation({
   args: {
     callContext: v.optional(callContextValidator),
@@ -69,7 +98,10 @@ export const prepare = internalMutation({
     requestTokenHash: v.string(),
     resultToken: v.string(),
     resultTokenHash: v.string(),
-    requestStorageId: v.id("_storage"),
+    // Exactly one: the stored request blob, or the bytes themselves when
+    // within ROUTER_JOB_INLINE_REQUEST_BYTES.
+    requestStorageId: v.optional(v.id("_storage")),
+    request: v.optional(v.string()),
     assetStorageIds: v.optional(v.array(v.id("_storage"))),
   },
   handler: async (ctx, args) => {
@@ -98,10 +130,18 @@ export const prepare = internalMutation({
       if (!run || run.status !== "running" || run.cancellationRequestedAt)
         throw new Error("Operator router invocation is no longer active");
     }
-    const requestMetadata = await ctx.db.system.get(args.requestStorageId);
+    const requestBytes =
+      args.request !== undefined && !args.requestStorageId
+        ? new TextEncoder().encode(args.request).byteLength
+        : args.request === undefined && args.requestStorageId
+          ? (await ctx.db.system.get(args.requestStorageId))?.size
+          : undefined;
     if (
-      !requestMetadata ||
-      requestMetadata.size > ROUTER_JOB_REQUEST_BYTES ||
+      requestBytes === undefined ||
+      requestBytes >
+        (args.request !== undefined
+          ? ROUTER_JOB_INLINE_REQUEST_BYTES
+          : ROUTER_JOB_REQUEST_BYTES) ||
       (args.assetStorageIds?.length ?? 0) > 8
     )
       throw new Error("Invalid router request storage");
@@ -115,13 +155,15 @@ export const prepare = internalMutation({
     if (assetBytes > 16 * 1024 * 1024)
       throw new Error("Router assets exceed aggregate limit");
     const now = dayjs().valueOf();
-    const { callContext, ...jobArgs } = args;
+    const { callContext, request, ...jobArgs } = args;
     const id = await ctx.db.insert("routerJobs", {
       ...jobArgs,
       status: "prepared",
       createdAt: now,
       updatedAt: now,
     });
+    if (request !== undefined)
+      await ctx.db.insert("routerJobRequests", { jobId: id, body: request });
     if (callContext) await startModelCall(ctx, { callKey: args.invocationKey, operation: args.operation, context: callContext });
     return (await ctx.db.get(id))!;
   },
@@ -169,6 +211,8 @@ export const bind = internalMutation({
       ...(row.status === "prepared" ? { status: "running" as const } : {}),
       updatedAt: dayjs().valueOf(),
     });
+    // The bound row, including a result whose callback beat the ack.
+    return (await ctx.db.get(row._id))!;
   },
 });
 
@@ -339,6 +383,11 @@ export const cleanup = internalMutation({
     )
       return;
     if (row.requestStorageId) await ctx.storage.delete(row.requestStorageId);
+    const inlineRequest = await ctx.db
+      .query("routerJobRequests")
+      .withIndex("by_jobId", (q) => q.eq("jobId", row._id))
+      .unique();
+    if (inlineRequest) await ctx.db.delete(inlineRequest._id);
     if (row.resultStorageId) await ctx.storage.delete(row.resultStorageId);
     for (const assetId of row.assetStorageIds ?? [])
       await ctx.storage.delete(assetId);
@@ -372,10 +421,12 @@ export const requestHttp = httpAction(async (ctx, request) => {
         purpose: "request",
       })
     : null;
-  if (!row?.requestStorageId) return new Response(null, { status: 404 });
-  const blob = await ctx.storage.get(row.requestStorageId);
-  return blob
-    ? new Response(blob, {
+  if (!row) return new Response(null, { status: 404 });
+  const body = row.requestStorageId
+    ? await ctx.storage.get(row.requestStorageId)
+    : await ctx.runQuery(internal.routerJobs.getInlineRequest, { id: row._id });
+  return body !== null
+    ? new Response(body, {
         headers: {
           "content-type": "application/json",
           "cache-control": "no-store",
