@@ -502,6 +502,8 @@ export const recordDelivery = mutation({
       answer.unsure
     )
       throw new Error("Choose the current confirmed answer");
+    if (!row.outreachId)
+      throw new Error("Spot application questions have no provider delivery");
     const message = await sourceMessage(
       ctx,
       args.messageId,

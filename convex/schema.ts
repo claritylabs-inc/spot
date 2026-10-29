@@ -2806,7 +2806,8 @@ export default defineSchema({
   procurementInformationRequirements: defineTable({
     requestId: v.id("procurementRequests"),
     questionId: v.id("procurementInformationQuestions"),
-    outreachId: v.id("procurementBrokerOutreaches"),
+    // Absent when Spot asks for an application gap rather than a provider.
+    outreachId: v.optional(v.id("procurementBrokerOutreaches")),
     carrier: v.optional(v.string()),
     sourceMessageId: v.optional(v.id("teamEmailMessages")),
     sourceQuote: v.optional(v.string()),

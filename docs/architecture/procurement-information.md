@@ -26,6 +26,23 @@ Corrections create immutable answer revisions, preserving the original accepted
 application and company profile. Client email provenance includes its message and
 quote. Operator-authored corrections never silently inherit the client's source.
 
+## Partially filled applications
+
+A requirement without a provider outreach is Spot's own request, shown as Spot
+in Requested by. Operators choose Spot (application) in Add question, and the
+agent omits `procurementOutreachId` in `add_procurement_information_questions`.
+This completes applications imported from documents: `get_procurement_information`
+lists the accepted application's `unansweredApplicationQuestions` (blank base
+fields and applicable catalog questions from `intakeQuestionHistory`), the agent
+asks only for facts the documents did not answer, then publishes a form and
+drafts the client email with the existing tools. Answers stay supplementary
+facts and never rewrite the accepted application; apply them with
+`update_procurement_application` when the operator approves, passing the copied
+questions as `archiveInformationQuestionIds` so they are archived in the same
+write. Only answered questions qualify, with the same prerequisite and open-form
+guards as archiving in the UI (`assertInformationQuestionsArchivable`). Spot-owned answers
+are included in every provider's packet and have no provider delivery record.
+
 ## Automatic email processing
 
 Both incoming paths schedule the same idempotent `queueEmail` mutation:

@@ -283,7 +283,8 @@ async function supplementaryPacketMarkdown(
     requirements
       .filter(
         (r) =>
-          (!outreachId || r.outreachId === outreachId) &&
+          // Spot-owned application answers are shared with every provider.
+          (!outreachId || !r.outreachId || r.outreachId === outreachId) &&
           r.status !== "waived" &&
           r.status !== "withdrawn",
       )

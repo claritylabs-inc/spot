@@ -1,4 +1,5 @@
 import { procurementApplicationInputSchema } from "./lib/procurementApplicationInput";
+import { assertInformationQuestionsArchivable } from "./lib/procurementInformationAccess";
 import { detailsFromAnswers } from "../lib/insurance-intake-details";
 import { intakeAnswersValidator } from "./lib/insuranceIntakeSchema";
 import { intakeDetailsValidator } from "./lib/intakeDetailsSchema";
@@ -1081,6 +1082,7 @@ export async function updateApplicationByOperator(
     replacingPolicyId: Id<"policies"> | null;
     resultingPolicyId: Id<"policies"> | null;
     clientVisible: boolean;
+    archiveQuestionIds?: Id<"procurementInformationQuestions">[];
   },
 ) {
   await requireDirectOperatorWrite(ctx, operatorUserId);
@@ -1185,11 +1187,14 @@ export async function updateApplicationByOperator(
       ...companyApplicationProfile(application),
       sourceRequestId: request._id,
     });
+  // Copied answers leave Information needed in the same write as the facts they became.
+  for (const questionId of args.archiveQuestionIds ?? [])
+    await ctx.db.patch(questionId, { archivedAt: now });
   await writeOperatorAudit(ctx, {
     operatorUserId: operatorUserId,
     type: "setup_write",
     targetOrgId: request.clientOrgId,
-    summary: `Corrected application details for ${args.title}`,
+    summary: `Corrected application details for ${args.title}${args.archiveQuestionIds?.length ? ` and archived ${args.archiveQuestionIds.length} copied information questions` : ""}`,
     metadata: {
       domain: "procurement",
       requestId: request._id,
@@ -1197,7 +1202,11 @@ export async function updateApplicationByOperator(
       revision,
     },
   });
-  return { revision, updatedAt: now };
+  return {
+    revision,
+    updatedAt: now,
+    archivedInformationQuestionIds: args.archiveQuestionIds ?? [],
+  };
 }
 
 export async function prepareApplicationToolUpdate(
@@ -1236,8 +1245,14 @@ export async function prepareApplicationToolUpdate(
         throw new Error("Enter a valid coverage limit");
   if (answers.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(answers.email))
     throw new Error("Enter a valid contact email");
+  const archiveQuestionIds = await copiedInformationQuestionIds(
+    ctx,
+    requestId,
+    patch.archiveInformationQuestionIds,
+  );
   return {
     requestId,
+    archiveQuestionIds,
     expectedRevision: patch.expectedRevision,
     expectedUpdatedAt: patch.expectedUpdatedAt,
     answers,
@@ -1252,6 +1267,34 @@ export async function prepareApplicationToolUpdate(
     resultingPolicyId: request.resultingPolicyId ?? null,
     clientVisible: request.clientVisible !== false,
   };
+}
+
+/** Only answered questions can be archived as copied into the application. */
+async function copiedInformationQuestionIds(
+  ctx: MutationCtx,
+  requestId: Id<"procurementRequests">,
+  ids: string[] | undefined,
+) {
+  if (!ids) return [];
+  if (new Set(ids).size !== ids.length)
+    throw new Error("List each information question once");
+  const questionIds = [];
+  for (const id of ids) {
+    const questionId = ctx.db.normalizeId("procurementInformationQuestions", id);
+    const question = questionId ? await ctx.db.get(questionId) : null;
+    if (!question || question.requestId !== requestId || question.archivedAt)
+      throw new Error(
+        `Information question ${id} is not an active question on this request`,
+      );
+    const answer = question.answerId ? await ctx.db.get(question.answerId) : null;
+    if (!answer || answer.unsure)
+      throw new Error(
+        `Information question ${id} has no answer to copy into the application`,
+      );
+    questionIds.push(question._id);
+  }
+  await assertInformationQuestionsArchivable(ctx, requestId, questionIds);
+  return questionIds;
 }
 
 /** Recoverable deletion: retain audit/evidence, deny normal request and packet access. */
