@@ -12,6 +12,7 @@ import {
   teamReplyErrorMessage,
 } from "../lib/teamEmailReply";
 import { getEmailDeliveryMode } from "../lib/resend";
+import { threadFollowUpRequestValidator } from "../lib/threadFollowUps";
 
 export type TeamReplySent = {
   status: "sent";
@@ -75,6 +76,8 @@ export const send = action({
     fromUserId: v.optional(v.id("users")),
     /** Operator-set To and Cc, replacing the reply-all default. */
     recipients: v.optional(replyRecipientsValidator),
+    /** Nudge the recipient automatically until someone replies. */
+    followUps: v.optional(threadFollowUpRequestValidator),
   },
   handler: async (ctx, args): Promise<TeamReplySendResult> => {
     let pendingEmailId: Id<"pendingEmails">;

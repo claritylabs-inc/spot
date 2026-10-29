@@ -137,7 +137,7 @@ export type TeamReplyPreview = {
   mode: "thread" | "standalone";
   /** The thread owner copied on a standalone reply. */
   copiesOwner?: string;
-  /** An outreach conversation: sending stops its automated follow-ups. */
+  /** An outreach conversation, or one with live follow-ups: sending stops them. */
   stopsFollowUps: boolean;
   fingerprint: string;
 };
@@ -365,10 +365,23 @@ export async function composeTeamReply(
       signature: signature.text,
       mode: directReplyContext.mode,
       ...(ownerAddress ? { copiesOwner: ownerAddress } : {}),
-      stopsFollowUps: thread.source === "outreach",
+      stopsFollowUps: thread.source === "outreach" || (await hasLiveFollowUps(ctx, thread._id)),
       fingerprint,
     },
   };
+}
+
+async function hasLiveFollowUps(ctx: Ctx, threadId: Id<"teamEmailThreads">) {
+  const sequences = await ctx.db
+    .query("procurementOutreachSequences")
+    .withIndex("by_teamEmailThreadId", (q) => q.eq("teamEmailThreadId", threadId))
+    .order("desc")
+    .take(20);
+  return sequences.some(
+    (sequence) =>
+      sequence.audience === "thread" &&
+      (sequence.status === "active" || sequence.status === "reply_check"),
+  );
 }
 
 export type TeamReplyPreviewResult =

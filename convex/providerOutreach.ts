@@ -95,6 +95,11 @@ import { emitOperatorNotification } from "./lib/operatorNotify";
 import { fencedEvent, finishEvent, knownInbox } from "./lib/teamInboxEventLease";
 import { mintPacketLinkForOperator, previewBrokerPacket } from "./procurementPacket";
 import { providerOutreachSummary, type OutreachSummaryItem } from "./lib/providerOutreachSummary";
+import {
+  threadFollowUpConversation,
+  threadRecipientName,
+  type ThreadFollowUpConversation,
+} from "./lib/threadFollowUps";
 import { submittedIntakeApplication } from "../lib/intake-application";
 import { CANADIAN_PROVINCES, USPS_STATE_NAMES } from "./lib/brokerProfileValidation";
 
@@ -132,6 +137,13 @@ function stepDone(step: Pick<Step, "status">) {
 }
 export function isClientSequence(sequence: Pick<Sequence, "audience">) {
   return sequence.audience === "client";
+}
+/** Follow-ups on a team conversation: no request, provider or packet; mail stays on the team path. */
+export function isThreadSequence(sequence: Pick<Sequence, "audience">) {
+  return sequence.audience === "thread";
+}
+function sequenceAudience(sequence: Pick<Sequence, "audience">) {
+  return sequence.audience ?? "provider";
 }
 
 // ---------------------------------------------------------------------------
@@ -357,7 +369,7 @@ export type SequenceStepView = {
 };
 export type SequenceView = {
   sequenceId: Id<"procurementOutreachSequences">;
-  audience: "provider" | "client";
+  audience: NonNullable<Sequence["audience"]>;
   outreachId: Id<"procurementBrokerOutreaches"> | null;
   brokerOrgId: Id<"organizations"> | null;
   subject: string | null;
@@ -388,7 +400,7 @@ export function sequenceView(sequence: Sequence, steps: Step[]): SequenceView {
     : undefined;
   return {
     sequenceId: sequence._id,
-    audience: isClientSequence(sequence) ? "client" : "provider",
+    audience: sequenceAudience(sequence),
     outreachId: sequence.outreachId ?? null,
     brokerOrgId: sequence.brokerOrgId ?? null,
     subject: sequence.message?.subject ?? steps[0]?.draft?.subject ?? null,
@@ -846,6 +858,9 @@ async function notifyManualHandoff(
   now: number,
   status: "stopped" | "failed" | "responded" | "completed",
 ) {
+  // Conversation follow-ups have no request to open; their replies already reach
+  // the owner through team inbox notifications and the reader shows any stop.
+  if (!sequence.requestId || !sequence.clientOrgId) return;
   const client = isClientSequence(sequence);
   const relatedOrgId = sequence.brokerOrgId ?? sequence.clientOrgId;
   const [request, recipientOrg] = await Promise.all([
@@ -1034,7 +1049,9 @@ export async function stopProviderOutreachByOperator(
   const sequence = await ctx.db.get(args.sequenceId);
   if (!sequence || (args.requestId && sequence.requestId !== args.requestId))
     throw new Error("Outreach sequence not found");
-  const { request } = await loadCompanyRequest(ctx, sequence.requestId);
+  const request = sequence.requestId
+    ? (await loadCompanyRequest(ctx, sequence.requestId)).request
+    : null;
   if (!isLive(sequence.status))
     return { sequenceId: sequence._id, status: sequence.status, cancelledStepCount: 0, stopped: false };
   const now = dayjs().valueOf();
@@ -1043,6 +1060,22 @@ export async function stopProviderOutreachByOperator(
     reason: "operator_stopped",
     now,
   });
+  if (!request) {
+    await writeOperatorAudit(ctx, {
+      operatorUserId: args.operatorUserId,
+      type: "setup_write",
+      targetOrgId: sequence.clientOrgId,
+      summary: "Stopped follow-ups on a team conversation",
+      metadata: {
+        domain: "team_inbox",
+        operation: "stop_thread_follow_ups",
+        teamEmailThreadId: sequence.teamEmailThreadId,
+        sequenceId: sequence._id,
+        cancelledStepCount,
+      },
+    });
+    return { sequenceId: sequence._id, status: "stopped" as const, cancelledStepCount, stopped: true };
+  }
   await writeOperatorAudit(ctx, {
     operatorUserId: args.operatorUserId,
     type: "setup_write",
@@ -1230,6 +1263,161 @@ export async function insertOutreachSequence(
     stepId: stepIds[0],
   });
   return { sequenceId, schedule };
+}
+
+/**
+ * Starts follow-ups after an operator's reply on a team conversation. The reply
+ * itself is step 0, already sent through the team reply path; only follow-up
+ * steps are scheduled, each replying on the inbox thread. Callers check the
+ * reply was recorded as sent; any live follow-ups there were stopped before it
+ * went out. Returns null when the cadence leaves nothing to schedule.
+ */
+export async function insertThreadFollowUps(
+  ctx: MutationCtx,
+  args: {
+    thread: Doc<"teamEmailThreads">;
+    pending: Doc<"pendingEmails"> & { senderUserId: Id<"users"> };
+    inboxId: string;
+    emailId: string;
+    resendThreadId?: string;
+    cadence: { followUpCount: number; intervalBusinessDays: number };
+    cadenceSource: OutreachCadenceSource;
+    now: number;
+  },
+) {
+  const { thread, pending, now } = args;
+  const identity = await outreachSenderIdentity(ctx, pending.senderUserId);
+  if (!identity.ok) return null;
+  const cadence = { ...args.cadence, style: "brief_nudge" as const };
+  const schedule = buildOutreachSchedule({ launchAt: now, cadence, limits: {} });
+  if (schedule.steps.length < 2) return null;
+  const recipientName = await threadRecipientName(ctx, thread, pending.recipientEmail);
+  const sequenceId = await ctx.db.insert("procurementOutreachSequences", {
+    audience: "thread",
+    teamEmailThreadId: thread._id,
+    ...(thread.clientOrgId ? { clientOrgId: thread.clientOrgId } : {}),
+    recipient: {
+      email: normalizeProcurementEmail(pending.recipientEmail),
+      ...(recipientName ? { name: recipientName } : {}),
+    },
+    senderUserId: pending.senderUserId,
+    identityFingerprint: identity.identity.fingerprint,
+    inboxId: args.inboxId,
+    ...(args.resendThreadId ? { resendThreadId: args.resendThreadId } : {}),
+    lastOutboundEmailId: args.emailId,
+    cadence,
+    cadenceSource: args.cadenceSource,
+    status: "active",
+    createdAt: now,
+    updatedAt: now,
+  });
+  let first: { stepId: Id<"procurementOutreachSteps">; dueAt: number } | null = null;
+  for (const step of schedule.steps) {
+    const sent = step.index === 0;
+    const stepId = await ctx.db.insert("procurementOutreachSteps", {
+      sequenceId,
+      index: step.index,
+      kind: step.kind,
+      isFinal: step.isFinal,
+      dueAt: step.dueAt,
+      status: sent ? "sent" : "scheduled",
+      attempts: sent ? 1 : 0,
+      ...(sent
+        ? {
+            sentAt: now,
+            resendEmailId: args.emailId,
+            draft: {
+              cc: pending.ccAddresses ?? [],
+              subject: pending.subject,
+              text: pending.renderedText ?? pending.emailBody,
+              html: pending.renderedHtml ?? "",
+              source: "operator" as const,
+            },
+          }
+        : {}),
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (!sent) first ??= { stepId, dueAt: step.dueAt };
+  }
+  if (first)
+    await ctx.scheduler.runAt(first.dueAt, internal.actions.providerOutreach.sendStep, {
+      stepId: first.stepId,
+    });
+  return { sequenceId, followUpCount: schedule.steps.length - 1 };
+}
+
+/** Live (or finished) conversation follow-ups on a team thread, newest first. */
+async function threadFollowUps(ctx: Ctx, threadId: Id<"teamEmailThreads">) {
+  return (
+    await ctx.db
+      .query("procurementOutreachSequences")
+      .withIndex("by_teamEmailThreadId", (q) => q.eq("teamEmailThreadId", threadId))
+      .order("desc")
+      .take(20)
+  ).filter(isThreadSequence);
+}
+
+/**
+ * A correspondent's email, just mirrored into a conversation with follow-ups:
+ * hold them and have Jev classify it, as for an outreach reply. A reply after
+ * the last nudge hands the conversation back as replied.
+ */
+export async function holdThreadFollowUpsForReply(
+  ctx: MutationCtx,
+  args: {
+    threadId: Id<"teamEmailThreads">;
+    emailId: string;
+    occurredAt: number | null;
+    now: number;
+  },
+) {
+  for (const sequence of await threadFollowUps(ctx, args.threadId)) {
+    if (sequence.status === "completed") {
+      await terminalizeSequence(ctx, sequence, {
+        status: "responded",
+        reason: repliedReason(sequence),
+        now: args.now,
+      });
+      continue;
+    }
+    if (!isLive(sequence.status)) continue;
+    const held = await holdForInboundReply(ctx, sequence, {
+      emailId: args.emailId,
+      occurredAt: args.occurredAt,
+      fallbackAt: args.now,
+      now: args.now,
+    });
+    if (held.isPending)
+      await ctx.scheduler.runAfter(0, internal.actions.providerOutreach.classifyReply, {
+        sequenceId: sequence._id,
+        emailId: args.emailId,
+      });
+  }
+}
+
+/**
+ * A reply sent as a new email learns its inbox thread only from its own sent
+ * event; follow-ups wait for it (`awaiting_thread`) before replying there.
+ */
+export async function learnThreadFollowUpThread(
+  ctx: MutationCtx,
+  args: {
+    threadId: Id<"teamEmailThreads">;
+    inboxId: string;
+    resendThreadId: string;
+    emailId: string;
+    now: number;
+  },
+) {
+  for (const sequence of await threadFollowUps(ctx, args.threadId)) {
+    if (
+      !sequence.resendThreadId &&
+      sequence.inboxId === args.inboxId &&
+      sequence.lastOutboundEmailId === args.emailId
+    )
+      await ctx.db.patch(sequence._id, { resendThreadId: args.resendThreadId, updatedAt: args.now });
+  }
 }
 
 type LaunchSkipped = ProviderOutreachLaunchResult["skipped"][number];
@@ -1719,10 +1907,13 @@ type ProviderWorld = {
   link: Doc<"procurementPacketLinks"> & { token: string };
 };
 type StepWorld = {
-  request: Doc<"procurementRequests">;
-  client: Doc<"organizations">;
-  /** Null for client information requests. */
+  /** Null for conversation follow-ups. */
+  request: Doc<"procurementRequests"> | null;
+  client: Doc<"organizations"> | null;
+  /** Null for client information requests and conversation follow-ups. */
   provider: ProviderWorld | null;
+  /** The team conversation of a conversation follow-up. */
+  thread: Doc<"teamEmailThreads"> | null;
   sender: Doc<"users"> | null;
   previous: Step | null;
 };
@@ -1839,36 +2030,46 @@ async function checkStepWorld(
 ): Promise<WorldCheck> {
   if (sequence.status !== "active")
     return { kind: "skip", reason: `sequence_${sequence.status}` };
-  const request = await ctx.db.get(sequence.requestId);
-  if (!request) return { kind: "stop", reason: "request_deleted" };
-  const requestClosed = closedReason(request);
-  if (requestClosed) return { kind: "stop", reason: requestClosed };
-  if (request.intakeAnswers?.intakeGoal === "savings" || request.clientOrgId !== sequence.clientOrgId)
-    return { kind: "stop", reason: "request_unavailable" };
-  const client = await ctx.db.get(sequence.clientOrgId);
-  if (!client || client.deletedAt !== undefined || client.type !== "client")
-    return { kind: "stop", reason: "client_unavailable" };
+  let request: Doc<"procurementRequests"> | null = null;
+  let client: Doc<"organizations"> | null = null;
+  let thread: Doc<"teamEmailThreads"> | null = null;
   let provider: ProviderWorld | null = null;
-  if (isClientSequence(sequence)) {
-    if (sequence.informationFormId) {
-      const form = await ctx.db.get(sequence.informationFormId);
-      if (!form || form.requestId !== sequence.requestId || form.outreachSequenceId !== sequence._id || form.status === "cancelled")
-        return { kind: "stop", reason: "information_form_unavailable" };
-      // A new email about a submitted form may send once; reminders stop on submission.
-      if (form.status === "submitted" && (step.index > 0 || sequence.createdAt < (form.submittedAt ?? 0)))
-        return { kind: "stop", reason: "information_form_submitted" };
-    }
-    // The recipient is a snapshot: it must still be a current client contact.
-    const recipients = await clientRecipientOptions(ctx, request, client._id);
-    const snapshotEmail = normalizeProcurementEmail(sequence.recipient.email);
-    if (!recipients.some((option) => option.email === snapshotEmail))
-      return { kind: "stop", reason: "recipient_changed" };
+  if (isThreadSequence(sequence)) {
+    // The conversation must still be live and open; its own client/request links do not gate a nudge.
+    thread = sequence.teamEmailThreadId ? await ctx.db.get(sequence.teamEmailThreadId) : null;
+    if (!thread || thread.deletedAt !== undefined) return { kind: "stop", reason: "conversation_unavailable" };
+    if (thread.archivedAt) return { kind: "stop", reason: "conversation_archived" };
   } else {
-    const checked = await checkProviderWorld(ctx, step, sequence, request, client, now);
-    if (checked.kind === "stop") return checked;
-    provider = checked.world;
+    if (!sequence.requestId || !sequence.clientOrgId) return { kind: "stop", reason: "request_deleted" };
+    request = await ctx.db.get(sequence.requestId);
+    if (!request) return { kind: "stop", reason: "request_deleted" };
+    const requestClosed = closedReason(request);
+    if (requestClosed) return { kind: "stop", reason: requestClosed };
+    if (request.intakeAnswers?.intakeGoal === "savings" || request.clientOrgId !== sequence.clientOrgId)
+      return { kind: "stop", reason: "request_unavailable" };
+    client = await ctx.db.get(sequence.clientOrgId);
+    if (!client || client.deletedAt !== undefined || client.type !== "client")
+      return { kind: "stop", reason: "client_unavailable" };
+    if (isClientSequence(sequence)) {
+      if (sequence.informationFormId) {
+        const form = await ctx.db.get(sequence.informationFormId);
+        if (!form || form.requestId !== sequence.requestId || form.outreachSequenceId !== sequence._id || form.status === "cancelled")
+          return { kind: "stop", reason: "information_form_unavailable" };
+        // A new email about a submitted form may send once; reminders stop on submission.
+        if (form.status === "submitted" && (step.index > 0 || sequence.createdAt < (form.submittedAt ?? 0)))
+          return { kind: "stop", reason: "information_form_submitted" };
+      }
+      // The recipient is a snapshot: it must still be a current client contact.
+      const recipients = await clientRecipientOptions(ctx, request, client._id);
+      const snapshotEmail = normalizeProcurementEmail(sequence.recipient.email);
+      if (!recipients.some((option) => option.email === snapshotEmail))
+        return { kind: "stop", reason: "recipient_changed" };
+    } else {
+      const checked = await checkProviderWorld(ctx, step, sequence, request, client, now);
+      if (checked.kind === "stop") return checked;
+      provider = checked.world;
+    }
   }
-
 
   // Schedule-time cutoffs are re-checked at send time: a delayed follow-up must
   // never land past the effective date/deadline cutoff or the 30-day span.
@@ -1878,7 +2079,7 @@ async function checkStepWorld(
       .utc(now)
       .startOf("day")
       .isAfter(
-        followUpCutoff(sequence.createdAt, { effectiveDate: request.targetEffectiveDate }),
+        followUpCutoff(sequence.createdAt, { effectiveDate: request?.targetEffectiveDate }),
       )
   )
     return { kind: "stop", reason: "follow_up_window_closed" };
@@ -1979,6 +2180,7 @@ async function checkStepWorld(
       request,
       client,
       provider,
+      thread,
       sender: await ctx.db.get(sequence.senderUserId),
       previous,
     },
@@ -2015,8 +2217,8 @@ export type ClaimStepResult =
       };
       sequence: {
         sequenceId: Id<"procurementOutreachSequences">;
-        requestId: Id<"procurementRequests">;
-        audience: "provider" | "client";
+        requestId: Id<"procurementRequests"> | null;
+        audience: NonNullable<Sequence["audience"]>;
         /** The operator's own first message (client information requests). */
         message: Sequence["message"] | null;
         recipient: Sequence["recipient"];
@@ -2029,6 +2231,9 @@ export type ClaimStepResult =
       sender: { userId: Id<"users">; name: string | null; email: string | null };
       /** The last email already sent on this sequence, for the history quoted when a follow-up moves to a new inbox. */
       lastSent: { sentAt: number; text: string } | null;
+      /** Conversation follow-ups: the messages a nudge is written from, newest last. */
+      conversation: ThreadFollowUpConversation | null;
+      /** Null for conversation follow-ups. */
       request: {
         clientOrgId: Id<"organizations">;
         coverageLines: string[];
@@ -2041,7 +2246,7 @@ export type ClaimStepResult =
         coverageRequest: string | null;
         targetEffectiveDate: string | null;
         isRenewal: boolean;
-      };
+      } | null;
       /** Provider outreach only. */
       broker: { name: string; networkStatus: Doc<"brokerProfiles">["networkStatus"] } | null;
       packet: { linkId: Id<"procurementPacketLinks">; url: string; fileCount: number } | null;
@@ -2212,8 +2417,8 @@ export const claimStepInternal = internalMutation({
       },
       sequence: {
         sequenceId: sequence._id,
-        requestId: sequence.requestId,
-        audience: isClientSequence(sequence) ? "client" : "provider",
+        requestId: sequence.requestId ?? null,
+        audience: sequenceAudience(sequence),
         message: sequence.message ?? null,
         recipient: sequence.recipient,
         cadence: sequence.cadence,
@@ -2234,19 +2439,10 @@ export const claimStepInternal = internalMutation({
           ? { sentAt: sent.sentAt, text: sent.draft.text.slice(0, QUOTED_HISTORY_CHARS) }
           : null;
       })(),
-      request: {
-        ...providerOutreachSummary(submittedIntakeApplication(world.request)),
-        clientOrgId: sequence.clientOrgId,
-        coverageLines: matchFor(world.request, world.client).needs.needs.map((need) => need.label),
-        regions: matchFor(world.request, world.client).geography.places.map((place) =>
-          place.region
-            ? `${OUTREACH_REGION_NAMES[place.region] ?? place.region}, ${OUTREACH_COUNTRY_NAMES.of(place.country) ?? place.country}`
-            : OUTREACH_COUNTRY_NAMES.of(place.country) ?? place.country),
-        title: world.request.title,
-        clientName: world.client.name,
-        targetEffectiveDate: world.request.targetEffectiveDate ?? null,
-        isRenewal: !!world.request.replacingPolicyId,
-      },
+      conversation: world.thread ? await threadFollowUpConversation(ctx, world.thread) : null,
+      request: world.request && world.client
+        ? requestContext(world.request, world.client)
+        : null,
       broker: world.provider ? { name: world.provider.broker.name, networkStatus: world.provider.networkStatus } : null,
       packet: world.provider
         ? {
@@ -2266,6 +2462,23 @@ export const claimStepInternal = internalMutation({
     };
   },
 });
+
+function requestContext(request: Doc<"procurementRequests">, client: Doc<"organizations">) {
+  const match = matchFor(request, client);
+  return {
+    ...providerOutreachSummary(submittedIntakeApplication(request)),
+    clientOrgId: client._id,
+    coverageLines: match.needs.needs.map((need) => need.label),
+    regions: match.geography.places.map((place) =>
+      place.region
+        ? `${OUTREACH_REGION_NAMES[place.region] ?? place.region}, ${OUTREACH_COUNTRY_NAMES.of(place.country) ?? place.country}`
+        : OUTREACH_COUNTRY_NAMES.of(place.country) ?? place.country),
+    title: request.title,
+    clientName: client.name,
+    targetEffectiveDate: request.targetEffectiveDate ?? null,
+    isRenewal: !!request.replacingPolicyId,
+  };
+}
 
 /** The step if this worker still holds its lease; stale workers get null. */
 async function fencedStep(
@@ -2780,7 +2993,7 @@ export const finishStepInternal = internalMutation({
         nextStepId: null,
         nextDueAt: null,
       };
-    const request = await ctx.db.get(sequence.requestId);
+    const request = sequence.requestId ? await ctx.db.get(sequence.requestId) : null;
     const next = await scheduleRemainingSteps(ctx, sequence, request, {
       anchorAt: now,
       now,
@@ -2982,7 +3195,9 @@ async function sequencesForTeamThread(ctx: Ctx, thread: TeamThread): Promise<Seq
     .take(101);
   if (current.length > 100)
     throw new Error("Too many outreach sequences for this conversation; review before replying");
-  return current.filter((sequence) => sequence.requestId === thread.requestId);
+  return current.filter(
+    (sequence) => isThreadSequence(sequence) || sequence.requestId === thread.requestId,
+  );
 }
 
 /**
@@ -3005,11 +3220,17 @@ export async function sequenceForInboxEvent(
       .first();
     if (step) sequence = await ctx.db.get(step.sequenceId);
   }
+  // Conversation follow-ups never own mail: it is mirrored on the team path,
+  // which then moves the sequence (`holdThreadFollowUpsForReply`).
+  if (sequence && isThreadSequence(sequence)) return null;
   if (!sequence)
-    sequence = await ctx.db
-      .query("procurementOutreachSequences")
-      .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", event.threadId))
-      .first();
+    sequence =
+      (
+        await ctx.db
+          .query("procurementOutreachSequences")
+          .withIndex("by_resendThreadId", (q) => q.eq("resendThreadId", event.threadId))
+          .take(20)
+      ).find((candidate) => !isThreadSequence(candidate)) ?? null;
   if (sequence && sequence.inboxId === event.inboxId) return { sequence, step };
   const link = await ctx.db
     .query("teamEmailThreadLinks")
@@ -3048,7 +3269,12 @@ export async function mappingMayAppear(
       )
       .take(LIMIT);
     if (recent.length >= LIMIT) return true;
-    if (recent.some((row) => row.inboxId === event.inboxId && !row.resendThreadId)) return true;
+    if (
+      recent.some(
+        (row) => !isThreadSequence(row) && row.inboxId === event.inboxId && !row.resendThreadId,
+      )
+    )
+      return true;
   }
   return false;
 }
@@ -3145,7 +3371,7 @@ async function mirrorInboxEmail(
 
 /** Request for mirroring; null when it can no longer hold mirrored mail. */
 async function mirrorableRequest(ctx: Ctx, sequence: Sequence) {
-  const request = await ctx.db.get(sequence.requestId);
+  const request = sequence.requestId ? await ctx.db.get(sequence.requestId) : null;
   if (!request || request.deletedAt || !request.clientOrgId) return null;
   return request;
 }
@@ -3198,7 +3424,11 @@ export const applySentInboxEmailInternal = internalMutation({
 });
 
 function repliedReason(sequence: Sequence) {
-  return isClientSequence(sequence) ? "client_replied" : "provider_replied";
+  return isThreadSequence(sequence)
+    ? "recipient_replied"
+    : isClientSequence(sequence)
+      ? "client_replied"
+      : "provider_replied";
 }
 
 function isLiveOrHandoffTarget(status: SequenceStatus) {
@@ -3276,12 +3506,20 @@ export const applyInboundInboxEmailInternal = internalMutation({
         (await ctx.db.query("operatorOutreachInboxes")
           .withIndex("by_emailAddress", (q) => q.eq("emailAddress", senderAddress))
           .first());
-      if (!operatorSender)
+      if (!operatorSender) {
         await emitOperatorNotification(ctx, {
           eventKey: `inbox:team_mail:${mirrored.messageId}`,
           category: "inbox",
           target: { kind: "inbox", threadId: mirrored.threadId },
         });
+        // An operator's reply with follow-ups on this outreach conversation.
+        await holdThreadFollowUpsForReply(ctx, {
+          threadId: mirrored.threadId,
+          emailId: args.email.resendInboxEmailId,
+          occurredAt: args.email.occurredAt,
+          now,
+        });
+      }
     }
     const emailId = args.email.resendInboxEmailId;
     let status: SequenceStatus = sequence.status;
@@ -3363,7 +3601,7 @@ export const getReplyContextInternal = internalMutation({
       replyClassificationEmailId: args.emailId,
       updatedAt: dayjs().valueOf(),
     });
-    const request = await ctx.db.get(sequence.requestId);
+    const request = sequence.requestId ? await ctx.db.get(sequence.requestId) : null;
     return {
       status: "claimed" as const,
       sequenceId: sequence._id,
@@ -3435,7 +3673,7 @@ export const applyReplyClassificationInternal = internalMutation({
     const next = await scheduleRemainingSteps(
       ctx,
       { ...sequence, status: "active" },
-      await ctx.db.get(sequence.requestId),
+      sequence.requestId ? await ctx.db.get(sequence.requestId) : null,
       { anchorAt: lastSentAt, now, notBefore: addBusinessDays(now, 1) },
     );
     return {

@@ -25,7 +25,13 @@ import {
 } from "./lib/teamEmailStore";
 import { clipEventError, fencedEvent, finishEvent, knownInbox } from "./lib/teamInboxEventLease";
 import { emitOperatorNotification } from "./lib/operatorNotify";
-import { holdForInboundReply, mappingMayAppear, sequenceForInboxEvent } from "./providerOutreach";
+import {
+  holdForInboundReply,
+  holdThreadFollowUpsForReply,
+  learnThreadFollowUpThread,
+  mappingMayAppear,
+  sequenceForInboxEvent,
+} from "./providerOutreach";
 
 type Ctx = QueryCtx | MutationCtx;
 type EventDoc = Doc<"providerOutreachWebhookEvents">;
@@ -111,7 +117,7 @@ type InboxEventRoute =
       kind: "sequence";
       sequenceId: Id<"procurementOutreachSequences">;
       stepId: Id<"procurementOutreachSteps"> | null;
-      requestId: Id<"procurementRequests">;
+      requestId: Id<"procurementRequests"> | null;
       outreachId: Id<"procurementBrokerOutreaches"> | null;
       sequenceStatus: Doc<"procurementOutreachSequences">["status"];
       recipientEmail: string;
@@ -166,7 +172,7 @@ async function routeInboxEvent(ctx: Ctx, event: EventDoc): Promise<InboxEventRou
       kind: "sequence",
       sequenceId: sequence._id,
       stepId: step?._id ?? null,
-      requestId: sequence.requestId,
+      requestId: sequence.requestId ?? null,
       outreachId: sequence.outreachId ?? null,
       sequenceStatus: sequence.status,
       recipientEmail: sequence.recipient.email,
@@ -482,6 +488,13 @@ async function notifyInbound(
       category: "inbox",
       target: { kind: "inbox", threadId: mirrored.threadId },
     });
+    if (!mirrored.internalCopy)
+      await holdThreadFollowUpsForReply(ctx, {
+        threadId: mirrored.threadId,
+        emailId: event.emailId,
+        occurredAt: email.occurredAt,
+        now,
+      });
     const thread = (await ctx.db.get(mirrored.threadId))!;
     const ownerUserId = thread.ownerUserId ?? inbox.userId;
     if (ownerUserId) {
@@ -586,6 +599,14 @@ export const applyTeamInboxEmailInternal = internalMutation({
     const notifyOwner = received
       ? await notifyInbound(ctx, { event, inbox, email: args.email, mirrored, now })
       : false;
+    if (!received)
+      await learnThreadFollowUpThread(ctx, {
+        threadId: mirrored.threadId,
+        inboxId: event.inboxId,
+        resendThreadId: event.threadId,
+        emailId: event.emailId,
+        now,
+      });
     await finishEvent(ctx, event, now);
     return {
       applied: true as const,

@@ -19,6 +19,10 @@ import {
   replyRecipientsValidator,
   teamReplyError,
 } from "./lib/teamEmailReply";
+import {
+  threadFollowUpRequestValidator,
+  validateThreadFollowUpRequest,
+} from "./lib/threadFollowUps";
 import { REPLY_TOOL_NAMES, agentReplyKey } from "./operatorEmailDrafts";
 
 /**
@@ -123,6 +127,8 @@ export const prepareSend = mutation({
     idempotencyKey: v.string(),
     fromUserId: v.optional(v.id("users")),
     recipients: v.optional(replyRecipientsValidator),
+    /** Nudge the recipient automatically until someone replies. */
+    followUps: v.optional(threadFollowUpRequestValidator),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -157,6 +163,13 @@ export const prepareSend = mutation({
     if (composed.preview.fingerprint !== args.expectedFingerprint) {
       throw teamReplyError("The reply changed since it was previewed. Review it again.");
     }
+    if (args.followUps) {
+      try {
+        validateThreadFollowUpRequest(args.followUps);
+      } catch (error) {
+        throw teamReplyError(error instanceof Error ? error.message : "Choose a follow-up schedule.");
+      }
+    }
     const pendingEmailId = await ctx.db.insert("pendingEmails", {
       ...composed.fields,
       status: "draft",
@@ -168,6 +181,7 @@ export const prepareSend = mutation({
         fingerprint: composed.preview.fingerprint,
         approvedAt: dayjs().valueOf(),
       },
+      ...(args.followUps ? { followUps: args.followUps } : {}),
     });
     return { pendingEmailId };
   },
