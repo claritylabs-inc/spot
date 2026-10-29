@@ -254,7 +254,7 @@ function ThreadRow({
               ? `${thread.subject}, needs reply`
               : undefined
         }
-        className="flex min-w-0 flex-1 items-start gap-3 py-2.5 pr-4 pl-2 text-left outline-none focus-visible:bg-muted @2xl:items-center"
+        className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pr-4 pl-2 text-left outline-none focus-visible:bg-muted"
       >
         <span className="relative shrink-0">
           <Avatar name={avatar.name} imageUrl={avatar.avatarUrl} className="size-6" />
