@@ -1,6 +1,7 @@
 "use node";
 
 import type { LanguageModel, LanguageModelUsage } from "ai";
+import dayjs from "dayjs";
 import { z } from "zod";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -40,6 +41,7 @@ import {
   executeDurableRouterRequest,
   durableRouterClientOptions,
   RouterJobPending,
+  type RouterJobTiming,
 } from "./routerJobClient";
 
 /** Spot delegates every AI execution to cl-router. */
@@ -121,6 +123,11 @@ class AgentIncompleteOutputError extends Error {
 // A durable agent call waits this long in its action for the router result
 // before yielding to its caller's scheduled resume.
 const DURABLE_AGENT_INLINE_WAIT_MS = 45_000;
+/** Metadata-only timing hooks; observing never changes the call. */
+export type AgentModelCallTiming = RouterJobTiming & {
+  /** Routing telemetry and activity writes made around the model call. */
+  telemetry(ms: number): void;
+};
 export type AgentModelRunOptions = {
   streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
   activityTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
@@ -150,6 +157,7 @@ export type AgentModelRunOptions = {
       | "public_demo";
   };
   onResponse?: ClRouterLanguageModelOptions["onResponse"];
+  timing?: AgentModelCallTiming;
 };
 export type ResolvedAgentLanguageModel = ResolvedModelRoute & {
   model: LanguageModel;
@@ -806,6 +814,7 @@ function agentLanguageModel(
                 ? { inlineWaitMs: DURABLE_AGENT_INLINE_WAIT_MS }
                 : {}),
               streamTarget: run.streamTarget,
+              ...(run.timing ? { timing: run.timing } : {}),
             },
           );
           jobStep += 1;
@@ -828,24 +837,29 @@ function agentLanguageModel(
         };
       },
       onResponse: async (response, step) => {
+        const started = dayjs();
         routerResponses.push(response);
         const activityTarget = run.activityTarget ?? run.streamTarget;
-        if (activityTarget) {
-          await ctx.runMutation(internal.routerJobs.recordActivity, {
-            target: activityTarget,
-            ...(run.activityOperatorRun
-              ? { operatorRun: run.activityOperatorRun }
-              : {}),
-            update: {
-              kind: "stage",
-              stageId: `model:${response.requestId}`,
-              stage: "selecting_model",
-              status: "completed",
-              detail: `${response.model.provider} · ${response.model.model}`,
-            },
-          });
+        try {
+          if (activityTarget) {
+            await ctx.runMutation(internal.routerJobs.recordActivity, {
+              target: activityTarget,
+              ...(run.activityOperatorRun
+                ? { operatorRun: run.activityOperatorRun }
+                : {}),
+              update: {
+                kind: "stage",
+                stageId: `model:${response.requestId}`,
+                stage: "selecting_model",
+                status: "completed",
+                detail: `${response.model.provider} · ${response.model.model}`,
+              },
+            });
+          }
+          await run.onResponse?.(response, step);
+        } finally {
+          run.timing?.telemetry(dayjs().diff(started));
         }
-        await run.onResponse?.(response, step);
       },
     }),
     transport: "cl-router",
@@ -1277,6 +1291,7 @@ export async function generateAgentTextForOperatorTask(
   try {
     resolved = await getAgentLanguageModelForOperatorTask(ctx, task, run);
     const result = await generateAgentTextForResolvedModel(resolved, options);
+    const recordStarted = dayjs();
     await recordAgentRun(
       ctx,
       undefined,
@@ -1289,6 +1304,7 @@ export async function generateAgentTextForOperatorTask(
       undefined,
       options.maxOutputTokens,
     );
+    run.timing?.telemetry(dayjs().diff(recordStarted));
     return result;
   } catch (error) {
     if (error instanceof RouterJobPending) throw error;

@@ -127,6 +127,10 @@ import {
 
 import { compactOperatorContext } from "./lib/operatorContextCompactionRunner";
 import {
+  OperatorStepTimer,
+  type OperatorToolTiming,
+} from "./lib/operatorRunTiming";
+import {
   estimateOperatorInputTokens,
   operatorContextBudget,
   operatorContextHardLimit,
@@ -524,6 +528,11 @@ export async function buildOperatorHistoryWithAttachments(
   return history;
 }
 
+function optionalTiming(timer: OperatorStepTimer) {
+  const timing = timer.take();
+  return timing ? { timing } : {};
+}
+
 let operatorToolJsonSchemas: Map<string, Record<string, unknown>> | undefined;
 
 /**
@@ -546,12 +555,21 @@ function operatorToolInputSchema(name: OperatorAgentToolName) {
 export const run = internalAction({
   args: { runId: v.id("operatorAgentRuns") },
   handler: async (ctx, args): Promise<{ status: string; error?: string }> => {
-    const expectedRunnerAttempt: number | null = await ctx.runMutation(
-      internal.operatorAgent.markRunStartedInternal,
-      { runId: args.runId },
+    // Metadata-only timing of the segment in progress, written by the
+    // mutation that ends it. The first segment of an action includes its start.
+    let stepTiming = new OperatorStepTimer();
+    // The inline continue mutation that ended the previous segment.
+    let checkpointMs: number | undefined;
+    const expectedRunnerAttempt: number | null = await stepTiming.time(
+      "run_start",
+      () =>
+        ctx.runMutation(internal.operatorAgent.markRunStartedInternal, {
+          runId: args.runId,
+        }),
     );
     if (expectedRunnerAttempt === null)
       return { status: "not_started" as const };
+    stepTiming.runnerAttempt = expectedRunnerAttempt;
 
     const stepDeadline = dayjs().add(
       OPERATOR_ACTION_STEP_BUDGET_MS,
@@ -566,6 +584,7 @@ export const run = internalAction({
     // Runs one model step from the durable checkpoint. A step that checkpoints
     // with "continued" leaves the run running for the next step in this action.
     const runStep = async (): Promise<{ status: string; error?: string }> => {
+      const timer = stepTiming;
       const context: {
         run: Doc<"operatorAgentRuns">;
         thread: Doc<"operatorAgentThreads">;
@@ -574,9 +593,10 @@ export const run = internalAction({
         operatorName?: string;
         operatorEmail?: string;
         operatorTeamAddress?: string;
-      } | null = await ctx.runQuery(
-        internal.operatorAgent.getRunContextInternal,
-        { runId: args.runId },
+      } | null = await timer.time("run_context", () =>
+        ctx.runQuery(internal.operatorAgent.getRunContextInternal, {
+          runId: args.runId,
+        }),
       );
       if (!context) throw new Error("Operator agent run not found");
       const { run, thread } = context;
@@ -588,13 +608,15 @@ export const run = internalAction({
         return { status: "superseded" };
       expectedCheckpointIteration = run.checkpoint?.iteration ?? 0;
       routerRetryCount = run.checkpoint?.routerRetryCount ?? 0;
+      timer.iteration = expectedCheckpointIteration;
+      timer.routerRetryCount = routerRetryCount;
       const runChannel = operatorChannel(thread.channel);
       const commandEmail = context.messages.find(
         (message) => message._id === run.userMessageId,
       )?.channel === "email";
       const traceChannel = runChannel === "chat" ? "web" : runChannel;
       // Live status is presentation only and must never block or fail the run.
-      const recordActivity = async (update: MessageActivityUpdate) => {
+      const writeActivity = async (update: MessageActivityUpdate) => {
         if (traceChannel !== "web") return;
         try {
           await ctx.runMutation(internal.routerJobs.recordActivity, {
@@ -610,6 +632,12 @@ export const run = internalAction({
           console.warn("Agent activity unavailable", { runId: run._id });
         }
       };
+      // Concurrent callers (intent prefetch, expand_tools) use the untimed
+      // writer so overlapping writes are not attributed twice.
+      const recordActivity = (update: MessageActivityUpdate) =>
+        traceChannel === "web"
+          ? timer.time("activity", () => writeActivity(update))
+          : Promise.resolve();
 
       const selected = selectBoundedAgentHistory(context.messages, {
         currentMessageId: String(run.userMessageId),
@@ -620,6 +648,7 @@ export const run = internalAction({
         `${stagePrefix}:context`,
         "preparing_context",
         async () => {
+          const endContinuationLoad = timer.begin("continuation_load");
           const continuationText = !run.modelContinuationStorageId
             ? undefined
             : carried?.storageId === run.modelContinuationStorageId
@@ -661,22 +690,30 @@ export const run = internalAction({
               }
             }
           }
+          endContinuationLoad(
+            continuationText
+              ? { bytes: Buffer.byteLength(continuationText) }
+              : undefined,
+          );
           if (continuation)
             return { continuation, messages: continuation.messages };
-          const history = await buildOperatorHistoryWithAttachments(
-            ctx,
-            selected.messages,
+          const history = await timer.time("history_build", () =>
+            buildOperatorHistoryWithAttachments(ctx, selected.messages),
           );
           // A starter intent's known reads run in code before its first step.
+          // Its reads run in parallel, so the phase includes their activity.
           const prefetched =
             expectedCheckpointIteration === 0
-              ? await prefetchOperatorIntentContext(ctx, {
-                  run,
-                  messages: context.messages,
-                  toolNames: context.toolNames,
-                  channel: runChannel,
-                  recordActivity,
-                })
+              ? await timer.time("intent_prefetch", () =>
+                  prefetchOperatorIntentContext(ctx, {
+                    run,
+                    messages: context.messages,
+                    toolNames: context.toolNames,
+                    channel: runChannel,
+                    recordActivity: writeActivity,
+                    onReadTiming: (read) => timer.tools.push(read),
+                  }),
+                )
               : undefined;
           return {
             continuation,
@@ -690,15 +727,17 @@ export const run = internalAction({
       let messages = loaded.messages;
       const threadSummary =
         continuation?.threadSummary ??
-        (await ctx
-          .runQuery(internal.operatorAgentHistory.getState, {
-            threadId: run.threadId,
-          })
-          .then((threadState) =>
-            threadState?.summaryVersion === THREAD_SUMMARY_VERSION
-              ? threadState.summary
-              : undefined,
-          ));
+        (await timer.time("thread_state", () =>
+          ctx
+            .runQuery(internal.operatorAgentHistory.getState, {
+              threadId: run.threadId,
+            })
+            .then((threadState) =>
+              threadState?.summaryVersion === THREAD_SUMMARY_VERSION
+                ? threadState.summary
+                : undefined,
+            ),
+        ));
       const recovery = parseRecoveryState(continuation?.recovery);
       const exhaustedTools = new Map(
         recovery.exhausted.map((entry) => [entry.toolName, entry]),
@@ -715,34 +754,40 @@ export const run = internalAction({
       // step this action just checkpointed has no router job yet.
       const executionJobStarted =
         !carried &&
-        ((await ctx.runQuery(internal.routerJobs.get, {
-          invocationKey: `${invocationKey}:0`,
-        })) !== null ||
-          (await ctx.runQuery(internal.routerJobs.get, {
-            invocationKey: `${invocationKey}:0:routed`,
-          })) !== null);
+        (await timer.time(
+          "router_job_lookup",
+          async () =>
+            (await ctx.runQuery(internal.routerJobs.get, {
+              invocationKey: `${invocationKey}:0`,
+            })) !== null ||
+            (await ctx.runQuery(internal.routerJobs.get, {
+              invocationKey: `${invocationKey}:0:routed`,
+            })) !== null,
+        ));
       const resumed = !intentFamilies && executionJobStarted;
       const selectFamilies = () =>
-        selectOperatorToolFamilies(
-          {
-            toolNames: context.toolNames,
-            required: [
-              ...operatorConversationFamilies(run, context.messages),
-              ...operatorRunRequiredFamilies(
-                run,
-                context.messages,
-                continuation?.messages ?? [],
-              ),
-            ],
-            intentFamilies,
-            resumed,
-            request: run.objective,
-            commandEmail,
-            recentToolActivity: run.checkpoint?.summary,
-            pageType: threadPageContext(thread)?.pageType,
-            trace: { traceId, parentRequestId, channel: traceChannel },
-          },
-          { telemetry: ctx },
+        timer.time("family_selection", () =>
+          selectOperatorToolFamilies(
+            {
+              toolNames: context.toolNames,
+              required: [
+                ...operatorConversationFamilies(run, context.messages),
+                ...operatorRunRequiredFamilies(
+                  run,
+                  context.messages,
+                  continuation?.messages ?? [],
+                ),
+              ],
+              intentFamilies,
+              resumed,
+              request: run.objective,
+              commandEmail,
+              recentToolActivity: run.checkpoint?.summary,
+              pageType: threadPageContext(thread)?.pageType,
+              trace: { traceId, parentRequestId, channel: traceChannel },
+            },
+            { telemetry: ctx },
+          ),
         );
       // Only a real Jev decision is staged; intents and replays skip it. The
       // selector absorbs Jev failures by offering every family, so a fallback
@@ -803,9 +848,8 @@ export const run = internalAction({
         });
       }
       const route =
-        (await ctx.runQuery(
-          internal.modelSettings.resolveOperatorAgentRoute,
-          {},
+        (await timer.time("route_resolve", () =>
+          ctx.runQuery(internal.modelSettings.resolveOperatorAgentRoute, {}),
         )) ?? undefined;
       pendingFamilies = familySelection.families;
       const offeredToolNames = operatorAgentToolNamesForFamilies(
@@ -886,9 +930,11 @@ export const run = internalAction({
             status: "completed",
             detail: "Plan requested",
           });
-          const saved: boolean = await ctx.runMutation(
-            internal.operatorAgent.recordPlanningAssessmentInternal,
-            { ...guard, assessment: requested },
+          const saved: boolean = await timer.time("planning_record", () =>
+            ctx.runMutation(
+              internal.operatorAgent.recordPlanningAssessmentInternal,
+              { ...guard, assessment: requested },
+            ),
           );
           if (!saved) return { status: "superseded" as const };
           assessment = requested;
@@ -900,10 +946,12 @@ export const run = internalAction({
             `${stagePrefix}:assess`,
             "assessing_workflow",
             () =>
-              assessOperatorWorkflow(
-                planningContext,
-                { traceId, parentRequestId, channel: traceChannel },
-                { telemetry: ctx },
+              timer.time("workflow_assessment", () =>
+                assessOperatorWorkflow(
+                  planningContext,
+                  { traceId, parentRequestId, channel: traceChannel },
+                  { telemetry: ctx },
+                ),
               ),
             (assessment) =>
               assessment.required
@@ -912,9 +960,11 @@ export const run = internalAction({
                   ? "No plan needed (check inconclusive)"
                   : "No plan needed",
           );
-          const saved: boolean = await ctx.runMutation(
-            internal.operatorAgent.recordPlanningAssessmentInternal,
-            { ...guard, assessment: decided },
+          const saved: boolean = await timer.time("planning_record", () =>
+            ctx.runMutation(
+              internal.operatorAgent.recordPlanningAssessmentInternal,
+              { ...guard, assessment: decided },
+            ),
           );
           if (!saved) return { status: "superseded" as const };
           assessment = decided;
@@ -931,26 +981,34 @@ export const run = internalAction({
           try {
             // No tools and no stream target: the planner cannot act and its
             // JSON never reaches the visible answer.
-            const planResult = await generateAgentTextForOperatorTask(
-              ctx,
-              "chat",
-              {
-                maxOutputTokens: OPERATOR_PLANNING_MAX_OUTPUT_TOKENS,
-                system: OPERATOR_PLANNER_SYSTEM_PROMPT,
-                messages: [
+            const planResult = await timer.modelCall(
+              "planner",
+              (timing) =>
+                generateAgentTextForOperatorTask(
+                  ctx,
+                  "chat",
                   {
-                    role: "user",
-                    content: operatorPlannerPrompt(planningContext),
+                    maxOutputTokens: OPERATOR_PLANNING_MAX_OUTPUT_TOKENS,
+                    system: OPERATOR_PLANNER_SYSTEM_PROMPT,
+                    messages: [
+                      {
+                        role: "user",
+                        content: operatorPlannerPrompt(planningContext),
+                      },
+                    ],
+                    output: Output.object({
+                      schema: operatorExecutionPlanSchema,
+                    }),
                   },
-                ],
-                output: Output.object({ schema: operatorExecutionPlanSchema }),
-              },
-              {
-                taskKind: "operator_agent",
-                durable: { invocationKey: planKey, route },
-                sessionKey: `operator:${String(run.operatorUserId)}:${String(run.threadId)}`,
-                trace: planTrace,
-              },
+                  {
+                    taskKind: "operator_agent",
+                    durable: { invocationKey: planKey, route },
+                    sessionKey: `operator:${String(run.operatorUserId)}:${String(run.threadId)}`,
+                    trace: planTrace,
+                    timing,
+                  },
+                ),
+              (result) => result.clRouter?.requestId,
             );
             const parsed = operatorExecutionPlanSchema.safeParse(
               planResult.output,
@@ -977,19 +1035,24 @@ export const run = internalAction({
             status: "completed",
             detail: `${generated.steps.length} step${generated.steps.length === 1 ? "" : "s"}`,
           });
-          const saved: boolean = await ctx.runMutation(
-            internal.operatorAgent.recordExecutionPlanInternal,
-            { ...guard, plan: generated },
+          const saved: boolean = await timer.time("planning_record", () =>
+            ctx.runMutation(internal.operatorAgent.recordExecutionPlanInternal, {
+              ...guard,
+              plan: generated,
+            }),
           );
           if (!saved) return { status: "superseded" as const };
           executionPlan = generated;
         }
       }
+      const endToolSetBuild = timer.begin("tool_set_build");
       const availableFamilies = operatorToolFamiliesOf(context.toolNames);
       const tools: ToolSet = {};
       let pendingConfirmation: { status: string; summary: string } | undefined;
       let requestedCompaction: Record<string, unknown> | undefined;
       let toolQueue: Promise<unknown> = Promise.resolve();
+      // Calls still queued, executing or recording behind `toolQueue`.
+      let toolsInFlight = 0;
       let toolEvidence = collectToolAudit({});
       if (!recovery.stopped && !exhaustedTools.has(EXPAND_TOOLS_NAME)) {
         tools[EXPAND_TOOLS_NAME] = tool({
@@ -1000,11 +1063,23 @@ export const run = internalAction({
               toolCallId: options.toolCallId,
               toolName: EXPAND_TOOLS_NAME,
             };
-            await recordActivity({ ...activity, status: "running" });
+            const startedAt = dayjs().valueOf();
+            // Runs beside queued tools, so its writes stay untimed.
+            await writeActivity({ ...activity, status: "running" });
             familySelection.families = [
               ...new Set([...familySelection.families, ...families]),
             ];
-            await recordActivity({ ...activity, status: "returned" });
+            await writeActivity({ ...activity, status: "returned" });
+            timer.tools.push({
+              toolName: EXPAND_TOOLS_NAME,
+              toolCallId: options.toolCallId,
+              serial: false,
+              queuedMs: 0,
+              startedAt,
+              endedAt: dayjs().valueOf(),
+              executeMs: 0,
+              status: "returned",
+            });
             return {
               status: "available_next_step",
               families,
@@ -1029,8 +1104,31 @@ export const run = internalAction({
               toolCallId: options.toolCallId,
               toolName: name,
             };
+            const calledAt = dayjs().valueOf();
+            const toolTiming: OperatorToolTiming = {
+              toolName: name,
+              toolCallId: options.toolCallId,
+              serial: toolsInFlight > 0,
+              queuedMs: 0,
+              startedAt: calledAt,
+              endedAt: calledAt,
+              executeMs: 0,
+              status: "failed",
+            };
+            timer.tools.push(toolTiming);
+            toolsInFlight += 1;
+            let endExecute: (() => number) | undefined;
+            let endBookkeeping: (() => number) | undefined;
+            const finishExecution = (status: string) => {
+              toolTiming.executeMs = endExecute?.() ?? 0;
+              toolTiming.endedAt = dayjs().valueOf();
+              toolTiming.status = status;
+              endBookkeeping = timer.begin("tool.bookkeeping");
+            };
             let parsedInput: Record<string, unknown> | undefined;
             const execution = toolQueue.then(async () => {
+              toolTiming.startedAt = dayjs().valueOf();
+              toolTiming.queuedMs = toolTiming.startedAt - calledAt;
               if (pendingConfirmation) {
                 return {
                   ...pendingConfirmation,
@@ -1061,6 +1159,7 @@ export const run = internalAction({
                 ...(activityContext ? { context: activityContext } : {}),
                 ...(activityTarget ? { target: activityTarget } : {}),
               });
+              endExecute = timer.begin("tool.execute");
               const inputHash = await actionConfirmationFingerprint({
                 toolName: name,
                 toolVersion: spec.version,
@@ -1131,6 +1230,7 @@ export const run = internalAction({
               .then(
                 async (output) => {
                   const status = toolOutcomeStatus(output);
+                  finishExecution(status);
                   const result = summarizeToolResult(output);
                   const change =
                     status === "completed" &&
@@ -1207,8 +1307,15 @@ export const run = internalAction({
                     }),
                   );
                 },
-                () => recordActivity({ ...activity, status: "failed" }),
+                () => {
+                  finishExecution("failed");
+                  return recordActivity({ ...activity, status: "failed" });
+                },
               )
+              .finally(() => {
+                if (endBookkeeping) toolTiming.bookkeepingMs = endBookkeeping();
+                toolsInFlight -= 1;
+              })
               .catch(() => undefined);
             return toolQueue.then(async () => {
               const output = await execution;
@@ -1275,8 +1382,11 @@ export const run = internalAction({
         estimateOperatorInputTokens(system, inputCatalog, history);
       messages = boundToolHistory(messages);
       const tokensBefore = estimate(messages);
+      endToolSetBuild();
       // Also gates optional request fields: an unavailable catalog sends none.
-      const capabilities = await clRouterCapabilities().catch(() => undefined);
+      const capabilities = await timer.time("router_capabilities", () =>
+        clRouterCapabilities().catch(() => undefined),
+      );
       const budget = operatorContextBudget(capabilities, route);
       const hardLimit = operatorContextHardLimit(capabilities, route);
       if (
@@ -1284,6 +1394,7 @@ export const run = internalAction({
         (tokensBefore > budget || continuation?.compactionRequest) &&
         run.checkpoint?.compaction?.iteration !== expectedCheckpointIteration
       ) {
+        const endCompaction = timer.begin("context_compaction");
         const compacted = await traceStage(
           recordActivity,
           `${stagePrefix}:compaction`,
@@ -1344,6 +1455,7 @@ export const run = internalAction({
             tokensAfter,
           },
         );
+        endCompaction();
         if (!installed) return { status: "superseded" };
         messages = compacted.messages;
         run.modelContinuationStorageId = storageId;
@@ -1381,62 +1493,71 @@ export const run = internalAction({
           ? { parallelToolCalls: true }
           : {}),
       };
-      const result = await generateAgentTextForOperatorTask(
-        ctx,
-        modelTask,
-        {
-          maxOutputTokens: OPERATOR_AGENT_MAX_OUTPUT_TOKENS,
-          system,
-          messages,
-          tools: offeredTools,
-          experimental_onStepStart: () => recordActivity({ kind: "model" }),
-          onStepFinish: async (step) => {
-            if (traceChannel !== "web") return;
-            await ctx.runMutation(internal.routerJobs.recordToolActivity, {
-              target: run.agentMessageId,
-              tools: step.toolCalls.map((call) => call.toolName),
-            });
-          },
-          stopWhen: [
-            stepCountIs(OPERATOR_AGENT_MAX_STEPS),
-            () => Boolean(pendingConfirmation),
-          ],
-        },
-        {
-          taskKind: "operator_agent",
-          ...(traceChannel === "web"
-            ? { activityTarget: run.agentMessageId }
-            : {}),
-          activityOperatorRun: {
-            runId: run._id,
-            expectedRunnerAttempt,
-            expectedCheckpointIteration,
-          },
-          // Progress sanitizes provisional text before persisting it. Recovery
-          // replies still stay private until their failure is resolved.
-          ...(traceChannel === "web" && recovery.pending.length === 0
-            ? { streamTarget: run.agentMessageId }
-            : {}),
-          durable: {
-            invocationKey,
-            route,
-          },
-          // Each step's reasoning returns in result.response.messages and
-          // rides the continuation to the next step.
-          reasoning: {
-            include: true,
-            effort: operatorStepReasoningEffort(
+      const result = await timer.modelCall(
+        "step",
+        (timing) =>
+          generateAgentTextForOperatorTask(
+            ctx,
+            modelTask,
+            {
+              maxOutputTokens: OPERATOR_AGENT_MAX_OUTPUT_TOKENS,
+              system,
               messages,
-              Object.keys(offeredTools),
-              expectedCheckpointIteration === 0,
-              recovery.pending.length > 0,
-            ),
-          },
-          agentStep,
-          sessionKey,
-          trace,
-        },
+              tools: offeredTools,
+              experimental_onStepStart: () => recordActivity({ kind: "model" }),
+              onStepFinish: async (step) => {
+                if (traceChannel !== "web") return;
+                await timer.time("activity", () =>
+                  ctx.runMutation(internal.routerJobs.recordToolActivity, {
+                    target: run.agentMessageId,
+                    tools: step.toolCalls.map((call) => call.toolName),
+                  }),
+                );
+              },
+              stopWhen: [
+                stepCountIs(OPERATOR_AGENT_MAX_STEPS),
+                () => Boolean(pendingConfirmation),
+              ],
+            },
+            {
+              taskKind: "operator_agent",
+              ...(traceChannel === "web"
+                ? { activityTarget: run.agentMessageId }
+                : {}),
+              activityOperatorRun: {
+                runId: run._id,
+                expectedRunnerAttempt,
+                expectedCheckpointIteration: expectedCheckpointIteration ?? 0,
+              },
+              // Progress sanitizes provisional text before persisting it. Recovery
+              // replies still stay private until their failure is resolved.
+              ...(traceChannel === "web" && recovery.pending.length === 0
+                ? { streamTarget: run.agentMessageId }
+                : {}),
+              durable: {
+                invocationKey,
+                route,
+              },
+              // Each step's reasoning returns in result.response.messages and
+              // rides the continuation to the next step.
+              reasoning: {
+                include: true,
+                effort: operatorStepReasoningEffort(
+                  messages,
+                  Object.keys(offeredTools),
+                  expectedCheckpointIteration === 0,
+                  recovery.pending.length > 0,
+                ),
+              },
+              agentStep,
+              sessionKey,
+              trace,
+              timing,
+            },
+          ),
+        (result) => result.clRouter?.requestId,
       );
+      const endResultProcessing = timer.begin("result_processing");
       // The served route and difficulty, reused by the router on the next
       // tool-result continuation. Pinned (manual) steps carry no difficulty.
       const routing = result.clRouter?.routing;
@@ -1481,6 +1602,8 @@ export const run = internalAction({
       const heldBackNotice = recoveryContinues
         ? RECOVERY_NOTICE_MESSAGE
         : LEAKED_TOOL_CALL_NOTICE_MESSAGE;
+      endResultProcessing();
+      const endSerialize = timer.begin("continuation_serialize");
       const nextContinuationText =
         pendingConfirmation || shouldContinue
           ? JSON.stringify({
@@ -1513,12 +1636,20 @@ export const run = internalAction({
               ...(nextLoopPrevious ? { loopPrevious: nextLoopPrevious } : {}),
             })
           : undefined;
+      endSerialize();
       const modelContinuationStorageId = nextContinuationText
-        ? await ctx.storage.store(
-            new Blob([nextContinuationText], { type: "application/json" }),
+        ? await timer.time(
+            "continuation_store",
+            () =>
+              ctx.storage.store(
+                new Blob([nextContinuationText], { type: "application/json" }),
+              ),
+            { bytes: Buffer.byteLength(nextContinuationText) },
           )
         : undefined;
       if (!pendingConfirmation && shouldContinue) {
+        const timing = timer.take();
+        const checkpointStarted = dayjs();
         const continuation: { status: string } | null = await ctx.runMutation(
           internal.operatorAgent.continueRunInternal,
           {
@@ -1534,8 +1665,10 @@ export const run = internalAction({
             }),
             usedTools: audit.usedTools,
             toolCalls: audit.toolCalls,
+            ...(timing ? { timing } : {}),
           },
         );
+        checkpointMs = dayjs().diff(checkpointStarted);
         if (
           continuation?.status === "continued" &&
           modelContinuationStorageId &&
@@ -1592,6 +1725,7 @@ export const run = internalAction({
           routerRequestId: result.clRouter?.requestId,
           usedTools: audit.usedTools,
           toolCalls: audit.toolCalls,
+          ...optionalTiming(timer),
         },
       );
       return completion ?? { status: "missing" as const };
@@ -1600,6 +1734,8 @@ export const run = internalAction({
       for (;;) {
         const outcome = await runStep();
         if (outcome.status !== "continued") return outcome;
+        stepTiming = new OperatorStepTimer(checkpointMs);
+        stepTiming.runnerAttempt = expectedRunnerAttempt;
       }
     } catch (error) {
       if (error instanceof RouterJobPending) {
@@ -1609,6 +1745,7 @@ export const run = internalAction({
           expectedRunnerAttempt,
           invocationKey: error.invocationKey,
           ...(pendingFamilies ? { families: pendingFamilies } : {}),
+          ...optionalTiming(stepTiming),
         });
         return { status: "queued" };
       }
@@ -1623,6 +1760,7 @@ export const run = internalAction({
           expectedCheckpointIteration,
           expectedRunnerAttempt,
           routerRetryCount: routerRetryCount + 1,
+          ...optionalTiming(stepTiming),
         });
         return { status: "queued" };
       }
@@ -1642,6 +1780,7 @@ export const run = internalAction({
         ...(error instanceof RouterJobFailed && error.failure
           ? { failure: error.failure }
           : {}),
+        ...optionalTiming(stepTiming),
       });
       return {
         status: "failed" as const,
