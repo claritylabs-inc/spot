@@ -118,6 +118,9 @@ class AgentIncompleteOutputError extends Error {
     this.name = "AgentIncompleteOutputError";
   }
 }
+// A durable agent call waits this long in its action for the router result
+// before yielding to its caller's scheduled resume.
+const DURABLE_AGENT_INLINE_WAIT_MS = 45_000;
 export type AgentModelRunOptions = {
   streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
   activityTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
@@ -793,6 +796,9 @@ function agentLanguageModel(
             abortSignal,
             {
               wait: run.durable ? "yield" : "poll",
+              ...(run.durable
+                ? { inlineWaitMs: DURABLE_AGENT_INLINE_WAIT_MS }
+                : {}),
               streamTarget: run.streamTarget,
             },
           );
