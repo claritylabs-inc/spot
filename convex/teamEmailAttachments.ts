@@ -15,11 +15,21 @@ export const candidatesInternal = internalQuery({
     const inlineIds = new Set(
       (message.inlineFiles ?? []).filter((file) => shown(file.contentId)).map((file) => file.clientFileId),
     );
+    const contentIds = new Map(
+      (message.inlineFiles ?? []).map((file) => [file.clientFileId, file.contentId]),
+    );
     const filed = await Promise.all(
       message.clientFileIds.map(async (clientFileId) => {
         const file = await ctx.db.get(clientFileId);
         return file && !inlineIds.has(clientFileId)
-          ? [{ id: String(clientFileId), storageId: file.fileId, name: file.name, contentType: file.contentType, size: file.size }]
+          ? [{
+              id: String(clientFileId),
+              storageId: file.fileId,
+              name: file.name,
+              contentType: file.contentType,
+              size: file.size,
+              contentId: contentIds.get(clientFileId),
+            }]
           : [];
       }),
     );
@@ -31,6 +41,7 @@ export const candidatesInternal = internalQuery({
         name: file.name,
         contentType: file.contentType,
         size: file.size,
+        contentId: file.contentId,
       }));
     const images = await Promise.all(
       [...filed.flat(), ...unfiled]
@@ -52,6 +63,8 @@ export const candidatesInternal = internalQuery({
       clientOrgId: message.clientOrgId,
       subject: message.subject,
       text: message.currentText.slice(0, 2000),
+      htmlImageCount: message.bodyHtml?.match(/<img\b/gi)?.length ?? 0,
+      htmlCidRefs: [...new Set(message.bodyHtml?.match(/cid:[^"'()\s>]+/gi) ?? [])].slice(0, 20),
       images,
     };
   },
