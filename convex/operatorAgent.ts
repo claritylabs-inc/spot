@@ -1428,7 +1428,7 @@ async function resolveThreadAttachmentFileId(
   return (await resolveThreadAttachment(ctx, threadId, value)).fileId;
 }
 
-async function requireOperatorThread(
+export async function requireOperatorThread(
   ctx: QueryCtx | MutationCtx,
   threadId: Id<"operatorAgentThreads">,
   operatorUserId: Id<"users">,
