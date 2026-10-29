@@ -25,7 +25,11 @@ const ASSET_BYTES = 12 * 1024 * 1024;
 const ASSET_AGGREGATE_BYTES = 16 * 1024 * 1024;
 const CONTROL_WAIT_MS = 5_000;
 // In-place waits poll the job row the result callback writes, so a finished
-// job is seen within one interval; the interval eases off for long jobs.
+// job is seen within one interval. Most operator steps finish within the
+// first seconds, where every interval adds directly to the step's handoff,
+// so polling starts fast, settles, then eases off for long jobs.
+const INLINE_POLL_FAST_MS = 100;
+const INLINE_POLL_FAST_FOR_MS = 3_000;
 const INLINE_POLL_MS = 250;
 const INLINE_POLL_SLOW_AFTER_MS = 10_000;
 const INLINE_POLL_MAX_MS = 1_000;
@@ -385,7 +389,11 @@ async function routerControl(
  */
 export type RouterJobTiming = {
   phase(name: "submit" | "status" | "wait" | "read", ms: number, polls?: number): void;
-  job(invocationKey: string, routerJobId: string | undefined): void;
+  job(
+    invocationKey: string,
+    routerJobId: string | undefined,
+    result?: "inline" | "storage",
+  ): void;
 };
 
 async function timed<T>(
@@ -430,7 +438,7 @@ async function waitForRouterJobRow(
   timing?: RouterJobTiming,
 ): Promise<Doc<"routerJobs"> | null> {
   const started = dayjs();
-  let interval = INLINE_POLL_MS;
+  let interval = INLINE_POLL_FAST_MS;
   let row: Doc<"routerJobs"> | null = null;
   let polls = 0;
   while (!abortSignal?.aborted) {
@@ -442,8 +450,16 @@ async function waitForRouterJobRow(
     row = await ctx.runQuery(internal.routerJobs.get, { invocationKey });
     polls += 1;
     if (!row || routerJobEnded(row)) break;
-    if (dayjs().diff(started) >= INLINE_POLL_SLOW_AFTER_MS)
-      interval = Math.min(INLINE_POLL_MAX_MS, interval * 1.25);
+    const elapsed = dayjs().diff(started);
+    interval =
+      elapsed < INLINE_POLL_FAST_FOR_MS
+        ? INLINE_POLL_FAST_MS
+        : elapsed < INLINE_POLL_SLOW_AFTER_MS
+          ? INLINE_POLL_MS
+          : Math.min(
+              INLINE_POLL_MAX_MS,
+              Math.max(interval, INLINE_POLL_MS) * 1.25,
+            );
   }
   timing?.phase("wait", dayjs().diff(started), polls);
   return row;
@@ -600,8 +616,15 @@ async function executeRouterRequestOnce(
       throw abortSignal.reason ?? new Error("Router job cancelled");
     }
     if (row.status === "succeeded") {
-      const { resultStorageId } = row;
+      // A small result arrived on the row itself; larger ones are in storage.
+      const { resultJson, resultStorageId } = row;
+      timing?.job(
+        invocationKey,
+        row.routerJobId,
+        resultJson !== undefined ? "inline" : "storage",
+      );
       return await timed(timing, "read", async () => {
+        if (resultJson !== undefined) return JSON.parse(resultJson);
         const blob = resultStorageId
           ? await ctx.storage.get(resultStorageId)
           : null;

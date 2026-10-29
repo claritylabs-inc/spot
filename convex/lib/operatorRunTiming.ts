@@ -47,6 +47,8 @@ const modelCallTimingValidator = v.object({
   waitMs: v.number(),
   polls: v.number(),
   readMs: v.number(),
+  // Where the succeeded result was read from: the job row or storage.
+  result: v.optional(v.union(v.literal("inline"), v.literal("storage"))),
   telemetryMs: v.number(),
   sdkMs: v.number(),
   outcome: v.union(
@@ -173,9 +175,10 @@ export class OperatorStepTimer {
         else call.submitMs += ms;
         call.polls += polls ?? 0;
       },
-      job: (invocationKey, routerJobId) => {
+      job: (invocationKey, routerJobId, result) => {
         call.invocationKey = invocationKey;
         if (routerJobId) call.routerJobId = routerJobId;
+        if (result) call.result = result;
       },
       telemetry: (ms) => {
         this.add(`${prefix}.telemetry`, ms);
