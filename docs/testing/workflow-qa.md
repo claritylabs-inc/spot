@@ -1,5 +1,22 @@
 # Platform workflow QA
 
+## PDF form autofill and in-panel editing — October 29, 2026
+
+Native-local Conductor stack. A seeded flat form fill for Foundry Robotics
+(procurement request with a Pinecrest outreach) filed v1 as a hidden client file
+and a hidden provider-scoped request file item. Operator-identity API checks
+passed: current/stale `getForAttachment`, `saveEdits` (corrected VIN, placed an
+unplaced value, unticked a checkbox, added a manual value) rendering v2 from the
+original, version-conflict rejection, out-of-page box rejection and anonymous
+rejection. In headless Chrome the PDF panel showed Edit, the shared viewer's
+field layer (clarity-ui PR #55 source copied into node_modules), keyboard
+checkbox toggle, click-to-add text and Save; v3 reopened in the panel, the
+conversation attachment was swapped and the request file item pointed at v3.
+Live `fill_pdf_form` LLM and Jev calls were not exercised: the remote router
+cannot call back to this sandbox's loopback backend without a callback tunnel.
+Placement math was checked on a synthetic form render. No tests or migrations
+added.
+
 ## Provider submission defaults — October 29, 2026
 
 Synced remote main `e4aff817`, started native-local Conductor, and verified primary

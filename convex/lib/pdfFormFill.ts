@@ -7,13 +7,16 @@
 // field records, and `renderPdfFormFields` writes them onto the original, so
 // the PDF panel's editor regenerates a flattened copy the same way.
 
-import type { ModelMessage, UserModelMessage } from "ai";
+import { Output, type ModelMessage, type UserModelMessage } from "ai";
 import { PDFDocument, StandardFonts, type PDFFont } from "pdf-lib";
 import { z } from "zod";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { locateTargetsOnPdfPage } from "./jevImages";
-import { generateObjectForOrg, generateObjectForPublicTask } from "./models";
+import {
+  generateAgentTextForOrg,
+  generateAgentTextForPublicTask,
+} from "./models";
 import {
   fillAcroForm,
   getAcroFormFields,
@@ -120,16 +123,28 @@ async function generateFormObject<T>(
   task: "document_extraction" | "chat_vision",
   schema: z.ZodType<T>,
   messages: ModelMessage[],
-) {
-  const options = { schema, system: SYSTEM, messages, maxOutputTokens: 12_000 };
-  const call = {
+): Promise<T> {
+  // The agent model path is the one that carries image parts with structured output.
+  const options = {
+    system: SYSTEM,
+    messages,
+    maxOutputTokens: 12_000,
+    output: Output.object({ schema }),
+  };
+  const run = {
     taskKind: "pdf_form_fill",
-    trace: { traceId: input.traceId },
+    sessionKey: input.traceId,
+    trace: {
+      traceId: input.traceId,
+      label: "convex.pdfFormFill.generate",
+      phase: task === "chat_vision" ? "form_fields" : "acroform_values",
+      channel: "web" as const,
+    },
   };
   const result = input.orgId
-    ? await generateObjectForOrg(ctx, input.orgId, task, options, call)
-    : await generateObjectForPublicTask(ctx, task, options, call);
-  return result.object;
+    ? await generateAgentTextForOrg(ctx, input.orgId, task, options, run)
+    : await generateAgentTextForPublicTask(ctx, task, options, run);
+  return result.output as T;
 }
 
 function contextText(input: PdfFormFillInput) {

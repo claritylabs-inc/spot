@@ -9,6 +9,7 @@ import {
   pdfFormSourceId,
 } from "@/convex/lib/pdfFormSource";
 import { usePageContext } from "@/hooks/use-page-context";
+import { usePdfFormEditing } from "@/components/ui/pdf-form-editing";
 
 const EASE = [0.2, 0, 0, 1] as const;
 export function PdfPanel() {
@@ -22,6 +23,7 @@ export function PdfPanel() {
     highlightedPage,
     highlightBoxes,
     source,
+    openWithUrl,
   } = usePdf();
   const reduceMotion = useReducedMotion();
   // The agent panel works on the open PDF (e.g. filling a form) while it is shown.
@@ -37,6 +39,15 @@ export function PdfPanel() {
       summary: `PDF: ${filename?.slice(0, 200) ?? "document"}`,
     });
   }, [filename, open, pushPageContext, sourceId]);
+  const formEditing = usePdfFormEditing({
+    source,
+    onSaved: (saved) =>
+      openWithUrl(saved.url, currentPage, undefined, {
+        kind: "operatorAttachment",
+        fileId: saved.fileId,
+        filename: saved.filename,
+      }),
+  });
 
   if (!fileUrl || !isPdfOpen) return null;
 
@@ -56,6 +67,12 @@ export function PdfPanel() {
           onPageChange={navigateToPage}
           onDocumentLoad={setNumPages}
           onClose={closePdf}
+          {...(formEditing.active
+            ? {
+                toolbarActions: formEditing.toolbarActions,
+                ...formEditing.viewerProps,
+              }
+            : {})}
         />
       </motion.div>
     </div>
