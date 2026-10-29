@@ -72,14 +72,14 @@ export async function markTeamThreadRead(
 
 /**
  * The shared team inbox, one bounded index-backed page at a time. At most one
- * primary scope is read from its index (request, client, mine, category,
+ * primary scope is read from its index (request, client, owner, category,
  * unlinked, else all); further filters apply to that page and are reported by
  * `hiddenCount` / `partial`. Contradictory filters throw.
  */
 export const list = query({
   args: {
     paginationOpts: paginationOptsValidator,
-    mine: v.optional(v.boolean()),
+    ownerUserId: v.optional(v.id("users")),
     unlinked: v.optional(v.boolean()),
     clientOrgId: v.optional(v.id("organizations")),
     requestId: v.optional(v.id("procurementRequests")),

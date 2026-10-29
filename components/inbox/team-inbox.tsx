@@ -62,7 +62,8 @@ export type TeamInboxScope =
 type ClientSequence = NonNullable<
   FunctionReturnType<typeof api.clientOutreach.getPanel>
 >["sequences"][number];
-type TeamFilter = "all" | "mine" | "unlinked";
+/** "all", "unlinked", or an operator user id (a fixed per-person filter). */
+type TeamFilter = string;
 type Mailbox = "inbox" | "sent" | "all" | "archived";
 
 const MAILBOX_TABS: { value: Mailbox; label: string }[] = [
@@ -394,17 +395,21 @@ export function TeamInbox({
 }) {
   const convex = useConvex();
   const requestId = scope.kind === "request" ? scope.requestId : undefined;
-  // The team inbox opens on the operator's own mail.
   const uiKey = requestId ? `inbox:request:${requestId}` : "inbox:team";
   const params = useSearchParams();
   const scopeParam = params.get("mailScope");
-  const initialFilter = scope.kind === "team" ? "mine" : "all";
-  const filter = useFollowedValue<TeamFilter>(
+  const followedFilter = useFollowedValue<TeamFilter>(
     `${uiKey}:filter`,
-    scopeParam === "all" || scopeParam === "mine" || scopeParam === "unlinked"
-      ? scopeParam : initialFilter,
-    initialFilter,
+    scopeParam || "all",
+    "all",
   );
+  const operators = useQuery(api.operator.listOperators);
+  // Stale values (the retired "mine", departed operators) read as no filter.
+  const filter =
+    followedFilter === "unlinked" ||
+    operators?.some((person) => person.userId === followedFilter)
+      ? followedFilter
+      : "all";
   function setFilter(value: TeamFilter) {
     const url = new URL(window.location.href);
     url.searchParams.set("mailScope", value);
@@ -441,8 +446,10 @@ export function TeamInbox({
             ...(mailbox === "inbox" || mailbox === "sent" ? { mailbox } : {}),
           }
         : {
-            ...(filter === "mine" ? { mine: true } : {}),
             ...(filter === "unlinked" ? { unlinked: true } : {}),
+            ...(filter !== "all" && filter !== "unlinked"
+              ? { ownerUserId: filter as Id<"users"> }
+              : {}),
             ...(clientOrgId ? { clientOrgId: clientOrgId as Id<"organizations"> } : {}),
             ...(category !== ALL_CATEGORIES ? { category: category as Category } : {}),
             ...(archivedView ? { archived: true } : {}),
@@ -628,7 +635,9 @@ export function TeamInbox({
             if (next === "unlinked") setClientOrgId("");
           },
           options: [
-            { value: "mine", label: "Mine" },
+            ...(operators ?? [])
+              .filter((person) => person.status !== "disabled")
+              .map((person) => ({ value: person.userId, label: person.name })),
             { value: "unlinked", label: "Unlinked" },
           ],
         }]

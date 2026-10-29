@@ -2925,7 +2925,7 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
         cursor: typeof input.cursor === "string" ? input.cursor : null,
         numItems: typeof input.limit === "number" ? input.limit : 40,
       },
-      mine: input.mine === true,
+      ownerUserId: input.mine === true ? args.operatorUserId : undefined,
       unlinked: input.unlinked === true,
       archived: input.archived === true,
       clientOrgId: input.clientOrgId ? normalizeOrganizationId(ctx, input.clientOrgId) : undefined,

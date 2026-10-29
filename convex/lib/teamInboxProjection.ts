@@ -21,7 +21,7 @@ const MAX_THREAD_MESSAGES = 300;
 const UNREAD_SCAN_LIMIT = 100;
 
 type InboxFilters = {
-  mine?: boolean;
+  ownerUserId?: Id<"users">;
   unlinked?: boolean;
   clientOrgId?: Id<"organizations">;
   requestId?: Id<"procurementRequests">;
@@ -185,7 +185,7 @@ export async function teamInboxRow(
 
 /**
  * One bounded, index-backed page of team threads. The primary scope is chosen
- * from the filters (request, client, mine, category, unlinked, then all) so
+ * from the filters (request, client, owner, category, unlinked, then all) so
  * every page is read in index order; any further filter is applied to that
  * page and its effect is reported (`hiddenCount`, `partial`) instead of being
  * ignored. Contradictory filters throw. Callers authorize the viewer and, for a
@@ -198,7 +198,7 @@ export async function listTeamInbox(
     paginationOpts: PaginationOptions;
   },
 ) {
-  const { viewerUserId, mine, unlinked, category, requestId } = args;
+  const { viewerUserId, ownerUserId, unlinked, category, requestId } = args;
   const archived = args.archived === true;
   if (archived && args.mailbox) throw new Error("Archived mail cannot be combined with Inbox or Sent");
   const direction = args.mailbox === "inbox" ? "inbound" : args.mailbox === "sent" ? "outbound" : undefined;
@@ -226,9 +226,9 @@ export async function listTeamInbox(
       : clientOrgId
         ? table().withIndex("by_clientOrgId_latestDirection_archivedAt_latestMessageAt", (q) =>
             q.eq("clientOrgId", clientOrgId).eq("latestDirection", direction).eq("archivedAt", undefined))
-        : mine
+        : ownerUserId
           ? table().withIndex("by_ownerUserId_latestDirection_archivedAt_latestMessageAt", (q) =>
-              q.eq("ownerUserId", viewerUserId).eq("latestDirection", direction).eq("archivedAt", undefined))
+              q.eq("ownerUserId", ownerUserId).eq("latestDirection", direction).eq("archivedAt", undefined))
           : category
             ? table().withIndex("by_category_latestDirection_archivedAt_latestMessageAt", (q) =>
                 q.eq("category", category).eq("latestDirection", direction).eq("archivedAt", undefined))
@@ -258,12 +258,12 @@ export async function listTeamInbox(
           )
           .order("desc")
           .paginate(opts)
-      : mine
+      : ownerUserId
         ? await table()
             .withIndex("by_ownerUserId_and_archivedAt_and_latestMessageAt", (q) =>
               archived
-                ? q.eq("ownerUserId", viewerUserId).gt("archivedAt", 0)
-                : q.eq("ownerUserId", viewerUserId).eq("archivedAt", undefined),
+                ? q.eq("ownerUserId", ownerUserId).gt("archivedAt", 0)
+                : q.eq("ownerUserId", ownerUserId).eq("archivedAt", undefined),
             )
             .order("desc")
             .paginate(opts)
@@ -296,7 +296,7 @@ export async function listTeamInbox(
       !thread.deletedAt &&
       Boolean(thread.archivedAt) === archived &&
       (!direction || thread.latestDirection === direction) &&
-      (!mine || thread.ownerUserId === viewerUserId) &&
+      (!ownerUserId || thread.ownerUserId === ownerUserId) &&
       (!unlinked || !thread.clientOrgId) &&
       (!clientOrgId || thread.clientOrgId === clientOrgId) &&
       (!requestId || thread.requestId === requestId) &&
