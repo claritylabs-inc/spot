@@ -14,7 +14,14 @@ import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import {
+  AddressPills,
+  FromPicker,
+  useOperatorDirectory,
+} from "@/components/email/operator-address";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { useActiveOperators } from "@/hooks/use-operator-presence";
+import { useSharedValue } from "@/hooks/use-shared-value";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -34,7 +41,14 @@ export type ReplySuggestion = {
 };
 
 /** One send of one exact email. It lives from before the action starts until a definitive outcome. */
-type SendAttempt = { key: string; text: string; fingerprint: string; startedAt: number };
+type SendAttempt = {
+  key: string;
+  text: string;
+  fingerprint: string;
+  startedAt: number;
+  /** The operator it is sent as, when not the signed-in one. */
+  fromUserId?: Id<"users">;
+};
 
 // Storage is scoped to the signed-in operator and the conversation, so a
 // reload keeps a locked send and a sign-out never hands it to the next user.
@@ -84,17 +98,6 @@ function useDebounced<T>(value: T, delayMs: number) {
   return debounced;
 }
 
-function Recipients({ addresses }: { addresses: string[] }) {
-  return addresses.map((address) => (
-    <span
-      key={address}
-      className="inline-flex max-w-full min-w-0 items-center truncate rounded-full bg-muted px-2.5 py-0.5"
-    >
-      {address}
-    </span>
-  ));
-}
-
 /**
  * Reply box for a team conversation. The server composes the exact email (From,
  * recipients, signature, quoted history) and returns a fingerprint; Send is
@@ -138,6 +141,20 @@ function OperatorReplyComposer({
   const id = scope(operatorId, threadId);
   const sendReply = useAction(api.actions.teamEmailReplies.send);
   const [attempt, setAttempt] = useState<SendAttempt | null>(() => readAttempt(id));
+  // Who it is sent from, shared with everyone writing this reply together.
+  const [fromUserId, setFromUserId] = useState<Id<"users">>(
+    () => attempt?.fromUserId ?? (operatorId as Id<"users">),
+  );
+  useSharedValue(`reply:${threadId}:from`, fromUserId, setFromUserId);
+  const sendingAs = fromUserId === operatorId ? undefined : fromUserId;
+  const { operators, find } = useOperatorDirectory();
+  const senderName = operators?.find((person) => person.userId === fromUserId)?.name;
+  const coEditors = useActiveOperators().filter(
+    (person) =>
+      !person.self &&
+      person.emailThreadId === threadId &&
+      person.activity === "replying",
+  );
   const [text, setText] = useState(() => readAttempt(id)?.text ?? replyDrafts.get(id) ?? "");
   const [serverNote, setServerNote] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -157,7 +174,9 @@ function OperatorReplyComposer({
   const settled = useDebounced(text, PREVIEW_DELAY_MS);
   const previewResult = useQuery(
     api.teamEmailReplies.preview,
-    !locked && settled.trim() ? { threadId, message: settled } : "skip",
+    !locked && settled.trim()
+      ? { threadId, message: settled, fromUserId: sendingAs }
+      : "skip",
   );
   const current = !locked && settled === text && hasText;
   const preview = current && previewResult?.ok ? previewResult.preview : null;
@@ -172,7 +191,9 @@ function OperatorReplyComposer({
   // The server's record of this key; only `sent` is a positive answer.
   const status = useQuery(
     api.teamEmailReplies.status,
-    attempt ? { idempotencyKey: attempt.key } : "skip",
+    attempt
+      ? { idempotencyKey: attempt.key, fromUserId: attempt.fromUserId }
+      : "skip",
   );
 
   function update(value: string) {
@@ -224,7 +245,11 @@ function OperatorReplyComposer({
       sendKey.current = reusable
         ? sendKey.current
         : { key: crypto.randomUUID(), text, fingerprint: preview.fingerprint };
-      next = { ...sendKey.current!, startedAt: dayjs().valueOf() };
+      next = {
+        ...sendKey.current!,
+        startedAt: dayjs().valueOf(),
+        ...(sendingAs ? { fromUserId: sendingAs } : {}),
+      };
     }
     if (!next) return;
     // Recorded first: if this tab dies mid-send, the lock survives a reload.
@@ -239,9 +264,12 @@ function OperatorReplyComposer({
         message: next.text,
         expectedFingerprint: next.fingerprint,
         idempotencyKey: next.key,
+        fromUserId: next.fromUserId,
       });
       if (result.status === "sent") {
         setText("");
+        // The next reply starts from the signed-in operator again.
+        setFromUserId(operatorId as Id<"users">);
         replyDrafts.delete(id);
         sendKey.current = null;
         writeAttempt(id, null);
@@ -290,11 +318,15 @@ function OperatorReplyComposer({
         // Flush with the panel footer: the footer is already the frame.
         <div className="-mx-4 -my-3">
           <EmailComposeRow label="From">
-            <span className="min-w-0 truncate">{headers?.from ?? "You"}</span>
+            <FromPicker
+              value={fromUserId}
+              onChange={setFromUserId}
+              disabled={sending || locked}
+            />
           </EmailComposeRow>
           <EmailComposeRow label="To">
             {headers ? (
-              <Recipients addresses={headers.to} />
+              <AddressPills addresses={headers.to} />
             ) : (
               <span className="min-w-0 truncate text-muted-foreground">
                 {recipient ?? "Everyone on the latest message"}
@@ -303,12 +335,12 @@ function OperatorReplyComposer({
           </EmailComposeRow>
           {headers?.cc.length ? (
             <EmailComposeRow label="Cc">
-              <Recipients addresses={headers.cc} />
+              <AddressPills addresses={headers.cc} />
             </EmailComposeRow>
           ) : null}
           {headers?.bcc.length ? (
             <EmailComposeRow label="Bcc">
-              <Recipients addresses={headers.bcc} />
+              <AddressPills addresses={headers.bcc} />
             </EmailComposeRow>
           ) : null}
           {headers ? (
@@ -335,7 +367,7 @@ function OperatorReplyComposer({
             }}
             className="block max-h-72 min-h-28"
           />
-          {previewing || previewError || preview || needsInput || (fromSuggestion && hasText) || pendingRevision ? (
+          {previewing || previewError || preview || needsInput || (fromSuggestion && hasText) || pendingRevision || sendingAs || coEditors.length ? (
             <div className={`space-y-1 px-4 pb-2 text-muted-foreground ${typeStyle("caption.default")}`}>
               {pendingRevision && !unedited ? (
                 <p className="flex items-center gap-1.5">
@@ -344,6 +376,18 @@ function OperatorReplyComposer({
                   <button type="button" className="text-foreground underline" onClick={takeSuggestion}>
                     Replace yours
                   </button>
+                </p>
+              ) : null}
+              {sendingAs ? (
+                <p>
+                  Sending as {senderName ?? "a teammate"}: it goes from their
+                  address and is signed as them.
+                </p>
+              ) : null}
+              {coEditors.length ? (
+                <p>
+                  {coEditors.map((person) => person.name.split(" ")[0]).join(" and ")}{" "}
+                  {coEditors.length === 1 ? "is" : "are"} also editing this reply.
                 </p>
               ) : null}
               {fromSuggestion && hasText ? (
@@ -358,10 +402,16 @@ function OperatorReplyComposer({
               {previewing ? <p>Preparing preview…</p> : null}
               {previewError ? <p role="alert">{previewError}</p> : null}
               {preview?.copiesOwner ? (
-                <p>{preview.copiesOwner} is copied as the conversation owner.</p>
+                <p>
+                  {find(preview.copiesOwner)?.name ?? preview.copiesOwner} is copied as the
+                  conversation owner.
+                </p>
               ) : null}
               {preview?.mode === "standalone" ? (
-                <p>Sent from your own inbox as a new email; it stays in this conversation.</p>
+                <p>
+                  Sent from {sendingAs ? `${senderName ?? "their"}’s` : "your own"} inbox as a
+                  new email; it stays in this conversation.
+                </p>
               ) : null}
               {preview?.stopsFollowUps ? (
                 <p>Sending stops this conversation’s automatic follow-ups.</p>

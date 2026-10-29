@@ -49,7 +49,7 @@ const SAFE_FALLBACK = "The reply was not sent. Review it and try again.";
 const userText = (error: unknown) => teamReplyErrorMessage(error) ?? SAFE_FALLBACK;
 
 /**
- * Sends the previewed reply as the signed-in operator. The caller's session
+ * Sends the previewed reply as the signed-in operator, or as `fromUserId`. The caller's session
  * authenticates `prepareSend`, which stores the approved fingerprint on the
  * draft; the send below reads that approval from the draft and takes no
  * operator id, so no other route can send it. A repeat with the same key
@@ -67,6 +67,8 @@ export const send = action({
     message: v.string(),
     expectedFingerprint: v.string(),
     idempotencyKey: v.string(),
+    /** Send as this active operator instead of the caller. */
+    fromUserId: v.optional(v.id("users")),
   },
   handler: async (ctx, args): Promise<TeamReplySendResult> => {
     let pendingEmailId: Id<"pendingEmails">;
@@ -80,7 +82,10 @@ export const send = action({
       if (isReplyKeyMismatch(error)) return { status: "not_sent", message: userText(error) };
       // This key may already belong to a sent or locked email, whatever this call said.
       const known = await ctx
-        .runQuery(api.teamEmailReplies.status, { idempotencyKey: args.idempotencyKey })
+        .runQuery(api.teamEmailReplies.status, {
+          idempotencyKey: args.idempotencyKey,
+          fromUserId: args.fromUserId,
+        })
         .catch(() => null);
       if (known?.state === "sent" || known?.state === "pending") {
         return await settled(ctx, known.pendingEmailId);
