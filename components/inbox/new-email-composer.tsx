@@ -462,7 +462,7 @@ function OperatorNewEmailComposer({
           className="min-h-64 flex-1 py-4"
         />
         {preview ? (
-          <p className={`px-4 pb-4 whitespace-pre-line text-muted-foreground ${typeStyle("caption.default")}`}>
+          <p className={`px-4 pb-4 whitespace-pre-line text-muted-foreground ${typeStyle("body.default")}`}>
             {preview.signature}
           </p>
         ) : null}

@@ -179,36 +179,6 @@ function groupStages(stages: readonly StageEntry[]) {
   return rows;
 }
 
-/** True when a visible row already shows what the turn is doing right now. */
-export function hasActiveActivity(activity?: ChatActivity): boolean {
-  return Boolean(
-    activity?.stages?.some((entry) => entry.status === "running") ||
-    activity?.tools.some(
-      (tool) => tool.status === "running" || tool.status === "requested",
-    ),
-  );
-}
-
-/**
- * One-line status for the working indicator, from observed activity only.
- * Returns the generic label when there is nothing real to report.
- */
-export function activityStatusLabel(activity?: ChatActivity): string {
-  if (!activity) return "Working…";
-  const stage = activity.stages?.findLast(
-    (entry) => entry.status === "running",
-  );
-  if (stage) return `${STAGE_LABELS[stage.stage].running}…`;
-  for (const status of ["running", "requested"] as const) {
-    const active = activity.tools.filter((tool) => tool.status === status);
-    if (active.length > 0) {
-      const more = active.length > 1 ? ` +${active.length - 1} more` : "";
-      return `${toolActivityLabel(active[0].toolName, "progressive")}${more}…`;
-    }
-  }
-  return activity.phase === "model" ? "Waiting for model…" : "Working…";
-}
-
 function mcpInput(
   call: ActivityCall,
 ): { serverId: string; toolName: string } | undefined {
@@ -661,6 +631,7 @@ function CallRow({
       : undefined;
   const mcp = mcpInput(call);
   const context = callContext(call);
+  const expandable = Boolean(previewCallId) && !context?.websites?.length;
   const running = working && call.status === "running";
   const label = toolActivityLabel(
     mcp?.toolName ?? call.name,
@@ -679,7 +650,7 @@ function CallRow({
           {toolBrand(call, integration, entities).icon}
         </span>
         <LabelGroup
-          expandable={Boolean(previewCallId) && !context?.websites?.length}
+          expandable={expandable}
           open={previewOpen}
           controls={previewId}
           onToggle={() => setPreviewOpen(!previewOpen)}
@@ -691,6 +662,16 @@ function CallRow({
             )}
           >
             {label}
+            {expandable ? (
+              // Inline in the label so it wraps with the last word.
+              <ChevronRight
+                aria-hidden
+                className={cn(
+                  "ml-1 inline size-3.5 align-[-0.15em] text-muted-foreground/70 transition-transform duration-200 motion-reduce:transition-none",
+                  previewOpen && "rotate-90",
+                )}
+              />
+            ) : null}
           </span>
           {context?.websites?.length ? (
             <WebsiteTargets websites={context.websites} />
@@ -734,8 +715,7 @@ function CallRow({
   );
 }
 
-/** A row's label and context; a toggle with a trailing caret when the call
- * has a result preview. */
+/** A row's label and context; a toggle when the call has a result preview. */
 function LabelGroup({
   expandable,
   open,
@@ -766,13 +746,6 @@ function LabelGroup({
       )}
     >
       {children}
-      <ChevronRight
-        aria-hidden
-        className={cn(
-          "-ml-1 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-200 motion-reduce:transition-none",
-          open && "rotate-90",
-        )}
-      />
     </button>
   );
 }
