@@ -531,7 +531,7 @@ function OperatorReplyComposer({
             {hasText ? (
               <>
                 <span className="text-foreground">Draft reply</span>
-                {headers.subject ? <span> · {headers.subject}</span> : null}
+                {headers?.subject ? <span> · {headers.subject}</span> : null}
               </>
             ) : recipient ? (
               `Reply to ${recipient}`
