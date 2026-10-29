@@ -55,3 +55,8 @@ through the signed API. The initial memory script reports only free pages on mac
 
 PR preparation: rebased onto remote main `a1987a97`; post-rebase TypeScript
 and scoped ESLint passed. No tests or dev database migrations added.
+
+Sender-name styling refinement: restored the original body-medium text and inline
+spacing on the shared menu trigger, with no pill or chevron. Helium confirmed the
+plain name still opens the same contact menu; scoped ESLint and whitespace checks
+passed. Keyboard focus indication is retained.

@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useMutation } from "convex/react";
 import {
   Check,
-  ChevronDown,
   Copy,
   ExternalLink,
   Star,
@@ -25,7 +24,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@claritylabs-inc/ui/components/dropdown-menu";
-import { PillButton } from "@/components/ui/pill-button";
 import { useFollowedOpen, useFollowedState } from "@/hooks/use-followed-state";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -94,18 +92,10 @@ export function ThreadContactMenu({
     <>
       <DropdownMenu {...menu}>
         <DropdownMenuTrigger
-          render={
-            <PillButton
-              type="button"
-              variant="ghost"
-              size="compact"
-              className="min-w-0 max-w-full text-left"
-              aria-label={`Contact options for ${displayName}`}
-            />
-          }
+          className={`cursor-pointer text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring ${typeStyle("body.medium")}`}
+          aria-label={`Contact options for ${displayName}`}
         >
-          <span className="truncate">{children ?? displayName}</span>
-          <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
+          {children ?? displayName}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-w-[calc(100vw-2rem)]">
           <DropdownMenuGroup>
