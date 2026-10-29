@@ -393,7 +393,7 @@ export async function readCompanyEmailThread(
   };
 }
 
-/** Reads up to ten exact threads; failures never fail the batch. */
+/** Reads exact threads three at a time; failures never fail the batch. */
 export async function readCompanyEmailThreads(
   dependencies: GoogleWorkspaceToolDependencies,
   input: OperatorGoogleWorkspaceReadThreadsInput,

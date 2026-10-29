@@ -2953,8 +2953,9 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
     const parsed =
       OPERATOR_AGENT_TOOL_REGISTRY.get_team_inbox_thread.inputSchema.parse(input);
     const view = parsed.view ?? (parsed.teamEmailThreadIds ? "compact" : "full");
+    const batchSize = parsed.teamEmailThreadIds ? uniqueIds(parsed.teamEmailThreadIds).length : 1;
     const present = <T extends Parameters<typeof compactTeamThread>[0]>(thread: T | null) =>
-      thread && view === "compact" ? compactTeamThread(thread) : thread;
+      thread && view === "compact" ? compactTeamThread(thread, batchSize) : thread;
     if (parsed.teamEmailThreadIds)
       return await readMany(uniqueIds(parsed.teamEmailThreadIds), async (id) => {
         const threadId = ctx.db.normalizeId("teamEmailThreads", id);
@@ -3000,8 +3001,9 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
     const parsed =
       OPERATOR_AGENT_TOOL_REGISTRY.get_procurement_email_thread.inputSchema.parse(input);
     const view = parsed.view ?? (parsed.procurementEmailThreadIds ? "compact" : "full");
+    const batchSize = parsed.procurementEmailThreadIds ? uniqueIds(parsed.procurementEmailThreadIds).length : 1;
     const present = <T extends Parameters<typeof compactTeamThread>[0]>(thread: T | null) =>
-      thread && view === "compact" ? compactTeamThread(thread) : thread;
+      thread && view === "compact" ? compactTeamThread(thread, batchSize) : thread;
     if (parsed.procurementEmailThreadIds)
       return await readMany(uniqueIds(parsed.procurementEmailThreadIds), async (id) => {
         const emailThreadId = ctx.db.normalizeId("teamEmailThreads", id);

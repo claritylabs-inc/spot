@@ -104,6 +104,8 @@ import {
   type ClRouterAgentLoop,
   type ClRouterClientOptions,
   type ClRouterReasoningEffort,
+  type ClRouterCapabilities,
+  type ClRouterRequirements,
 } from "./lib/clRouterClient";
 import {
   assembleFamilyGuidance,
@@ -154,10 +156,29 @@ const OPERATOR_ACTION_STEP_BUDGET_MS = 4 * 60 * 1000;
 // candidates_exhausted (see isRetryableClRouterJobFailure).
 const OPERATOR_ROUTER_MAX_RETRIES = 5;
 // Reasoning effort for tool-routing steps (see operatorStepReasoningEffort);
-// undefined keeps the routed model's default effort on every step.
+// undefined keeps the routed model's default effort on every step, which is
+// the current choice: quality over cost.
 const OPERATOR_TOOL_ROUTING_REASONING_EFFORT:
   | ClRouterReasoningEffort
-  | undefined = "low";
+  | undefined = undefined;
+/**
+ * Model-quality hint for operator steps and the planner. Unset until
+ * cl-router's benchmark-based field and feature names are final (expected
+ * along the lines of `requirements.quality: "high"`); when set, it is sent
+ * only to routers advertising `feature`, so older routers never see it.
+ */
+const OPERATOR_AGENT_QUALITY_HINT:
+  | { feature: string; requirements: ClRouterRequirements }
+  | undefined = undefined;
+
+function operatorQualityRequirements(
+  capabilities: ClRouterCapabilities | undefined,
+): { requirements?: ClRouterRequirements } {
+  const hint = OPERATOR_AGENT_QUALITY_HINT;
+  return hint && capabilities?.features?.includes(hint.feature)
+    ? { requirements: hint.requirements }
+    : {};
+}
 // Corrective retries after a reply that wrote a tool call as visible text.
 const OPERATOR_LEAKED_CALL_MAX_RETRIES = 2;
 const LEAKED_TOOL_CALL_NOTICE_MESSAGE =
@@ -174,7 +195,8 @@ You are Spot's internal operator agent for authenticated Clarity Labs operators.
 
 OPERATING RULES:
 - Complete the requested operator task with the registered tools. Lead with the outcome.
-- Insurance applications and intake submissions are procurement requests. Use the procurement family (expand_tools if needed), list_procurement_requests for the relevant client organizations, and get_procurement_request for details. For a question across all clients with no named company, call search_organizations with type=client and omit query; do not substitute the operator’s name, employer, or a company mentioned in old conversation history. Then compare intakeSubmittedAt among submitted applications and report any bounded search limits. Operator conversation history is not the application record.
+- Questions about insurance applications or intake submissions themselves (status, answers, who submitted, which are pending) concern procurement requests: use list_procurement_requests for the relevant client organizations and get_procurement_request for details. For such a question across all clients with no named company, call search_organizations with type=client and omit query; do not substitute the operator’s name, employer, or a company mentioned in old conversation history. Then compare intakeSubmittedAt among submitted applications and report any bounded search limits. Operator conversation history is not the application record.
+- An email or thread named by its subject, sender or wording (for example "the thread 'Acme submission: GL'") lives in the shared team inbox: call search_team_inbox with the subject words, then get_team_inbox_thread on the match; the thread shows its linked client and request, so read the request from there. Never page list_team_inbox_threads to find one thread, and never pass an email subject to list_procurement_requests. Use search_company_email only for the connected company Gmail mailboxes.
 - Search by the human-readable organization or policy name when an exact target is not already known, then use the exact ID returned by the tool. Ask when results remain ambiguous.
 - Use names and titles in every human-facing response. Never display internal organization, policy, file, request, or other storage IDs.
 - Treat page context and prior messages as routing hints. Every write tool revalidates its exact target server-side.
@@ -1016,6 +1038,11 @@ export const run = internalAction({
             status: "running",
           });
           let generated: OperatorExecutionPlan | undefined;
+          const plannerQuality = OPERATOR_AGENT_QUALITY_HINT
+            ? operatorQualityRequirements(
+                await clRouterCapabilities().catch(() => undefined),
+              )
+            : {};
           try {
             // No tools and no stream target: the planner cannot act and its
             // JSON never reaches the visible answer.
@@ -1041,7 +1068,16 @@ export const run = internalAction({
                   {
                     taskKind: "operator_agent",
                     durable: { invocationKey: planKey, route },
-                    reasoning: { effort: OPERATOR_PLANNING_REASONING_EFFORT },
+                    ...(plannerQuality.requirements
+                      ? { agentStep: plannerQuality }
+                      : {}),
+                    ...(OPERATOR_PLANNING_REASONING_EFFORT
+                      ? {
+                          reasoning: {
+                            effort: OPERATOR_PLANNING_REASONING_EFFORT,
+                          },
+                        }
+                      : {}),
                     sessionKey: `operator:${String(run.operatorUserId)}:${String(run.threadId)}`,
                     trace: planTrace,
                     timing,
@@ -1568,6 +1604,7 @@ export const run = internalAction({
         ...(clRouterSupports(capabilities, "parallel_tool_calls")
           ? { parallelToolCalls: true }
           : {}),
+        ...operatorQualityRequirements(capabilities),
       };
       const result = await timer.modelCall(
         "step",

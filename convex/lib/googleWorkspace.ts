@@ -10,6 +10,8 @@ export const GOOGLE_WORKSPACE_LIMITS = {
   maxRequestedMailboxes: 100,
   defaultPageSize: 20,
   maxPageSize: 50,
+  // Bulk thread reads run three at a time to stay inside per-user Gmail quota.
+  maxBulkThreads: 25,
   maxCursorChars: 16_000,
   maxQueryChars: 2_000,
   maxMailboxChars: 320,
