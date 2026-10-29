@@ -140,13 +140,14 @@ type StageEntry = NonNullable<ChatActivity["stages"]>[number];
  */
 function groupStages(stages: readonly StageEntry[]) {
   const rows: { entry: StageEntry; count: number }[] = [];
-  // A workflow check only matters when it calls for a plan; a check that
-  // found none (or predates outcomes) is noise once it has completed.
+  // A workflow check only matters when it calls for a plan or checklist; a
+  // check that found neither (or predates outcomes) is noise once completed.
   stages = stages.filter(
     (entry) =>
       entry.stage !== "assessing_workflow" ||
       entry.status !== "completed" ||
-      entry.detail?.startsWith("Plan "),
+      entry.detail?.startsWith("Plan ") ||
+      entry.detail?.startsWith("Checklist"),
   );
   // A generic completed row adds nothing once another completed entry of the
   // same stage states its outcome. It is hidden, not merged: it is not

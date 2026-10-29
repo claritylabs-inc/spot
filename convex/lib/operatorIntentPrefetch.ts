@@ -1,4 +1,5 @@
 import type { JSONValue, ModelMessage } from "ai";
+import dayjs from "dayjs";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -18,6 +19,7 @@ import {
   parseOperatorAgentToolInput,
   type OperatorAgentToolName,
 } from "./operatorAgentToolRegistry";
+import type { OperatorToolTiming } from "./operatorRunTiming";
 import { boundToolOutput } from "./operatorToolOutput";
 import { summarizeToolResult } from "./toolResultSummary";
 
@@ -43,6 +45,8 @@ export async function prefetchOperatorIntentContext(
     toolNames: readonly OperatorAgentToolName[];
     channel: "chat" | "email" | "imessage" | "slack" | "mcp";
     recordActivity: (update: MessageActivityUpdate) => Promise<void>;
+    /** Metadata-only timing of each executed read. */
+    onReadTiming?: (timing: OperatorToolTiming) => void;
   },
 ): Promise<{ messages: ModelMessage[]; audit: AgentToolAudit } | undefined> {
   const intent = args.messages
@@ -83,6 +87,9 @@ export async function prefetchOperatorIntentContext(
       toolCallId,
       toolName: step.toolName,
     };
+    const startedAt = dayjs().valueOf();
+    let executeMs = 0;
+    let status = "failed";
     try {
       const input = parseOperatorAgentToolInput(step.toolName, rawInput);
       const target = toolActivityTarget(spec.target(input));
@@ -96,6 +103,7 @@ export async function prefetchOperatorIntentContext(
         toolVersion: spec.version,
         input,
       });
+      const executeStarted = dayjs();
       const outcome = await ctx.runMutation(
         internal.operatorAgent.executeToolInternal,
         {
@@ -110,6 +118,8 @@ export async function prefetchOperatorIntentContext(
           channel: args.channel,
         },
       );
+      executeMs = dayjs().diff(executeStarted);
+      status = toolOutcomeStatus(outcome);
       const result = summarizeToolResult(outcome);
       await args.recordActivity({
         ...activity,
@@ -129,6 +139,18 @@ export async function prefetchOperatorIntentContext(
       });
       await args.recordActivity({ ...activity, status: "failed" });
       return undefined;
+    } finally {
+      args.onReadTiming?.({
+        toolName: step.toolName,
+        toolCallId,
+        prefetch: true,
+        serial: false,
+        queuedMs: 0,
+        startedAt,
+        endedAt: dayjs().valueOf(),
+        executeMs,
+        status,
+      });
     }
   };
   for (const stage of stages) {

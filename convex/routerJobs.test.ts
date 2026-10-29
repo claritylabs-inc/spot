@@ -710,6 +710,91 @@ test("accepts callback before submission ACK, binds identity, and removes duplic
   ).toBeNull();
 });
 
+// Small results ride the finish mutation instead of storage. A replayed
+// callback, inline or not, must never replace or leak beside the first
+// result, and retention clears the inline copy with the blobs.
+test("inline callback results keep replay idempotency and retention", async () => {
+  vi.useFakeTimers();
+  const { t, args, row } = await fixture();
+  const post = (result: unknown) =>
+    t.fetch(`/router-jobs/result?token=${args.resultToken}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jobId: "router-1",
+        idempotencyKey: args.invocationKey,
+        fingerprint: args.fingerprint,
+        status: "succeeded",
+        result,
+      }),
+    });
+  const blobs = () => t.run((ctx) => ctx.db.system.query("_storage").take(10));
+  const stored = () =>
+    t.query(internal.routerJobs.get, { invocationKey: args.invocationKey });
+  const read = () =>
+    t.action((ctx) =>
+      executeDurableRouterRequest(
+        ctx,
+        "generate",
+        { primitive: "text", prompt: "test" },
+        args.invocationKey,
+      ),
+    );
+
+  expect((await post(generation)).status).toBe(204);
+  expect((await stored())?.resultStorageId).toBeUndefined();
+  expect(await read()).toEqual(generation);
+  expect((await post({ ...generation, output: "Replaced" })).status).toBe(204);
+  expect(
+    (await post({ ...generation, output: "x".repeat(80 * 1024) })).status,
+  ).toBe(204);
+  expect(await read()).toEqual(generation);
+  // Only the request blob remains; the oversized replay's upload is removed.
+  expect(await blobs()).toHaveLength(1);
+
+  vi.advanceTimersByTime(8 * 24 * 60 * 60 * 1000);
+  await t.mutation(internal.routerJobs.cleanup, { id: row._id });
+  const tombstone = await stored();
+  expect(tombstone?.status).toBe("succeeded");
+  expect(tombstone?.resultJson).toBeUndefined();
+  expect(await blobs()).toHaveLength(0);
+});
+
+test("results over the inline limit keep the storage path", async () => {
+  const { t, args } = await fixture();
+  const large = { ...generation, output: "x".repeat(80 * 1024) };
+  const response = await t.fetch(
+    `/router-jobs/result?token=${args.resultToken}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jobId: "router-1",
+        idempotencyKey: args.invocationKey,
+        fingerprint: args.fingerprint,
+        status: "succeeded",
+        result: large,
+      }),
+    },
+  );
+  expect(response.status).toBe(204);
+  const finished = await t.query(internal.routerJobs.get, {
+    invocationKey: args.invocationKey,
+  });
+  expect(finished?.resultJson).toBeUndefined();
+  expect(finished?.resultStorageId).toBeDefined();
+  expect(
+    await t.action((ctx) =>
+      executeDurableRouterRequest(
+        ctx,
+        "generate",
+        { primitive: "text", prompt: "test" },
+        args.invocationKey,
+      ),
+    ),
+  ).toEqual(large);
+});
+
 test("rejects wrong callback identity and cancellation races without retaining uploaded results", async () => {
   vi.useFakeTimers();
   const { t, args, row } = await fixture();

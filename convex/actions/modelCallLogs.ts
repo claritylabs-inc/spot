@@ -25,7 +25,9 @@ export const payload = action({
     }
     const [request, response] = await Promise.all([
       preview(job?.requestStorageId),
-      preview(job?.resultStorageId),
+      job?.resultJson !== undefined
+        ? modelCallPayloadPreview(JSON.parse(job.resultJson))
+        : preview(job?.resultStorageId),
     ]);
     return { request, response };
   },

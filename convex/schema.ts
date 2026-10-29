@@ -28,6 +28,10 @@ import { markdownDocumentTables } from "./lib/markdownDocumentSchema";
 import { companyResearchValidator } from "./lib/companyResearch";
 import { routerJobFailureValidator } from "./lib/routerJobFailure";
 import { messageActivityValidator } from "./lib/messageActivity";
+import {
+  operatorRunTimingEndValidator,
+  operatorRunTimingValidator,
+} from "./lib/operatorRunTiming";
 import { slackStoredAttachmentValidator } from "./lib/slackAttachments";
 import {
   activeNotificationTypeValidator,
@@ -5296,6 +5300,9 @@ export default defineSchema({
     resultTokenHash: v.string(),
     requestStorageId: v.optional(v.id("_storage")),
     resultStorageId: v.optional(v.id("_storage")),
+    // A small succeeded result kept on the row instead of in storage
+    // (ROUTER_JOB_INLINE_RESULT_BYTES); exactly one of the two is set.
+    resultJson: v.optional(v.string()),
     assetStorageIds: v.optional(v.array(v.id("_storage"))),
     routerJobId: v.optional(v.string()),
     error: v.optional(v.string()),
@@ -5363,6 +5370,16 @@ export default defineSchema({
     .index("thread_status", ["threadId", "status"])
     .index("operator_created", ["operatorUserId", "createdAt"])
     .index("message", ["userMessageId"]),
+
+  // Metadata-only timing, one row per runner segment, written by the
+  // mutation that ends the segment; kept off the hot run document and swept
+  // after OPERATOR_RUN_TIMING_RETENTION_DAYS.
+  operatorRunTimings: defineTable({
+    runId: v.id("operatorAgentRuns"),
+    endedBy: operatorRunTimingEndValidator,
+    inline: v.optional(v.boolean()),
+    ...operatorRunTimingValidator.fields,
+  }).index("by_runId_and_iteration", ["runId", "iteration"]),
 
   imessageInboundEvents: defineTable({
     eventKey: v.string(),

@@ -68,6 +68,13 @@ crons.cron(
 );
 
 crons.cron(
+  "sweep operator run timings",
+  "48 3 * * *",
+  internal.operatorAgent.sweepExpiredRunTimings,
+  {},
+);
+
+crons.cron(
   "sweep requirement extraction runs",
   "50 3 * * *",
   internalApi.requirementExtractionRuns.sweepExpired,

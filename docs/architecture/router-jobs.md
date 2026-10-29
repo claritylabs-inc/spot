@@ -76,12 +76,20 @@ late results. Terminal router statuses `failed`, `cancelled`, and
 `outcome_unknown` are recorded even when no callback arrived; unknown outcomes
 never trigger a fresh inference submission.
 
+A succeeded result whose serialized JSON is at most 64 KiB
+(`ROUTER_JOB_INLINE_RESULT_BYTES`) is stored on the job row (`resultJson`) by the
+single `finish` mutation, so the callback is authorize then finish. Larger
+results are stored as a blob first; `finish` adopts or deletes it in the same
+transaction, and a finish that throws removes it. Readers use the inline value
+when present. In-place waits poll the row every 100 ms for the first 3 s, then
+every 250 ms, easing to 1 s after 10 s.
+
 Capabilities use random 256-bit tokens and hashed lookup. Raw tokens are retained
 only in private internal rows to recover a lost acknowledgement. Request and
 asset access stops at terminal state. No capability or raw prompt belongs in logs,
 model-visible tool output, public queries, or error strings.
 
-Terminal request, result, and asset blobs are deleted after seven days; capability
+Terminal request, result, and asset blobs and inline results are deleted after seven days; capability
 tokens are revoked. The small invocation/fingerprint/status tombstone remains to
 prevent replay after result retention ends. Active requests have no age expiry.
 
