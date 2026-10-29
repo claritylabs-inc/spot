@@ -3,7 +3,6 @@
 import { useFollowedOpen } from "@/hooks/use-followed-state";
 import { FileInput } from "lucide-react";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
-import { PillButton } from "@/components/ui/pill-button";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AttachmentSubmissionDialog } from "./attachment-submission-dialog";
 
@@ -41,7 +40,7 @@ export function EmailSubmissionAttachment({
   return (
     <>
       <div
-        className="inline-flex items-center gap-0.5"
+        className="inline-flex"
         onContextMenu={(event) => {
           event.preventDefault();
           onOpenChange(true);
@@ -50,16 +49,12 @@ export function EmailSubmissionAttachment({
         <ChatAttachmentChip
           attachment={{ filename: file.name, contentType: file.contentType }}
           url={file.url}
+          action={{
+            label: `Use ${file.name} as default application form`,
+            icon: FileInput,
+            onClick: () => onOpenChange(true),
+          }}
         />
-        <PillButton
-          variant="icon"
-          size="compact"
-          iconOnly
-          label={`Use ${file.name} as default application form`}
-          onClick={() => onOpenChange(true)}
-        >
-          <FileInput />
-        </PillButton>
       </div>
       {open ? (
         <AttachmentSubmissionDialog
