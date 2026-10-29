@@ -8,6 +8,7 @@ import { normalizeOperatorEmail, operatorEmailAliases } from "./operatorIdentity
 import { getAgentDomain } from "./resend";
 import { normalizeProcurementEmail, procurementForwardingAddress, type ProcurementEmailCategory } from "./procurement";
 import { MESSAGE_READ_BYTES, teamTargetProblem, type TeamThread } from "./teamEmailStore";
+import { subjectMatch } from "./teamInboxTargets";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -614,9 +615,16 @@ export async function searchTeamInbox(
     rows.push({
       teamEmailThreadId: thread._id,
       subject: thread.subject,
+      subjectMatch: subjectMatch(query, thread.subject),
+      matchedIn: message ? ("body" as const) : ("subject" as const),
       client: client ? { _id: client._id, name: client.name } : null,
       request: request ? { requestId: request._id, title: request.title } : null,
       latestMessageAt: thread.latestMessageAt,
+      ...(thread.latestDirection ? { latestDirection: thread.latestDirection } : {}),
+      ...(thread.latestFromEmail
+        ? { latestFrom: thread.latestFromName ? `${thread.latestFromName} <${thread.latestFromEmail}>` : thread.latestFromEmail }
+        : {}),
+      participants: thread.participantEmails.slice(0, 6),
       archived: Boolean(thread.archivedAt),
       match: message
         ? {
@@ -626,7 +634,10 @@ export async function searchTeamInbox(
             receivedAt: message.receivedAt,
             snippet: searchSnippet(message.currentText, query),
           }
-        : { in: "subject" as const },
+        : {
+            in: "subject" as const,
+            ...(thread.preview ? { snippet: thread.preview.slice(0, 240) } : {}),
+          },
     });
   }
   return { threads: rows, bounded: subjects.length === scan || bodies.length === scan };
