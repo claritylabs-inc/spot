@@ -39,6 +39,13 @@ html {
   pointer-events: none;
 }
 
+/* When the top bar stacks its tabs under the title/actions, give them room above. */
+@container app-top-bar (max-width: 48rem) {
+  [data-slot="app-top-bar"][data-tabs] [data-slot="app-top-bar-tabs"] {
+    padding-top: 1rem;
+  }
+}
+
 /* Fonts remain owned by Spot; the package ships no font assets. */
 
 @theme inline {
