@@ -1,32 +1,30 @@
 "use client";
 
-import { useRef } from "react";
-
 import { useFollowedOpen } from "@/hooks/use-followed-state";
-import { MoreHorizontal } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@claritylabs-inc/ui/components/dropdown-menu";
+import { FileInput } from "lucide-react";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import { PillButton } from "@/components/ui/pill-button";
 import type { Id } from "@/convex/_generated/dataModel";
-import { AttachmentSubmissionMenu } from "./attachment-submission-menu";
+import { AttachmentSubmissionDialog } from "./attachment-submission-dialog";
 
 type Source = {
   threadId: Id<"teamEmailThreads">;
   messageId: Id<"teamEmailMessages">;
   text?: string;
 };
-type Provider = { brokerOrgId?: Id<"organizations">; brokerName?: string };
+type Provider = {
+  brokerOrgId?: Id<"organizations">;
+  brokerName?: string;
+  coverageCodes?: string[];
+};
 
-/** The same menu supports right-click, keyboard and the visible more button. */
+/** The save button and right-click both open the default application form dialog. */
 export function EmailSubmissionAttachment({
   file,
   source,
   brokerOrgId,
   brokerName,
+  coverageCodes,
 }: Provider & {
   source: Source;
   file: {
@@ -37,9 +35,8 @@ export function EmailSubmissionAttachment({
     storageId?: Id<"_storage">;
   };
 }) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const { open: menuOpen, onOpenChange: setMenuOpen } = useFollowedOpen(
-    `email:${source.messageId}:attachment:${file.clientFileId ?? file.storageId}:menu`,
+  const { open, onOpenChange } = useFollowedOpen(
+    `email:${source.messageId}:attachment:${file.clientFileId ?? file.storageId}:form`,
   );
   return (
     <>
@@ -47,40 +44,34 @@ export function EmailSubmissionAttachment({
         className="inline-flex items-center gap-0.5"
         onContextMenu={(event) => {
           event.preventDefault();
-          setMenuOpen(true);
+          onOpenChange(true);
         }}
       >
         <ChatAttachmentChip
           attachment={{ filename: file.name, contentType: file.contentType }}
           url={file.url}
         />
-        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-          <DropdownMenuTrigger
-            render={
-              <PillButton
-                variant="icon"
-                size="compact"
-                iconOnly
-                label={`Options for ${file.name}`}
-              />
-            }
-          >
-            <MoreHorizontal />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent ref={menuRef} align="start">
-            {menuOpen ? (
-              <AttachmentSubmissionMenu
-                parentMenuRef={menuRef}
-                source={source}
-                file={file}
-                defaultBrokerOrgId={brokerOrgId}
-                defaultBrokerName={brokerName}
-                onSaved={() => setMenuOpen(false)}
-              />
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <PillButton
+          variant="icon"
+          size="compact"
+          iconOnly
+          label={`Use ${file.name} as default application form`}
+          onClick={() => onOpenChange(true)}
+        >
+          <FileInput />
+        </PillButton>
       </div>
+      {open ? (
+        <AttachmentSubmissionDialog
+          open={open}
+          onOpenChange={onOpenChange}
+          source={source}
+          file={file}
+          defaultBrokerOrgId={brokerOrgId}
+          defaultBrokerName={brokerName}
+          defaultCoverageCodes={coverageCodes}
+        />
+      ) : null}
     </>
   );
 }

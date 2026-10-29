@@ -84,6 +84,7 @@ import type * as actions_sendSlack from "../actions/sendSlack.js";
 import type * as actions_slackOAuth from "../actions/slackOAuth.js";
 import type * as actions_slackPresentation from "../actions/slackPresentation.js";
 import type * as actions_slackReconciliation from "../actions/slackReconciliation.js";
+import type * as actions_submissionCoverage from "../actions/submissionCoverage.js";
 import type * as actions_teamEmailAttachments from "../actions/teamEmailAttachments.js";
 import type * as actions_teamEmailCompose from "../actions/teamEmailCompose.js";
 import type * as actions_teamEmailForwarding from "../actions/teamEmailForwarding.js";
@@ -700,6 +701,7 @@ declare const fullApi: ApiFromModules<{
   "actions/slackOAuth": typeof actions_slackOAuth;
   "actions/slackPresentation": typeof actions_slackPresentation;
   "actions/slackReconciliation": typeof actions_slackReconciliation;
+  "actions/submissionCoverage": typeof actions_submissionCoverage;
   "actions/teamEmailAttachments": typeof actions_teamEmailAttachments;
   "actions/teamEmailCompose": typeof actions_teamEmailCompose;
   "actions/teamEmailForwarding": typeof actions_teamEmailForwarding;

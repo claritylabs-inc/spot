@@ -673,6 +673,28 @@ export const primaryDefaultInputInternal = internalQuery({
   },
 });
 
+/** Conversation text Jev reads to pick which coverage an attached form is for. */
+export const submissionCoverageInputInternal = internalQuery({
+  args: { threadId: v.id("teamEmailThreads") },
+  handler: async (ctx, args) => {
+    await requireOperator(ctx);
+    const thread = await ctx.db.get(args.threadId);
+    if (!thread || thread.deletedAt || (await teamTargetProblem(ctx, thread)))
+      throw new Error("Conversation not found");
+    const messages = await ctx.db
+      .query("teamEmailMessages")
+      .withIndex("by_threadId_and_receivedAt", (q) =>
+        q.eq("threadId", thread._id),
+      )
+      .order("desc")
+      .take(3);
+    return {
+      subject: thread.subject,
+      messages: messages.map((message) => message.currentText.slice(0, 1500)),
+    };
+  },
+});
+
 /** Whether an address belongs to a provider, for the provider-only signature line. */
 export const isProviderAddressInternal = internalQuery({
   args: { email: v.string() },
