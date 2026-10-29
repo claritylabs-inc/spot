@@ -3,10 +3,10 @@ import type { StatusPresentation } from "@claritylabs-inc/ui/components/status-t
 export type NetworkStatus = "prospect" | "active" | "inactive" | "blacklisted";
 
 export const NETWORK_STATUS_LABELS: Record<NetworkStatus, string> = {
-  prospect: "New provider",
-  active: "Active relationship",
+  prospect: "Cold",
+  active: "Active Relationship",
   inactive: "Inactive relationship",
-  blacklisted: "Do not contact",
+  blacklisted: "Do Not Contact",
 };
 
 export const NETWORK_STATUS_PRESENTATION: Record<

@@ -275,6 +275,7 @@ function emailInputFor(
     followUpNumber: step.kind === "initial" ? 0 : step.index,
     isFinal: step.isFinal,
     providerName: broker.name,
+    networkStatus: broker.networkStatus,
     recipientName: sequence.recipient.name,
     operator,
     client: { name: request.clientName, applicantName: request.applicantName ?? undefined, summary: request.title },
@@ -383,7 +384,7 @@ async function resolveDraft(
   if (!claim.broker || !claim.packet) return null;
   const input = emailInputFor(claim, claim.broker, claim.packet, operator);
   let generated: Parameters<typeof composeOutreachEmail>[2];
-  if (prepared.mode === "generate" && input.kind !== "initial") {
+  if (prepared.mode === "generate" && input.kind !== "initial" && input.style !== "brief_nudge") {
     const attempt = await generateOutreachDraftText(ctx, claim.request.clientOrgId, input, {
       trace: {
         traceId: `provider-outreach-draft:${stepId}`,

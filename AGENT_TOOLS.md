@@ -644,3 +644,5 @@ Google draft must be reviewed under the Resend identity; never replay an unknown
 send. Read-only IMAP sync and historical message/draft reads remain available for
 old Google correspondence. `/operator/email-health` redirects to Inbox. See
 `docs/architecture/team-email.md`.
+
+Provider relationship labels retain their stored enum keys: `prospect` is Cold, `active` is Active Relationship, and `blacklisted` is Do Not Contact. Previously contacted `inactive` providers also use cold copy. Initial provider outreach introduces the authenticated operator and Spot only for cold relationships; active relationships get a direct quote request. New provider drafts use we/us/our for the coordinated client request, support all requested coverage lines, and never imply Spot is the insured. Current relationship status is read at send-time claim; Do Not Contact remains blocked at launch and before delivery. Saved drafts and unknown delivery outcomes are never rewritten or replayed by a label/copy change.

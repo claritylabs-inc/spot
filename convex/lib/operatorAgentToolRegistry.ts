@@ -231,7 +231,7 @@ const procurementProposalConclusion = z.enum([
 const brokerNetworkStatus = z
   .enum(["prospect", "active", "inactive", "blacklisted"])
   .describe(
-    "prospect = new provider, never contacted; inactive = contacted but never replied (set automatically on the first email); active = worked with us or agreed to; blacklisted = do not contact",
+    "prospect = Cold, never contacted; inactive = contacted but never replied (set automatically on the first email; uses cold outreach copy); active = Active Relationship, worked with us or agreed to (direct quote requests); blacklisted = Do Not Contact (blocks initial emails and follow-ups). Cold initial emails introduce the authenticated operator and Spot. All outreach uses we/us/our for the coordinated client request",
   );
 const brokerWritingState = z
   .string()
