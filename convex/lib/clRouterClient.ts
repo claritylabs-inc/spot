@@ -352,6 +352,13 @@ export type ClRouterAgentLoop = {
   previous?: { route: ModelRoute; difficulty: ClRouterDifficulty };
 };
 
+/**
+ * Model-quality hint for generate/manual requests. Its field names follow
+ * cl-router's benchmark-based quality rollout; send it only to a router that
+ * advertises the matching capabilities feature.
+ */
+export type ClRouterRequirements = Readonly<Record<string, string | number>>;
+
 export type ClRouterGenerateRequest = {
   tenantId?: string;
   orgId?: string;
@@ -368,6 +375,7 @@ export type ClRouterGenerateRequest = {
   cache?: { key: string };
   loop?: ClRouterAgentLoop;
   parallelToolCalls?: boolean;
+  requirements?: ClRouterRequirements;
   tools?: ClRouterToolDefinition[];
   /** `caller`: Spot already chose the offered tools; cl-router skips its own tool selection. */
   toolSelection?: "router" | "caller";

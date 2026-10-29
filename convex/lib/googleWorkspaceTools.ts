@@ -25,7 +25,7 @@ export {
 };
 export { messageBody } from "./googleWorkspace/messages";
 
-const MAX_BULK_THREADS = 10;
+const MAX_BULK_THREADS = GOOGLE_WORKSPACE_LIMITS.maxBulkThreads;
 
 function inputRecord(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

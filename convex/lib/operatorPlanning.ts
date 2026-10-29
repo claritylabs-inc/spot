@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { DecisionQuestion } from "../../contracts/cl-router/policy";
-import { clRouterDecide, type ClRouterClientOptions } from "./clRouterClient";
+import {
+  clRouterDecide,
+  type ClRouterClientOptions,
+  type ClRouterReasoningEffort,
+} from "./clRouterClient";
 import { jevProceedThreshold } from "./jevThreshold";
 import { stripLeakedToolCallText } from "./leakedToolCallText";
 import type { OperatorToolEffect } from "./operatorAgentToolRegistry";
@@ -10,10 +14,12 @@ import type {
   OperatorPlanningLevel,
 } from "./operatorRunPlan";
 
-// The planner only lists targets and short steps; low effort keeps reasoning
-// from consuming this budget.
+// The planner only lists targets and short steps. Effort follows the routed
+// model's default (quality over cost); undefined sends no effort override.
 export const OPERATOR_PLANNING_MAX_OUTPUT_TOKENS = 2_048;
-export const OPERATOR_PLANNING_REASONING_EFFORT = "low";
+export const OPERATOR_PLANNING_REASONING_EFFORT:
+  | ClRouterReasoningEffort
+  | undefined = undefined;
 
 const CURRENT_OBJECTIVE_ONLY =
   'Judge only the current `objective`. Use `recentUserContext` solely to resolve something the objective explicitly refers to, such as "those" or "the same ones"; never count work from earlier turns that was already requested or finished.';
