@@ -6,7 +6,7 @@ import { z } from "zod";
 import { api, internal } from "../_generated/api";
 import { action, internalAction } from "../_generated/server";
 import { logAiError } from "../lib/aiUtils";
-import { emailSkillPrompt } from "../lib/emailSkill";
+import { emailSkillPrompt, REPLY_DRAFT_SIGN_OFF, stripNameAfterSignOff } from "../lib/emailSkill";
 import { generateObjectForOrg, generateObjectForPublicTask } from "../lib/models";
 
 const SuggestionSchema = z.object({
@@ -23,7 +23,7 @@ const SYSTEM_PROMPT = [
   "If the sender asks how we got their contact or who Spot is, answer in one sentence with `clientName`: \"<clientName> hired us at Spot to help buy their commercial insurance.\"",
   "When `provider` is set, the sender is an insurance provider and the provider rules apply. With relationship active_relationship skip any introduction. When they ask for information, give it as factual bullets, then ask directly whether they can quote us.",
   "If the latest message needs no answer (an automatic reply, a newsletter, a plain acknowledgement), write a one-line acknowledgement.",
-  "Open with the greeting from the rules. End with a one-word sign-off line such as \"Thanks,\" and nothing after it: the operator's signature and the quoted history are added after you. Plain text except for factual bullets, no subject line.",
+  `Open with the greeting from the rules. ${REPLY_DRAFT_SIGN_OFF} The operator's signature and the quoted history are added after you. Plain text except for factual bullets, no subject line.`,
   emailSkillPrompt({ provider: true }),
 ].join("\n");
 
@@ -54,7 +54,7 @@ export const generate = internalAction({
         : await generateObjectForPublicTask(ctx, "email_draft", options, call);
       await ctx.runMutation(internal.teamReplySuggestions.saveInternal, {
         ...args,
-        reply: object.reply.replace(/\r\n/g, "\n").trim() || undefined,
+        reply: stripNameAfterSignOff(object.reply.replace(/\r\n/g, "\n").trim()) || undefined,
         missing: object.missing.map((item) => item.trim()).filter(Boolean),
       });
     } catch (error) {
