@@ -8,6 +8,7 @@ import {
   publishedUiJson,
   subscribePublishedUi,
 } from "@/hooks/use-followed-state";
+import { browserTabId } from "@/hooks/use-operator-presence";
 
 /** Twenty updates a second reads as live without flooding Convex. */
 const PUBLISH_INTERVAL_MS = 50;
@@ -64,7 +65,9 @@ export function usePublishOperatorCursor({
       const ui = publishedUiJson();
       if (ui === sent || ui.length > UI_STATE_LIMIT) return;
       sent = ui;
-      void publishUi({ ui }).catch(() => {});
+      void browserTabId().then((tabId) =>
+        publishUi({ ui, tabId }).catch(() => {}),
+      );
     };
     const schedule = () => {
       timer ??= window.setTimeout(send, UI_PUBLISH_DELAY_MS);
@@ -95,7 +98,7 @@ export function usePublishOperatorCursor({
       const rect = element?.getBoundingClientRect();
       const anchored = !hidden && rect && rect.width > 0 && rect.height > 0;
       lastHref = currentHref();
-      void move({
+      const cursor = {
         href: lastHref,
         anchor: anchored ? cursorAnchor(element) : undefined,
         x: anchored ? (at.x - rect.left) / rect.width : 0,
@@ -103,7 +106,10 @@ export function usePublishOperatorCursor({
         viewportX: at.x / innerWidth,
         viewportY: at.y / innerHeight,
         visible: visible && pointer !== null && !hidden,
-      }).catch(() => {});
+      };
+      void browserTabId().then((tabId) =>
+        move({ ...cursor, tabId }).catch(() => {}),
+      );
     };
     const schedule = () => {
       if (timer !== null) return;
@@ -142,7 +148,7 @@ export function usePublishOperatorCursor({
       window.removeEventListener("pointermove", onPointerMove);
       document.removeEventListener("pointerout", onPointerOut);
       window.removeEventListener("scroll", schedule, { capture: true });
-      void clear().catch(() => {});
+      void browserTabId().then((tabId) => clear({ tabId }).catch(() => {}));
     };
   }, [pointerEnabled, move, clear]);
 }

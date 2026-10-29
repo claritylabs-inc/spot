@@ -7,6 +7,7 @@ import type { FunctionReturnType } from "convex/server";
 import * as Y from "yjs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { browserTabId } from "@/hooks/use-operator-presence";
 import { REMOTE, setSharedDoc } from "@/lib/collab/doc";
 import { useOperatorColor } from "@/lib/collab/operator-color";
 import {
@@ -259,14 +260,37 @@ function SharedRoom({
   useEffect(() => {
     if (!synced) return;
     let binding: FieldBinding | null = null;
+    // One operator, by id, starts shared documents; among their tabs on this
+    // page, the one holding this lock.
+    let holdsLock = !("locks" in navigator);
+    let releaseLock = () => {};
+    const lockRequest = new AbortController();
+    if (!holdsLock) {
+      navigator.locks
+        .request(
+          `collab:lead:${pathname}`,
+          { signal: lockRequest.signal },
+          () => {
+            holdsLock = true;
+            return new Promise<void>((resolve) => {
+              releaseLock = resolve;
+            });
+          },
+        )
+        .catch(() => {});
+    }
     const timer = window.setTimeout(() => {
       binding = bindSharedFields(doc, pathname);
       bindingRef.current = binding;
-      setSharedDoc(doc, () =>
-        peersRef.current.every((peer) => selfId < peer.userId),
+      setSharedDoc(
+        doc,
+        () =>
+          holdsLock && peersRef.current.every((peer) => selfId < peer.userId),
       );
     }, 0);
     return () => {
+      lockRequest.abort();
+      releaseLock();
       window.clearTimeout(timer);
       if (!binding) return;
       binding.stop();
@@ -284,7 +308,9 @@ function SharedRoom({
       const json = JSON.stringify(field);
       if (json === sent) return;
       sent = json;
-      void publishCaret({ roomId, field }).catch(() => {});
+      void browserTabId().then((tabId) =>
+        publishCaret({ roomId, tabId, field }).catch(() => {}),
+      );
     };
     const schedule = () => {
       timer ??= window.setTimeout(send, CARET_DELAY_MS);
@@ -299,7 +325,9 @@ function SharedRoom({
       window.removeEventListener("input", schedule, { capture: true });
       window.removeEventListener("focusin", schedule, { capture: true });
       window.removeEventListener("focusout", schedule, { capture: true });
-      void publishCaret({ roomId, field: null }).catch(() => {});
+      void browserTabId().then((tabId) =>
+        publishCaret({ roomId, tabId, field: null }).catch(() => {}),
+      );
     };
   }, [publishCaret, roomId]);
 

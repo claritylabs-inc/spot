@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import { operatorPeople } from "./lib/operatorAvatar";
 import { requireOperator } from "./lib/operatorIdentity";
+import { clearTab, latestTab, tabIsFresh } from "./lib/operatorTabs";
 
 const emailActivityValidator = v.union(
   v.literal("viewing"),
@@ -12,8 +13,6 @@ const emailActivityValidator = v.union(
 
 /** Rows older than this are dropped; the client applies the tighter window. */
 const PRESENCE_WINDOW_MS = 2 * 60_000;
-/** Matches the client's active window: three missed heartbeats. */
-const ACTIVE_WINDOW_MS = 45_000;
 
 function tabRow(
   ctx: MutationCtx,
@@ -29,7 +28,7 @@ function tabRow(
 }
 
 /**
- * One entry per operator from their tabs' rows (newest first): the newest
+ * One entry per operator from their tabs' rows (newest first): the active
  * tab's page and chat, every open page, an email thread they are replying in
  * from any tab, and whoever any tab follows.
  */
@@ -43,7 +42,8 @@ function byOperator(rows: Doc<"operatorPresence">[]) {
     if (entry) entry.tabs.push(row);
     else operators.set(row.userId, { latest: row, tabs: [row] });
   }
-  return [...operators.values()].map(({ latest, tabs }) => {
+  return [...operators.values()].map(({ latest: newest, tabs }) => {
+    const latest = latestTab(tabs.filter(tabIsFresh)) ?? newest;
     const email =
       tabs.find((tab) => tab.emailThreadId && tab.activity === "replying") ??
       tabs.find((tab) => tab.emailThreadId) ??
@@ -66,10 +66,13 @@ export const heartbeat = mutation({
     activity: v.optional(emailActivityValidator),
     followingUserId: v.optional(v.id("users")),
     tabId: v.optional(v.string()),
+    /** When this tab was last focused or entered. */
+    activeAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     const tabId = args.tabId?.slice(0, 100);
+    const now = dayjs().valueOf();
     const fields = {
       pathname: args.pathname.slice(0, 500),
       threadId: args.threadId,
@@ -80,7 +83,9 @@ export const heartbeat = mutation({
       // Activity only means something on an email thread; both clear together.
       emailThreadId: args.emailThreadId,
       activity: args.emailThreadId ? (args.activity ?? "viewing") : undefined,
-      lastSeen: dayjs().valueOf(),
+      lastSeen: now,
+      activeAt:
+        args.activeAt === undefined ? undefined : Math.min(args.activeAt, now),
     };
     const existing = await tabRow(ctx, operator.userId, tabId);
     if (existing) await ctx.db.patch(existing._id, fields);
@@ -94,33 +99,32 @@ export const heartbeat = mutation({
   },
 });
 
-/** Drops this tab; the operator's cursor and UI state go once no other tab is active. */
+/**
+ * Drops this tab with its cursor and UI state; once no other tab is active,
+ * every tab's are dropped (closed or crashed tabs never clear their own).
+ */
 export const leave = mutation({
   args: { tabId: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
-    const existing = await tabRow(
-      ctx,
-      operator.userId,
-      args.tabId?.slice(0, 100),
-    );
+    const tabId = args.tabId?.slice(0, 100);
+    const existing = await tabRow(ctx, operator.userId, tabId);
     if (existing) await ctx.db.delete(existing._id);
+    await clearTab(ctx, operator.userId, tabId);
     const otherTabs = await ctx.db
       .query("operatorPresence")
       .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
       .take(20);
-    const fresh = dayjs().valueOf() - ACTIVE_WINDOW_MS;
-    if (otherTabs.some((tab) => tab.lastSeen >= fresh)) return null;
-    const cursor = await ctx.db
+    if (otherTabs.some(tabIsFresh)) return null;
+    const cursors = await ctx.db
       .query("operatorCursors")
-      .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
-      .unique();
-    if (cursor) await ctx.db.delete(cursor._id);
-    const ui = await ctx.db
+      .withIndex("by_userId_and_tabId", (q) => q.eq("userId", operator.userId))
+      .take(20);
+    const uis = await ctx.db
       .query("operatorUiStates")
-      .withIndex("by_userId", (q) => q.eq("userId", operator.userId))
-      .unique();
-    if (ui) await ctx.db.delete(ui._id);
+      .withIndex("by_userId_and_tabId", (q) => q.eq("userId", operator.userId))
+      .take(20);
+    for (const row of [...cursors, ...uis]) await ctx.db.delete(row._id);
     return null;
   },
 });

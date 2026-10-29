@@ -2,7 +2,7 @@ import dayjs from "dayjs";
 import { v } from "convex/values";
 import * as Y from "yjs";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
   mutation,
@@ -11,6 +11,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { requireOperator } from "./lib/operatorIdentity";
+import { latestTab } from "./lib/operatorTabs";
 
 /** Matches the client's active window: three missed presence heartbeats. */
 const PRESENCE_TIMEOUT_MS = 45_000;
@@ -142,10 +143,11 @@ export const updates = query({
   },
 });
 
-/** Publishes where this operator's caret is in a shared field, or clears it. */
+/** Publishes where this tab's caret is in a shared field, or clears it. */
 export const caret = mutation({
   args: {
     roomId: v.id("collabRooms"),
+    tabId: v.optional(v.string()),
     field: v.union(
       v.object({
         key: v.string(),
@@ -157,10 +159,14 @@ export const caret = mutation({
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
+    const tabId = args.tabId?.slice(0, 100);
     const existing = await ctx.db
       .query("collabCarets")
-      .withIndex("by_roomId_and_userId", (q) =>
-        q.eq("roomId", args.roomId).eq("userId", operator.userId),
+      .withIndex("by_roomId_and_userId_and_tabId", (q) =>
+        q
+          .eq("roomId", args.roomId)
+          .eq("userId", operator.userId)
+          .eq("tabId", tabId),
       )
       .unique();
     if (!args.field) {
@@ -179,30 +185,43 @@ export const caret = mutation({
       await ctx.db.insert("collabCarets", {
         roomId: args.roomId,
         userId: operator.userId,
+        tabId,
         ...fields,
       });
     return null;
   },
 });
 
-/** Carets of the other operators still on the room's page. */
+/**
+ * Carets of the other operators still on the room's page, one each: from
+ * their most recently used tab on it.
+ */
 export const carets = query({
   args: { roomId: v.id("collabRooms") },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     const room = await ctx.db.get("collabRooms", args.roomId);
     if (!room) return [];
-    const present = new Set(
-      (await othersOnPage(ctx, room.pathname, operator.userId)).map(
-        (row) => row.userId,
-      ),
+    const tabsByUser = new Map<Id<"users">, Doc<"operatorPresence">[]>();
+    for (const row of await othersOnPage(ctx, room.pathname, operator.userId)) {
+      tabsByUser.set(row.userId, [...(tabsByUser.get(row.userId) ?? []), row]);
+    }
+    const rows = await Promise.all(
+      [...tabsByUser.values()].map((tabs) => {
+        const tab = latestTab(tabs)!;
+        return ctx.db
+          .query("collabCarets")
+          .withIndex("by_roomId_and_userId_and_tabId", (q) =>
+            q
+              .eq("roomId", args.roomId)
+              .eq("userId", tab.userId)
+              .eq("tabId", tab.tabId),
+          )
+          .unique();
+      }),
     );
-    const rows = await ctx.db
-      .query("collabCarets")
-      .withIndex("by_roomId", (q) => q.eq("roomId", args.roomId))
-      .take(20);
     return rows
-      .filter((row) => present.has(row.userId))
+      .filter((row) => row !== null)
       .map((row) => ({
         userId: row.userId,
         key: row.key,

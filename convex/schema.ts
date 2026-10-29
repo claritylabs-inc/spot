@@ -5816,6 +5816,8 @@ export default defineSchema({
     /** The operator whose cursor this one is following, if any. */
     followingUserId: v.optional(v.id("users")),
     lastSeen: v.number(),
+    /** When this tab was last focused or entered; its operator's active tab is the latest. */
+    activeAt: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_and_tabId", ["userId", "tabId"])
@@ -5826,6 +5828,8 @@ export default defineSchema({
   // second; the row exists only while someone can see it.
   operatorCursors: defineTable({
     userId: v.id("users"),
+    /** The browser tab; teammates see only the operator's active tab. */
+    tabId: v.optional(v.string()),
     /** Leader's in-app URL: pathname plus search. */
     href: v.string(),
     /** CSS path to the element under the pointer; x and y are fractions of its box. */
@@ -5846,16 +5850,18 @@ export default defineSchema({
       }),
     ),
     updatedAt: v.number(),
-  }).index("by_userId", ["userId"]),
+  }).index("by_userId_and_tabId", ["userId", "tabId"]),
 
   // The leader's followed UI state (open panels, tabs, filters) as a JSON map
   // of non-default values. Apart from operatorCursors so pointer moves never
   // resend it; written only when it changes, and only while followed.
   operatorUiStates: defineTable({
     userId: v.id("users"),
+    /** The browser tab; followers mirror only the operator's active tab. */
+    tabId: v.optional(v.string()),
     ui: v.string(),
     updatedAt: v.number(),
-  }).index("by_userId", ["userId"]),
+  }).index("by_userId_and_tabId", ["userId", "tabId"]),
 
   // Shared form state for operators on the same page. Members rejoin every
   // 15s; the first to arrive after nobody has for two minutes starts a fresh
@@ -5879,11 +5885,17 @@ export default defineSchema({
   collabCarets: defineTable({
     roomId: v.id("collabRooms"),
     userId: v.id("users"),
+    /** The browser tab; teammates see only the operator's active tab's caret. */
+    tabId: v.optional(v.string()),
     key: v.string(),
     selectionStart: v.number(),
     selectionEnd: v.number(),
     updatedAt: v.number(),
   })
     .index("by_roomId", ["roomId"])
-    .index("by_roomId_and_userId", ["roomId", "userId"]),
+    .index("by_roomId_and_userId_and_tabId", [
+      "roomId",
+      "userId",
+      "tabId",
+    ]),
 });
