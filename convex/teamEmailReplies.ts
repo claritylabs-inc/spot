@@ -16,6 +16,7 @@ import {
   composeTeamReply,
   normalizeReplyMessage,
   previewTeamEmailReply,
+  replyRecipientsValidator,
   teamReplyError,
 } from "./lib/teamEmailReply";
 import { REPLY_TOOL_NAMES, agentReplyKey } from "./operatorEmailDrafts";
@@ -81,6 +82,7 @@ export const preview = query({
     message: v.string(),
     /** Send as this active operator instead of the caller. */
     fromUserId: v.optional(v.id("users")),
+    recipients: v.optional(replyRecipientsValidator),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -88,6 +90,7 @@ export const preview = query({
       operatorUserId: args.fromUserId ?? operator.userId,
       threadId: args.threadId,
       message: args.message,
+      recipients: args.recipients,
     });
     return composed.ok
       ? ({ ok: true, preview: composed.preview } as const)
@@ -119,6 +122,7 @@ export const prepareSend = mutation({
     expectedFingerprint: v.string(),
     idempotencyKey: v.string(),
     fromUserId: v.optional(v.id("users")),
+    recipients: v.optional(replyRecipientsValidator),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -134,6 +138,7 @@ export const prepareSend = mutation({
       operatorUserId: senderUserId,
       threadId: args.threadId,
       message: args.message,
+      recipients: args.recipients,
     });
     const existing = await replyDraftByKey(ctx, senderUserId, directReplyKey);
     if (existing) {

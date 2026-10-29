@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
 import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
+import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { ListToolbar } from "@/components/ui/list-toolbar";
@@ -89,6 +90,7 @@ function ContactEditor({ contact }: { contact: Doc<"brokerContacts"> }) {
   const archive = useMutation(api.brokerContacts.setArchived);
   const revision = useRef(contact.revision);
   const [removing, setRemoving] = useState(false);
+  const [settingPrimary, setSettingPrimary] = useState(false);
   const [values, setValues] = useState({
     name: contact.name,
     email: contact.email ?? "",
@@ -124,6 +126,29 @@ function ContactEditor({ contact }: { contact: Doc<"brokerContacts"> }) {
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not save contact"),
   });
+  async function setPrimary(primary: boolean) {
+    setSettingPrimary(true);
+    try {
+      if (!(await autoSave.saveNow())) return;
+      const result = await save({
+        ...values,
+        brokerOrgId: contact.brokerOrgId,
+        contactId: contact._id,
+        expectedRevision: revision.current,
+        title: contact.title,
+        role: contact.role,
+        contactUrl: contact.contactUrl,
+        sources: contact.sources,
+        sourceKind: "manual",
+        primary,
+      });
+      revision.current = result.revision;
+    } catch (error) {
+      toast.error(getUserFacingErrorMessage(error, "Could not update the primary contact"));
+    } finally {
+      setSettingPrimary(false);
+    }
+  }
   async function remove() {
     setRemoving(true);
     try {
@@ -194,6 +219,14 @@ function ContactEditor({ contact }: { contact: Doc<"brokerContacts"> }) {
           autoComplete="tel"
           onChange={(phone) => set("phone", phone ?? "")}
           onBlur={() => void autoSave.saveNow()}
+        />
+      </InlineFieldRow>
+      <InlineFieldRow label="Primary">
+        <Checkbox
+          aria-label="Primary contact"
+          checked={!!contact.primary}
+          disabled={settingPrimary}
+          onCheckedChange={(value) => void setPrimary(value === true)}
         />
       </InlineFieldRow>
       <InlineFieldRow label="Best for">

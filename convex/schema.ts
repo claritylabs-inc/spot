@@ -666,13 +666,17 @@ export default defineSchema({
   brokerContacts: defineTable({
     brokerOrgId: v.id("organizations"),
     ...brokerContactFields,
+    // At most one live contact per provider; outreach addresses it first.
+    primary: v.optional(v.boolean()),
     revision: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
     updatedByUserId: v.id("users"),
     researchedAt: v.optional(v.number()),
     deletedAt: v.optional(v.number()),
-  }).index("by_brokerOrgId_and_deletedAt", ["brokerOrgId", "deletedAt"]),
+  })
+    .index("by_brokerOrgId_and_deletedAt", ["brokerOrgId", "deletedAt"])
+    .index("by_email_and_deletedAt", ["email", "deletedAt"]),
 
   brokerProfiles: defineTable({
     manualFields: v.optional(
