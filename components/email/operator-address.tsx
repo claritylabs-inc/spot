@@ -4,7 +4,7 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
-import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
+import { TagRemoveButton } from "@/components/ui/tag-remove-button";
 import {
   Select,
   SelectContent,
@@ -113,7 +113,7 @@ function ProviderContactPill({
     <span
       title={`${contact.name} <${address}> · ${contact.brokerName}`}
       className={cn(
-        "inline-flex max-w-full min-w-0 items-center gap-1 rounded-full bg-muted p-0.5 pr-2.5",
+        "inline-flex max-w-full min-w-0 items-center gap-1 rounded-full bg-muted p-0.5 pr-2.5 has-[button]:pr-1.5",
         typeStyle("body.default"),
       )}
     >
@@ -150,7 +150,7 @@ function AddressPill({
       <OperatorPill
         operator={operator}
         address={address}
-        className={remove ? "pr-1" : undefined}
+        className={remove ? "pr-1.5" : undefined}
       >
         {remove}
       </OperatorPill>
@@ -164,8 +164,8 @@ function AddressPill({
   return (
     <span
       className={cn(
-        "inline-flex max-w-full min-w-0 items-center gap-0.5 rounded-full bg-muted py-0.5 pl-2.5",
-        remove ? "pr-1" : "pr-2.5",
+        "inline-flex max-w-full min-w-0 items-center gap-1 rounded-full bg-muted py-0.5 pl-2.5",
+        remove ? "pr-1.5" : "pr-2.5",
       )}
     >
       <span className="min-w-0 truncate">{address}</span>

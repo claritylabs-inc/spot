@@ -1,6 +1,6 @@
 "use client";
 
-import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
+import { TagRemoveButton } from "@/components/ui/tag-remove-button";
 
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
@@ -103,7 +103,7 @@ export function PromptReferenceTag({
   return (
     <span
       className={cn(
-        `inline-flex h-5 max-w-[min(16rem,100%)] shrink-0 items-center gap-1 align-middle rounded-4xl bg-foreground/5 px-2 text-foreground/70 ${typeStyle("label.tag")}`,
+        `inline-flex h-5 max-w-[min(16rem,100%)] shrink-0 items-center gap-1 align-middle rounded-4xl bg-foreground/5 pl-2 pr-1 text-foreground/70 ${typeStyle("label.tag")}`,
         className,
       )}
     >

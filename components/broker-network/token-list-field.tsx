@@ -1,6 +1,6 @@
 "use client";
 
-import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
+import { TagRemoveButton } from "@/components/ui/tag-remove-button";
 
 import { useState, type KeyboardEvent } from "react";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -48,7 +48,7 @@ export function TokenListField({
       {value.map((item) => (
         <span
           key={item}
-          className={`inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-foreground ${typeStyle("caption.default")}`}
+          className={`inline-flex items-center gap-1 rounded-full bg-muted py-0.5 pl-2.5 pr-1.5 text-foreground ${typeStyle("caption.default")}`}
         >
           {item}
           <TagRemoveButton
