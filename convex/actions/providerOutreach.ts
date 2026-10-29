@@ -275,6 +275,7 @@ function emailInputFor(
     followUpNumber: step.kind === "initial" ? 0 : step.index,
     isFinal: step.isFinal,
     providerName: broker.name,
+    networkStatus: broker.networkStatus,
     recipientName: sequence.recipient.name,
     operator,
     client: { name: request.clientName, applicantName: request.applicantName ?? undefined, summary: request.title },

@@ -1715,6 +1715,7 @@ export const failCadenceInternal = internalMutation({
 type ProviderWorld = {
   outreach: Doc<"procurementBrokerOutreaches">;
   broker: Doc<"organizations">;
+  networkStatus: Doc<"brokerProfiles">["networkStatus"];
   link: Doc<"procurementPacketLinks"> & { token: string };
 };
 type StepWorld = {
@@ -1819,7 +1820,7 @@ async function checkProviderWorld(
     !link.token
   )
     return { kind: "stop", reason: "packet_link_unavailable" };
-  return { kind: "ok", world: { outreach, broker, link: { ...link, token: link.token } } };
+  return { kind: "ok", world: { outreach, broker, networkStatus: profile?.networkStatus ?? "prospect", link: { ...link, token: link.token } } };
 }
 
 /**
@@ -2041,7 +2042,7 @@ export type ClaimStepResult =
         isRenewal: boolean;
       };
       /** Provider outreach only. */
-      broker: { name: string } | null;
+      broker: { name: string; networkStatus: Doc<"brokerProfiles">["networkStatus"] } | null;
       packet: { linkId: Id<"procurementPacketLinks">; url: string; fileCount: number } | null;
       priorSteps: { index: number; kind: Step["kind"]; sentAt: number | null; subject: string | null }[];
     }
@@ -2245,7 +2246,7 @@ export const claimStepInternal = internalMutation({
         targetEffectiveDate: world.request.targetEffectiveDate ?? null,
         isRenewal: !!world.request.replacingPolicyId,
       },
-      broker: world.provider ? { name: world.provider.broker.name } : null,
+      broker: world.provider ? { name: world.provider.broker.name, networkStatus: world.provider.networkStatus } : null,
       packet: world.provider
         ? {
             linkId: world.provider.link._id,

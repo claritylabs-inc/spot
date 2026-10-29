@@ -18,7 +18,9 @@ const line = z
 
 export const brokerProfileFields = {
   networkStatus: optional(
-    z.enum(["prospect", "active", "inactive", "blacklisted"]),
+    z.enum(["prospect", "active", "inactive", "blacklisted"]).describe(
+      "prospect = Cold; active = Active Relationship; inactive = contacted without an established relationship, uses cold copy; blacklisted = Do Not Contact, blocks outreach",
+    ),
   ),
   officeAddress: optional(
     z.object({
