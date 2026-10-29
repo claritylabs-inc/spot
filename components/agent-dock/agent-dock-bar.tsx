@@ -10,6 +10,7 @@ import {
   Plus,
   X,
 } from "lucide-react";
+import { APP_SIDEBAR_COLLAPSED_WIDTH } from "@claritylabs-inc/ui/components/app-shell/app-shell-sidebar-layout";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
@@ -31,8 +32,9 @@ const TAB_ITEM_CLASS = cn(
   typeStyle("control.buttonCompact"),
 );
 
-/** Width of the right-side tab sidebar as an icon rail. */
-export const AGENT_DOCK_RAIL_WIDTH = 44;
+/** Width of the right-side tab sidebar as an icon rail, matching the
+ * collapsed left menu. */
+export const AGENT_DOCK_RAIL_WIDTH = APP_SIDEBAR_COLLAPSED_WIDTH;
 
 /** Vertical tabs, Arc style: full rows in the sidebar, initials in the rail. */
 const ROW_ITEM_CLASS = cn(
