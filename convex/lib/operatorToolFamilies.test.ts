@@ -6,6 +6,7 @@ import { expect, test } from "vitest";
 import {
   composeAgentToolFamilies,
   expandToolsResult,
+  withholdExpandToolsOnFirstStep,
 } from "./agentToolSelection";
 import {
   expandOperatorToolsSpec,
@@ -89,4 +90,33 @@ test("retired family names map forward and loaded families answer without a step
     alreadyLoaded: ["procurement"],
     nextStepTools: ["get_team_inbox_thread"],
   });
+});
+
+test("a replayed first step never offers fewer tools than its submission", () => {
+  for (const submittedFamilies of [[], ["procurement"]]) {
+    const submitted = withholdExpandToolsOnFirstStep({
+      iteration: 0,
+      loadedFamilyCount: submittedFamilies.length,
+      replayFallback: false,
+    });
+    expect(submitted).toBe(submittedFamilies.length > 0);
+    // The submission's families are stored when it waits on the router, but
+    // an interrupted action can lose them; the replay then loads every family.
+    for (const familiesStored of [true, false]) {
+      const replayFallback = !(familiesStored && submittedFamilies.length);
+      const replayed = withholdExpandToolsOnFirstStep({
+        iteration: 0,
+        loadedFamilyCount: replayFallback ? 15 : submittedFamilies.length,
+        replayFallback,
+      });
+      if (replayed) expect(submitted).toBe(true);
+    }
+  }
+  expect(
+    withholdExpandToolsOnFirstStep({
+      iteration: 1,
+      loadedFamilyCount: 3,
+      replayFallback: false,
+    }),
+  ).toBe(false);
 });

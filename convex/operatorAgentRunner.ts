@@ -110,6 +110,7 @@ import {
 import {
   assembleFamilyGuidance,
   selectAgentToolFamilies,
+  withholdExpandToolsOnFirstStep,
 } from "./lib/agentToolSelection";
 import {
   executionOperatorToolFailure,
@@ -259,7 +260,7 @@ function buildOperatorSystemPrompt(
     availableFamilies.length
       ? `\n\nTOOL FAMILIES:\nLoaded now: ${families.join(", ") || "core tools only"}. Their tools are already in your tool list; call them directly and never request them with ${EXPAND_TOOLS_NAME}. ${
           unloaded.length
-            ? `Call ${EXPAND_TOOLS_NAME} only when the task needs a tool from another family (${unloaded.join(", ")}); its tools become available on your next step.`
+            ? `Other families (${unloaded.join(", ")}) load through ${EXPAND_TOOLS_NAME} only when it is in your tool list and the task needs one of their tools; they become available on your next step. When ${EXPAND_TOOLS_NAME} is not offered, do the work with the loaded tools.`
             : "Every permitted family is loaded."
         }`
       : "",
@@ -1166,7 +1167,20 @@ export const run = internalAction({
       let toolEvidence = collectToolAudit({});
       // Families whose tools this step offers; expansions land next step.
       const stepFamilies = [...familySelection.families];
-      if (!recovery.stopped && !exhaustedTools.has(EXPAND_TOOLS_NAME)) {
+      // The first step acts on its initial selection. A resumed step that
+      // fell back to every family keeps expand_tools: its submission may have
+      // offered it, and a replayed response can only call offered tools.
+      const expandToolsWithheld = withholdExpandToolsOnFirstStep({
+        iteration: expectedCheckpointIteration ?? 0,
+        loadedFamilyCount: stepFamilies.length,
+        replayFallback: resumed && !storedFamilies?.length,
+      });
+      timer.expandToolsWithheld = expandToolsWithheld;
+      if (
+        !expandToolsWithheld &&
+        !recovery.stopped &&
+        !exhaustedTools.has(EXPAND_TOOLS_NAME)
+      ) {
         tools[EXPAND_TOOLS_NAME] = tool({
           ...expandOperatorToolsSpec(availableFamilies, context.toolNames),
           execute: async (request, options) => {
@@ -1463,6 +1477,7 @@ export const run = internalAction({
         phase: "query_reason",
         channel: traceChannel,
         toolFamilies: familySelection.families.join(","),
+        ...(expandToolsWithheld ? { expandToolsWithheld: true } : {}),
         toolFamilySource: familySelection.source,
       } as const;
       const system =

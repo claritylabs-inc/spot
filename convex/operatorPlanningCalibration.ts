@@ -97,6 +97,14 @@ export const listRecentRunsInternal = internalQuery({
     return await Promise.all(
       runs.map(async (run) => {
         const message = await ctx.db.get(run.agentMessageId);
+        // Iteration 0 segments (retries and resumes add rows); null when the
+        // run predates timing rows.
+        const firstStepTimings = await ctx.db
+          .query("operatorRunTimings")
+          .withIndex("by_runId_and_iteration", (q) =>
+            q.eq("runId", run._id).eq("iteration", 0),
+          )
+          .take(20);
         const tools = message?.activity?.tools ?? [];
         const assessment = run.planningAssessment;
         return {
@@ -117,7 +125,12 @@ export const listRecentRunsInternal = internalQuery({
             : null,
           planSteps: run.executionPlan?.steps.length ?? 0,
           finalFamilies: run.checkpoint?.families ?? [],
-          expandTools: expandToolsUsage(message),
+          expandTools: {
+            ...expandToolsUsage(message),
+            withheldOnFirstStep: firstStepTimings.length
+              ? firstStepTimings.some((row) => row.expandToolsWithheld === true)
+              : null,
+          },
           outcome: {
             status: run.status,
             iterations: run.checkpoint?.iteration ?? 0,
