@@ -11,6 +11,7 @@ import {
 import { clientRecipientOptions } from "./lib/clientOutreach";
 import {
   operatorEmailAliases,
+  requireOperator,
   requireOperatorForUser,
   resolveActiveOperatorEmail,
 } from "./lib/operatorIdentity";
@@ -421,5 +422,49 @@ export const failForward = internalMutation({
         reason: args.reason.slice(0, 200),
       },
     });
+  },
+});
+
+const PREDICTION_MESSAGES = 3;
+
+/**
+ * What the link prediction reads about one linkable conversation, as the calling
+ * operator: its correspondents (minus the operator's own addresses), subject and
+ * the latest inbound text. Null when the thread cannot be linked.
+ */
+export const linkPredictionInput = internalQuery({
+  args: { threadId: v.id("teamEmailThreads") },
+  handler: async (ctx, args) => {
+    const operator = await requireOperator(ctx);
+    const thread = await ctx.db.get(args.threadId);
+    if (
+      !thread ||
+      thread.deletedAt ||
+      thread.requestId ||
+      thread.source === "outreach" ||
+      (await teamTargetProblem(ctx, thread))
+    )
+      return null;
+    const messages = await ctx.db
+      .query("teamEmailMessages")
+      .withIndex("by_threadId_and_receivedAt", (q) => q.eq("threadId", thread._id))
+      .order("desc")
+      .take(PREDICTION_MESSAGES);
+    const addresses = new Set<string>(thread.participantEmails);
+    for (const message of messages)
+      for (const address of [message.fromEmail, ...message.toAddresses, ...message.ccAddresses])
+        addresses.add(address);
+    return {
+      clientOrgId: thread.clientOrgId ?? null,
+      subject: thread.subject,
+      normalizedSubject: thread.normalizedSubject,
+      addresses: [...addresses].map(normalizeProcurementEmail),
+      ownAddresses: operatorEmailAliases(operator.user.email),
+      messages: messages.map((message) => ({
+        direction: message.direction,
+        from: message.fromEmail,
+        text: message.currentText,
+      })),
+    };
   },
 });

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { Link2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,6 +51,36 @@ export function LinkThreadAction({
   const [clientChoice, setClientChoice] = useState("");
   const [requestChoice, setRequestChoice] = useState(CLIENT_ONLY);
   const [linking, setLinking] = useState(false);
+  const predictLink = useAction(api.actions.teamEmailForwarding.predictLink);
+  const [prediction, setPrediction] = useState<{
+    threadId: Id<"teamEmailThreads">;
+    clientOrgId: Id<"organizations">;
+    requestId: Id<"procurementRequests">;
+    reason: string;
+  } | null>(null);
+  const predictedFor = useRef<string | null>(null);
+  const linkable = canLinkThread(thread);
+
+  // Jev's guess prefills the pickers once per thread; it never overrides a choice already made.
+  useEffect(() => {
+    if (!open || !linkable || predictedFor.current === thread._id) return;
+    predictedFor.current = thread._id;
+    let cancelled = false;
+    predictLink({ threadId: thread._id })
+      .then((result) => {
+        if (cancelled || !result) return;
+        setPrediction({ threadId: thread._id, ...result });
+        setClientChoice((current) => current || result.clientOrgId);
+        setRequestChoice((current) =>
+          current === CLIENT_ONLY ? result.requestId : current,
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      if (predictedFor.current === thread._id) predictedFor.current = null;
+    };
+  }, [open, linkable, predictLink, thread._id]);
   const clientOrgId = (thread.client?._id ?? clientChoice) as
     | Id<"organizations">
     | "";
@@ -134,6 +164,12 @@ export function LinkThreadAction({
           onChange={setRequestChoice}
           placeholder="Choose a request"
         />
+        {prediction?.threadId === thread._id &&
+        requestChoice === prediction.requestId ? (
+          <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+            Suggested by Jev{prediction.reason ? `: ${prediction.reason}` : ""}
+          </p>
+        ) : null}
         <div className="flex justify-end">
           <PillButton
             size="compact"
