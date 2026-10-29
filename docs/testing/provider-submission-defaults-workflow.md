@@ -84,3 +84,9 @@ flipping left near the window edge. At 393 × 852, the menu falls below the pare
 and preserves readable labels. Device emulation and DevTools were closed afterward.
 Root TypeScript and scoped ESLint passed; the UI patch was reverse-applied then
 re-applied successfully with the existing postinstall patch-package command.
+
+Rebased again onto remote main `a61e149c`; root TypeScript, scoped ESLint,
+patch-package reapplication and whitespace checks passed. Native local codegen
+refreshed the API declarations for the two new email modules from main.
+Helium rechecked attachment right-click, left-opening submenu, provider search
+and selection after the rebase.

@@ -237,6 +237,7 @@ import type * as lib_emailDraftSummary from "../lib/emailDraftSummary.js";
 import type * as lib_emailIdentity from "../lib/emailIdentity.js";
 import type * as lib_emailPolicySources from "../lib/emailPolicySources.js";
 import type * as lib_emailSendAuthorization from "../lib/emailSendAuthorization.js";
+import type * as lib_emailSkill from "../lib/emailSkill.js";
 import type * as lib_emailTemplate from "../lib/emailTemplate.js";
 import type * as lib_emailTools from "../lib/emailTools.js";
 import type * as lib_emailWorkflow from "../lib/emailWorkflow.js";
@@ -433,6 +434,7 @@ import type * as lib_providerOutreachMatch from "../lib/providerOutreachMatch.js
 import type * as lib_providerOutreachSchedule from "../lib/providerOutreachSchedule.js";
 import type * as lib_providerOutreachSummary from "../lib/providerOutreachSummary.js";
 import type * as lib_providerOutreachValidators from "../lib/providerOutreachValidators.js";
+import type * as lib_providerRecipients from "../lib/providerRecipients.js";
 import type * as lib_providerSubmissionDefaultFields from "../lib/providerSubmissionDefaultFields.js";
 import type * as lib_quoWebhook from "../lib/quoWebhook.js";
 import type * as lib_receivingEmail from "../lib/receivingEmail.js";
@@ -849,6 +851,7 @@ declare const fullApi: ApiFromModules<{
   "lib/emailIdentity": typeof lib_emailIdentity;
   "lib/emailPolicySources": typeof lib_emailPolicySources;
   "lib/emailSendAuthorization": typeof lib_emailSendAuthorization;
+  "lib/emailSkill": typeof lib_emailSkill;
   "lib/emailTemplate": typeof lib_emailTemplate;
   "lib/emailTools": typeof lib_emailTools;
   "lib/emailWorkflow": typeof lib_emailWorkflow;
@@ -1045,6 +1048,7 @@ declare const fullApi: ApiFromModules<{
   "lib/providerOutreachSchedule": typeof lib_providerOutreachSchedule;
   "lib/providerOutreachSummary": typeof lib_providerOutreachSummary;
   "lib/providerOutreachValidators": typeof lib_providerOutreachValidators;
+  "lib/providerRecipients": typeof lib_providerRecipients;
   "lib/providerSubmissionDefaultFields": typeof lib_providerSubmissionDefaultFields;
   "lib/quoWebhook": typeof lib_quoWebhook;
   "lib/receivingEmail": typeof lib_receivingEmail;
