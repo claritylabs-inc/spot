@@ -3659,6 +3659,8 @@ export default defineSchema({
     }))),
     /** Jev's first line of quoted history when no known marker finds it; null when it has none. */
     quotedHistoryStart: v.optional(v.union(v.string(), v.null())),
+    /** Image attachments (clientFileId or storageId) Jev judged to be signature or decoration, not shared files. */
+    decorativeAttachmentIds: v.optional(v.array(v.string())),
     /** Filed attachments that are inline `cid:` parts of `bodyHtml`. */
     inlineFiles: v.optional(v.array(v.object({
       contentId: v.string(),

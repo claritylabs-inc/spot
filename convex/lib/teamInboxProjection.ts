@@ -474,6 +474,7 @@ export async function getTeamThreadDetails(
       // Inline parts the HTML shows in place are not listed as attachments.
       const shownInline = (contentId: string | undefined) =>
         Boolean(contentId && bodyHtml?.includes(`cid:${contentId}`));
+      const decorative = new Set(message.decorativeAttachmentIds ?? []);
       const inlineFileIds = new Set(
         (message.inlineFiles ?? [])
           .filter((file) => shownInline(file.contentId))
@@ -497,6 +498,7 @@ export async function getTeamThreadDetails(
                   contentType: file.contentType,
                   size: file.size,
                   inline: inlineFileIds.has(clientFileId),
+                  decorative: decorative.has(String(clientFileId)),
                   url: await ctx.storage.getUrl(file.fileId),
                 }
               : null;
@@ -509,6 +511,7 @@ export async function getTeamThreadDetails(
             contentType: file.contentType,
             size: file.size,
             inline: shownInline(file.contentId),
+            decorative: decorative.has(String(file.storageId)),
             url: await ctx.storage.getUrl(file.storageId),
           })),
         ),

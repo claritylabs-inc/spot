@@ -388,15 +388,15 @@ export function ProcurementEmailMessage({
   const sender = fromSpot
     ? (message.sentBy?.name ?? "Spot")
     : (message.fromName ?? person?.name ?? message.fromEmail);
-  // Inline images render inside the HTML body instead of as attachments.
+  // Inline images render inside the HTML body, and signature images Jev flagged are hidden.
   const attachments = [
     ...message.files.flatMap((file) =>
-      file?.url && !(message.hasHtml && file.inline)
+      file?.url && !file.decorative && !(message.hasHtml && file.inline)
         ? [{ key: String(file.clientFileId), name: file.name, contentType: file.contentType, url: file.url }]
         : [],
     ),
     ...message.unfiledFiles.flatMap((file) =>
-      file.url && !(message.hasHtml && file.inline)
+      file.url && !file.decorative && !(message.hasHtml && file.inline)
         ? [{ key: String(file.storageId), name: file.name, contentType: file.contentType, url: file.url }]
         : [],
     ),

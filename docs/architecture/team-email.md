@@ -73,7 +73,11 @@ Choice for its first line, both at the proceed threshold. The line is stored as
 `quotedHistoryStart` (null for a confident "no history") and the reader folds
 there. Failures or uncertainty store nothing and the message shows unfolded. Ingestion records each part's MIME Content-ID (unfiled
 `contentId`, filed `inlineFiles`) so `cid:` images resolve to their files and are
-not repeated as attachment chips. Attachments are listed above the body.
+not repeated as attachment chips. Image attachments the HTML does not show inline
+(signatures, logos) get one Noul each (`convex/actions/teamEmailAttachments.ts`, task
+`team_email_decorative_images`) over name, type, size and the email text; those at the
+proceed threshold are stored in `decorativeAttachmentIds` and hidden from the chips.
+Failures or uncertainty keep every attachment listed. Attachments are listed above the body.
 
 The shared request and main Inbox use Inbox, Sent, All mail and Archived pill
 tabs. Inbox contains conversations whose latest message is inbound; Sent contains

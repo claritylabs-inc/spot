@@ -483,8 +483,10 @@ export async function mirrorTeamEmail(
     receivedAt: email.occurredAt,
     createdAt: now,
   });
-  if (args.direction === "inbound")
+  if (args.direction === "inbound") {
     await ctx.scheduler.runAfter(0, internal.actions.teamEmailQuotes.detect, { messageId });
+    await ctx.scheduler.runAfter(0, internal.actions.teamEmailAttachments.classify, { messageId });
+  }
   if (thread.clientOrgId && thread.requestId)
     await insertProcurementEmailFileItems(ctx, {
       requestId: thread.requestId,
