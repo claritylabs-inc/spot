@@ -13,8 +13,11 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
 const HEARTBEAT_INTERVAL_MS = 15_000;
-/** Three missed heartbeats mark an operator as gone. */
-const ACTIVE_WINDOW_MS = 45_000;
+/**
+ * An open tab keeps beating while hidden, but browsers throttle background
+ * timers to about one a minute, so a window under that would flap presence.
+ */
+const ACTIVE_WINDOW_MS = 90_000;
 
 export type EmailThreadActivity = "viewing" | "replying";
 
@@ -131,7 +134,7 @@ export function browserTabId() {
 
 /**
  * Reports this tab's page, open dock thread, open email thread and followed
- * operator while it is visible. Each tab has its own row, so closing one
+ * operator while it is open, focused or not. Each tab has its own row, so closing one
  * leaves the operator present through their others.
  */
 export function useOperatorPresenceHeartbeat({
@@ -155,7 +158,6 @@ export function useOperatorPresenceHeartbeat({
 
   useEffect(() => {
     const beat = () => {
-      if (document.visibilityState !== "visible") return;
       activeAt ||= dayjs().valueOf();
       void browserTabId().then((tabId) =>
         heartbeat({
@@ -177,12 +179,12 @@ export function useOperatorPresenceHeartbeat({
       activeAt = dayjs().valueOf();
       beat();
     };
-    // A hidden tab stops beating, so remove its row now; otherwise others keep
-    // seeing its last activity (such as "replying") until the TTL lapses.
+    // Switching away keeps the tab present, so focus churn never flickers
+    // presence; the open tab itself is the signal and the pointer shows who is
+    // live. The row is removed on pagehide.
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") activate();
-      else
-        void browserTabId().then((tabId) => leave({ tabId }).catch(() => {}));
+      else beat();
     };
     beat();
     const interval = window.setInterval(beat, HEARTBEAT_INTERVAL_MS);
@@ -197,7 +199,6 @@ export function useOperatorPresenceHeartbeat({
     };
   }, [
     heartbeat,
-    leave,
     pathname,
     threadId,
     emailThreadId,
