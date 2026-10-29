@@ -13,8 +13,8 @@ import {
 import { requireOperator } from "./lib/operatorIdentity";
 import { latestTab } from "./lib/operatorTabs";
 
-/** Matches the client's active window: three missed presence heartbeats. */
-const PRESENCE_TIMEOUT_MS = 45_000;
+/** Matches the client's active window, which outlasts throttled background heartbeats. */
+const PRESENCE_TIMEOUT_MS = 90_000;
 /**
  * A room nobody has rejoined (every 15s) for this long is reset on the next
  * arrival. Longer than a hidden tab's throttled timers (once a minute).

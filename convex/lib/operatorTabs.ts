@@ -2,8 +2,8 @@ import dayjs from "dayjs";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
-/** Matches the client's active window: three missed presence heartbeats. */
-export const TAB_ACTIVE_WINDOW_MS = 45_000;
+/** Matches the client's active window, which outlasts throttled background heartbeats. */
+export const TAB_ACTIVE_WINDOW_MS = 90_000;
 
 /**
  * The tab its operator used last among `tabs`: the one most recently focused
