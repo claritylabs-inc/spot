@@ -159,6 +159,8 @@ export type OutreachGenerationResult =
       detail: string;
     };
 
+const FOLLOW_UP_ASK = "Could you let us know if you can quote us or if there's more information needed?";
+
 const SYSTEM_PROMPT = [
   "You write short, professional emails from Spot, coordinating commercial insurance procurement with the client, to an insurance broker, carrier or wholesale provider.",
   "Use we, us and our for the coordinated insurance request: ask whether they can quote us and what information they need from us. Do not describe the client as a detached third party. Do not claim Spot is the insured, a client employee or an insurance broker, or invent a prior relationship.",
@@ -168,7 +170,7 @@ const SYSTEM_PROMPT = [
   "Use only the facts provided. Do not invent premiums, claims, dates or coverage details. Plain text only, no markdown, no lists unless style is detailed_recap.",
   "Initial email: introduce the client, the coverage lines and regions, the effective date, and ask whether the provider can quote or would pass.",
   "Follow-up email: reference the earlier note without repeating it in full. brief_nudge is two or three sentences. concise_recap restates the coverage and dates in a short paragraph. detailed_recap restates the submission in a short structured recap.",
-  "When isFinalFollowUp is true, say politely that this is the last follow-up and that a quick pass is also helpful.",
+  `Ask: ${FOLLOW_UP_ASK} Do not ask for a pass. When isFinalFollowUp is true, say politely that this is our last follow-up.`,
   "For an initial email also return a short plain subject line naming the client and coverage. For a follow-up return an empty subject.",
 ].join("\n");
 
@@ -319,9 +321,9 @@ function templateBody(input: OutreachEmailInput): string {
     deadline ? `a response requested by ${deadline}` : "",
   ].filter(Boolean);
   const datesSentence = dates.length ? ` It has ${dates.join(" and ")}.` : "";
-  const ask = "Could you let us know if you can quote us, or if it is a pass?";
+  const ask = FOLLOW_UP_ASK;
   const closer = input.isFinal
-    ? " This is our last follow-up, and a quick pass is also helpful."
+    ? " This is our last follow-up."
     : "";
 
   if (input.kind === "initial") {
@@ -422,8 +424,9 @@ export function composeOutreachEmail(
     throw new Error("Cannot compose outreach for a Do Not Contact provider");
   }
   const template = templateOutreachText(input);
-  const source: OutreachDraftSource = generated && input.kind !== "initial" ? "llm" : "template";
-  const body = input.kind === "initial" ? template.body : (generated?.body ?? template.body);
+  const useGenerated = generated && input.kind !== "initial" && input.style !== "brief_nudge";
+  const source: OutreachDraftSource = useGenerated ? "llm" : "template";
+  const body = useGenerated ? generated.body : template.body;
   const subject =
     input.kind === "initial"
       ? template.subject
