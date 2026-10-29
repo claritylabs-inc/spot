@@ -83,6 +83,14 @@ html {
   line-height: inherit;
 }
 
+/* Pull-to-refresh stays available only on mobile viewports. */
+@media (min-width: 768px) {
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
 /* AppToaster retains Spot’s mobile edge alignment. */
 @media (max-width: 600px) {
   [data-sonner-toaster][data-x-position="right"] {
