@@ -19,10 +19,7 @@ import { requireOperator, writeOperatorAudit } from "./lib/operatorIdentity";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { requireRequest } from "./procurementRequests";
 import { teamTargetProblem } from "./lib/teamEmailStore";
-import {
-  CONSUMER_DOMAINS,
-  normalizeProcurementEmail,
-} from "./lib/procurement";
+import { CONSUMER_DOMAINS, normalizeProcurementEmail } from "./lib/procurement";
 
 async function requireProvider(
   ctx: QueryCtx | MutationCtx,
@@ -127,8 +124,10 @@ const emailDomain = (email: string) => email.split("@")[1] ?? "";
 const websiteDomain = (website: string | undefined) => {
   try {
     return website
-      ? new URL(/^https?:\/\//i.test(website) ? website : `https://${website}`)
-          .hostname.toLowerCase()
+      ? new URL(
+          /^https?:\/\//i.test(website) ? website : `https://${website}`,
+        ).hostname
+          .toLowerCase()
           .replace(/^www\./, "")
       : "";
   } catch {
@@ -178,9 +177,7 @@ export const suggestionsForThread = query({
         const { contacts } = await listProviderContacts(ctx, provider._id);
         entry = {
           brokerName: provider.name,
-          emails: new Set(
-            contacts.flatMap((contact) => contact.email ?? []),
-          ),
+          emails: new Set(contacts.flatMap((contact) => contact.email ?? [])),
           domains: new Set([websiteDomain(provider.website)].filter(Boolean)),
         };
         providers.set(provider._id, entry);
@@ -473,6 +470,41 @@ export const lookupByEmails = query({
   },
 });
 
+/**
+ * Saved provider contacts whose address starts with what an operator has typed
+ * into a recipient field, for completing it inline. Spot-owned or deleted
+ * providers are skipped.
+ */
+export const suggestRecipients = query({
+  args: { prefix: v.string() },
+  handler: async (ctx, { prefix }) => {
+    await requireOperator(ctx);
+    const start = prefix.trim().toLowerCase().slice(0, 100);
+    if (!start) return [];
+    const contacts = await ctx.db
+      .query("brokerContacts")
+      .withIndex("by_email_and_deletedAt", (q) =>
+        q.gte("email", start).lt("email", `${start}\uffff`),
+      )
+      .take(20);
+    const found: Array<{ email: string; name: string }> = [];
+    for (const contact of contacts) {
+      if (contact.deletedAt !== undefined || !contact.email) continue;
+      const provider = await ctx.db.get(contact.brokerOrgId);
+      if (
+        !provider ||
+        provider.deletedAt !== undefined ||
+        provider.type !== "broker" ||
+        isSpotOwnedBrokerIdentity(provider)
+      )
+        continue;
+      found.push({ email: contact.email, name: contact.name });
+      if (found.length === 5) break;
+    }
+    return found;
+  },
+});
+
 const MAX_COMPARED_CONTACTS = 10;
 
 /**
@@ -534,4 +566,3 @@ export const primaryDefaultInputInternal = internalQuery({
     };
   },
 });
-

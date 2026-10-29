@@ -48,10 +48,12 @@ export function OperatorPill({
   operator,
   address,
   className,
+  children,
 }: {
   operator: Pick<DirectoryOperator, "userId" | "name" | "avatarUrl">;
   address?: string;
   className?: string;
+  children?: ReactNode;
 }) {
   const color = useOperatorColor()(operator.userId);
   return (
@@ -71,6 +73,7 @@ export function OperatorPill({
     >
       <OperatorAvatar operator={operator} />
       <span className="min-w-0 truncate">{operator.name}</span>
+      {children}
     </span>
   );
 }
@@ -82,7 +85,9 @@ type ProviderContact = FunctionReturnType<
 /** Saved provider contacts among `addresses`, by lowercased address. */
 function useProviderContacts(addresses: string[]) {
   const emails = [
-    ...new Set(addresses.map((address) => bareAddress(address)).filter(Boolean)),
+    ...new Set(
+      addresses.map((address) => bareAddress(address)).filter(Boolean),
+    ),
   ].sort();
   const contacts = useQuery(
     api.brokerContacts.lookupByEmails,
@@ -142,10 +147,13 @@ function AddressPill({
   ) : null;
   if (operator)
     return (
-      <span className="inline-flex max-w-full min-w-0 items-center">
-        <OperatorPill operator={operator} address={address} className={remove ? "pr-1" : undefined} />
+      <OperatorPill
+        operator={operator}
+        address={address}
+        className={remove ? "pr-1" : undefined}
+      >
         {remove}
-      </span>
+      </OperatorPill>
     );
   if (contact)
     return (
@@ -185,7 +193,9 @@ const EMAIL_PATTERN = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
 /**
  * Editable To/Cc: recognized pills with remove buttons, then a box that adds
  * an address on Enter, comma, semicolon, Tab or blur. `fixed` addresses show
- * without a remove button; `max` caps how many can be entered.
+ * without a remove button; `max` caps how many can be entered. Typing the
+ * start of a name or address lists matching people; Tab or Enter takes the
+ * highlighted one, and ghost text shows how its address continues.
  */
 export function AddressField({
   label,
@@ -193,6 +203,7 @@ export function AddressField({
   onChange,
   fixed = [],
   max,
+  threadId,
   disabled,
   autoFocus,
   placeholder = "Add recipient",
@@ -202,14 +213,63 @@ export function AddressField({
   onChange: (value: string[]) => void;
   fixed?: string[];
   max?: number;
+  /** Also complete from the people on this conversation. */
+  threadId?: Id<"teamEmailThreads">;
   disabled?: boolean;
   autoFocus?: boolean;
   placeholder?: string;
 }) {
-  const { find } = useOperatorDirectory();
+  const { find, operators } = useOperatorDirectory();
   const contacts = useProviderContacts(value);
   const [draft, setDraft] = useState("");
   const [invalid, setInvalid] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [picked, setPicked] = useState(0);
+  const typed = draft.trim().toLowerCase();
+  const searching = Boolean(typed) && !/[\s,;]/.test(typed) && !disabled;
+  const savedMatches = useQuery(
+    api.brokerContacts.suggestRecipients,
+    searching ? { prefix: typed } : "skip",
+  );
+  const participants = useQuery(
+    api.teamInbox.threadContacts,
+    threadId && searching ? { threadId } : "skip",
+  );
+  // Teammates, then people on the conversation, then saved contacts; each address once.
+  const options = searching
+    ? [
+        ...(operators ?? []).flatMap((operator) =>
+          operator.teamAddress
+            ? [
+                {
+                  email: operator.teamAddress.toLowerCase(),
+                  name: operator.name,
+                },
+              ]
+            : [],
+        ),
+        ...(participants ?? []),
+        ...(savedMatches ?? []),
+      ]
+        .filter(
+          (option, index, all) =>
+            all.findIndex((other) => other.email === option.email) === index &&
+            !value.some((entry) => entry.toLowerCase() === option.email) &&
+            (option.email.startsWith(typed) ||
+              (option.name ?? "")
+                .toLowerCase()
+                .split(/\s+/)
+                .some((word) => word.startsWith(typed)) ||
+              (option.name ?? "").toLowerCase().startsWith(typed)),
+        )
+        .slice(0, 6)
+    : [];
+  const active = options[Math.min(picked, options.length - 1)];
+  // Ghost text continues the typed address when the highlighted option starts with it.
+  const completion =
+    active?.email.startsWith(typed) && active.email !== typed
+      ? active.email.slice(typed.length)
+      : "";
   const full = max !== undefined && value.length >= max;
   function commit(text = draft) {
     const entries = text
@@ -218,11 +278,21 @@ export function AddressField({
       .filter(Boolean);
     if (!entries.length) return true;
     const bad = entries.filter((entry) => !EMAIL_PATTERN.test(entry));
-    const next = [...new Set([...value, ...entries.filter((entry) => !bad.includes(entry))])];
+    const next = [
+      ...new Set([
+        ...value,
+        ...entries.filter((entry) => !bad.includes(entry)),
+      ]),
+    ];
     onChange(max !== undefined ? next.slice(-max) : next);
     setDraft(bad.join(", "));
     setInvalid(bad.length > 0);
     return bad.length === 0;
+  }
+  function accept(email: string) {
+    commit(email);
+    setDraft("");
+    setPicked(0);
   }
   return (
     <>
@@ -240,39 +310,107 @@ export function AddressField({
         />
       ))}
       {disabled || (full && !draft) ? null : (
-        <input
-          aria-label={`Add ${label} recipient`}
-          aria-invalid={invalid || undefined}
-          type="email"
-          autoFocus={autoFocus}
-          placeholder={value.length ? "" : placeholder}
-          value={draft}
-          onChange={(event) => {
-            const text = event.target.value;
-            setInvalid(false);
-            // A pasted list commits at its separators.
-            if (/[,;]/.test(text)) commit(text);
-            else setDraft(text);
-          }}
-          onKeyDown={(event) => {
-            if (["Enter", ",", ";"].includes(event.key)) {
-              event.preventDefault();
-              commit();
-            } else if (event.key === "Tab" && draft.trim()) {
-              // A valid address moves on with Tab; an invalid one keeps focus.
-              if (!commit()) event.preventDefault();
-            } else if (event.key === "Backspace" && !draft && value.length) {
-              const removable = value.filter((address) => !fixed.includes(address));
-              const last = removable.at(-1);
-              if (last) onChange(value.filter((address) => address !== last));
-            }
-          }}
-          onBlur={() => void commit()}
-          className={cn(
-            "h-7 min-w-32 flex-1 bg-transparent outline-none placeholder:text-muted-foreground/60 aria-invalid:text-destructive",
-            typeStyle("body.default"),
-          )}
-        />
+        <span className="relative flex h-7 min-w-32 flex-1 items-center">
+          {completion ? (
+            <span
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute inset-0 flex items-center overflow-hidden whitespace-pre",
+                typeStyle("body.default"),
+              )}
+            >
+              <span className="invisible">{draft}</span>
+              <span className="text-muted-foreground/60">{completion}</span>
+            </span>
+          ) : null}
+          <input
+            aria-label={`Add ${label} recipient`}
+            aria-invalid={invalid || undefined}
+            type="email"
+            autoFocus={autoFocus}
+            placeholder={value.length ? "" : placeholder}
+            value={draft}
+            onFocus={() => setFocused(true)}
+            onChange={(event) => {
+              const text = event.target.value;
+              setInvalid(false);
+              setPicked(0);
+              // A pasted list commits at its separators.
+              if (/[,;]/.test(text)) commit(text);
+              else setDraft(text);
+            }}
+            onKeyDown={(event) => {
+              if (options.length && event.key === "ArrowDown") {
+                event.preventDefault();
+                setPicked((picked + 1) % options.length);
+              } else if (options.length && event.key === "ArrowUp") {
+                event.preventDefault();
+                setPicked((picked - 1 + options.length) % options.length);
+              } else if (
+                active &&
+                (event.key === "Tab" || event.key === "Enter")
+              ) {
+                event.preventDefault();
+                accept(active.email);
+              } else if (["Enter", ",", ";"].includes(event.key)) {
+                event.preventDefault();
+                commit();
+              } else if (event.key === "Tab" && draft.trim()) {
+                // A valid address moves on with Tab; an invalid one keeps focus.
+                if (!commit()) event.preventDefault();
+              } else if (event.key === "Escape" && options.length) {
+                event.stopPropagation();
+                setDraft("");
+              } else if (event.key === "Backspace" && !draft && value.length) {
+                const removable = value.filter(
+                  (address) => !fixed.includes(address),
+                );
+                const last = removable.at(-1);
+                if (last) onChange(value.filter((address) => address !== last));
+              }
+            }}
+            onBlur={() => {
+              setFocused(false);
+              void commit();
+            }}
+            className={cn(
+              "relative h-7 w-full bg-transparent outline-none placeholder:text-muted-foreground/60 aria-invalid:text-destructive",
+              typeStyle("body.default"),
+            )}
+          />
+          {focused && options.length ? (
+            <ul
+              role="listbox"
+              // Keeps focus in the input so a click does not blur and commit the draft first.
+              onMouseDown={(event) => event.preventDefault()}
+              className="absolute top-full left-0 z-50 mt-1 w-72 max-w-[80vw] overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md"
+            >
+              {options.map((option, index) => (
+                <li
+                  key={option.email}
+                  role="option"
+                  aria-selected={option === active}
+                  onClick={() => accept(option.email)}
+                  onMouseEnter={() => setPicked(index)}
+                  className={cn(
+                    "flex cursor-default items-baseline gap-2 rounded-md px-2 py-1.5",
+                    typeStyle("body.default"),
+                    option === active && "bg-muted",
+                  )}
+                >
+                  <span className="min-w-0 shrink-0 truncate">
+                    {option.name ?? option.email}
+                  </span>
+                  {option.name ? (
+                    <span className="min-w-0 truncate text-muted-foreground">
+                      {option.email}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </span>
       )}
     </>
   );
