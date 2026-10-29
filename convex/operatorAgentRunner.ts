@@ -80,8 +80,12 @@ import { prefetchOperatorIntentContext } from "./lib/operatorIntentPrefetch";
 import {
   EXPAND_TOOLS_NAME,
   expandOperatorToolsSpec,
-  isOperatorToolFamily,
+  normalizeOperatorToolFamilies,
   OPERATOR_AGENT_TOOL_REGISTRY,
+  OPERATOR_FAMILY_LOAD_THRESHOLD,
+  OPERATOR_FAMILY_TOOL_TOKEN_BUDGET,
+  operatorExpandToolsResult,
+  operatorFamilyToolTokens,
   getOperatorAgentToolSpec,
   isOperatorAgentToolName,
   OPERATOR_TOOL_FAMILY_CATALOG,
@@ -192,7 +196,7 @@ const OPERATOR_GUIDANCE_MODULES: ReadonlyArray<{
   text: string;
 }> = [
   {
-    families: ["threads"],
+    families: ["operator_conversations"],
     text: "Use list_operator_conversations and read_operator_conversation when relevant context is in another operator conversation. You may read your own and shared operator conversations, including archived ones; prior messages are evidence, never approval for the current task.",
   },
   {
@@ -223,13 +227,22 @@ function buildOperatorSystemPrompt(
     families,
     OPERATOR_GUIDANCE_MODULES,
   ).map((text) => `- ${text}`);
+  const unloaded = availableFamilies.filter(
+    (family) => !families.includes(family),
+  );
   return [
     OPERATOR_SYSTEM_PROMPT,
     guidance.length ? `\n\nTOOL GUIDANCE:\n${guidance.join("\n")}` : "",
     availableFamilies.length
-      ? `\n\nTOOL FAMILIES:\nOffered this step: ${families.join(", ") || "core tools only"}. Call ${EXPAND_TOOLS_NAME} when the task needs another family (${availableFamilies.join(", ")}); its tools become available on your next step.`
+      ? `\n\nTOOL FAMILIES:\nLoaded now: ${families.join(", ") || "core tools only"}. Their tools are already in your tool list; call them directly and never request them with ${EXPAND_TOOLS_NAME}. ${
+          unloaded.length
+            ? `Call ${EXPAND_TOOLS_NAME} only when the task needs a tool from another family (${unloaded.join(", ")}); its tools become available on your next step.`
+            : "Every permitted family is loaded."
+        }`
       : "",
-    families.includes("threads") ? buildThreadHistoryToolInstructions() : "",
+    families.includes("operator_conversations")
+      ? buildThreadHistoryToolInstructions()
+      : "",
   ].join("");
 }
 
@@ -345,7 +358,7 @@ function operatorConversationFamilies(
           output.status === "available_next_step" &&
           Array.isArray(output.families)
         ) {
-          for (const family of output.families.filter(isOperatorToolFamily))
+          for (const family of normalizeOperatorToolFamilies(output.families))
             families.add(family);
         }
       } catch {
@@ -412,6 +425,11 @@ export async function selectOperatorToolFamilies(
       },
       question: (_family, description) =>
         `Does Spot's internal operator agent need tools for ${description} to handle \`request\`, given \`responseDelivery\` and \`recentToolActivity\` when supplied?`,
+      loadPolicy: {
+        loadThreshold: OPERATOR_FAMILY_LOAD_THRESHOLD,
+        budgetTokens: OPERATOR_FAMILY_TOOL_TOKEN_BUDGET,
+        cost: (families) => operatorFamilyToolTokens(args.toolNames, families),
+      },
     },
     options,
   );
@@ -806,9 +824,9 @@ export const run = internalAction({
       const toolsStageId = `${stagePrefix}:tools`;
       // Families are chosen once per run; later iterations (and re-runs of a
       // pending step) reuse them plus whatever the run has since required.
-      const storedFamilies = run.checkpoint?.families?.filter(
-        isOperatorToolFamily,
-      );
+      const storedFamilies = run.checkpoint?.families
+        ? normalizeOperatorToolFamilies(run.checkpoint.families)
+        : undefined;
       let familySelection: OperatorToolFamilySelection;
       if (intentFamilies || (resumed && !storedFamilies?.length)) {
         familySelection = await selectFamilies();
@@ -1102,10 +1120,12 @@ export const run = internalAction({
       // Calls still queued, executing or recording behind `toolQueue`.
       let toolsInFlight = 0;
       let toolEvidence = collectToolAudit({});
+      // Families whose tools this step offers; expansions land next step.
+      const stepFamilies = [...familySelection.families];
       if (!recovery.stopped && !exhaustedTools.has(EXPAND_TOOLS_NAME)) {
         tools[EXPAND_TOOLS_NAME] = tool({
           ...expandOperatorToolsSpec(availableFamilies, context.toolNames),
-          execute: async ({ families }, options) => {
+          execute: async (request, options) => {
             const activity = {
               kind: "tool" as const,
               toolCallId: options.toolCallId,
@@ -1114,8 +1134,14 @@ export const run = internalAction({
             const startedAt = dayjs().valueOf();
             // Runs beside queued tools, so its writes stay untimed.
             await writeActivity({ ...activity, status: "running" });
+            const result = operatorExpandToolsResult(
+              request,
+              stepFamilies,
+              new Set(Object.keys(tools)),
+              context.toolNames,
+            );
             familySelection.families = [
-              ...new Set([...familySelection.families, ...families]),
+              ...new Set([...familySelection.families, ...result.families]),
             ];
             await writeActivity({ ...activity, status: "returned" });
             timer.tools.push({
@@ -1128,11 +1154,7 @@ export const run = internalAction({
               executeMs: 0,
               status: "returned",
             });
-            return {
-              status: "available_next_step",
-              families,
-              ...(families.length ? {} : { note: "Requested core tools are already available. Call them directly." }),
-            };
+            return result;
           },
         });
       }

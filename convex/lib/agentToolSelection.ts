@@ -5,14 +5,21 @@ import type {
   DecisionQuestion,
 } from "../../contracts/cl-router/policy";
 import { clRouterDecide, type ClRouterClientOptions } from "./clRouterClient";
-import { jevProceeds } from "./jevThreshold";
+import { jevProceedThreshold } from "./jevThreshold";
 
 export const EXPAND_TOOLS_NAME = "expand_tools";
 
 // Lookups needed to use another family's tools; never register unavailable tools.
+// Replies need the team inbox reads that left outbound_email for team_inbox.
 export const AGENT_TOOL_FAMILY_LOOKUPS: Record<string, readonly string[]> = {
   organizations: ["list_operators", "lookup_client_wiki"],
-  outbound_email: ["list_client_files", "get_procurement_request"],
+  outbound_email: [
+    "list_client_files",
+    "get_procurement_request",
+    "list_team_inbox_threads",
+    "get_team_inbox_thread",
+    "search_team_inbox",
+  ],
 };
 
 export type AgentToolFamilyCatalog<Family extends string> = Record<
@@ -86,6 +93,49 @@ export function activeAgentToolNames<
   return toolNames.filter((name) => !grouped.has(name) || active.has(name));
 }
 
+/**
+ * Opt-in policy for families Jev is unsure about: a missing family costs a
+ * full model step, while an extra one costs only cached prompt tokens.
+ */
+export type AgentToolFamilyLoadPolicy<Family extends string> = {
+  /** Lowest probability that may load a family when the budget allows. */
+  loadThreshold: number;
+  /** Estimated tokens for every tool offered by the selected families. */
+  budgetTokens: number;
+  cost: (families: readonly Family[]) => number;
+};
+
+/**
+ * Required and confident families always load. Uncertain-band families then
+ * load from most to least likely while the offered tools stay in budget.
+ */
+export function composeAgentToolFamilies<Family extends string>(
+  candidates: readonly Family[],
+  probabilities: Readonly<Record<string, number>>,
+  required: readonly Family[],
+  confidentThreshold: number,
+  policy?: AgentToolFamilyLoadPolicy<Family>,
+): Family[] {
+  const ranked = candidates
+    .filter((family) => probabilities[family] !== undefined)
+    .sort((left, right) => probabilities[right] - probabilities[left]);
+  const selected = [
+    ...required,
+    ...ranked.filter((family) => probabilities[family] >= confidentThreshold),
+  ];
+  if (!policy) return selected;
+  for (const family of ranked) {
+    const probability = probabilities[family];
+    if (
+      probability < confidentThreshold &&
+      probability >= policy.loadThreshold &&
+      policy.cost([...selected, family]) <= policy.budgetTokens
+    )
+      selected.push(family);
+  }
+  return selected;
+}
+
 export async function selectAgentToolFamilies<Family extends string>(
   args: {
     catalog: AgentToolFamilyCatalog<Family>;
@@ -96,6 +146,7 @@ export async function selectAgentToolFamilies<Family extends string>(
     request: Omit<DecideRequest, "tenantId" | "questions">;
     extraQuestions?: Record<string, DecisionQuestion>;
     question?: (family: Family, description: string) => string;
+    loadPolicy?: AgentToolFamilyLoadPolicy<Family>;
   },
   options: ClRouterClientOptions = {},
 ): Promise<AgentToolFamilySelection<Family>> {
@@ -158,12 +209,17 @@ export async function selectAgentToolFamilies<Family extends string>(
       aborted,
     ]);
     const probabilities: Record<string, number> = {};
-    const selected = candidates.filter((family) => {
+    for (const family of candidates) {
       const answer = result.answers[family];
-      if (answer?.type !== "noul") return false;
-      probabilities[family] = answer.noul;
-      return jevProceeds(answer.noul);
-    });
+      if (answer?.type === "noul") probabilities[family] = answer.noul;
+    }
+    const selected = composeAgentToolFamilies(
+      candidates,
+      probabilities,
+      required,
+      jevProceedThreshold(),
+      args.loadPolicy,
+    );
     return {
       ...selection(selected, "jev"),
       answers: result.answers,
@@ -182,21 +238,40 @@ export async function selectAgentToolFamilies<Family extends string>(
   }
 }
 
+export type ExpandToolsOptions<Family extends string> = {
+  /** Retired family names still accepted from models and stored audits. */
+  aliases?: Readonly<Record<string, Family>>;
+  /** List each family's tools so a tool name can be requested directly. */
+  listTools?: boolean;
+};
+
 export function expandToolsSpec<Family extends string>(
   catalog: AgentToolFamilyCatalog<Family>,
   families: readonly Family[],
   toolNames: readonly string[] = [],
+  options: ExpandToolsOptions<Family> = {},
 ) {
   const grouped = new Set(
     familyNames(catalog).flatMap((family) => catalog[family].tools),
   );
+  const registered = new Set(toolNames);
   const coreTools = new Set(toolNames.filter((name) => !grouped.has(name)));
   const names = z.union([
     z.string().min(1).max(200),
     z.array(z.string().min(1).max(200)).min(1).max(50),
   ]);
+  const available = options.listTools
+    ? families
+        .map((family) => {
+          const tools = catalog[family].tools.filter((name) =>
+            registered.has(name),
+          );
+          return `${family} (${tools.join(", ")})`;
+        })
+        .join("; ")
+    : families.join(", ");
   return {
-    description: `Load families or named tools for the next step; loaded families stay available. No business writes. Use families (string or array); family, tool_families and tools are aliases. Available: ${families.join(", ")}.`,
+    description: `Load families or named tools for the next step; loaded families stay available. No business writes. Use families (string or array); family, tool_families and tools are aliases. Never request a family or tool you already have. Available: ${available}.`,
     inputSchema: z
       .object({
         families: names.optional(),
@@ -209,16 +284,26 @@ export function expandToolsSpec<Family extends string>(
           .flatMap((value) => value ?? [])
           .flatMap((name) => name.split(/[\s,]+/).filter(Boolean));
         const resolved = new Set<Family>();
+        const tools = new Set<string>();
         for (const name of requested) {
-          if (coreTools.has(name)) continue;
+          if (coreTools.has(name)) {
+            tools.add(name);
+            continue;
+          }
+          const alias = options.aliases?.[name];
           const family = families.find(
-            (family) => family === name || catalog[family].tools.includes(name),
+            (family) =>
+              family === name ||
+              family === alias ||
+              catalog[family].tools.includes(name),
           );
-          if (family) resolved.add(family);
-          else
+          if (family) {
+            resolved.add(family);
+            if (catalog[family].tools.includes(name)) tools.add(name);
+          } else
             ctx.addIssue({
               code: "custom",
-              message: `Unknown or unavailable family/tool ${name}. Valid families: ${families.join(", ")}.`,
+              message: `Unknown or unavailable family/tool ${name}. Valid families: ${families.join(", ")}. Request a tool by its exact name to load the family that has it.`,
             });
         }
         if (!requested.length)
@@ -226,8 +311,48 @@ export function expandToolsSpec<Family extends string>(
             code: "custom",
             message: `Provide families, family, tool_families or tools. Valid families: ${families.join(", ")}.`,
           });
-        return { families: [...resolved] };
+        return { families: [...resolved], tools: [...tools] };
       }),
+  };
+}
+
+/**
+ * What one expand_tools call achieved. Loaded families and callable tools
+ * answer "call them now" so the model does not spend another step asking.
+ */
+export function expandToolsResult<Family extends string>(
+  request: { families: readonly Family[]; tools: readonly string[] },
+  loadedFamilies: readonly Family[],
+  callableTools: ReadonlySet<string>,
+  toolsFor: (families: readonly Family[]) => readonly string[],
+) {
+  const added = request.families.filter(
+    (family) => !loadedFamilies.includes(family),
+  );
+  const alreadyLoaded = request.families.filter((family) =>
+    loadedFamilies.includes(family),
+  );
+  const callableNow = [
+    ...new Set([...request.tools, ...toolsFor(alreadyLoaded)]),
+  ].filter((name) => callableTools.has(name));
+  const nextStep = toolsFor(added).filter((name) => !callableTools.has(name));
+  if (!added.length)
+    return {
+      status: "already_available" as const,
+      families: [],
+      alreadyLoaded,
+      callableNow,
+      note: callableNow.length
+        ? `Everything requested is already loaded. Call these tools now instead of expand_tools: ${callableNow.join(", ")}.`
+        : "Everything requested is already loaded. Call the tools you need now instead of expand_tools.",
+    };
+  return {
+    status: "available_next_step" as const,
+    families: added,
+    alreadyLoaded,
+    nextStepTools: nextStep,
+    ...(callableNow.length ? { callableNow } : {}),
+    note: `These tools become available on your next step: ${nextStep.join(", ") || "none new"}. If none of them is what you need, request the exact tool name instead.`,
   };
 }
 
