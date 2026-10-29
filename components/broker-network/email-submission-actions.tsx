@@ -2,9 +2,10 @@
 
 import { useFollowedOpen } from "@/hooks/use-followed-state";
 import { FileInput } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@claritylabs-inc/ui/components/popover";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import type { Id } from "@/convex/_generated/dataModel";
-import { AttachmentSubmissionDialog } from "./attachment-submission-dialog";
+import { AttachmentSubmissionForm } from "./attachment-submission-form";
 
 type Source = {
   threadId: Id<"teamEmailThreads">;
@@ -17,7 +18,7 @@ type Provider = {
   coverageCodes?: string[];
 };
 
-/** The save button and right-click both open the default application form dialog. */
+/** The save button and right-click both open the default application form popover. */
 export function EmailSubmissionAttachment({
   file,
   source,
@@ -38,7 +39,7 @@ export function EmailSubmissionAttachment({
     `email:${source.messageId}:attachment:${file.clientFileId ?? file.storageId}:form`,
   );
   return (
-    <>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <div
         className="inline-flex"
         onContextMenu={(event) => {
@@ -52,13 +53,12 @@ export function EmailSubmissionAttachment({
           action={{
             label: `Use ${file.name} as default application form`,
             icon: FileInput,
-            onClick: () => onOpenChange(true),
+            renderButton: (button) => <PopoverTrigger render={button} />,
           }}
         />
       </div>
-      {open ? (
-        <AttachmentSubmissionDialog
-          open={open}
+      <PopoverContent align="start" className="w-80 p-3">
+        <AttachmentSubmissionForm
           onOpenChange={onOpenChange}
           source={source}
           file={file}
@@ -66,7 +66,7 @@ export function EmailSubmissionAttachment({
           defaultBrokerName={brokerName}
           defaultCoverageCodes={coverageCodes}
         />
-      ) : null}
-    </>
+      </PopoverContent>
+    </Popover>
   );
 }

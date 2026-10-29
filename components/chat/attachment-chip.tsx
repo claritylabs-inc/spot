@@ -27,7 +27,13 @@ export type ChatAttachmentChipProps = {
   disabled?: boolean;
   unavailableTitle?: string;
   /** Round icon button built into the end of the pill. */
-  action?: { label: string; icon: LucideIcon; onClick: () => void };
+  action?: {
+    label: string;
+    icon: LucideIcon;
+    onClick?: () => void;
+    /** Renders the button through a trigger, e.g. a popover anchored to it. */
+    renderButton?: (button: React.ReactElement) => React.ReactElement;
+  };
 };
 
 /**
@@ -118,6 +124,17 @@ export function ChatAttachmentChip({
 
   if (!action) return chip;
   const ActionIcon = action.icon;
+  const actionButton = (
+    <button
+      type="button"
+      aria-label={action.label}
+      title={action.label}
+      onClick={action.onClick}
+      className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:outline-none"
+    >
+      <ActionIcon aria-hidden="true" className="size-2.5" />
+    </button>
+  );
   return (
     <span
       className={cn(
@@ -127,15 +144,7 @@ export function ChatAttachmentChip({
       )}
     >
       {chip}
-      <button
-        type="button"
-        aria-label={action.label}
-        title={action.label}
-        onClick={action.onClick}
-        className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:outline-none"
-      >
-        <ActionIcon aria-hidden="true" className="size-2.5" />
-      </button>
+      {action.renderButton ? action.renderButton(actionButton) : actionButton}
     </span>
   );
 }
