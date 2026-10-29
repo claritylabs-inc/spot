@@ -310,7 +310,7 @@ export function AddressField({
         />
       ))}
       {disabled || (full && !draft) ? null : (
-        <span className="relative flex h-7 min-w-32 flex-1 items-center">
+        <span className="relative flex h-7 min-w-32 flex-1 items-center pl-0.5">
           {completion ? (
             <span
               aria-hidden

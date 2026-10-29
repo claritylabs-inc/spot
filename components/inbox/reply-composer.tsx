@@ -360,7 +360,7 @@ function OperatorReplyComposer({
                 onChange={(to) => editRecipients({ to: to[0] ?? "" })}
               />
             ) : (
-              <span className="min-w-0 truncate text-muted-foreground">
+              <span className="min-w-0 truncate pl-0.5 text-muted-foreground">
                 {recipient ?? "Everyone on the latest message"}
               </span>
             )}
@@ -385,7 +385,7 @@ function OperatorReplyComposer({
           ) : null}
           {headers ? (
             <EmailComposeRow label="Subject">
-              <span className="min-w-0 truncate">{headers.subject}</span>
+              <span className="min-w-0 truncate pl-0.5">{headers.subject}</span>
             </EmailComposeRow>
           ) : null}
           <EmailComposeMessage
