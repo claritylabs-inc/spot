@@ -457,7 +457,7 @@ function OperatorReplyComposer({
                 </p>
               ) : null}
               {needsInput ? (
-                <p role="alert">Fill in each {NEEDS_MARKER} …] before sending.</p>
+                <p role="alert">Fill in each highlighted blank before sending.</p>
               ) : null}
               {missingTo ? <p role="alert">Add a recipient.</p> : null}
               {previewing ? <p>Preparing preview…</p> : null}
