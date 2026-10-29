@@ -8,13 +8,9 @@ import {
   type OperatorChannelRunResult,
 } from "../lib/operatorAgentChannel";
 import {
-  isImessageWebhookTransportEnabled,
-} from "../lib/imessageConfig";
-import {
   sendOperatorSlackResponse,
   updateOperatorSlackActivity,
 } from "./handleInboundSlack";
-import { operatorImessageRunResponse } from "./handleInboundOperatorImessage";
 
 export const deliver = internalAction({
   args: {
@@ -49,82 +45,35 @@ export const deliver = internalAction({
     }
 
     try {
-      if (delivery.channel === "slack") {
-        const confirmation =
-          result.run.status === "waiting_confirmation"
-            ? await ctx.runQuery(
-                internal.operatorAgent.getPendingConfirmationInternal,
-                {
-                  operatorUserId: args.operatorUserId,
-                  threadId: result.run.threadId,
-                },
-              )
-            : null;
-        await sendOperatorSlackResponse(ctx, {
-          delivery,
-          clientMessageId: delivery.clientMessageId,
-          response: result.response ?? {},
-          confirmation,
-        });
-        if (delivery.eventId) {
-          const event = await ctx.runQuery(internal.slack.getInboundEvent, {
-            eventId: delivery.eventId,
-          });
-          if (event)
-            await updateOperatorSlackActivity(
-              ctx,
-              event,
-              result.run.status === "failed" ||
-                result.run.status === "cancelled"
-                ? "failed"
-                : "complete",
-            );
-        }
-        return;
-      }
-
-      const identity = await ctx.runQuery(
-        internal.operatorImessage.resolveIdentity,
-        {
-          fromPhone: delivery.toPhone,
-        },
-      );
-      if (identity?.operatorUserId !== args.operatorUserId) {
-        throw new Error("Operator iMessage recipient is no longer authorized");
-      }
-      if (!isImessageWebhookTransportEnabled("operator"))
-        throw new Error("Operator iMessage is not enabled");
-      const response = await operatorImessageRunResponse(ctx, result);
-      const sendRequest = {
-        toPhone: delivery.toPhone,
-        chatGuid: delivery.chatGuid,
+      const confirmation =
+        result.run.status === "waiting_confirmation"
+          ? await ctx.runQuery(
+              internal.operatorAgent.getPendingConfirmationInternal,
+              {
+                operatorUserId: args.operatorUserId,
+                threadId: result.run.threadId,
+              },
+            )
+          : null;
+      await sendOperatorSlackResponse(ctx, {
+        delivery,
         clientMessageId: delivery.clientMessageId,
-        message: response.response,
-        attachments: response.attachments,
-      };
-      const { sendImessageViaSpectrum } = await import(
-        "../lib/imessageSpectrum"
-      );
-      const outcome = await sendImessageViaSpectrum(
-        ctx,
-        "operator",
-        sendRequest,
-      );
-      if (!outcome.ok)
-        throw new Error(outcome.error ?? "Operator iMessage delivery failed");
-      if (outcome.attachmentFailures?.length && result.response) {
-        await ctx.runMutation(
-          internal.operatorAgent
-            .recordImessageAttachmentDeliveryFailureInternal,
-          {
-            operatorMessageId: result.response.messageId,
-            stage: "worker_delivery",
-            failures: outcome.attachmentFailures.map((failure) => ({
-              filename: failure.filename,
-              error: failure.error ?? "Attachment delivery failed",
-            })),
-          },
-        );
+        response: result.response ?? {},
+        confirmation,
+      });
+      if (delivery.eventId) {
+        const event = await ctx.runQuery(internal.slack.getInboundEvent, {
+          eventId: delivery.eventId,
+        });
+        if (event)
+          await updateOperatorSlackActivity(
+            ctx,
+            event,
+            result.run.status === "failed" ||
+              result.run.status === "cancelled"
+              ? "failed"
+              : "complete",
+          );
       }
     } catch (error) {
       const attempt = args.deliveryAttempt ?? 0;
@@ -136,7 +85,7 @@ export const deliver = internalAction({
         );
         return;
       }
-      if (delivery.channel === "slack" && delivery.eventId) {
+      if (delivery.eventId) {
         const event = await ctx.runQuery(internal.slack.getInboundEvent, {
           eventId: delivery.eventId,
         });

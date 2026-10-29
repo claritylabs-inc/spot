@@ -72,9 +72,8 @@ latest `main` run, so pushes to `main` keep PR caches warm.
 changes on `main` and publishes a package only when its version is not yet in
 the registry.
 
-Production Convex configuration (`OPERATOR_SLACK_ENABLED`,
-`OPERATOR_IMESSAGE_ENABLED`, `OPERATOR_IMESSAGE_TERMINAL_ENABLED`,
-`OPERATOR_IMESSAGE_CONTACT_PHONE`, `QUO_BROKER_*`, `MCP_EVENTS_ENCRYPTION_KEY`)
+Production Convex configuration (`OPERATOR_SLACK_ENABLED`, `QUO_BROKER_*`,
+`MCP_EVENTS_ENCRYPTION_KEY`)
 is set once with `npx convex env set --prod`, not on each release. For a
 production compatibility audit after breaking backend changes (schema, HTTP
 routes, crons, auth config, deployment config, or removed/renamed Convex
@@ -309,26 +308,9 @@ prefers `SPOT_IMESSAGE_CONTACT_PHONE` before the public Spot value. Both paths
 temporarily fall back to the corresponding legacy `GLASS_*` variables until the
 Spot values have been verified on every production target.
 
-The authenticated Photon dashboard owns a Pro `Spot Operator` project separate
-from the customer project. Pro supplies an unlimited shared iMessage route for
-up to 100 explicitly registered users; it does not allocate a dedicated public
-line. The current registered roster is intentionally limited to Terry Wang and
-Adyan Tanver. Record the project ID, one-time project secret, assigned shared
-line, and registered sender numbers in the team secret manager; never commit
-them or place them in a shared `.env` file. Each registered sender number must
-also belong to the matching active production operator user. The inbound route
-normalizes that number and accepts it only when both Photon registration and the
-Spot operator identity match; unknown and customer numbers fail closed.
+Production Convex keeps `OPERATOR_SLACK_ENABLED=true`.
 
-Set the assigned shared line on production Convex as
-`OPERATOR_IMESSAGE_CONTACT_PHONE` in E.164 form; authenticated operators see the formatted
-number and their own linked sender number under `/operator/channels`. The
-number is never exposed through a public browser environment variable.
-
-Production Convex keeps `OPERATOR_SLACK_ENABLED=true`,
-`OPERATOR_IMESSAGE_ENABLED=true` and `OPERATOR_IMESSAGE_TERMINAL_ENABLED=false`.
-
-Both production iMessage lanes run on Photon Spectrum webhooks in Convex.
+Customer iMessage runs on Photon Spectrum webhooks in Convex.
 Credentials and setup are documented in [iMessage over Spectrum webhooks](./imessage-webhooks.md).
 
 Slack environment/app setup and the client-owned policy-delivery migration are

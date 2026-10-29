@@ -2,8 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { parsePhoneNumberFromString } from "libphonenumber-js/min";
-import { Check, Copy, Loader2, MessageCircle } from "lucide-react";
+import { Check, Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { AppShell } from "@/components/app-shell";
@@ -87,17 +86,15 @@ function ChannelDetail({
   );
 }
 
-const CHANNEL_TABS = ["slack", "imessage", "google-workspace", "mcp"] as const;
+const CHANNEL_TABS = ["slack", "google-workspace", "mcp"] as const;
 
 function OperatorChannelTabs({
   children,
-  imessageContent,
   googleWorkspaceContent,
   mcpContent,
   onTabChange,
 }: {
   children: ReactNode;
-  imessageContent?: ReactNode;
   googleWorkspaceContent?: ReactNode;
   mcpContent?: ReactNode;
   onTabChange?: () => void;
@@ -120,14 +117,10 @@ function OperatorChannelTabs({
     >
       <PageTabsList aria-label="Channel">
         <TabsTrigger value="slack">Slack</TabsTrigger>
-        <TabsTrigger value="imessage">iMessage</TabsTrigger>
         <TabsTrigger value="google-workspace">Google Workspace</TabsTrigger>
         <TabsTrigger value="mcp">MCP</TabsTrigger>
       </PageTabsList>
       <TabsContent value="slack">{children}</TabsContent>
-      <TabsContent value="imessage">
-        {imessageContent ?? placeholder}
-      </TabsContent>
       <TabsContent value="google-workspace">
         {googleWorkspaceContent ?? placeholder}
       </TabsContent>
@@ -219,133 +212,6 @@ function OperatorMcpContent() {
         title="Other MCP clients"
         snippet={operatorMcpClientConfig(endpoint)}
       />
-    </section>
-  );
-}
-
-function formatPhoneNumber(value: string | null) {
-  if (!value) return null;
-  const phone = parsePhoneNumberFromString(value, "US");
-  if (!phone?.isValid()) return value;
-  return phone.countryCallingCode === "1"
-    ? phone.formatNational()
-    : phone.formatInternational();
-}
-
-function OperatorImessageContent() {
-  const status = useQuery(api.agentChannels.getOperatorImessageStatus, {});
-
-  if (status === undefined) {
-    return (
-      <ChannelCard className="flex min-h-20 items-center justify-center">
-        <Loader2 className="size-4 animate-spin text-muted-foreground" />
-      </ChannelCard>
-    );
-  }
-
-  if (!status.enabled) {
-    return (
-      <ChannelCard>
-        <h2 className={`text-foreground ${typeStyle("heading.micro")}`}>
-          iMessage not enabled
-        </h2>
-      </ChannelCard>
-    );
-  }
-
-  if (status.mode === "terminal") {
-    return (
-      <ChannelCard>
-        <div className="flex items-center justify-between gap-3">
-          <h2 className={`text-foreground ${typeStyle("heading.micro")}`}>
-            Operator iMessage
-          </h2>
-          <Badge variant="outline">Test mode</Badge>
-        </div>
-        <p
-          className={`mt-2 text-muted-foreground ${typeStyle("body.default")}`}
-        >
-          iMessage is running in terminal test mode.
-        </p>
-      </ChannelCard>
-    );
-  }
-
-  if (!status.configured || !status.contactPhone) {
-    return (
-      <ChannelCard>
-        <h2 className={`text-foreground ${typeStyle("heading.micro")}`}>
-          iMessage unavailable
-        </h2>
-        <p
-          className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
-        >
-          This deployment is missing its operator number or worker
-          configuration.
-        </p>
-      </ChannelCard>
-    );
-  }
-
-  const contactPhone = status.contactPhone;
-  const senderPhone = formatPhoneNumber(status.senderPhone);
-
-  return (
-    <section className="space-y-3" aria-label="Operator iMessage">
-      <ChannelCard>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h2 className={`text-foreground ${typeStyle("heading.micro")}`}>
-              Operator iMessage
-            </h2>
-            <p
-              className={`mt-1 text-muted-foreground ${typeStyle("body.default")}`}
-            >
-              Text this private line from the phone linked to your Spot account.
-            </p>
-          </div>
-          <StatusTag tone="success">Enabled</StatusTag>
-        </div>
-
-        <dl className="mt-3 border-t border-border">
-          <ChannelDetail label="Number to text">
-            <a
-              href={`sms:${contactPhone}`}
-              className={`underline decoration-border-emphasized underline-offset-4 hover:text-muted-foreground ${typeStyle("technical.code")}`}
-            >
-              {formatPhoneNumber(contactPhone)}
-            </a>
-          </ChannelDetail>
-          <ChannelDetail label="Your sender number">
-            {senderPhone ?? "Not linked"}
-          </ChannelDetail>
-          <ChannelDetail label="Conversation type">
-            Direct messages only
-          </ChannelDetail>
-        </dl>
-
-        <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-3">
-          {senderPhone ? (
-            <PillButton variant="primary" href={`sms:${contactPhone}`}>
-              <MessageCircle className="size-3.5" />
-              Open Messages
-            </PillButton>
-          ) : (
-            <PillButton variant="primary" href="/operator/profile">
-              Add your phone
-            </PillButton>
-          )}
-        </div>
-      </ChannelCard>
-
-      {senderPhone ? (
-        <p
-          className={`px-1 text-muted-foreground ${typeStyle("caption.default")}`}
-        >
-          Your sender number must also be registered in the Spot Operator Photon
-          project.
-        </p>
-      ) : null}
     </section>
   );
 }
@@ -558,7 +424,6 @@ function OperatorChannelsContent({
           onTabChange={() => {
             setGoogleSettingsDrawerOpen(false);
           }}
-          imessageContent={<OperatorImessageContent />}
           googleWorkspaceContent={
             <OperatorGoogleWorkspaceContent
               onConfigure={() => {
