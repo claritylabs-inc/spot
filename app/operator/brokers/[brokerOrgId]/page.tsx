@@ -88,11 +88,9 @@ export default function OperatorBrokerPage() {
   );
 }
 
-function BrokerEditor({ row }: { row: BrokerRow }) {
-  const update = useMutation(api.brokerProfiles.upsert);
+function brokerValues(row: BrokerRow) {
   const office = row.profile?.officeAddress;
-  const [tab, setTab] = useFollowedState(`brokers:${row.broker._id}:tab`, "profile");
-  const [values, setValues] = useState({
+  return {
     name: row.broker.name,
     website: row.broker.website ?? "",
     status: row.profile?.networkStatus ?? ("prospect" as NetworkStatus),
@@ -108,7 +106,17 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
     nationwide: row.profile?.nationwideCountries ?? [],
     excluded: row.profile?.excludedStates ?? [],
     lines: row.profile?.lineOfBusinessCodes ?? [],
-  });
+  };
+}
+
+function BrokerEditor({ row }: { row: BrokerRow }) {
+  const update = useMutation(api.brokerProfiles.upsert);
+  const [tab, setTab] = useFollowedState(
+    `brokers:${row.broker._id}:tab`,
+    "profile",
+  );
+  const saved = brokerValues(row);
+  const [values, setValues] = useState(saved);
   const set = <K extends keyof typeof values>(
     key: K,
     value: (typeof values)[K],
@@ -170,6 +178,12 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
       });
       savedValues.current = next;
     },
+    // Edits from the Spot agent or an MCP client show up as they are saved.
+    source: saved,
+    adopt: (next) => {
+      setValues(next);
+      savedValues.current = saved;
+    },
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not save the provider"),
   });
@@ -188,7 +202,9 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="appetite">Appetite</TabsTrigger>
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
-          <TabsTrigger value="submission-defaults">Submission defaults</TabsTrigger>
+          <TabsTrigger value="submission-defaults">
+            Submission defaults
+          </TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </PageTabsList>
         <TabsContent value="profile" className="space-y-5">
@@ -396,7 +412,10 @@ function BrokerEditor({ row }: { row: BrokerRow }) {
           <ProviderContacts brokerOrgId={row.broker._id} />
         </TabsContent>
         <TabsContent value="submission-defaults">
-          <ProviderSubmissionDefaults brokerOrgId={row.broker._id} brokerName={row.broker.name} />
+          <ProviderSubmissionDefaults
+            brokerOrgId={row.broker._id}
+            brokerName={row.broker.name}
+          />
         </TabsContent>
         <TabsContent value="activity">
           <BrokerActivity brokerOrgId={row.broker._id} />

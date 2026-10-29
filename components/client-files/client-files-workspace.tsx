@@ -246,9 +246,14 @@ function ClientFileEditor({
   canManage: boolean;
 }) {
   const updateClientFile = useMutation(api.clientFiles.update);
-  const [name, setName] = useState(file.name);
-  const [clientVisible, setClientVisible] = useState(file.clientVisible);
-  const [policyId, setPolicyId] = useState<string>(file.policyId ?? NO_POLICY);
+  const source = {
+    name: file.name,
+    clientVisible: file.clientVisible,
+    policyId: file.policyId ?? NO_POLICY,
+  };
+  const [name, setName] = useState(source.name);
+  const [clientVisible, setClientVisible] = useState(source.clientVisible);
+  const [policyId, setPolicyId] = useState<string>(source.policyId);
   const setArchived = useMutation(api.clientFiles.setArchived);
   const [working, setWorking] = useState(false);
   const values = { name, clientVisible, policyId };
@@ -274,6 +279,14 @@ function ClientFileEditor({
             : undefined,
       });
       saved.current = next;
+    },
+    // Edits from the Spot agent or an MCP client show up as they are saved.
+    source,
+    adopt: (next) => {
+      setName(next.name);
+      setClientVisible(next.clientVisible);
+      setPolicyId(next.policyId);
+      saved.current = source;
     },
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not update the file"),
@@ -871,9 +884,7 @@ export function ClientFilesWorkspace({
           label: "Status",
           inline: true,
           allLabel: "Active",
-          options: [
-            { value: "archived", label: "Archived" },
-          ],
+          options: [{ value: "archived", label: "Archived" }],
           value: archivedView ? ["archived"] : [],
           onChange: (next) =>
             changeStatus(next[0] === "archived" ? "archived" : "active"),

@@ -5,6 +5,7 @@ import { useAction, useMutation } from "convex/react";
 import { Mail as MailIcon, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
+import { useLiveRecordDraft } from "@/lib/sync/use-live-record-draft";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { PillButton } from "@/components/ui/pill-button";
@@ -535,6 +536,14 @@ export type EmailArtifactDraft = {
   body: string;
 };
 
+const NO_DRAFT: EmailArtifactDraft = {
+  to: "",
+  cc: "",
+  bcc: "",
+  subject: "",
+  body: "",
+};
+
 /**
  * One email in the chat artifact panel: subject and status, mail headers, the
  * body, and actions. With `edit`, the draft is shown directly in the shared
@@ -586,19 +595,22 @@ export function EmailArtifact({
     onSave: (draft: EmailArtifactDraft) => Promise<void>;
   };
 }) {
-  // Unsaved local changes; null shows the saved draft as is.
-  const [changes, setChanges] = useState<EmailArtifactDraft | null>(null);
+  // Unsaved local changes over the saved draft: a field left alone shows the
+  // agent's latest revision as it is saved.
+  const live = useLiveRecordDraft("email-draft", edit?.draft ?? NO_DRAFT);
+  const changed = Object.keys(live.patch).length > 0;
   const [saving, setSaving] = useState(false);
-  const draft = edit ? (changes ?? edit.draft) : null;
+  const draft = edit ? live.value : null;
   const update = (patch: Partial<EmailArtifactDraft>) =>
-    setChanges((current) => ({ ...(current ?? edit!.draft), ...patch }));
+    live.setValue((current) => ({ ...current, ...patch }));
 
   async function save() {
-    if (!edit || !changes || saving) return;
+    if (!edit || !changed || saving) return;
     setSaving(true);
+    const revision = live.revision;
     try {
-      await edit.onSave(changes);
-      setChanges(null);
+      await edit.onSave(live.value);
+      live.acknowledge(revision);
       toast.success("Draft saved");
     } catch (error) {
       toast.error(getUserFacingErrorMessage(error, "Failed to save draft"));
@@ -608,7 +620,7 @@ export function EmailArtifact({
   }
 
   const footer =
-    note || actions || changes ? (
+    note || actions || changed ? (
       <>
         {note ? (
           <p
@@ -617,14 +629,14 @@ export function EmailArtifact({
             {note}
           </p>
         ) : null}
-        {changes ? (
+        {changed ? (
           <>
             <PillButton
               type="button"
               size="compact"
               variant="ghost"
               disabled={saving}
-              onClick={() => setChanges(null)}
+              onClick={() => live.acknowledge(live.revision)}
             >
               Discard changes
             </PillButton>
@@ -632,7 +644,7 @@ export function EmailArtifact({
               type="button"
               size="compact"
               variant="primary"
-              disabled={saving || !changes.to.trim()}
+              disabled={saving || !live.value.to.trim()}
               busy={saving}
               onClick={() => void save()}
             >

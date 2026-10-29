@@ -942,31 +942,37 @@ function RequestEditor({
     revision: request.intakeRevision ?? 0,
     updatedAt: request.updatedAt,
   });
-  const [answers, setAnswers] = useState<IntakeAnswers>(
-    request.intakeAnswers ?? request.application?.answers ?? {},
-  );
-  const [intakeDetails, setIntakeDetails] = useState<IntakeDetails>(
+  const savedAnswers: IntakeAnswers =
+    request.intakeAnswers ?? request.application?.answers ?? {};
+  const savedDetails: IntakeDetails =
     request.intakeDetails ??
-      request.application?.details ??
-      detailsFromAnswers(request.intakeAnswers ?? {}),
-  );
+    request.application?.details ??
+    detailsFromAnswers(request.intakeAnswers ?? {});
+  const source = {
+    title: request.title,
+    targetEffectiveDate: request.targetEffectiveDate ?? "",
+    status: request.status,
+    replacingPolicyId: request.replacingPolicyId ?? NONE,
+    resultingPolicyId: request.resultingPolicyId ?? NONE,
+    clientVisible: request.clientVisible ?? true,
+    answers: inline ? savedAnswers : undefined,
+    details: inline ? savedDetails : undefined,
+  };
+  const [answers, setAnswers] = useState(savedAnswers);
+  const [intakeDetails, setIntakeDetails] = useState(savedDetails);
   const updateRequest = useMutation(api.procurementRequests.update);
-  const [title, setTitle] = useState(request.title);
+  const [title, setTitle] = useState(source.title);
   const [targetEffectiveDate, setTargetEffectiveDate] = useState(
-    request.targetEffectiveDate ?? "",
+    source.targetEffectiveDate,
   );
-  const [status, setStatus] = useState<ProcurementRequestStatus>(
-    request.status,
-  );
+  const [status, setStatus] = useState<ProcurementRequestStatus>(source.status);
   const [replacingPolicyId, setReplacingPolicyId] = useState(
-    request.replacingPolicyId ?? NONE,
+    source.replacingPolicyId,
   );
   const [resultingPolicyId, setResultingPolicyId] = useState(
-    request.resultingPolicyId ?? NONE,
+    source.resultingPolicyId,
   );
-  const [clientVisible, setClientVisible] = useState(
-    request.clientVisible ?? true,
-  );
+  const [clientVisible, setClientVisible] = useState(source.clientVisible);
 
   const policyOptions = [
     { value: NONE, label: "No policy" },
@@ -1046,10 +1052,38 @@ function RequestEditor({
         });
       saved.current = next;
     },
+    // Edits from the Spot agent or an MCP client show up as they are saved.
+    source,
+    adopt: (next) => {
+      setTitle(next.title);
+      setTargetEffectiveDate(next.targetEffectiveDate);
+      setStatus(next.status);
+      setReplacingPolicyId(next.replacingPolicyId);
+      setResultingPolicyId(next.resultingPolicyId);
+      setClientVisible(next.clientVisible);
+      if (next.answers) setAnswers(next.answers);
+      if (next.details) setIntakeDetails(next.details);
+      saved.current = source;
+      version.current = {
+        revision: request.intakeRevision ?? 0,
+        updatedAt: request.updatedAt,
+      };
+    },
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not update the request"),
   });
 
+  // With nothing unsaved, a write elsewhere (a file or outreach change from the
+  // Spot agent) is the version the next save builds on.
+  const clean = autoSave.status === "saved";
+  useEffect(() => {
+    if (clean && request.updatedAt > version.current.updatedAt) {
+      version.current = {
+        revision: request.intakeRevision ?? 0,
+        updatedAt: request.updatedAt,
+      };
+    }
+  });
   useEffect(() => {
     onDraftChange?.({ answers, details: intakeDetails });
   }, [answers, intakeDetails, onDraftChange]);
@@ -1275,6 +1309,15 @@ function OutreachEditor({
   );
   const [statusDraft, setStatus] = useState<ProcurementOutreachStatus>();
   const status = statusDraft ?? currentOutreach?.status ?? "request_sent";
+  const savedOutreach =
+    outreachId && currentOutreach
+      ? {
+          brokerOrgId: currentOutreach.brokerOrgId ?? "",
+          contactName: currentOutreach.contactName ?? "",
+          contactEmail: currentOutreach.contactEmail ?? "",
+          contactPhone: currentOutreach.contactPhone ?? "",
+        }
+      : undefined;
   const savedValues = useRef({
     brokerOrgId,
     contactName,
@@ -1374,6 +1417,18 @@ function OutreachEditor({
         contactEmail: next.contactEmail,
         contactPhone: next.contactPhone,
       };
+    },
+    // Edits from the Spot agent or an MCP client show up as they are saved.
+    source: savedOutreach && {
+      ...savedOutreach,
+      statusDraft: undefined,
+    },
+    adopt: (next) => {
+      setBrokerOrgId(next.brokerOrgId);
+      setContactName(next.contactName);
+      setContactEmail(next.contactEmail);
+      setContactPhone(next.contactPhone);
+      if (savedOutreach) savedValues.current = savedOutreach;
     },
     onFlushed: (_, next) =>
       setStatus((current) =>
@@ -1757,13 +1812,14 @@ function ProcurementFileEditor({
   readOnly: boolean;
 }) {
   const updateFileItem = useMutation(api.procurementRequests.updateFileItem);
-  const [label, setLabel] = useState(fileItem.label);
-  const [brokerRelease, setBrokerRelease] = useState<
-    "hidden" | "listed" | "attached"
-  >(fileItem.brokerRelease ?? "hidden");
-  const [clientVisible, setClientVisible] = useState(
-    fileItem.clientVisible ?? false,
-  );
+  const source = {
+    label: fileItem.label,
+    brokerRelease: fileItem.brokerRelease ?? "hidden",
+    clientVisible: fileItem.clientVisible ?? false,
+  };
+  const [label, setLabel] = useState(source.label);
+  const [brokerRelease, setBrokerRelease] = useState(source.brokerRelease);
+  const [clientVisible, setClientVisible] = useState(source.clientVisible);
 
   const values = {
     label,
@@ -1799,6 +1855,14 @@ function ProcurementFileEditor({
             : undefined,
       });
       saved.current = next;
+    },
+    // Edits from the Spot agent or an MCP client show up as they are saved.
+    source,
+    adopt: (next) => {
+      setLabel(next.label);
+      setBrokerRelease(next.brokerRelease);
+      setClientVisible(next.clientVisible);
+      saved.current = source;
     },
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not update the file"),
@@ -2961,8 +3025,7 @@ export function ProcurementRequestWorkspace({
                 brokerOrgId: outreach.brokerOrgId,
                 sort: {
                   provider: outreach.brokerName,
-                  contact:
-                    sequence?.recipient.email ?? outreach.contactEmail,
+                  contact: sequence?.recipient.email ?? outreach.contactEmail,
                   coverage: candidate?.lines.covered.length,
                   status: outreachStatusSortValue(outreach.status),
                 },
