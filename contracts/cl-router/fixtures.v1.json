@@ -283,6 +283,169 @@
       }
     },
     {
+      "name": "Spot operator step request with reasoning continuity",
+      "schema": "GenerateRequest",
+      "value": {
+        "tenantId": "glass",
+        "primitive": "text",
+        "system": "You are Spot's internal operator agent.",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Which clients renew next month?"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "reasoning",
+                "text": "List client organizations first.",
+                "provider": "openai",
+                "providerMetadata": {
+                  "openai": {
+                    "itemId": "rs_fixture",
+                    "reasoningEncryptedContent": "gAAAA_fixture"
+                  }
+                }
+              },
+              {
+                "type": "tool-call",
+                "toolCallId": "call_fixture",
+                "toolName": "search_organizations",
+                "input": {
+                  "type": "client"
+                },
+                "providerMetadata": {
+                  "openai": {
+                    "itemId": "fc_fixture"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": [
+              {
+                "type": "tool-result",
+                "toolCallId": "call_fixture",
+                "toolName": "search_organizations",
+                "output": {
+                  "type": "json",
+                  "value": {
+                    "organizations": []
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "maxTokens": 8192,
+        "reasoning": {
+          "effort": "low",
+          "include": true
+        },
+        "tools": [
+          {
+            "name": "search_organizations",
+            "description": "Search organizations.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "trace": {
+          "traceId": "trace_operator_fixture",
+          "parentRequestId": "router_request_previous_fixture"
+        }
+      }
+    },
+    {
+      "name": "Spot operator step response with reasoning message",
+      "schema": "GenerateResponse",
+      "value": {
+        "output": {
+          "text": "",
+          "toolCalls": [
+            {
+              "toolCallId": "call_fixture_2",
+              "toolName": "list_policies",
+              "input": {
+                "status": "active"
+              }
+            }
+          ]
+        },
+        "usage": {
+          "inputTokens": 120,
+          "outputTokens": 18,
+          "cachedInputTokens": 24,
+          "cacheWriteTokens": 6,
+          "reasoningTokens": 3
+        },
+        "costUsd": 0.001234,
+        "costStatus": "priced",
+        "model": {
+          "provider": "openai",
+          "model": "fixture-reasoning-model"
+        },
+        "routing": {
+          "decision": "routed",
+          "primitive": "text",
+          "difficulty": "standard",
+          "requiredTier": 2,
+          "selectedTier": 2,
+          "route": {
+            "provider": "openai",
+            "model": "fixture-reasoning-model"
+          },
+          "source": "jev",
+          "attemptCount": 1
+        },
+        "finishReason": "tool-calls",
+        "requestId": "router_request_operator_fixture",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "reasoning",
+              "text": "No clients matched; check policies.",
+              "provider": "openai",
+              "providerMetadata": {
+                "openai": {
+                  "itemId": "rs_fixture",
+                  "reasoningEncryptedContent": "gAAAA_fixture"
+                }
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_fixture_2",
+              "toolName": "list_policies",
+              "input": {
+                "status": "active"
+              },
+              "providerMetadata": {
+                "openai": {
+                  "itemId": "fc_fixture_2"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "Spot streaming terminal event",
       "schema": "StreamEvent",
       "value": {

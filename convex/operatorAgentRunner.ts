@@ -79,6 +79,7 @@ import {
   isOperatorToolFamily,
   OPERATOR_AGENT_TOOL_REGISTRY,
   getOperatorAgentToolSpec,
+  isOperatorAgentToolName,
   OPERATOR_TOOL_FAMILY_CATALOG,
   operatorAgentToolNamesForFamilies,
   operatorToolFamiliesOf,
@@ -92,6 +93,7 @@ import {
   clRouterCapabilities,
   isRetryableClRouterJobFailure,
   type ClRouterClientOptions,
+  type ClRouterReasoningEffort,
 } from "./lib/clRouterClient";
 import {
   assembleFamilyGuidance,
@@ -137,6 +139,11 @@ const OPERATOR_ACTION_STEP_BUDGET_MS = 4 * 60 * 1000;
 // Retries of one step after a retryable cl-router failure, including
 // candidates_exhausted (see isRetryableClRouterJobFailure).
 const OPERATOR_ROUTER_MAX_RETRIES = 5;
+// Reasoning effort for tool-routing steps (see operatorStepReasoningEffort);
+// undefined keeps the routed model's default effort on every step.
+const OPERATOR_TOOL_ROUTING_REASONING_EFFORT:
+  | ClRouterReasoningEffort
+  | undefined = "low";
 // Corrective retries after a reply that wrote a tool call as visible text.
 const OPERATOR_LEAKED_CALL_MAX_RETRIES = 2;
 const LEAKED_TOOL_CALL_NOTICE_MESSAGE =
@@ -245,6 +252,41 @@ function operatorRunRequiredFamilies(
     }
   }
   return [...new Set([...operatorToolFamiliesOf(toolNames), ...requested])];
+}
+
+// A tool-routing step continues from read-only results with the run's earlier
+// reasoning carried in its input, so it usually only picks the next lookup.
+// The first step, steps after a write or confirmation, recovery steps and
+// steps that can draft or send outbound messages keep the model default.
+function operatorStepReasoningEffort(
+  messages: ModelMessage[],
+  offeredToolNames: readonly string[],
+  firstStep: boolean,
+  recoveryPending: boolean,
+): ClRouterReasoningEffort | undefined {
+  const last = messages.at(-1);
+  if (
+    firstStep ||
+    recoveryPending ||
+    last?.role !== "tool" ||
+    offeredToolNames.some(
+      (name) =>
+        name === "save_email_draft" ||
+        (isOperatorAgentToolName(name) &&
+          getOperatorAgentToolSpec(name).effect === "external_send"),
+    )
+  )
+    return undefined;
+  const results = last.content.filter((part) => part.type === "tool-result");
+  return results.length > 0 &&
+    results.every(
+      (part) =>
+        part.toolName === EXPAND_TOOLS_NAME ||
+        (isOperatorAgentToolName(part.toolName) &&
+          getOperatorAgentToolSpec(part.toolName).effect === "read"),
+    )
+    ? OPERATOR_TOOL_ROUTING_REASONING_EFFORT
+    : undefined;
 }
 
 // Existing per-message audit is the durable source: no thread-wide mutable
@@ -1335,6 +1377,17 @@ export const run = internalAction({
           durable: {
             invocationKey,
             route,
+          },
+          // Each step's reasoning returns in result.response.messages and
+          // rides the continuation to the next step.
+          reasoning: {
+            include: true,
+            effort: operatorStepReasoningEffort(
+              messages,
+              Object.keys(tools),
+              expectedCheckpointIteration === 0,
+              recovery.pending.length > 0,
+            ),
           },
           sessionKey: `operator:${String(run.operatorUserId)}:${String(run.threadId)}`,
           trace,
