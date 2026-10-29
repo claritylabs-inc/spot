@@ -1,6 +1,6 @@
 "use client";
 
-import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
+import { TagRemoveButton } from "@/components/ui/tag-remove-button";
 import { toast } from "sonner";
 
 import {

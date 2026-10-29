@@ -1,6 +1,6 @@
 "use client";
 
-import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
+import { TagRemoveButton } from "@/components/ui/tag-remove-button";
 import Link from "next/link";
 import { AtSign, Focus, ListChecks } from "lucide-react";
 import { PillButton } from "@/components/ui/pill-button";
@@ -30,7 +30,7 @@ export function AgentDockContextChip({
       title={`Using ${label}`}
       className={cn(
         "mr-1 flex h-6 min-w-0 shrink-0 items-center gap-1 rounded-full border border-input bg-foreground/[0.03] pl-2 text-foreground/80",
-        onRemove ? "pr-0.5" : "pr-2",
+        onRemove ? "pr-1" : "pr-2",
         typeStyle("label.tag"),
       )}
     >
