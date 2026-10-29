@@ -1,5 +1,6 @@
 import { escapeHtml } from "./emailTemplate";
 import { canonicalAddress } from "./emailAddress";
+import { SPOT_SIGNATURE_DESCRIPTION } from "./emailSkill";
 
 /**
  * Pure identity rules for operator team email (no Convex context, no network).
@@ -245,17 +246,27 @@ export function operatorFromHeader(
   return `${operatorFromName(name)} <${address}>`;
 }
 
-/** Unstyled operator signature, using the same address as the email's From header. */
-export function buildOperatorSignature(operator: {
-  name: string | null | undefined;
-  address: string;
-}): {
+/**
+ * Unstyled operator signature, using the same address as the email's From
+ * header. Emails to a provider add the general Spot explanation below it;
+ * clients already know Spot.
+ */
+export function buildOperatorSignature(
+  operator: {
+    name: string | null | undefined;
+    address: string;
+  },
+  options: { toProvider?: boolean } = {},
+): {
   text: string;
   html: string;
 } {
   const name = requirePersonName(operator.name).slice(0, MAX_SIGNATURE_NAME_LENGTH);
   const lines = [name, "Spot", operator.address];
-  const text = lines.join("\n");
   const html = `<p>${lines.map(escapeHtml).join("<br>")}</p>`;
-  return { text, html };
+  if (!options.toProvider) return { text: lines.join("\n"), html };
+  return {
+    text: `${lines.join("\n")}\n\n${SPOT_SIGNATURE_DESCRIPTION} Learn more at https://spot.insure`,
+    html: `${html}<p style="margin:16px 0 0;font-size:12px">${escapeHtml(SPOT_SIGNATURE_DESCRIPTION)} Learn more at <a href="https://spot.insure">Spot.Insure</a></p>`,
+  };
 }

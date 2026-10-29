@@ -739,7 +739,10 @@ export function buildEmailToolExecutors(
       subject: content.subject,
       body: content.body,
       signature: operator
-        ? buildOperatorSignature({ name: operator.senderName, address: operator.teamAddress })
+        ? buildOperatorSignature(
+            { name: operator.senderName, address: operator.teamAddress },
+            { toProvider: await ctx.runQuery(internal.brokerContacts.isProviderAddressInternal, { email: content.to }) },
+          )
         : buildEmailSignature(context.agentAddress),
       replyTo: context.replyTo,
       inReplyTo: context.inReplyTo,

@@ -8,6 +8,7 @@ import { readOrgWiki } from "./orgWiki";
 import { readIntakeBusinessProfile } from "./lib/intakeApplication";
 import { requestFacts } from "./lib/procurementInformationAccess";
 import { teamTargetProblem } from "./lib/teamEmailStore";
+import { providerForEmail } from "./lib/providerRecipients";
 import { intakeCatalogCoverage } from "../lib/intake-acord-questions";
 import { submittedIntakeApplication } from "../lib/intake-application";
 import { intakeMarkdown } from "../lib/insurance-intake";
@@ -33,7 +34,9 @@ export const contextInternal = internalQuery({
       .order("desc")
       .take(MESSAGES);
     if (recent[0]?._id !== args.messageId) return null;
-    return await replyContext(ctx, thread, recent);
+    const context = await replyContext(ctx, thread, recent);
+    // Spot never emails a Do Not Contact provider, so there is no reply to draft.
+    return context.provider?.relationship === "do_not_contact" ? null : context;
   },
 });
 
@@ -43,9 +46,11 @@ async function replyContext(
   thread: Doc<"teamEmailThreads">,
   recent: Doc<"teamEmailMessages">[],
 ) {
-  const [client, request] = await Promise.all([
+  const latestInbound = recent.find((message) => message.direction === "inbound");
+  const [client, request, provider] = await Promise.all([
     thread.clientOrgId ? ctx.db.get(thread.clientOrgId) : null,
     thread.requestId ? ctx.db.get(thread.requestId) : null,
+    latestInbound ? providerForEmail(ctx, latestInbound.fromEmail) : null,
   ]);
   const application =
     (request && submittedIntakeApplication(request)) ??
@@ -64,6 +69,18 @@ async function replyContext(
     orgId: thread.clientOrgId ?? null,
     subject: thread.subject,
     clientName: client?.name ?? null,
+    /** Set when the latest sender is an insurance provider we know. */
+    provider: provider
+      ? {
+          name: provider.providerName,
+          relationship:
+            provider.networkStatus === "blacklisted"
+              ? ("do_not_contact" as const)
+              : provider.networkStatus === "active"
+                ? ("active_relationship" as const)
+                : ("cold" as const),
+        }
+      : null,
     requestTitle: request?.title ?? null,
     clientFacts: facts.slice(0, FACTS_CHARS) || null,
     answeredQuestions: answered,

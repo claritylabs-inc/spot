@@ -10,6 +10,7 @@ import { forwardedCorrespondents } from "./teamEmailForwards";
 import { operatorEmailAliases, requireOperatorForUser } from "./operatorIdentity";
 import { isSpotOutboundAddress } from "./resend";
 import { buildOperatorSignature, teamOwnedDomains } from "./teamEmail";
+import { providerForEmail } from "./providerRecipients";
 import { teamTargetProblem } from "./teamEmailStore";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -308,7 +309,10 @@ export async function composeTeamReply(
   // Threaded only when the sender's inbox maps this conversation and holds a message to answer.
   const threaded = plan.threaded;
   const quote = threaded ? undefined : quotedHistory(latest);
-  const signature = buildOperatorSignature({ name: identity.name, address: identity.teamAddress });
+  const signature = buildOperatorSignature(
+    { name: identity.name, address: identity.teamAddress },
+    { toProvider: !!(await providerForEmail(ctx, recipientEmail)) },
+  );
   const renderedText = `${message}\n\n${signature.text}${quote ? `\n\n${quote.block}` : ""}`;
   const renderedHtml = `${paragraphsHtml(message)}${signature.html}${quote ? quoteHtml(quote.header, quote.block) : ""}`;
   const directReplyContext: TeamReplyContext =
