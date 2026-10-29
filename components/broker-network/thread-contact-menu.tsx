@@ -24,6 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@claritylabs-inc/ui/components/dropdown-menu";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { useFollowedOpen, useFollowedState } from "@/hooks/use-followed-state";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
@@ -31,6 +32,13 @@ import {
   AddThreadContactDialog,
   type ThreadContactSuggestion,
 } from "./add-thread-contact";
+
+export function threadContactMenuKey(
+  threadId: Id<"teamEmailThreads">,
+  email: string,
+) {
+  return `procurement:email:${threadId}:contact-menu:${email}`;
+}
 
 /** Provider contact actions share the contact records used for outreach recipients. */
 export function ThreadContactMenu({
@@ -46,9 +54,7 @@ export function ThreadContactMenu({
   suggestion?: ThreadContactSuggestion;
   children?: ReactNode;
 }) {
-  const menu = useFollowedOpen(
-    `procurement:email:${threadId}:contact-menu:${email}`,
-  );
+  const menu = useFollowedOpen(threadContactMenuKey(threadId, email));
   const [dialogMode, setDialogMode] = useFollowedState<
     "add" | "primary" | null
   >(`procurement:email:${threadId}:contact-dialog:${email}`, null);
@@ -97,16 +103,21 @@ export function ThreadContactMenu({
         >
           {children ?? displayName}
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="max-w-[calc(100vw-2rem)]">
+        <DropdownMenuContent align="start" className="w-72 max-w-[calc(100vw-2rem)]">
           <DropdownMenuGroup>
-            <DropdownMenuLabel>
-              <span className="block">
-                {suggestion?.brokerName ?? "Provider contact"}
-              </span>
-              <span
-                className={`block break-all text-muted-foreground ${typeStyle("caption.default")}`}
-              >
-                {email}
+            <DropdownMenuLabel className="flex items-center gap-2.5 py-2">
+              <Avatar name={displayName} className="size-8 shrink-0" />
+              <span className="min-w-0">
+                <span className={`block truncate text-foreground ${typeStyle("body.medium")}`}>
+                  {displayName}
+                </span>
+                <span
+                  className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}
+                >
+                  {suggestion?.brokerName
+                    ? `${suggestion.brokerName} · ${email}`
+                    : email}
+                </span>
               </span>
             </DropdownMenuLabel>
           </DropdownMenuGroup>
@@ -116,9 +127,7 @@ export function ThreadContactMenu({
             onClick={() => void setPrimary()}
           >
             {suggestion?.primary ? <Check /> : <Star />}
-            {suggestion?.primary
-              ? "Primary outreach contact for this provider"
-              : "Make primary outreach contact for this provider"}
+            {suggestion?.primary ? "Primary contact" : "Make primary contact"}
           </DropdownMenuItem>
           {!suggestion?.contactId ? (
             <DropdownMenuItem onClick={() => setDialogMode("add")}>

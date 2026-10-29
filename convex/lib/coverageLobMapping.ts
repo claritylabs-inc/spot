@@ -35,3 +35,20 @@ export const COVERAGE_PROVIDER_LOB_CODES: Readonly<
 export function providerCodesForCoverage(coverage: CoverageId) {
   return COVERAGE_PROVIDER_LOB_CODES[coverage] ?? null;
 }
+
+/**
+ * The provider coverage line a request's intake coverages point to, one per
+ * distinct coverage that maps to a provider code (`other`/`unknown` have none).
+ */
+export function requestProviderCoverageCodes(
+  coverages: readonly { coverage: CoverageId }[] | undefined,
+) {
+  return [
+    ...new Set(
+      (coverages ?? []).flatMap(({ coverage }) => {
+        const code = providerCodesForCoverage(coverage)?.[0];
+        return code ? [code] : [];
+      }),
+    ),
+  ];
+}
