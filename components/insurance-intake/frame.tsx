@@ -3,6 +3,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { IntakeProviderBrand } from "./provider-brand";
 import { Button } from "@claritylabs-inc/ui/components/button";
 import { INTAKE_VISIBLE_SECTIONS } from "@/lib/intake-sections";
+import { OperatorImpersonationBanner } from "@/components/operator-impersonation-banner";
 import { typeStyle } from "@/lib/typography";
 
 /** Shared intake layout; controls are provided by the shared UI package. */
@@ -95,15 +96,15 @@ export function IntakeFrame({
       <main
         className={
           introduction
-            ? "mx-auto flex w-full max-w-3xl flex-1 items-start px-6 pt-10 pb-[calc(var(--spot-intake-footer-inset,5rem)+2.5rem)] sm:pt-12 sm:pb-[calc(var(--spot-intake-footer-inset,5rem)+3rem)]"
-            : `mx-auto px-6 pb-32 pt-10 sm:pt-12 ${compact ? "max-w-xl" : "max-w-2xl"}`
+            ? "mx-auto flex w-full max-w-3xl flex-1 items-start px-6 pt-10 pb-[calc(var(--spot-intake-footer-inset,5rem)+var(--spot-app-bottom-inset,0px)+2.5rem)] sm:pt-12 sm:pb-[calc(var(--spot-intake-footer-inset,5rem)+var(--spot-app-bottom-inset,0px)+3rem)]"
+            : `mx-auto px-6 pb-[calc(8rem+var(--spot-app-bottom-inset,0px))] pt-10 sm:pt-12 ${compact ? "max-w-xl" : "max-w-2xl"}`
         }
       >
         {children}
       </main>
       <footer
         ref={footerRef}
-        className="fixed inset-x-0 bottom-0 z-20 border-t bg-background px-6 pt-3 pb-[calc(.75rem+env(safe-area-inset-bottom))]"
+        className="fixed inset-x-0 bottom-[var(--spot-app-bottom-inset,0px)] z-20 border-t bg-background px-6 pt-3 pb-[calc(.75rem+env(safe-area-inset-bottom))]"
       >
         <div
           className={`mx-auto flex min-h-12 items-center justify-between gap-4 ${introduction ? "max-w-3xl px-6" : compact ? "max-w-xl px-6" : "max-w-2xl"}`}
@@ -111,6 +112,7 @@ export function IntakeFrame({
           {footer}
         </div>
       </footer>
+      <OperatorImpersonationBanner fixed />
     </div>
   );
 }

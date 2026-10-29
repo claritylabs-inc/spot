@@ -17,7 +17,8 @@ type OperatorImpersonationContext = {
   } | null;
 };
 
-export function OperatorImpersonationBanner() {
+/** `fixed` pins the banner to the viewport bottom for pages outside the app shell (intake). */
+export function OperatorImpersonationBanner({ fixed = false }: { fixed?: boolean }) {
   const bannerRef = useRef<HTMLDivElement>(null);
   const viewer = useCachedQuery("users.viewer", api.users.viewer, {});
   const operatorContext = useCachedQuery(
@@ -63,7 +64,7 @@ export function OperatorImpersonationBanner() {
   return (
     <div
       ref={bannerRef}
-      className="w-full shrink-0 border-t border-white/10 bg-black px-4 py-2 text-white dark:border-black/10 dark:bg-white dark:text-black"
+      className={`${fixed ? "fixed inset-x-0 bottom-0 z-30 pb-[calc(.5rem+env(safe-area-inset-bottom))]" : "w-full shrink-0"} border-t border-white/10 bg-black px-4 py-2 text-white dark:border-black/10 dark:bg-white dark:text-black`}
     >
       <div className="flex min-h-9 w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
