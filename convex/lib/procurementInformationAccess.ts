@@ -207,3 +207,40 @@ export async function cancelSupersededForms(
       );
     }
 }
+/** Prerequisites of remaining questions and questions in an open form stay until those resolve. */
+export async function assertInformationQuestionsArchivable(
+  ctx: Ctx,
+  requestId: Id<"procurementRequests">,
+  questionIds: Id<"procurementInformationQuestions">[],
+) {
+  const archiving = new Set<string>(questionIds);
+  const [facts, forms] = await Promise.all([
+    requestFacts(ctx, requestId),
+    bounded(
+      ctx.db
+        .query("procurementInformationForms")
+        .withIndex("by_requestId", (q) => q.eq("requestId", requestId))
+        .take(MAX + 1),
+    ),
+  ]);
+  if (
+    facts.some(
+      (q) =>
+        !archiving.has(q._id) &&
+        q.question.conditions?.some((c) => archiving.has(c.questionId)),
+    )
+  )
+    throw new Error(
+      "Remove dependent questions before removing their prerequisite",
+    );
+  if (
+    forms.some(
+      (f) =>
+        f.status === "open" &&
+        f.questions.some((q) => archiving.has(q.questionId)),
+    )
+  )
+    throw new Error(
+      "Cancel the open client form before removing this question",
+    );
+}

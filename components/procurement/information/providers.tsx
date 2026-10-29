@@ -16,13 +16,16 @@ export function InformationProviders({
     <>
       {Array.from(new Set(requirements.map((r) => r.outreachId))).map(
         (outreachId) => {
-          const provider = panel.outreaches.find((o) => o._id === outreachId);
+          // Requirements without a provider are Spot's own application questions.
+          const provider = outreachId
+            ? panel.outreaches.find((o) => o._id === outreachId)
+            : { brokerName: "Spot", iconUrl: "/brand/mark.svg", website: undefined };
           const requirement = requirements.find(
             (r) => r.outreachId === outreachId,
           )!;
           return (
             <span
-              key={outreachId}
+              key={outreachId ?? "spot"}
               className="relative inline-flex min-w-0 items-center"
             >
               <OrgBrandIcon

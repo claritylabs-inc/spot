@@ -3811,7 +3811,9 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
     return await addInformationQuestionsByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       requestId: normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
-      outreachId: normalizeProcurementOutreachId(ctx, parsed.procurementOutreachId),
+      outreachId: parsed.procurementOutreachId
+        ? normalizeProcurementOutreachId(ctx, parsed.procurementOutreachId)
+        : undefined,
       questions: parsed.questions.map(({ condition, ...question }) => ({
         ...question,
         condition: condition && {

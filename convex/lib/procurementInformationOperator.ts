@@ -4,8 +4,11 @@ import {
   neededInformationQuestions,
 } from "../../lib/procurement-information";
 import type { IntakeFollowupQuestion } from "../../lib/intake-followups";
+import { submittedIntakeApplication } from "../../lib/intake-application";
+import { intakeQuestionHistory } from "../../lib/intake-question-history";
+import { detailsAnswers } from "../../lib/insurance-intake-details";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { NoWriteInputError } from "./noWriteInputError";
 import {
   requireDirectOperatorWrite,
@@ -48,11 +51,63 @@ async function liveRequest(
   return request;
 }
 
+// Bookkeeping fields are never client questions.
+const NON_QUESTION_FIELDS = new Set([
+  "intakeGoal",
+  "timingUnknown",
+  "companyConfirmed",
+]);
+
+/** Accepted-application questions still blank, so operators can ask the client for just those. */
+export function unansweredApplicationQuestions(
+  request: Doc<"procurementRequests">,
+) {
+  const application = submittedIntakeApplication(request);
+  if (!application) return null;
+  // Typed details are authoritative where their derived answer text is blank.
+  const derived = Object.entries(detailsAnswers(application.details)).filter(
+    ([, value]) => value?.trim(),
+  );
+  const history = intakeQuestionHistory(
+    { ...application.answers, ...Object.fromEntries(derived) },
+    application.details,
+    request.intakeSkippedSteps ?? [],
+  );
+  const canada = application.details.registrationCountry === "Canada";
+  return [
+    ...history.baseQuestions.flatMap((step) =>
+      step.fields
+        .filter(
+          (field) =>
+            field.status !== "answered" &&
+            !NON_QUESTION_FIELDS.has(field.id) &&
+            field.id !== (canada ? "fein" : "businessNumber"),
+        )
+        .map((field) => ({
+          field: field.id as string,
+          question: field.question,
+          status: field.status,
+        })),
+    ),
+    ...[
+      ...history.propertyQuestions,
+      ...history.cyberDocumentQuestions,
+      ...history.followupQuestions.filter((row) => row.applicable),
+    ]
+      .filter((row) => row.status !== "answered")
+      .map((row) => ({
+        field: row.id,
+        question: row.question,
+        status: row.status,
+      })),
+  ];
+}
+
 export async function procurementInformationOverview(
   ctx: QueryCtx | MutationCtx,
   requestId: Id<"procurementRequests">,
 ) {
-  await liveRequest(ctx, requestId);
+  const request = await liveRequest(ctx, requestId);
   const [facts, requirements, forms, outreaches] = await Promise.all([
     requestFacts(ctx, requestId),
     bounded(
@@ -102,7 +157,7 @@ export async function procurementInformationOverview(
       requirements: requirements
         .filter((r) => r.questionId === q._id)
         .map((r) => ({
-          procurementOutreachId: r.outreachId,
+          procurementOutreachId: r.outreachId ?? null,
           carrier: r.carrier ?? null,
           status: r.status,
         })),
@@ -116,6 +171,7 @@ export async function procurementInformationOverview(
       emailed: !!f.outreachSequenceId,
       submittedAt: f.submittedAt ?? null,
     })),
+    unansweredApplicationQuestions: unansweredApplicationQuestions(request),
   };
 }
 
@@ -124,14 +180,14 @@ export async function addInformationQuestionsByOperator(
   args: {
     operatorUserId: Id<"users">;
     requestId: Id<"procurementRequests">;
-    outreachId: Id<"procurementBrokerOutreaches">;
+    outreachId?: Id<"procurementBrokerOutreaches">;
     questions: OperatorInformationQuestionInput[];
   },
 ) {
   await requireDirectOperatorWrite(ctx, args.operatorUserId);
   const request = await liveRequest(ctx, args.requestId);
-  const outreach = await ctx.db.get(args.outreachId);
-  if (!outreach || outreach.requestId !== request._id)
+  const outreach = args.outreachId ? await ctx.db.get(args.outreachId) : null;
+  if (args.outreachId && (!outreach || outreach.requestId !== request._id))
     throw new NoWriteInputError(
       "invalid_identifier",
       "procurementOutreachId does not belong to this request. Use an ID from list_procurement_information outreaches. Nothing was saved.",

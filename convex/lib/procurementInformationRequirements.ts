@@ -19,7 +19,8 @@ import {
 
 export const requirementArgs = {
   requestId: v.id("procurementRequests"),
-  outreachId: v.id("procurementBrokerOutreaches"),
+  // Omitted when Spot itself needs an unanswered application fact.
+  outreachId: v.optional(v.id("procurementBrokerOutreaches")),
   questionId: v.optional(v.id("procurementInformationQuestions")),
   question: followupQuestionValidator,
   scope: informationScopeValidator,
@@ -33,8 +34,8 @@ export async function addRequirementForRequest(
   request: Doc<"procurementRequests">,
   operatorUserId: Id<"users">,
 ) {
-  const outreach = await ctx.db.get(args.outreachId);
-  if (!outreach || outreach.requestId !== request._id)
+  const outreach = args.outreachId ? await ctx.db.get(args.outreachId) : null;
+  if (args.outreachId && (!outreach || outreach.requestId !== request._id))
     throw new Error("Provider not found");
   const requirements = await bounded(
     ctx.db
@@ -45,6 +46,7 @@ export async function addRequirementForRequest(
   if (requirements.length >= MAX)
     throw new Error("Maximum 200 requirements per request");
   if (args.sourceMessageId) {
+    if (!outreach) throw new Error("A source email needs a provider");
     const message = await sourceMessage(
       ctx,
       args.sourceMessageId,
@@ -180,7 +182,9 @@ export async function addRequirementForRequest(
     ctx,
     operatorUserId,
     request,
-    "Added provider information requirement",
+    outreach
+      ? "Added provider information requirement"
+      : "Added application information requirement",
   );
   return id;
 }

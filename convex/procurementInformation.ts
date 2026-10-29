@@ -23,6 +23,7 @@ import {
   filesForClient,
   businessNameForRequest,
   cancelSupersededForms,
+  assertInformationQuestionsArchivable,
 } from "./lib/procurementInformationAccess";
 import {
   requirementArgs,
@@ -369,34 +370,8 @@ export const archiveQuestion = mutation({
     const row = await ctx.db.get(args.questionId);
     if (!row) throw new Error("Question not found");
     const { operator, request } = await operatorWrite(ctx, row.requestId);
-    if (
-      args.archive &&
-      (await requestFacts(ctx, row.requestId)).some((q) =>
-        q.question.conditions?.some(
-          (condition) => condition.questionId === row._id,
-        ),
-      )
-    )
-      throw new Error(
-        "Remove dependent questions before removing their prerequisite",
-      );
-    const forms = await bounded(
-      ctx.db
-        .query("procurementInformationForms")
-        .withIndex("by_requestId", (q) => q.eq("requestId", row.requestId))
-        .take(MAX + 1),
-    );
-    if (
-      args.archive &&
-      forms.some(
-        (f) =>
-          f.status === "open" &&
-          f.questions.some((q) => q.questionId === row._id),
-      )
-    )
-      throw new Error(
-        "Cancel the open client form before removing this question",
-      );
+    if (args.archive)
+      await assertInformationQuestionsArchivable(ctx, row.requestId, [row._id]);
     await ctx.db.patch(row._id, {
       archivedAt: args.archive ? dayjs().valueOf() : undefined,
     });

@@ -2431,9 +2431,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   update_procurement_application: defineOperatorTool({
     family: "procurement",
-    version: 2,
+    version: 3,
     description:
-      "Correct structured application fields: applicant contact, request reason and requirements, effective date, company facts, coverage lines and limits, insured property/vehicles, locations, revenue and insurance history. Prefer this over update_procurement_packet (prose only), including for document imports. Read get_procurement_request first and pass its intakeRevision (0 if absent) and updatedAt as expectedRevision and expectedUpdatedAt. Send only changed keys; a supplied details key replaces its whole value. Field shapes and coverage limit keys: describe_record_fields. Invalid fields are rejected before approval with the allowed keys. Title, status and policy links: update_procurement_requests.",
+      "Correct structured application fields: applicant contact, request reason and requirements, effective date, company facts, coverage lines and limits, insured property/vehicles, locations, revenue and insurance history. Prefer this over update_procurement_packet (prose only), including for document imports and for copying client answers from get_procurement_information into the application; pass those answered question IDs as archiveInformationQuestionIds so they leave Information needed in the same write. Read get_procurement_request first and pass its intakeRevision (0 if absent) and updatedAt as expectedRevision and expectedUpdatedAt. Send only changed keys; a supplied details key replaces its whole value. Field shapes and coverage limit keys: describe_record_fields. Invalid fields are rejected before approval with the allowed keys. Title, status and policy links: update_procurement_requests.",
     inputSchema: procurementApplicationToolInputSchema,
     capability: "operator.procurement.write",
     effect: "reversible_write",
@@ -2444,7 +2444,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       id: input.procurementRequestId,
     }),
     summarize: (input) =>
-      `Update application fields for request ${input.procurementRequestId}: ${[...Object.keys(input.answers ?? {}), ...Object.keys(input.details ?? {})].join(", ")}`,
+      `Update application fields for request ${input.procurementRequestId}: ${[...Object.keys(input.answers ?? {}), ...Object.keys(input.details ?? {})].join(", ")}${input.archiveInformationQuestionIds ? `, and archive ${input.archiveInformationQuestionIds.length} copied information question${input.archiveInformationQuestionIds.length === 1 ? "" : "s"}` : ""}`,
   }),
   update_procurement_request: defineOperatorTool({
     family: "procurement",
@@ -2930,7 +2930,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   get_procurement_information: defineOperatorTool({
     family: "procurement",
     version: 1,
-    description: "Read provider summaries and question/form counts by default. Include information for supplementary questions/answers, requirements and client forms; clientOutreach for contacts and bounded email sequences. Select both when needed. Does not send.",
+    description: "Read provider summaries and question/form counts by default. Include information for supplementary questions/answers, requirements, client forms and the accepted application's unansweredApplicationQuestions; clientOutreach for contacts and bounded email sequences. Select both when needed. Does not send.",
     inputSchema: z.object({ procurementRequestId, include: omittable(z.array(z.enum(["information", "clientOutreach"])).min(1).max(2)) }),
     capability: "operator.procurement.read",
     effect: "read",
@@ -2959,16 +2959,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   add_procurement_information_questions: defineOperatorTool({
     family: "procurement",
-    version: 2,
+    version: 3,
     description:
-      "Record questions a provider needs the client to answer, in plain client-facing words. Each belongs to one provider outreach from get_procurement_information; an identical question and scope is reused, so a question several providers ask is asked of the client once. All questions save together or none do. Nothing is sent.",
+      "Record questions the client needs to answer, in plain client-facing words. Pass the provider outreach from get_procurement_information when a provider asked; omit it for Spot's own questions, such as completing a partially filled application from its unansweredApplicationQuestions (skip facts an attached document already answers). An identical question and scope is reused, so a fact is asked of the client once. All questions save together or none do. Nothing is sent; follow with create_procurement_information_form.",
     inputSchema: z.object({
       procurementRequestId,
-      procurementOutreachId: z
-        .string()
-        .trim()
-        .min(1)
-        .describe("Provider outreach ID from list_procurement_information"),
+      procurementOutreachId: omittable(z.string().trim().min(1)).describe(
+        "Provider outreach ID from get_procurement_information; omit when Spot is asking",
+      ),
       questions: z
         .array(
           z.object({
@@ -3019,7 +3017,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
           }),
         )
         .min(1)
-        .max(20),
+        .max(40),
     }),
     capability: "operator.procurement.write",
     effect: "reversible_write",
