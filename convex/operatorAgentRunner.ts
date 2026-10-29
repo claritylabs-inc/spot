@@ -989,7 +989,7 @@ export const run = internalAction({
             stage: "planning",
             status: "running",
           });
-          let generated: OperatorExecutionPlan;
+          let generated: OperatorExecutionPlan | undefined;
           try {
             // No tools and no stream target: the planner cannot act and its
             // JSON never reaches the visible answer.
@@ -1029,6 +1029,13 @@ export const run = internalAction({
             if (!parsed.success) throw new OperatorPlanGenerationError();
             generated = parsed.data;
           } catch (error) {
+            // A truncated or invalid plan downgrades the run to a checklist;
+            // router failures keep the existing retry and failure paths.
+            const planUnavailable =
+              error instanceof OperatorPlanGenerationError ||
+              NoObjectGeneratedError.isInstance(error) ||
+              (error instanceof Error &&
+                error.name === "AgentIncompleteOutputError");
             // A pending durable job is still running; only real failures end the stage.
             if (!(error instanceof RouterJobPending))
               await recordActivity({
@@ -1036,26 +1043,46 @@ export const run = internalAction({
                 stageId: planStageId,
                 stage: "planning",
                 status: "failed",
+                ...(planUnavailable
+                  ? { detail: "Plan unavailable; using checklist" }
+                  : {}),
               });
-            throw NoObjectGeneratedError.isInstance(error)
-              ? new OperatorPlanGenerationError()
-              : error;
+            if (!planUnavailable) throw error;
+            console.warn("[operatorPlanning] planner fallback", {
+              runId: String(run._id),
+              error: error instanceof Error ? error.name : String(error),
+            });
           }
-          await recordActivity({
-            kind: "stage",
-            stageId: planStageId,
-            stage: "planning",
-            status: "completed",
-            detail: `${generated.steps.length} step${generated.steps.length === 1 ? "" : "s"}`,
-          });
-          const saved: boolean = await timer.time("planning_record", () =>
-            ctx.runMutation(internal.operatorAgent.recordExecutionPlanInternal, {
-              ...guard,
-              plan: generated,
-            }),
-          );
-          if (!saved) return { status: "superseded" as const };
-          executionPlan = generated;
+          if (generated) {
+            await recordActivity({
+              kind: "stage",
+              stageId: planStageId,
+              stage: "planning",
+              status: "completed",
+              detail: `${generated.steps.length} step${generated.steps.length === 1 ? "" : "s"}`,
+            });
+            const saved: boolean = await timer.time("planning_record", () =>
+              ctx.runMutation(internal.operatorAgent.recordExecutionPlanInternal, {
+                ...guard,
+                plan: generated,
+              }),
+            );
+            if (!saved) return { status: "superseded" as const };
+            executionPlan = generated;
+          } else {
+            const saved: boolean = await timer.time("planning_record", () =>
+              ctx.runMutation(
+                internal.operatorAgent.recordPlannerFallbackInternal,
+                guard,
+              ),
+            );
+            if (!saved) return { status: "superseded" as const };
+            assessment = {
+              ...assessment,
+              level: "checklist",
+              plannerFallback: true,
+            };
+          }
         }
       }
       const endToolSetBuild = timer.begin("tool_set_build");

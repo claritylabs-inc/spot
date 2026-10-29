@@ -40,6 +40,8 @@ export const operatorPlanningAssessmentValidator = v.object({
     v.union(v.object({ score: v.number(), confidence: v.number() }), v.null()),
   ),
   requestId: v.optional(v.string()),
+  /** The full planner failed, so the run continued at `checklist`. */
+  plannerFallback: v.optional(v.boolean()),
 });
 export type OperatorPlanningAssessment = Infer<
   typeof operatorPlanningAssessmentValidator

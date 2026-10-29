@@ -8137,6 +8137,40 @@ export const recordPlanningAssessmentInternal = internalMutation({
   },
 });
 
+/** A failed full plan downgrades the run to a checklist instead of failing it. */
+export const recordPlannerFallbackInternal = internalMutation({
+  args: {
+    runId: v.id("operatorAgentRuns"),
+    expectedRunnerAttempt: v.number(),
+    expectedCheckpointIteration: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (
+      !run ||
+      run.status !== "running" ||
+      run.cancellationRequestedAt ||
+      run.runnerAttempt !== args.expectedRunnerAttempt ||
+      (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration ||
+      run.executionPlan
+    )
+      return false;
+    const assessment = run.planningAssessment;
+    if (assessment?.plannerFallback) return true;
+    if (!assessment || operatorPlanningLevel(assessment) !== "full")
+      throw new Error("Planner fallback requires a full planning assessment");
+    await ctx.db.patch(run._id, {
+      planningAssessment: {
+        ...assessment,
+        level: "checklist",
+        plannerFallback: true,
+      },
+      updatedAt: dayjs().valueOf(),
+    });
+    return true;
+  },
+});
+
 export const recordExecutionPlanInternal = internalMutation({
   args: {
     runId: v.id("operatorAgentRuns"),
