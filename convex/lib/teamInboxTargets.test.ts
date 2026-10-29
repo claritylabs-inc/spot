@@ -32,6 +32,13 @@ test("subjects match after prefixes, case and punctuation are removed", () => {
   expect(subjectMatch(named, "Celsius Home Services Inc submission")).toBe(
     "partial",
   );
+  // A query that drops function words still matches the subject exactly.
+  expect(
+    subjectMatch(
+      "Celsius Home Services Inc submission General liability tools",
+      "Celsius Home Services Inc submission: General liability and tools",
+    ),
+  ).toBe("exact");
   expect(subjectMatch(named, "Celsius renewal question")).toBe("none");
   // One shared word is not a partial match.
   expect(subjectMatch("Celsius", "Celsius renewal question")).toBe("none");

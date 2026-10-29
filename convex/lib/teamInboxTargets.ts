@@ -32,15 +32,32 @@ export const TEAM_INBOX_TARGET_CANDIDATES = 10;
 
 const words = (key: string) => (key ? key.split(" ").length : 0);
 
+// Function words a search query often drops or adds; ignored when comparing
+// word sets so "General liability tools" still matches "General liability
+// and tools".
+const STOPWORDS = new Set(["a", "an", "and", "the", "of", "for", "to", "in", "on", "re"]);
+const contentWords = (key: string) =>
+  new Set(key.split(" ").filter((word) => word && !STOPWORDS.has(word)));
+
 export function subjectMatch(query: string, subject: string): SubjectMatch {
   const wanted = subjectMatchKey(query);
   const actual = subjectMatchKey(subject);
   if (!wanted || !actual) return "none";
   if (wanted === actual) return "exact";
-  const [shorter, longer] =
-    wanted.length <= actual.length ? [wanted, actual] : [actual, wanted];
-  return words(shorter) >= PARTIAL_MIN_WORDS &&
-    ` ${longer} `.includes(` ${shorter} `)
+  const wantedWords = contentWords(wanted);
+  const actualWords = contentWords(actual);
+  if (
+    wantedWords.size > 0 &&
+    wantedWords.size === actualWords.size &&
+    [...wantedWords].every((word) => actualWords.has(word))
+  )
+    return "exact";
+  const [fewer, more] =
+    wantedWords.size <= actualWords.size
+      ? [wantedWords, actualWords]
+      : [actualWords, wantedWords];
+  return fewer.size >= PARTIAL_MIN_WORDS &&
+    [...fewer].every((word) => more.has(word))
     ? "partial"
     : "none";
 }
