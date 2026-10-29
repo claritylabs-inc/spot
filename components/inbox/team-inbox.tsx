@@ -42,15 +42,8 @@ import {
   SectionTabs,
   SectionTabsList,
 } from "@/components/ui/folder-tabs";
-import { PresenceAvatars } from "@/components/app-top-bar";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import {
-  type ActiveOperator,
-  groupEmailThreadPeople,
-  replyingOperators,
-  useActiveOperators,
-} from "@/hooks/use-operator-presence";
 import { useFollowedState, useFollowedValue } from "@/hooks/use-followed-state";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import {
@@ -207,7 +200,6 @@ function ThreadRow({
   scope,
   selected,
   checked,
-  viewers,
   selectable,
   onCheckedChange,
   onSelect,
@@ -217,7 +209,6 @@ function ThreadRow({
   scope: TeamInboxScope;
   selected: boolean;
   checked: boolean;
-  viewers: ActiveOperator[] | undefined;
   /** Bulk selection writes (archive), so it is off while impersonating. */
   selectable: boolean;
   onCheckedChange: (checked: boolean) => void;
@@ -226,7 +217,6 @@ function ThreadRow({
 }) {
   // Unread mail reads bold, as in a mail client.
   const emphasis = thread.unread ? "body.medium" : "body.default";
-  const replying = replyingOperators(viewers);
   const avatar = rowAvatar(thread);
   const tag =
     scope.kind === "team"
@@ -300,16 +290,6 @@ function ThreadRow({
           <Badge variant="outline" className="hidden max-w-36 text-muted-foreground @xl:inline-flex">
             <span className="truncate">{tag}</span>
           </Badge>
-        ) : null}
-        {viewers?.length ? (
-          <span className="flex shrink-0 items-center gap-1.5">
-            {replying.length ? (
-              <span className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-                replying
-              </span>
-            ) : null}
-            <PresenceAvatars users={viewers} max={2} size="sm" />
-          </span>
         ) : null}
         <span
           className={`shrink-0 pt-px text-muted-foreground @2xl:pt-0 ${typeStyle("caption.default")}`}
@@ -496,7 +476,6 @@ export function TeamInbox({
   const setRequestThreadsArchived = useMutation(
     api.procurementRequests.setEmailThreadsArchived,
   );
-  const people = groupEmailThreadPeople(useActiveOperators());
   const selected =
     inboxThreads.find((thread) => thread._id === selectedThreadId) ?? null;
 
@@ -731,7 +710,6 @@ export function TeamInbox({
               scope={scope}
               selected={thread._id === selected?._id}
               checked={checked.has(thread._id)}
-              viewers={people.get(thread._id)}
               selectable={!readOnly}
               onCheckedChange={(value) =>
                 setChecked((current) => {

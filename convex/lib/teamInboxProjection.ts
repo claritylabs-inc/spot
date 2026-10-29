@@ -384,29 +384,6 @@ export async function teamInboxUnreadCount(ctx: QueryCtx, viewerUserId: Id<"user
   };
 }
 
-const DRAFT_LIMIT = 20;
-
-/**
- * Drafts being written and sends waiting to go for one conversation, newest
- * first. Indexed by status, so sent and cancelled history can never push a new
- * draft out of view; `limited` says more exist than the cap returns.
- */
-async function threadDraftsInProgress(ctx: Ctx, threadId: Id<"teamEmailThreads">) {
-  const [drafting, pending] = await Promise.all(
-    (["draft", "pending"] as const).map((status) =>
-      ctx.db
-        .query("pendingEmails")
-        .withIndex("by_teamEmailThreadId_and_status", (q) =>
-          q.eq("teamEmailThreadId", threadId).eq("status", status),
-        )
-        .order("desc")
-        .take(DRAFT_LIMIT + 1),
-    ),
-  );
-  const all = [...drafting, ...pending].sort((a, b) => b._creationTime - a._creationTime);
-  return { rows: all.slice(0, DRAFT_LIMIT), limited: all.length > DRAFT_LIMIT };
-}
-
 /** The thread's detail for an authorized viewer; null when missing, deleted or outside the request. */
 export async function getTeamThreadDetails(
   ctx: QueryCtx,
@@ -427,7 +404,7 @@ export async function getTeamThreadDetails(
   )
     return null;
   const people = new Map<Id<"users">, OperatorPerson>();
-  const [request, addressedRequest, client, messages, sequence, readAt, owner, drafts, linkSuggestion, suggestion] =
+  const [request, addressedRequest, client, messages, sequence, readAt, owner, linkSuggestion, suggestion] =
     await Promise.all([
       thread.requestId ? ctx.db.get(thread.requestId) : null,
       thread.addressedRequestId ? ctx.db.get(thread.addressedRequestId) : null,
@@ -441,7 +418,6 @@ export async function getTeamThreadDetails(
       threadSequence(ctx, thread),
       args.viewerUserId ? readAtFor(ctx, args.viewerUserId, thread._id) : null,
       personFor(ctx, people, thread.ownerUserId),
-      threadDraftsInProgress(ctx, thread._id),
       linkSuggestionFor(ctx, thread),
       ctx.db
         .query("teamEmailReplySuggestions")
@@ -518,15 +494,6 @@ export async function getTeamThreadDetails(
       };
     }),
   );
-  const draftsInProgress = await Promise.all(
-    drafts.rows.map(async (draft) => ({
-      _id: draft._id,
-      subject: draft.subject,
-      status: draft.status as "draft" | "pending",
-      updatedAt: draft._creationTime,
-      sender: await personFor(ctx, people, draft.senderUserId),
-    })),
-  );
   const liveAddressed =
     addressedRequest && !addressedRequest.deletedAt && addressedRequest.clientOrgId === thread.clientOrgId
       ? addressedRequest
@@ -567,8 +534,6 @@ export async function getTeamThreadDetails(
             revision: suggestion.updatedAt,
           }
         : null,
-    draftsInProgress,
-    draftsLimited: drafts.limited,
   };
 }
 
