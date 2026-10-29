@@ -527,7 +527,18 @@ function OperatorReplyComposer({
           className={`flex h-10 w-full items-center gap-2 rounded-lg border border-border px-3 text-left text-muted-foreground transition-colors hover:bg-muted/50 ${typeStyle("body.default")}`}
         >
           <Reply className="size-3.5 shrink-0" />
-          <span className="min-w-0 flex-1 truncate">{hasText ? "Draft reply" : recipient ? `Reply to ${recipient}` : "Reply"}</span>
+          <span className="min-w-0 flex-1 truncate">
+            {hasText ? (
+              <>
+                <span className="text-foreground">Draft reply</span>
+                {headers.subject ? <span> · {headers.subject}</span> : null}
+              </>
+            ) : recipient ? (
+              `Reply to ${recipient}`
+            ) : (
+              "Reply"
+            )}
+          </span>
           {drafting ? (
             <span className={`flex shrink-0 items-center gap-1.5 ${typeStyle("caption.default")}`}>
               <LogoIcon size={12} className="animate-pulse" />
