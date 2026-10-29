@@ -21,6 +21,8 @@ import {
   operatorPlanningLevel,
 } from "./lib/operatorRunPlan";
 import { jevProceedThreshold } from "./lib/jevThreshold";
+import { clRouterDecide } from "./lib/clRouterClient";
+import { flagTeamInboxTargets } from "./lib/teamInboxTargets";
 import { planningLevelFromAssessment } from "./lib/operatorPlanning";
 import { readUnlinkedIntakeByOperator } from "./lib/intakeDiagnostics";
 import {
@@ -2935,16 +2937,6 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
     });
   }
 
-  if (toolName === "search_team_inbox") {
-    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.search_team_inbox.inputSchema.parse(input);
-    return await searchTeamInbox(ctx, {
-      query: parsed.query,
-      clientOrgId: parsed.clientOrgId ? normalizeOrganizationId(ctx, parsed.clientOrgId) : undefined,
-      includeArchived: parsed.includeArchived,
-      limit: parsed.limit ?? 10,
-    });
-  }
-
   if (toolName === "update_team_reply_draft") {
     const parsed = OPERATOR_AGENT_TOOL_REGISTRY.update_team_reply_draft.inputSchema.parse(input);
     return await reviseTeamReplySuggestion(ctx, {
@@ -4247,6 +4239,25 @@ export const forwardingContextInternal = internalQuery({
   },
 });
 
+/** Indexed team inbox search for the search_team_inbox action, which adds target flags. */
+export const searchTeamInboxInternal = internalQuery({
+  args: {
+    query: v.string(),
+    clientOrgId: v.optional(v.string()),
+    includeArchived: v.optional(v.boolean()),
+    limit: v.number(),
+  },
+  handler: async (ctx, args) =>
+    await searchTeamInbox(ctx, {
+      query: args.query,
+      clientOrgId: args.clientOrgId
+        ? normalizeOrganizationId(ctx, args.clientOrgId)
+        : undefined,
+      includeArchived: args.includeArchived,
+      limit: args.limit,
+    }),
+});
+
 export const researchStatusInternal = internalQuery({
   args: {
     operatorUserId: v.id("users"),
@@ -4388,6 +4399,36 @@ async function executeToolActionDomain(
         ...context,
         instruction: "Forward to your team address, then confirm that the conversation is linked to the intended request in the team inbox.",
         captured: ensured.captured,
+      },
+    };
+  }
+
+  if (args.toolName === "search_team_inbox") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.search_team_inbox.inputSchema.parse(args.input);
+    const search = await ctx.runQuery(internal.operatorAgent.searchTeamInboxInternal, {
+      query: parsed.query,
+      clientOrgId: parsed.clientOrgId,
+      includeArchived: parsed.includeArchived,
+      limit: parsed.limit ?? 10,
+    });
+    const flagged = await flagTeamInboxTargets(
+      parsed.query,
+      search.threads,
+      (request) =>
+        clRouterDecide(
+          { task: "team_inbox_target_match", ...request, executionBudgetMs: 8_000 },
+          { telemetry: ctx },
+        ),
+      jevProceedThreshold(),
+    );
+    return {
+      result: {
+        targets: flagged.rows
+          .filter((row) => row.likelyTarget)
+          .map((row) => row.teamEmailThreadId),
+        threads: flagged.rows,
+        bounded: search.bounded,
+        targetDecision: flagged.decision,
       },
     };
   }

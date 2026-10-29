@@ -1788,7 +1788,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   get_team_inbox_thread: defineOperatorTool({
     family: "team_inbox",
     version: 2,
-    description: "Read shared team email threads by exact ID (from search_team_inbox or list_team_inbox_threads): bodies, recipients, owner, attribution, attachments, linked client and request, in-progress drafts; may be unlinked. One teamEmailThreadId returns the full thread; teamEmailThreadIds (up to 50) returns {items, notFound} in a compact view (newest messages with trimmed bodies, shorter for larger batches; no file URLs). view overrides.",
+    description: "Read shared team email threads by exact ID (from search_team_inbox targets or list_team_inbox_threads): bodies, recipients, owner, attribution, attachments, linked client and request, in-progress drafts; may be unlinked. One teamEmailThreadId returns the full thread; teamEmailThreadIds (up to 50) returns {items, notFound} in a compact view (newest messages with trimmed bodies, shorter for larger batches; no file URLs). view overrides.",
     inputSchema: z
       .object({
         teamEmailThreadId: omittable(teamEmailThreadId),
@@ -1815,7 +1815,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   search_team_inbox: defineOperatorTool({
     family: "team_inbox",
     version: 1,
-    description: "Find shared team inbox threads by words in subjects and message bodies (subject matches first), one row per thread with a snippet and its linked client and request; up to 25 results. Use this for a named email or submission before get_team_inbox_thread. Several threads can share one subject (one per provider is common): read every result whose subject matches the named subject together with get_team_inbox_thread teamEmailThreadIds, not only the first; results that matched only on body words are usually other conversations. Optional exact client filter. Bounded: no result does not prove no such mail exists.",
+    description: "Find shared team inbox threads by words in subjects and message bodies, one row per thread with a snippet, counterparty, linked client and request; up to 25 results. Each row has subjectMatch (exact/partial/none, ignoring Re:/Fwd:, case and punctuation), matchedIn (subject/body) and likelyTarget; likely targets sort first. targets lists the thread IDs that are the named conversation: exact subject matches, or, when none match exactly, threads an automatic check judged to be the named conversation or the same submission (targetProbability shows its confidence). Pass targets straight to get_team_inbox_thread teamEmailThreadIds; read other results only when targets is empty. Optional exact client filter. Bounded: no result does not prove no such mail exists.",
     inputSchema: z.object({
       query: z
         .string()
@@ -1831,6 +1831,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     }),
     capability: "operator.email.read",
     effect: "read",
+    // Runs as an action so it can ask Jev about ambiguous named targets.
+    execution: "action",
     requiredRole: "operator",
     confirmation: "none",
     target: () => ({ kind: "platform", id: "team-inbox" }),

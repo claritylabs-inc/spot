@@ -34,6 +34,10 @@ const toolTimingValidator = v.object({
   executeMs: v.number(),
   bookkeepingMs: v.optional(v.number()),
   status: v.string(),
+  // A Jev decision made inside the tool, such as search_team_inbox targets.
+  decision: v.optional(
+    v.object({ requestId: v.optional(v.string()), ms: v.number() }),
+  ),
 });
 
 /** Finish reason carried by an AI SDK result or a model output error. */
