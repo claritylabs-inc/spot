@@ -17,9 +17,10 @@ import {
   operatorPlanningAssessmentValidator,
   operatorExecutionPlanValidator,
   operatorExecutionPlanSchema,
+  operatorPlanningLevel,
 } from "./lib/operatorRunPlan";
 import { jevProceedThreshold } from "./lib/jevThreshold";
-import { planningRequiredByProbabilities } from "./lib/operatorPlanning";
+import { planningLevelFromAssessment } from "./lib/operatorPlanning";
 import { readUnlinkedIntakeByOperator } from "./lib/intakeDiagnostics";
 import {
   prepareApplicationToolUpdate,
@@ -8108,17 +8109,25 @@ export const recordPlanningAssessmentInternal = internalMutation({
       )
     )
       throw new Error("Invalid planning probability");
-    const requiredByAnswers = planningRequiredByProbabilities(
-      Object.values(args.assessment.probabilities),
-      jevProceedThreshold(),
-    );
+    const targetCount = args.assessment.targetCount;
+    if (
+      targetCount &&
+      (!Number.isFinite(targetCount.score) ||
+        targetCount.score < 0 ||
+        !Number.isFinite(targetCount.confidence) ||
+        targetCount.confidence < 0 ||
+        targetCount.confidence > 1)
+    )
+      throw new Error("Invalid planning score");
     if (args.assessment.source === "operator") {
-      if (!args.assessment.required || !run.planRequested)
-        throw new Error("Operator plan requests require a plan");
-    } else if (args.assessment.required !== requiredByAnswers) {
-      throw new Error(
-        "Planning requires every answer to be conclusive with at least one confident yes",
-      );
+      if (args.assessment.level !== "full" || !run.planRequested)
+        throw new Error("Operator plan requests require a full plan");
+    } else if (
+      !args.assessment.level ||
+      args.assessment.level !==
+        planningLevelFromAssessment(args.assessment, jevProceedThreshold())
+    ) {
+      throw new Error("Planning level must follow from the recorded answers");
     }
     await ctx.db.patch(run._id, {
       planningAssessment: args.assessment,
@@ -8145,7 +8154,10 @@ export const recordExecutionPlanInternal = internalMutation({
       (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration
     )
       return false;
-    if (!run.planningAssessment?.required)
+    if (
+      !run.planningAssessment ||
+      operatorPlanningLevel(run.planningAssessment) !== "full"
+    )
       throw new Error("Planning assessment required");
     if (run.executionPlan) return true;
     const message = await ctx.db.get(run.agentMessageId);
