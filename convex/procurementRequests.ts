@@ -60,6 +60,7 @@ import {
   insertProcurementEmailFileItems,
   isOutreachLocked,
   storeProcurementEmailAttachments,
+  inlineClientFiles,
   threadSummaryPatch,
   teamTargetProblem,
   type ProcurementEmailAttachment,
@@ -2326,6 +2327,7 @@ const inboundAttachmentValidator = v.object({
   filename: v.string(),
   contentType: v.string(),
   size: v.number(),
+  contentId: v.optional(v.string()),
 });
 
 const MAX_LINK_BATCH = 25;
@@ -2499,6 +2501,7 @@ async function fileLinkedThreadBatch(
   const now = dayjs().valueOf();
   for (const message of page.page) {
     let clientFileIds = message.clientFileIds;
+    let inlineFiles = message.inlineFiles;
     const held = message.unfiledAttachments ?? [];
     if (held.length) {
       const filed = await storeProcurementEmailAttachments(ctx, {
@@ -2514,11 +2517,14 @@ async function fileLinkedThreadBatch(
         subject: message.subject,
       });
       clientFileIds = [...new Set([...clientFileIds, ...filed])];
+      const heldInline = inlineClientFiles(held, filed);
+      if (heldInline) inlineFiles = [...(inlineFiles ?? []), ...heldInline];
     }
     await ctx.db.patch(message._id, {
       clientOrgId: args.clientOrgId,
       addressedRequestId: message.addressedRequestId ?? args.requestId,
       clientFileIds,
+      inlineFiles,
       unfiledAttachments: undefined,
     });
     if (args.requestId)
@@ -2713,8 +2719,15 @@ export const ingestEmailInternal = internalMutation({
       bodyHtml: args.bodyHtml?.slice(0, 180_000),
       forwarded: args.forwarded,
       clientFileIds,
+      inlineFiles: inlineClientFiles(args.attachments, clientFileIds),
       receivedAt: args.receivedAt,
       createdAt: now,
+    });
+    await ctx.scheduler.runAfter(0, internal.actions.teamEmailQuotes.detect, {
+      messageId: emailMessageId,
+    });
+    await ctx.scheduler.runAfter(0, internal.actions.teamEmailAttachments.classify, {
+      messageId: emailMessageId,
     });
     await ctx.db.patch(threadId, {
       participantEmails: classificationParticipants,

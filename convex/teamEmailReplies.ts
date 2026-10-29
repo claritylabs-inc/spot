@@ -16,15 +16,17 @@ import {
   composeTeamReply,
   normalizeReplyMessage,
   previewTeamEmailReply,
+  replyRecipientsValidator,
   teamReplyError,
 } from "./lib/teamEmailReply";
 import { REPLY_TOOL_NAMES, agentReplyKey } from "./operatorEmailDrafts";
 
 /**
  * Replies on the shared team inbox. Every reply is an operator draft that goes
- * through the one inbox send protocol (`operatorInboxSend`): from the caller's
- * own active inbox, signed with their name, current Always CC included, no
- * personal Reply-To. `composeTeamReply` is the single source of the preview,
+ * through the one inbox send protocol (`operatorInboxSend`): from the sending
+ * operator's own active inbox (the caller's, or any active operator's chosen
+ * as `fromUserId`; the caller is recorded as the approver), signed with their
+ * name, current Always CC included, no personal Reply-To. `composeTeamReply` is the single source of the preview,
  * the approval fingerprint and the draft, so what is approved is what is sent.
  *
  * Two grants authorize a send, never a flag: the browser's session-
@@ -56,14 +58,14 @@ async function replyDraftByKey(
  * starting over with a new key; `pending` is locked and `sent` is done.
  */
 export const status = query({
-  args: { idempotencyKey: v.string() },
+  args: { idempotencyKey: v.string(), fromUserId: v.optional(v.id("users")) },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     const draft = await ctx.db
       .query("pendingEmails")
       .withIndex("by_senderUserId_and_directReplyKey", (q) =>
         q
-          .eq("senderUserId", operator.userId)
+          .eq("senderUserId", args.fromUserId ?? operator.userId)
           .eq("directReplyKey", `browser:${args.idempotencyKey}`),
       )
       .first();
@@ -75,13 +77,20 @@ export const status = query({
 
 /** The exact reply that would be sent: From, To, Cc, subject, signed body and its fingerprint. */
 export const preview = query({
-  args: { threadId: v.id("teamEmailThreads"), message: v.string() },
+  args: {
+    threadId: v.id("teamEmailThreads"),
+    message: v.string(),
+    /** Send as this active operator instead of the caller. */
+    fromUserId: v.optional(v.id("users")),
+    recipients: v.optional(replyRecipientsValidator),
+  },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     const composed = await composeTeamReply(ctx, {
-      operatorUserId: operator.userId,
+      operatorUserId: args.fromUserId ?? operator.userId,
       threadId: args.threadId,
       message: args.message,
+      recipients: args.recipients,
     });
     return composed.ok
       ? ({ ok: true, preview: composed.preview } as const)
@@ -112,6 +121,8 @@ export const prepareSend = mutation({
     message: v.string(),
     expectedFingerprint: v.string(),
     idempotencyKey: v.string(),
+    fromUserId: v.optional(v.id("users")),
+    recipients: v.optional(replyRecipientsValidator),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
@@ -120,13 +131,16 @@ export const prepareSend = mutation({
       throw teamReplyError("This reply could not be started. Try again.");
     }
     const directReplyKey = `browser:${args.idempotencyKey}`;
+    // Any active operator may send as another; the identity check is in compose.
+    const senderUserId = args.fromUserId ?? operator.userId;
 
     const composed = await composeTeamReply(ctx, {
-      operatorUserId: operator.userId,
+      operatorUserId: senderUserId,
       threadId: args.threadId,
       message: args.message,
+      recipients: args.recipients,
     });
-    const existing = await replyDraftByKey(ctx, operator.userId, directReplyKey);
+    const existing = await replyDraftByKey(ctx, senderUserId, directReplyKey);
     if (existing) {
       const stored = await ctx.db.get(existing._id);
       // The same key is the same reply only: thread, typed message and approval alike.

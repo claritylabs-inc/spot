@@ -16,11 +16,17 @@ import { toast } from "sonner";
 
 import { PresenceAvatars } from "@/components/app-top-bar";
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
+import {
+  AddThreadContact,
+  type ThreadContactSuggestion,
+} from "@/components/broker-network/add-thread-contact";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import {
   LinkSuggestionBar,
   LinkThreadAction,
 } from "@/components/inbox/link-thread-action";
+import { EmailHtmlBody, EmailTextBody } from "@/components/inbox/email-html-body";
+import { splitQuotedText } from "@/lib/email-quote";
 import { ReplyComposer } from "@/components/inbox/reply-composer";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
@@ -366,11 +372,14 @@ export function ProcurementEmailMessage({
   fromSpot,
   collapsed,
   onToggle,
+  contactSuggestion,
 }: {
   message: ProcurementEmailMessageData;
   fromSpot: boolean;
   collapsed: boolean;
   onToggle: () => void;
+  /** The sender is new to this conversation's provider and can be saved as its contact. */
+  contactSuggestion?: ThreadContactSuggestion;
 }) {
   const forwardedEmail = (message.forwarded as ForwardedEmail | undefined)
     ?.email;
@@ -379,14 +388,15 @@ export function ProcurementEmailMessage({
   const sender = fromSpot
     ? (message.sentBy?.name ?? "Spot")
     : (message.fromName ?? person?.name ?? message.fromEmail);
+  // Inline images render inside the HTML body, and signature images Jev flagged are hidden.
   const attachments = [
     ...message.files.flatMap((file) =>
-      file?.url
+      file?.url && !file.decorative && !(message.hasHtml && file.inline)
         ? [{ key: String(file.clientFileId), name: file.name, contentType: file.contentType, url: file.url }]
         : [],
     ),
     ...message.unfiledFiles.flatMap((file) =>
-      file.url
+      file.url && !file.decorative && !(message.hasHtml && file.inline)
         ? [{ key: String(file.storageId), name: file.name, contentType: file.contentType, url: file.url }]
         : [],
     ),
@@ -422,19 +432,28 @@ export function ProcurementEmailMessage({
         </button>
       )}
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="min-w-0 truncate">
-            <span className={`text-foreground ${typeStyle("body.medium")}`}>
-              {sender}
-            </span>
-            {!collapsed && !fromSpot && sender !== message.fromEmail ? (
-              <span
-                className={`ml-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
-              >
-                {message.fromEmail}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-1">
+            <p className="min-w-0 truncate">
+              <span className={`text-foreground ${typeStyle("body.medium")}`}>
+                {sender}
               </span>
+              {!collapsed && !fromSpot && sender !== message.fromEmail ? (
+                <span
+                  className={`ml-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
+                >
+                  {message.fromEmail}
+                </span>
+              ) : null}
+            </p>
+            {!collapsed && contactSuggestion ? (
+              <AddThreadContact
+                threadId={message.threadId}
+                name={message.fromName ?? undefined}
+                suggestion={contactSuggestion}
+              />
             ) : null}
-          </p>
+          </div>
           <time
             dateTime={dayjs(message.receivedAt).toISOString()}
             title={formatDisplayDateTime(message.receivedAt, "—")}
@@ -447,7 +466,7 @@ export function ProcurementEmailMessage({
           className={`truncate text-muted-foreground ${typeStyle("caption.default")}`}
         >
           {collapsed
-            ? body.replace(/\s+/g, " ") ||
+            ? splitQuotedText(body, message.quotedHistoryStart).current.replace(/\s+/g, " ") ||
               forwardedEmail?.subject ||
               "Forwarded message"
             : `to ${message.toAddresses.join(", ") || "—"}${
@@ -458,6 +477,19 @@ export function ProcurementEmailMessage({
         </p>
       </div>
     </div>
+  );
+
+  const textBody = (
+    <>
+      {body ? (
+        <EmailTextBody
+          text={body}
+          historyStart={message.quotedHistoryStart}
+          className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
+        />
+      ) : null}
+      {forwardedEmail ? <ForwardedEmailCard email={forwardedEmail} /> : null}
+    </>
   );
 
   if (collapsed)
@@ -475,14 +507,6 @@ export function ProcurementEmailMessage({
     <article className="space-y-3 px-4 py-4">
       {header}
       <div className="space-y-3 pl-11">
-        {body ? (
-          <p
-            className={`whitespace-pre-wrap break-words text-foreground ${typeStyle("body.default")}`}
-          >
-            {body}
-          </p>
-        ) : null}
-        {forwardedEmail ? <ForwardedEmailCard email={forwardedEmail} /> : null}
         {attachments.length ? (
           <div className="flex flex-wrap gap-1.5">
             {attachments.map((file) => (
@@ -494,6 +518,16 @@ export function ProcurementEmailMessage({
             ))}
           </div>
         ) : null}
+        {message.hasHtml ? (
+          <EmailHtmlBody
+            messageId={message._id}
+            keepQuoted={Boolean(forwardedEmail)}
+            historyStart={message.quotedHistoryStart}
+            fallback={textBody}
+          />
+        ) : (
+          textBody
+        )}
       </div>
     </article>
   );
@@ -613,6 +647,10 @@ function EmailConversation({
   );
   const toggled = useMemo(() => new Set(toggledIds), [toggledIds]);
   const lastId = thread.messages.at(-1)?._id;
+  const contactSuggestions = useQuery(
+    api.brokerContacts.suggestionsForThread,
+    readOnly ? "skip" : { threadId: thread.thread._id },
+  );
   return (
     <div className="-mx-4 -my-4 divide-y divide-border">
       <ConversationContext thread={thread} />
@@ -635,6 +673,14 @@ function EmailConversation({
           key={message._id}
           message={message}
           fromSpot={message.direction === "outbound"}
+          contactSuggestion={
+            message.direction === "inbound" && !message.fromOperator
+              ? contactSuggestions?.find(
+                  (suggestion) =>
+                    suggestion.email === message.fromEmail.trim().toLowerCase(),
+                )
+              : undefined
+          }
           collapsed={(message._id === lastId) === toggled.has(message._id)}
           onToggle={() =>
             setToggledIds((current) =>

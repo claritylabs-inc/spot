@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as actions_brokerContactDefaults from "../actions/brokerContactDefaults.js";
 import type * as actions_chatPresentations from "../actions/chatPresentations.js";
 import type * as actions_clientFileNaming from "../actions/clientFileNaming.js";
 import type * as actions_compactOperatorThreadHistory from "../actions/compactOperatorThreadHistory.js";
@@ -30,7 +31,6 @@ import type * as actions_generateCoi from "../actions/generateCoi.js";
 import type * as actions_handleInboundEmail from "../actions/handleInboundEmail.js";
 import type * as actions_handleInboundImessage from "../actions/handleInboundImessage.js";
 import type * as actions_handleInboundOperatorEmail from "../actions/handleInboundOperatorEmail.js";
-import type * as actions_handleInboundOperatorImessage from "../actions/handleInboundOperatorImessage.js";
 import type * as actions_handleInboundSlack from "../actions/handleInboundSlack.js";
 import type * as actions_imessageWebhook from "../actions/imessageWebhook.js";
 import type * as actions_intakeAuthorization from "../actions/intakeAuthorization.js";
@@ -83,8 +83,10 @@ import type * as actions_sendSlack from "../actions/sendSlack.js";
 import type * as actions_slackOAuth from "../actions/slackOAuth.js";
 import type * as actions_slackPresentation from "../actions/slackPresentation.js";
 import type * as actions_slackReconciliation from "../actions/slackReconciliation.js";
+import type * as actions_teamEmailAttachments from "../actions/teamEmailAttachments.js";
 import type * as actions_teamEmailCompose from "../actions/teamEmailCompose.js";
 import type * as actions_teamEmailForwarding from "../actions/teamEmailForwarding.js";
+import type * as actions_teamEmailQuotes from "../actions/teamEmailQuotes.js";
 import type * as actions_teamEmailReplies from "../actions/teamEmailReplies.js";
 import type * as actions_teamInbox from "../actions/teamInbox.js";
 import type * as actions_teamInboxEvents from "../actions/teamInboxEvents.js";
@@ -353,6 +355,7 @@ import type * as lib_operatorGlobalSuggestions from "../lib/operatorGlobalSugges
 import type * as lib_operatorIdentity from "../lib/operatorIdentity.js";
 import type * as lib_operatorInbox from "../lib/operatorInbox.js";
 import type * as lib_operatorInboxSend from "../lib/operatorInboxSend.js";
+import type * as lib_operatorIntentPrefetch from "../lib/operatorIntentPrefetch.js";
 import type * as lib_operatorMcpAttachments from "../lib/operatorMcpAttachments.js";
 import type * as lib_operatorMcpClient from "../lib/operatorMcpClient.js";
 import type * as lib_operatorMcpOAuth from "../lib/operatorMcpOAuth.js";
@@ -526,11 +529,11 @@ import type * as operatorBulkReads from "../operatorBulkReads.js";
 import type * as operatorClientBatchWrites from "../operatorClientBatchWrites.js";
 import type * as operatorContext from "../operatorContext.js";
 import type * as operatorCursors from "../operatorCursors.js";
+import type * as operatorDirectory from "../operatorDirectory.js";
 import type * as operatorEmail from "../operatorEmail.js";
 import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
 import type * as operatorEmailSettings from "../operatorEmailSettings.js";
 import type * as operatorGoogleWorkspace from "../operatorGoogleWorkspace.js";
-import type * as operatorImessage from "../operatorImessage.js";
 import type * as operatorInboxes from "../operatorInboxes.js";
 import type * as operatorInvitations from "../operatorInvitations.js";
 import type * as operatorMcpOAuth from "../operatorMcpOAuth.js";
@@ -587,8 +590,10 @@ import type * as slackPresentation from "../slackPresentation.js";
 import type * as slackSendReceipts from "../slackSendReceipts.js";
 import type * as sourceNodes from "../sourceNodes.js";
 import type * as sourceSpans from "../sourceSpans.js";
+import type * as teamEmailAttachments from "../teamEmailAttachments.js";
 import type * as teamEmailCompose from "../teamEmailCompose.js";
 import type * as teamEmailForwarding from "../teamEmailForwarding.js";
+import type * as teamEmailQuotes from "../teamEmailQuotes.js";
 import type * as teamEmailReplies from "../teamEmailReplies.js";
 import type * as teamInbox from "../teamInbox.js";
 import type * as teamInboxEvents from "../teamInboxEvents.js";
@@ -606,6 +611,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "actions/brokerContactDefaults": typeof actions_brokerContactDefaults;
   "actions/chatPresentations": typeof actions_chatPresentations;
   "actions/clientFileNaming": typeof actions_clientFileNaming;
   "actions/compactOperatorThreadHistory": typeof actions_compactOperatorThreadHistory;
@@ -628,7 +634,6 @@ declare const fullApi: ApiFromModules<{
   "actions/handleInboundEmail": typeof actions_handleInboundEmail;
   "actions/handleInboundImessage": typeof actions_handleInboundImessage;
   "actions/handleInboundOperatorEmail": typeof actions_handleInboundOperatorEmail;
-  "actions/handleInboundOperatorImessage": typeof actions_handleInboundOperatorImessage;
   "actions/handleInboundSlack": typeof actions_handleInboundSlack;
   "actions/imessageWebhook": typeof actions_imessageWebhook;
   "actions/intakeAuthorization": typeof actions_intakeAuthorization;
@@ -681,8 +686,10 @@ declare const fullApi: ApiFromModules<{
   "actions/slackOAuth": typeof actions_slackOAuth;
   "actions/slackPresentation": typeof actions_slackPresentation;
   "actions/slackReconciliation": typeof actions_slackReconciliation;
+  "actions/teamEmailAttachments": typeof actions_teamEmailAttachments;
   "actions/teamEmailCompose": typeof actions_teamEmailCompose;
   "actions/teamEmailForwarding": typeof actions_teamEmailForwarding;
+  "actions/teamEmailQuotes": typeof actions_teamEmailQuotes;
   "actions/teamEmailReplies": typeof actions_teamEmailReplies;
   "actions/teamInbox": typeof actions_teamInbox;
   "actions/teamInboxEvents": typeof actions_teamInboxEvents;
@@ -951,6 +958,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorIdentity": typeof lib_operatorIdentity;
   "lib/operatorInbox": typeof lib_operatorInbox;
   "lib/operatorInboxSend": typeof lib_operatorInboxSend;
+  "lib/operatorIntentPrefetch": typeof lib_operatorIntentPrefetch;
   "lib/operatorMcpAttachments": typeof lib_operatorMcpAttachments;
   "lib/operatorMcpClient": typeof lib_operatorMcpClient;
   "lib/operatorMcpOAuth": typeof lib_operatorMcpOAuth;
@@ -1124,11 +1132,11 @@ declare const fullApi: ApiFromModules<{
   operatorClientBatchWrites: typeof operatorClientBatchWrites;
   operatorContext: typeof operatorContext;
   operatorCursors: typeof operatorCursors;
+  operatorDirectory: typeof operatorDirectory;
   operatorEmail: typeof operatorEmail;
   operatorEmailDrafts: typeof operatorEmailDrafts;
   operatorEmailSettings: typeof operatorEmailSettings;
   operatorGoogleWorkspace: typeof operatorGoogleWorkspace;
-  operatorImessage: typeof operatorImessage;
   operatorInboxes: typeof operatorInboxes;
   operatorInvitations: typeof operatorInvitations;
   operatorMcpOAuth: typeof operatorMcpOAuth;
@@ -1185,8 +1193,10 @@ declare const fullApi: ApiFromModules<{
   slackSendReceipts: typeof slackSendReceipts;
   sourceNodes: typeof sourceNodes;
   sourceSpans: typeof sourceSpans;
+  teamEmailAttachments: typeof teamEmailAttachments;
   teamEmailCompose: typeof teamEmailCompose;
   teamEmailForwarding: typeof teamEmailForwarding;
+  teamEmailQuotes: typeof teamEmailQuotes;
   teamEmailReplies: typeof teamEmailReplies;
   teamInbox: typeof teamInbox;
   teamInboxEvents: typeof teamInboxEvents;

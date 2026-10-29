@@ -20,12 +20,6 @@ import {
   throwUserFacingError,
   userFacingErrorCodes,
 } from "./lib/userFacingErrors";
-import {
-  getOperatorImessageContactPhone,
-  isImessageTransportConfigured,
-  isOperatorImessageInboundEnabled,
-  isOperatorImessageTerminalEnabled,
-} from "./lib/imessageConfig";
 import { getSlackHostConfiguration } from "./lib/slackConfig";
 import { missingSlackCustomerScopes } from "./lib/slackOAuthPolicy";
 
@@ -2196,28 +2190,6 @@ export const getSlackHostStatus = query({
               updatedAt: installation.updatedAt,
             }
           : null,
-    };
-  },
-});
-
-export const getOperatorImessageStatus = query({
-  args: {},
-  handler: async (ctx) => {
-    const operator = await requireOperator(ctx);
-    const enabled = isOperatorImessageInboundEnabled();
-    const terminalEnabled = isOperatorImessageTerminalEnabled();
-    const contactPhone = getOperatorImessageContactPhone();
-    const transportConfigured = isImessageTransportConfigured("operator");
-
-    return {
-      enabled,
-      mode: terminalEnabled ? ("terminal" as const) : ("imessage" as const),
-      configured:
-        enabled &&
-        transportConfigured &&
-        (terminalEnabled || Boolean(contactPhone)),
-      contactPhone: terminalEnabled ? null : (contactPhone ?? null),
-      senderPhone: operator.user.phone ?? null,
     };
   },
 });

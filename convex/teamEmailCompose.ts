@@ -9,8 +9,9 @@ import { teamReplyError } from "./lib/teamEmailReply";
 
 /**
  * New emails from the team inbox. Like replies, each is an operator draft sent
- * through the one inbox send protocol (`operatorInboxSend`) from the caller's
- * own inbox, signed as them with their Always CC. `composeTeamEmail` is the
+ * through the one inbox send protocol (`operatorInboxSend`) from the sending
+ * operator's own inbox (the caller's, or another active operator's chosen as
+ * `fromUserId`), signed as them with their Always CC. `composeTeamEmail` is the
  * single source of the preview, the approval fingerprint and the draft; the
  * session-authenticated `prepareSend` stores the approved fingerprint on the
  * draft, which is the only grant the send accepts.
@@ -26,6 +27,8 @@ const composeArgs = {
   message: v.string(),
   clientOrgId: v.optional(v.id("organizations")),
   requestId: v.optional(v.id("procurementRequests")),
+  /** Send as this active operator instead of the caller. */
+  fromUserId: v.optional(v.id("users")),
 };
 
 /** The exact email that would be sent: From, To, Cc, Bcc, subject, signed body and its fingerprint. */
@@ -33,7 +36,11 @@ export const preview = query({
   args: composeArgs,
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
-    const composed = await composeTeamEmail(ctx, { ...args, operatorUserId: operator.userId });
+    const { fromUserId, ...input } = args;
+    const composed = await composeTeamEmail(ctx, {
+      ...input,
+      operatorUserId: fromUserId ?? operator.userId,
+    });
     return composed.ok
       ? ({ ok: true, preview: composed.preview } as const)
       : ({ ok: false, reason: composed.reason } as const);
@@ -46,14 +53,14 @@ export const preview = query({
  * `pending` is locked and `sent` is done (with its conversation).
  */
 export const status = query({
-  args: { idempotencyKey: v.string() },
+  args: { idempotencyKey: v.string(), fromUserId: v.optional(v.id("users")) },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     const draft = await ctx.db
       .query("pendingEmails")
       .withIndex("by_senderUserId_and_directReplyKey", (q) =>
         q
-          .eq("senderUserId", operator.userId)
+          .eq("senderUserId", args.fromUserId ?? operator.userId)
           .eq("directReplyKey", `${COMPOSE_KEY_PREFIX}${args.idempotencyKey}`),
       )
       .first();
@@ -83,10 +90,11 @@ export const prepareSend = mutation({
       throw teamReplyError("This email could not be started. Try again.");
     }
     const directReplyKey = `${COMPOSE_KEY_PREFIX}${args.idempotencyKey}`;
+    const senderUserId = args.fromUserId ?? operator.userId;
     const existing = await ctx.db
       .query("pendingEmails")
       .withIndex("by_senderUserId_and_directReplyKey", (q) =>
-        q.eq("senderUserId", operator.userId).eq("directReplyKey", directReplyKey),
+        q.eq("senderUserId", senderUserId).eq("directReplyKey", directReplyKey),
       )
       .first();
     if (existing) {
@@ -96,8 +104,8 @@ export const prepareSend = mutation({
       }
       return { pendingEmailId: existing._id };
     }
-    const { expectedFingerprint, idempotencyKey: _key, ...input } = args;
-    const composed = await composeTeamEmail(ctx, { ...input, operatorUserId: operator.userId });
+    const { expectedFingerprint, idempotencyKey: _key, fromUserId: _from, ...input } = args;
+    const composed = await composeTeamEmail(ctx, { ...input, operatorUserId: senderUserId });
     if (!composed.ok) throw teamReplyError(composed.reason);
     if (composed.preview.fingerprint !== expectedFingerprint) {
       throw teamReplyError("The email changed since it was previewed. Review it again.");

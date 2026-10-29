@@ -53,6 +53,10 @@ const sessionArgs = {
   sessionId: v.id("authSessions"),
 };
 
+function isLocalDev() {
+  return process.env.SPOT_ENV?.trim().toLowerCase() === "local";
+}
+
 async function consumeAttempt(ctx: MutationCtx, userId: Id<"users">) {
   const statuses = [
     await rateLimiter.limit(ctx, "secondFactorPerMinute", { key: userId }),
@@ -109,7 +113,7 @@ async function markSessionVerified(
   ctx: MutationCtx,
   userId: Id<"users">,
   sessionId: Id<"authSessions">,
-  method: "totp" | "recovery_code",
+  method: "totp" | "recovery_code" | "local_dev",
 ) {
   const existing = await sessionVerification(ctx, sessionId);
   if (existing) await ctx.db.delete(existing._id);
@@ -149,12 +153,32 @@ export const status = query({
     const enrolled = credential?.status === "active";
     return {
       enrolled,
-      verified: enrolled && verification?.userId === userId,
+      verified:
+        verification?.userId === userId &&
+        (enrolled || verification.method === "local_dev"),
       enabledAt: enrolled ? credential.activatedAt : undefined,
       recoveryCodesRemaining: enrolled
         ? credential.recoveryCodeHashes.length
         : 0,
+      localDevSkip: isLocalDev(),
     };
+  },
+});
+
+/** Local development only: marks the session verified without a code. */
+export const skipForLocalDev = mutation({
+  args: {},
+  handler: async (ctx) => {
+    if (!isLocalDev())
+      throw new ConvexError("Skipping two-factor requires SPOT_ENV=local.");
+    const operator = await currentPendingSession(ctx);
+    await markSessionVerified(
+      ctx,
+      operator.userId,
+      operator.sessionId,
+      "local_dev",
+    );
+    return null;
   },
 });
 

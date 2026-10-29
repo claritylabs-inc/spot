@@ -60,6 +60,7 @@ export const send = action({
     message: v.string(),
     clientOrgId: v.optional(v.id("organizations")),
     requestId: v.optional(v.id("procurementRequests")),
+    fromUserId: v.optional(v.id("users")),
     expectedFingerprint: v.string(),
     idempotencyKey: v.string(),
   },
@@ -70,7 +71,10 @@ export const send = action({
     } catch (error) {
       if (isReplyKeyMismatch(error)) return { status: "not_sent", message: userText(error) };
       const known = await ctx
-        .runQuery(api.teamEmailCompose.status, { idempotencyKey: args.idempotencyKey })
+        .runQuery(api.teamEmailCompose.status, {
+          idempotencyKey: args.idempotencyKey,
+          fromUserId: args.fromUserId,
+        })
         .catch(() => null);
       if (known?.state === "sent" || known?.state === "pending") {
         return await settled(ctx, known.pendingEmailId);

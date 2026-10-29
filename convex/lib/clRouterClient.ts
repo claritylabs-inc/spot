@@ -292,23 +292,64 @@ export async function clRouterAssetReferenceFromUrl(options: {
   };
 }
 
+/** Opaque provider continuation data; cl-router expects it back unchanged. */
+export type ClRouterProviderMetadata = Record<string, Record<string, unknown>>;
+
 export type ClRouterMessagePart =
   | { type: "text"; text: string }
   | { type: "image"; image: string; mediaType?: string }
   | { type: "image"; source: ClRouterAssetReference }
   | { type: "file"; data: string; mediaType: string; filename?: string }
   | { type: "file"; source: ClRouterAssetReference }
-  | { type: "tool-call"; toolCallId: string; toolName: string; input: unknown }
+  | {
+      type: "tool-call";
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+      providerMetadata?: ClRouterProviderMetadata;
+    }
   | {
       type: "tool-result";
       toolCallId: string;
       toolName: string;
       output: unknown;
+    }
+  | {
+      type: "reasoning";
+      text: string;
+      /** cl-router sends reasoning only back to the provider that produced it. */
+      provider: ModelProvider;
+      providerMetadata?: ClRouterProviderMetadata;
     };
 
 export type ClRouterMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content: string | ClRouterMessagePart[];
+};
+
+export type ClRouterReasoningEffort = "low" | "medium" | "high";
+
+export type ClRouterReasoningOptions = {
+  /** Omitted uses the routed model's default effort. */
+  effort?: ClRouterReasoningEffort;
+  /** Return the assistant `message` with reasoning and provider metadata. */
+  include?: boolean;
+};
+
+/** Optional request fields a router advertises in `/v1/capabilities` `features`. */
+export type ClRouterFeature =
+  | "inline_job_input"
+  | "prompt_cache_key"
+  | "agent_loop"
+  | "parallel_tool_calls";
+
+/**
+ * One agent-loop step: the router asks no tool questions and offers every
+ * tool with automatic choice. On a tool-result continuation, `previous` (the
+ * prior step's `routing.route` and `routing.difficulty`) is reused without Jev.
+ */
+export type ClRouterAgentLoop = {
+  previous?: { route: ModelRoute; difficulty: ClRouterDifficulty };
 };
 
 export type ClRouterGenerateRequest = {
@@ -322,6 +363,11 @@ export type ClRouterGenerateRequest = {
   schemaDialect?: "https://json-schema.org/draft/2020-12/schema";
   maxTokens?: number;
   executionBudgetMs?: number;
+  reasoning?: ClRouterReasoningOptions;
+  /** Prompt-cache affinity for requests sharing a prefix; hashed by the router. */
+  cache?: { key: string };
+  loop?: ClRouterAgentLoop;
+  parallelToolCalls?: boolean;
   tools?: ClRouterToolDefinition[];
   /** `caller`: Spot already chose the offered tools; cl-router skips its own tool selection. */
   toolSelection?: "router" | "caller";
@@ -341,6 +387,8 @@ export type ClRouterToolDefinition = {
 export type ClRouterGenerateResponse = ClRouterResponseMetadata & {
   output: unknown;
   finishReason?: string;
+  /** With `reasoning.include`: the assistant message to send back next turn. */
+  message?: unknown;
 };
 
 export type ClRouterStreamEvent =
@@ -789,6 +837,7 @@ const ROUTING_SOURCES = new Set<ClRouterRoutingSource>([
   "jev",
   "fallback",
   "manual",
+  "loop",
 ]);
 const ROUTING_DIFFICULTIES = new Set<ClRouterDifficulty>(DIFFICULTIES);
 
@@ -1070,6 +1119,10 @@ const GENERATE_BODY_KEYS = [
   "schemaDialect",
   "maxTokens",
   "executionBudgetMs",
+  "reasoning",
+  "cache",
+  "loop",
+  "parallelToolCalls",
   "tools",
   "toolSelection",
 ] as const satisfies readonly (keyof ClRouterGenerateRequest)[];
@@ -1273,6 +1326,7 @@ function parseGenerateResponse(payload: unknown): ClRouterGenerateResponse {
     ...(typeof payload.finishReason === "string"
       ? { finishReason: payload.finishReason }
       : {}),
+    ...(payload.message === undefined ? {} : { message: payload.message }),
   };
 }
 
@@ -1737,6 +1791,14 @@ export async function clRouterGenerateMaybeManual(
   return route
     ? clRouterGenerateManual({ ...request, route }, options)
     : clRouterGenerate(request, options);
+}
+
+/** Unavailable capabilities advertise no optional features. */
+export function clRouterSupports(
+  capabilities: ClRouterCapabilities | undefined,
+  feature: ClRouterFeature,
+): boolean {
+  return capabilities?.features?.includes(feature) ?? false;
 }
 
 const CAPABILITIES_CACHE_TTL_MS = 60_000;

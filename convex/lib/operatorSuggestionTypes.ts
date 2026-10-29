@@ -21,6 +21,8 @@ export type OperatorSuggestionCandidate = {
   label: string;
   /** Facts appended to the intent objective when launched; at most 500 characters. */
   focus: string;
+  /** Exact record ids behind `focus`, e.g. `teamEmailThreadId`, for intent prefetch. */
+  focusIds?: Record<string, string>;
   /** Context the intent runs in; must satisfy `resolveOperatorAgentIntent`. */
   pageContext?: OperatorSuggestionPageContext;
   /** Deterministic 0–1 baseline used before, or without, Jev ranking. */

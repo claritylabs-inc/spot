@@ -4,7 +4,6 @@ import { internal } from "./_generated/api";
 import {
   getSpectrumWebhookSecret,
   isImessageWebhookTransportEnabled,
-  type ImessageChannelRole,
 } from "./lib/imessageConfig";
 import {
   SPECTRUM_SIGNATURE_HEADER,
@@ -25,19 +24,17 @@ function objectRecord(value: unknown): Record<string, unknown> | undefined {
 /**
  * Photon Spectrum webhook ingress. Verifies the signature over the raw bytes,
  * dedupes on `message.id`, and acknowledges once processing is scheduled; the
- * Node action does the Spectrum work. While the role's cutover flag is off the
- * route answers 503 so Photon retries briefly instead of dropping the event.
+ * Node action does the Spectrum work. While the cutover flag is off the route
+ * answers 503 so Photon retries briefly instead of dropping the event.
  */
-function spectrumImessageWebhook(role: ImessageChannelRole): PublicHttpAction {
-  return httpAction(async (ctx, request) => {
-    if (!isImessageWebhookTransportEnabled(role)) {
+export const customerImessageWebhook: PublicHttpAction = httpAction(
+  async (ctx, request) => {
+    if (!isImessageWebhookTransportEnabled()) {
       return textResponse("webhook transport disabled", 503);
     }
-    const secret = getSpectrumWebhookSecret(role);
+    const secret = getSpectrumWebhookSecret();
     if (!secret) {
-      console.error("[imessage-webhook] Spectrum webhook secret is missing", {
-        role,
-      });
+      console.error("[imessage-webhook] Spectrum webhook secret is missing");
       return textResponse("not configured", 503);
     }
 
@@ -50,10 +47,7 @@ function spectrumImessageWebhook(role: ImessageChannelRole): PublicHttpAction {
       timestamp: request.headers.get(SPECTRUM_TIMESTAMP_HEADER),
     });
     if (verification !== "ok") {
-      console.warn("[imessage-webhook] Rejected delivery", {
-        role,
-        verification,
-      });
+      console.warn("[imessage-webhook] Rejected delivery", { verification });
       return textResponse(
         verification,
         verification === "missing-headers" ? 400 : 401,
@@ -80,11 +74,8 @@ function spectrumImessageWebhook(role: ImessageChannelRole): PublicHttpAction {
 
     const { accepted }: { accepted: boolean } = await ctx.runMutation(
       internal.imessageTransportClaims.acceptWebhookMessage,
-      { role, messageId, body: rawBody },
+      { messageId, body: rawBody },
     );
     return textResponse(accepted ? "ok" : "duplicate", 200);
-  });
-}
-
-export const customerImessageWebhook = spectrumImessageWebhook("customer");
-export const operatorImessageWebhook = spectrumImessageWebhook("operator");
+  },
+);

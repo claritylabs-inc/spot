@@ -35,6 +35,13 @@ import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import {
+  PageTabsList,
+  PageTabsRail,
+  SectionTabs,
+  SectionTabsList,
+} from "@/components/ui/folder-tabs";
 import { PresenceAvatars } from "@/components/app-top-bar";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -64,6 +71,40 @@ type ClientSequence = NonNullable<
 >["sequences"][number];
 type TeamFilter = "all" | "mine" | "unlinked";
 type Mailbox = "inbox" | "sent" | "all" | "archived";
+
+const MAILBOX_TABS: { value: Mailbox; label: string }[] = [
+  { value: "inbox", label: "Inbox" },
+  { value: "sent", label: "Sent" },
+  { value: "all", label: "All mail" },
+  { value: "archived", label: "Archived" },
+];
+
+/** Mailbox tabs: in the shell top bar on the team inbox, local when embedded in a request. */
+function MailboxTabs({
+  topBar,
+  value,
+  onValueChange,
+}: {
+  topBar: boolean;
+  value: Mailbox;
+  onValueChange: (value: Mailbox) => void;
+}) {
+  const triggers = MAILBOX_TABS.map((tab) => (
+    <TabsTrigger key={tab.value} value={tab.value}>
+      {tab.label}
+    </TabsTrigger>
+  ));
+  const change = (next: unknown) => onValueChange(next as Mailbox);
+  return topBar ? (
+    <PageTabsRail value={value} onValueChange={change}>
+      <PageTabsList aria-label="Mailbox">{triggers}</PageTabsList>
+    </PageTabsRail>
+  ) : (
+    <SectionTabs value={value} onValueChange={change}>
+      <SectionTabsList aria-label="Mailbox">{triggers}</SectionTabsList>
+    </SectionTabs>
+  );
+}
 type Category = NonNullable<InboxThread["category"]>;
 
 const PAGE_SIZE = 40;
@@ -571,29 +612,11 @@ export function TeamInbox({
     category !== ALL_CATEGORIES ||
     (scope.kind === "team" && !!clientOrgId);
   const filters: FilterDefinition[] = [
-    {
-      id: "mailbox",
-      label: "Mailbox",
-      inline: true,
-      allLabel: "Inbox",
-      value: mailbox === "inbox" ? [] : [mailbox],
-      onChange: (value) => {
-        setMailbox((value[0] ?? "inbox") as Mailbox);
-        setChecked(new Set());
-      },
-      options: [
-        { value: "sent", label: "Sent" },
-        { value: "all", label: "All mail" },
-        { value: "archived", label: "Archived" },
-      ],
-    },
     ...(scope.kind === "team"
       ? [
           {
             id: "client",
             label: "Client",
-            inline: true,
-            allLabel: "Any",
             value: clientOrgId ? [clientOrgId] : [],
             onChange: (value: string[]) => {
               setClientOrgId(value[0] ?? "");
@@ -619,8 +642,6 @@ export function TeamInbox({
       ? [{
           id: "scope",
           label: "Scope",
-          inline: true,
-          allLabel: "All team",
           value: filter === "all" ? [] : [filter],
           onChange: (value: string[]) => {
             const next = (value[0] ?? "all") as TeamFilter;
@@ -800,6 +821,14 @@ export function TeamInbox({
           </div>
         </AppShellPortal>
       ) : null}
+      <MailboxTabs
+        topBar={scope.kind === "team"}
+        value={mailbox}
+        onValueChange={(value) => {
+          setMailbox(value);
+          setChecked(new Set());
+        }}
+      />
       <ListToolbar
         followKey={uiKey}
         filters={filters}

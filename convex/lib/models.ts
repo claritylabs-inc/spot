@@ -118,6 +118,9 @@ class AgentIncompleteOutputError extends Error {
     this.name = "AgentIncompleteOutputError";
   }
 }
+// A durable agent call waits this long in its action for the router result
+// before yielding to its caller's scheduled resume.
+const DURABLE_AGENT_INLINE_WAIT_MS = 45_000;
 export type AgentModelRunOptions = {
   streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
   activityTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
@@ -127,6 +130,9 @@ export type AgentModelRunOptions = {
     expectedCheckpointIteration: number;
   };
   durable?: { invocationKey: string; route?: ModelRoute };
+  /** Opt-in reasoning continuity and effort; see ClRouterLanguageModelOptions. */
+  reasoning?: ClRouterLanguageModelOptions["reasoning"];
+  agentStep?: ClRouterLanguageModelOptions["agentStep"];
   sessionKey: string;
   taskKind: ModelCallTaskKind;
   trace: {
@@ -169,7 +175,8 @@ export type ModelRouteSource =
   | "routed"
   | "manual"
   | "jev"
-  | "fallback";
+  | "fallback"
+  | "loop";
 
 export function generatedTextFromResult(result: unknown): string {
   if (!result || typeof result !== "object") return "";
@@ -780,6 +787,8 @@ function agentLanguageModel(
       ...(orgId ? { orgId: String(orgId) } : {}),
       sessionKey: run.sessionKey,
       trace: run.trace,
+      ...(run.reasoning ? { reasoning: run.reasoning } : {}),
+      ...(run.agentStep ? { agentStep: run.agentStep } : {}),
       client: {
         executeJob: async (operation, payload, abortSignal) => {
           const invocationKey =
@@ -793,6 +802,9 @@ function agentLanguageModel(
             abortSignal,
             {
               wait: run.durable ? "yield" : "poll",
+              ...(run.durable
+                ? { inlineWaitMs: DURABLE_AGENT_INLINE_WAIT_MS }
+                : {}),
               streamTarget: run.streamTarget,
             },
           );

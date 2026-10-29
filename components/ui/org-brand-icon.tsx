@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { BrandIcon } from "@claritylabs-inc/ui/components/brand-icon";
 
 type OrgBrandIconProps = {
@@ -12,6 +15,14 @@ type OrgBrandIconProps = {
   className?: string;
 };
 
+const AVATAR_SIZE = {
+  xs: "size-3.5",
+  sm: "size-6",
+  md: "size-7",
+  lg: "size-8",
+  xl: "size-16",
+} as const;
+
 export function OrgBrandIcon({
   name,
   iconUrl,
@@ -20,9 +31,30 @@ export function OrgBrandIcon({
   shape,
   className,
 }: OrgBrandIconProps) {
+  const src = iconUrl || websiteFaviconUrl(website);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!src) return;
+    const probe = new window.Image();
+    probe.onerror = () => setFailedSrc(src);
+    probe.src = src;
+  }, [src]);
+
+  if ((!src || failedSrc === src) && name?.trim())
+    return (
+      <Avatar
+        name={name}
+        className={cn(
+          AVATAR_SIZE[size],
+          shape !== "circle" && "rounded-md",
+          className,
+        )}
+      />
+    );
   return (
     <BrandIcon
-      src={iconUrl || websiteFaviconUrl(website)}
+      src={src}
       name={name}
       alt=""
       size={size}

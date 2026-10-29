@@ -3,6 +3,7 @@
 import dayjs from "dayjs";
 import { isOperatorEmailRecipient } from "../lib/operatorEmailAddress";
 import { DEFAULT_AGENT_DOMAIN } from "../lib/agentEmailDomains";
+import { normalizeContentId } from "../lib/providerOutreachValidators";
 import { isResearchEmailAddress } from "../lib/websiteTech";
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
@@ -94,31 +95,10 @@ import {
 } from "../lib/actionConfirmationFingerprint";
 import { extractEmailAddress } from "../lib/emailAddress";
 import {
+  CONSUMER_DOMAINS,
   procurementInboxTokenFromAddresses,
   uniqueProcurementEmails,
 } from "../lib/procurement";
-
-const CONSUMER_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "yahoo.co.uk",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "msn.com",
-  "aol.com",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "protonmail.com",
-  "proton.me",
-  "zoho.com",
-  "mail.com",
-  "ymail.com",
-  "gmx.com",
-  "gmx.net",
-]);
 
 function getCompanyDomains(
   org: { website?: string },
@@ -205,6 +185,7 @@ interface AttachmentMeta {
   filename: string;
   size: number;
   content_type: string;
+  content_id?: string | null;
   download_url: string;
 }
 
@@ -212,6 +193,7 @@ interface DownloadedAttachment {
   filename: string;
   content_type: string;
   size: number;
+  contentId?: string;
   buffer: Buffer;
 }
 
@@ -280,6 +262,7 @@ async function fetchAttachments(
           filename: att.filename,
           content_type: att.content_type,
           size: att.size,
+          contentId: normalizeContentId(att.content_id),
           buffer,
         });
       } catch (err) {
@@ -632,6 +615,7 @@ export const processInbound = internalAction({
           filename: attachment.filename,
           contentType: attachment.content_type,
           size: attachment.size,
+          ...(attachment.contentId ? { contentId: attachment.contentId } : {}),
         });
       }
       const receivedAt = dayjs(webhook.created_at).isValid()

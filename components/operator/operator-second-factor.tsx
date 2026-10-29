@@ -231,8 +231,33 @@ function Challenge({ onDone }: { onDone: () => void }) {
   );
 }
 
+function LocalDevSkip({ onDone }: { onDone: () => void }) {
+  const skip = useMutation(api.operatorSecondFactor.skipForLocalDev);
+  const [loading, setLoading] = useState(false);
+  return (
+    <PillButton
+      type="button"
+      variant="secondary"
+      disabled={loading}
+      onClick={() => {
+        setLoading(true);
+        skip({}).then(onDone, () => setLoading(false));
+      }}
+    >
+      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+      Skip two-factor (local dev)
+    </PillButton>
+  );
+}
+
 export function OperatorSecondFactor({ enrolled, onDone }: { enrolled: boolean; onDone: () => void }) {
-  return enrolled ? <Challenge onDone={onDone} /> : <Enrollment onDone={onDone} />;
+  const status = useQuery(api.operatorSecondFactor.status, {});
+  return (
+    <div className="space-y-4">
+      {enrolled ? <Challenge onDone={onDone} /> : <Enrollment onDone={onDone} />}
+      {status?.localDevSkip ? <LocalDevSkip onDone={onDone} /> : null}
+    </div>
+  );
 }
 
 export function OperatorSecondFactorSettings() {

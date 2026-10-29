@@ -960,8 +960,9 @@ export function ThinkingTrace({
       )
     : undefined;
   return (
+    // Stages start and finish between tool steps; tying open state to them
+    // made the trace flicker, so it stays as the user left it (closed first).
     <ChatDisclosure
-      working={Boolean(running)}
       compact
       trailingCaret
       collapseWhenDone

@@ -8,7 +8,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { canonicalAddress } from "../lib/emailAddress";
-import type { InboxEmail } from "../lib/providerOutreachValidators";
+import { normalizeContentId, type InboxEmail } from "../lib/providerOutreachValidators";
 import {
   getThreadEmail,
   isBounceSender,
@@ -62,6 +62,7 @@ type StoredAttachment = {
   filename: string;
   contentType: string;
   size: number;
+  contentId?: string;
 };
 
 /**
@@ -102,6 +103,9 @@ async function downloadInboundAttachments(
         filename: (attachment.filename ?? "attachment").slice(0, 200),
         contentType,
         size: bytes.byteLength,
+        ...(normalizeContentId(attachment.contentId)
+          ? { contentId: normalizeContentId(attachment.contentId) }
+          : {}),
       });
       ids.add(attachment.id);
     }

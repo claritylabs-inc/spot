@@ -6,7 +6,11 @@ import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { sendOperatorInboxDraft } from "../lib/operatorInboxSend";
-import { isReplyKeyMismatch, teamReplyErrorMessage } from "../lib/teamEmailReply";
+import {
+  isReplyKeyMismatch,
+  replyRecipientsValidator,
+  teamReplyErrorMessage,
+} from "../lib/teamEmailReply";
 import { getEmailDeliveryMode } from "../lib/resend";
 
 export type TeamReplySent = {
@@ -49,7 +53,7 @@ const SAFE_FALLBACK = "The reply was not sent. Review it and try again.";
 const userText = (error: unknown) => teamReplyErrorMessage(error) ?? SAFE_FALLBACK;
 
 /**
- * Sends the previewed reply as the signed-in operator. The caller's session
+ * Sends the previewed reply as the signed-in operator, or as `fromUserId`. The caller's session
  * authenticates `prepareSend`, which stores the approved fingerprint on the
  * draft; the send below reads that approval from the draft and takes no
  * operator id, so no other route can send it. A repeat with the same key
@@ -67,6 +71,10 @@ export const send = action({
     message: v.string(),
     expectedFingerprint: v.string(),
     idempotencyKey: v.string(),
+    /** Send as this active operator instead of the caller. */
+    fromUserId: v.optional(v.id("users")),
+    /** Operator-set To and Cc, replacing the reply-all default. */
+    recipients: v.optional(replyRecipientsValidator),
   },
   handler: async (ctx, args): Promise<TeamReplySendResult> => {
     let pendingEmailId: Id<"pendingEmails">;
@@ -80,7 +88,10 @@ export const send = action({
       if (isReplyKeyMismatch(error)) return { status: "not_sent", message: userText(error) };
       // This key may already belong to a sent or locked email, whatever this call said.
       const known = await ctx
-        .runQuery(api.teamEmailReplies.status, { idempotencyKey: args.idempotencyKey })
+        .runQuery(api.teamEmailReplies.status, {
+          idempotencyKey: args.idempotencyKey,
+          fromUserId: args.fromUserId,
+        })
         .catch(() => null);
       if (known?.state === "sent" || known?.state === "pending") {
         return await settled(ctx, known.pendingEmailId);

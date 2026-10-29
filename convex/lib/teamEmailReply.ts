@@ -1,4 +1,4 @@
-import { ConvexError } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { operatorSenderIdentity } from "./outreachIdentity";
@@ -46,6 +46,40 @@ export const normalizeReplyMessage = (message: string) =>
   message.replace(/\r\n/g, "\n").trim();
 
 export const MAX_TEAM_REPLY_CHARS = 20_000;
+export const MAX_TEAM_REPLY_CC = 50;
+
+/** The To and Cc the operator set on a reply, replacing the reply-all default. */
+export const replyRecipientsValidator = v.object({
+  to: v.string(),
+  cc: v.array(v.string()),
+});
+export type TeamReplyRecipients = { to: string; cc: string[] };
+
+/**
+ * Operator-set recipients as a reply sends them: valid, lowercased, never the
+ * sender or a Spot machine address, and To never repeated in Cc.
+ */
+function chosenCorrespondents(
+  recipients: TeamReplyRecipients,
+  ownAddress: string,
+): { ok: true; to: string[]; cc: string[] } | { ok: false; reason: string } {
+  const all = [recipients.to, ...recipients.cc].map((address) =>
+    address.trim().toLowerCase(),
+  );
+  const invalid = all.find((address) => !extractEmailAddress(address));
+  if (invalid !== undefined) return { ok: false, reason: `${invalid || "An empty address"} is not an email address.` };
+  if (all.some((address) => extractEmailAddress(address) !== address))
+    return { ok: false, reason: "Enter each recipient as a plain email address." };
+  if (all.some((address) => address === ownAddress))
+    return { ok: false, reason: "The sender's own address can't be a recipient." };
+  if (all.some(isMachineAddress))
+    return { ok: false, reason: "Spot's automated addresses can't be recipients." };
+  const [to, ...cc] = all;
+  const copies = [...new Set(cc)].filter((address) => address !== to);
+  if (copies.length > MAX_TEAM_REPLY_CC)
+    return { ok: false, reason: `Copy at most ${MAX_TEAM_REPLY_CC} people.` };
+  return { ok: true, to: [to], cc: copies };
+}
 
 /** Browser-composed new emails are keyed apart from replies (`browser:`) and agent replies. */
 export const COMPOSE_KEY_PREFIX = "compose:";
@@ -89,6 +123,8 @@ export type TeamReplyPreview = {
   from: string;
   to: string[];
   cc: string[];
+  /** Cc entries the sender can't remove: their Always CC and the owner copy. */
+  fixedCc: string[];
   bcc: string[];
   subject: string;
   /** The signed message as the recipient reads it, quoted history included. */
@@ -208,6 +244,8 @@ export async function composeTeamReply(
     operatorUserId: Id<"users">;
     threadId: Id<"teamEmailThreads">;
     message: string;
+    /** Replaces the reply-all To and Cc; Always CC and the owner copy still apply. */
+    recipients?: TeamReplyRecipients;
   },
 ): Promise<TeamReplyComposition> {
   const message = normalizeReplyMessage(args.message);
@@ -248,7 +286,9 @@ export async function composeTeamReply(
   if (!latest) return { ok: false, reason: "There is no message to reply to yet." };
 
   const ownAddress = identity.teamAddress.toLowerCase();
-  const correspondents = await replyCorrespondents(ctx, thread, latest, ownAddress);
+  const correspondents = args.recipients
+    ? chosenCorrespondents(args.recipients, ownAddress)
+    : await replyCorrespondents(ctx, thread, latest, ownAddress);
   if (!correspondents.ok) return correspondents;
   const [recipientEmail] = correspondents.to;
   // Only a reply that is not threaded in the sender's own inbox copies the owner.
@@ -307,6 +347,11 @@ export async function composeTeamReply(
       from: fields.fromHeader,
       to: [recipientEmail],
       cc,
+      fixedCc: cc.filter(
+        (address) =>
+          address === identity.alwaysCc?.toLowerCase() ||
+          address === ownerAddress?.toLowerCase(),
+      ),
       bcc: [],
       subject: fields.subject,
       text: renderedText,
@@ -381,6 +426,11 @@ export async function replyContextProblem(
     operatorUserId: draft.senderUserId,
     threadId: draft.teamEmailThreadId,
     message,
+    // A browser reply may carry operator-set recipients; they are part of the
+    // approved draft, and composing adds Always CC and the owner copy again.
+    ...(draft.directReplyKey.startsWith("browser:")
+      ? { recipients: { to: draft.recipientEmail, cc: draft.ccAddresses ?? [] } }
+      : {}),
   });
   if (!composed.ok) return composed.reason;
   return composed.preview.fingerprint === (await pendingEmailDraftFingerprint(draft))

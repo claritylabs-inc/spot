@@ -82,3 +82,21 @@ Run local capture workflows first, then authorized restricted delivery with an e
 ## Client information requests
 
 The same sequence machinery sends operator emails to the client. A client sequence (`audience: "client"`) has no outreach, provider or packet link; its first step's draft is the operator's exact subject and message with a greeting and signature, and follow-ups are deterministic nudges replying on the same thread. Recipients are current client portal members and the request applicant, excluding Spot-owned addresses; launch and every send re-check that list. One live client sequence per recipient per request. Request closure or deletion, a recipient change, an operator reply or Stop follow-ups end the sequence; any client reply hands off exactly like a provider reply (`client_replied`). Mirrored conversations are `category: "client"`, and reply attachments become request files through the existing mirror. Composer: Inbox navbar **Email client**. Agent/MCP: `list_procurement_client_outreach`, `send_procurement_client_email`, `reply_procurement_email_thread`, `stop_procurement_provider_outreach`.
+
+
+## Insurance provider email copywriting rules
+
+- Be concise and direct: short paragraphs, plain language, no filler.
+- For Cold providers, explain that the client hired us at Spot to help buy their commercial insurance; use the actual sender's name.
+- For Active Relationships, go straight to the quote request.
+- Use we, us and our for the coordinated client request.
+- Greet the human contact by first name, with the provider company name as fallback.
+- Put every requested coverage line and known limit in the quote-request sentence.
+- Use factual bullets for the business, location, operations, revenue, coverage and relevant history.
+- Make the application link obvious and explain that clicking it opens more information and documents.
+- Ask for a quote directly; providers can tell us what further information they need.
+- Avoid excessive politeness: no kindly, just checking in, apologies for following up, please or repeated thanks.
+- Keep brief nudges exact: Following up on our earlier request for {company}. Could you let us know if you can quote us or if there's more information needed?
+- Stop automated nudges when someone replies.
+- Use the actual sender's signature, with the general Spot explanation below it.
+- Never email Do Not Contact providers.

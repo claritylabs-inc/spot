@@ -48,6 +48,29 @@ export function normalizeProcurementSubject(subject: string) {
   return normalized.replace(/\s+/g, " ").slice(0, 300);
 }
 
+/** Free mailbox providers: their domain never identifies a company. */
+export const CONSUMER_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "yahoo.co.uk",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "msn.com",
+  "aol.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "protonmail.com",
+  "proton.me",
+  "zoho.com",
+  "mail.com",
+  "ymail.com",
+  "gmx.com",
+  "gmx.net",
+]);
+
 export function normalizeProcurementEmail(value: string) {
   return value.trim().toLowerCase();
 }

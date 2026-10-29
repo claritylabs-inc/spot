@@ -2,6 +2,7 @@
 
 import type { ClRouterTraceInput } from "./clRouterClient";
 
+import dayjs from "dayjs";
 import { modelCallContext } from "./modelCallTelemetry";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -9,7 +10,9 @@ import type { ActionCtx } from "../_generated/server";
 import {
   assertSpotRouterAssetUrl,
   ClRouterRequestError,
+  clRouterCapabilities,
   clRouterRouteIsAvailable,
+  clRouterSupports,
   isUnknownClRouterRouteFailure,
   logIgnoredClRouterPin,
 } from "./clRouterClient";
@@ -21,6 +24,11 @@ const REQUEST_BYTES = 4 * 1024 * 1024;
 const ASSET_BYTES = 12 * 1024 * 1024;
 const ASSET_AGGREGATE_BYTES = 16 * 1024 * 1024;
 const CONTROL_WAIT_MS = 5_000;
+// In-place waits poll the job row the result callback writes, so a finished
+// job is seen within one interval; the interval eases off for long jobs.
+const INLINE_POLL_MS = 250;
+const INLINE_POLL_SLOW_AFTER_MS = 10_000;
+const INLINE_POLL_MAX_MS = 1_000;
 export type RouterJobOperation =
   | "generate"
   | "manual"
@@ -268,6 +276,35 @@ async function prepareJob(
   }
 }
 
+/**
+ * Generation jobs send their exact stored request bytes inline when the router
+ * accepts it, saving the router's request fetch; the fingerprint is unchanged.
+ * Other operations, older routers and unreadable bytes use `requestUrl`. A
+ * resubmission after a lost acknowledgement reconnects to the same job
+ * whichever source either attempt used.
+ */
+async function jobInputSource(
+  ctx: ActionCtx,
+  row: Doc<"routerJobs">,
+  siteUrl: string,
+  abortSignal?: AbortSignal,
+): Promise<{ input: string } | { requestUrl: string }> {
+  if (
+    (row.operation === "generate" || row.operation === "manual") &&
+    row.requestStorageId &&
+    clRouterSupports(
+      await clRouterCapabilities({ abortSignal }).catch(() => undefined),
+      "inline_job_input",
+    )
+  ) {
+    const input = await (await ctx.storage.get(row.requestStorageId))?.text();
+    if (input !== undefined) return { input };
+  }
+  return {
+    requestUrl: `${siteUrl}/router-jobs/request?token=${row.requestToken}`,
+  };
+}
+
 function routerCredential(): string {
   const secret = process.env.CL_ROUTER_SECRET?.trim();
   if (!secret) throw new Error("CL_ROUTER_SECRET is required");
@@ -340,16 +377,55 @@ async function routerControl(
   }
 }
 
+type RouterRequestWaitOptions = {
+  wait?: "yield" | "poll";
+  /**
+   * With `yield`, how long to wait in place for a submitted job before
+   * throwing RouterJobPending.
+   */
+  inlineWaitMs?: number;
+  streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
+};
+
+function routerJobEnded(row: Doc<"routerJobs">) {
+  return (
+    row.status === "succeeded" ||
+    row.status === "failed" ||
+    row.status === "cancelled"
+  );
+}
+
+/** Polls the job row until it ends, the deadline passes, or the call aborts. */
+async function waitForRouterJobRow(
+  ctx: ActionCtx,
+  invocationKey: string,
+  deadline: dayjs.Dayjs,
+  abortSignal?: AbortSignal,
+): Promise<Doc<"routerJobs"> | null> {
+  const started = dayjs();
+  let interval = INLINE_POLL_MS;
+  let row: Doc<"routerJobs"> | null = null;
+  while (!abortSignal?.aborted) {
+    const remaining = deadline.diff(dayjs());
+    if (remaining <= 0) break;
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, Math.min(interval, remaining)),
+    );
+    row = await ctx.runQuery(internal.routerJobs.get, { invocationKey });
+    if (!row || routerJobEnded(row)) break;
+    if (dayjs().diff(started) >= INLINE_POLL_SLOW_AFTER_MS)
+      interval = Math.min(INLINE_POLL_MAX_MS, interval * 1.25);
+  }
+  return row;
+}
+
 export async function executeDurableRouterRequest(
   ctx: ActionCtx,
   operation: RouterJobOperation,
   payload: unknown,
   invocationKey: string,
   abortSignal?: AbortSignal,
-  options: {
-    wait?: "yield" | "poll";
-    streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
-  } = {},
+  options: RouterRequestWaitOptions = {},
 ): Promise<unknown> {
   return executeRouterRequest(
     ctx,
@@ -367,10 +443,7 @@ async function executeRouterRequest(
   payload: unknown,
   invocationKey: string,
   abortSignal?: AbortSignal,
-  options: {
-    wait?: "yield" | "poll";
-    streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
-  } = {},
+  options: RouterRequestWaitOptions = {},
   trace?: ClRouterTraceInput,
 ): Promise<unknown> {
   if (operation !== "manual" && operation !== "generate") {
@@ -459,10 +532,7 @@ async function executeRouterRequestOnce(
   payload: unknown,
   invocationKey: string,
   abortSignal?: AbortSignal,
-  options: {
-    wait?: "yield" | "poll";
-    streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
-  } = {},
+  options: RouterRequestWaitOptions = {},
   trace?: ClRouterTraceInput,
 ): Promise<unknown> {
   let row = await prepareJob(
@@ -510,7 +580,7 @@ async function executeRouterRequestOnce(
             ...(row.streamTarget ? { stream: true } : {}),
             tenantId: "glass",
             fingerprint: row.fingerprint,
-            requestUrl: `${siteUrl}/router-jobs/request?token=${row.requestToken}`,
+            ...(await jobInputSource(ctx, row, siteUrl, abortSignal)),
             resultUrl: `${siteUrl}/router-jobs/result?token=${row.resultToken}`,
           },
           abortSignal,
@@ -553,14 +623,24 @@ async function executeRouterRequestOnce(
       if (!(error instanceof RouterJobPending)) throw error;
     }
     row = (await ctx.runQuery(internal.routerJobs.get, { invocationKey }))!;
-    if (
-      row.status === "succeeded" ||
-      row.status === "failed" ||
-      row.status === "cancelled"
-    )
-      continue;
-    if (options.wait !== "poll")
+    if (routerJobEnded(row)) continue;
+    if (options.wait !== "poll") {
+      // Waiting in place spares the caller a yield and rescheduled resume
+      // when the job finishes promptly; an unsubmitted job has nothing to
+      // wait for. An ended or aborted job settles at the top of the loop, so
+      // the budget is spent once per call.
+      if (row.routerJobId && options.inlineWaitMs) {
+        const waited = await waitForRouterJobRow(
+          ctx,
+          invocationKey,
+          dayjs().add(options.inlineWaitMs, "millisecond"),
+          abortSignal,
+        );
+        if (waited) row = waited;
+        if (routerJobEnded(row) || abortSignal?.aborted) continue;
+      }
       throw new RouterJobPending(invocationKey, row.routerJobId);
+    }
     await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
   }
 }
@@ -575,6 +655,8 @@ export async function cancelDurableRouterRequest(
   try {
     let jobId = row.routerJobId;
     // A lost submission acknowledgement can still have started inference.
+    // This resubmission only finds that job, so it keeps `requestUrl`: the
+    // cancelled row no longer serves its input, and a new job cannot run.
     if (!jobId) {
       const siteUrl = callbackSiteUrl();
       const response = await routerControl("/v1/jobs", {

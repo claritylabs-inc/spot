@@ -6,6 +6,7 @@ import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { withClient } from "./imapMailbox";
 import { MAILBOX_PREFIX } from "./inboxIds";
+import { normalizeContentId } from "./providerOutreachValidators";
 import {
   type CreateDraftParams,
   type ResendInboxDraft,
@@ -193,6 +194,7 @@ export async function syncGoogleMailbox(
             filename: string;
             contentType: string;
             size: number;
+            contentId?: string;
           }[] = [];
           for (const file of parsed.attachments.slice(0, 20)) {
             const fileId = await ctx.storage.store(
@@ -205,6 +207,9 @@ export async function syncGoogleMailbox(
               filename: file.filename ?? "attachment",
               contentType: file.contentType,
               size: file.size,
+              ...(normalizeContentId(file.contentId)
+                ? { contentId: normalizeContentId(file.contentId) }
+                : {}),
             });
           }
           const omitted =
@@ -227,6 +232,7 @@ export async function syncGoogleMailbox(
                 ...(parsed.inReplyTo ? { inReplyTo: parsed.inReplyTo } : {}),
                 references: refs,
                 text: (parsed.text ?? "").slice(0, 100000) + omitted,
+                ...(parsed.html ? { html: parsed.html.slice(0, 180_000) } : {}),
                 occurredAt: parsed.date?.valueOf() ?? dayjs().valueOf(),
               },
             });

@@ -3,7 +3,9 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 
-const roleValidator = v.union(v.literal("customer"), v.literal("operator"));
+// Claims keep the `role` column for rows written before operator iMessage was
+// removed; every new claim is a customer claim.
+const ROLE = "customer";
 
 // Photon retries a delivery for a few minutes at most; its docs recommend a
 // 24-48 hour dedupe window on `message.id`.
@@ -14,14 +16,13 @@ const EXPIRED_PRUNE_BATCH = 25;
 
 async function findClaim(
   ctx: MutationCtx,
-  role: "customer" | "operator",
   kind: "webhook_message" | "send",
   key: string,
 ) {
   return await ctx.db
     .query("imessageTransportClaims")
     .withIndex("role_kind_key", (q) =>
-      q.eq("role", role).eq("kind", kind).eq("key", key),
+      q.eq("role", ROLE).eq("kind", kind).eq("key", key),
     )
     .unique();
 }
@@ -40,20 +41,15 @@ async function pruneExpiredClaims(ctx: MutationCtx, now: number) {
  * never mistaken for a duplicate.
  */
 export const acceptWebhookMessage = internalMutation({
-  args: { role: roleValidator, messageId: v.string(), body: v.bytes() },
+  args: { messageId: v.string(), body: v.bytes() },
   handler: async (ctx, args) => {
     const now = dayjs().valueOf();
-    const existing = await findClaim(
-      ctx,
-      args.role,
-      "webhook_message",
-      args.messageId,
-    );
+    const existing = await findClaim(ctx, "webhook_message", args.messageId);
     if (existing && existing.expiresAt > now) return { accepted: false };
     if (existing) await ctx.db.delete(existing._id);
     await pruneExpiredClaims(ctx, now);
     await ctx.db.insert("imessageTransportClaims", {
-      role: args.role,
+      role: ROLE,
       kind: "webhook_message",
       key: args.messageId,
       status: "accepted",
@@ -62,27 +58,22 @@ export const acceptWebhookMessage = internalMutation({
     await ctx.scheduler.runAfter(
       0,
       internal.actions.imessageWebhook.processMessage,
-      { role: args.role, body: args.body },
+      { body: args.body },
     );
     return { accepted: true };
   },
 });
 
 export const claimSend = internalMutation({
-  args: { role: roleValidator, clientMessageId: v.string() },
+  args: { clientMessageId: v.string() },
   handler: async (ctx, args) => {
     const now = dayjs().valueOf();
-    const existing = await findClaim(
-      ctx,
-      args.role,
-      "send",
-      args.clientMessageId,
-    );
+    const existing = await findClaim(ctx, "send", args.clientMessageId);
     if (existing && existing.expiresAt > now) return { claimed: false };
     if (existing) await ctx.db.delete(existing._id);
     await pruneExpiredClaims(ctx, now);
     await ctx.db.insert("imessageTransportClaims", {
-      role: args.role,
+      role: ROLE,
       kind: "send",
       key: args.clientMessageId,
       status: "sending",
@@ -93,14 +84,9 @@ export const claimSend = internalMutation({
 });
 
 export const completeSend = internalMutation({
-  args: { role: roleValidator, clientMessageId: v.string() },
+  args: { clientMessageId: v.string() },
   handler: async (ctx, args) => {
-    const existing = await findClaim(
-      ctx,
-      args.role,
-      "send",
-      args.clientMessageId,
-    );
+    const existing = await findClaim(ctx, "send", args.clientMessageId);
     if (!existing) return;
     await ctx.db.patch(existing._id, {
       status: "sent",
@@ -110,14 +96,9 @@ export const completeSend = internalMutation({
 });
 
 export const releaseSend = internalMutation({
-  args: { role: roleValidator, clientMessageId: v.string() },
+  args: { clientMessageId: v.string() },
   handler: async (ctx, args) => {
-    const existing = await findClaim(
-      ctx,
-      args.role,
-      "send",
-      args.clientMessageId,
-    );
+    const existing = await findClaim(ctx, "send", args.clientMessageId);
     if (existing?.status === "sending") await ctx.db.delete(existing._id);
   },
 });

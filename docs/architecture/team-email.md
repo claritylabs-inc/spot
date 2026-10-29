@@ -61,6 +61,24 @@ linking files them. A repeated webhook must not delete storage already owned by 
 file or draft. `teamInboxReads` tracks each operator's read position; only inbound
 mail advances unread state. Bounded queries expose continuation or limit metadata.
 
+Opened messages render their stored `bodyHtml` (`teamInbox.getMessageHtml`, loaded
+per message) in a script-free sandboxed frame (`components/inbox/email-html-body.tsx`)
+that drops active content and unsafe URLs and folds quoted history behind a toggle;
+forwards keep it open. Quote containers and attributions the server parser misses
+(`lib/email-quote.ts`: "… wrote:" lines with an address, time or year, Outlook
+header blocks) also fold plain-text bodies. When none matches, each new inbound
+message of six or more lines gets one Jev request (`convex/actions/teamEmailQuotes.ts`,
+task `team_email_quoted_history`): a Noul for whether history is quoted and a
+Choice for its first line, both at the proceed threshold. The line is stored as
+`quotedHistoryStart` (null for a confident "no history") and the reader folds
+there. Failures or uncertainty store nothing and the message shows unfolded. Ingestion records each part's MIME Content-ID (unfiled
+`contentId`, filed `inlineFiles`) so `cid:` images resolve to their files and are
+not repeated as attachment chips. Image attachments the HTML does not show inline
+(signatures, logos) get one Noul each (`convex/actions/teamEmailAttachments.ts`, task
+`team_email_decorative_images`) over name, type, size and the email text; those at the
+proceed threshold are stored in `decorativeAttachmentIds` and hidden from the chips.
+Confident verdicts are remembered per sender and content hash (`teamEmailImageJudgments`), so a repeated signature is never judged again. Failures or uncertainty keep every attachment listed. Attachments are listed above the body.
+
 The shared request and main Inbox use Inbox, Sent, All mail and Archived pill
 tabs. Inbox contains conversations whose latest message is inbound; Sent contains
 those whose latest message is outbound, so a new reply returns a conversation to
@@ -84,14 +102,18 @@ the same team tables.
 
 ## Sending and recovery
 
-Web, channel and operator MCP callers use the current operator identity. An ad hoc
+Web, channel and operator MCP callers use the current operator identity; in the
+web inbox a reply or new email can instead be sent as any active operator with a
+team address (`fromUserId`), signed as them, with the clicking operator recorded as
+the approver. An ad hoc
 draft needs no client; attaching a client file or policy requires an exact client
 first. Updating a draft re-signs it as the current operator and invalidates its
 previous approval. Tenant send APIs, client review links and scheduled client sends
 reject operator drafts.
 
 An exact approval binds the complete payload, signer, From, Always CC snapshot,
-attachments and conversation links. The approver must be the signer. A durable
+attachments and conversation links. The approver must be the signer, except for web inbox replies and new emails,
+which any active operator may approve as another. A durable
 claim locks the draft before external work, and a final transaction rechecks the
 active operator, run, target and approval immediately before sending. Inbox draft
 and send keys include the full content fingerprint. A known delivered message is

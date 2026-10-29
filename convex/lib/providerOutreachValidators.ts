@@ -147,12 +147,20 @@ export const inboxEmailValidator = v.object({
 });
 export type InboxEmail = Infer<typeof inboxEmailValidator>;
 
+/** A MIME Content-ID as HTML references it after `cid:`; undefined when absent. */
+export function normalizeContentId(value: string | null | undefined) {
+  const id = value?.trim().replace(/^<(.*)>$/, "$1").trim();
+  return id ? id.slice(0, 500) : undefined;
+}
+
 /** Attachment already uploaded to Convex storage by the action. */
 export const inboxAttachmentValidator = v.object({
   fileId: v.id("_storage"),
   filename: v.string(),
   contentType: v.string(),
   size: v.number(),
+  /** MIME Content-ID without angle brackets; inline parts are referenced as `cid:` in the HTML. */
+  contentId: v.optional(v.string()),
 });
 
 export const replyClassificationValidator = v.union(

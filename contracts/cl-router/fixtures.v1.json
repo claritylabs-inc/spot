@@ -120,6 +120,23 @@
       ]
     },
     {
+      "name": "durable job submission",
+      "method": "post",
+      "path": "/v1/jobs",
+      "request": {
+        "required": true,
+        "mediaType": "application/json",
+        "schema": "JobSubmissionRequest"
+      },
+      "responses": [
+        {
+          "status": "202",
+          "mediaType": "application/json",
+          "schema": "JobStatusResponse"
+        }
+      ]
+    },
+    {
       "name": "capabilities",
       "method": "get",
       "path": "/v1/capabilities",
@@ -280,6 +297,378 @@
         },
         "finishReason": "stop",
         "requestId": "router_request_generation_fixture"
+      }
+    },
+    {
+      "name": "Spot operator step request with reasoning continuity",
+      "schema": "GenerateRequest",
+      "value": {
+        "tenantId": "glass",
+        "primitive": "text",
+        "system": "You are Spot's internal operator agent.",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Which clients renew next month?"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "reasoning",
+                "text": "List client organizations first.",
+                "provider": "openai",
+                "providerMetadata": {
+                  "openai": {
+                    "itemId": "rs_fixture",
+                    "reasoningEncryptedContent": "gAAAA_fixture"
+                  }
+                }
+              },
+              {
+                "type": "tool-call",
+                "toolCallId": "call_fixture",
+                "toolName": "search_organizations",
+                "input": {
+                  "type": "client"
+                },
+                "providerMetadata": {
+                  "openai": {
+                    "itemId": "fc_fixture"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": [
+              {
+                "type": "tool-result",
+                "toolCallId": "call_fixture",
+                "toolName": "search_organizations",
+                "output": {
+                  "type": "json",
+                  "value": {
+                    "organizations": []
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "maxTokens": 8192,
+        "reasoning": {
+          "effort": "low",
+          "include": true
+        },
+        "tools": [
+          {
+            "name": "search_organizations",
+            "description": "Search organizations.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "trace": {
+          "traceId": "trace_operator_fixture",
+          "parentRequestId": "router_request_previous_fixture"
+        }
+      }
+    },
+    {
+      "name": "Spot operator step response with reasoning message",
+      "schema": "GenerateResponse",
+      "value": {
+        "output": {
+          "text": "",
+          "toolCalls": [
+            {
+              "toolCallId": "call_fixture_2",
+              "toolName": "list_policies",
+              "input": {
+                "status": "active"
+              }
+            }
+          ]
+        },
+        "usage": {
+          "inputTokens": 120,
+          "outputTokens": 18,
+          "cachedInputTokens": 24,
+          "cacheWriteTokens": 6,
+          "reasoningTokens": 3
+        },
+        "costUsd": 0.001234,
+        "costStatus": "priced",
+        "model": {
+          "provider": "openai",
+          "model": "fixture-reasoning-model"
+        },
+        "routing": {
+          "decision": "routed",
+          "primitive": "text",
+          "difficulty": "standard",
+          "requiredTier": 2,
+          "selectedTier": 2,
+          "route": {
+            "provider": "openai",
+            "model": "fixture-reasoning-model"
+          },
+          "source": "jev",
+          "attemptCount": 1
+        },
+        "finishReason": "tool-calls",
+        "requestId": "router_request_operator_fixture",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "reasoning",
+              "text": "No clients matched; check policies.",
+              "provider": "openai",
+              "providerMetadata": {
+                "openai": {
+                  "itemId": "rs_fixture",
+                  "reasoningEncryptedContent": "gAAAA_fixture"
+                }
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_fixture_2",
+              "toolName": "list_policies",
+              "input": {
+                "status": "active"
+              },
+              "providerMetadata": {
+                "openai": {
+                  "itemId": "fc_fixture_2"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Spot operator agent-loop step request",
+      "schema": "GenerateRequest",
+      "value": {
+        "tenantId": "glass",
+        "primitive": "text",
+        "system": "You are Spot's internal operator agent.",
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "Which clients renew next month?"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool-call",
+                "toolCallId": "call_fixture",
+                "toolName": "search_organizations",
+                "input": {
+                  "type": "client"
+                }
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": [
+              {
+                "type": "tool-result",
+                "toolCallId": "call_fixture",
+                "toolName": "search_organizations",
+                "output": {
+                  "type": "json",
+                  "value": {
+                    "organizations": []
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "maxTokens": 8192,
+        "reasoning": {
+          "include": true
+        },
+        "tools": [
+          {
+            "name": "search_organizations",
+            "description": "Search organizations.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "cache": {
+          "key": "operator:run_fixture"
+        },
+        "loop": {
+          "previous": {
+            "route": {
+              "provider": "openai",
+              "model": "fixture-reasoning-model"
+            },
+            "difficulty": "standard"
+          }
+        },
+        "parallelToolCalls": true,
+        "trace": {
+          "traceId": "trace_operator_fixture"
+        }
+      }
+    },
+    {
+      "name": "Router loop-reused step response",
+      "schema": "GenerateResponse",
+      "value": {
+        "output": {
+          "text": "",
+          "toolCalls": [
+            {
+              "toolCallId": "call_fixture_2",
+              "toolName": "list_policies",
+              "input": {
+                "status": "active"
+              }
+            }
+          ]
+        },
+        "usage": {
+          "inputTokens": 120,
+          "outputTokens": 18,
+          "cachedInputTokens": 24,
+          "cacheWriteTokens": 6,
+          "reasoningTokens": 3
+        },
+        "costUsd": 0.001234,
+        "costStatus": "priced",
+        "model": {
+          "provider": "openai",
+          "model": "fixture-reasoning-model"
+        },
+        "routing": {
+          "decision": "routed",
+          "primitive": "text",
+          "difficulty": "standard",
+          "requiredTier": 2,
+          "selectedTier": 2,
+          "route": {
+            "provider": "openai",
+            "model": "fixture-reasoning-model"
+          },
+          "source": "loop",
+          "attemptCount": 1
+        },
+        "finishReason": "tool-calls",
+        "requestId": "router_request_loop_fixture",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "reasoning",
+              "text": "No clients matched; check policies.",
+              "provider": "openai",
+              "providerMetadata": {
+                "openai": {
+                  "itemId": "rs_fixture",
+                  "reasoningEncryptedContent": "gAAAA_fixture"
+                }
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_fixture_2",
+              "toolName": "list_policies",
+              "input": {
+                "status": "active"
+              },
+              "providerMetadata": {
+                "openai": {
+                  "itemId": "fc_fixture_2"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Spot inline durable job submission",
+      "schema": "JobSubmissionRequest",
+      "value": {
+        "tenantId": "glass",
+        "idempotencyKey": "operator:run_fixture:1:0",
+        "fingerprint": "db781d7828084a45eaa7fbd9de4346ea911cd207f6dcb0cf5b7474fd2015d8f5",
+        "operation": "generate",
+        "stream": true,
+        "input": "{\"tenantId\":\"glass\",\"primitive\":\"text\",\"system\":\"You are Spot's internal operator agent.\",\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Which clients renew next month?\"}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"tool-call\",\"toolCallId\":\"call_fixture\",\"toolName\":\"search_organizations\",\"input\":{\"type\":\"client\"}}]},{\"role\":\"tool\",\"content\":[{\"type\":\"tool-result\",\"toolCallId\":\"call_fixture\",\"toolName\":\"search_organizations\",\"output\":{\"type\":\"json\",\"value\":{\"organizations\":[]}}}]}],\"maxTokens\":8192,\"reasoning\":{\"include\":true},\"tools\":[{\"name\":\"search_organizations\",\"description\":\"Search organizations.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\"}}}}],\"cache\":{\"key\":\"operator:run_fixture\"},\"loop\":{\"previous\":{\"route\":{\"provider\":\"openai\",\"model\":\"fixture-reasoning-model\"},\"difficulty\":\"standard\"}},\"parallelToolCalls\":true,\"trace\":{\"traceId\":\"trace_operator_fixture\"}}",
+        "resultUrl": "https://spot.example.com/router-jobs/result?token=fixture"
+      }
+    },
+    {
+      "name": "Router capabilities with agent-loop features",
+      "schema": "CapabilitiesResponse",
+      "value": {
+        "apiVersion": "v1",
+        "credentialMode": "router",
+        "features": [
+          "inline_job_input",
+          "prompt_cache_key",
+          "agent_loop",
+          "parallel_tool_calls"
+        ],
+        "providers": [],
+        "models": [
+          {
+            "provider": "openai",
+            "model": "fixture-reasoning-model",
+            "configured": true,
+            "primitives": [
+              "text",
+              "reasoning"
+            ],
+            "capabilities": {
+              "vision": true,
+              "tools": true,
+              "structuredOutput": true,
+              "embedding": false,
+              "audioInput": false,
+              "promptCacheKey": true,
+              "parallelToolCalls": true
+            }
+          }
+        ],
+        "webRetrieval": {
+          "providers": []
+        }
       }
     },
     {

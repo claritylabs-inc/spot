@@ -11,6 +11,7 @@ import type {
   LanguageModelV3StreamResult,
   LanguageModelV3Usage,
   SharedV3ProviderMetadata,
+  SharedV3ProviderOptions,
   SharedV3Warning,
 } from "@ai-sdk/provider";
 import {
@@ -29,6 +30,8 @@ import {
   type ClRouterGenerateResponse,
   type ClRouterMessage,
   type ClRouterMessagePart,
+  type ClRouterProviderMetadata,
+  type ClRouterReasoningOptions,
   type ClRouterResponseMetadata,
   type ClRouterToolDefinition,
   type ClRouterUsage,
@@ -48,6 +51,11 @@ export type ClRouterLanguageModelStep = {
   toolNames?: string[];
 };
 
+export type ClRouterAgentStepOptions = Pick<
+  ClRouterGenerateRequest,
+  "cache" | "loop" | "parallelToolCalls"
+>;
+
 export type ClRouterLanguageModelOptions = {
   task: ModelTask;
   taskKind?: string;
@@ -64,6 +72,15 @@ export type ClRouterLanguageModelOptions = {
     cleanup: () => void | Promise<void>;
   }>;
   client?: ClRouterClientOptions;
+  /**
+   * Opt-in reasoning control. With `include`, generated content carries the
+   * router's reasoning parts and provider metadata, and assistant reasoning
+   * parts in the prompt are sent back instead of dropped. Streams send only
+   * `effort`.
+   */
+  reasoning?: ClRouterReasoningOptions;
+  /** Agent-loop request fields, sent only when the router advertises them. */
+  agentStep?: ClRouterAgentStepOptions;
   onResponse?: (
     response: ClRouterResponseMetadata,
     step: ClRouterLanguageModelStep,
@@ -149,11 +166,32 @@ async function stageAsset(
       };
 }
 
+// Spot's namespace in part provider metadata: which route produced a
+// reasoning part. Stripped before the metadata goes back to cl-router.
+const ROUTER_SOURCE_KEY = "cl-router";
+
+/** Present only for callers that opted into reasoning continuity. */
+type ReasoningReplay = { pinnedRoute?: ModelRoute };
+
+function routerContinuation(options: SharedV3ProviderOptions | undefined): {
+  source?: ModelRoute;
+  metadata?: ClRouterProviderMetadata;
+} {
+  const { [ROUTER_SOURCE_KEY]: source, ...metadata } = options ?? {};
+  return {
+    ...(typeof source?.provider === "string" && typeof source.model === "string"
+      ? { source: { provider: source.provider, model: source.model } }
+      : {}),
+    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+  };
+}
+
 async function messageParts(
   content: Exclude<LanguageModelV3Prompt[number]["content"], string>,
   fetchImpl: typeof globalThis.fetch,
   environment: Readonly<Record<string, string | undefined>>,
   state: StagedAssetState,
+  replay?: ReasoningReplay,
 ): Promise<ClRouterMessagePart[]> {
   const parts: ClRouterMessagePart[] = [];
   for (const part of content) {
@@ -201,14 +239,19 @@ async function messageParts(
         );
         break;
       }
-      case "tool-call":
+      case "tool-call": {
+        const { metadata } = replay
+          ? routerContinuation(part.providerOptions)
+          : {};
         parts.push({
           type: "tool-call",
           toolCallId: part.toolCallId,
           toolName: part.toolName,
           input: part.input,
+          ...(metadata ? { providerMetadata: metadata } : {}),
         });
         break;
+      }
       case "tool-result":
         parts.push({
           type: "tool-result",
@@ -217,9 +260,28 @@ async function messageParts(
           output: part.output,
         });
         break;
-      case "reasoning":
-        // Router providers should not receive hidden reasoning as ordinary text.
+      case "reasoning": {
+        // Router providers never receive hidden reasoning as ordinary text.
+        // Opted-in calls return it as a typed part, which cl-router passes
+        // only to the provider that produced it. Reasoning from another model
+        // than the current pin predates a route change and is dropped.
+        if (!replay) break;
+        const { source, metadata } = routerContinuation(part.providerOptions);
+        const pin = replay.pinnedRoute;
+        if (
+          !source ||
+          (pin &&
+            (pin.provider !== source.provider || pin.model !== source.model))
+        )
+          break;
+        parts.push({
+          type: "reasoning",
+          text: part.text,
+          provider: source.provider,
+          ...(metadata ? { providerMetadata: metadata } : {}),
+        });
         break;
+      }
       case "tool-approval-response":
         throw new ClRouterRequestError(
           "configuration",
@@ -235,6 +297,7 @@ async function clRouterMessagesFromPromptWithState(
   fetchImpl: typeof globalThis.fetch,
   environment: Readonly<Record<string, string | undefined>>,
   state: StagedAssetState,
+  replay?: ReasoningReplay,
 ): Promise<ClRouterMessage[]> {
   const messages: ClRouterMessage[] = [];
   for (const message of prompt) {
@@ -249,6 +312,7 @@ async function clRouterMessagesFromPromptWithState(
         fetchImpl,
         environment,
         state,
+        replay,
       ),
     });
   }
@@ -319,6 +383,7 @@ function unsupportedWarnings(
 async function requestForCall(
   adapter: ClRouterLanguageModelOptions,
   options: LanguageModelV3CallOptions,
+  stream: boolean,
   parentRequestId?: string,
   assetState?: StagedAssetState,
 ): Promise<ClRouterGenerateRequest> {
@@ -335,7 +400,16 @@ async function requestForCall(
     assetState ?? {
       decodedBytes: 0,
     },
+    adapter.reasoning?.include
+      ? { pinnedRoute: adapter.initialRoutePin }
+      : undefined,
   );
+  // Spot's stream parser and durable stream replay carry no reasoning events,
+  // so streams request effort only.
+  const reasoning =
+    adapter.reasoning && stream
+      ? { effort: adapter.reasoning.effort }
+      : adapter.reasoning;
   const mapping = mapSpotCallToClRouterPrimitive({
     task: adapter.task,
     taskKind: adapter.taskKind,
@@ -358,6 +432,8 @@ async function requestForCall(
         }
       : {}),
     ...(options.maxOutputTokens ? { maxTokens: options.maxOutputTokens } : {}),
+    ...(reasoning?.effort || reasoning?.include ? { reasoning } : {}),
+    ...adapter.agentStep,
     ...(tools.length > 0 ? { tools } : {}),
     ...(trace ? { trace } : {}),
   };
@@ -529,6 +605,84 @@ function generatedContent(
   return [{ type: "text", text: JSON.stringify(response.output) }];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isProviderMetadata(value: unknown): value is ClRouterProviderMetadata {
+  return isRecord(value) && Object.values(value).every(isRecord);
+}
+
+/**
+ * The router's ordered assistant message as AI SDK content, so response
+ * messages keep reasoning parts and provider metadata for the next step.
+ * Reasoning parts record the route that produced them. Returns undefined when
+ * the message is malformed or disagrees with the generated text and tool
+ * calls; the step then continues without reasoning continuity.
+ */
+function continuationContent(
+  response: ClRouterGenerateResponse,
+  generated: LanguageModelV3Content[],
+): LanguageModelV3Content[] | undefined {
+  const message = response.message;
+  if (!isRecord(message) || message.role !== "assistant") return undefined;
+  const parts: unknown =
+    typeof message.content === "string"
+      ? [{ type: "text", text: message.content }]
+      : message.content;
+  if (!Array.isArray(parts)) return undefined;
+  const content: LanguageModelV3Content[] = [];
+  for (const part of parts) {
+    if (!isRecord(part)) return undefined;
+    const metadata = part.providerMetadata;
+    if (metadata !== undefined && !isProviderMetadata(metadata))
+      return undefined;
+    if (part.type === "text" && typeof part.text === "string") {
+      if (part.text) content.push({ type: "text", text: part.text });
+    } else if (
+      part.type === "reasoning" &&
+      typeof part.text === "string" &&
+      typeof part.provider === "string"
+    ) {
+      content.push({
+        type: "reasoning",
+        text: part.text,
+        providerMetadata: {
+          ...metadata,
+          [ROUTER_SOURCE_KEY]: {
+            provider: part.provider,
+            model: response.model.model,
+          },
+        } as SharedV3ProviderMetadata,
+      });
+    } else if (
+      part.type === "tool-call" &&
+      typeof part.toolCallId === "string" &&
+      typeof part.toolName === "string"
+    ) {
+      content.push({
+        type: "tool-call",
+        toolCallId: part.toolCallId,
+        toolName: part.toolName,
+        input: jsonInput(part.input),
+        ...(metadata
+          ? { providerMetadata: metadata as SharedV3ProviderMetadata }
+          : {}),
+      });
+    } else return undefined;
+  }
+  const visible = (parts: LanguageModelV3Content[]) =>
+    JSON.stringify([
+      contentText(parts),
+      parts.flatMap((part) =>
+        part.type === "tool-call"
+          ? [[part.toolCallId, part.toolName, part.input]]
+          : [],
+      ),
+    ]);
+  return visible(content) === visible(generated) ? content : undefined;
+}
+
 function contentToolNames(content: LanguageModelV3Content[]): string[] {
   return content
     .filter(
@@ -538,11 +692,14 @@ function contentToolNames(content: LanguageModelV3Content[]): string[] {
     .map((part) => part.toolName);
 }
 
+function contentText(content: LanguageModelV3Content[]): string {
+  return content
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("");
+}
+
 function contentTextLength(content: LanguageModelV3Content[]): number {
-  return content.reduce(
-    (length, part) => length + (part.type === "text" ? part.text.length : 0),
-    0,
-  );
+  return contentText(content).length;
 }
 
 function completedStepTelemetry(
@@ -628,6 +785,7 @@ export function createClRouterLanguageModel(
           await requestForCall(
             adapter,
             options,
+            false,
             parentRequestId,
             assetState,
           ),
@@ -645,11 +803,22 @@ export function createClRouterLanguageModel(
         } catch (error) {
           throw failureWithResponseContext(error, response);
         }
+        if (adapter.reasoning?.include) {
+          const continued = continuationContent(response, content);
+          if (continued) content = continued;
+          else
+            console.warn(
+              "[cl-router] Response message unusable; continuing without reasoning",
+              { requestId: response.requestId },
+            );
+        }
         parentRequestId = response.requestId;
         successfulRouterSteps += 1;
         const rawFinishReason = response.finishReason ?? "stop";
+        // Telemetry never carries the reasoning message.
+        const { message: _message, ...metadata } = response;
         await notifyResponse(
-          response,
+          metadata,
           completedStepTelemetry(step, options, rawFinishReason, content),
         );
         return {
@@ -680,6 +849,7 @@ export function createClRouterLanguageModel(
           await requestForCall(
             adapter,
             options,
+            true,
             parentRequestId,
             assetState,
           ),
