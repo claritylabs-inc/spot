@@ -2,7 +2,7 @@
 
 import { useState, type KeyboardEvent } from "react";
 import { useAction, useQuery } from "convex/react";
-import { Check, FileInput, Loader2 } from "lucide-react";
+import { Check, FileInput, Layers, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenuGroup,
@@ -23,6 +23,7 @@ import {
 } from "@/convex/lib/linesOfBusiness";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
+import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const coverages = PROVIDER_ACORD_LOB_CODES.map((value) => ({
@@ -165,15 +166,27 @@ export function AttachmentSubmissionMenu({
       <DropdownMenuSubTrigger openOnHover={false}>
         <FileInput /> Use as default application form
       </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="w-72 max-w-[calc(100vw-2rem)]">
+      <DropdownMenuSubContent className="w-80 max-w-[min(var(--available-width),calc(100vw-2rem))]">
         <DropdownMenuSub open={providerOpen} onOpenChange={setProviderOpen}>
           <DropdownMenuSubTrigger openOnHover={false} disabled={saving}>
-            Provider:{" "}
-            <span className="truncate">
-              {selectedProvider?.name ?? "Choose provider"}
+            <OrgBrandIcon
+              name={selectedProvider?.name ?? "Provider"}
+              iconUrl={selectedProvider?.iconUrl}
+              website={selectedProvider?.website}
+              size="xs"
+            />
+            <span className="min-w-0 flex-1 py-0.5">
+              <span
+                className={`block text-muted-foreground ${typeStyle("caption.default")}`}
+              >
+                Provider
+              </span>
+              <span className="block truncate">
+                {selectedProvider?.name ?? "Choose provider"}
+              </span>
             </span>
           </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-72 max-w-[calc(100vw-2rem)]">
+          <DropdownMenuSubContent className="w-80 max-w-[min(var(--available-width),calc(100vw-2rem))]">
             <DropdownMenuGroup>
               <DropdownMenuLabel>Provider</DropdownMenuLabel>
               <Input
@@ -209,12 +222,19 @@ export function AttachmentSubmissionMenu({
         </DropdownMenuSub>
         <DropdownMenuSub open={coverageOpen} onOpenChange={setCoverageOpen}>
           <DropdownMenuSubTrigger openOnHover={false} disabled={saving}>
-            Coverage:{" "}
-            <span className="truncate">
-              {coverageCode ? lobLabel(coverageCode) : "Choose coverage"}
+            <Layers className="text-muted-foreground" />
+            <span className="min-w-0 flex-1 py-0.5">
+              <span
+                className={`block text-muted-foreground ${typeStyle("caption.default")}`}
+              >
+                Coverage line
+              </span>
+              <span className="block truncate">
+                {coverageCode ? lobLabel(coverageCode) : "Choose coverage"}
+              </span>
             </span>
           </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-72 max-w-[calc(100vw-2rem)]">
+          <DropdownMenuSubContent className="w-80 max-w-[min(var(--available-width),calc(100vw-2rem))]">
             <DropdownMenuGroup>
               <DropdownMenuLabel>Coverage line</DropdownMenuLabel>
               <Input

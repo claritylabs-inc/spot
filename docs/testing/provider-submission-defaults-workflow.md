@@ -70,3 +70,17 @@ coverage selection, and successful save in the dropdown. The duplicate source
 kept one stored form and preserved both questions and the existing process notes.
 Root TypeScript, scoped ESLint and whitespace checks passed. The separate
 source-question editor remains available from Message options.
+
+Attachment positioning refinement: patched the shared dropdown primitive through
+patch-package so menus portal to the document body instead of inheriting the inline
+SidePanel dialog portal inside a clipped resizable pane. Collision settings reach
+the Base UI positioner; submenus prefer inline-end, flip horizontally, and use a
+vertical fallback only when horizontal space is insufficient. The minimum width
+respects available space. Provider/coverage rows use existing brand icons,
+typography and a caption above the selected value. Helium verified the full-width
+menu opening right over the PDF pane, nested coverage opening left, searchable
+coverage selection returning to an enabled Save action, and the parent form menu
+flipping left near the window edge. At 393 × 852, the menu falls below the parent
+and preserves readable labels. Device emulation and DevTools were closed afterward.
+Root TypeScript and scoped ESLint passed; the UI patch was reverse-applied then
+re-applied successfully with the existing postinstall patch-package command.
