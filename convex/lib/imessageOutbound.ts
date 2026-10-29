@@ -147,7 +147,7 @@ async function sendOutboundImessageWithResult(
     logPrefix?: string;
   },
 ): Promise<ImessageSendResult> {
-  if (!isImessageWebhookTransportEnabled("customer")) {
+  if (!isImessageWebhookTransportEnabled()) {
     return { ok: false, attachmentFailures: [] };
   }
   if (!params.toPhone && !params.chatGuid) {
@@ -167,7 +167,7 @@ async function sendOutboundImessageWithResult(
   if (!message) return { ok: false, attachmentFailures: [] };
 
   const { sendImessageViaSpectrum } = await import("./imessageSpectrum");
-  const result = await sendImessageViaSpectrum(ctx, "customer", {
+  const result = await sendImessageViaSpectrum(ctx, {
     toPhone: params.toPhone,
     chatGuid: params.chatGuid,
     message,

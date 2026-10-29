@@ -67,10 +67,7 @@ export const createOutboundImessageGroupInternal = internalAction({
       };
     }
 
-    if (
-      !isImessageWebhookTransportEnabled("customer") ||
-      !getSpectrumCredentials("customer")
-    ) {
+    if (!isImessageWebhookTransportEnabled() || !getSpectrumCredentials()) {
       return {
         status: "unavailable" as const,
         reason: "iMessage is not configured for outbound group creation.",
@@ -86,7 +83,6 @@ export const createOutboundImessageGroupInternal = internalAction({
     const { sendImessageViaSpectrum } = await import("../lib/imessageSpectrum");
     const body: WorkerGroupResponse = await sendImessageViaSpectrum(
       ctx,
-      "customer",
       groupRequest,
     );
     if (!body.ok || !body.chatGuid) {

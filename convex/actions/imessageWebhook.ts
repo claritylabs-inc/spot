@@ -11,11 +11,7 @@ import type {
   ImessageRequest,
   ImessageResponse,
 } from "../lib/imessageTransport/convex";
-import { MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS } from "../lib/agentAttachmentLimits";
-import {
-  isImessageWebhookTransportEnabled,
-  type ImessageChannelRole,
-} from "../lib/imessageConfig";
+import { isImessageWebhookTransportEnabled } from "../lib/imessageConfig";
 import { recordImessageAttachmentDeliveryFailures } from "../lib/imessageDeliveryEvents";
 import { normalizeInboundImessageSender } from "../lib/imessageIngress";
 import {
@@ -34,7 +30,6 @@ import {
   type SpectrumApp,
 } from "../lib/imessageSpectrum";
 
-const roleValidator = v.union(v.literal("customer"), v.literal("operator"));
 const MAX_SETUP_RETRIES = 2;
 
 function errorMessage(error: unknown): string {
@@ -47,36 +42,19 @@ function processingFallbackMessage(error: unknown): string {
     : "Sorry, something went wrong. Please try again.";
 }
 
-/** Calls the same internal handlers the worker reached via `/imessage-inbound`. */
+/** Calls the same internal handler the worker reached via `/imessage-inbound`. */
 async function runInboundHandler(
   ctx: ActionCtx,
-  role: ImessageChannelRole,
   request: ImessageRequest,
 ): Promise<ImessageResponse> {
-  if (role === "customer") {
-    return await ctx.runAction(
-      internal.actions.handleInboundImessage.processInbound,
-      request,
-    );
-  }
-  const encodedAttachmentChars = (request.attachments ?? []).reduce(
-    (total, attachment) => total + attachment.data.length,
-    0,
-  );
-  if (encodedAttachmentChars > MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS) {
-    throw new Error(
-      "Operator iMessage attachments exceed the 3.5 million-character encoded transport limit",
-    );
-  }
   return await ctx.runAction(
-    internal.actions.handleInboundOperatorImessage.processInbound,
+    internal.actions.handleInboundImessage.processInbound,
     request,
   );
 }
 
 async function handleInboundTurn(
   ctx: ActionCtx,
-  role: ImessageChannelRole,
   app: SpectrumApp,
   space: Space,
   message: Message,
@@ -97,7 +75,6 @@ async function handleInboundTurn(
   const fromPhone = normalizeInboundImessageSender(rawSenderId);
   const chatSnapshot = await getChatSnapshot(app, space);
   console.log("[imessage-webhook] Received inbound message", {
-    role,
     fromPhone,
     chatGuid: chatSnapshot.chatGuid,
     isGroup: chatSnapshot.isGroup,
@@ -126,7 +103,7 @@ async function handleInboundTurn(
     }
 
     const result = await withTypingIndicator(space, async () => {
-      return await runInboundHandler(ctx, role, {
+      return await runInboundHandler(ctx, {
         fromPhone,
         messageText: normalizedTurn.messageText,
         chatGuid: chatSnapshot.chatGuid,
@@ -172,7 +149,7 @@ async function handleInboundTurn(
         result.response,
       );
     }
-    if (role === "customer" && result.sendContactCard) {
+    if (result.sendContactCard) {
       try {
         await sendSpotContactCard(space);
       } catch (error) {
@@ -188,7 +165,7 @@ async function handleInboundTurn(
       result.attachments,
     );
     if (attachmentFailures.length > 0 && result.threadMessageId) {
-      await recordImessageAttachmentDeliveryFailures(ctx, role, {
+      await recordImessageAttachmentDeliveryFailures(ctx, {
         threadMessageId: result.threadMessageId,
         attachmentFailures,
       });
@@ -215,38 +192,33 @@ async function handleInboundTurn(
  */
 export const processMessage = internalAction({
   args: {
-    role: roleValidator,
     body: v.bytes(),
     attempt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    if (!isImessageWebhookTransportEnabled(args.role)) {
+    if (!isImessageWebhookTransportEnabled()) {
       console.warn(
         "[imessage-webhook] Dropping delivery accepted before the webhook transport was disabled",
-        { role: args.role },
       );
       return null;
     }
     try {
-      await withSpectrumApp(args.role, async (app, webhookSecret) => {
+      await withSpectrumApp(async (app, webhookSecret) => {
         const turn = await resolveWebhookTurn(
           app,
           webhookSecret,
           new Uint8Array(args.body),
         );
         if (!turn) {
-          console.warn("[imessage-webhook] Delivery produced no message", {
-            role: args.role,
-          });
+          console.warn("[imessage-webhook] Delivery produced no message");
           return;
         }
-        await handleInboundTurn(ctx, args.role, app, turn.space, turn.message);
+        await handleInboundTurn(ctx, app, turn.space, turn.message);
       });
     } catch (error) {
       const attempt = args.attempt ?? 0;
       if (attempt >= MAX_SETUP_RETRIES) throw error;
       console.warn("[imessage-webhook] Spectrum setup failed; retrying", {
-        role: args.role,
         attempt,
         error: errorMessage(error),
       });
