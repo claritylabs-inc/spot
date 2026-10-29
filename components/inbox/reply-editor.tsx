@@ -135,6 +135,7 @@ export function ReplyEditor({
   onSubmit,
   onEscape,
   className,
+  footer,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -148,6 +149,7 @@ export function ReplyEditor({
   onSubmit: () => void;
   onEscape: () => void;
   className?: string;
+  footer?: string;
 }) {
   const callbacks = useRef({ onChange, onFocusChange, onSubmit, onEscape, accept: (): boolean => false });
   useEffect(() => {
@@ -261,13 +263,18 @@ export function ReplyEditor({
           {placeholder}
         </span>
       ) : null}
-      <EditorContent
-        editor={editor}
-        className={cn(
-          "reply-editor max-h-72 min-h-28 overflow-y-auto px-4 py-2.5 [&_.ProseMirror]:min-h-23 [&_.ProseMirror]:outline-none [&_.ProseMirror]:whitespace-pre-wrap [&_p]:min-h-[1lh]",
-          typeStyle("body.default"),
-        )}
-      />
+      <div className="max-h-72 overflow-y-auto px-4 pt-2.5 pb-2">
+        <EditorContent
+          editor={editor}
+          className={cn(
+            "reply-editor [&_.ProseMirror]:min-h-6 [&_.ProseMirror]:outline-none [&_.ProseMirror]:whitespace-pre-wrap [&_p]:min-h-[1lh]",
+            typeStyle("body.default"),
+          )}
+        />
+        {footer ? (
+          <p className={`mt-3 whitespace-pre-line text-muted-foreground ${typeStyle("body.default")}`}>{footer}</p>
+        ) : null}
+      </div>
       {selected ? (
         <div
           className={`mx-4 mb-2 flex min-h-8 items-center gap-2 rounded-md bg-muted/60 py-1 pr-1 pl-2.5 text-muted-foreground ${typeStyle("caption.default")}`}

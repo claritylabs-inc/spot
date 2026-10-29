@@ -459,7 +459,7 @@ function OperatorNewEmailComposer({
           value={draft.message}
           disabled={disabled}
           onChange={(event) => update({ message: event.target.value })}
-          className="min-h-64 flex-1 py-4"
+          className="min-h-12 pt-4 pb-1"
         />
         {preview ? (
           <p className={`px-4 pb-4 whitespace-pre-line text-muted-foreground ${typeStyle("body.default")}`}>
