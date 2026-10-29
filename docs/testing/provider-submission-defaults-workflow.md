@@ -90,3 +90,16 @@ patch-package reapplication and whitespace checks passed. Native local codegen
 refreshed the API declarations for the two new email modules from main.
 Helium rechecked attachment right-click, left-opening submenu, provider search
 and selection after the rebase.
+
+Attachment spacing refinement: expanded the menu to 352px (still constrained by
+viewport/available width), increased row padding and icon-to-label spacing, and
+aligned the provider mark and coverage icon at 24px. Search headers use the shared
+InputGroup with a search icon, 12px inset, and a separate divider. Only results
+scroll inside the shared ScrollArea, so the header remains visible and native
+white scrollbar tracks are gone. Result labels wrap instead of truncating; both
+pickers share the same padding and height constraints. Save keeps its own inset
+separator/action row. Helium verified desktop provider scrolling with a fixed
+header, long-name wrapping, coverage search → ArrowDown → Enter selection, enabled
+Save after selection, and a readable nested picker at 393 × 852. Device emulation
+and DevTools were closed afterward. Root TypeScript, scoped ESLint and whitespace
+checks passed. Remote main remains `a61e149c`. No tests or migrations added.
