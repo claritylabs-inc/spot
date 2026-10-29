@@ -466,10 +466,11 @@ test("durable routed fallback reconnects even after the pin is removed", async (
     invocationKey: `${args.invocationKey}:routed`,
   }))!;
   expect(fallback.operation).toBe("generate");
-  const requestText = await t.run(async (ctx) =>
-    (await ctx.storage.get(fallback.requestStorageId!))!.text(),
-  );
-  expect(JSON.parse(requestText)).not.toHaveProperty("route");
+  expect(fallback.requestStorageId).toBeUndefined();
+  const requestText = await t.query(internal.routerJobs.getInlineRequest, {
+    id: fallback._id,
+  });
+  expect(JSON.parse(requestText!)).not.toHaveProperty("route");
   const storageId = await t.run((ctx) =>
     ctx.storage.store(new Blob([JSON.stringify(generation)])),
   );
@@ -625,6 +626,81 @@ test("a resumed step reconnects across a switch to inline job input", async () =
   expect(String(jobCalls(fetcher).at(-1)?.[0])).toMatch(
     /\/v1\/jobs\/router-job$/,
   );
+});
+
+// A small request is kept beside its job row by `prepare`, never uploaded.
+// A submission whose acknowledgement was lost must later resubmit those exact
+// fingerprinted bytes, never a rebuilt payload, and the requestUrl fallback
+// must serve them too.
+test("a lost acknowledgement resubmits the exact inline request bytes", async () => {
+  vi.stubEnv("SPOT_ENV", "local");
+  vi.stubEnv("CONVEX_SITE_URL", "http://127.0.0.1:3211");
+  vi.stubEnv("SPOT_ROUTER_CALLBACK_URL", "");
+  vi.stubEnv("CL_ROUTER_URL", "https://lost-ack-router.example.com");
+  vi.stubEnv("CL_ROUTER_SECRET", "x".repeat(32));
+  const t = convexTest(schema, modules);
+  let acknowledged = false;
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path === "/v1/capabilities")
+      return Response.json({ ...capabilities(), features: ["inline_job_input"] });
+    if (path === "/v1/jobs")
+      return acknowledged
+        ? Response.json({ jobId: "router-job" })
+        : Response.json({}, { status: 503 });
+    return Response.json({ status: "running" });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const invocationKey = "test:lost-ack:0";
+  const call = (prompt: string) =>
+    t.action((ctx) =>
+      executeDurableRouterRequest(
+        ctx,
+        "generate",
+        { primitive: "text", prompt },
+        invocationKey,
+        undefined,
+        { wait: "yield" },
+      ),
+    );
+  const submissions = () =>
+    jobCalls(fetcher)
+      .filter(([url]) => String(url).endsWith("/v1/jobs"))
+      .map(([, init]) => JSON.parse(String(init?.body)));
+
+  await expect(call("Original prompt")).rejects.toThrow("still running");
+  const row = (await t.query(internal.routerJobs.get, { invocationKey }))!;
+  expect(row.routerJobId).toBeUndefined();
+  expect(row.requestStorageId).toBeUndefined();
+  expect(
+    await t.run((ctx) => ctx.db.system.query("_storage").take(10)),
+  ).toHaveLength(0);
+  const stored = (await t.query(internal.routerJobs.getInlineRequest, {
+    id: row._id,
+  }))!;
+  expect(await routerJobTokenHash(stored)).toBe(row.fingerprint);
+  expect(submissions()[0]).toMatchObject({
+    fingerprint: row.fingerprint,
+    input: stored,
+  });
+
+  acknowledged = true;
+  await expect(call("Rebuilt prompt")).rejects.toThrow("still running");
+  expect(submissions()).toHaveLength(2);
+  expect(submissions()[1]).toMatchObject({
+    idempotencyKey: invocationKey,
+    fingerprint: row.fingerprint,
+    input: stored,
+  });
+  expect(
+    (await t.query(internal.routerJobs.get, { invocationKey }))?.routerJobId,
+  ).toBe("router-job");
+
+  const served = await t.fetch(
+    `/router-jobs/request?token=${row.requestToken}`,
+  );
+  expect(served.status).toBe(200);
+  expect(await served.text()).toBe(stored);
 });
 
 test("a durable unknown execution outcome cannot create a routed fallback", async () => {

@@ -6,7 +6,6 @@ import dayjs from "dayjs";
 import { ChevronDown, Clock3, Loader2, Reply, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@claritylabs-inc/ui/components/popover";
 import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { EmailComposeRow } from "@/components/email/compose-fields";
@@ -16,12 +15,7 @@ import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import {
-  AddressField,
-  AddressPills,
-  FromPicker,
-  useOperatorDirectory,
-} from "@/components/email/operator-address";
+import { AddressField, AddressPills, FromPicker } from "@/components/email/operator-address";
 import { useFollowedOpen, useFollowedState } from "@/hooks/use-followed-state";
 import { useActiveOperators } from "@/hooks/use-operator-presence";
 import { useSharedValue } from "@/hooks/use-shared-value";
@@ -77,6 +71,8 @@ const usedSuggestions = new Set<string>();
 const filledSuggestions = new Map<string, string>();
 // Spot's value for each blank by conversation, looked up once: null when it found none.
 const blankSuggestions = new Map<string, Map<string, BlankSuggestion | null | "pending">>();
+// Conversations already told their reply goes out as a new email.
+const toastedStandalone = new Set<string>();
 
 function readAttempt(id: string): SendAttempt | null {
   try {
@@ -175,8 +171,6 @@ function OperatorReplyComposer({
   );
   useSharedValue(`reply:${threadId}:follow-ups`, followUps, setFollowUps);
   const sendingAs = fromUserId === operatorId ? undefined : fromUserId;
-  const { operators, find } = useOperatorDirectory();
-  const senderName = operators?.find((person) => person.userId === fromUserId)?.name;
   const coEditors = useActiveOperators().filter(
     (person) =>
       !person.self &&
@@ -218,10 +212,19 @@ function OperatorReplyComposer({
   const [lastHeaders, setLastHeaders] = useState<typeof preview>(null);
   if (preview && preview !== lastHeaders) setLastHeaders(preview);
   const headers = hasText ? (preview ?? lastHeaders) : null;
+  const standalone = headers?.mode === "standalone";
+  useEffect(() => {
+    if (!standalone || toastedStandalone.has(id)) return;
+    toastedStandalone.add(id);
+    toast(
+      `Sends as a new email, since this conversation isn’t in ${sendingAs ? "their" : "your"} inbox.`,
+    );
+  }, [id, standalone, sendingAs]);
+  // The signature only changes with the sender, so it stays shown while the box is empty.
+  const signature = (preview ?? lastHeaders)?.signature;
   const [open, setOpen] = useFollowedState(`inbox:reply:${threadId}:open`, false);
   const [minimized, setMinimized] = useState(false);
   const previewError = current && previewResult && !previewResult.ok ? previewResult.reason : null;
-  const previewing = !locked && hasText && !missingTo && !preview && !previewError;
   const shownTo = recipients ? (recipients.to ? [recipients.to] : []) : (headers?.to ?? []);
   const shownCc = recipients?.cc ?? headers?.cc ?? [];
   const editRecipients = (next: Partial<ReplyRecipients>) =>
@@ -460,6 +463,11 @@ function OperatorReplyComposer({
               if (!hasText && !locked) setOpen(false);
             }}
           />
+          {signature ? (
+            <p className={`px-4 pb-2 whitespace-pre-line text-muted-foreground ${typeStyle("caption.default")}`}>
+              {signature}
+            </p>
+          ) : null}
           {preview ? (
             <div className="space-y-2 px-4 pb-2">
               <ShowQuotedButton
@@ -474,7 +482,7 @@ function OperatorReplyComposer({
               ) : null}
             </div>
           ) : null}
-          {previewing || previewError || preview || needsInput || missingTo || pendingRevision || sendingAs || coEditors.length ? (
+          {(pendingRevision && !unedited) || coEditors.length || previewError ? (
             <div className={`space-y-1 px-4 pb-2 text-muted-foreground ${typeStyle("caption.default")}`}>
               {pendingRevision && !unedited ? (
                 <p className="flex items-center gap-1.5">
@@ -485,39 +493,13 @@ function OperatorReplyComposer({
                   </button>
                 </p>
               ) : null}
-              {sendingAs ? (
-                <p>
-                  Sending as {senderName ?? "a teammate"}: it goes from their
-                  address and is signed as them.
-                </p>
-              ) : null}
               {coEditors.length ? (
                 <p>
                   {coEditors.map((person) => person.name.split(" ")[0]).join(" and ")}{" "}
                   {coEditors.length === 1 ? "is" : "are"} also editing this reply.
                 </p>
               ) : null}
-              {needsInput ? (
-                <p role="alert">Fill in each highlighted blank before sending.</p>
-              ) : null}
-              {missingTo ? <p role="alert">Add a recipient.</p> : null}
-              {previewing ? <p>Preparing preview…</p> : null}
               {previewError ? <p role="alert">{previewError}</p> : null}
-              {preview?.copiesOwner ? (
-                <p>
-                  {find(preview.copiesOwner)?.name ?? preview.copiesOwner} is copied as the
-                  conversation owner.
-                </p>
-              ) : null}
-              {preview?.mode === "standalone" ? (
-                <p>
-                  Sent from {sendingAs ? `${senderName ?? "their"}’s` : "your own"} inbox as a
-                  new email; it stays in this conversation.
-                </p>
-              ) : null}
-              {preview?.stopsFollowUps ? (
-                <p>Sending stops this conversation’s automatic follow-ups.</p>
-              ) : null}
             </div>
           ) : null}
           <div className="flex items-center gap-2 border-t border-border px-4 py-2">

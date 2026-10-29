@@ -20,6 +20,7 @@ import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { requireRequest } from "./procurementRequests";
 import { teamTargetProblem } from "./lib/teamEmailStore";
 import { CONSUMER_DOMAINS, normalizeProcurementEmail } from "./lib/procurement";
+import { providerForEmail } from "./lib/providerRecipients";
 
 async function requireProvider(
   ctx: QueryCtx | MutationCtx,
@@ -565,4 +566,10 @@ export const primaryDefaultInputInternal = internalQuery({
       })),
     };
   },
+});
+
+/** Whether an address belongs to a provider, for the provider-only signature line. */
+export const isProviderAddressInternal = internalQuery({
+  args: { email: v.string() },
+  handler: async (ctx, args) => !!(await providerForEmail(ctx, args.email)),
 });

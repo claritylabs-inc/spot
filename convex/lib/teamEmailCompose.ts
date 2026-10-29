@@ -3,6 +3,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { pendingEmailDraftFingerprint } from "./actionConfirmationFingerprint";
 import { extractEmailAddress } from "./emailAddress";
 import { operatorSenderIdentity } from "./outreachIdentity";
+import { doNotContactAddresses, doNotContactReason, providerForEmail } from "./providerRecipients";
 import { buildOperatorSignature } from "./teamEmail";
 import { teamTargetProblem } from "./teamEmailStore";
 import {
@@ -58,6 +59,8 @@ export type TeamComposePreview = {
   subject: string;
   text: string;
   html: string;
+  /** The sender's signature, appended below the typed message. */
+  signature: string;
   /** The client this email is filed under, if any. */
   client: { _id: Id<"organizations">; name: string } | null;
   /** The request this email is filed under, if any. */
@@ -100,6 +103,8 @@ export async function composeTeamEmail(
   }
   const machine = [recipientEmail, ...cc.valid, ...bcc.valid].filter(isMachineAddress);
   if (machine.length) return { ok: false, reason: `${machine.join(", ")} is a Spot system address.` };
+  const doNotContact = await doNotContactAddresses(ctx, [recipientEmail, ...cc.valid, ...bcc.valid]);
+  if (doNotContact.length) return { ok: false, reason: doNotContactReason(doNotContact) };
   if (!subject) return { ok: false, reason: "Add a subject." };
   if (subject.length > MAX_SUBJECT_CHARS) return { ok: false, reason: "The subject is too long." };
   if (!message) return { ok: false, reason: "Write a message." };
@@ -138,7 +143,10 @@ export async function composeTeamEmail(
   let signature: ReturnType<typeof buildOperatorSignature>;
   try {
     identity = await operatorSenderIdentity(ctx, args.operatorUserId);
-    signature = buildOperatorSignature({ name: identity.name, address: identity.teamAddress });
+    signature = buildOperatorSignature(
+      { name: identity.name, address: identity.teamAddress },
+      { toProvider: !!(await providerForEmail(ctx, recipientEmail)) },
+    );
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : "You cannot send email yet." };
   }
@@ -177,6 +185,7 @@ export async function composeTeamEmail(
       subject,
       text: fields.renderedText,
       html: fields.renderedHtml,
+      signature: signature.text,
       client,
       request,
       fingerprint,

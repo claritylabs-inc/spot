@@ -15,6 +15,7 @@ import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { inboxKind } from "./lib/inboxIds";
 import { getEmailDeliveryMode } from "./lib/resend";
 import { replyContextProblem } from "./lib/teamEmailReply";
+import { doNotContactAddresses, doNotContactReason } from "./lib/providerRecipients";
 import {
   SENDER_CHANGED_REASON,
   checkOperatorSendApproval,
@@ -155,6 +156,16 @@ export const getOperatorAttemptInternal = internalQuery({
   },
 });
 
+/** Spot never emails a Do Not Contact provider, checked at claim and again right before sending. */
+async function doNotContactRecipients(ctx: MutationCtx, draft: Doc<"pendingEmails">) {
+  const blocked = await doNotContactAddresses(ctx, [
+    draft.recipientEmail,
+    ...(draft.ccAddresses ?? []),
+    ...(draft.bccAddresses ?? []),
+  ]);
+  return blocked.length ? doNotContactReason(blocked) : null;
+}
+
 /** Without `confirmationId` the draft's own browser-reply approval is the grant. */
 export const claimOperatorInboxSendInternal = internalMutation({
   args: {
@@ -252,6 +263,8 @@ export const claimOperatorInboxSendInternal = internalMutation({
     }
     const context = await replyContextProblem(ctx, draft, args.confirmationId);
     if (context) return { kind: "rejected", reason: context } as const;
+    const blocked = await doNotContactRecipients(ctx, draft);
+    if (blocked) return { kind: "rejected", reason: blocked } as const;
     await assertNoOperatorImpersonation(ctx, senderUserId);
 
     const attemptId = await ctx.db.insert("emailDeliveryAttempts", {
@@ -337,6 +350,8 @@ export const beginOperatorInboxSendingInternal = internalMutation({
       attempt.operatorConfirmationId,
     );
     if (context) return refuse(context);
+    const blocked = await doNotContactRecipients(ctx, draft);
+    if (blocked) return refuse(blocked);
     try {
       await assertNoOperatorImpersonation(ctx, attempt.senderUserId);
     } catch {

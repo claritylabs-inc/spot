@@ -8,6 +8,7 @@ export const installCompactedContinuation = internalMutation({
     expectedRunnerAttempt: v.number(),
     expectedCheckpointIteration: v.number(),
     expectedStorageId: v.optional(v.id("_storage")),
+    expectedContinuationId: v.optional(v.id("operatorRunContinuations")),
     storageId: v.id("_storage"),
     mode: v.union(v.literal("model"), v.literal("deterministic")),
     skipped: v.optional(v.boolean()),
@@ -33,6 +34,7 @@ export const installCompactedContinuation = internalMutation({
       run.runnerAttempt !== args.expectedRunnerAttempt ||
       (run.checkpoint?.iteration ?? 0) !== args.expectedCheckpointIteration ||
       run.modelContinuationStorageId !== args.expectedStorageId ||
+      run.modelContinuationId !== args.expectedContinuationId ||
       run.checkpoint?.compaction?.iteration === args.expectedCheckpointIteration
     ) {
       if (args.storageId !== run?.modelContinuationStorageId)
@@ -49,6 +51,7 @@ export const installCompactedContinuation = internalMutation({
     };
     await ctx.db.patch(run._id, {
       modelContinuationStorageId: args.storageId,
+      modelContinuationId: undefined,
       checkpoint: {
         iteration: 0,
         executionCount: 0,
@@ -58,6 +61,8 @@ export const installCompactedContinuation = internalMutation({
     });
     if (run.modelContinuationStorageId)
       await ctx.storage.delete(run.modelContinuationStorageId);
+    if (run.modelContinuationId && (await ctx.db.get(run.modelContinuationId)))
+      await ctx.db.delete(run.modelContinuationId);
     return compaction;
   },
 });

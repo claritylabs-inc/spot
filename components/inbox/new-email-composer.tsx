@@ -463,7 +463,7 @@ function OperatorNewEmailComposer({
         />
         {preview ? (
           <p className={`px-4 pb-4 whitespace-pre-line text-muted-foreground ${typeStyle("caption.default")}`}>
-            {preview.text.slice(preview.text.lastIndexOf("\n\n", preview.text.length) + 2)}
+            {preview.signature}
           </p>
         ) : null}
       </div>

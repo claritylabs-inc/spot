@@ -10,6 +10,7 @@ import { forwardedCorrespondents } from "./teamEmailForwards";
 import { operatorEmailAliases, requireOperatorForUser } from "./operatorIdentity";
 import { isSpotOutboundAddress } from "./resend";
 import { buildOperatorSignature, teamOwnedDomains } from "./teamEmail";
+import { providerForEmail } from "./providerRecipients";
 import { teamTargetProblem } from "./teamEmailStore";
 
 type Ctx = QueryCtx | MutationCtx;
@@ -130,6 +131,8 @@ export type TeamReplyPreview = {
   /** The signed message as the recipient reads it, quoted history included. */
   text: string;
   html: string;
+  /** The sender's signature, appended below the typed message. */
+  signature: string;
   /** "thread": answered inside the sender's own inbox thread; "standalone": a new quoted "Re:". */
   mode: "thread" | "standalone";
   /** The thread owner copied on a standalone reply. */
@@ -308,7 +311,10 @@ export async function composeTeamReply(
   // Threaded only when the sender's inbox maps this conversation and holds a message to answer.
   const threaded = plan.threaded;
   const quote = threaded ? undefined : quotedHistory(latest);
-  const signature = buildOperatorSignature({ name: identity.name, address: identity.teamAddress });
+  const signature = buildOperatorSignature(
+    { name: identity.name, address: identity.teamAddress },
+    { toProvider: !!(await providerForEmail(ctx, recipientEmail)) },
+  );
   const renderedText = `${message}\n\n${signature.text}${quote ? `\n\n${quote.block}` : ""}`;
   const renderedHtml = `${paragraphsHtml(message)}${signature.html}${quote ? quoteHtml(quote.header, quote.block) : ""}`;
   const directReplyContext: TeamReplyContext =
@@ -356,6 +362,7 @@ export async function composeTeamReply(
       subject: fields.subject,
       text: renderedText,
       html: renderedHtml,
+      signature: signature.text,
       mode: directReplyContext.mode,
       ...(ownerAddress ? { copiesOwner: ownerAddress } : {}),
       stopsFollowUps: thread.source === "outreach" || (await hasLiveFollowUps(ctx, thread._id)),

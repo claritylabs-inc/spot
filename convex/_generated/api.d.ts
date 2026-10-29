@@ -444,6 +444,7 @@ import type * as lib_routerAssetSignature from "../lib/routerAssetSignature.js";
 import type * as lib_routerCapabilities from "../lib/routerCapabilities.js";
 import type * as lib_routerJobClient from "../lib/routerJobClient.js";
 import type * as lib_routerJobFailure from "../lib/routerJobFailure.js";
+import type * as lib_routerJobLimits from "../lib/routerJobLimits.js";
 import type * as lib_sdkCallbacks from "../lib/sdkCallbacks.js";
 import type * as lib_searchTokenizer from "../lib/searchTokenizer.js";
 import type * as lib_secretBox from "../lib/secretBox.js";
@@ -1053,6 +1054,7 @@ declare const fullApi: ApiFromModules<{
   "lib/routerCapabilities": typeof lib_routerCapabilities;
   "lib/routerJobClient": typeof lib_routerJobClient;
   "lib/routerJobFailure": typeof lib_routerJobFailure;
+  "lib/routerJobLimits": typeof lib_routerJobLimits;
   "lib/sdkCallbacks": typeof lib_sdkCallbacks;
   "lib/searchTokenizer": typeof lib_searchTokenizer;
   "lib/secretBox": typeof lib_secretBox;
