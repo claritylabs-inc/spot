@@ -377,6 +377,31 @@ async function routerControl(
   }
 }
 
+/**
+ * Optional metadata-only timing of one durable request: `submit` covers job
+ * lookup, request staging and the submission POST, `status` a reconnect's
+ * status check, `wait` the in-place wait (with its poll count) and `read` the
+ * result read. Observation only; it never changes waiting or retries.
+ */
+export type RouterJobTiming = {
+  phase(name: "submit" | "status" | "wait" | "read", ms: number, polls?: number): void;
+  job(invocationKey: string, routerJobId: string | undefined): void;
+};
+
+async function timed<T>(
+  timing: RouterJobTiming | undefined,
+  name: Parameters<RouterJobTiming["phase"]>[0],
+  run: () => Promise<T>,
+): Promise<T> {
+  if (!timing) return run();
+  const started = dayjs();
+  try {
+    return await run();
+  } finally {
+    timing.phase(name, dayjs().diff(started));
+  }
+}
+
 type RouterRequestWaitOptions = {
   wait?: "yield" | "poll";
   /**
@@ -385,6 +410,7 @@ type RouterRequestWaitOptions = {
    */
   inlineWaitMs?: number;
   streamTarget?: Id<"threadMessages"> | Id<"operatorAgentMessages">;
+  timing?: RouterJobTiming;
 };
 
 function routerJobEnded(row: Doc<"routerJobs">) {
@@ -401,10 +427,12 @@ async function waitForRouterJobRow(
   invocationKey: string,
   deadline: dayjs.Dayjs,
   abortSignal?: AbortSignal,
+  timing?: RouterJobTiming,
 ): Promise<Doc<"routerJobs"> | null> {
   const started = dayjs();
   let interval = INLINE_POLL_MS;
   let row: Doc<"routerJobs"> | null = null;
+  let polls = 0;
   while (!abortSignal?.aborted) {
     const remaining = deadline.diff(dayjs());
     if (remaining <= 0) break;
@@ -412,10 +440,12 @@ async function waitForRouterJobRow(
       setTimeout(resolve, Math.min(interval, remaining)),
     );
     row = await ctx.runQuery(internal.routerJobs.get, { invocationKey });
+    polls += 1;
     if (!row || routerJobEnded(row)) break;
     if (dayjs().diff(started) >= INLINE_POLL_SLOW_AFTER_MS)
       interval = Math.min(INLINE_POLL_MAX_MS, interval * 1.25);
   }
+  timing?.phase("wait", dayjs().diff(started), polls);
   return row;
 }
 
@@ -457,13 +487,20 @@ async function executeRouterRequest(
       trace,
     );
   }
-  const existing = await ctx.runQuery(internal.routerJobs.get, {
-    invocationKey,
-  });
+  const routedKey = `${invocationKey}:routed`;
+  const [existing, routedExisting] = await timed(
+    options.timing,
+    "submit",
+    async () => [
+      await ctx.runQuery(internal.routerJobs.get, { invocationKey }),
+      await ctx.runQuery(internal.routerJobs.get, {
+        invocationKey: routedKey,
+      }),
+    ],
+  );
   const { route, ...routedPayload } = payload as Record<string, unknown> & {
     route?: ModelRoute;
   };
-  const routedKey = `${invocationKey}:routed`;
   const runRouted = () =>
     executeRouterRequestOnce(
       ctx,
@@ -474,8 +511,7 @@ async function executeRouterRequest(
       options,
       trace,
     );
-  if (await ctx.runQuery(internal.routerJobs.get, { invocationKey: routedKey }))
-    return runRouted();
+  if (routedExisting) return runRouted();
   // Reconnect before consulting the current pin or registry. A job may already
   // have executed even if settings changed while the operator run was asleep.
   const activeOperation = existing?.operation ?? operation;
@@ -535,16 +571,20 @@ async function executeRouterRequestOnce(
   options: RouterRequestWaitOptions = {},
   trace?: ClRouterTraceInput,
 ): Promise<unknown> {
-  let row = await prepareJob(
-    ctx,
-    operation,
-    payload,
-    invocationKey,
-    abortSignal,
-    options.streamTarget,
-    trace,
+  const { timing } = options;
+  let row = await timed(timing, "submit", () =>
+    prepareJob(
+      ctx,
+      operation,
+      payload,
+      invocationKey,
+      abortSignal,
+      options.streamTarget,
+      trace,
+    ),
   );
   for (;;) {
+    timing?.job(invocationKey, row.routerJobId);
     if (abortSignal?.aborted) {
       await ctx.runMutation(internal.routerJobs.cancel, { id: row._id });
       if (row.routerJobId) {
@@ -560,15 +600,20 @@ async function executeRouterRequestOnce(
       throw abortSignal.reason ?? new Error("Router job cancelled");
     }
     if (row.status === "succeeded") {
-      const blob = row.resultStorageId
-        ? await ctx.storage.get(row.resultStorageId)
-        : null;
-      if (!blob) throw new Error("Router job result is no longer retained");
-      return JSON.parse(await blob.text());
+      const { resultStorageId } = row;
+      return await timed(timing, "read", async () => {
+        const blob = resultStorageId
+          ? await ctx.storage.get(resultStorageId)
+          : null;
+        if (!blob) throw new Error("Router job result is no longer retained");
+        return JSON.parse(await blob.text());
+      });
     }
     if (row.status === "failed")
       throw new RouterJobFailed(row.error ?? "Router job failed", row.failure);
     if (row.status === "cancelled") throw new Error("Router job cancelled");
+    const control = row.routerJobId ? "status" : "submit";
+    const controlStarted = dayjs();
     try {
       if (!row.routerJobId) {
         const siteUrl = callbackSiteUrl();
@@ -621,8 +666,13 @@ async function executeRouterRequestOnce(
       }
     } catch (error) {
       if (!(error instanceof RouterJobPending)) throw error;
+    } finally {
+      timing?.phase(control, dayjs().diff(controlStarted));
     }
-    row = (await ctx.runQuery(internal.routerJobs.get, { invocationKey }))!;
+    row = (await timed(timing, control, () =>
+      ctx.runQuery(internal.routerJobs.get, { invocationKey }),
+    ))!;
+    timing?.job(invocationKey, row.routerJobId);
     if (routerJobEnded(row)) continue;
     if (options.wait !== "poll") {
       // Waiting in place spares the caller a yield and rescheduled resume
@@ -635,13 +685,18 @@ async function executeRouterRequestOnce(
           invocationKey,
           dayjs().add(options.inlineWaitMs, "millisecond"),
           abortSignal,
+          timing,
         );
         if (waited) row = waited;
         if (routerJobEnded(row) || abortSignal?.aborted) continue;
       }
       throw new RouterJobPending(invocationKey, row.routerJobId);
     }
-    await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
+    await timed(
+      timing,
+      "wait",
+      () => new Promise<void>((resolve) => setTimeout(resolve, 2_000)),
+    );
   }
 }
 

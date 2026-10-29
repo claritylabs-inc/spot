@@ -28,6 +28,12 @@ import {
 import { clientAccessStatus } from "./lib/clientAccess";
 import { routerJobFailureValidator } from "./lib/routerJobFailure";
 import {
+  OPERATOR_RUN_TIMING_RETENTION_DAYS,
+  operatorRunTimingView,
+  operatorRunTimingValidator,
+  type OperatorRunTiming,
+} from "./lib/operatorRunTiming";
+import {
   prepareBusinessProfileToolUpdate,
   updateBusinessProfileByOperator,
 } from "./orgWiki";
@@ -6722,6 +6728,14 @@ export const getRunViewForOperatorInternal = internalQuery({
       ctx,
       { ...args, anyOperator: true },
     );
+    // Timing is metadata only, so every operator who can read the run sees it.
+    const timingRows = await ctx.db
+      .query("operatorRunTimings")
+      .withIndex("by_runId_and_iteration", (q) => q.eq("runId", run._id))
+      .take(200);
+    const timing = timingRows.length
+      ? operatorRunTimingView(timingRows)
+      : undefined;
     if (!owner) {
       return {
         progress,
@@ -6733,12 +6747,14 @@ export const getRunViewForOperatorInternal = internalQuery({
               usedTools: response.usedTools,
             }
           : undefined,
+        timing,
       };
     }
     return {
       run,
       progress,
       response: ownerRunResponse(response),
+      timing,
     };
   },
 });
@@ -7888,6 +7904,48 @@ export const executeToolInternal = internalMutation({
   handler: executeOperatorTool,
 });
 
+/** One runner segment's timing, written by the mutation that ends it. */
+async function recordOperatorRunTiming(
+  ctx: MutationCtx,
+  runId: Id<"operatorAgentRuns">,
+  endedBy: Doc<"operatorRunTimings">["endedBy"],
+  timing: OperatorRunTiming | undefined,
+  inline?: boolean,
+) {
+  if (!timing) return;
+  await ctx.db.insert("operatorRunTimings", {
+    runId,
+    endedBy,
+    ...(inline === undefined ? {} : { inline }),
+    ...timing,
+  });
+}
+
+export const sweepExpiredRunTimings = internalMutation({
+  args: { batchSize: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = Math.max(
+      1,
+      Math.min(Math.floor(args.batchSize ?? 500), 1_000),
+    );
+    const cutoff = dayjs()
+      .subtract(OPERATOR_RUN_TIMING_RETENTION_DAYS, "day")
+      .valueOf();
+    const expired = await ctx.db
+      .query("operatorRunTimings")
+      .withIndex("by_creation_time", (q) => q.lt("_creationTime", cutoff))
+      .take(limit);
+    for (const row of expired) await ctx.db.delete(row._id);
+    if (expired.length === limit)
+      await ctx.scheduler.runAfter(
+        0,
+        internal.operatorAgent.sweepExpiredRunTimings,
+        { batchSize: limit },
+      );
+    return { deleted: expired.length };
+  },
+});
+
 export const completeRunInternal = internalMutation({
   args: {
     runId: v.id("operatorAgentRuns"),
@@ -7906,6 +7964,7 @@ export const completeRunInternal = internalMutation({
         output: v.optional(v.string()),
       }),
     ),
+    timing: v.optional(operatorRunTimingValidator),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
@@ -7914,6 +7973,7 @@ export const completeRunInternal = internalMutation({
         await ctx.storage.delete(args.modelContinuationStorageId);
       return null;
     }
+    await recordOperatorRunTiming(ctx, run._id, "complete", args.timing);
     const discardContinuation = async () => {
       if (
         args.modelContinuationStorageId &&
@@ -8109,9 +8169,12 @@ export const waitForRouterInternal = internalMutation({
     expectedCheckpointIteration: v.number(),
     invocationKey: v.optional(v.string()),
     families: v.optional(v.array(v.string())),
+    timing: v.optional(operatorRunTimingValidator),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
+    if (run)
+      await recordOperatorRunTiming(ctx, run._id, "wait_router", args.timing);
     if (
       !run ||
       run.status !== "running" ||
@@ -8165,9 +8228,12 @@ export const retryRouterStepInternal = internalMutation({
     expectedRunnerAttempt: v.number(),
     expectedCheckpointIteration: v.number(),
     routerRetryCount: v.number(),
+    timing: v.optional(operatorRunTimingValidator),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
+    if (run)
+      await recordOperatorRunTiming(ctx, run._id, "retry_router", args.timing);
     if (
       !run ||
       run.status !== "running" ||
@@ -8213,6 +8279,7 @@ export const continueRunInternal = internalMutation({
         output: v.optional(v.string()),
       }),
     ),
+    timing: v.optional(operatorRunTimingValidator),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
@@ -8221,6 +8288,13 @@ export const continueRunInternal = internalMutation({
         await ctx.storage.delete(args.modelContinuationStorageId);
       return null;
     }
+    await recordOperatorRunTiming(
+      ctx,
+      run._id,
+      "continue",
+      args.timing,
+      args.inline ?? false,
+    );
     if (run.status === "waiting_confirmation") {
       if (
         args.modelContinuationStorageId &&
@@ -8299,10 +8373,12 @@ export const failRunInternal = internalMutation({
     /** Sanitized router diagnostics retained for operator troubleshooting. */
     failure: v.optional(routerJobFailureValidator),
     expectedCheckpointIteration: v.optional(v.number()),
+    timing: v.optional(operatorRunTimingValidator),
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
     if (!run) return;
+    await recordOperatorRunTiming(ctx, run._id, "fail", args.timing);
     if (
       args.expectedRunnerAttempt !== undefined &&
       run.runnerAttempt !== args.expectedRunnerAttempt
