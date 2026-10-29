@@ -269,7 +269,7 @@ export function AddressField({
           }}
           onBlur={() => void commit()}
           className={cn(
-            "h-7 min-w-32 flex-1 bg-transparent outline-none placeholder:text-muted-foreground/60 aria-invalid:text-destructive",
+            "h-7 min-w-32 flex-1 bg-transparent pl-0.5 outline-none placeholder:text-muted-foreground/60 aria-invalid:text-destructive",
             typeStyle("body.default"),
           )}
         />
