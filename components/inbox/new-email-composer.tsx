@@ -12,6 +12,7 @@ import {
   EmailComposeRow,
   parseEmailAddressList,
 } from "@/components/email/compose-fields";
+import { FromPicker } from "@/components/email/operator-address";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { PillButton } from "@/components/ui/pill-button";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
@@ -44,6 +45,8 @@ type Draft = {
   clientOrgId: string;
   /** Files the conversation under a procurement request (and its client). */
   requestId?: string;
+  /** Sent as this operator instead of the signed-in one. */
+  fromUserId?: string;
   showCopies: boolean;
 };
 const EMPTY: Draft = { to: "", cc: "", bcc: "", subject: "", message: "", clientOrgId: "", showCopies: false };
@@ -99,6 +102,7 @@ function composeArgs(draft: Draft) {
     message: draft.message,
     ...(draft.clientOrgId ? { clientOrgId: draft.clientOrgId as Id<"organizations"> } : {}),
     ...(draft.requestId ? { requestId: draft.requestId as Id<"procurementRequests"> } : {}),
+    ...(draft.fromUserId ? { fromUserId: draft.fromUserId as Id<"users"> } : {}),
   };
 }
 
@@ -175,6 +179,9 @@ function OperatorNewEmailComposer({
   const scope = request ? `request-email:${request.requestId}` : `inbox-email:${draftId ?? operatorId}`;
   useSharedValue(`${scope}:client`, draft.clientOrgId, (clientOrgId) => update({ clientOrgId }));
   useSharedValue(`${scope}:copies`, draft.showCopies, (showCopies) => update({ showCopies }));
+  useSharedValue(`${scope}:from`, draft.fromUserId ?? null, (fromUserId) =>
+    update({ fromUserId: fromUserId ?? undefined }),
+  );
 
   const settled = useDebounced(draft, PREVIEW_DELAY_MS);
   const ready = Boolean(settled.to.trim() && settled.subject.trim() && settled.message.trim());
@@ -184,7 +191,14 @@ function OperatorNewEmailComposer({
   const problem = current && result && !result.ok ? result.reason : null;
   const status = useQuery(
     api.teamEmailCompose.status,
-    attempt ? { idempotencyKey: attempt.key } : "skip",
+    attempt
+      ? {
+          idempotencyKey: attempt.key,
+          ...(attempt.draft.fromUserId
+            ? { fromUserId: attempt.draft.fromUserId as Id<"users"> }
+            : {}),
+        }
+      : "skip",
   );
 
   // The action's answer and the status query can both report the same send.
@@ -315,9 +329,13 @@ function OperatorNewEmailComposer({
           </div>
         ) : null}
         <EmailComposeRow label="From">
-          <p className={`truncate ${typeStyle("body.default")}`}>
-            {preview?.from ?? "Your team address"}
-          </p>
+          <FromPicker
+            value={(draft.fromUserId ?? operatorId) as Id<"users">}
+            onChange={(userId) =>
+              update({ fromUserId: userId === operatorId ? undefined : userId })
+            }
+            disabled={disabled}
+          />
         </EmailComposeRow>
         <EmailComposeRow label="To">
           <EmailComposeInput

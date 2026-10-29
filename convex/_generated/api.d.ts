@@ -526,6 +526,7 @@ import type * as operatorBulkReads from "../operatorBulkReads.js";
 import type * as operatorClientBatchWrites from "../operatorClientBatchWrites.js";
 import type * as operatorContext from "../operatorContext.js";
 import type * as operatorCursors from "../operatorCursors.js";
+import type * as operatorDirectory from "../operatorDirectory.js";
 import type * as operatorEmail from "../operatorEmail.js";
 import type * as operatorEmailDrafts from "../operatorEmailDrafts.js";
 import type * as operatorEmailSettings from "../operatorEmailSettings.js";
@@ -1123,6 +1124,7 @@ declare const fullApi: ApiFromModules<{
   operatorClientBatchWrites: typeof operatorClientBatchWrites;
   operatorContext: typeof operatorContext;
   operatorCursors: typeof operatorCursors;
+  operatorDirectory: typeof operatorDirectory;
   operatorEmail: typeof operatorEmail;
   operatorEmailDrafts: typeof operatorEmailDrafts;
   operatorEmailSettings: typeof operatorEmailSettings;

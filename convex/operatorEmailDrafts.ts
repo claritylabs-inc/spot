@@ -601,13 +601,22 @@ export async function checkOperatorSendApproval(
       isComposeKey(draft.directReplyKey) &&
       !draft.teamEmailThreadId;
     const browserChat = Boolean(draft.operatorThreadId) && !draft.directReplyKey;
+    // In the app any active operator may send a reply or new email as
+    // another; a chat draft is still approved only by its signer.
     if (
       !grant ||
       !(browserReply || browserCompose || browserChat) ||
-      grant.actorUserId !== draft.senderUserId ||
+      (browserChat && grant.actorUserId !== draft.senderUserId) ||
       grant.fingerprint !== fingerprint
     ) {
       return denied("The email was not approved, or it changed after approval.");
+    }
+    if (grant.actorUserId !== draft.senderUserId) {
+      try {
+        await requireOperatorForUser(ctx, grant.actorUserId);
+      } catch {
+        return denied("The operator who approved this email is no longer active.");
+      }
     }
   } else {
     const confirmation = await ctx.db.get(args.confirmationId);
