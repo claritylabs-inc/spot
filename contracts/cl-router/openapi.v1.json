@@ -1552,6 +1552,13 @@
             "type": "string",
             "const": "router"
           },
+          "features": {
+            "description": "Optional request features this deployment accepts: `inline_job_input`, `prompt_cache_key`, `agent_loop`, `parallel_tool_calls`. Check before sending them; older deployments reject unknown fields.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "decisions": {
             "type": "object",
             "properties": {
@@ -1688,6 +1695,14 @@
                       "type": "boolean"
                     },
                     "audioInput": {
+                      "type": "boolean"
+                    },
+                    "promptCacheKey": {
+                      "description": "Honors `cache.key` as a provider prompt-cache key.",
+                      "type": "boolean"
+                    },
+                    "parallelToolCalls": {
+                      "description": "Honors `parallelToolCalls`.",
                       "type": "boolean"
                     },
                     "maxInputTokens": {
@@ -2450,8 +2465,10 @@
                 "enum": [
                   "jev",
                   "fallback",
-                  "manual"
-                ]
+                  "manual",
+                  "loop"
+                ],
+                "description": "`loop` means `loop.previous` was reused without a Jev call; it is returned only to callers that send `loop`."
               },
               "attemptCount": {
                 "type": "integer",
@@ -2940,7 +2957,21 @@
                                 "type": "string",
                                 "minLength": 1
                               },
-                              "input": {}
+                              "input": {},
+                              "providerMetadata": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {}
+                                },
+                                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                              }
                             },
                             "required": [
                               "type",
@@ -2971,6 +3002,51 @@
                               "toolCallId",
                               "toolName",
                               "output"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "reasoning"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "provider": {
+                                "type": "string",
+                                "enum": [
+                                  "openai",
+                                  "anthropic",
+                                  "xai",
+                                  "mistral",
+                                  "cohere",
+                                  "fireworks",
+                                  "deepseek",
+                                  "abliteration"
+                                ],
+                                "description": "Provider that produced the reasoning. Other providers never receive it."
+                              },
+                              "providerMetadata": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {}
+                                },
+                                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "text",
+                              "provider"
                             ]
                           }
                         ]
@@ -3007,7 +3083,26 @@
           "executionBudgetMs": {
             "type": "integer",
             "minimum": 100,
-            "maximum": 900000
+            "maximum": 1500000
+          },
+          "reasoning": {
+            "type": "object",
+            "properties": {
+              "effort": {
+                "description": "Reasoning effort for models that support it; omitted uses the provider default. Ignored by providers without an effort control.",
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "include": {
+                "description": "Return reasoning (`reasoning-delta`/`reasoning-end` stream events, or `message` on JSON responses) and provider continuation metadata so the next turn can send it back.",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
           },
           "tools": {
             "type": "array",
@@ -3036,12 +3131,83 @@
             }
           },
           "toolSelection": {
-            "description": "Who selects among the supplied tools. `router` (default) lets the router decide whether and which tools run; `caller` skips router tool selection: every supplied tool stays available with automatic tool choice.",
+            "description": "Who selects among the supplied tools. `router` (default) lets the router decide whether and which tools run; `caller` skips router tool selection: every supplied tool stays available with automatic tool choice. Ignored with `loop`, which always leaves the choice to the model.",
             "type": "string",
             "enum": [
               "router",
               "caller"
             ]
+          },
+          "parallelToolCalls": {
+            "description": "Allow (true) or forbid (false) several tool calls in one step on models with a documented control (see `/v1/capabilities`); omitted keeps the provider default. Ignored elsewhere.",
+            "type": "boolean"
+          },
+          "cache": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "Stable key for requests that share a prompt prefix (for example one agent run). Hashed with the tenant before it reaches a provider; never stored."
+              }
+            },
+            "required": [
+              "key"
+            ],
+            "additionalProperties": false
+          },
+          "loop": {
+            "type": "object",
+            "properties": {
+              "previous": {
+                "description": "The previous step's response `routing.route` and `routing.difficulty`. Reused without a Jev call only when the last message is a tool result; ignored by /v1/manual.",
+                "type": "object",
+                "properties": {
+                  "route": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string",
+                        "enum": [
+                          "openai",
+                          "anthropic",
+                          "xai",
+                          "mistral",
+                          "cohere",
+                          "fireworks",
+                          "deepseek",
+                          "abliteration"
+                        ]
+                      },
+                      "model": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model"
+                    ]
+                  },
+                  "difficulty": {
+                    "type": "string",
+                    "enum": [
+                      "simple",
+                      "standard",
+                      "complex"
+                    ]
+                  }
+                },
+                "required": [
+                  "route",
+                  "difficulty"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false,
+            "description": "Marks one step of an agent loop: the router asks no tool questions and never restricts or forces tool choice, so the provider tools array stays identical across steps."
           },
           "trace": {
             "type": "object",
@@ -3270,8 +3436,10 @@
                 "enum": [
                   "jev",
                   "fallback",
-                  "manual"
-                ]
+                  "manual",
+                  "loop"
+                ],
+                "description": "`loop` means `loop.previous` was reused without a Jev call; it is returned only to callers that send `loop`."
               },
               "attemptCount": {
                 "type": "integer",
@@ -3297,6 +3465,312 @@
           "requestId": {
             "type": "string",
             "minLength": 1
+          },
+          "message": {
+            "description": "Present when `reasoning.include` is true: the assistant message to append to `messages` on the next turn, including reasoning and provider metadata in output order.",
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "system",
+                  "user",
+                  "assistant",
+                  "tool"
+                ]
+              },
+              "content": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "text"
+                            },
+                            "text": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "text"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "image"
+                                },
+                                "image": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mediaType": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "image"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "image"
+                                },
+                                "source": {
+                                  "type": "object",
+                                  "properties": {
+                                    "url": {
+                                      "type": "string",
+                                      "pattern": "^(https:\\/\\/|http:\\/\\/(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?\\/)"
+                                    },
+                                    "mediaType": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "filename": {
+                                      "type": "string"
+                                    },
+                                    "sizeBytes": {
+                                      "type": "integer",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 16777216
+                                    },
+                                    "sha256": {
+                                      "type": "string",
+                                      "pattern": "^[a-f0-9]{64}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "mediaType",
+                                    "sizeBytes"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "source"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "file"
+                                },
+                                "data": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mediaType": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "filename": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "data",
+                                "mediaType"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "const": "file"
+                                },
+                                "source": {
+                                  "type": "object",
+                                  "properties": {
+                                    "url": {
+                                      "type": "string",
+                                      "pattern": "^(https:\\/\\/|http:\\/\\/(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?\\/)"
+                                    },
+                                    "mediaType": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "filename": {
+                                      "type": "string"
+                                    },
+                                    "sizeBytes": {
+                                      "type": "integer",
+                                      "exclusiveMinimum": 0,
+                                      "maximum": 16777216
+                                    },
+                                    "sha256": {
+                                      "type": "string",
+                                      "pattern": "^[a-f0-9]{64}$"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "mediaType",
+                                    "sizeBytes"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "source"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "tool-call"
+                            },
+                            "toolCallId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "toolName": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "input": {},
+                            "providerMetadata": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "toolCallId",
+                            "toolName",
+                            "input"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "tool-result"
+                            },
+                            "toolCallId": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "toolName": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "output": {}
+                          },
+                          "required": [
+                            "type",
+                            "toolCallId",
+                            "toolName",
+                            "output"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "const": "reasoning"
+                            },
+                            "text": {
+                              "type": "string"
+                            },
+                            "provider": {
+                              "type": "string",
+                              "enum": [
+                                "openai",
+                                "anthropic",
+                                "xai",
+                                "mistral",
+                                "cohere",
+                                "fireworks",
+                                "deepseek",
+                                "abliteration"
+                              ],
+                              "description": "Provider that produced the reasoning. Other providers never receive it."
+                            },
+                            "providerMetadata": {
+                              "type": "object",
+                              "propertyNames": {
+                                "type": "string"
+                              },
+                              "additionalProperties": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              },
+                              "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "text",
+                            "provider"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "role",
+              "content"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -3456,6 +3930,11 @@
             "maxLength": 4096,
             "format": "uri"
           },
+          "input": {
+            "description": "Exact JSON text of a generate/manual request, sent instead of `requestUrl`. `fingerprint` is the SHA-256 of its UTF-8 bytes. At most 8 MiB.",
+            "type": "string",
+            "minLength": 2
+          },
           "resultUrl": {
             "type": "string",
             "maxLength": 4096,
@@ -3467,7 +3946,6 @@
           "idempotencyKey",
           "fingerprint",
           "operation",
-          "requestUrl",
           "resultUrl"
         ],
         "additionalProperties": false
@@ -3786,7 +4264,21 @@
                                 "type": "string",
                                 "minLength": 1
                               },
-                              "input": {}
+                              "input": {},
+                              "providerMetadata": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {}
+                                },
+                                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                              }
                             },
                             "required": [
                               "type",
@@ -3817,6 +4309,51 @@
                               "toolCallId",
                               "toolName",
                               "output"
+                            ]
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "reasoning"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "provider": {
+                                "type": "string",
+                                "enum": [
+                                  "openai",
+                                  "anthropic",
+                                  "xai",
+                                  "mistral",
+                                  "cohere",
+                                  "fireworks",
+                                  "deepseek",
+                                  "abliteration"
+                                ],
+                                "description": "Provider that produced the reasoning. Other providers never receive it."
+                              },
+                              "providerMetadata": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {
+                                  "type": "object",
+                                  "propertyNames": {
+                                    "type": "string"
+                                  },
+                                  "additionalProperties": {}
+                                },
+                                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "text",
+                              "provider"
                             ]
                           }
                         ]
@@ -3853,7 +4390,26 @@
           "executionBudgetMs": {
             "type": "integer",
             "minimum": 100,
-            "maximum": 900000
+            "maximum": 1500000
+          },
+          "reasoning": {
+            "type": "object",
+            "properties": {
+              "effort": {
+                "description": "Reasoning effort for models that support it; omitted uses the provider default. Ignored by providers without an effort control.",
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "include": {
+                "description": "Return reasoning (`reasoning-delta`/`reasoning-end` stream events, or `message` on JSON responses) and provider continuation metadata so the next turn can send it back.",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
           },
           "tools": {
             "type": "array",
@@ -3882,12 +4438,83 @@
             }
           },
           "toolSelection": {
-            "description": "Who selects among the supplied tools. `router` (default) lets the router decide whether and which tools run; `caller` skips router tool selection: every supplied tool stays available with automatic tool choice.",
+            "description": "Who selects among the supplied tools. `router` (default) lets the router decide whether and which tools run; `caller` skips router tool selection: every supplied tool stays available with automatic tool choice. Ignored with `loop`, which always leaves the choice to the model.",
             "type": "string",
             "enum": [
               "router",
               "caller"
             ]
+          },
+          "parallelToolCalls": {
+            "description": "Allow (true) or forbid (false) several tool calls in one step on models with a documented control (see `/v1/capabilities`); omitted keeps the provider default. Ignored elsewhere.",
+            "type": "boolean"
+          },
+          "cache": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "Stable key for requests that share a prompt prefix (for example one agent run). Hashed with the tenant before it reaches a provider; never stored."
+              }
+            },
+            "required": [
+              "key"
+            ],
+            "additionalProperties": false
+          },
+          "loop": {
+            "type": "object",
+            "properties": {
+              "previous": {
+                "description": "The previous step's response `routing.route` and `routing.difficulty`. Reused without a Jev call only when the last message is a tool result; ignored by /v1/manual.",
+                "type": "object",
+                "properties": {
+                  "route": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string",
+                        "enum": [
+                          "openai",
+                          "anthropic",
+                          "xai",
+                          "mistral",
+                          "cohere",
+                          "fireworks",
+                          "deepseek",
+                          "abliteration"
+                        ]
+                      },
+                      "model": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model"
+                    ]
+                  },
+                  "difficulty": {
+                    "type": "string",
+                    "enum": [
+                      "simple",
+                      "standard",
+                      "complex"
+                    ]
+                  }
+                },
+                "required": [
+                  "route",
+                  "difficulty"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false,
+            "description": "Marks one step of an agent loop: the router asks no tool questions and never restricts or forces tool choice, so the provider tools array stays identical across steps."
           },
           "trace": {
             "type": "object",
@@ -4320,13 +4947,93 @@
               "toolName": {
                 "type": "string"
               },
-              "input": {}
+              "input": {},
+              "providerMetadata": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+              }
             },
             "required": [
               "type",
               "toolCallId",
               "toolName",
               "input"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "reasoning-delta"
+              },
+              "id": {
+                "type": "string"
+              },
+              "delta": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "id",
+              "delta"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "reasoning-end"
+              },
+              "id": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "openai",
+                  "anthropic",
+                  "xai",
+                  "mistral",
+                  "cohere",
+                  "fireworks",
+                  "deepseek",
+                  "abliteration"
+                ]
+              },
+              "providerMetadata": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "description": "Opaque provider continuation data (for example reasoning signatures or encrypted reasoning). Send it back unchanged on the same part."
+              }
+            },
+            "required": [
+              "type",
+              "id",
+              "provider"
             ],
             "additionalProperties": false
           },
@@ -4500,8 +5207,10 @@
                     "enum": [
                       "jev",
                       "fallback",
-                      "manual"
-                    ]
+                      "manual",
+                      "loop"
+                    ],
+                    "description": "`loop` means `loop.previous` was reused without a Jev call; it is returned only to callers that send `loop`."
                   },
                   "attemptCount": {
                     "type": "integer",
@@ -4952,8 +5661,10 @@
                 "enum": [
                   "jev",
                   "fallback",
-                  "manual"
-                ]
+                  "manual",
+                  "loop"
+                ],
+                "description": "`loop` means `loop.previous` was reused without a Jev call; it is returned only to callers that send `loop`."
               },
               "attemptCount": {
                 "type": "integer",

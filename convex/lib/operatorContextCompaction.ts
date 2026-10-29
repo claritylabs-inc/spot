@@ -77,6 +77,18 @@ export function splitOperatorContext(
   return { older: messages.slice(0, cutoff), recent: messages.slice(cutoff) };
 }
 
+/** Summaries never see model reasoning; it stays with the steps it belongs to. */
+export function withoutReasoningParts(
+  messages: ModelMessage[],
+): ModelMessage[] {
+  return messages.flatMap((message) => {
+    if (message.role !== "assistant" || typeof message.content === "string")
+      return [message];
+    const content = message.content.filter((part) => part.type !== "reasoning");
+    return content.length > 0 ? [{ ...message, content }] : [];
+  });
+}
+
 type Reference = { source: string; fields: Record<string, unknown> };
 
 /** Exact references survive generation; notes never stand in for server approvals. */

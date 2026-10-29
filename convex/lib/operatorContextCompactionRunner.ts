@@ -16,6 +16,7 @@ import {
   operatorContextReferences,
   operatorWorkingNotes,
   splitOperatorContext,
+  withoutReasoningParts,
 } from "./operatorContextCompaction";
 
 export async function compactOperatorContext(
@@ -90,7 +91,7 @@ export async function compactOperatorContext(
     ) {
       throw new Error("Forced local summary failure");
     }
-    const source = JSON.stringify(older);
+    const source = JSON.stringify(withoutReasoningParts(older));
     let summary = "";
     let offset = 0;
     let batch = 0;

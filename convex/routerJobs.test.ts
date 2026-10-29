@@ -55,6 +55,13 @@ function capabilities(models = [route]) {
     })),
   };
 }
+// Router job control calls; capability reads that gate optional fields are
+// not submissions.
+function jobCalls(fetcher: ReturnType<typeof vi.fn<typeof fetch>>) {
+  return fetcher.mock.calls.filter(
+    ([url]) => !String(url).endsWith("/v1/capabilities"),
+  );
+}
 function routerFailure(message: string, executionStarted = false) {
   return {
     error: {
@@ -169,6 +176,131 @@ test("an explicit live pin still uses manual generation", async () => {
   expect(
     fetcher.mock.calls.map(([url]) => String(url).split("/").pop()),
   ).toEqual(["capabilities", "manual"]);
+});
+
+// Reasoning is opt-in and route-bound: only opted-in calls request or replay
+// it, each part names the provider that produced it so cl-router can withhold
+// it from others, and a pin to another model never receives it.
+test("reasoning continuity stays opt-in and bound to its producing route", async () => {
+  const call = {
+    toolCallId: "call_1",
+    toolName: "list_policies",
+    input: { status: "active" },
+  };
+  const reasoningMetadata = {
+    openai: { itemId: "rs_1", reasoningEncryptedContent: "opaque" },
+  };
+  const callMetadata = { openai: { itemId: "fc_1" } };
+  const pin = { provider: "openai" as const, model: "fixture-other-model" };
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) =>
+    Response.json(
+      String(url).endsWith("/v1/capabilities")
+        ? capabilities([pin])
+        : {
+            ...generation,
+            output: { text: "", toolCalls: [call] },
+            finishReason: "tool-calls",
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "reasoning",
+                  text: "Check policies.",
+                  provider: "openai",
+                  providerMetadata: reasoningMetadata,
+                },
+                { type: "tool-call", ...call, providerMetadata: callMetadata },
+              ],
+            },
+          },
+    ),
+  );
+  const model = (
+    options: Partial<Parameters<typeof createClRouterLanguageModel>[0]>,
+  ) =>
+    createClRouterLanguageModel({
+      task: "chat",
+      taskKind: "operator_agent",
+      sessionKey: "test",
+      client: { environment: routerEnvironment, fetch: fetcher },
+      ...options,
+    });
+  const user = {
+    role: "user" as const,
+    content: [{ type: "text" as const, text: "Renewals?" }],
+  };
+  const lastBody = () =>
+    JSON.parse(String(fetcher.mock.calls.at(-1)?.[1]?.body));
+
+  const first = await model({
+    reasoning: { include: true, effort: "low" },
+  }).doGenerate({ prompt: [user] });
+  expect(lastBody().reasoning).toEqual({ include: true, effort: "low" });
+  expect(first.content).toEqual([
+    {
+      type: "reasoning",
+      text: "Check policies.",
+      providerMetadata: { ...reasoningMetadata, "cl-router": route },
+    },
+    {
+      type: "tool-call",
+      ...call,
+      input: JSON.stringify(call.input),
+      providerMetadata: callMetadata,
+    },
+  ]);
+
+  // The next step replays the AI SDK response message as its prompt.
+  const prompt = [
+    user,
+    {
+      role: "assistant" as const,
+      content: [
+        {
+          type: "reasoning" as const,
+          text: "Check policies.",
+          providerOptions: { ...reasoningMetadata, "cl-router": route },
+        },
+        { type: "tool-call" as const, ...call, providerOptions: callMetadata },
+      ],
+    },
+    {
+      role: "tool" as const,
+      content: [
+        {
+          type: "tool-result" as const,
+          toolCallId: call.toolCallId,
+          toolName: call.toolName,
+          output: { type: "json" as const, value: [] },
+        },
+      ],
+    },
+  ];
+  const replayedCall = { type: "tool-call", ...call };
+  await model({ reasoning: { include: true } }).doGenerate({ prompt });
+  expect(lastBody().messages[1].content).toEqual([
+    {
+      type: "reasoning",
+      text: "Check policies.",
+      provider: "openai",
+      providerMetadata: reasoningMetadata,
+    },
+    { ...replayedCall, providerMetadata: callMetadata },
+  ]);
+
+  await model({
+    reasoning: { include: true },
+    initialRoutePin: pin,
+  }).doGenerate({ prompt });
+  expect(String(fetcher.mock.calls.at(-1)?.[0])).toMatch(/\/v1\/manual$/);
+  expect(lastBody().messages[1].content).toEqual([
+    { ...replayedCall, providerMetadata: callMetadata },
+  ]);
+
+  const unopted = await model({}).doGenerate({ prompt });
+  expect(lastBody()).not.toHaveProperty("reasoning");
+  expect(lastBody().messages[1].content).toEqual([replayedCall]);
+  expect(unopted.content.map((part) => part.type)).toEqual(["tool-call"]);
 });
 
 test.each([
@@ -369,7 +501,7 @@ test("durable routed fallback reconnects even after the pin is removed", async (
   expect(
     await t.run((ctx) => ctx.db.query("routerJobs").take(10)),
   ).toHaveLength(2);
-  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(jobCalls(fetcher)).toHaveLength(1);
 });
 
 test("a yielding call waits in place for its callback, then yields without resubmitting", async () => {
@@ -395,7 +527,7 @@ test("a yielding call waits in place for its callback, then yields without resub
       ),
     );
   await expect(call(600)).rejects.toThrow("still running");
-  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(jobCalls(fetcher)).toHaveLength(1);
   const storageId = await t.run((ctx) =>
     ctx.storage.store(new Blob([JSON.stringify(generation)])),
   );
@@ -415,8 +547,84 @@ test("a yielding call waits in place for its callback, then yields without resub
   });
   expect(await waiting).toEqual(generation);
   // The resumed call checked status once and never submitted again.
-  expect(fetcher).toHaveBeenCalledTimes(2);
-  expect(String(fetcher.mock.calls[1]![0])).toMatch(/\/v1\/jobs\/router-inline$/);
+  expect(jobCalls(fetcher)).toHaveLength(2);
+  expect(String(jobCalls(fetcher)[1]![0])).toMatch(
+    /\/v1\/jobs\/router-inline$/,
+  );
+});
+
+// A step whose submission acknowledgement was lost under `requestUrl` must
+// reconnect to the same router job after the router gains inline input: the
+// retry carries the identical stored bytes and fingerprint, and a bound job is
+// only polled, never resubmitted.
+test("a resumed step reconnects across a switch to inline job input", async () => {
+  const { t, args } = await fixture();
+  vi.stubEnv("SPOT_ENV", "local");
+  vi.stubEnv("CONVEX_SITE_URL", "http://127.0.0.1:3211");
+  vi.stubEnv("SPOT_ROUTER_CALLBACK_URL", "");
+  // A router URL of its own keeps cached capabilities out of other tests.
+  vi.stubEnv("CL_ROUTER_URL", "https://inline-router.example.com");
+  vi.stubEnv("CL_ROUTER_SECRET", "x".repeat(32));
+  let inline = false;
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path === "/v1/capabilities")
+      return inline
+        ? Response.json({
+            ...capabilities(),
+            features: ["inline_job_input"],
+          })
+        : Response.json({}, { status: 503 });
+    if (path === "/v1/jobs")
+      return inline
+        ? Response.json({ jobId: "router-job" })
+        : Response.json({}, { status: 503 });
+    return Response.json({ status: "running" });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const call = () =>
+    t.action((ctx) =>
+      executeDurableRouterRequest(
+        ctx,
+        "generate",
+        { primitive: "text", prompt: "test" },
+        args.invocationKey,
+        undefined,
+        { wait: "yield" },
+      ),
+    );
+  const submissions = () =>
+    jobCalls(fetcher)
+      .filter(([url]) => String(url).endsWith("/v1/jobs"))
+      .map(([, init]) => JSON.parse(String(init?.body)));
+
+  await expect(call()).rejects.toThrow("still running");
+  expect(submissions()).toHaveLength(1);
+  expect(submissions()[0]).toHaveProperty("requestUrl");
+  expect(submissions()[0]).not.toHaveProperty("input");
+
+  inline = true;
+  await expect(call()).rejects.toThrow("still running");
+  const retry = submissions()[1];
+  expect(retry).toMatchObject({
+    idempotencyKey: args.invocationKey,
+    fingerprint: args.fingerprint,
+    input: '{"prompt":"test"}',
+  });
+  expect(retry).not.toHaveProperty("requestUrl");
+  expect(
+    (
+      await t.query(internal.routerJobs.get, {
+        invocationKey: args.invocationKey,
+      })
+    )?.routerJobId,
+  ).toBe("router-job");
+
+  await expect(call()).rejects.toThrow("still running");
+  expect(submissions()).toHaveLength(2);
+  expect(String(jobCalls(fetcher).at(-1)?.[0])).toMatch(
+    /\/v1\/jobs\/router-job$/,
+  );
 });
 
 test("a durable unknown execution outcome cannot create a routed fallback", async () => {

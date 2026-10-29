@@ -14,7 +14,7 @@ export type ClRouterPrimitive = Primitive;
 export type ClRouterDifficulty = Difficulty;
 export type ClRouterQualityTier = QualityTier;
 export type ClRouterRoutingDecision = "routed" | "manual";
-export type ClRouterRoutingSource = "jev" | "fallback" | "manual";
+export type ClRouterRoutingSource = "jev" | "fallback" | "manual" | "loop";
 
 export type SpotPrimitiveMappingInput = {
   task?: string;
