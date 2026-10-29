@@ -20,6 +20,9 @@ import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
+/** One text size for every address pill, so sender and recipient chips match. */
+const PILL_TEXT = typeStyle("body.large");
+
 export type DirectoryOperator = FunctionReturnType<
   typeof api.operatorDirectory.list
 >[number];
@@ -61,7 +64,7 @@ export function OperatorPill({
       title={address ? `${operator.name} <${address}>` : operator.name}
       className={cn(
         "inline-flex max-w-full min-w-0 items-center gap-1 rounded-full p-0.5 pr-2.5",
-        typeStyle("body.default"),
+        PILL_TEXT,
         className,
       )}
       style={
@@ -114,7 +117,7 @@ function ProviderContactPill({
       title={`${contact.name} <${address}> · ${contact.brokerName}`}
       className={cn(
         "inline-flex max-w-full min-w-0 items-center gap-1 rounded-full bg-muted p-0.5 pr-2.5 has-[button]:pr-1.5",
-        typeStyle("body.default"),
+        PILL_TEXT,
       )}
     >
       <OrgBrandIcon
@@ -166,6 +169,7 @@ function AddressPill({
       className={cn(
         "inline-flex max-w-full min-w-0 items-center gap-1 rounded-full bg-muted py-0.5 pl-2.5",
         remove ? "pr-1.5" : "pr-2.5",
+        PILL_TEXT,
       )}
     >
       <span className="min-w-0 truncate">{address}</span>
@@ -467,7 +471,7 @@ export function FromPicker({
         // The pill is the button: no field border, chevron inside.
         className={cn(
           "w-auto max-w-full min-w-0 gap-1 rounded-full border-0 p-0.5 pr-2 hover:border-0 focus-visible:ring-2 focus-visible:ring-ring data-[size=default]:h-6 [&>svg]:size-3 [&>svg]:text-(--operator-color)",
-          typeStyle("body.default"),
+          PILL_TEXT,
         )}
         style={
           {
@@ -481,7 +485,7 @@ export function FromPicker({
             <span className="flex min-w-0 items-center gap-1">
               <OperatorAvatar operator={selected} />
               <span
-                className={cn("min-w-0 truncate", typeStyle("body.default"))}
+                className={cn("min-w-0 truncate", PILL_TEXT)}
               >
                 {selected.name}
               </span>
