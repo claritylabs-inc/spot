@@ -15,6 +15,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
+  AddressField,
   AddressPills,
   FromPicker,
   useOperatorDirectory,
@@ -48,7 +49,11 @@ type SendAttempt = {
   startedAt: number;
   /** The operator it is sent as, when not the signed-in one. */
   fromUserId?: Id<"users">;
+  /** The To and Cc set in the composer, when not the reply-all default. */
+  recipients?: ReplyRecipients;
 };
+
+type ReplyRecipients = { to: string; cc: string[] };
 
 // Storage is scoped to the signed-in operator and the conversation, so a
 // reload keeps a locked send and a sign-out never hands it to the next user.
@@ -146,6 +151,12 @@ function OperatorReplyComposer({
     () => attempt?.fromUserId ?? (operatorId as Id<"users">),
   );
   useSharedValue(`reply:${threadId}:from`, fromUserId, setFromUserId);
+  // Edited To and Cc; null keeps the server's reply-all default.
+  const [recipients, setRecipients] = useState<ReplyRecipients | null>(
+    () => attempt?.recipients ?? null,
+  );
+  useSharedValue(`reply:${threadId}:recipients`, recipients, setRecipients);
+  const missingTo = recipients !== null && !recipients.to;
   const sendingAs = fromUserId === operatorId ? undefined : fromUserId;
   const { operators, find } = useOperatorDirectory();
   const senderName = operators?.find((person) => person.userId === fromUserId)?.name;
@@ -174,8 +185,13 @@ function OperatorReplyComposer({
   const settled = useDebounced(text, PREVIEW_DELAY_MS);
   const previewResult = useQuery(
     api.teamEmailReplies.preview,
-    !locked && settled.trim()
-      ? { threadId, message: settled, fromUserId: sendingAs }
+    !locked && settled.trim() && !missingTo
+      ? {
+          threadId,
+          message: settled,
+          fromUserId: sendingAs,
+          ...(recipients ? { recipients } : {}),
+        }
       : "skip",
   );
   const current = !locked && settled === text && hasText;
@@ -186,7 +202,11 @@ function OperatorReplyComposer({
   const headers = hasText ? (preview ?? lastHeaders) : null;
   const [open, setOpen] = useFollowedState(`inbox:reply:${threadId}:open`, false);
   const previewError = current && previewResult && !previewResult.ok ? previewResult.reason : null;
-  const previewing = !locked && hasText && !preview && !previewError;
+  const previewing = !locked && hasText && !missingTo && !preview && !previewError;
+  const shownTo = recipients ? (recipients.to ? [recipients.to] : []) : (headers?.to ?? []);
+  const shownCc = recipients?.cc ?? headers?.cc ?? [];
+  const editRecipients = (next: Partial<ReplyRecipients>) =>
+    setRecipients({ to: shownTo[0] ?? "", cc: shownCc, ...next });
 
   // The server's record of this key; only `sent` is a positive answer.
   const status = useQuery(
@@ -232,6 +252,7 @@ function OperatorReplyComposer({
     writeAttempt(id, null);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setText("");
+    setRecipients(null);
     setAttempt(null);
     setServerNote(null);
   }, [confirmedSent, id]);
@@ -249,6 +270,7 @@ function OperatorReplyComposer({
         ...sendKey.current!,
         startedAt: dayjs().valueOf(),
         ...(sendingAs ? { fromUserId: sendingAs } : {}),
+        ...(recipients ? { recipients } : {}),
       };
     }
     if (!next) return;
@@ -265,11 +287,13 @@ function OperatorReplyComposer({
         expectedFingerprint: next.fingerprint,
         idempotencyKey: next.key,
         fromUserId: next.fromUserId,
+        recipients: next.recipients,
       });
       if (result.status === "sent") {
         setText("");
         // The next reply starts from the signed-in operator again.
         setFromUserId(operatorId as Id<"users">);
+        setRecipients(null);
         replyDrafts.delete(id);
         sendKey.current = null;
         writeAttempt(id, null);
@@ -325,17 +349,30 @@ function OperatorReplyComposer({
             />
           </EmailComposeRow>
           <EmailComposeRow label="To">
-            {headers ? (
-              <AddressPills addresses={headers.to} />
+            {headers || recipients ? (
+              <AddressField
+                label="To"
+                max={1}
+                value={shownTo}
+                disabled={sending || locked}
+                onChange={(to) => editRecipients({ to: to[0] ?? "" })}
+              />
             ) : (
               <span className="min-w-0 truncate text-muted-foreground">
                 {recipient ?? "Everyone on the latest message"}
               </span>
             )}
           </EmailComposeRow>
-          {headers?.cc.length ? (
+          {headers || recipients ? (
             <EmailComposeRow label="Cc">
-              <AddressPills addresses={headers.cc} />
+              <AddressField
+                label="Cc"
+                value={shownCc}
+                fixed={headers?.fixedCc ?? []}
+                disabled={sending || locked}
+                placeholder="Add people to copy"
+                onChange={(cc) => editRecipients({ cc })}
+              />
             </EmailComposeRow>
           ) : null}
           {headers?.bcc.length ? (
@@ -367,7 +404,7 @@ function OperatorReplyComposer({
             }}
             className="block max-h-72 min-h-28"
           />
-          {previewing || previewError || preview || needsInput || (fromSuggestion && hasText) || pendingRevision || sendingAs || coEditors.length ? (
+          {previewing || previewError || preview || needsInput || missingTo || (fromSuggestion && hasText) || pendingRevision || sendingAs || coEditors.length ? (
             <div className={`space-y-1 px-4 pb-2 text-muted-foreground ${typeStyle("caption.default")}`}>
               {pendingRevision && !unedited ? (
                 <p className="flex items-center gap-1.5">
@@ -399,6 +436,7 @@ function OperatorReplyComposer({
               {needsInput ? (
                 <p role="alert">Fill in each {NEEDS_MARKER} …] before sending.</p>
               ) : null}
+              {missingTo ? <p role="alert">Add a recipient.</p> : null}
               {previewing ? <p>Preparing preview…</p> : null}
               {previewError ? <p role="alert">{previewError}</p> : null}
               {preview?.copiesOwner ? (
@@ -455,6 +493,7 @@ function OperatorReplyComposer({
               disabled={sending || locked}
               onClick={() => {
                 update("");
+                setRecipients(null);
                 setFromSuggestion(false);
                 setShowFull(false);
                 setOpen(false);

@@ -12,7 +12,7 @@ import {
   EmailComposeRow,
   parseEmailAddressList,
 } from "@/components/email/compose-fields";
-import { FromPicker } from "@/components/email/operator-address";
+import { AddressField, FromPicker } from "@/components/email/operator-address";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { PillButton } from "@/components/ui/pill-button";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
@@ -188,6 +188,8 @@ function OperatorNewEmailComposer({
   const result = useQuery(api.teamEmailCompose.preview, !locked && ready ? composeArgs(settled) : "skip");
   const current = settled === draft;
   const preview = current && result?.ok ? result.preview : null;
+  const typedCc = parseEmailAddressList(draft.cc).map((address) => address.toLowerCase());
+  const addedCc = (preview?.cc ?? []).filter((address) => !typedCc.includes(address));
   const problem = current && result && !result.ok ? result.reason : null;
   const status = useQuery(
     api.teamEmailCompose.status,
@@ -338,14 +340,14 @@ function OperatorNewEmailComposer({
           />
         </EmailComposeRow>
         <EmailComposeRow label="To">
-          <EmailComposeInput
-            aria-label="To"
-            type="email"
+          <AddressField
+            label="To"
+            max={1}
             autoFocus
             placeholder="name@company.com"
-            value={draft.to}
+            value={parseEmailAddressList(draft.to)}
             disabled={disabled}
-            onChange={(event) => update({ to: event.target.value })}
+            onChange={(to) => update({ to: to[0] ?? "" })}
           />
           {providerContacts?.length ? (
             <Select
@@ -394,12 +396,19 @@ function OperatorNewEmailComposer({
         </EmailComposeRow>
         {draft.showCopies || preview?.cc.length ? (
           <EmailComposeRow label="Cc">
-            <EmailComposeInput
-              aria-label="Cc"
-              placeholder={preview?.cc.length ? preview.cc.join(", ") : "Separate addresses with commas"}
-              value={draft.cc}
+            <AddressField
+              label="Cc"
+              placeholder="Add people to copy"
+              // The sender's Always CC comes from the preview and can't be removed here.
+              value={[...typedCc, ...addedCc]}
+              fixed={addedCc}
               disabled={disabled}
-              onChange={(event) => update({ cc: event.target.value, showCopies: true })}
+              onChange={(cc) =>
+                update({
+                  cc: cc.filter((address) => !addedCc.includes(address)).join(", "),
+                  showCopies: true,
+                })
+              }
             />
           </EmailComposeRow>
         ) : null}

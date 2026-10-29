@@ -6,7 +6,11 @@ import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { sendOperatorInboxDraft } from "../lib/operatorInboxSend";
-import { isReplyKeyMismatch, teamReplyErrorMessage } from "../lib/teamEmailReply";
+import {
+  isReplyKeyMismatch,
+  replyRecipientsValidator,
+  teamReplyErrorMessage,
+} from "../lib/teamEmailReply";
 import { getEmailDeliveryMode } from "../lib/resend";
 
 export type TeamReplySent = {
@@ -69,6 +73,8 @@ export const send = action({
     idempotencyKey: v.string(),
     /** Send as this active operator instead of the caller. */
     fromUserId: v.optional(v.id("users")),
+    /** Operator-set To and Cc, replacing the reply-all default. */
+    recipients: v.optional(replyRecipientsValidator),
   },
   handler: async (ctx, args): Promise<TeamReplySendResult> => {
     let pendingEmailId: Id<"pendingEmails">;

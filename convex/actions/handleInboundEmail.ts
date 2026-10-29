@@ -94,31 +94,10 @@ import {
 } from "../lib/actionConfirmationFingerprint";
 import { extractEmailAddress } from "../lib/emailAddress";
 import {
+  CONSUMER_DOMAINS,
   procurementInboxTokenFromAddresses,
   uniqueProcurementEmails,
 } from "../lib/procurement";
-
-const CONSUMER_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "yahoo.co.uk",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "msn.com",
-  "aol.com",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "protonmail.com",
-  "proton.me",
-  "zoho.com",
-  "mail.com",
-  "ymail.com",
-  "gmx.com",
-  "gmx.net",
-]);
 
 function getCompanyDomains(
   org: { website?: string },

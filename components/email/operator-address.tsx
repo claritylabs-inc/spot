@@ -1,9 +1,10 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
+import { TagRemoveButton } from "@claritylabs-inc/ui/components/tag-remove-button";
 import {
   Select,
   SelectContent,
@@ -11,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
+import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { operatorTint, useOperatorColor } from "@/lib/collab/operator-color";
@@ -73,22 +75,207 @@ export function OperatorPill({
   );
 }
 
-/** Addresses as pills: operators by name and avatar, anyone else by address. */
-export function AddressPills({ addresses }: { addresses: string[] }) {
-  const { find } = useOperatorDirectory();
-  return addresses.map((address) => {
-    const operator = find(address);
-    return operator ? (
-      <OperatorPill key={address} operator={operator} address={address} />
-    ) : (
-      <span
-        key={address}
-        className="inline-flex max-w-full min-w-0 items-center truncate rounded-full bg-muted px-2.5 py-0.5"
-      >
-        {address}
+type ProviderContact = FunctionReturnType<
+  typeof api.brokerContacts.lookupByEmails
+>[number];
+
+/** Saved provider contacts among `addresses`, by lowercased address. */
+function useProviderContacts(addresses: string[]) {
+  const emails = [
+    ...new Set(addresses.map((address) => bareAddress(address)).filter(Boolean)),
+  ].sort();
+  const contacts = useQuery(
+    api.brokerContacts.lookupByEmails,
+    emails.length ? { emails } : "skip",
+  );
+  return new Map((contacts ?? []).map((contact) => [contact.email, contact]));
+}
+
+const bareAddress = (address: string) =>
+  (address.match(/<([^>]+)>/)?.[1] ?? address).trim().toLowerCase();
+
+/** A provider contact as a pill: provider icon and their name, address on hover. */
+function ProviderContactPill({
+  contact,
+  address,
+  children,
+}: {
+  contact: ProviderContact;
+  address: string;
+  children?: ReactNode;
+}) {
+  return (
+    <span
+      title={`${contact.name} <${address}> · ${contact.brokerName}`}
+      className={cn(
+        "inline-flex max-w-full min-w-0 items-center gap-1 rounded-full bg-muted p-0.5 pr-2.5",
+        typeStyle("body.default"),
+      )}
+    >
+      <OrgBrandIcon
+        name={contact.brokerName}
+        website={contact.brokerWebsite ?? undefined}
+        iconUrl={contact.brokerIconUrl ?? undefined}
+        size="xs"
+        shape="circle"
+      />
+      <span className="min-w-0 truncate">{contact.name}</span>
+      {children}
+    </span>
+  );
+}
+
+/** One address as a pill: an operator or provider contact by name, anyone else by address. */
+function AddressPill({
+  address,
+  operator,
+  contact,
+  onRemove,
+}: {
+  address: string;
+  operator: DirectoryOperator | null;
+  contact: ProviderContact | undefined;
+  onRemove?: () => void;
+}) {
+  const remove = onRemove ? (
+    <TagRemoveButton label={`Remove ${address}`} onClick={onRemove} />
+  ) : null;
+  if (operator)
+    return (
+      <span className="inline-flex max-w-full min-w-0 items-center">
+        <OperatorPill operator={operator} address={address} className={remove ? "pr-1" : undefined} />
+        {remove}
       </span>
     );
-  });
+  if (contact)
+    return (
+      <ProviderContactPill contact={contact} address={address}>
+        {remove}
+      </ProviderContactPill>
+    );
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-full min-w-0 items-center gap-0.5 rounded-full bg-muted py-0.5 pl-2.5",
+        remove ? "pr-1" : "pr-2.5",
+      )}
+    >
+      <span className="min-w-0 truncate">{address}</span>
+      {remove}
+    </span>
+  );
+}
+
+/** Addresses as pills: operators and provider contacts by name, anyone else by address. */
+export function AddressPills({ addresses }: { addresses: string[] }) {
+  const { find } = useOperatorDirectory();
+  const contacts = useProviderContacts(addresses);
+  return addresses.map((address) => (
+    <AddressPill
+      key={address}
+      address={address}
+      operator={find(address)}
+      contact={contacts.get(bareAddress(address))}
+    />
+  ));
+}
+
+const EMAIL_PATTERN = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
+
+/**
+ * Editable To/Cc: recognized pills with remove buttons, then a box that adds
+ * an address on Enter, comma, semicolon, Tab or blur. `fixed` addresses show
+ * without a remove button; `max` caps how many can be entered.
+ */
+export function AddressField({
+  label,
+  value,
+  onChange,
+  fixed = [],
+  max,
+  disabled,
+  autoFocus,
+  placeholder = "Add recipient",
+}: {
+  label: string;
+  value: string[];
+  onChange: (value: string[]) => void;
+  fixed?: string[];
+  max?: number;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  placeholder?: string;
+}) {
+  const { find } = useOperatorDirectory();
+  const contacts = useProviderContacts(value);
+  const [draft, setDraft] = useState("");
+  const [invalid, setInvalid] = useState(false);
+  const full = max !== undefined && value.length >= max;
+  function commit(text = draft) {
+    const entries = text
+      .split(/[,;\s]+/)
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean);
+    if (!entries.length) return true;
+    const bad = entries.filter((entry) => !EMAIL_PATTERN.test(entry));
+    const next = [...new Set([...value, ...entries.filter((entry) => !bad.includes(entry))])];
+    onChange(max !== undefined ? next.slice(-max) : next);
+    setDraft(bad.join(", "));
+    setInvalid(bad.length > 0);
+    return bad.length === 0;
+  }
+  return (
+    <>
+      {value.map((address) => (
+        <AddressPill
+          key={address}
+          address={address}
+          operator={find(address)}
+          contact={contacts.get(address)}
+          onRemove={
+            disabled || fixed.includes(address)
+              ? undefined
+              : () => onChange(value.filter((entry) => entry !== address))
+          }
+        />
+      ))}
+      {disabled || (full && !draft) ? null : (
+        <input
+          aria-label={`Add ${label} recipient`}
+          aria-invalid={invalid || undefined}
+          type="email"
+          autoFocus={autoFocus}
+          placeholder={value.length ? "" : placeholder}
+          value={draft}
+          onChange={(event) => {
+            const text = event.target.value;
+            setInvalid(false);
+            // A pasted list commits at its separators.
+            if (/[,;]/.test(text)) commit(text);
+            else setDraft(text);
+          }}
+          onKeyDown={(event) => {
+            if (["Enter", ",", ";"].includes(event.key)) {
+              event.preventDefault();
+              commit();
+            } else if (event.key === "Tab" && draft.trim()) {
+              // A valid address moves on with Tab; an invalid one keeps focus.
+              if (!commit()) event.preventDefault();
+            } else if (event.key === "Backspace" && !draft && value.length) {
+              const removable = value.filter((address) => !fixed.includes(address));
+              const last = removable.at(-1);
+              if (last) onChange(value.filter((address) => address !== last));
+            }
+          }}
+          onBlur={() => void commit()}
+          className={cn(
+            "h-7 min-w-32 flex-1 bg-transparent outline-none placeholder:text-muted-foreground/60 aria-invalid:text-destructive",
+            typeStyle("body.default"),
+          )}
+        />
+      )}
+    </>
+  );
 }
 
 /** An operator's avatar in their color: without a photo, colored initials on a tint. */

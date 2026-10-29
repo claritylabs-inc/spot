@@ -424,6 +424,7 @@ export type OutreachContact = {
     | "other";
   email?: string;
   lineOfBusinessCodes: readonly string[];
+  primary?: boolean;
   deletedAt?: number;
 };
 export type OutreachRecipient = {
@@ -456,8 +457,8 @@ function usableEmail(value?: string | null) {
 }
 
 /**
- * Picks the outreach recipient: an explicit outreach email, then broker contacts
- * by role and line overlap. Spot-owned identities are never eligible.
+ * Picks the outreach recipient: an explicit outreach email, then the primary
+ * broker contact, then contacts by role and line overlap. Spot-owned identities are never eligible.
  */
 export function selectRecipient(
   contacts: readonly OutreachContact[],
@@ -519,6 +520,7 @@ export function selectRecipient(
     })
     .sort(
       (a, b) =>
+        Number(!a.contact.primary) - Number(!b.contact.primary) ||
         ROLE_RANK[a.contact.role] - ROLE_RANK[b.contact.role] ||
         overlap(a.contact) - overlap(b.contact) ||
         a.index - b.index,
