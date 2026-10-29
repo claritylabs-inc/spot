@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import dayjs from "dayjs";
-import { Loader2, Reply, Send, Trash2 } from "lucide-react";
+import { ChevronDown, Loader2, Reply, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -201,6 +201,7 @@ function OperatorReplyComposer({
   if (preview && preview !== lastHeaders) setLastHeaders(preview);
   const headers = hasText ? (preview ?? lastHeaders) : null;
   const [open, setOpen] = useFollowedState(`inbox:reply:${threadId}:open`, false);
+  const [minimized, setMinimized] = useState(false);
   const previewError = current && previewResult && !previewResult.ok ? previewResult.reason : null;
   const previewing = !locked && hasText && !missingTo && !preview && !previewError;
   const shownTo = recipients ? (recipients.to ? [recipients.to] : []) : (headers?.to ?? []);
@@ -338,7 +339,7 @@ function OperatorReplyComposer({
           </div>
         </div>
       ) : null}
-      {open || locked || hasText ? (
+      {!minimized && (open || locked || hasText) ? (
         // Flush with the panel footer: the footer is already the frame.
         <div className="-mx-4 -my-3">
           <EmailComposeRow label="From">
@@ -353,6 +354,7 @@ function OperatorReplyComposer({
               <AddressField
                 label="To"
                 max={1}
+                threadId={threadId}
                 value={shownTo}
                 disabled={sending || locked}
                 onChange={(to) => editRecipients({ to: to[0] ?? "" })}
@@ -367,6 +369,7 @@ function OperatorReplyComposer({
             <EmailComposeRow label="Cc">
               <AddressField
                 label="Cc"
+                threadId={threadId}
                 value={shownCc}
                 fixed={headers?.fixedCc ?? []}
                 disabled={sending || locked}
@@ -488,6 +491,16 @@ function OperatorReplyComposer({
               type="button"
               variant="ghost"
               className="ml-auto"
+              label="Minimize draft"
+              aria-label="Minimize draft"
+              onClick={() => setMinimized(true)}
+            >
+              <ChevronDown className="size-3.5" />
+            </PillButton>
+            <PillButton
+              size="compact"
+              type="button"
+              variant="ghost"
               label="Discard reply"
               aria-label="Discard reply"
               disabled={sending || locked}
@@ -497,6 +510,7 @@ function OperatorReplyComposer({
                 setFromSuggestion(false);
                 setShowFull(false);
                 setOpen(false);
+                setMinimized(false);
               }}
             >
               <Trash2 className="size-3.5" />
@@ -506,11 +520,14 @@ function OperatorReplyComposer({
       ) : (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setOpen(true);
+            setMinimized(false);
+          }}
           className={`flex h-10 w-full items-center gap-2 rounded-lg border border-border px-3 text-left text-muted-foreground transition-colors hover:bg-muted/50 ${typeStyle("body.default")}`}
         >
           <Reply className="size-3.5 shrink-0" />
-          <span className="min-w-0 flex-1 truncate">{recipient ? `Reply to ${recipient}` : "Reply"}</span>
+          <span className="min-w-0 flex-1 truncate">{hasText ? "Draft reply" : recipient ? `Reply to ${recipient}` : "Reply"}</span>
           {drafting ? (
             <span className={`flex shrink-0 items-center gap-1.5 ${typeStyle("caption.default")}`}>
               <LogoIcon size={12} className="animate-pulse" />
