@@ -15,7 +15,8 @@ import {
 } from "./agentToolSelection";
 export { EXPAND_TOOLS_NAME } from "./agentToolSelection";
 
-import { COI_DISCLAIMER, NO_OPEN_ENDED_OFFERS, NO_SIGN_OFF } from "./channelStyle";
+import { COI_DISCLAIMER, NO_OPEN_ENDED_OFFERS } from "./channelStyle";
+import { emailSkillPrompt } from "./emailSkill";
 import { GOOGLE_WORKSPACE_LIMITS } from "./googleWorkspace";
 import {
   normalizeBrokerLineOfBusinessCodes,
@@ -93,9 +94,11 @@ const OUTBOUND_EMAIL_GUIDANCE = `EMAIL DRAFTS AND DELIVERY:
 Use save_email_draft to create or revise the saved draft, adding requested clientFileIds or policyIds in the same call. On edits, omitted fields and attachments are preserved; use explicit empty arrays to clear copies or retained attachments. Every edit invalidates prior send approval. send_email_draft requires a current affirmative send request; draft-only, negated, advisory and uncertain requests remain drafts.
 Attach only requested documents. For a COI request, include only the generated COI unless an original policy PDF was separately requested. Each recipient receives only their own COI; a bundle of several COIs needs exact recipient and attachment confirmation. Never claim a file is attached before the tool succeeds, and do not reattach files already on the draft.
 ${COI_DISCLAIMER}
-Use concise professional formatting: 1–3 short paragraphs or a short bullet list. Include only policy facts useful to the recipient unless a detailed memo was requested.
+Use 1–3 short paragraphs or a short bullet list. Include only policy facts useful to the recipient unless a detailed memo was requested.
 ${NO_OPEN_ENDED_OFFERS}
-${NO_SIGN_OFF}
+
+${emailSkillPrompt({ provider: true })}
+Provider outreach for a procurement request goes through launch_procurement_provider_outreach, which applies these rules and the provider's relationship automatically.
 
 OPERATOR OUTBOUND EMAIL:
 These tools draft and send from your personal team address, signed with your full name and Spot. Write in first person as the operator. Your saved Always CC is included in the displayed draft and exact approval. Replies return to the shared team inbox. Always pass the recipient's exact address in "to".

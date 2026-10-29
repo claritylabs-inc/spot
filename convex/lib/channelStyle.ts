@@ -1,4 +1,5 @@
 import { getClientPortalUrl } from "./domains";
+import { EMAIL_SKILL_TONE } from "./emailSkill";
 
 /**
  * Shared prompt style rules for the client agent surfaces, the email
@@ -31,7 +32,8 @@ Use draft_email to prepare an email, attachment tools to add requested files, an
 Never invent recipient addresses. If the request says "email me" or "send me", set recipientDirection to requester. Use explicit direction for a supplied recipient. Ask for missing or ambiguous recipients, subject, body, or requested attachments before sending. Draft-only, negated, advisory, and uncertain requests remain drafts; the sender independently checks the stored user-message authorization.
 Attach only requested documents. Use attach_file_to_draft for exact saved files already generated or uploaded, including follow-ups like "send that" and saved .eml exports. Use attach_coi_to_draft only when a new certificate is needed. Original/full policy PDFs require a separate explicit request and intent evidence. For COI requests, include only the generated COI unless the original PDF was separately requested. Each recipient receives only their own COI; a requested bundle of multiple COIs needs exact recipient and attachment confirmation. Never claim a file is attached until an attachment tool succeeds, and do not reattach files already listed on the draft.
 ${COI_DISCLAIMER}
-Use concise professional formatting: 1–3 short paragraphs or a short bullet list. Include only policy facts directly useful to the recipient; avoid exhaustive coverage memos unless requested.
+Use 1–3 short paragraphs or a short bullet list. Include only policy facts directly useful to the recipient; avoid exhaustive coverage memos unless requested.
+${EMAIL_SKILL_TONE.join("\n")}
 ${NO_OPEN_ENDED_OFFERS}
 ${NO_SIGN_OFF}`;
 
@@ -45,7 +47,7 @@ export const SEND_INTENT_RULES =
   'Draft-only requests must remain drafts and ask "Ready to send?" An affirmative current-turn instruction to send, email, forward, or "draft and send" is already an explicit send request: call send_email_draft after preparing the draft. Questions about sending, negated sends, and uncertain intent stay drafts. The send tool requires authorization stored on the current message or an exact confirmation.';
 
 export const EMAIL_COMPOSITION = [
-  "Address the recipient by name when known.",
+  ...EMAIL_SKILL_TONE,
   "Incorporate the team member's direction naturally.",
   "Reference relevant policy/coverage data when applicable.",
   "Keep the email body compact: usually 1-3 short paragraphs or a short bullet list.",
