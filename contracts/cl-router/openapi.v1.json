@@ -1552,6 +1552,13 @@
             "type": "string",
             "const": "router"
           },
+          "features": {
+            "description": "Optional request features this deployment accepts: `inline_job_input`, `prompt_cache_key`, `agent_loop`, `parallel_tool_calls`. Check before sending them; older deployments reject unknown fields.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "decisions": {
             "type": "object",
             "properties": {
@@ -1688,6 +1695,14 @@
                       "type": "boolean"
                     },
                     "audioInput": {
+                      "type": "boolean"
+                    },
+                    "promptCacheKey": {
+                      "description": "Honors `cache.key` as a provider prompt-cache key.",
+                      "type": "boolean"
+                    },
+                    "parallelToolCalls": {
+                      "description": "Honors `parallelToolCalls`.",
                       "type": "boolean"
                     },
                     "maxInputTokens": {
@@ -2450,8 +2465,10 @@
                 "enum": [
                   "jev",
                   "fallback",
-                  "manual"
-                ]
+                  "manual",
+                  "loop"
+                ],
+                "description": "`loop` means `loop.previous` was reused without a Jev call; it is returned only to callers that send `loop`."
               },
               "attemptCount": {
                 "type": "integer",
@@ -3114,12 +3131,83 @@
             }
           },
           "toolSelection": {
-            "description": "Who selects among the supplied tools. `router` (default) lets the router decide whether and which tools run; `caller` skips router tool selection: every supplied tool stays available with automatic tool choice.",
+            "description": "Who selects among the supplied tools. `router` (default) lets the router decide whether and which tools run; `caller` skips router tool selection: every supplied tool stays available with automatic tool choice. Ignored with `loop`, which always leaves the choice to the model.",
             "type": "string",
             "enum": [
               "router",
               "caller"
             ]
+          },
+          "parallelToolCalls": {
+            "description": "Allow (true) or forbid (false) several tool calls in one step on models with a documented control (see `/v1/capabilities`); omitted keeps the provider default. Ignored elsewhere.",
+            "type": "boolean"
+          },
+          "cache": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "Stable key for requests that share a prompt prefix (for example one agent run). Hashed with the tenant before it reaches a provider; never stored."
+              }
+            },
+            "required": [
+              "key"
+            ],
+            "additionalProperties": false
+          },
+          "loop": {
+            "type": "object",
+            "properties": {
+              "previous": {
+                "description": "The previous step's response `routing.route` and `routing.difficulty`. Reused without a Jev call only when the last message is a tool result; ignored by /v1/manual.",
+                "type": "object",
+                "properties": {
+                  "route": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string",
+                        "enum": [
+                          "openai",
+                          "anthropic",
+                          "xai",
+                          "mistral",
+                          "cohere",
+                          "fireworks",
+                          "deepseek",
+                          "abliteration"
+                        ]
+                      },
+                      "model": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model"
+                    ]
+                  },
+                  "difficulty": {
+                    "type": "string",
+                    "enum": [
+                      "simple",
+                      "standard",
+                      "complex"
+                    ]
+                  }
+                },
+                "required": [
+                  "route",
+                  "difficulty"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false,
+            "description": "Marks one step of an agent loop: the router asks no tool questions and never restricts or forces tool choice, so the provider tools array stays identical across steps."
           },
           "trace": {
             "type": "object",
@@ -3348,8 +3436,10 @@
                 "enum": [
                   "jev",
                   "fallback",
-                  "manual"
-                ]
+                  "manual",
+                  "loop"
+                ],
+                "description": "`loop` means `loop.previous` was reused without a Jev call; it is returned only to callers that send `loop`."
               },
               "attemptCount": {
                 "type": "integer",
@@ -3840,6 +3930,11 @@
             "maxLength": 4096,
             "format": "uri"
           },
+          "input": {
+            "description": "Exact JSON text of a generate/manual request, sent instead of `requestUrl`. `fingerprint` is the SHA-256 of its UTF-8 bytes. At most 8 MiB.",
+            "type": "string",
+            "minLength": 2
+          },
           "resultUrl": {
             "type": "string",
             "maxLength": 4096,
@@ -3851,7 +3946,6 @@
           "idempotencyKey",
           "fingerprint",
           "operation",
-          "requestUrl",
           "resultUrl"
         ],
         "additionalProperties": false
@@ -4344,12 +4438,83 @@
             }
           },
           "toolSelection": {
-            "description": "Who selects among the supplied tools. `router` (default) lets the router decide whether and which tools run; `caller` skips router tool selection: every supplied tool stays available with automatic tool choice.",
+            "description": "Who selects among the supplied tools. `router` (default) lets the router decide whether and which tools run; `caller` skips router tool selection: every supplied tool stays available with automatic tool choice. Ignored with `loop`, which always leaves the choice to the model.",
             "type": "string",
             "enum": [
               "router",
               "caller"
             ]
+          },
+          "parallelToolCalls": {
+            "description": "Allow (true) or forbid (false) several tool calls in one step on models with a documented control (see `/v1/capabilities`); omitted keeps the provider default. Ignored elsewhere.",
+            "type": "boolean"
+          },
+          "cache": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "Stable key for requests that share a prompt prefix (for example one agent run). Hashed with the tenant before it reaches a provider; never stored."
+              }
+            },
+            "required": [
+              "key"
+            ],
+            "additionalProperties": false
+          },
+          "loop": {
+            "type": "object",
+            "properties": {
+              "previous": {
+                "description": "The previous step's response `routing.route` and `routing.difficulty`. Reused without a Jev call only when the last message is a tool result; ignored by /v1/manual.",
+                "type": "object",
+                "properties": {
+                  "route": {
+                    "type": "object",
+                    "properties": {
+                      "provider": {
+                        "type": "string",
+                        "enum": [
+                          "openai",
+                          "anthropic",
+                          "xai",
+                          "mistral",
+                          "cohere",
+                          "fireworks",
+                          "deepseek",
+                          "abliteration"
+                        ]
+                      },
+                      "model": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "model"
+                    ]
+                  },
+                  "difficulty": {
+                    "type": "string",
+                    "enum": [
+                      "simple",
+                      "standard",
+                      "complex"
+                    ]
+                  }
+                },
+                "required": [
+                  "route",
+                  "difficulty"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false,
+            "description": "Marks one step of an agent loop: the router asks no tool questions and never restricts or forces tool choice, so the provider tools array stays identical across steps."
           },
           "trace": {
             "type": "object",
@@ -5042,8 +5207,10 @@
                     "enum": [
                       "jev",
                       "fallback",
-                      "manual"
-                    ]
+                      "manual",
+                      "loop"
+                    ],
+                    "description": "`loop` means `loop.previous` was reused without a Jev call; it is returned only to callers that send `loop`."
                   },
                   "attemptCount": {
                     "type": "integer",
@@ -5494,8 +5661,10 @@
                 "enum": [
                   "jev",
                   "fallback",
-                  "manual"
-                ]
+                  "manual",
+                  "loop"
+                ],
+                "description": "`loop` means `loop.previous` was reused without a Jev call; it is returned only to callers that send `loop`."
               },
               "attemptCount": {
                 "type": "integer",

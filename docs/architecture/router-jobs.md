@@ -34,7 +34,13 @@ request bytes. The router validates this fingerprint when fetching the request.
 }
 ```
 
-Operations are `generate`, `manual`, `embed`, `retrieve`, `transcribe`, and `browse`. The router
+Operations are `generate`, `manual`, `embed`, `retrieve`, `transcribe`, and `browse`. When
+`/v1/capabilities` lists `inline_job_input`, generate and manual submissions replace
+`requestUrl` with `input`: the exact stored request text, so the fingerprint is unchanged
+and the router skips its request fetch. Other operations, older routers and an unavailable
+capabilities read keep `requestUrl`. A retry after a lost acknowledgement finds the same job
+whichever source either attempt used; cancellation recovery always uses `requestUrl`, which a
+cancelled row no longer serves. The router
 returns a `jobId`. Repeating an identical submission after a lost acknowledgement
 retrieves the same job. Spot stores its router ID before subsequent status reads.
 `GET /v1/jobs/<jobId>` returns metadata; `POST /v1/jobs/<jobId>/cancel` requests

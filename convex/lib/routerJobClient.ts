@@ -10,7 +10,9 @@ import type { ActionCtx } from "../_generated/server";
 import {
   assertSpotRouterAssetUrl,
   ClRouterRequestError,
+  clRouterCapabilities,
   clRouterRouteIsAvailable,
+  clRouterSupports,
   isUnknownClRouterRouteFailure,
   logIgnoredClRouterPin,
 } from "./clRouterClient";
@@ -272,6 +274,35 @@ async function prepareJob(
       });
     }
   }
+}
+
+/**
+ * Generation jobs send their exact stored request bytes inline when the router
+ * accepts it, saving the router's request fetch; the fingerprint is unchanged.
+ * Other operations, older routers and unreadable bytes use `requestUrl`. A
+ * resubmission after a lost acknowledgement reconnects to the same job
+ * whichever source either attempt used.
+ */
+async function jobInputSource(
+  ctx: ActionCtx,
+  row: Doc<"routerJobs">,
+  siteUrl: string,
+  abortSignal?: AbortSignal,
+): Promise<{ input: string } | { requestUrl: string }> {
+  if (
+    (row.operation === "generate" || row.operation === "manual") &&
+    row.requestStorageId &&
+    clRouterSupports(
+      await clRouterCapabilities({ abortSignal }).catch(() => undefined),
+      "inline_job_input",
+    )
+  ) {
+    const input = await (await ctx.storage.get(row.requestStorageId))?.text();
+    if (input !== undefined) return { input };
+  }
+  return {
+    requestUrl: `${siteUrl}/router-jobs/request?token=${row.requestToken}`,
+  };
 }
 
 function routerCredential(): string {
@@ -549,7 +580,7 @@ async function executeRouterRequestOnce(
             ...(row.streamTarget ? { stream: true } : {}),
             tenantId: "glass",
             fingerprint: row.fingerprint,
-            requestUrl: `${siteUrl}/router-jobs/request?token=${row.requestToken}`,
+            ...(await jobInputSource(ctx, row, siteUrl, abortSignal)),
             resultUrl: `${siteUrl}/router-jobs/result?token=${row.resultToken}`,
           },
           abortSignal,
@@ -624,6 +655,8 @@ export async function cancelDurableRouterRequest(
   try {
     let jobId = row.routerJobId;
     // A lost submission acknowledgement can still have started inference.
+    // This resubmission only finds that job, so it keeps `requestUrl`: the
+    // cancelled row no longer serves its input, and a new job cannot run.
     if (!jobId) {
       const siteUrl = callbackSiteUrl();
       const response = await routerControl("/v1/jobs", {

@@ -132,6 +132,7 @@ export type AgentModelRunOptions = {
   durable?: { invocationKey: string; route?: ModelRoute };
   /** Opt-in reasoning continuity and effort; see ClRouterLanguageModelOptions. */
   reasoning?: ClRouterLanguageModelOptions["reasoning"];
+  agentStep?: ClRouterLanguageModelOptions["agentStep"];
   sessionKey: string;
   taskKind: ModelCallTaskKind;
   trace: {
@@ -174,7 +175,8 @@ export type ModelRouteSource =
   | "routed"
   | "manual"
   | "jev"
-  | "fallback";
+  | "fallback"
+  | "loop";
 
 export function generatedTextFromResult(result: unknown): string {
   if (!result || typeof result !== "object") return "";
@@ -786,6 +788,7 @@ function agentLanguageModel(
       sessionKey: run.sessionKey,
       trace: run.trace,
       ...(run.reasoning ? { reasoning: run.reasoning } : {}),
+      ...(run.agentStep ? { agentStep: run.agentStep } : {}),
       client: {
         executeJob: async (operation, payload, abortSignal) => {
           const invocationKey =

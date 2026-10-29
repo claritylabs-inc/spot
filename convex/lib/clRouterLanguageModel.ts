@@ -51,6 +51,11 @@ export type ClRouterLanguageModelStep = {
   toolNames?: string[];
 };
 
+export type ClRouterAgentStepOptions = Pick<
+  ClRouterGenerateRequest,
+  "cache" | "loop" | "parallelToolCalls"
+>;
+
 export type ClRouterLanguageModelOptions = {
   task: ModelTask;
   taskKind?: string;
@@ -74,6 +79,8 @@ export type ClRouterLanguageModelOptions = {
    * `effort`.
    */
   reasoning?: ClRouterReasoningOptions;
+  /** Agent-loop request fields, sent only when the router advertises them. */
+  agentStep?: ClRouterAgentStepOptions;
   onResponse?: (
     response: ClRouterResponseMetadata,
     step: ClRouterLanguageModelStep,
@@ -426,6 +433,7 @@ async function requestForCall(
       : {}),
     ...(options.maxOutputTokens ? { maxTokens: options.maxOutputTokens } : {}),
     ...(reasoning?.effort || reasoning?.include ? { reasoning } : {}),
+    ...adapter.agentStep,
     ...(tools.length > 0 ? { tools } : {}),
     ...(trace ? { trace } : {}),
   };

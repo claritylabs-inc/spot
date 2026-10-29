@@ -55,6 +55,13 @@ function capabilities(models = [route]) {
     })),
   };
 }
+// Router job control calls; capability reads that gate optional fields are
+// not submissions.
+function jobCalls(fetcher: ReturnType<typeof vi.fn<typeof fetch>>) {
+  return fetcher.mock.calls.filter(
+    ([url]) => !String(url).endsWith("/v1/capabilities"),
+  );
+}
 function routerFailure(message: string, executionStarted = false) {
   return {
     error: {
@@ -494,7 +501,7 @@ test("durable routed fallback reconnects even after the pin is removed", async (
   expect(
     await t.run((ctx) => ctx.db.query("routerJobs").take(10)),
   ).toHaveLength(2);
-  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(jobCalls(fetcher)).toHaveLength(1);
 });
 
 test("a yielding call waits in place for its callback, then yields without resubmitting", async () => {
@@ -520,7 +527,7 @@ test("a yielding call waits in place for its callback, then yields without resub
       ),
     );
   await expect(call(600)).rejects.toThrow("still running");
-  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(jobCalls(fetcher)).toHaveLength(1);
   const storageId = await t.run((ctx) =>
     ctx.storage.store(new Blob([JSON.stringify(generation)])),
   );
@@ -540,8 +547,84 @@ test("a yielding call waits in place for its callback, then yields without resub
   });
   expect(await waiting).toEqual(generation);
   // The resumed call checked status once and never submitted again.
-  expect(fetcher).toHaveBeenCalledTimes(2);
-  expect(String(fetcher.mock.calls[1]![0])).toMatch(/\/v1\/jobs\/router-inline$/);
+  expect(jobCalls(fetcher)).toHaveLength(2);
+  expect(String(jobCalls(fetcher)[1]![0])).toMatch(
+    /\/v1\/jobs\/router-inline$/,
+  );
+});
+
+// A step whose submission acknowledgement was lost under `requestUrl` must
+// reconnect to the same router job after the router gains inline input: the
+// retry carries the identical stored bytes and fingerprint, and a bound job is
+// only polled, never resubmitted.
+test("a resumed step reconnects across a switch to inline job input", async () => {
+  const { t, args } = await fixture();
+  vi.stubEnv("SPOT_ENV", "local");
+  vi.stubEnv("CONVEX_SITE_URL", "http://127.0.0.1:3211");
+  vi.stubEnv("SPOT_ROUTER_CALLBACK_URL", "");
+  // A router URL of its own keeps cached capabilities out of other tests.
+  vi.stubEnv("CL_ROUTER_URL", "https://inline-router.example.com");
+  vi.stubEnv("CL_ROUTER_SECRET", "x".repeat(32));
+  let inline = false;
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path === "/v1/capabilities")
+      return inline
+        ? Response.json({
+            ...capabilities(),
+            features: ["inline_job_input"],
+          })
+        : Response.json({}, { status: 503 });
+    if (path === "/v1/jobs")
+      return inline
+        ? Response.json({ jobId: "router-job" })
+        : Response.json({}, { status: 503 });
+    return Response.json({ status: "running" });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const call = () =>
+    t.action((ctx) =>
+      executeDurableRouterRequest(
+        ctx,
+        "generate",
+        { primitive: "text", prompt: "test" },
+        args.invocationKey,
+        undefined,
+        { wait: "yield" },
+      ),
+    );
+  const submissions = () =>
+    jobCalls(fetcher)
+      .filter(([url]) => String(url).endsWith("/v1/jobs"))
+      .map(([, init]) => JSON.parse(String(init?.body)));
+
+  await expect(call()).rejects.toThrow("still running");
+  expect(submissions()).toHaveLength(1);
+  expect(submissions()[0]).toHaveProperty("requestUrl");
+  expect(submissions()[0]).not.toHaveProperty("input");
+
+  inline = true;
+  await expect(call()).rejects.toThrow("still running");
+  const retry = submissions()[1];
+  expect(retry).toMatchObject({
+    idempotencyKey: args.invocationKey,
+    fingerprint: args.fingerprint,
+    input: '{"prompt":"test"}',
+  });
+  expect(retry).not.toHaveProperty("requestUrl");
+  expect(
+    (
+      await t.query(internal.routerJobs.get, {
+        invocationKey: args.invocationKey,
+      })
+    )?.routerJobId,
+  ).toBe("router-job");
+
+  await expect(call()).rejects.toThrow("still running");
+  expect(submissions()).toHaveLength(2);
+  expect(String(jobCalls(fetcher).at(-1)?.[0])).toMatch(
+    /\/v1\/jobs\/router-job$/,
+  );
 });
 
 test("a durable unknown execution outcome cannot create a routed fallback", async () => {
