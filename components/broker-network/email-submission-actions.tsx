@@ -1,18 +1,11 @@
 "use client";
 
 import { useFollowedOpen } from "@/hooks/use-followed-state";
-import { FileInput, MoreHorizontal, NotebookPen } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@claritylabs-inc/ui/components/dropdown-menu";
+import { FileInput } from "lucide-react";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import { PillButton } from "@/components/ui/pill-button";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AttachmentSubmissionDialog } from "./attachment-submission-dialog";
-import { SubmissionDefaultDialog } from "./provider-submission-defaults";
 
 type Source = {
   threadId: Id<"teamEmailThreads">;
@@ -77,48 +70,6 @@ export function EmailSubmissionAttachment({
           defaultBrokerOrgId={brokerOrgId}
           defaultBrokerName={brokerName}
           defaultCoverageCodes={coverageCodes}
-        />
-      ) : null}
-    </>
-  );
-}
-
-export function EmailSubmissionNotes({
-  source,
-  brokerOrgId,
-  brokerName,
-}: Provider & { source: Source }) {
-  const { open, onOpenChange: setOpen } = useFollowedOpen(
-    `email:${source.messageId}:submission-notes`,
-  );
-  return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <PillButton
-              variant="icon"
-              size="compact"
-              iconOnly
-              label="Message options"
-            />
-          }
-        >
-          <MoreHorizontal />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setOpen(true)}>
-            <NotebookPen /> Save submission questions or notes…
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {open ? (
-        <SubmissionDefaultDialog
-          open={open}
-          onOpenChange={setOpen}
-          source={source}
-          defaultBrokerOrgId={brokerOrgId}
-          defaultBrokerName={brokerName}
         />
       ) : null}
     </>

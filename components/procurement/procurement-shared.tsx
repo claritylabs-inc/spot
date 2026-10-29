@@ -23,7 +23,6 @@ import {
 } from "@/components/broker-network/thread-contact-menu";
 import {
   EmailSubmissionAttachment,
-  EmailSubmissionNotes,
 } from "@/components/broker-network/email-submission-actions";
 import {
   LinkSuggestionBar,
@@ -467,13 +466,6 @@ export function ProcurementEmailMessage({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {!collapsed && !readOnly ? (
-              <EmailSubmissionNotes
-                source={{ threadId: message.threadId, messageId: message._id, text: body }}
-                brokerOrgId={contactSuggestion?.brokerOrgId}
-                brokerName={contactSuggestion?.brokerName}
-              />
-            ) : null}
             <time
               dateTime={dayjs(message.receivedAt).toISOString()}
               title={formatDisplayDateTime(message.receivedAt, "—")}
