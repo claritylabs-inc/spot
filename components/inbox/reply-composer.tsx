@@ -353,6 +353,7 @@ function OperatorReplyComposer({
               <AddressField
                 label="To"
                 max={1}
+                threadId={threadId}
                 value={shownTo}
                 disabled={sending || locked}
                 onChange={(to) => editRecipients({ to: to[0] ?? "" })}
@@ -367,6 +368,7 @@ function OperatorReplyComposer({
             <EmailComposeRow label="Cc">
               <AddressField
                 label="Cc"
+                threadId={threadId}
                 value={shownCc}
                 fixed={headers?.fixedCc ?? []}
                 disabled={sending || locked}
