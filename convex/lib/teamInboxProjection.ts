@@ -1,5 +1,6 @@
 import type { PaginationOptions } from "convex/server";
 
+import { requestProviderCoverageCodes } from "./coverageLobMapping";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { operatorPerson, type OperatorPerson } from "./operatorAvatar";
@@ -509,7 +510,15 @@ export async function getTeamThreadDetails(
   const forwardingAddress = liveAddressed ? requestForwardingAddressOf(liveAddressed) : null;
   return {
     thread,
-    request: request ? { requestId: request._id, title: request.title } : null,
+    request: request
+      ? {
+          requestId: request._id,
+          title: request.title,
+          coverageCodes: requestProviderCoverageCodes(
+            request.intakeDetails?.coverages,
+          ),
+        }
+      : null,
     addressedRequest: liveAddressed
       ? { requestId: liveAddressed._id, title: liveAddressed.title, forwardingAddress }
       : null,

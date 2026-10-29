@@ -17,7 +17,10 @@ import { toast } from "sonner";
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import type { ThreadContactSuggestion } from "@/components/broker-network/add-thread-contact";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
-import { ThreadContactMenu } from "@/components/broker-network/thread-contact-menu";
+import {
+  ThreadContactMenu,
+  threadContactMenuKey,
+} from "@/components/broker-network/thread-contact-menu";
 import {
   EmailSubmissionAttachment,
   EmailSubmissionNotes,
@@ -369,6 +372,7 @@ export function ProcurementEmailMessage({
   collapsed,
   onToggle,
   contactSuggestion,
+  coverageCodes,
   readOnly = false,
 }: {
   message: ProcurementEmailMessageData;
@@ -378,6 +382,8 @@ export function ProcurementEmailMessage({
   readOnly?: boolean;
   /** Provider relationship for this sender. */
   contactSuggestion?: ThreadContactSuggestion;
+  /** Coverage lines of the request this conversation is linked to. */
+  coverageCodes?: string[];
 }) {
   const forwardedEmail = (message.forwarded as ForwardedEmail | undefined)
     ?.email;
@@ -402,6 +408,10 @@ export function ProcurementEmailMessage({
   const body =
     message.currentText ||
     (forwardedEmail ? "" : "(No message text)");
+  const contactMenu = useFollowedOpen(
+    threadContactMenuKey(message.threadId, message.fromEmail),
+  );
+  const hasContactMenu = !readOnly && !fromSpot && !message.fromOperator;
   const avatar =
     fromSpot && !person ? (
       <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-background">
@@ -421,9 +431,9 @@ export function ProcurementEmailMessage({
       ) : (
         <button
           type="button"
-          aria-label="Collapse message"
-          title="Collapse"
-          onClick={onToggle}
+          aria-label={hasContactMenu ? "Contact options" : "Collapse message"}
+          title={hasContactMenu ? "Contact options" : "Collapse"}
+          onClick={hasContactMenu ? () => contactMenu.onOpenChange(true) : onToggle}
           className="mt-0.5 shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {avatar}
@@ -529,6 +539,7 @@ export function ProcurementEmailMessage({
                 source={{ threadId: message.threadId, messageId: message._id }}
                 brokerOrgId={contactSuggestion?.brokerOrgId}
                 brokerName={contactSuggestion?.brokerName}
+                coverageCodes={coverageCodes}
               />
             ))}
           </div>
@@ -639,6 +650,7 @@ function EmailConversation({
           message={message}
           fromSpot={message.direction === "outbound"}
           readOnly={readOnly}
+          coverageCodes={thread.request?.coverageCodes}
           contactSuggestion={
             message.direction === "inbound" && !message.fromOperator
               ? contactSuggestions?.find(
