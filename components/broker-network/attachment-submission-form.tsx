@@ -5,13 +5,10 @@ import { useAction, useQuery } from "convex/react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@claritylabs-inc/ui/components/dialog";
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+} from "@claritylabs-inc/ui/components/popover";
 import { Field, FieldGroup, FieldLabel } from "@claritylabs-inc/ui/components/field";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
@@ -31,8 +28,7 @@ const coverageOptions = PROVIDER_ACORD_LOB_CODES.map((value) => ({
   label: lobLabel(value),
 })).sort((a, b) => a.label.localeCompare(b.label));
 
-export function AttachmentSubmissionDialog({
-  open,
+export function AttachmentSubmissionForm({
   onOpenChange,
   source,
   file,
@@ -40,7 +36,6 @@ export function AttachmentSubmissionDialog({
   defaultBrokerName,
   defaultCoverageCodes = [],
 }: {
-  open: boolean;
   onOpenChange: (open: boolean) => void;
   source: {
     threadId: Id<"teamEmailThreads">;
@@ -96,14 +91,13 @@ export function AttachmentSubmissionDialog({
   const providerName = options.find((broker) => broker.value === providerId)?.label;
   const saved = useQuery(
     api.providerSubmissionDefaults.get,
-    open && providerId && coverageCode
+    providerId && coverageCode
       ? { brokerOrgId: providerId as Id<"organizations">, coverageCode }
       : "skip",
   );
   const suggestCoverage = useAction(api.actions.submissionCoverage.suggest);
   const candidates = defaultCoverageCodes.join(",");
-  const needsSuggestion =
-    open && !coverageCode && defaultCoverageCodes.length > 1;
+  const needsSuggestion = !coverageCode && defaultCoverageCodes.length > 1;
   useEffect(() => {
     if (!needsSuggestion) return;
     let cancelled = false;
@@ -163,66 +157,61 @@ export function AttachmentSubmissionDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !saving && onOpenChange(next)}>
-      <DialogContent data-collab-scope={`attachment-form:${key}`}>
-        <form
-          className="contents"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save();
-          }}
+    <form
+      className="flex flex-col gap-3"
+      data-collab-scope={`attachment-form:${key}`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }}
+    >
+      <PopoverHeader>
+        <PopoverTitle>Use as default application form</PopoverTitle>
+        <PopoverDescription>{file.name}</PopoverDescription>
+      </PopoverHeader>
+      <FieldGroup>
+        <Field>
+          <FieldLabel>Provider</FieldLabel>
+          <SearchableSelect
+            ariaLabel="Provider"
+            typographyRole="control.menu"
+            value={providerId}
+            options={options}
+            onChange={setProviderId}
+            disabled={saving}
+            placeholder="Choose provider"
+          />
+        </Field>
+        <Field>
+          <FieldLabel>Coverage line</FieldLabel>
+          <SearchableSelect
+            ariaLabel="Coverage line"
+            typographyRole="control.menu"
+            value={coverageCode}
+            options={coverageOptions}
+            onChange={setCoverageCode}
+            disabled={saving}
+            placeholder="Choose coverage"
+          />
+        </Field>
+      </FieldGroup>
+      <div className="flex justify-end gap-2">
+        <PillButton
+          type="button"
+          variant="secondary"
+          disabled={saving}
+          onClick={() => onOpenChange(false)}
         >
-          <DialogHeader>
-            <DialogTitle>Use as default application form</DialogTitle>
-            <DialogDescription>{file.name}</DialogDescription>
-          </DialogHeader>
-          <FieldGroup>
-            <Field>
-              <FieldLabel>Provider</FieldLabel>
-              <SearchableSelect
-                ariaLabel="Provider"
-                typographyRole="control.menu"
-                value={providerId}
-                options={options}
-                onChange={setProviderId}
-                disabled={saving}
-                placeholder="Choose provider"
-              />
-            </Field>
-            <Field>
-              <FieldLabel>Coverage line</FieldLabel>
-              <SearchableSelect
-                ariaLabel="Coverage line"
-                typographyRole="control.menu"
-                value={coverageCode}
-                options={coverageOptions}
-                onChange={setCoverageCode}
-                disabled={saving}
-                placeholder="Choose coverage"
-              />
-            </Field>
-          </FieldGroup>
-          <DialogFooter>
-            <PillButton
-              type="button"
-              variant="secondary"
-              disabled={saving}
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </PillButton>
-            <PillButton
-              type="submit"
-              disabled={
-                saving || !providerId || !coverageCode || saved === undefined
-              }
-            >
-              {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              Save form
-            </PillButton>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          Cancel
+        </PillButton>
+        <PillButton
+          type="submit"
+          disabled={saving || !providerId || !coverageCode || saved === undefined}
+        >
+          {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+          Save form
+        </PillButton>
+      </div>
+    </form>
   );
 }
