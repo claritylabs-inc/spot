@@ -26,7 +26,7 @@ import { OUTREACH_DEFAULT_CADENCE } from "@/convex/lib/providerOutreachSchedule"
 import {
   FollowUpCountSelect,
   IntervalSelect,
-} from "@/components/procurement/provider-outreach-panel";
+} from "@/components/procurement/outreach-cadence-selects";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const PREVIEW_DELAY_MS = 450;
