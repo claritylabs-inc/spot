@@ -539,6 +539,7 @@ import type * as operatorMcpOAuth from "../operatorMcpOAuth.js";
 import type * as operatorMcpReadCalls from "../operatorMcpReadCalls.js";
 import type * as operatorMcpServers from "../operatorMcpServers.js";
 import type * as operatorNotifications from "../operatorNotifications.js";
+import type * as operatorPlanningCalibration from "../operatorPlanningCalibration.js";
 import type * as operatorPolicyImports from "../operatorPolicyImports.js";
 import type * as operatorPresence from "../operatorPresence.js";
 import type * as operatorProvisioning from "../operatorProvisioning.js";
@@ -1140,6 +1141,7 @@ declare const fullApi: ApiFromModules<{
   operatorMcpReadCalls: typeof operatorMcpReadCalls;
   operatorMcpServers: typeof operatorMcpServers;
   operatorNotifications: typeof operatorNotifications;
+  operatorPlanningCalibration: typeof operatorPlanningCalibration;
   operatorPolicyImports: typeof operatorPolicyImports;
   operatorPresence: typeof operatorPresence;
   operatorProvisioning: typeof operatorProvisioning;
