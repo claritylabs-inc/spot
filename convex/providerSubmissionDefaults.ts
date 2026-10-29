@@ -1,7 +1,8 @@
 import dayjs from "dayjs";
 import { v, type Infer } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   action,
   internalMutation,
@@ -173,6 +174,21 @@ async function existingDefault(ctx: Ctx, args: SaveArgs) {
   return { fields, existing };
 }
 
+async function submissionDefaultWithUrls(
+  ctx: Ctx,
+  row: Doc<"providerSubmissionDefaults">,
+) {
+  return {
+    ...row,
+    forms: await Promise.all(
+      row.forms.map(async (form) => ({
+        ...form,
+        url: await ctx.storage.getUrl(form.storageId),
+      })),
+    ),
+  };
+}
+
 /** Internal callers must supply their actor; all paths recheck the active operator. */
 export async function listProviderSubmissionDefaults(
   ctx: Ctx,
@@ -194,15 +210,7 @@ export async function listProviderSubmissionDefaults(
     });
   return {
     defaults: await Promise.all(
-      rows.page.map(async (row) => ({
-        ...row,
-        forms: await Promise.all(
-          row.forms.map(async (form) => ({
-            ...form,
-            url: await ctx.storage.getUrl(form.storageId),
-          })),
-        ),
-      })),
+      rows.page.map((row) => submissionDefaultWithUrls(ctx, row)),
     ),
     bounded: !rows.isDone,
   };
@@ -212,6 +220,51 @@ export const list = query({
   args: { brokerOrgId: v.id("organizations") },
   handler: async (ctx, { brokerOrgId }) => {
     return await listProviderSubmissionDefaults(ctx, brokerOrgId);
+  },
+});
+
+/** Exact lookup keeps a bounded directory page from being mistaken for absence. */
+export const get = query({
+  args: { brokerOrgId: v.id("organizations"), coverageCode: v.string() },
+  handler: async (ctx, { brokerOrgId, coverageCode }) => {
+    await requireOperator(ctx);
+    await requireProvider(ctx, brokerOrgId);
+    const codes = normalizeBrokerLineOfBusinessCodes([coverageCode]);
+    if (codes.length !== 1) throw new Error("Select one coverage line");
+    const row = await ctx.db
+      .query("providerSubmissionDefaults")
+      .withIndex("by_brokerOrgId_and_coverageCode", (q) =>
+        q.eq("brokerOrgId", brokerOrgId).eq("coverageCode", codes[0]),
+      )
+      .unique();
+    return row ? submissionDefaultWithUrls(ctx, row) : null;
+  },
+});
+
+export const listPage = query({
+  args: {
+    brokerOrgId: v.id("organizations"),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, { brokerOrgId, paginationOpts }) => {
+    await requireOperator(ctx);
+    await requireProvider(ctx, brokerOrgId);
+    const rows = await ctx.db
+      .query("providerSubmissionDefaults")
+      .withIndex("by_brokerOrgId_and_coverageCode", (q) =>
+        q.eq("brokerOrgId", brokerOrgId),
+      )
+      .paginate({
+        ...paginationOpts,
+        numItems: Math.min(paginationOpts.numItems, MAX_DEFAULTS),
+        maximumBytesRead: 1_000_000,
+      });
+    return {
+      ...rows,
+      page: await Promise.all(
+        rows.page.map((row) => submissionDefaultWithUrls(ctx, row)),
+      ),
+    };
   },
 });
 

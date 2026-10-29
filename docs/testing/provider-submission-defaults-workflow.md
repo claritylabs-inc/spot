@@ -10,6 +10,19 @@ Actor: authenticated operator. Local Conductor web at localhost:8080 and Convex 
 
 Cleanup: retain clearly named local synthetic records for review. No live email sends, production writes, tests or migrations.
 
+Coverage retrieval: the operator overview uses cursor-paginated
+`providerSubmissionDefaults.listPage`, with a 1 MB read budget per page and a
+Load more action. The editor uses the exact provider/coverage `get` query,
+including normalized coverage codes, so a coverage omitted from a directory
+page is never treated as a new record. The agent's existing bounded
+`submissionDefaults` read contract is unchanged. Final review caught and repaired
+truncated-list editing before PR creation. A synthetic provider with 20 substantial
+standards reproduced the 1 MB boundary (12 rows in the bounded tool read). Signed
+API pagination retrieved all 20 and exact lookup/save succeeded for omitted CYBER.
+Helium Load more then displayed CYBER, and Edit opened its existing saved standard.
+Evidence: `.context/qa/provider-defaults/pagination-outcomes.json`. Root TypeScript,
+scoped ESLint and whitespace checks passed after the repair.
+
 | Workflow | Status | Evidence / limits |
 | --- | --- | --- |
 | Contact dropdown and primary routing | Passed locally | Helium: unlinked synthetic sender → provider chooser → primary selected → saved. API read confirms exactly one primary. Existing outreach priority code reused. |
@@ -39,3 +52,6 @@ Selection-switch draft caching, multi-operator conflict presentation, and a full
 keyboard menu sweep were not separately exercised; revision rejection was verified
 through the signed API. The initial memory script reports only free pages on macOS;
 `memory_pressure -Q` reported 40% system-wide available memory before resumed QA.
+
+PR preparation: rebased onto remote main `a1987a97`; post-rebase TypeScript
+and scoped ESLint passed. No tests or dev database migrations added.

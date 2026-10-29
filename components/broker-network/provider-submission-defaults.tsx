@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import {
+  useAction,
+  useMutation,
+  usePaginatedQuery,
+  useQuery,
+} from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -45,9 +50,9 @@ import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
 
-type SubmissionDefault = FunctionReturnType<
-  typeof api.providerSubmissionDefaults.list
->["defaults"][number];
+type SubmissionDefault = NonNullable<
+  FunctionReturnType<typeof api.providerSubmissionDefaults.get>
+>;
 type Requirement = { question: string; guidance: string };
 type SubmissionDraft = {
   revision: number;
@@ -80,7 +85,12 @@ export function ProviderSubmissionDefaults({
   brokerOrgId: Id<"organizations">;
   brokerName: string;
 }) {
-  const result = useQuery(api.providerSubmissionDefaults.list, { brokerOrgId });
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.providerSubmissionDefaults.listPage,
+    { brokerOrgId },
+    { initialNumItems: 10 },
+  );
+  const loading = status === "LoadingFirstPage";
   const [editing, setEditing] = useFollowedState<string | null>(
     `provider:${brokerOrgId}:submission-defaults:editing`,
     null,
@@ -92,7 +102,7 @@ export function ProviderSubmissionDefaults({
         actions={
           <PillButton
             size="compact"
-            disabled={result === undefined}
+            disabled={loading}
             onClick={() => setEditing("")}
           >
             <Plus /> Add coverage defaults
@@ -103,17 +113,17 @@ export function ProviderSubmissionDefaults({
         The standard application forms, submission process and minimum
         information needed for each coverage line.
       </p>
-      {result === undefined ? (
+      {loading ? (
         <p className={`text-muted-foreground ${body}`} role="status">
           Loading submission defaults…
         </p>
-      ) : !result.defaults.length ? (
+      ) : !results.length ? (
         <p className={`text-muted-foreground ${body}`}>
           No submission defaults yet. Add a coverage line, or right-click a form
           in an email to save it here.
         </p>
       ) : (
-        result.defaults.map((item) => (
+        results.map((item) => (
           <SubmissionDefaultCard
             key={item._id}
             item={item}
@@ -121,10 +131,22 @@ export function ProviderSubmissionDefaults({
           />
         ))
       )}
-      {result?.bounded && (
-        <p className={`text-muted-foreground ${caption}`}>
-          More coverage defaults are not shown.
-        </p>
+      {(status === "CanLoadMore" || status === "LoadingMore") && (
+        <ListToolbar
+          followKey={`provider:${brokerOrgId}:submission-defaults:pagination`}
+          actions={
+            <PillButton
+              variant="secondary"
+              size="compact"
+              disabled={status === "LoadingMore"}
+              onClick={() => loadMore(10)}
+            >
+              {status === "LoadingMore"
+                ? "Loading…"
+                : "Load more coverage defaults"}
+            </PillButton>
+          }
+        />
       )}
       {editing !== null && (
         <SubmissionDefaultDialog
@@ -405,8 +427,10 @@ function SubmissionDefaultSelection({
     [selectionKey],
   );
   const result = useQuery(
-    api.providerSubmissionDefaults.list,
-    brokerOrgId ? { brokerOrgId: brokerOrgId as Id<"organizations"> } : "skip",
+    api.providerSubmissionDefaults.get,
+    brokerOrgId && coverageCode
+      ? { brokerOrgId: brokerOrgId as Id<"organizations">, coverageCode }
+      : "skip",
   );
   const brokerOptions = (brokers ?? []).map((broker) => ({
     value: String(broker._id),
@@ -453,16 +477,14 @@ function SubmissionDefaultSelection({
           />
         </InlineFieldRow>
       </InlineFieldCard>
-      {brokerOrgId && coverageCode && result ? (
+      {brokerOrgId && coverageCode && result !== undefined ? (
         <SubmissionDefaultForm
           key={selectionKey}
           initialDraft={drafts[selectionKey]}
           onDraftChange={rememberDraft}
           brokerOrgId={brokerOrgId as Id<"organizations">}
           coverageCode={coverageCode}
-          existing={result.defaults.find(
-            (item) => item.coverageCode === coverageCode,
-          )}
+          existing={result ?? undefined}
           source={source}
           saving={saving}
           setSaving={setSaving}
@@ -470,7 +492,7 @@ function SubmissionDefaultSelection({
         />
       ) : (
         <>
-          {brokerOrgId && result === undefined && (
+          {brokerOrgId && coverageCode && result === undefined && (
             <p role="status" className={`text-muted-foreground ${body}`}>
               Loading saved defaults…
             </p>
