@@ -1,7 +1,7 @@
 "use client";
 
 import { useFollowedOpen } from "@/hooks/use-followed-state";
-import { FileInput, MoreHorizontal, NotebookPen } from "lucide-react";
+import { MoreHorizontal, NotebookPen } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +11,7 @@ import {
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
 import { PillButton } from "@/components/ui/pill-button";
 import type { Id } from "@/convex/_generated/dataModel";
+import { AttachmentSubmissionMenu } from "./attachment-submission-menu";
 import { SubmissionDefaultDialog } from "./provider-submission-defaults";
 
 type Source = {
@@ -39,9 +40,6 @@ export function EmailSubmissionAttachment({
   const { open: menuOpen, onOpenChange: setMenuOpen } = useFollowedOpen(
     `email:${source.messageId}:attachment:${file.clientFileId ?? file.storageId}:menu`,
   );
-  const { open, onOpenChange: setOpen } = useFollowedOpen(
-    `email:${source.messageId}:attachment:${file.clientFileId ?? file.storageId}:submission`,
-  );
   return (
     <>
       <div
@@ -69,28 +67,18 @@ export function EmailSubmissionAttachment({
             <MoreHorizontal />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={() => setOpen(true)}>
-              <FileInput /> Use as default application form…
-            </DropdownMenuItem>
+            {menuOpen ? (
+              <AttachmentSubmissionMenu
+                source={source}
+                file={file}
+                defaultBrokerOrgId={brokerOrgId}
+                defaultBrokerName={brokerName}
+                onSaved={() => setMenuOpen(false)}
+              />
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {open ? (
-        <SubmissionDefaultDialog
-          open={open}
-          onOpenChange={setOpen}
-          source={{
-            ...source,
-            attachment: {
-              name: file.name,
-              clientFileId: file.clientFileId,
-              storageId: file.storageId,
-            },
-          }}
-          defaultBrokerOrgId={brokerOrgId}
-          defaultBrokerName={brokerName}
-        />
-      ) : null}
     </>
   );
 }

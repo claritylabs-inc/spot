@@ -3,7 +3,7 @@
 Actor: authenticated operator. Local Conductor web at localhost:8080 and Convex at 127.0.0.1:8083. Use synthetic provider, contact and email attachments only. Browser verification uses Helium per user instruction.
 
 1. Open a provider conversation, click the sender name, choose Make primary outreach contact for this provider; reopen Contacts and verify one primary contact, including switching from a prior primary.
-2. Right-click an attachment (or use its Options button), choose Use as default application form, select provider and coverage, add submission process notes and save. Open provider Submission defaults and reload; the application form and notes persist under that coverage only.
+2. Right-click an attachment (or use its Options button), choose Use as default application form, then use its Provider and Coverage submenus and Save application form. No attachment modal opens. Open provider Submission defaults to review or edit the process notes; the form persists under that coverage only.
 3. Use Message options → Save submission questions or notes. Review the source, add a generic minimum-information question and guidance / information provided. Save to the same coverage without replacing its forms. Verify another coverage remains independent.
 4. Edit the process and questions; cancel retains saved state. Concurrent stale saves must reject without discarding the local draft. Remove a form and verify it disappears without deleting its source attachment.
 5. Check keyboard menu access, empty/loading states, narrow width, dark/light theme. Anonymous/client/impersonated writes must be rejected; only attachments actually belonging to the source message may be copied.
@@ -60,3 +60,13 @@ Sender-name styling refinement: restored the original body-medium text and inlin
 spacing on the shared menu trigger, with no pill or chevron. Helium confirmed the
 plain name still opens the same contact menu; scoped ESLint and whitespace checks
 passed. Keyboard focus indication is retained.
+
+Attachment submenu refinement: replaced the attachment modal with shared nested
+menus: Use as default application form → Provider / Coverage / Save application
+form. Both selection lists have search inputs and retain the parent menu when
+selected. Explicit click opens submenus; keyboard navigation remains available.
+Helium verified provider search, coverage search/selection, disabled save before
+coverage selection, and successful save in the dropdown. The duplicate source
+kept one stored form and preserved both questions and the existing process notes.
+Root TypeScript, scoped ESLint and whitespace checks passed. The separate
+source-question editor remains available from Message options.

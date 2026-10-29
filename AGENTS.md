@@ -254,8 +254,10 @@ standards indexed by provider and ACORD coverage code. The provider's Submission
 defaults tab (`components/broker-network/provider-submission-defaults.tsx`)
 shows application forms, submission process/provider notes, and minimum-information
 questions with guidance or clearly labeled examples. Email attachment right-click
-and visible Options menus save forms through a reviewed provider/coverage dialog;
-Message options can capture questions or notes with a source conversation reference.
+and visible Options menus save forms through compact searchable provider/coverage
+submenus and an explicit Save application form action. Existing notes/questions
+are preserved; new standards record the selected form's submission instruction.
+Message options can capture questions or notes in a source-reference dialog.
 These are reusable standards, distinct from request-owned answers and company prose.
 Writes reject stale revisions and impersonation. Form promotion validates exact
 source attachment membership and copies storage bytes so email cleanup cannot
