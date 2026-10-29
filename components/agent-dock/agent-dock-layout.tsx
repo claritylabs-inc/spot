@@ -516,6 +516,15 @@ export function AgentDockLayout({
       ? `0px ${restingRadius}px ${restingRadius}px 0px`
       : `0px 0px ${restingRadius}px ${restingRadius}px`;
   const setMode = dock.setMode;
+  // Mid-transition the body keeps its widest size, so the narrowing dock
+  // clips it behind the card instead of reflowing the text.
+  const [settledSize, setSettledSize] = useState(dockSize);
+  const transitioning = right && mode !== settledMode;
+  if (!transitioning && settledSize !== dockSize) setSettledSize(dockSize);
+  const bodyWidth = transitioning
+    ? Math.max(settledSize, dockSize) -
+      (dock.tabsCollapsed ? AGENT_DOCK_RAIL_WIDTH : dock.tabsWidth)
+    : undefined;
   const wasDetailOpenRef = useRef(detailPanelOpen);
 
   const wasArtifactOpenRef = useRef(artifactOpen);
@@ -551,7 +560,7 @@ export function AgentDockLayout({
           ref={setRightSection}
           data-agent-dock
           aria-label="Spot agent"
-          className="absolute inset-y-0 right-0 flex"
+          className="absolute inset-y-0 right-0 flex justify-end"
           initial={false}
           animate={{ width: dockSize }}
           transition={transition}
@@ -569,7 +578,11 @@ export function AgentDockLayout({
           ) : null}
           {showBody ? (
             <motion.div
-              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+              className={cn(
+                "flex min-h-0 min-w-0 flex-col overflow-hidden",
+                bodyWidth === undefined ? "flex-1" : "shrink-0",
+              )}
+              style={bodyWidth === undefined ? undefined : { width: bodyWidth }}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.18 }}
