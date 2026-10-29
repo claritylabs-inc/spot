@@ -11,7 +11,7 @@ import {
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import dayjs from "dayjs";
-import { FileInput, FolderInput, Loader2 } from "lucide-react";
+import { Archive, ArchiveRestore, FolderInput } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
@@ -33,7 +33,6 @@ import { splitQuotedText } from "@/lib/email-quote";
 import { ReplyComposer } from "@/components/inbox/reply-composer";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
-import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import {
   Popover,
   PopoverContent,
@@ -42,7 +41,6 @@ import {
 import { PillButton } from "@/components/ui/pill-button";
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
-import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import {
   StatusLabel,
   StatusTag,
@@ -55,7 +53,6 @@ import { usePageContext } from "@/hooks/use-page-context";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
 
 export const REQUEST_STATUS_OPTIONS = [
   {
@@ -665,179 +662,61 @@ function EmailConversation({
   );
 }
 
-function FileQuoteAction({
+function ArchiveThreadAction({
   emailThreadId,
-  readOnly,
-  onFilingChange,
+  requestId,
+  archived,
+  onArchived,
 }: {
   emailThreadId: Id<"teamEmailThreads">;
-  readOnly: boolean;
-  onFilingChange: (filing: boolean) => void;
+  requestId?: Id<"procurementRequests">;
+  archived: boolean;
+  onArchived: () => void;
 }) {
-  const brokers = useCachedOperatorBrokers();
-  const fileEmailQuote = useMutation(api.procurementProposals.fileEmailQuote);
-  const inference = useQuery(
-    api.procurementRequests.previewEmailReconciliation,
-    { emailThreadId },
+  const setThreadsArchived = useMutation(api.teamInbox.setArchived);
+  const setRequestThreadsArchived = useMutation(
+    api.procurementRequests.setEmailThreadsArchived,
   );
-  const [outreachChoice, setOutreachChoice] = useState<string | null>(null);
-  // Signature images and logos can be excluded; everything else files.
-  const [excludedFileIds, setExcludedFileIds] = useState<string[]>([]);
-  const [filing, setFiling] = useState(false);
-  const { open, onOpenChange: setOpen } = useFollowedOpen(
-    `procurement:email:${emailThreadId}:file-quote-open`,
-  );
-  const outreachOptions = useMemo(
-    () =>
-      (inference?.outreaches ?? []).map((outreach) => ({
-        value: String(outreach.outreachId),
-        label: outreach.contactName
-          ? `${outreach.brokerName} · ${outreach.contactName}`
-          : outreach.brokerName,
-        icon: (
-          <OrgBrandIcon
-            name={outreach.brokerName}
-            {...brokers?.find((broker) => broker._id === outreach.brokerOrgId)}
-            size="xs"
-          />
-        ),
-      })),
-    [brokers, inference],
-  );
-  const inferredOutreachId =
-    inference?.outreachInference.status === "exact"
-      ? String(inference.outreachInference.candidates[0]?.outreachId ?? "")
-      : "";
-  const pendingOutreachId = outreachChoice ?? inferredOutreachId;
-  const selectedOutreachId = outreachOptions.some(
-    (option) => option.value === pendingOutreachId,
-  )
-    ? pendingOutreachId
-    : "";
-  const reconciliation = useQuery(
-    api.procurementRequests.previewEmailReconciliation,
-    selectedOutreachId
-      ? {
-          emailThreadId,
-          outreachId: selectedOutreachId as Id<"procurementBrokerOutreaches">,
-        }
-      : { emailThreadId },
-  );
-  const proposals = useQuery(
-    api.procurementProposals.list,
-    open && inference ? { requestId: inference.requestId } : "skip",
-  );
-  const currentProposal = proposals?.find(
-    (proposal) =>
-      proposal.outreachId === selectedOutreachId &&
-      proposal.status !== "archived" &&
-      proposal.status !== "withdrawn",
-  );
-  const isRevision = !!currentProposal && currentProposal.status !== "draft";
-  const unfiled = reconciliation?.unfiledFiles ?? [];
-  const selectedFiles = unfiled.filter(
-    (file) => !excludedFileIds.includes(String(file.clientFileId)),
-  );
-  if (readOnly || !reconciliation?.filable || !unfiled.length) return null;
-
-  async function fileQuote() {
-    if (!selectedOutreachId || !selectedFiles.length) return;
-    setFiling(true);
-    onFilingChange(true);
+  const [pending, setPending] = useState(false);
+  async function toggle(next: boolean) {
+    setPending(true);
     try {
-      const filed = await fileEmailQuote({
-        emailThreadId,
-        outreachId: selectedOutreachId as Id<"procurementBrokerOutreaches">,
-        clientFileIds: selectedFiles.map((file) => file.clientFileId),
-        supersedesProposalId: isRevision ? currentProposal._id : undefined,
+      if (requestId)
+        await setRequestThreadsArchived({
+          requestId,
+          emailThreadIds: [emailThreadId],
+          archived: next,
+        });
+      else await setThreadsArchived({ threadIds: [emailThreadId], archived: next });
+      toast.success(next ? "Conversation archived" : "Conversation restored", {
+        action: { label: "Undo", onClick: () => void toggle(!next) },
       });
-      toast.success(
-        filed.status === "already_filed"
-          ? "Email attachments were already filed"
-          : "Email quote filed",
-      );
-      setOpen(false);
+      onArchived();
     } catch (error) {
       toast.error(
-        getUserFacingErrorMessage(error, "Failed to file email quote"),
+        getUserFacingErrorMessage(error, "Could not update conversation"),
       );
     } finally {
-      setFiling(false);
-      onFilingChange(false);
+      setPending(false);
     }
   }
-
+  const label = archived ? "Restore" : "Archive";
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<PillButton
-            size="compact" type="button" variant="secondary" />}>
-        <FileInput className="size-3.5" />
-        File quote
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 space-y-3 p-3">
-        <SearchableSelect
-          ariaLabel="Provider"
-          typographyRole="control.menu"
-          value={selectedOutreachId}
-          options={outreachOptions}
-          onChange={setOutreachChoice}
-          disabled={filing}
-          placeholder="Choose provider"
-        />
-        <div className="space-y-1">
-          {unfiled.map((file) => (
-            <label
-              key={String(file.clientFileId)}
-              className="flex items-center gap-2.5 rounded-md px-1.5 py-1 hover:bg-muted/50"
-            >
-              <Checkbox
-                checked={!excludedFileIds.includes(String(file.clientFileId))}
-                disabled={filing}
-                onCheckedChange={(checked) =>
-                  setExcludedFileIds((current) =>
-                    checked
-                      ? current.filter(
-                          (id) => id !== String(file.clientFileId),
-                        )
-                      : [...current, String(file.clientFileId)],
-                  )
-                }
-              />
-              <span
-                className={`min-w-0 truncate text-foreground ${typeStyle("body.default")}`}
-              >
-                {file.name}
-              </span>
-            </label>
-          ))}
-        </div>
-        {currentProposal?.status === "selected" ? (
-          <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-            The selected proposal cannot be replaced.
-          </p>
-        ) : isRevision ? (
-          <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-            Replaces the current proposal; the previous one stays in history.
-          </p>
-        ) : null}
-        <PillButton
-            size="compact"
-          type="button"
-          className="w-full"
-          onClick={() => void fileQuote()}
-          disabled={
-            filing ||
-            proposals === undefined ||
-            currentProposal?.status === "selected" ||
-            !selectedOutreachId ||
-            !selectedFiles.length
-          }
-        >
-          {filing ? <Loader2 className="size-3.5 animate-spin" /> : null}
-          {isRevision ? "File revision" : "File quote"}
-        </PillButton>
-      </PopoverContent>
-    </Popover>
+    <PillButton
+      size="compact"
+      type="button"
+      variant="ghost"
+      label={label}
+      aria-label={label}
+      disabled={pending}
+      onClick={() => void toggle(!archived)}
+    >
+      {archived ? (
+        <ArchiveRestore className="size-3.5" />
+      ) : (
+        <Archive className="size-3.5" />
+      )}
+    </PillButton>
   );
 }
 
@@ -996,11 +875,11 @@ export function ProcurementEmailDrawer({
       actions={
         thread && !readOnly ? (
           <div className="flex items-center gap-1">
-            <FileQuoteAction
-              key={emailThreadId}
+            <ArchiveThreadAction
               emailThreadId={emailThreadId}
-              readOnly={readOnly}
-              onFilingChange={setBusy}
+              requestId={requestId}
+              archived={!!thread.thread.archivedAt}
+              onArchived={onClose}
             />
             <LinkThreadAction
               key={`link:${emailThreadId}`}
