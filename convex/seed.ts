@@ -75,7 +75,6 @@ function fixturePhones(args: {
     DEFAULT_CLIENT_PHONE;
   const rawOperatorPhone =
     args.operatorPhone?.trim() ||
-    process.env.OPERATOR_IMESSAGE_TERMINAL_FROM_PHONE?.trim() ||
     DEFAULT_OPERATOR_PHONE;
   const normalizedPhones = [
     ["brokerPhone", rawBrokerPhone],

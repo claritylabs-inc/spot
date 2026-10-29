@@ -172,41 +172,11 @@ const checks = [
           );
         }
       }
-      for (const role of ["imessage", "operatorImessage"]) {
-        if (
-          deployment[role]?.webhookTransport &&
-          payload[role]?.webhookTransport !== true
-        ) {
-          throw new Error(`${role}.webhookTransport expected true`);
-        }
-      }
-      const operatorImessageRequired = Boolean(
-        deployment.operatorImessage?.required,
-      );
       if (
-        operatorImessageRequired &&
-        payload.operatorImessage?.inboundEnabled !== true
+        deployment.imessage?.webhookTransport &&
+        payload.imessage?.webhookTransport !== true
       ) {
-        throw new Error(
-          `operatorImessage.inboundEnabled expected true got ${String(payload.operatorImessage?.inboundEnabled)}`,
-        );
-      }
-      if (
-        operatorImessageRequired &&
-        payload.operatorImessage?.contactPhoneConfigured !== true
-      ) {
-        throw new Error(
-          "operatorImessage.contactPhoneConfigured expected true",
-        );
-      }
-      if (
-        DEPLOYMENT_ENV === "production" &&
-        payload.operatorImessage?.inboundEnabled === true &&
-        !operatorImessageRequired
-      ) {
-        throw new Error(
-          "operator iMessage is enabled without its production health URL enforcement flip",
-        );
+        throw new Error("imessage.webhookTransport expected true");
       }
     },
   },

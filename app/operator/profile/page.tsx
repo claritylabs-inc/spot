@@ -13,7 +13,6 @@ import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@claritylabs-inc/ui/components/input";
-import { PhoneInput } from "@claritylabs-inc/ui/components/marketing/phone-input";
 import {
   OperationalPanel,
   OperationalPanelBody,
@@ -373,27 +372,20 @@ function OperatorAvatarField({ current }: { current: OperatorCurrent }) {
 function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
   const updateProfile = useMutation(api.users.updateProfile);
   const [name, setName] = useState(current.user.name ?? "");
-  const [phone, setPhone] = useState(current.user.phone ?? "");
   const email = current.user.email ?? current.profile.email;
   const loginEmails = current.user.loginEmails ?? [email];
   const accessLevel = current.profile.role === "owner" ? "Owner" : "Operator";
 
   const saveProfile = useCallback(
-    async ({
-      name: nextName,
-      phone: nextPhone,
-    }: {
-      name: string;
-      phone: string;
-    }) => {
-      await updateProfile({ name: nextName, phone: nextPhone });
+    async ({ name: nextName }: { name: string }) => {
+      await updateProfile({ name: nextName });
     },
     [updateProfile],
   );
   const profileAutoSave = useLocalFirstAutoSave({
     mutationName: `operator.profile.${current.user._id}`,
-    args: { name: name.trim(), phone: phone.trim() },
-    valueKey: JSON.stringify([name.trim(), phone.trim()]),
+    args: { name: name.trim() },
+    valueKey: name.trim(),
     autoSave: false,
     flush: saveProfile,
     errorMessage: (error) =>
@@ -424,17 +416,6 @@ function OperatorProfileContent({ current }: { current: OperatorCurrent }) {
                   onBlur={() => void profileAutoSave.saveNow()}
                   placeholder="Your name"
                   autoComplete="name"
-                />
-              </InlineFieldRow>
-              <InlineFieldRow label="iMessage phone">
-                <PhoneInput
-                  aria-label="iMessage phone"
-                  value={phone || undefined}
-                  onChange={(value) => setPhone(value ?? "")}
-                  onBlur={() => void profileAutoSave.saveNow()}
-                  defaultCountry="US"
-                  autoComplete="tel"
-                  title="Messages from this number can use the operator agent"
                 />
               </InlineFieldRow>
               <InlineFieldRow label="Access level">{accessLevel}</InlineFieldRow>

@@ -16,10 +16,6 @@
     "imessage": {
       "webhookTransport": true
     },
-    "operatorImessage": {
-      "required": true,
-      "webhookTransport": true
-    },
     "email": {
       "deliveryMode": "live",
       "agentDomain": "agent.spot.insure",
@@ -39,9 +35,6 @@
     },
     "operatorSlack": {
       "required": true
-    },
-    "operatorImessage": {
-      "required": false
     },
     "email": {
       "deliveryMode": "capture",

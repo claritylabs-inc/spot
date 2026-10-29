@@ -8,7 +8,6 @@ export const MAX_ROUTER_ATTACHMENT_AGGREGATE_BYTES = 16 * 1024 * 1024;
 
 export const MAX_OPERATOR_MCP_INLINE_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 export const MAX_OPERATOR_MCP_INLINE_AGGREGATE_BYTES = 14 * 1024 * 1024;
-export const MAX_OPERATOR_IMESSAGE_ACTION_BASE64_CHARS = 3_500_000;
 
 export class AgentAttachmentLimitError extends Error {
   constructor(message: string) {

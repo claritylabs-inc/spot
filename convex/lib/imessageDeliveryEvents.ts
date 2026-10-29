@@ -1,7 +1,6 @@
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import type { ImessageChannelRole } from "./imessageConfig";
 
 export type ImessageAttachmentFailureInput = {
   filename?: string;
@@ -10,33 +9,22 @@ export type ImessageAttachmentFailureInput = {
 
 /**
  * Records attachments that failed iMessage transport delivery on the agent
- * message. Returns false when the referenced operator message is missing.
+ * message.
  */
 export async function recordImessageAttachmentDeliveryFailures(
   ctx: Pick<ActionCtx, "runMutation">,
-  role: ImessageChannelRole,
   args: {
     threadMessageId: string;
     attachmentFailures: ImessageAttachmentFailureInput[];
   },
-): Promise<boolean> {
+): Promise<void> {
   const failures = args.attachmentFailures
     .map((failure) => ({
       filename: failure.filename?.trim() ?? "",
       error: failure.error?.trim() || undefined,
     }))
     .filter((failure) => failure.filename);
-  if (failures.length === 0) return true;
-  if (role === "operator") {
-    return await ctx.runMutation(
-      internal.operatorAgent.recordImessageAttachmentDeliveryFailureInternal,
-      {
-        operatorMessageId: args.threadMessageId as Id<"operatorAgentMessages">,
-        stage: "worker_delivery",
-        failures,
-      },
-    );
-  }
+  if (failures.length === 0) return;
   await ctx.runMutation(
     internal.threads.recordImessageAttachmentDeliveryFailure,
     {
@@ -45,5 +33,4 @@ export async function recordImessageAttachmentDeliveryFailures(
       failures,
     },
   );
-  return true;
 }

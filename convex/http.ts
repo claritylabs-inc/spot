@@ -13,12 +13,9 @@ import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { auth } from "./auth";
 import {
-  getOperatorImessageContactPhone,
   isImessageInboundEnabled,
   isImessageTransportConfigured,
   isImessageWebhookTransportEnabled,
-  isOperatorImessageInboundEnabled,
-  isOperatorImessageTerminalEnabled,
 } from "./lib/imessageConfig";
 import { getAuthSiteUrl, getClientPortalUrl } from "./lib/domains";
 import { spotIconResponse } from "./lib/brandIcon";
@@ -41,10 +38,7 @@ import {
 } from "./lib/slackPayload";
 import { verifySlackRequest } from "./lib/slackSecurity";
 import { quoBrokerWebhook } from "./quoBrokerWebhook";
-import {
-  customerImessageWebhook,
-  operatorImessageWebhook,
-} from "./imessageWebhookHttp";
+import { customerImessageWebhook } from "./imessageWebhookHttp";
 import {
   operatorSlackConfirmationDecision,
   parseSlackInteraction,
@@ -447,12 +441,6 @@ http.route({
   handler: httpAction(async (ctx) => {
     const slackEnabled = process.env.SLACK_ENABLED === "true";
     const operatorSlack = getOperatorSlackConfig();
-    const operatorImessageEnabled = isOperatorImessageInboundEnabled();
-    const operatorImessageTerminalEnabled = isOperatorImessageTerminalEnabled();
-    const operatorImessageWebhook =
-      isImessageWebhookTransportEnabled("operator");
-    const operatorImessageTransportConfigured =
-      isImessageTransportConfigured("operator");
     const slackMode = getSlackMode();
     const slackHostInstallation =
       slackEnabled && slackMode === "slack"
@@ -480,13 +468,7 @@ http.route({
     const checks = {
       operatorAgentModelConfigured,
       imessageInboundEnabled: isImessageInboundEnabled(),
-      imessageTransportConfigured: isImessageTransportConfigured("customer"),
-      operatorImessageTransportConfigured:
-        !operatorImessageEnabled || operatorImessageTransportConfigured,
-      operatorImessageContactPhoneConfigured:
-        !operatorImessageEnabled ||
-        operatorImessageTerminalEnabled ||
-        Boolean(getOperatorImessageContactPhone()),
+      imessageTransportConfigured: isImessageTransportConfigured(),
       emailInboundWebhookSecretConfigured: Boolean(
         process.env.RESEND_WEBHOOK_SECRET,
       ),
@@ -531,12 +513,7 @@ http.route({
         clientPortalUrl: getClientPortalUrl(),
         authSiteUrl: getAuthSiteUrl(),
         imessage: {
-          webhookTransport: isImessageWebhookTransportEnabled("customer"),
-        },
-        operatorImessage: {
-          inboundEnabled: operatorImessageEnabled,
-          contactPhoneConfigured: Boolean(getOperatorImessageContactPhone()),
-          webhookTransport: operatorImessageWebhook,
+          webhookTransport: isImessageWebhookTransportEnabled(),
         },
         operatorSlack: {
           enabled: operatorSlack.enabled,
@@ -620,17 +597,11 @@ http.route({
   handler: readResearchInbox,
 });
 
-// Photon Spectrum webhooks.
+// Photon Spectrum webhook.
 http.route({
   path: "/imessage-webhook",
   method: "POST",
   handler: customerImessageWebhook,
-});
-
-http.route({
-  path: "/operator-imessage-webhook",
-  method: "POST",
-  handler: operatorImessageWebhook,
 });
 
 // ── OAuth 2.1 Routes ──

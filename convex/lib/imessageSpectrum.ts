@@ -33,7 +33,6 @@ import {
 } from "./imessageTransport/responseDelivery";
 import {
   getSpectrumCredentials,
-  type ImessageChannelRole,
 } from "./imessageConfig";
 import { normalizeInboundImessageSender } from "./imessageIngress";
 import {
@@ -129,13 +128,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function createSpectrumApp(role: ImessageChannelRole) {
-  const credentials = getSpectrumCredentials(role);
+async function createSpectrumApp() {
+  const credentials = getSpectrumCredentials();
   if (!credentials) {
     throw new Error(
-      role === "operator"
-        ? "OPERATOR_PHOTON_PROJECT_ID, OPERATOR_PHOTON_PROJECT_SECRET, and OPERATOR_SPECTRUM_WEBHOOK_SECRET are required"
-        : "PHOTON_PROJECT_ID, PHOTON_PROJECT_SECRET, and SPECTRUM_WEBHOOK_SECRET are required",
+      "PHOTON_PROJECT_ID, PHOTON_PROJECT_SECRET, and SPECTRUM_WEBHOOK_SECRET are required",
     );
   }
   const app = await Spectrum({
@@ -156,10 +153,9 @@ export type SpectrumApp = Awaited<ReturnType<typeof createSpectrumApp>>["app"];
  * timer, and the process signal handlers Spectrum installs.
  */
 export async function withSpectrumApp<T>(
-  role: ImessageChannelRole,
   fn: (app: SpectrumApp, webhookSecret: string) => Promise<T>,
 ): Promise<T> {
-  const { app, webhookSecret } = await createSpectrumApp(role);
+  const { app, webhookSecret } = await createSpectrumApp();
   try {
     return await fn(app, webhookSecret);
   } finally {
@@ -642,7 +638,6 @@ async function createGroup(
  */
 export async function sendImessageViaSpectrum(
   ctx: ActionCtx,
-  role: ImessageChannelRole,
   request: SpectrumSendRequest,
 ): Promise<SpectrumSendResult> {
   const messageText =
@@ -680,7 +675,7 @@ export async function sendImessageViaSpectrum(
   if (clientMessageId) {
     const claim = await ctx.runMutation(
       internal.imessageTransportClaims.claimSend,
-      { role, clientMessageId },
+      { clientMessageId },
     );
     if (!claim.claimed) {
       return { ok: true, duplicate: true, attachmentFailures: [] };
@@ -689,7 +684,7 @@ export async function sendImessageViaSpectrum(
 
   let result: SpectrumSendResult;
   try {
-    result = await withSpectrumApp(role, async (app) => {
+    result = await withSpectrumApp(async (app) => {
       if (participants.length > 0) {
         return await createGroup(app, participants, messageText, request);
       }
@@ -734,7 +729,7 @@ export async function sendImessageViaSpectrum(
       result.ok
         ? internal.imessageTransportClaims.completeSend
         : internal.imessageTransportClaims.releaseSend,
-      { role, clientMessageId },
+      { clientMessageId },
     );
   }
   return result;

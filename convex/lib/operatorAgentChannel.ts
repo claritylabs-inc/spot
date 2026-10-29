@@ -6,22 +6,14 @@ import type { ActionCtx } from "../_generated/server";
 
 const internalApi = internal as any;
 
-export const operatorChannelDeliveryValidator = v.union(
-  v.object({
-    channel: v.literal("slack"),
-    teamId: v.string(),
-    channelId: v.string(),
-    threadTs: v.optional(v.string()),
-    eventId: v.optional(v.id("slackInboundEvents")),
-    clientMessageId: v.string(),
-  }),
-  v.object({
-    channel: v.literal("imessage"),
-    toPhone: v.string(),
-    chatGuid: v.string(),
-    clientMessageId: v.string(),
-  }),
-);
+export const operatorChannelDeliveryValidator = v.object({
+  channel: v.literal("slack"),
+  teamId: v.string(),
+  channelId: v.string(),
+  threadTs: v.optional(v.string()),
+  eventId: v.optional(v.id("slackInboundEvents")),
+  clientMessageId: v.string(),
+});
 export type OperatorChannelDelivery = Infer<
   typeof operatorChannelDeliveryValidator
 >;
@@ -46,7 +38,7 @@ export async function handleOperatorChannelConfirmation(
   args: {
     operatorUserId: Id<"users">;
     threadId: Id<"operatorAgentThreads">;
-    channel: "slack" | "imessage";
+    channel: "slack";
     content: string;
   },
 ) {
