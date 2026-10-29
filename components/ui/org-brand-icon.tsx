@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { BrandIcon } from "@claritylabs-inc/ui/components/brand-icon";
@@ -31,7 +32,16 @@ export function OrgBrandIcon({
   className,
 }: OrgBrandIconProps) {
   const src = iconUrl || websiteFaviconUrl(website);
-  if (!src && name?.trim())
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!src) return;
+    const probe = new window.Image();
+    probe.onerror = () => setFailedSrc(src);
+    probe.src = src;
+  }, [src]);
+
+  if ((!src || failedSrc === src) && name?.trim())
     return (
       <Avatar
         name={name}
