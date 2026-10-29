@@ -71,8 +71,6 @@ const usedSuggestions = new Set<string>();
 const filledSuggestions = new Map<string, string>();
 // Spot's value for each blank by conversation, looked up once: null when it found none.
 const blankSuggestions = new Map<string, Map<string, BlankSuggestion | null | "pending">>();
-// Conversations already told their reply goes out as a new email.
-const toastedStandalone = new Set<string>();
 
 function readAttempt(id: string): SendAttempt | null {
   try {
@@ -212,14 +210,6 @@ function OperatorReplyComposer({
   const [lastHeaders, setLastHeaders] = useState<typeof preview>(null);
   if (preview && preview !== lastHeaders) setLastHeaders(preview);
   const headers = hasText ? (preview ?? lastHeaders) : null;
-  const standalone = headers?.mode === "standalone";
-  useEffect(() => {
-    if (!standalone || toastedStandalone.has(id)) return;
-    toastedStandalone.add(id);
-    toast(
-      `Sends as a new email, since this conversation isn’t in ${sendingAs ? "their" : "your"} inbox.`,
-    );
-  }, [id, standalone, sendingAs]);
   // The signature only changes with the sender, so it stays shown while the box is empty.
   const signature = (preview ?? lastHeaders)?.signature;
   const [open, setOpen] = useFollowedState(`inbox:reply:${threadId}:open`, false);
@@ -396,18 +386,17 @@ function OperatorReplyComposer({
       {!minimized && (open || locked || hasText) ? (
         // Flush with the panel footer: the footer is already the frame.
         <div className="-mx-4 -my-3">
-          {fromSuggestion && hasText ? (
-            <div className={`flex items-center gap-1.5 border-b border-border bg-muted/50 px-4 py-2 text-foreground ${typeStyle("caption.medium")}`}>
-              <LogoIcon size={12} className="shrink-0" />
-              Draft from Spot
-            </div>
-          ) : null}
           <EmailComposeRow label="From">
             <FromPicker
               value={fromUserId}
               onChange={setFromUserId}
               disabled={sending || locked}
             />
+            {fromSuggestion && hasText ? (
+              <span className={`ml-auto shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}>
+                Drafted by Spot
+              </span>
+            ) : null}
           </EmailComposeRow>
           <EmailComposeRow label="To">
             {headers || recipients ? (
@@ -464,7 +453,7 @@ function OperatorReplyComposer({
             }}
           />
           {signature ? (
-            <p className={`px-4 pb-2 whitespace-pre-line text-muted-foreground ${typeStyle("caption.default")}`}>
+            <p className={`px-4 pb-2 whitespace-pre-line text-muted-foreground ${typeStyle("body.default")}`}>
               {signature}
             </p>
           ) : null}

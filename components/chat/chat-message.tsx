@@ -4,7 +4,6 @@ import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
-import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import { ChatPresentationView } from "@/components/chat-presentation/chat-presentation-view";
 import { QuotedContent } from "@/components/conversation-message";
 import { useFollowedState } from "@/hooks/use-followed-state";
@@ -13,6 +12,7 @@ import {
   ProseMarkdown,
   type ProseMarkdownProps,
 } from "@/components/prose-markdown";
+import { LogoIcon } from "@/components/ui/logo-icon";
 import { PillButton, type PillButtonSize } from "@/components/ui/pill-button";
 import { formatDisplayDateTime } from "@/lib/date-format";
 import { typeStyle } from "@/lib/typography";
@@ -22,8 +22,6 @@ import type { OperatorExecutionPlan } from "@/convex/lib/operatorRunPlan";
 import { ChatErrorDetails } from "./error-details";
 import type { RouterJobFailure } from "@/convex/lib/routerJobFailure";
 import {
-  activityStatusLabel,
-  hasActiveActivity,
   hasAwaitingApprovalCall,
   ThinkingTrace,
   ToolActivityCard,
@@ -33,23 +31,39 @@ import {
 
 export { ChatErrorNotice } from "./message-bubble";
 
-function AgentThinkingBubble({ label }: { label: string }) {
+// Playful verbs for the working indicator; one is picked per turn so it
+// never flickers between states.
+const WORKING_VERBS = [
+  "Working",
+  "Thinking",
+  "Pondering",
+  "Digging in",
+  "Cross-checking",
+  "Connecting the dots",
+  "Reading the fine print",
+  "Crunching",
+  "Mulling it over",
+  "Getting it right",
+];
+
+function AgentThinkingBubble() {
+  const [verb] = useState(
+    () => WORKING_VERBS[Math.floor(Math.random() * WORKING_VERBS.length)],
+  );
   return (
     <div
       role="status"
       aria-live="polite"
       className={cn(
-        "inline-flex min-h-9 items-center gap-2 text-muted-foreground/50",
+        "inline-flex min-h-9 items-center gap-2 text-muted-foreground",
         typeStyle("caption.default"),
       )}
     >
-      <Spinner
-        aria-hidden="true"
-        role="presentation"
-        aria-label={undefined}
-        className="motion-reduce:animate-none"
+      <LogoIcon
+        size={14}
+        className="shrink-0 animate-spin [animation-duration:2.5s] motion-reduce:animate-none"
       />
-      <span>{label}</span>
+      <span className="text-shimmer">{verb}…</span>
     </div>
   );
 }
@@ -133,69 +147,58 @@ export function ChatAssistantTurn({
   children?: ReactNode;
 }) {
   const { streamResponses, showThinking } = useChatDisplayPreferences();
-  // A visible activity row already shows what the turn is doing, so the
-  // standalone indicator would repeat it. It stays for Show thinking off, no
-  // activity, and waiting on the model with no row in progress.
-  const rowShowsProgress = showThinking && hasActiveActivity(activity);
   const inlineApproval =
     toolApproval &&
     showThinking &&
     hasAwaitingApprovalCall(activity, toolApproval.toolName)
       ? toolApproval
       : undefined;
-  const answer =
-    working && (!streamResponses || !content) ? (
-      rowShowsProgress ? (
-        // The row shows the detail; announce only the current activity.
-        <span role="status" aria-live="polite" className="sr-only">
-          {activityStatusLabel(activity)}
-        </span>
-      ) : (
-        <AgentThinkingBubble
-          label={activityStatusLabel(showThinking ? activity : undefined)}
-        />
-      )
-    ) : (
-      <div className="min-w-0 max-w-[min(max(32rem,80cqw),100%)]">
-        {body ?? (
-          <ChatMessageBubble role="agent" channel={channel} isError={isError}>
-            <ChatPresentationView
-              audience={audience}
-              organizationId={organizationId}
-              presentation={isError ? undefined : presentation}
-              onFollowUp={onFollowUp}
-              onOpenReference={onOpenReference}
-              structuredReferences={structuredReferences}
-              disabled={presentationDisabled}
-              answer={
-                content ? (
-                  <ProseMarkdown
-                    gfm
-                    breaks
-                    compact={channel === "imessage"}
-                    className={markdownClassName}
-                    components={markdownComponents}
-                  >
-                    {content}
-                  </ProseMarkdown>
-                ) : null
-              }
-            />
-            {children}
-          </ChatMessageBubble>
-        )}
-        {belowAnswer}
-      </div>
-    );
+  // The indicator stays up for the whole turn, below any streamed text.
+  const showsAnswer = !working || (streamResponses && Boolean(content));
+  const answer = (
+    <div className="min-w-0">
+      {showsAnswer ? (
+        <div className="min-w-0 max-w-[min(max(32rem,80cqw),100%)]">
+          {body ?? (
+            <ChatMessageBubble role="agent" channel={channel} isError={isError}>
+              <ChatPresentationView
+                audience={audience}
+                organizationId={organizationId}
+                presentation={isError ? undefined : presentation}
+                onFollowUp={onFollowUp}
+                onOpenReference={onOpenReference}
+                structuredReferences={structuredReferences}
+                disabled={presentationDisabled}
+                answer={
+                  content ? (
+                    <ProseMarkdown
+                      gfm
+                      breaks
+                      compact={channel === "imessage"}
+                      className={markdownClassName}
+                      components={markdownComponents}
+                    >
+                      {content}
+                    </ProseMarkdown>
+                  ) : null
+                }
+              />
+              {children}
+            </ChatMessageBubble>
+          )}
+          {belowAnswer}
+        </div>
+      ) : null}
+      {working ? <AgentThinkingBubble /> : null}
+    </div>
+  );
   return (
     <div className="w-full">
       {showThinking ? (
         <>
           <ThinkingTrace
             activity={activity}
-            executionPlan={
-              audience === "operator" ? executionPlan : undefined
-            }
+            executionPlan={audience === "operator" ? executionPlan : undefined}
             working={turnActive}
           />
           <ToolActivityCard
