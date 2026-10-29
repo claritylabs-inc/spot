@@ -490,6 +490,7 @@ import type * as lib_teamEmailReply from "../lib/teamEmailReply.js";
 import type * as lib_teamEmailStore from "../lib/teamEmailStore.js";
 import type * as lib_teamInboxEventLease from "../lib/teamInboxEventLease.js";
 import type * as lib_teamInboxProjection from "../lib/teamInboxProjection.js";
+import type * as lib_teamInboxTargets from "../lib/teamInboxTargets.js";
 import type * as lib_teamReplySuggestions from "../lib/teamReplySuggestions.js";
 import type * as lib_teamThreadReply from "../lib/teamThreadReply.js";
 import type * as lib_tenantMcpToolCatalog from "../lib/tenantMcpToolCatalog.js";
@@ -1107,6 +1108,7 @@ declare const fullApi: ApiFromModules<{
   "lib/teamEmailStore": typeof lib_teamEmailStore;
   "lib/teamInboxEventLease": typeof lib_teamInboxEventLease;
   "lib/teamInboxProjection": typeof lib_teamInboxProjection;
+  "lib/teamInboxTargets": typeof lib_teamInboxTargets;
   "lib/teamReplySuggestions": typeof lib_teamReplySuggestions;
   "lib/teamThreadReply": typeof lib_teamThreadReply;
   "lib/tenantMcpToolCatalog": typeof lib_tenantMcpToolCatalog;

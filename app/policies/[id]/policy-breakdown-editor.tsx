@@ -202,7 +202,7 @@ export function PolicyBreakdownEditor({
   const [pendingFields, setPendingFields] = useState<Record<string, unknown>>(
     {},
   );
-  const [draft, setDraft] = useState(() => ({
+  const savedDraft = {
     carrier: stringValue(policy.carrier),
     policyNumber: stringValue(policy.policyNumber),
     insuredName: stringValue(policy.insuredName),
@@ -212,11 +212,18 @@ export function PolicyBreakdownEditor({
     premiumBreakdown: normalizePremiumRows(policy.premiumBreakdown),
     taxesAndFees: normalizeTaxRows(policy.taxesAndFees),
     coverages: normalizeCoverageRows(policy.coverages),
-  }));
+  };
+  const [draft, setDraft] = useState(savedDraft);
 
   const savePolicyFields = useCallback(
-    async (args: { id: Id<"policies">; fields: Record<string, unknown> }) => {
-      await updateExtractedFields(args);
+    async ({
+      id,
+      fields,
+    }: {
+      id: Id<"policies">;
+      fields: Record<string, unknown>;
+    }) => {
+      await updateExtractedFields({ id, fields });
     },
     [updateExtractedFields],
   );
@@ -226,6 +233,7 @@ export function PolicyBreakdownEditor({
     args: {
       id: policy._id,
       fields: pendingFields,
+      draft,
     },
     valueKey: JSON.stringify({ id: policy._id, draft }),
     enabled: !readOnly,
@@ -251,6 +259,9 @@ export function PolicyBreakdownEditor({
     flush: savePolicyFields,
     onFlushed: (_result, args) =>
       setPendingFields((current) => withoutFlushedFields(current, args.fields)),
+    // Facts the Spot agent or an MCP client confirms show up as they are saved.
+    source: { id: policy._id, fields: {}, draft: savedDraft },
+    adopt: (next) => setDraft(next.draft),
     errorMessage: "Policy fields could not be saved.",
   });
 

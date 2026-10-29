@@ -69,6 +69,26 @@ export function BrokerProfileWorkspace() {
   );
 }
 
+function profileValues(
+  profile: NonNullable<FunctionReturnType<typeof api.brokerProfiles.get>>,
+) {
+  const office = profile.profile?.officeAddress;
+  return {
+    website: profile.broker.website ?? "",
+    line1: office?.street1 ?? "",
+    line2: office?.street2 ?? "",
+    country: office?.country ?? "",
+    city: office?.city ?? "",
+    state: office?.state ?? "",
+    postalCode: office?.postalCode ?? "",
+    writingCountries: brokerWritingCountries(profile.profile),
+    nationwideCountries: profile.profile?.nationwideCountries ?? [],
+    excludedStates: profile.profile?.excludedStates ?? [],
+    writingStates: profile.profile?.writingStates ?? [],
+    lines: profile.profile?.lineOfBusinessCodes ?? [],
+  };
+}
+
 function BrokerProfileEditor({
   profile,
   canEdit,
@@ -81,38 +101,23 @@ function BrokerProfileEditor({
   const generateLogoUploadUrl = useMutation(
     api.brokerProfiles.generateLogoUploadUrl,
   );
-  const [website, setWebsite] = useState(profile.broker.website ?? "");
-  const [line1, setLine1] = useState(
-    profile.profile?.officeAddress?.street1 ?? "",
-  );
-  const [line2, setLine2] = useState(
-    profile.profile?.officeAddress?.street2 ?? "",
-  );
-  const [country, setCountry] = useState(
-    profile.profile?.officeAddress?.country ?? "",
-  );
-  const [city, setCity] = useState(profile.profile?.officeAddress?.city ?? "");
-  const [state, setState] = useState(
-    profile.profile?.officeAddress?.state ?? "",
-  );
-  const [postalCode, setPostalCode] = useState(
-    profile.profile?.officeAddress?.postalCode ?? "",
-  );
-  const [writingCountries, setWritingCountries] = useState(() =>
-    brokerWritingCountries(profile.profile),
+  const saved = profileValues(profile);
+  const [website, setWebsite] = useState(saved.website);
+  const [line1, setLine1] = useState(saved.line1);
+  const [line2, setLine2] = useState(saved.line2);
+  const [country, setCountry] = useState(saved.country);
+  const [city, setCity] = useState(saved.city);
+  const [state, setState] = useState(saved.state);
+  const [postalCode, setPostalCode] = useState(saved.postalCode);
+  const [writingCountries, setWritingCountries] = useState(
+    saved.writingCountries,
   );
   const [nationwideCountries, setNationwideCountries] = useState(
-    profile.profile?.nationwideCountries ?? [],
+    saved.nationwideCountries,
   );
-  const [excludedStates, setExcludedStates] = useState(
-    profile.profile?.excludedStates ?? [],
-  );
-  const [writingStates, setWritingStates] = useState(
-    profile.profile?.writingStates ?? [],
-  );
-  const [lines, setLines] = useState(
-    profile.profile?.lineOfBusinessCodes ?? [],
-  );
+  const [excludedStates, setExcludedStates] = useState(saved.excludedStates);
+  const [writingStates, setWritingStates] = useState(saved.writingStates);
+  const [lines, setLines] = useState(saved.lines);
   const [saving, setSaving] = useState(false);
   const values = {
     website,
@@ -189,6 +194,23 @@ function BrokerProfileEditor({
           next.lines !== previous.lines ? next.lines : undefined,
       });
       savedValues.current = next;
+    },
+    // Edits from Spot show up as they are saved.
+    source: saved,
+    adopt: (next) => {
+      setWebsite(next.website);
+      setLine1(next.line1);
+      setLine2(next.line2);
+      setCountry(next.country);
+      setCity(next.city);
+      setState(next.state);
+      setPostalCode(next.postalCode);
+      setWritingCountries(next.writingCountries);
+      setNationwideCountries(next.nationwideCountries);
+      setExcludedStates(next.excludedStates);
+      setWritingStates(next.writingStates);
+      setLines(next.lines);
+      savedValues.current = saved;
     },
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Could not save the provider profile"),
