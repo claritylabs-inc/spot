@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+
 import { useFollowedOpen } from "@/hooks/use-followed-state";
 import { MoreHorizontal, NotebookPen } from "lucide-react";
 import {
@@ -37,6 +39,7 @@ export function EmailSubmissionAttachment({
     storageId?: Id<"_storage">;
   };
 }) {
+  const menuRef = useRef<HTMLDivElement>(null);
   const { open: menuOpen, onOpenChange: setMenuOpen } = useFollowedOpen(
     `email:${source.messageId}:attachment:${file.clientFileId ?? file.storageId}:menu`,
   );
@@ -66,9 +69,10 @@ export function EmailSubmissionAttachment({
           >
             <MoreHorizontal />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
+          <DropdownMenuContent ref={menuRef} align="start">
             {menuOpen ? (
               <AttachmentSubmissionMenu
+                parentMenuRef={menuRef}
                 source={source}
                 file={file}
                 defaultBrokerOrgId={brokerOrgId}

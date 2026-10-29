@@ -1,7 +1,10 @@
 diff --git a/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx b/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx
 --- a/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx
 +++ b/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx
-@@ -43,22 +43,36 @@
+@@ -41,24 +41,41 @@
+ function DropdownMenuContent({
++  anchor,
+   align = "start",
    alignOffset = 0,
    side = "bottom",
    sideOffset = 4,
@@ -14,6 +17,7 @@ diff --git a/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx b
    Pick<
      MenuPrimitive.Positioner.Props,
 -    "align" | "alignOffset" | "side" | "sideOffset"
++    | "anchor"
 +    | "align"
 +    | "alignOffset"
 +    | "side"
@@ -30,6 +34,7 @@ diff --git a/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx b
 +    <MenuPrimitive.Portal container={globalThis.document?.body}>
        <MenuPrimitive.Positioner
          className="isolate z-50 outline-none"
++        anchor={anchor}
          align={align}
          alignOffset={alignOffset}
          side={side}
@@ -40,7 +45,7 @@ diff --git a/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx b
        >
          <MenuPrimitive.Popup
            data-slot="dropdown-menu-content"
-@@ -152,8 +166,10 @@
+@@ -152,8 +169,10 @@
  function DropdownMenuSubContent({
    align = "start",
    alignOffset = -3,
@@ -53,7 +58,7 @@ diff --git a/node_modules/@claritylabs-inc/ui/src/components/dropdown-menu.tsx b
    className,
    ...props
  }: React.ComponentProps<typeof DropdownMenuContent>) {
-@@ -161,13 +177,15 @@
+@@ -161,13 +180,15 @@
      <DropdownMenuContent
        data-slot="dropdown-menu-sub-content"
        className={cn(

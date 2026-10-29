@@ -103,3 +103,13 @@ header, long-name wrapping, coverage search → ArrowDown → Enter selection, e
 Save after selection, and a readable nested picker at 393 × 852. Device emulation
 and DevTools were closed afterward. Root TypeScript, scoped ESLint and whitespace
 checks passed. Remote main remains `a61e149c`. No tests or migrations added.
+
+Attachment alignment refinement: the shared dropdown wrapper now forwards the
+Base UI `anchor` prop. The form submenu anchors to the whole attachment-action
+menu, and both searchable pickers anchor to the whole form submenu with zero
+alignment offset. Helium verified matching top edges for Provider and Coverage
+selectors instead of aligning each popup to its triggering row. Existing flip,
+viewport collision handling and narrow-screen fallback remain with the positioner.
+Scoped ESLint passed; the persistent UI patch was reverse/reapplied successfully.
+Root TypeScript, scoped ESLint and whitespace checks passed after rebasing onto
+remote main `56092877`. The aligned Coverage picker was rechecked in Helium.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { useAction, useQuery } from "convex/react";
 import { Check, FileInput, Layers, Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -50,12 +50,14 @@ function searchKeys(event: KeyboardEvent<HTMLInputElement>) {
 }
 
 export function AttachmentSubmissionMenu({
+  parentMenuRef,
   source,
   file,
   defaultBrokerOrgId,
   defaultBrokerName,
   onSaved,
 }: {
+  parentMenuRef: RefObject<HTMLDivElement | null>;
   source: {
     threadId: Id<"teamEmailThreads">;
     messageId: Id<"teamEmailMessages">;
@@ -69,6 +71,7 @@ export function AttachmentSubmissionMenu({
   defaultBrokerName?: string;
   onSaved: () => void;
 }) {
+  const formMenuRef = useRef<HTMLDivElement>(null);
   const key = `email:${source.messageId}:attachment:${file.clientFileId ?? file.storageId}:defaults`;
   const [providerId, setProviderId] = useFollowedState<string>(
     `${key}:provider`,
@@ -177,7 +180,13 @@ export function AttachmentSubmissionMenu({
       <DropdownMenuSubTrigger openOnHover={false} className="gap-2 px-2.5 py-2">
         <FileInput /> Use as default application form
       </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent sideOffset={8} className={`${menuWidth} p-1.5`}>
+      <DropdownMenuSubContent
+        ref={formMenuRef}
+        anchor={parentMenuRef}
+        alignOffset={0}
+        sideOffset={8}
+        className={`${menuWidth} p-1.5`}
+      >
         <DropdownMenuSub open={providerOpen} onOpenChange={setProviderOpen}>
           <DropdownMenuSubTrigger
             openOnHover={false}
@@ -201,7 +210,12 @@ export function AttachmentSubmissionMenu({
               </span>
             </span>
           </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent sideOffset={8} className={pickerLayout}>
+          <DropdownMenuSubContent
+            anchor={formMenuRef}
+            alignOffset={0}
+            sideOffset={8}
+            className={pickerLayout}
+          >
             <DropdownMenuGroup>
               <div className="space-y-2 px-3 pt-3 pb-2.5">
                 <DropdownMenuLabel className="p-0">Provider</DropdownMenuLabel>
@@ -274,7 +288,12 @@ export function AttachmentSubmissionMenu({
               </span>
             </span>
           </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent sideOffset={8} className={pickerLayout}>
+          <DropdownMenuSubContent
+            anchor={formMenuRef}
+            alignOffset={0}
+            sideOffset={8}
+            className={pickerLayout}
+          >
             <DropdownMenuGroup>
               <div className="space-y-2 px-3 pt-3 pb-2.5">
                 <DropdownMenuLabel className="p-0">
