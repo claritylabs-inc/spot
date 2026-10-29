@@ -1,4 +1,5 @@
 import { resolveOperatorToolDispatch } from "./lib/operatorToolConsolidation";
+import { listProviderSubmissionDefaults } from "./providerSubmissionDefaults";
 import { getProviderOutreachPanel, launchProviderOutreachByOperator, stopProviderOutreachByOperator } from "./providerOutreach";
 import { getClientOutreachPanel, launchClientOutreachByOperator } from "./clientOutreach";
 import {
@@ -2903,10 +2904,12 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
   }
 
   if (toolName === "get_broker_network_profile") {
-    return await getBrokerProfileDetails(
-      ctx,
-      normalizeOrganizationId(ctx, input.brokerOrgId),
-    );
+    const brokerOrgId = normalizeOrganizationId(ctx, input.brokerOrgId);
+    const [details, submissionDefaults] = await Promise.all([
+      getBrokerProfileDetails(ctx, brokerOrgId),
+      listProviderSubmissionDefaults(ctx, brokerOrgId, args.operatorUserId),
+    ]);
+    return { ...details, submissionDefaults };
   }
 
   if (toolName === "list_broker_network_profiles") {

@@ -72,32 +72,67 @@ export function AddThreadContact({
       >
         <UserPlus />
       </PillButton>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent data-collab-scope={`add-contact:${threadId}:${suggestion.email}`}>
-          {open ? (
-            <AddThreadContactForm
-              threadId={threadId}
-              defaultName={defaultName}
-              suggestion={suggestion}
-              onDone={() => onOpenChange(false)}
-            />
-          ) : null}
-        </DialogContent>
-      </Dialog>
+      <AddThreadContactDialog
+        threadId={threadId}
+        name={defaultName}
+        email={suggestion.email}
+        suggestion={suggestion}
+        open={open}
+        onOpenChange={onOpenChange}
+      />
     </>
+  );
+}
+
+export function AddThreadContactDialog({
+  threadId,
+  name,
+  email,
+  suggestion,
+  open,
+  onOpenChange,
+  primaryDefault = false,
+}: {
+  threadId: Id<"teamEmailThreads">;
+  name?: string;
+  email: string;
+  suggestion?: ThreadContactSuggestion;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  primaryDefault?: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-collab-scope={`add-contact:${threadId}:${email}`}>
+        {open ? (
+          <AddThreadContactForm
+            threadId={threadId}
+            defaultName={name?.trim() || email.split("@")[0]}
+            email={email}
+            suggestion={suggestion}
+            primaryDefault={primaryDefault}
+            onDone={() => onOpenChange(false)}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function AddThreadContactForm({
   threadId,
   defaultName,
+  email,
   suggestion,
   onDone,
+  primaryDefault,
 }: {
   threadId: Id<"teamEmailThreads">;
   defaultName: string;
-  suggestion: ThreadContactSuggestion;
+  email: string;
+  suggestion?: ThreadContactSuggestion;
   onDone: () => void;
+  primaryDefault: boolean;
 }) {
   const brokers = useCachedOperatorBrokers();
   const save = useMutation(api.brokerContacts.save);
@@ -105,9 +140,13 @@ function AddThreadContactForm({
     api.actions.brokerContactDefaults.primaryDefault,
   );
   const [contactName, setContactName] = useState(defaultName);
-  const [brokerOrgId, setBrokerOrgId] = useState<string>(suggestion.brokerOrgId);
+  const [brokerOrgId, setBrokerOrgId] = useState<string>(
+    suggestion?.brokerOrgId ?? "",
+  );
   // Jev's default applies until the operator sets the checkbox themselves.
-  const [primaryChoice, setPrimaryChoice] = useState<boolean | null>(null);
+  const [primaryChoice, setPrimaryChoice] = useState<boolean | null>(
+    primaryDefault ? true : null,
+  );
   const [defaults, setDefaults] = useState<
     Record<string, PrimaryDefault | "failed">
   >({});
@@ -115,12 +154,12 @@ function AddThreadContactForm({
   const suggested = defaults[brokerOrgId];
 
   useEffect(() => {
-    if (!brokerOrgId || defaults[brokerOrgId]) return;
+    if (primaryDefault || !brokerOrgId || defaults[brokerOrgId]) return;
     let cancelled = false;
     suggestPrimary({
       threadId,
       brokerOrgId: brokerOrgId as Id<"organizations">,
-      email: suggestion.email,
+      email,
       name: defaultName,
     })
       .then((result) => result as PrimaryDefault | "failed")
@@ -132,50 +171,78 @@ function AddThreadContactForm({
     return () => {
       cancelled = true;
     };
-  }, [brokerOrgId, defaultName, defaults, suggestPrimary, suggestion.email, threadId]);
+  }, [
+    brokerOrgId,
+    defaultName,
+    defaults,
+    primaryDefault,
+    suggestPrimary,
+    email,
+    threadId,
+  ]);
 
-  const options = useMemo(
-    () =>
-      (brokers ?? []).map((broker) => ({
-        value: String(broker._id),
-        label: broker.name,
-        icon: <OrgBrandIcon {...broker} size="xs" />,
-      })),
-    [brokers],
-  );
+  const options = useMemo(() => {
+    const rows = (brokers ?? []).map((broker) => ({
+      value: String(broker._id),
+      label: broker.name,
+      icon: <OrgBrandIcon {...broker} size="xs" />,
+    }));
+    if (
+      suggestion &&
+      !rows.some((row) => row.value === suggestion.brokerOrgId)
+    ) {
+      rows.push({
+        value: suggestion.brokerOrgId,
+        label: suggestion.brokerName,
+        icon: <OrgBrandIcon name={suggestion.brokerName} size="xs" />,
+      });
+    }
+    return rows;
+  }, [brokers, suggestion]);
   const brokerName =
-    brokers?.find((broker) => broker._id === brokerOrgId)?.name ??
-    (brokerOrgId === suggestion.brokerOrgId ? suggestion.brokerName : "provider");
+    options.find((broker) => broker.value === brokerOrgId)?.label ?? "provider";
   const primary =
-    primaryChoice ?? (suggested && suggested !== "failed" ? suggested.primary : false);
-  const primaryHint =
-    suggested === undefined
-      ? "Checking existing contacts…"
-      : suggested === "failed"
-        ? "Outreach goes to the primary contact first."
-        : suggested.moreSenior
-          ? `${suggested.moreSenior} looks more senior.`
-          : suggested.primary
-            ? "No existing contact looks more senior."
-            : "Outreach goes to the primary contact first.";
+    primaryChoice ??
+    (suggested && suggested !== "failed" ? suggested.primary : false);
+  const primaryHint = !brokerOrgId
+    ? "Choose the provider this contact belongs to."
+    : primaryDefault
+      ? "Use this contact by default for future provider outreach."
+      : suggested === undefined
+        ? "Checking existing contacts…"
+        : suggested === "failed"
+          ? "Outreach goes to the primary contact first."
+          : suggested.moreSenior
+            ? `${suggested.moreSenior} looks more senior.`
+            : suggested.primary
+              ? "No existing contact looks more senior."
+              : "Outreach goes to the primary contact first.";
 
   async function submit() {
+    if (saving || !brokerOrgId || !contactName.trim()) return;
     setSaving(true);
     try {
-      await save({
+      const result = await save({
+        threadId,
         brokerOrgId: brokerOrgId as Id<"organizations">,
         name: contactName,
-        email: suggestion.email,
+        email,
         role: "general",
         lineOfBusinessCodes: [],
         sources: [],
         sourceKind: "manual",
         ...(primary ? { primary: true } : {}),
       });
-      toast.success(`Added ${contactName.trim()} to ${brokerName}`);
+      toast.success(
+        result.existing
+          ? `${contactName.trim()} is saved${primary ? " as the primary outreach contact" : ""} for ${brokerName}`
+          : `Added ${contactName.trim()} to ${brokerName}`,
+      );
       onDone();
     } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Could not add the contact"));
+      toast.error(
+        getUserFacingErrorMessage(error, "Could not add the contact"),
+      );
       setSaving(false);
     }
   }
@@ -189,8 +256,12 @@ function AddThreadContactForm({
       }}
     >
       <DialogHeader>
-        <DialogTitle>Add provider contact</DialogTitle>
-        <DialogDescription>{suggestion.email}</DialogDescription>
+        <DialogTitle>
+          {primaryDefault
+            ? "Make primary outreach contact"
+            : "Add provider contact"}
+        </DialogTitle>
+        <DialogDescription>{email}</DialogDescription>
       </DialogHeader>
       <FieldGroup>
         <Field>
@@ -211,7 +282,7 @@ function AddThreadContactForm({
             onChange={(value) => {
               if (!value) return;
               setBrokerOrgId(value);
-              setPrimaryChoice(null);
+              setPrimaryChoice(primaryDefault ? true : null);
             }}
             disabled={saving}
             placeholder="Choose provider"
@@ -226,17 +297,25 @@ function AddThreadContactForm({
           />
           <FieldContent>
             <FieldLabel htmlFor="add-thread-contact-primary">
-              <FieldTitle>Primary contact</FieldTitle>
+              <FieldTitle>Primary outreach contact</FieldTitle>
             </FieldLabel>
             <FieldDescription>{primaryHint}</FieldDescription>
           </FieldContent>
         </Field>
       </FieldGroup>
       <DialogFooter>
-        <PillButton type="button" variant="secondary" disabled={saving} onClick={onDone}>
+        <PillButton
+          type="button"
+          variant="secondary"
+          disabled={saving}
+          onClick={onDone}
+        >
           Cancel
         </PillButton>
-        <PillButton type="submit" disabled={saving || !contactName.trim() || !brokerOrgId}>
+        <PillButton
+          type="submit"
+          disabled={saving || !contactName.trim() || !brokerOrgId}
+        >
           {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
           Add contact
         </PillButton>

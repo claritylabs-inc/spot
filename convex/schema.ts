@@ -15,6 +15,10 @@ import {
 import { followupQuestionValidator } from "./lib/intakeFollowupSchema";
 import { brokerContactFields } from "./lib/brokerContactFields";
 import {
+  providerSubmissionFormValidator,
+  providerSubmissionRequirementValidator,
+} from "./lib/providerSubmissionDefaultFields";
+import {
   operatorPlanningAssessmentValidator,
   operatorExecutionPlanValidator,
 } from "./lib/operatorRunPlan";
@@ -681,6 +685,21 @@ export default defineSchema({
   })
     .index("by_brokerOrgId_and_deletedAt", ["brokerOrgId", "deletedAt"])
     .index("by_email_and_deletedAt", ["email", "deletedAt"]),
+
+  // Operator-owned reusable submission process, one record per provider/coverage.
+  providerSubmissionDefaults: defineTable({
+    brokerOrgId: v.id("organizations"),
+    coverageCode: v.string(),
+    instructions: v.string(),
+    requirements: v.array(providerSubmissionRequirementValidator),
+    forms: v.array(providerSubmissionFormValidator),
+    sourceThreadId: v.optional(v.id("teamEmailThreads")),
+    sourceMessageId: v.optional(v.id("teamEmailMessages")),
+    revision: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    updatedByUserId: v.id("users"),
+  }).index("by_brokerOrgId_and_coverageCode", ["brokerOrgId", "coverageCode"]),
 
   brokerProfiles: defineTable({
     manualFields: v.optional(

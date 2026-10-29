@@ -241,14 +241,29 @@ from these cards. Operator edits preserve that metadata. Separate people and
 teams may share an inbox; create deduplication matches both email and name. The detail
 read tool exposes these as bounded `networkContacts`; directory lists omit them.
 A provider has at most one `primary` contact (Contacts tab checkbox); recipient
-selection prefers it after an explicit outreach email. Email readers show an
-add-contact icon on an inbound sender who is not yet a contact
-(`brokerContacts.suggestionsForThread`): the thread's outreach provider, or a
-request provider whose company domain matches; consumer mail domains match only
-on outreach threads. Its dialog picks the provider and primary flag; the primary
-default (`actions/brokerContactDefaults.primaryDefault`) is on with no other
-contact, otherwise only when a Jev composite finds no existing contact (the
-current primary, else all contacts) more senior.
+selection prefers it after an explicit outreach email. Expanded external sender
+names open `ThreadContactMenu` with primary-outreach, provider and copy-email
+actions. Known contacts and domain-matched thread/request providers preselect
+the provider; other senders open a provider chooser. Thread-bound contact saves
+deduplicate by provider/email. The explicit primary action is operator-selected;
+ordinary Add contact retains the Jev seniority default in
+`actions/brokerContactDefaults.primaryDefault`.
+
+`convex/providerSubmissionDefaults.ts` owns operator-only reusable submission
+standards indexed by provider and ACORD coverage code. The provider's Submission
+defaults tab (`components/broker-network/provider-submission-defaults.tsx`)
+shows application forms, submission process/provider notes, and minimum-information
+questions with guidance or clearly labeled examples. Email attachment right-click
+and visible Options menus save forms through compact searchable provider/coverage
+submenus and an explicit Save application form action. Existing notes/questions
+are preserved; new standards record the selected form's submission instruction.
+Message options can capture questions or notes in a source-reference dialog.
+These are reusable standards, distinct from request-owned answers and company prose.
+Writes reject stale revisions and impersonation. Form promotion validates exact
+source attachment membership and copies storage bytes so email cleanup cannot
+break the standard. Removal deletes only provider-owned copies. Existing
+`get_broker_network_profile` exposes bounded standards to operators; automatic
+outreach and send approvals retain their existing owners.
 
 Automated provider outreach is owned by `convex/providerOutreach.ts`, `convex/actions/providerOutreach.ts`, and `convex/lib/providerOutreach*.ts`. Matching shares ACORD coverage mappings and uses typed request facts and provider appetite; unknown fit is excluded from send-all. Direct-operator launches use one Resend Inbox per operator on a dedicated subdomain and one scoped packet link per outreach. Jev independently suggests cadence fields and classifies replies; uncertainty hands replies to the operator. Durable steps fence leases, persist drafts, reuse exact delivery idempotency keys within 23 hours, and never replay unknown inference outcomes. Lifecycle changes stop pending sends. The dedicated signed inbox webhook routes the command inbox separately and mirrors correspondence into team email records. Capture performs no external inbox calls and never claims real delivery. See `docs/architecture/provider-outreach.md` and `docs/testing/provider-outreach-workflow.md`.
 

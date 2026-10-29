@@ -174,7 +174,7 @@ Operator command email uses the shared `agent@team.spot.insure` inbox. Its Resen
 | `list_procurement_proposals` | v2: page private provider/premium/status/review summaries; view full opts into legacy offer/document/review rows (10/page). | `operator.procurement.read` | read | operator | none | mutation |
 | `get_procurement_proposal`                 | Read a private proposal (full document) or up to 10 via `procurementProposalIds` (`{items, notFound}`, compact view: offer headlines and Markdown, no file URLs; `view` overrides). | `operator.procurement.read`     | read             | operator | none         | mutation  |
 | `list_broker_network_profiles`             | Cursor-paginated compact provider search; optional queries/domains batches (1–20 each) return per-input groups. Follow nextCursor; bounded pages cannot prove absence.                          | `operator.organizations.read`   | read             | operator | none         | mutation  |
-| `get_broker_network_profile`               | Read one provider's profile, portal contacts, operator-only networkContacts with roles, coverage context, notes and sources, market history, and persisted research evidence/outcome.                                                | `operator.organizations.read`   | read             | operator | none         | mutation  |
+| `get_broker_network_profile`               | Read one provider's profile, portal contacts, operator-only networkContacts with roles, coverage context, notes and sources, market history, persisted research evidence/outcome, and bounded per-coverage submissionDefaults (instructions, minimum-information questions/answer guidance, reusable form metadata/download URLs). | `operator.organizations.read`   | read             | operator | none         | mutation  |
 | `get_procurement_forwarding_address` | Get (and, if missing, provision) the caller's team forwarding address, with the request's legacy address as a fallback. | `operator.email.write` | reversible write | operator | none | action |
 | `get_procurement_email_thread` | Read a shared team conversation through its current or migrated legacy ID, with bounded messages, or up to 10 via `procurementEmailThreadIds` (`{items, notFound}`, compact view: newest 5 messages, trimmed bodies, no file URLs; `view` overrides). | `operator.procurement.read` | read | operator | none | mutation |
 | `list_team_inbox_threads` | Page shared team mail with combined client, request, mine, unlinked, category and archive filters; return cursors and scan bounds. | `operator.email.read` | read | operator | none | mutation |
@@ -611,7 +611,16 @@ retains `query`/filters/`profiles` and adds `queries`, `domains`, `cursor`,
 `groups` (each query/domain plus matching `orgIds`), `nextCursor`, `scanned` and
 an honest `bounded` flag. The top-level `profiles` list deduplicates grouped
 results. Its limit bounds scanned providers, so filtered pages may be empty. Profile/contact/activity and
-research details are available through `get_broker_network_profile`.
+research details are available through `get_broker_network_profile` (v4). Its
+operator-only `submissionDefaults` returns `{defaults, bounded}`, with at most
+200 coverage records and a 1 MB read budget. Each record contains instructions,
+minimum-information questions and reusable answer guidance, plus form metadata
+and storage URLs; file bytes are never embedded. Operators curate these standards
+in the provider's Submission defaults view or from an inbox message/attachment.
+Preparing a future submission should follow the saved coverage process. This
+read does not attach documents, populate client answers, send mail or bypass any
+existing approval. Active operator and external-provider authorization are
+rechecked when the defaults are read; provider portal members cannot access them.
 
 Provider batch tools accept at most 50 homogeneous reversible writes. Every item
 is validated before approval and revalidated in a child mutation, which rolls
