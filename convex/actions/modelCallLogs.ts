@@ -23,8 +23,16 @@ export const payload = action({
       if (!blob) return null;
       return modelCallPayloadPreview(JSON.parse(await blob.text()));
     }
+    const inlineRequest =
+      job && !job.requestStorageId
+        ? await ctx.runQuery(internal.routerJobs.getInlineRequest, {
+            id: job._id,
+          })
+        : null;
     const [request, response] = await Promise.all([
-      preview(job?.requestStorageId),
+      inlineRequest !== null
+        ? modelCallPayloadPreview(JSON.parse(inlineRequest))
+        : preview(job?.requestStorageId),
       job?.resultJson !== undefined
         ? modelCallPayloadPreview(JSON.parse(job.resultJson))
         : preview(job?.resultStorageId),
