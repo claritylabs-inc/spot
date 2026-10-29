@@ -10,6 +10,7 @@ import {
   Plus,
   X,
 } from "lucide-react";
+import { ShortcutTooltip, type ShortcutKey } from "@/components/ui/kbd";
 import { APP_SIDEBAR_COLLAPSED_WIDTH } from "@claritylabs-inc/ui/components/app-shell/app-shell-sidebar-layout";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
@@ -53,11 +54,11 @@ function TabButton({
   label,
   onSelect,
   onClose,
-  closeHint,
+  closeShortcut,
   hint,
   variant = "bar",
 }: {
-  closeHint?: string;
+  closeShortcut?: ShortcutKey[];
   /** Hover text beside the label, such as who started the chat. */
   hint?: string;
   active: boolean;
@@ -130,15 +131,27 @@ function TabButton({
         )}
       </button>
       {onClose && !rail ? (
-        <button
-          type="button"
-          aria-label={`Close ${label}`}
-          title={closeHint ? `Close (${closeHint})` : undefined}
-          onClick={onClose}
-          className="absolute right-2 flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/tab:opacity-100"
-        >
-          <X className="size-3" />
-        </button>
+        closeShortcut ? (
+          <ShortcutTooltip label="Close" keys={closeShortcut}>
+            <button
+              type="button"
+              aria-label={`Close ${label}`}
+              onClick={onClose}
+              className="absolute right-2 flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/tab:opacity-100"
+            >
+              <X className="size-3" />
+            </button>
+          </ShortcutTooltip>
+        ) : (
+          <button
+            type="button"
+            aria-label={`Close ${label}`}
+            onClick={onClose}
+            className="absolute right-2 flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 group-hover/tab:opacity-100"
+          >
+            <X className="size-3" />
+          </button>
+        )
       ) : null}
     </div>
   );
@@ -182,7 +195,7 @@ function ThreadTab({
       hint={summary?.hint}
       onSelect={() => dock.openThread(tab.threadId)}
       onClose={() => closeTab(tab.threadId)}
-      closeHint={active ? "⌥W" : undefined}
+      closeShortcut={active ? ["alt", "w"] : undefined}
       variant={variant}
     />
   );
@@ -215,19 +228,20 @@ export function AgentDockBar({
         open && "border-t border-border",
       )}
     >
-      <button
-        type="button"
-        aria-label={adapter.newChatLabel}
-        title={`${adapter.newChatLabel} (⌥N)`}
-        onClick={dock.newChat}
-        className={cn(
-          TAB_ITEM_CLASS,
-          "h-7 shrink-0 text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
-        )}
-      >
-        <Plus className="size-3.5" />
-        {mobile && dock.tabs.length > 0 ? null : adapter.newChatLabel}
-      </button>
+      <ShortcutTooltip label={adapter.newChatLabel} keys={["alt", "n"]}>
+        <button
+          type="button"
+          aria-label={adapter.newChatLabel}
+          onClick={dock.newChat}
+          className={cn(
+            TAB_ITEM_CLASS,
+            "h-7 shrink-0 text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
+          )}
+        >
+          <Plus className="size-3.5" />
+          {mobile && dock.tabs.length > 0 ? null : adapter.newChatLabel}
+        </button>
+      </ShortcutTooltip>
       <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
       <div
         role="tablist"
@@ -264,7 +278,8 @@ export function AgentDockBar({
           variant="icon"
           size="compact"
           iconOnly
-          label="All chats (⌥H)"
+          label="All chats"
+          shortcut={["alt", "h"]}
           aria-pressed={open && dock.view === "history"}
           className={cn(
             open && dock.view === "history" && "bg-foreground/6 text-foreground",
@@ -281,7 +296,8 @@ export function AgentDockBar({
             variant="icon"
             size="compact"
             iconOnly
-            label={mode === "full" ? "Restore (⌥E)" : "Expand (⌥E)"}
+            label={mode === "full" ? "Restore" : "Expand"}
+            shortcut={["alt", "e"]}
             onClick={dock.toggleFull}
           >
             {mode === "full" ? (
@@ -297,7 +313,8 @@ export function AgentDockBar({
             variant="icon"
             size="compact"
             iconOnly
-            label="Minimize (⌥J)"
+            label="Minimize"
+          shortcut={["alt", "j"]}
             onClick={() => dock.setMode("collapsed")}
           >
             <X className="size-3.5" />
@@ -407,6 +424,7 @@ export function AgentDockTabSidebar({
   const historyOpen = open && dock.view === "history";
   const iconButton = (
     label: string,
+    shortcutKey: string,
     onClick: () => void,
     icon: ReactNode,
     pressed?: boolean,
@@ -417,6 +435,7 @@ export function AgentDockTabSidebar({
       size="compact"
       iconOnly
       label={label}
+      shortcut={["alt", shortcutKey]}
       aria-pressed={pressed}
       className={cn(pressed && "bg-foreground/6 text-foreground")}
       onClick={onClick}
@@ -425,13 +444,15 @@ export function AgentDockTabSidebar({
     </PillButton>
   );
   const history = iconButton(
-    "All chats (⌥H)",
+    "All chats",
+    "h",
     () => (historyOpen ? dock.showChat() : dock.showHistory()),
     <Clock className="size-3.5" />,
     historyOpen,
   );
   const expand = iconButton(
-    mode === "full" ? "Restore (⌥E)" : "Expand (⌥E)",
+    mode === "full" ? "Restore" : "Expand",
+    "e",
     dock.toggleFull,
     mode === "full" ? (
       <Minimize2 className="size-3.5" />
@@ -440,7 +461,7 @@ export function AgentDockTabSidebar({
     ),
   );
   const minimize = open
-    ? iconButton("Minimize (⌥J)", () => dock.setMode("collapsed"), (
+    ? iconButton("Minimize", "j", () => dock.setMode("collapsed"), (
         <X className="size-3.5" />
       ))
     : null;
@@ -489,32 +510,34 @@ export function AgentDockTabSidebar({
         )}
       >
         {rail ? (
-          <button
-            type="button"
-            aria-label={adapter.newChatLabel}
-            title={`${adapter.newChatLabel} (⌥N)`}
-            onClick={dock.newChat}
-            className={cn(
-              RAIL_ITEM_CLASS,
-              "text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
-            )}
-          >
-            <Plus className="size-3.5" />
-          </button>
-        ) : (
-          <>
+          <ShortcutTooltip label={adapter.newChatLabel} keys={["alt", "n"]}>
             <button
               type="button"
-              title={`${adapter.newChatLabel} (⌥N)`}
+              aria-label={adapter.newChatLabel}
               onClick={dock.newChat}
               className={cn(
-                ROW_ITEM_CLASS,
-                "min-w-0 flex-1 text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
+                RAIL_ITEM_CLASS,
+                "text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
               )}
             >
-              <Plus className="size-3.5 shrink-0" />
-              <span className="truncate">{adapter.newChatLabel}</span>
+              <Plus className="size-3.5" />
             </button>
+          </ShortcutTooltip>
+        ) : (
+          <>
+            <ShortcutTooltip label={adapter.newChatLabel} keys={["alt", "n"]}>
+              <button
+                type="button"
+                onClick={dock.newChat}
+                className={cn(
+                  ROW_ITEM_CLASS,
+                  "min-w-0 flex-1 text-muted-foreground hover:bg-foreground/4 hover:text-foreground",
+                )}
+              >
+                <Plus className="size-3.5 shrink-0" />
+                <span className="truncate">{adapter.newChatLabel}</span>
+              </button>
+            </ShortcutTooltip>
           </>
         )}
       </div>

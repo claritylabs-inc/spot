@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@claritylabs-inc/ui/components/tooltip";
 
+import { ShortcutTooltip, ariaKeyShortcut, useMacKeys, type ShortcutKey } from "@/components/ui/kbd";
 import { typeStyle } from "@/lib/typography";
 import { isInternalAppHref } from "@/lib/internal-link";
 
@@ -31,7 +32,10 @@ type AdaptLegacyProps<T> = T extends unknown
   : never;
 type PillButtonProps = AdaptLegacyProps<
   React.ComponentProps<typeof BasePillButton>
->;
+> & {
+  /** Keyboard shortcut shown in the button's tooltip. */
+  shortcut?: ShortcutKey[];
+};
 
 const IconOnlyActionsContext = React.createContext(false);
 
@@ -70,8 +74,10 @@ function PillButton(props: PillButtonProps) {
     iconOnly,
     expandLabel,
     label: labelProp,
+    shortcut,
     ...restProps
   } = props;
+  const mac = useMacKeys();
   const iconOnlyActions = React.useContext(IconOnlyActionsContext);
   const split =
     iconOnlyActions && !iconOnly && variant !== "icon" && variant !== "primary"
@@ -119,7 +125,8 @@ function PillButton(props: PillButtonProps) {
     size: resolvedSize,
     "aria-label": props["aria-label"] ?? label,
     preset: "spot" as const,
-    ...(withTooltip ? { title: rest.title ?? "" } : {}),
+    ...(withTooltip || shortcut ? { title: rest.title ?? "" } : {}),
+    ...(shortcut ? { "aria-keyshortcuts": ariaKeyShortcut(shortcut, mac) } : {}),
   };
   let button: React.ReactElement;
   if (rest.href !== undefined) {
@@ -132,6 +139,12 @@ function PillButton(props: PillButtonProps) {
   } else {
     button = <BasePillButton {...rest} {...shared} />;
   }
+  if (shortcut)
+    return (
+      <ShortcutTooltip label={label ?? iconAndText(restProps.children).text} keys={shortcut}>
+        {button}
+      </ShortcutTooltip>
+    );
   if (!withTooltip) return button;
   return (
     <Tooltip>

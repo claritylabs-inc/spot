@@ -275,7 +275,7 @@ function OperatorNewEmailComposer({
           <PillButton
             size="compact"
             type="button"
-            title="Send (Ctrl or ⌘ + Enter)"
+            shortcut={["mod", "enter"]}
             disabled={!preview || disabled}
             onClick={() => void submit()}
           >
