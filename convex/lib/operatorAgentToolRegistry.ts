@@ -1815,7 +1815,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   search_team_inbox: defineOperatorTool({
     family: "team_inbox",
     version: 1,
-    description: "Find shared team inbox threads by words in subjects and message bodies (subject matches first), one row per thread with a snippet and its linked client and request; up to 25 results. Use this for a named email or submission before get_team_inbox_thread. Optional exact client filter. Bounded: no result does not prove no such mail exists.",
+    description: "Find shared team inbox threads by words in subjects and message bodies (subject matches first), one row per thread with a snippet and its linked client and request; up to 25 results. Use this for a named email or submission before get_team_inbox_thread. Several threads can share one subject (one per provider is common): read every relevant match together with get_team_inbox_thread teamEmailThreadIds rather than only the first. Optional exact client filter. Bounded: no result does not prove no such mail exists.",
     inputSchema: z.object({
       query: z
         .string()
