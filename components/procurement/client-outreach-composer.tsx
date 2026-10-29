@@ -27,11 +27,8 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import {
-  FollowUpCountSelect,
-  IntervalSelect,
-  schedulePreview,
-} from "./provider-outreach-panel";
+import { FollowUpCountSelect, IntervalSelect } from "./outreach-cadence-selects";
+import { schedulePreview } from "./provider-outreach-panel";
 
 type Cadence = { followUpCount: number; intervalBusinessDays: number };
 type Draft = {
