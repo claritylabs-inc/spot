@@ -137,6 +137,7 @@ import {
 
 import { compactOperatorContext } from "./lib/operatorContextCompactionRunner";
 import {
+  modelFinishReason,
   OperatorStepTimer,
   type OperatorToolTiming,
 } from "./lib/operatorRunTiming";
@@ -1088,11 +1089,15 @@ export const run = internalAction({
             const parsed = operatorExecutionPlanSchema.safeParse(
               planResult.output,
             );
-            if (!parsed.success) throw new OperatorPlanGenerationError();
+            if (!parsed.success)
+              throw new OperatorPlanGenerationError(
+                modelFinishReason(planResult),
+              );
             generated = parsed.data;
           } catch (error) {
             // A truncated or invalid plan downgrades the run to a checklist;
             // router failures keep the existing retry and failure paths.
+            const finishReason = modelFinishReason(error);
             const planUnavailable =
               error instanceof OperatorPlanGenerationError ||
               NoObjectGeneratedError.isInstance(error) ||
@@ -1106,13 +1111,16 @@ export const run = internalAction({
                 stage: "planning",
                 status: "failed",
                 ...(planUnavailable
-                  ? { detail: "Plan unavailable; using checklist" }
+                  ? {
+                      detail: `Plan unavailable${finishReason ? ` (finish: ${finishReason})` : ""}; using checklist`,
+                    }
                   : {}),
               });
             if (!planUnavailable) throw error;
             console.warn("[operatorPlanning] planner fallback", {
               runId: String(run._id),
               error: error instanceof Error ? error.name : String(error),
+              finishReason,
             });
           }
           if (generated) {

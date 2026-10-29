@@ -15,8 +15,9 @@ import type {
 } from "./operatorRunPlan";
 
 // The planner only lists targets and short steps. Effort follows the routed
-// model's default (quality over cost); undefined sends no effort override.
-export const OPERATOR_PLANNING_MAX_OUTPUT_TOKENS = 2_048;
+// model's default (quality over cost), and reasoning counts against this cap,
+// so it matches the operator step cap; undefined sends no effort override.
+export const OPERATOR_PLANNING_MAX_OUTPUT_TOKENS = 8_192;
 export const OPERATOR_PLANNING_REASONING_EFFORT:
   | ClRouterReasoningEffort
   | undefined = undefined;
@@ -407,7 +408,7 @@ export function recentConversationContext(
 }
 
 export class OperatorPlanGenerationError extends Error {
-  constructor() {
+  constructor(readonly finishReason?: string) {
     super("The planning model did not return a valid execution plan");
     this.name = "OperatorPlanGenerationError";
   }
