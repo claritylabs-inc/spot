@@ -2038,6 +2038,7 @@ export type ClaimStepResult =
         applicantName: string | null;
         summaryItems: OutreachSummaryItem[];
         coverageLabels: string[];
+        coverageRequest: string | null;
         targetEffectiveDate: string | null;
         isRenewal: boolean;
       };

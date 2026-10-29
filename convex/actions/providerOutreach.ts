@@ -286,6 +286,7 @@ function emailInputFor(
       isRenewal: request.isRenewal,
       packetFileCount: packet.fileCount,
       summaryItems: request.summaryItems,
+      coverageRequest: request.coverageRequest ?? undefined,
     },
     ...(initialSubject ? { initialSubject } : {}),
   };

@@ -1,6 +1,7 @@
 import type { IntakeApplication } from "../../lib/intake-application";
 import {
   coverageRequestLabel,
+  coverageOption,
   UNKNOWN_ANSWER,
 } from "../../lib/insurance-intake-details";
 import { followupQuestionVisible } from "../../lib/intake-followups";
@@ -15,9 +16,10 @@ export function providerOutreachSummary(
   applicantName: string | null;
   summaryItems: OutreachSummaryItem[];
   coverageLabels: string[];
+  coverageRequest: string | null;
 } {
   if (!application)
-    return { applicantName: null, summaryItems: [], coverageLabels: [] };
+    return { applicantName: null, summaryItems: [], coverageLabels: [], coverageRequest: null };
   const { answers, details } = application;
   const summaryItems: OutreachSummaryItem[] = [];
   const add = (label: string, value?: string) => {
@@ -47,14 +49,12 @@ export function providerOutreachSummary(
   );
   const coverages = details.coverages.map((line) => {
     const label = coverageRequestLabel(line);
-    const limit =
-      line.coverage === "general_liability"
-        ? line.limits.each_occurrence
-        : line.limits.policy_limit;
-    const amount =
-      limit?.trim() && limit !== UNKNOWN_ANSWER
-        ? ` (${formatIntakeMoney(limit, currency)}${line.coverage === "general_liability" ? " each occurrence" : ""})`
-        : "";
+    const limits = coverageOption(line.coverage).limits.flatMap((limit) => {
+      const value = line.limits[limit.key]?.trim();
+      if (limit.key === "coverage_description" || !value || value === UNKNOWN_ANSWER) return [];
+      return [`${limit.label}: ${limit.key === "statutory" ? value : formatIntakeMoney(value, currency)}`];
+    });
+    const amount = limits.length ? ` (${limits.join(", ")})` : "";
     const scope = line.scopeDescription?.trim();
     return `${label}${amount}${scope ? ` — ${scope}` : ""}`;
   });
@@ -118,5 +118,6 @@ export function providerOutreachSummary(
     applicantName: answers.name?.trim() || null,
     summaryItems,
     coverageLabels: details.coverages.map(coverageRequestLabel),
+    coverageRequest: coverages.join("; ") || answers.coverage || null,
   };
 }
