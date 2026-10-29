@@ -1556,9 +1556,9 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   get_broker_network_profile: defineOperatorTool({
     family: "broker_network",
-    version: 3,
+    version: 4,
     description:
-      "Read one external provider’s identity, appetite, portal and network contacts, market history and persisted research evidence/outcome. Network contacts include roles, coverage context, notes, sources and a bounded flag. Spot-owned identities are rejected.",
+      "Read one external provider’s identity, appetite, portal and network contacts, market history, persisted research evidence/outcome and submissionDefaults. Submission defaults hold per-coverage instructions, minimum-information questions with answer guidance, and reusable application form metadata/download URLs; follow these standards when preparing a submission and retain normal send approval. Contacts and defaults report bounded results. Spot-owned identities are rejected.",
     inputSchema: z.object({ brokerOrgId: organizationId }),
     capability: "operator.organizations.read",
     effect: "read",

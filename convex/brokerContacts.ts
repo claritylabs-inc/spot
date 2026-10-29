@@ -137,88 +137,139 @@ const websiteDomain = (website: string | undefined) => {
 };
 
 /**
- * Participants of one conversation who are not yet saved contacts of the
- * provider it belongs to (an outreach's own address included), keyed by email. The provider is the thread's outreach
+ * Provider participants of one conversation, including saved contacts, keyed by
+ * email. The provider is the thread's outreach
  * provider; for other request conversations it is the request provider whose
  * company domain matches the participant. Consumer mail domains only match on
- * outreach conversations, and Spot-owned addresses are never suggested.
+ * outreach conversations. Saved contacts also work in unlinked conversations;
+ * Spot-owned addresses are never suggested.
  */
-export const suggestionsForThread = query({
-  args: { threadId: v.id("teamEmailThreads") },
-  handler: async (ctx, { threadId }) => {
-    await requireOperator(ctx);
-    const thread = await ctx.db.get(threadId);
-    if (!thread || thread.deletedAt || (await teamTargetProblem(ctx, thread)))
-      return [];
-    const direct = thread.outreachId
-      ? await ctx.db.get(thread.outreachId)
-      : null;
-    const outreaches = direct
-      ? [direct]
-      : thread.requestId
-        ? await ctx.db
-            .query("procurementBrokerOutreaches")
-            .withIndex("request", (q) => q.eq("requestId", thread.requestId!))
-            .take(50)
-        : [];
-    const providers = new Map<
-      Id<"organizations">,
-      { brokerName: string; emails: Set<string>; domains: Set<string> }
-    >();
-    for (const outreach of outreaches) {
-      if (!outreach.brokerOrgId) continue;
-      let entry = providers.get(outreach.brokerOrgId);
-      if (!entry) {
-        let provider;
-        try {
-          provider = await requireProvider(ctx, outreach.brokerOrgId);
-        } catch {
-          continue;
-        }
-        const { contacts } = await listProviderContacts(ctx, provider._id);
-        entry = {
-          brokerName: provider.name,
-          emails: new Set(contacts.flatMap((contact) => contact.email ?? [])),
-          domains: new Set([websiteDomain(provider.website)].filter(Boolean)),
-        };
-        providers.set(provider._id, entry);
-      }
-      // The outreach address is not a saved contact; it only identifies the domain.
-      for (const email of [
-        ...entry.emails,
-        ...(outreach.contactEmail
-          ? [normalizeProcurementEmail(outreach.contactEmail)]
-          : []),
-      ]) {
-        const domain = emailDomain(email);
-        if (domain && !CONSUMER_DOMAINS.has(domain)) entry.domains.add(domain);
-      }
-    }
-    const known = new Set(
-      [...providers.values()].flatMap((entry) => [...entry.emails]),
-    );
-    const suggestions: Array<{
-      email: string;
-      brokerOrgId: Id<"organizations">;
+async function threadContactSuggestions(
+  ctx: QueryCtx,
+  threadId: Id<"teamEmailThreads">,
+) {
+  const thread = await ctx.db.get(threadId);
+  if (!thread || thread.deletedAt || (await teamTargetProblem(ctx, thread)))
+    return [];
+  const direct = thread.outreachId ? await ctx.db.get(thread.outreachId) : null;
+  const outreaches = direct
+    ? [direct]
+    : thread.requestId
+      ? await ctx.db
+          .query("procurementBrokerOutreaches")
+          .withIndex("request", (q) => q.eq("requestId", thread.requestId!))
+          .take(50)
+      : [];
+  const providers = new Map<
+    Id<"organizations">,
+    {
       brokerName: string;
-    }> = [];
-    for (const raw of thread.participantEmails) {
-      const email = normalizeProcurementEmail(raw);
+      contacts: Doc<"brokerContacts">[];
+      emails: Set<string>;
+      domains: Set<string>;
+    }
+  >();
+  for (const outreach of outreaches) {
+    if (!outreach.brokerOrgId) continue;
+    let entry = providers.get(outreach.brokerOrgId);
+    if (!entry) {
+      let provider;
+      try {
+        provider = await requireProvider(ctx, outreach.brokerOrgId);
+      } catch {
+        continue;
+      }
+      const { contacts } = await listProviderContacts(ctx, provider._id);
+      entry = {
+        brokerName: provider.name,
+        contacts,
+        emails: new Set(
+          contacts.flatMap((contact) =>
+            contact.email ? [normalizeProcurementEmail(contact.email)] : [],
+          ),
+        ),
+        domains: new Set([websiteDomain(provider.website)].filter(Boolean)),
+      };
+      providers.set(provider._id, entry);
+    }
+    // The outreach address is not a saved contact; it only identifies the domain.
+    for (const email of [
+      ...entry.emails,
+      ...(outreach.contactEmail
+        ? [normalizeProcurementEmail(outreach.contactEmail)]
+        : []),
+    ]) {
       const domain = emailDomain(email);
-      if (!domain || known.has(email) || isSpotOwnedDomain(email)) continue;
-      const match = [...providers].find(
+      if (domain && !CONSUMER_DOMAINS.has(domain)) entry.domains.add(domain);
+    }
+  }
+  const suggestions: Array<{
+    email: string;
+    brokerOrgId: Id<"organizations">;
+    brokerName: string;
+    contactId: Id<"brokerContacts"> | null;
+    primary: boolean;
+  }> = [];
+  const seen = new Set<string>();
+  for (const raw of thread.participantEmails.slice(0, 50)) {
+    const email = normalizeProcurementEmail(raw);
+    const domain = emailDomain(email);
+    if (!domain || seen.has(email) || isSpotOwnedDomain(email)) continue;
+    seen.add(email);
+    const entries = [...providers];
+    const match =
+      entries.find(([, entry]) => entry.emails.has(email)) ??
+      entries.find(
         ([brokerOrgId, entry]) =>
           entry.domains.has(domain) ||
           (direct?.brokerOrgId === brokerOrgId && CONSUMER_DOMAINS.has(domain)),
       );
-      if (match)
+    if (match) {
+      const contact = match[1].contacts.find(
+        (row) => row.email && normalizeProcurementEmail(row.email) === email,
+      );
+      suggestions.push({
+        email,
+        brokerOrgId: match[0],
+        brokerName: match[1].brokerName,
+        contactId: contact?._id ?? null,
+        primary: !!contact?.primary,
+      });
+    } else {
+      // A saved contact still has provider actions when this conversation has
+      // not been attached to a procurement request or outreach.
+      const contacts = await ctx.db
+        .query("brokerContacts")
+        .withIndex("by_email_and_deletedAt", (q) =>
+          q.eq("email", email).eq("deletedAt", undefined),
+        )
+        .take(5);
+      for (const contact of contacts) {
+        let provider;
+        try {
+          provider = await requireProvider(ctx, contact.brokerOrgId);
+        } catch {
+          continue;
+        }
         suggestions.push({
           email,
-          brokerOrgId: match[0],
-          brokerName: match[1].brokerName,
+          brokerOrgId: provider._id,
+          brokerName: provider.name,
+          contactId: contact._id,
+          primary: !!contact.primary,
         });
+        break;
+      }
     }
-    return suggestions;
+  }
+  return suggestions;
+}
+
+export const suggestionsForThread = query({
+  args: { threadId: v.id("teamEmailThreads") },
+  handler: async (ctx, { threadId }) => {
+    await requireOperator(ctx);
+    return threadContactSuggestions(ctx, threadId);
   },
 });
 
@@ -265,10 +316,41 @@ async function setPrimary(
     await ctx.db.patch(contact._id, { primary: primary || undefined });
 }
 
+export const setPrimaryFromThread = mutation({
+  args: {
+    threadId: v.id("teamEmailThreads"),
+    contactId: v.id("brokerContacts"),
+  },
+  handler: async (ctx, { threadId, contactId }) => {
+    const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
+    const suggestions = await threadContactSuggestions(ctx, threadId);
+    const participant = suggestions.find(
+      (entry) => entry.contactId === contactId,
+    );
+    if (!participant)
+      throw new Error("This contact is no longer linked to the conversation");
+    const contact = await ctx.db.get(contactId);
+    if (!contact || contact.deletedAt !== undefined)
+      throw new Error("Contact not found");
+    await requireProvider(ctx, contact.brokerOrgId);
+    await setPrimary(ctx, contact, true);
+    await writeOperatorAudit(ctx, {
+      operatorUserId: operator.userId,
+      type: "setup_write",
+      targetOrgId: contact.brokerOrgId,
+      summary: `Made ${contact.name} the primary outreach contact`,
+      metadata: { contactId, primary: true, threadId },
+    });
+    return { contactId };
+  },
+});
+
 export const save = mutation({
   args: {
     brokerOrgId: v.id("organizations"),
     contactId: v.optional(v.id("brokerContacts")),
+    threadId: v.optional(v.id("teamEmailThreads")),
     expectedRevision: v.optional(v.number()),
     ...brokerContactFields,
     /** True makes this the provider's only primary contact; omitted keeps it unchanged. */
@@ -293,6 +375,19 @@ export const save = mutation({
     const email = text(args.email, 320)?.toLowerCase();
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       throw new Error("Enter a valid contact email");
+    if (args.threadId) {
+      const thread = await ctx.db.get(args.threadId);
+      if (!thread || thread.deletedAt || (await teamTargetProblem(ctx, thread)))
+        throw new Error("Conversation not found");
+      if (
+        !email ||
+        isSpotOwnedDomain(email) ||
+        !thread.participantEmails.some(
+          (participant) => normalizeProcurementEmail(participant) === email,
+        )
+      )
+        throw new Error("Choose a participant from this conversation");
+    }
     if (args.sources.length > 5)
       throw new Error("Use at most five contact sources");
     const sources = [...new Set(args.sources.map((source) => url(source)!))];
@@ -320,14 +415,24 @@ export const save = mutation({
         .take(201);
       const duplicate = current.find((row) =>
         email
-          ? row.email === email && row.name.toLowerCase() === name.toLowerCase()
+          ? row.email === email &&
+            (args.threadId !== undefined ||
+              row.name.toLowerCase() === name.toLowerCase())
           : phone
             ? row.phone === phone && row.name === name
             : row.name === name && row.contactUrl === contactUrl,
       );
       if (duplicate) {
-        if (args.primary !== undefined)
+        if (args.primary !== undefined) {
           await setPrimary(ctx, duplicate, args.primary);
+          await writeOperatorAudit(ctx, {
+            operatorUserId: operator.userId,
+            type: "setup_write",
+            targetOrgId: provider._id,
+            summary: `Updated primary outreach contact ${duplicate.name}`,
+            metadata: { contactId: duplicate._id, primary: args.primary },
+          });
+        }
         return {
           contactId: duplicate._id,
           revision: duplicate.revision,

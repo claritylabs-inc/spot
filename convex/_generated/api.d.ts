@@ -433,6 +433,7 @@ import type * as lib_providerOutreachMatch from "../lib/providerOutreachMatch.js
 import type * as lib_providerOutreachSchedule from "../lib/providerOutreachSchedule.js";
 import type * as lib_providerOutreachSummary from "../lib/providerOutreachSummary.js";
 import type * as lib_providerOutreachValidators from "../lib/providerOutreachValidators.js";
+import type * as lib_providerSubmissionDefaultFields from "../lib/providerSubmissionDefaultFields.js";
 import type * as lib_quoWebhook from "../lib/quoWebhook.js";
 import type * as lib_receivingEmail from "../lib/receivingEmail.js";
 import type * as lib_requirementAttachmentIntent from "../lib/requirementAttachmentIntent.js";
@@ -575,6 +576,7 @@ import type * as proposalExtraction from "../proposalExtraction.js";
 import type * as proposalSourceNodes from "../proposalSourceNodes.js";
 import type * as proposalSourceSpans from "../proposalSourceSpans.js";
 import type * as providerOutreach from "../providerOutreach.js";
+import type * as providerSubmissionDefaults from "../providerSubmissionDefaults.js";
 import type * as quoBrokerWebhook from "../quoBrokerWebhook.js";
 import type * as rateLimits from "../rateLimits.js";
 import type * as reextractLegacyPolicies from "../reextractLegacyPolicies.js";
@@ -1043,6 +1045,7 @@ declare const fullApi: ApiFromModules<{
   "lib/providerOutreachSchedule": typeof lib_providerOutreachSchedule;
   "lib/providerOutreachSummary": typeof lib_providerOutreachSummary;
   "lib/providerOutreachValidators": typeof lib_providerOutreachValidators;
+  "lib/providerSubmissionDefaultFields": typeof lib_providerSubmissionDefaultFields;
   "lib/quoWebhook": typeof lib_quoWebhook;
   "lib/receivingEmail": typeof lib_receivingEmail;
   "lib/requirementAttachmentIntent": typeof lib_requirementAttachmentIntent;
@@ -1185,6 +1188,7 @@ declare const fullApi: ApiFromModules<{
   proposalSourceNodes: typeof proposalSourceNodes;
   proposalSourceSpans: typeof proposalSourceSpans;
   providerOutreach: typeof providerOutreach;
+  providerSubmissionDefaults: typeof providerSubmissionDefaults;
   quoBrokerWebhook: typeof quoBrokerWebhook;
   rateLimits: typeof rateLimits;
   reextractLegacyPolicies: typeof reextractLegacyPolicies;
