@@ -3574,6 +3574,12 @@ export default defineSchema({
     missing: v.optional(v.array(v.string())),
     updatedAt: v.number(),
   }).index("by_threadId", ["threadId"]),
+  /** Jev's verdict on an image from one sender, keyed by content hash so a repeated signature is judged once. */
+  teamEmailImageJudgments: defineTable({
+    fromEmail: v.string(),
+    sha256: v.string(),
+    decorative: v.boolean(),
+  }).index("by_fromEmail_and_sha256", ["fromEmail", "sha256"]),
   teamEmailThreads: defineTable({
     ownerUserId: v.optional(v.id("users")),
     source: v.union(v.literal("forward"), v.literal("outreach"), v.literal("team")),
@@ -3659,6 +3665,8 @@ export default defineSchema({
     }))),
     /** Jev's first line of quoted history when no known marker finds it; null when it has none. */
     quotedHistoryStart: v.optional(v.union(v.string(), v.null())),
+    /** Image attachments (clientFileId or storageId) Jev judged to be signature or decoration, not shared files. */
+    decorativeAttachmentIds: v.optional(v.array(v.string())),
     /** Filed attachments that are inline `cid:` parts of `bodyHtml`. */
     inlineFiles: v.optional(v.array(v.object({
       contentId: v.string(),
