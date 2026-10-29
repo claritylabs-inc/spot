@@ -15,11 +15,13 @@ import { FileInput, FolderInput, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
-import {
-  AddThreadContact,
-  type ThreadContactSuggestion,
-} from "@/components/broker-network/add-thread-contact";
+import type { ThreadContactSuggestion } from "@/components/broker-network/add-thread-contact";
 import { ChatAttachmentChip } from "@/components/chat/attachment-chip";
+import { ThreadContactMenu } from "@/components/broker-network/thread-contact-menu";
+import {
+  EmailSubmissionAttachment,
+  EmailSubmissionNotes,
+} from "@/components/broker-network/email-submission-actions";
 import {
   LinkSuggestionBar,
   LinkThreadAction,
@@ -367,12 +369,14 @@ export function ProcurementEmailMessage({
   collapsed,
   onToggle,
   contactSuggestion,
+  readOnly = false,
 }: {
   message: ProcurementEmailMessageData;
   fromSpot: boolean;
   collapsed: boolean;
   onToggle: () => void;
-  /** The sender is new to this conversation's provider and can be saved as its contact. */
+  readOnly?: boolean;
+  /** Provider relationship for this sender. */
   contactSuggestion?: ThreadContactSuggestion;
 }) {
   const forwardedEmail = (message.forwarded as ForwardedEmail | undefined)
@@ -386,12 +390,12 @@ export function ProcurementEmailMessage({
   const attachments = [
     ...message.files.flatMap((file) =>
       file?.url && !file.decorative && !(message.hasHtml && file.inline)
-        ? [{ key: String(file.clientFileId), name: file.name, contentType: file.contentType, url: file.url }]
+        ? [{ key: String(file.clientFileId), clientFileId: file.clientFileId, name: file.name, contentType: file.contentType, url: file.url }]
         : [],
     ),
     ...message.unfiledFiles.flatMap((file) =>
       file.url && !file.decorative && !(message.hasHtml && file.inline)
-        ? [{ key: String(file.storageId), name: file.name, contentType: file.contentType, url: file.url }]
+        ? [{ key: String(file.storageId), storageId: file.storageId, name: file.name, contentType: file.contentType, url: file.url }]
         : [],
     ),
   ];
@@ -429,9 +433,20 @@ export function ProcurementEmailMessage({
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-1">
             <p className="min-w-0 truncate">
-              <span className={`text-foreground ${typeStyle("body.medium")}`}>
-                {sender}
-              </span>
+              {!collapsed && !readOnly && !fromSpot && !message.fromOperator ? (
+                <ThreadContactMenu
+                  threadId={message.threadId}
+                  email={message.fromEmail}
+                  name={message.fromName ?? undefined}
+                  suggestion={contactSuggestion}
+                >
+                  {sender}
+                </ThreadContactMenu>
+              ) : (
+                <span className={`text-foreground ${typeStyle("body.medium")}`}>
+                  {sender}
+                </span>
+              )}
               {!collapsed && !fromSpot && sender !== message.fromEmail ? (
                 <span
                   className={`ml-1.5 text-muted-foreground ${typeStyle("caption.default")}`}
@@ -440,21 +455,23 @@ export function ProcurementEmailMessage({
                 </span>
               ) : null}
             </p>
-            {!collapsed && contactSuggestion ? (
-              <AddThreadContact
-                threadId={message.threadId}
-                name={message.fromName ?? undefined}
-                suggestion={contactSuggestion}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {!collapsed && !readOnly ? (
+              <EmailSubmissionNotes
+                source={{ threadId: message.threadId, messageId: message._id, text: body }}
+                brokerOrgId={contactSuggestion?.brokerOrgId}
+                brokerName={contactSuggestion?.brokerName}
               />
             ) : null}
+            <time
+              dateTime={dayjs(message.receivedAt).toISOString()}
+              title={formatDisplayDateTime(message.receivedAt, "—")}
+              className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
+            >
+              {messageTime(message.receivedAt)}
+            </time>
           </div>
-          <time
-            dateTime={dayjs(message.receivedAt).toISOString()}
-            title={formatDisplayDateTime(message.receivedAt, "—")}
-            className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
-          >
-            {messageTime(message.receivedAt)}
-          </time>
         </div>
         <p
           className={`truncate text-muted-foreground ${typeStyle("caption.default")}`}
@@ -503,11 +520,15 @@ export function ProcurementEmailMessage({
       <div className="space-y-3 pl-11">
         {attachments.length ? (
           <div className="flex flex-wrap gap-1.5">
-            {attachments.map((file) => (
-              <ChatAttachmentChip
+            {attachments.map((file) => readOnly ? (
+              <ChatAttachmentChip key={file.key} attachment={{ filename: file.name, contentType: file.contentType }} url={file.url} />
+            ) : (
+              <EmailSubmissionAttachment
                 key={file.key}
-                attachment={{ filename: file.name, contentType: file.contentType }}
-                url={file.url}
+                file={file}
+                source={{ threadId: message.threadId, messageId: message._id }}
+                brokerOrgId={contactSuggestion?.brokerOrgId}
+                brokerName={contactSuggestion?.brokerName}
               />
             ))}
           </div>
@@ -617,6 +638,7 @@ function EmailConversation({
           key={message._id}
           message={message}
           fromSpot={message.direction === "outbound"}
+          readOnly={readOnly}
           contactSuggestion={
             message.direction === "inbound" && !message.fromOperator
               ? contactSuggestions?.find(

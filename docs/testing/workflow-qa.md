@@ -1,5 +1,17 @@
 # Platform workflow QA
 
+## Provider submission defaults — October 29, 2026
+
+Synced remote main `e4aff817`, started native-local Conductor, and verified primary
+contact creation, attachment right-click promotion, and coverage-specific process,
+questions and answer guidance in Helium. Signed API checks verified persistence,
+coverage isolation, owned document copies, duplicate prevention, stale rejection,
+source-preserving removal and anonymous rejection. Types, scoped lint and Convex
+compile passed. Resumed Helium checks after unlock also passed source-email capture,
+cancel/reopen, keyboard dialog access, in-app PDF preview, and 393px dark/light
+layouts including the edit footer. No tests or migrations added. See
+[workflow and limits](provider-submission-defaults-workflow.md).
+
 ## Quote authorization PDF - October 27, 2026
 
 Local submit/resubmit produced immutable authorization snapshots and one current
