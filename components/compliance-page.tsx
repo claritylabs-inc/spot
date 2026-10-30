@@ -105,11 +105,7 @@ import {
   usePageContextLayer,
   type PageContext,
 } from "@/hooks/use-page-context";
-import {
-  contextSummary,
-  relatedRecords,
-  usePageContextBase,
-} from "@/lib/policy-page-context";
+import { contextSummary, relatedRecords } from "@/lib/policy-page-context";
 import { useTableSort } from "@/hooks/use-table-sort";
 
 type RequirementScope = "vendors" | "own_org";
@@ -160,8 +156,6 @@ function openOnKeyboard(event: KeyboardEvent<HTMLElement>, open: () => void) {
 
 type ComplianceWorkspaceOrgContext = {
   orgId: Id<"organizations">;
-  /** Names the client in the operator agent's page context. */
-  name?: string;
   orgType: "client" | "broker";
   role: "admin" | "member" | undefined;
   featureFlags?: FeatureFlagMap;
@@ -178,27 +172,19 @@ export type ComplianceCertificatesTabArgs = {
   onRightPanel: (panel: ReactNode) => void;
 };
 
-/** What the compliance workspace shows, for an agent page context. */
+/**
+ * What the compliance workspace shows, for an agent page context. An open
+ * requirement or source drawer layers its own `requirement` /
+ * `requirement_source` context over this one.
+ */
 export type ComplianceContextState = {
   view: Exclude<ComplianceView, "certificates">;
   scope: RequirementScope;
   requirementCount?: number;
+  /** The shown requirements by saved status, e.g. `3 not met, 9 met`. */
+  statusCounts?: string;
   sourceCount?: number;
-  selectedRequirement: {
-    id: Id<"insuranceRequirements">;
-    title: string;
-    lineOfBusiness?: string;
-    status: string;
-    sourceId?: Id<"requirementSourceDocuments">;
-  } | null;
-  selectedSource: {
-    id: Id<"requirementSourceDocuments">;
-    title: string;
-    holderName?: string;
-    requirementCount?: number;
-  } | null;
   creationDrawer: "import" | "manual" | null;
-  certificateSourceId: Id<"requirementSourceDocuments"> | null;
 };
 
 export type CompliancePageProps = {
@@ -664,8 +650,8 @@ const CONTEXT_STATUS_ORDER: StatusFilter[] = [
   "defined",
 ];
 
-/** Counts by status, e.g. `12 requirements: 3 not met, 9 met`. */
-function requirementCountsContext(requirements: Requirement[]) {
+/** Counts by saved status, e.g. `3 not met, 9 met`. */
+function requirementStatusCounts(requirements: Requirement[]) {
   const counts = new Map<StatusFilter, number>();
   for (const requirement of requirements) {
     const status = statusFilterValue(requirement);
@@ -675,7 +661,7 @@ function requirementCountsContext(requirements: Requirement[]) {
     (status) =>
       `${counts.get(status)} ${status === "defined" ? "unchecked" : statusFilterLabel(status).toLowerCase()}`,
   );
-  return `${requirements.length} requirement${requirements.length === 1 ? "" : "s"}${parts.length ? `: ${parts.join(", ")}` : ""}`;
+  return parts.join(", ") || undefined;
 }
 
 function requirementContextSummary(
@@ -2839,26 +2825,12 @@ function ComplianceWorkspace({
           scope: activeRequirementScope,
           requirementCount:
             requirements === undefined ? undefined : scopedRequirements.length,
+          statusCounts:
+            requirements === undefined
+              ? undefined
+              : requirementStatusCounts(scopedRequirements),
           sourceCount: requirementSources?.length,
-          selectedRequirement: selectedRequirement
-            ? {
-                id: selectedRequirement._id,
-                title: selectedRequirement.title,
-                lineOfBusiness: selectedRequirement.lineOfBusiness,
-                status: statusFilterLabel(statusFilterValue(selectedRequirement)),
-                sourceId: selectedRequirement.sourceDocumentId,
-              }
-            : null,
-          selectedSource: selectedSource
-            ? {
-                id: selectedSource._id,
-                title: selectedSource.title,
-                holderName: selectedSource.holder?.displayName,
-                requirementCount: selectedSourceRequirements?.length,
-              }
-            : null,
           creationDrawer,
-          certificateSourceId,
         })
       : null,
   );
@@ -2934,24 +2906,6 @@ function ComplianceWorkspace({
   ]);
 
   const operatorContextOrgId = surface === "operator" ? orgId : undefined;
-  const operatorContextSummary = contextSummary([
-    `${orgContext?.name ?? "Client"} compliance`,
-    `${navigationOptions.find((option) => option.value === navigationValue)?.label ?? "Requirements"} tab`,
-    view === "requirements" && requirements
-      ? requirementCountsContext(scopedRequirements)
-      : view === "sources" && requirementSources
-        ? `${requirementSources.length} requirement sources`
-        : undefined,
-  ]);
-  usePageContextBase(
-    operatorContextOrgId
-      ? {
-          pageType: "operator_client_compliance",
-          entityId: operatorContextOrgId,
-          summary: operatorContextSummary,
-        }
-      : null,
-  );
   // The record in the right panel, matching its precedence below: certificate
   // generation, then the requirement drawer, then the source drawer.
   const generatingForSource =

@@ -393,6 +393,13 @@ function requestPanelContext(
         ],
       };
     }
+    case "provider-email":
+      return {
+        text: `composing provider outreach to ${panel.brokerOrgIds.length} provider${panel.brokerOrgIds.length === 1 ? "" : "s"}${panel.merge ? " (mail merge)" : ""}`,
+        refs: panel.brokerOrgIds
+          .slice(0, 5)
+          .map((id) => ({ kind: "broker", id })),
+      };
   }
 }
 

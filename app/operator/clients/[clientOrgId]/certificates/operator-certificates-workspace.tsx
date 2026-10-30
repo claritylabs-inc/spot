@@ -25,6 +25,7 @@ import {
   TableRow,
   SortableTableHead,
 } from "@/components/ui/table";
+import { usePageContextLayer } from "@/hooks/use-page-context";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -32,7 +33,6 @@ import { formatDisplayDateTime } from "@/lib/date-format";
 import {
   certificateContextRelated,
   certificateContextSummary,
-  usePageContextLayer,
 } from "@/lib/policy-page-context";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { typeStyle } from "@/lib/typography";

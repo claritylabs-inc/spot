@@ -3,6 +3,7 @@ import type {
   OperatorPrefetchPage,
 } from "../operatorAgentIntentRegistry";
 import type { OperatorAgentToolName } from "../operatorAgentToolRegistry";
+import { policyExtraction } from "./policy";
 import type { OperatorPageContextEntry } from "./types";
 
 type Results = ReadonlyMap<OperatorAgentToolName, unknown>;
@@ -35,13 +36,19 @@ type RequirementsRead = {
   requirements?: Array<{
     requirementId?: unknown;
     title?: unknown;
+    requirementSourceDocumentId?: unknown;
     currentComplianceStatus?: unknown;
     matchedPolicyIds?: unknown[];
   }>;
 };
 
 type PoliciesRead = {
-  policies?: Array<{ pipelineStatus?: unknown }>;
+  policies?: Array<{
+    policyId?: unknown;
+    policyNumber?: unknown;
+    pipelineStatus?: unknown;
+    extractionDataStage?: unknown;
+  }>;
   matchedInScan?: unknown;
   bounded?: unknown;
 };
@@ -156,7 +163,7 @@ function clientFilesHints(results: Results, page: OperatorPrefetchPage) {
   return hints;
 }
 
-function complianceHints(results: Results, page: OperatorPrefetchPage) {
+function complianceHints(results: Results) {
   const read = results.get("lookup_compliance_requirements") as
     | RequirementsRead
     | undefined;
@@ -173,37 +180,38 @@ function complianceHints(results: Results, page: OperatorPrefetchPage) {
           .map(([status, count]) => `${count} ${status}`)
           .join(", ")}`,
   ];
-  const open = page.related.find((entry) => entry.kind === "requirement");
-  if (open) {
-    const requirement = read.requirements.find(
-      (row) => row.requirementId === open.id,
-    );
+  // An open requirement or source drawer has its own page type (policy.ts).
+  const sources = new Set(
+    read.requirements
+      .map((requirement) => text(requirement.requirementSourceDocumentId))
+      .filter(Boolean),
+  );
+  if (read.requirements.length > 0)
     hints.push(
-      requirement
-        ? `Open requirement: ${text(requirement.title) ?? "untitled"} (${open.id}), ${String(
-            requirement.currentComplianceStatus ?? "unverified",
-          )}${
-            requirement.matchedPolicyIds?.length
-              ? `, matched policies ${requirement.matchedPolicyIds.join(", ")}`
-              : ", no matched policy"
-          }`
-        : `Open requirement ${open.id} is not among the loaded requirements.`,
+      `${sources.size} requirement source${sources.size === 1 ? "" : "s"}; statuses are the saved compliance checks, so treat them as authoritative`,
     );
-  }
   return hints;
 }
 
 function policiesHints(results: Results) {
   const read = results.get("list_policies") as PoliciesRead | undefined;
   if (!read || !Array.isArray(read.policies)) return [];
-  const failed = read.policies.filter(
-    (policy) => policy.pipelineStatus === "error",
-  ).length;
+  const named = (state: ReturnType<typeof policyExtraction>) =>
+    read.policies!
+      .filter((policy) => policyExtraction(policy) === state)
+      .map((policy) => text(policy.policyNumber) ?? String(policy.policyId));
+  const failed = named("failed");
+  const running = named("running");
   return [
     `${String(read.matchedInScan ?? read.policies.length)} policies, earliest expiration first${
       read.bounded === true ? `; only the first ${read.policies.length} are listed` : ""
     }`,
-    ...(failed > 0 ? [`${failed} listed policies have an extraction error`] : []),
+    ...(failed.length > 0
+      ? [`Extraction failed: ${failed.slice(0, 5).join(", ")}${failed.length > 5 ? ` +${failed.length - 5}` : ""}`]
+      : []),
+    ...(running.length > 0
+      ? [`Extraction still running (fields may be partial): ${running.slice(0, 5).join(", ")}${running.length > 5 ? ` +${running.length - 5}` : ""}`]
+      : []),
   ];
 }
 
@@ -301,9 +309,9 @@ export const clientPageContexts: readonly OperatorPageContextEntry[] = [
         },
       ],
     ],
-    hints: (results, page) => [
+    hints: (results) => [
       ...organizationHints(results),
-      ...complianceHints(results, page),
+      ...complianceHints(results),
     ],
   },
 ];

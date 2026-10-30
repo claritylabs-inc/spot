@@ -7,10 +7,10 @@ import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { PillButton } from "@/components/ui/pill-button";
 import { usePdf, type PdfHighlightBox } from "@/components/pdf-context";
 import type { Id } from "@/convex/_generated/dataModel";
+import { usePageContextLayer } from "@/hooks/use-page-context";
 import {
   policyContextSummary,
   relatedRecords,
-  usePageContextLayer,
 } from "@/lib/policy-page-context";
 import { useCachedPolicySummary } from "@/lib/sync/spot-cached-queries";
 
@@ -23,10 +23,13 @@ type PreviewActions = {
 
 export function OperatorPolicyPreview({
   clientOrgId,
+  clientLabel,
   policyId,
   onClose,
 }: {
   clientOrgId: string;
+  /** Labels the client in the agent page context. */
+  clientLabel?: string;
   policyId: string;
   onClose: () => void;
 }) {
@@ -40,7 +43,9 @@ export function OperatorPolicyPreview({
     pageType: "policy",
     entityId: policyId,
     summary: policyContextSummary(policy ?? {}, ["preview drawer"]),
-    related: relatedRecords([{ kind: "organization", id: clientOrgId }]),
+    related: relatedRecords([
+      { kind: "organization", id: clientOrgId, label: clientLabel },
+    ]),
   });
   const activeActions =
     previewActions?.policyId === policyId ? previewActions : null;

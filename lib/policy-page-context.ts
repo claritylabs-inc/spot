@@ -33,30 +33,19 @@ export function relatedRecords(
   return related.length ? related : undefined;
 }
 
-// Contexts compare by value: summaries and related lists are rebuilt each render.
-function useContextKey(context: PageContext | null) {
-  return context ? JSON.stringify(context) : null;
-}
-
-/** Registers the page's own context while mounted. */
+/**
+ * Registers the page's own context while mounted; open panels layer over it
+ * with usePageContextLayer. Compared by value: summaries and related lists
+ * are rebuilt each render.
+ */
 export function usePageContextBase(context: PageContext | null) {
   const { setPageContext } = usePageContext();
-  const key = useContextKey(context);
+  const key = context ? JSON.stringify(context) : null;
   useEffect(() => {
     if (!key) return;
     setPageContext(JSON.parse(key) as PageContext);
     return () => setPageContext(null);
   }, [key, setPageContext]);
-}
-
-/** Layers an open panel's record over the page's context while it is shown. */
-export function usePageContextLayer(context: PageContext | null) {
-  const { pushPageContext } = usePageContext();
-  const key = useContextKey(context);
-  useEffect(
-    () => (key ? pushPageContext(JSON.parse(key) as PageContext) : undefined),
-    [key, pushPageContext],
-  );
 }
 
 type ContextPolicy = {

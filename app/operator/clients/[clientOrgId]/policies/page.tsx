@@ -8,13 +8,10 @@ import { useFollowedState } from "@/hooks/use-followed-state";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { ManagedClientPolicyWorkspace } from "@/components/policies/managed-client-policy-workspace";
 import { AppShell } from "@/components/app-shell";
-import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import {
   clientContextName,
   pageContextSummary,
-  policyContextLabel,
 } from "@/components/operator-agent/operator-client-page-context";
-import { usePageContextLayer } from "@/hooks/use-page-context";
 import {
   OperationalPanel,
   OperationalPanelBody,
@@ -29,7 +26,6 @@ import {
   useCachedOperatorClients,
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
-import { contextSummary } from "@/lib/policy-page-context";
 import { typeStyle } from "@/lib/typography";
 import { OperatorPolicyPreview } from "./operator-policy-preview";
 
@@ -75,38 +71,18 @@ export default function OperatorClientPoliciesPage() {
       : "skip",
   );
   const clientName = client ? clientContextName(client) : "the current client";
-  const previewedPolicy = previewPolicyId
-    ? listedPolicies?.find((policy) => policy._id === previewPolicyId)
-    : undefined;
-  usePageContextLayer(
-    previewPolicyId
-      ? {
-          pageType: "policy",
-          entityId: previewPolicyId,
-          summary: pageContextSummary([
-            `Policy preview on ${clientName}'s policies tab`,
-            previewedPolicy && policyContextLabel(previewedPolicy),
-          ]),
-          related: [
-            {
-              kind: "organization",
-              id: clientOrgId,
-              ...(client ? { label: client.dba ?? client.name } : {}),
-            },
-          ],
-        }
-      : null,
-  );
+  const clientLabel = client ? (client.dba ?? client.name) : undefined;
   const policyPreview = useMemo(
     () =>
       previewPolicyId ? (
         <OperatorPolicyPreview
           clientOrgId={clientOrgId}
+          clientLabel={clientLabel}
           policyId={previewPolicyId}
           onClose={() => setPreviewPolicyId(null)}
         />
       ) : null,
-    [clientOrgId, previewPolicyId, setPreviewPolicyId],
+    [clientLabel, clientOrgId, previewPolicyId, setPreviewPolicyId],
   );
 
   const statusNavigation = (
@@ -184,16 +160,6 @@ export default function OperatorClientPoliciesPage() {
         </OperationalPanel>
       ) : (
         <main className="w-full space-y-6">
-          <OperatorPageContextRegistration
-            context={{
-              pageType: "operator_client_policies",
-              entityId: clientOrgId,
-              summary: contextSummary([
-                `${client.name} policies`,
-                showArchived ? "archived policies shown" : undefined,
-              ]),
-            }}
-          />
           {hasArchivedPolicies ? statusNavigation : null}
           {activeImpersonation ? (
             <OperationalPanel

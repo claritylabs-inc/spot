@@ -25,6 +25,7 @@ import { PillButton } from "@/components/ui/pill-button";
 import { ListToolbar, type FilterDefinition } from "@/components/ui/list-toolbar";
 import { useCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
+import { usePageContextLayer } from "@/hooks/use-page-context";
 import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { usePdf } from "@/components/pdf-context";
@@ -32,7 +33,6 @@ import {
   certificateContextSummary,
   contextSummary,
   usePageContextBase,
-  usePageContextLayer,
 } from "@/lib/policy-page-context";
 import { typeStyle } from "@/lib/typography";
 import { CertificateGeneratePanel } from "@/components/certificates/certificate-generate-panel";

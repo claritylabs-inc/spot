@@ -17,11 +17,6 @@ type PolicyStatus = {
   archived?: unknown;
 };
 
-type PolicyList = {
-  policies?: Array<PolicyStatus & { policyNumber?: unknown }>;
-  bounded?: unknown;
-};
-
 type RequirementRow = {
   requirementId?: unknown;
   title?: unknown;
@@ -40,7 +35,7 @@ const ids = (value: unknown) =>
     : [];
 
 /** Same rule as the UI's extraction state: final data, still running, or failed. */
-function extraction(policy: PolicyStatus) {
+export function policyExtraction(policy: PolicyStatus) {
   if (policy.pipelineStatus === "error") return "failed" as const;
   const stage = text(policy.extractionDataStage);
   const complete =
@@ -65,7 +60,7 @@ export function policyStatusHints(results: Results): string[] {
   if (!policy || typeof policy !== "object") return [];
   const policyId = text(policy.policyId);
   const orgId = text(policy.orgId);
-  const state = extraction(policy);
+  const state = policyExtraction(policy);
   return [
     ...(orgId ? [`Client organization (orgId for policy tools): ${orgId}`] : []),
     state === "failed"
@@ -79,32 +74,6 @@ export function policyStatusHints(results: Results): string[] {
       : [
           `Coverages were not loaded: call lookup_policy with orgId and policyIds ["${policyId ?? "this policy"}"].`,
         ]),
-  ];
-}
-
-export function clientPolicyListHints(results: Results): string[] {
-  const list = results.get("list_policies") as PolicyList | undefined;
-  if (!list || typeof list !== "object") return [];
-  const policies = Array.isArray(list.policies) ? list.policies : [];
-  const numbers = (state: ReturnType<typeof extraction>) =>
-    policies
-      .filter((policy) => extraction(policy) === state)
-      .map((policy) => text(policy.policyNumber) ?? String(policy.policyId));
-  const failed = numbers("failed");
-  const running = numbers("running");
-  return [
-    `${policies.length} active ${policies.length === 1 ? "policy" : "policies"} loaded, soonest expiration first${
-      list.bounded === true
-        ? "; more exist, so follow nextCursor before counting or concluding absence"
-        : "; this is every active policy"
-    }.`,
-    ...(failed.length
-      ? [`Extraction failed: ${failed.slice(0, 5).join(", ")}`]
-      : []),
-    ...(running.length
-      ? [`Extraction still running: ${running.slice(0, 5).join(", ")}`]
-      : []),
-    "Loaded rows carry identity, term and extraction status only; use lookup_policy for coverages and limits.",
   ];
 }
 
@@ -128,18 +97,6 @@ function statusCounts(rows: RequirementRow[]) {
     .sort(([, left], [, right]) => right - left)
     .map(([status, count]) => `${count} ${status.replaceAll("_", " ")}`);
   return `${rows.length} requirement${rows.length === 1 ? "" : "s"}${parts.length ? `: ${parts.join(", ")}` : ""}`;
-}
-
-export function clientComplianceHints(results: Results): string[] {
-  if (!results.has("lookup_compliance_requirements")) return [];
-  const rows = requirementRows(results);
-  const sources = new Set(
-    rows.map((row) => text(row.requirementSourceDocumentId)).filter(Boolean),
-  );
-  return [
-    `${statusCounts(rows)} loaded across ${sources.size} requirement source${sources.size === 1 ? "" : "s"}.`,
-    "Statuses are the saved compliance checks; treat them as authoritative.",
-  ];
 }
 
 export function requirementHints(
@@ -252,38 +209,8 @@ export const policyPageContexts: readonly OperatorPageContextEntry[] = [
     ],
     hints: (results) => policyStatusHints(results),
   },
-  {
-    pageTypes: ["operator_client_policies"],
-    noun: "client's policy list",
-    families: ["policies"],
-    prefetch: [
-      [
-        {
-          toolName: "list_policies",
-          input: ({ focus }) =>
-            focus.entityId
-              ? { orgId: focus.entityId, limit: 25, sort: "expiration_asc" }
-              : undefined,
-        },
-      ],
-    ],
-    hints: (results) => clientPolicyListHints(results),
-  },
-  {
-    pageTypes: ["operator_client_compliance"],
-    noun: "client's compliance page",
-    families: ["compliance"],
-    prefetch: [
-      [
-        {
-          toolName: "lookup_compliance_requirements",
-          input: ({ focus }) =>
-            focus.entityId ? { orgId: focus.entityId, scope: "all" } : undefined,
-        },
-      ],
-    ],
-    hints: (results) => clientComplianceHints(results),
-  },
+
+
   {
     pageTypes: ["requirement"],
     noun: "compliance requirement",
