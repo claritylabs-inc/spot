@@ -28,6 +28,7 @@ import { InformationProviders } from "./providers";
 import { InformationAttachments } from "./attachments";
 import { PublishForm } from "./publish-form";
 import { InlineInformationAnswer } from "./inline-answer";
+import { useInformationSuggestions } from "./suggestion";
 
 type InformationForm = Panel["forms"][number];
 
@@ -96,6 +97,10 @@ export function InformationFormWorkspace(
   const panel = useQuery(api.procurementInformation.panel, {
     requestId: props.requestId,
   });
+  const { suggestions } = useInformationSuggestions(
+    props.requestId,
+    props.readOnly,
+  );
   if (!panel)
     return (
       <OperationalPanel>
@@ -187,6 +192,7 @@ export function InformationFormWorkspace(
                         informationApplicability(fact, panel.questions) !==
                           "applies"
                       }
+                      suggestion={suggestions.get(fact._id)}
                     />
                   ) : (
                     <div className="min-w-0">

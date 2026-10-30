@@ -64,6 +64,7 @@ node_modules/
 !/docs/architecture/quote-provider-branding.md
 !/docs/architecture/reviewer-account.md
 !/docs/architecture/backend-simplification.md
+!/docs/architecture/client-web-monitors.md
 !/docs/architecture/chat-presentations.md
 !/docs/architecture/convex-section-extraction.md
 !/docs/architecture/router-jobs.md

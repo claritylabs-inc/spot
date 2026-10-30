@@ -112,7 +112,7 @@
             }
           }
         },
-        "description": "Convex durable lane. Returns 202 after idempotent metadata submission; input and result remain consumer-owned. No provider replay on worker loss."
+        "description": "Convex durable lane. Returns 202 after idempotent metadata submission; input and result remain consumer-owned. No provider replay on worker loss. Operation exec uses ExecRequest at requestUrl and delivers ExecResponse; it has no inline endpoint."
       }
     },
     "/v1/jobs/{jobId}": {
@@ -998,6 +998,78 @@
         }
       }
     },
+    "/v1/research": {
+      "post": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Structured public research about one entity through Parallel Task, with Exa Agent as the fallback. Every requested field is answered with a value (or null), confidence and public citations. Also available as the durable `research` job operation."
+      }
+    },
     "/v1/feedback": {
       "post": {
         "security": [
@@ -1067,6 +1139,236 @@
             }
           }
         }
+      }
+    },
+    "/v1/monitors": {
+      "post": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonitorCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Creates a Parallel event-stream monitor. Verified Parallel webhooks are relayed to callbackUrl as a MonitorCallback POST (content-type application/json; any 2xx acknowledges). Event content is re-fetched from Parallel per delivery and never stored."
+      }
+    },
+    "/v1/monitors/{monitorId}": {
+      "get": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "monitorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/monitors/{monitorId}/cancel": {
+      "post": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "monitorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     }
   },
@@ -1554,7 +1856,7 @@
             "const": "router"
           },
           "features": {
-            "description": "Optional request features this deployment accepts: `inline_job_input`, `prompt_cache_key`, `agent_loop`, `parallel_tool_calls`, `requirements_quality`. Check before sending them; older deployments reject unknown fields.",
+            "description": "Optional request features this deployment accepts: `inline_job_input`, `prompt_cache_key`, `agent_loop`, `parallel_tool_calls`, `requirements_quality`, and `exec` (only when its sandbox is configured). Check before sending them; older deployments reject unknown fields.",
             "type": "array",
             "items": {
               "type": "string"
@@ -1893,6 +2195,34 @@
                   },
                   "additionalProperties": false
                 },
+                "throughput": {
+                  "description": "Median decode throughput (output tokens per second) measured from cl-router call telemetry. Absent when unmeasured; routed generation then treats the model as neither fast nor slow.",
+                  "type": "object",
+                  "properties": {
+                    "tokensPerSecond": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "samples": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "asOf": {
+                      "type": "string"
+                    },
+                    "deployment": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "tokensPerSecond",
+                    "samples",
+                    "asOf",
+                    "deployment"
+                  ],
+                  "additionalProperties": false
+                },
                 "routedGeneration": {
                   "description": "Whether routed generation may select this model: it has a benchmark score, is not cost-excluded and is not pending a capability measurement. /v1/manual can call every model.",
                   "type": "boolean"
@@ -1919,6 +2249,77 @@
                     "provider": {
                       "type": "string",
                       "minLength": 1
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "configured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "label",
+                    "configured"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "providers"
+            ],
+            "additionalProperties": false
+          },
+          "research": {
+            "description": "Structured entity research providers for `/v1/research` and durable `research` jobs.",
+            "type": "object",
+            "properties": {
+              "providers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "enum": [
+                        "parallel",
+                        "exa"
+                      ]
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "configured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "label",
+                    "configured"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "providers"
+            ],
+            "additionalProperties": false
+          },
+          "monitors": {
+            "description": "Web monitor providers for /v1/monitors. Absent on deployments without monitors.",
+            "type": "object",
+            "properties": {
+              "providers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "const": "parallel"
                     },
                     "label": {
                       "type": "string"
@@ -2662,6 +3063,226 @@
           "model",
           "routing",
           "requestId"
+        ],
+        "additionalProperties": false
+      },
+      "ExecRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "files": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240,
+                  "pattern": "^[a-zA-Z0-9_./-]+$"
+                },
+                "contentBase64": {
+                  "type": "string",
+                  "maxLength": 6990508,
+                  "pattern": "^[A-Za-z0-9+/]*={0,2}$"
+                }
+              },
+              "required": [
+                "path",
+                "contentBase64"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "command": {
+            "type": "object",
+            "properties": {
+              "argv": {
+                "minItems": 1,
+                "maxItems": 64,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 4096
+                }
+              }
+            },
+            "required": [
+              "argv"
+            ],
+            "additionalProperties": false
+          },
+          "env": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          "stdin": {
+            "type": "string",
+            "maxLength": 262144
+          },
+          "timeoutMs": {
+            "default": 120000,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300000
+          },
+          "network": {
+            "default": {
+              "allowDomains": []
+            },
+            "type": "object",
+            "properties": {
+              "allowDomains": {
+                "default": [],
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 253,
+                  "pattern": "^[a-z0-9.-]+$"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "outputs": {
+            "type": "object",
+            "properties": {
+              "paths": {
+                "maxItems": 50,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240,
+                  "pattern": "^[a-zA-Z0-9_./*?-]+$"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "tenantId",
+          "files",
+          "command"
+        ],
+        "additionalProperties": false
+      },
+      "ExecResponse": {
+        "type": "object",
+        "properties": {
+          "exitCode": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timedOut": {
+            "type": "boolean"
+          },
+          "stdout": {
+            "type": "string",
+            "maxLength": 65536
+          },
+          "stderr": {
+            "type": "string",
+            "maxLength": 65536
+          },
+          "stdoutTruncated": {
+            "type": "boolean"
+          },
+          "stderrTruncated": {
+            "type": "boolean"
+          },
+          "outputFiles": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 240,
+                  "pattern": "^[a-zA-Z0-9_./-]+$"
+                },
+                "contentBase64": {
+                  "type": "string",
+                  "maxLength": 13981016
+                },
+                "sizeBytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10485760
+                }
+              },
+              "required": [
+                "path",
+                "contentBase64",
+                "sizeBytes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "outputsTruncated": {
+            "type": "boolean"
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "runtime": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "const": "vercel-sandbox"
+              },
+              "snapshotId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "provider",
+              "snapshotId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "exitCode",
+          "timedOut",
+          "stdout",
+          "stderr",
+          "stdoutTruncated",
+          "stderrTruncated",
+          "outputFiles",
+          "outputsTruncated",
+          "durationMs",
+          "runtime"
         ],
         "additionalProperties": false
       },
@@ -4093,10 +4714,12 @@
               "manual",
               "embed",
               "retrieve",
+              "research",
               "transcribe",
               "browser",
               "computer_use",
-              "browse"
+              "browse",
+              "exec"
             ]
           },
           "requestUrl": {
@@ -4791,6 +5414,611 @@
             ]
           }
         ]
+      },
+      "MonitorCallback": {
+        "type": "object",
+        "properties": {
+          "contractVersion": {
+            "type": "number",
+            "const": 1
+          },
+          "monitorId": {
+            "type": "string"
+          },
+          "orgId": {
+            "type": "string"
+          },
+          "deliveryId": {
+            "type": "string",
+            "description": "Stable across retries: SHA-256 of the webhook id and event group."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "events",
+              "execution_failed"
+            ]
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "eventId": {
+                  "type": "string"
+                },
+                "eventDate": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string",
+                  "maxLength": 4000
+                },
+                "answers": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "confidence": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "high",
+                              "medium",
+                              "low"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "citations": {
+                        "maxItems": 10,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string",
+                              "maxLength": 500
+                            },
+                            "excerpts": {
+                              "maxItems": 3,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 1000
+                              }
+                            }
+                          },
+                          "required": [
+                            "url"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "reasoning": {
+                        "type": "string",
+                        "maxLength": 2000
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "confidence",
+                      "citations"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "citations": {
+                  "maxItems": 10,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string",
+                        "maxLength": 500
+                      },
+                      "excerpts": {
+                        "maxItems": 3,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 1000
+                        }
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "eventId",
+                "citations"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "contractVersion",
+          "monitorId",
+          "deliveryId",
+          "kind",
+          "events"
+        ],
+        "additionalProperties": false
+      },
+      "MonitorCreateRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "orgId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "entity": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "website": {
+                    "type": "string",
+                    "maxLength": 2048
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "query": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "fields": {
+                "minItems": 1,
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                    },
+                    "description": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "date",
+                        "enum"
+                      ]
+                    },
+                    "options": {
+                      "minItems": 1,
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "description",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "frequency": {
+                "type": "string",
+                "pattern": "^[1-9]\\d*(h|d|w)$"
+              }
+            },
+            "required": [
+              "entity",
+              "query",
+              "frequency"
+            ],
+            "additionalProperties": false
+          },
+          "callbackUrl": {
+            "type": "string",
+            "maxLength": 4096,
+            "format": "uri",
+            "description": "HTTPS URL on a CL_ROUTER_JOB_CALLBACK_HOSTS host with path /router-monitors/events. Its query string may carry a consumer capability; the router never returns or logs it."
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "depth": {
+                "type": "string",
+                "enum": [
+                  "fast",
+                  "standard"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "tenantId",
+          "input",
+          "callbackUrl"
+        ],
+        "additionalProperties": false
+      },
+      "MonitorStatusResponse": {
+        "type": "object",
+        "properties": {
+          "monitorId": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "const": "parallel"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "cancelled"
+            ]
+          },
+          "frequency": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "lastEventAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "monitorId",
+          "provider",
+          "status",
+          "frequency",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "ResearchRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "orgId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "entity": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "website": {
+                    "type": "string",
+                    "maxLength": 2048
+                  },
+                  "location": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "objective": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "fields": {
+                "minItems": 1,
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                    },
+                    "description": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "date",
+                        "enum"
+                      ]
+                    },
+                    "options": {
+                      "minItems": 1,
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "description",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "allowedDomains": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 253
+                }
+              },
+              "excludedDomains": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 253
+                }
+              },
+              "afterDate": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "entity",
+              "objective",
+              "fields"
+            ],
+            "additionalProperties": false
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "primary": {
+                "type": "string",
+                "enum": [
+                  "parallel",
+                  "exa"
+                ]
+              },
+              "depth": {
+                "type": "string",
+                "enum": [
+                  "fast",
+                  "standard",
+                  "deep"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "executionBudgetMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 540000
+          }
+        },
+        "required": [
+          "tenantId",
+          "input"
+        ],
+        "additionalProperties": false
+      },
+      "ResearchResponse": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "parallel",
+              "exa"
+            ]
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "ok": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "ok"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "providerRunId": {
+            "type": "string"
+          },
+          "answers": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "confidence": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "high",
+                        "medium",
+                        "low"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "citations": {
+                  "maxItems": 10,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string",
+                        "maxLength": 500
+                      },
+                      "excerpts": {
+                        "maxItems": 3,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 1000
+                        }
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "reasoning": {
+                  "type": "string",
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "value",
+                "confidence",
+                "citations"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Every requested field key. Values the provider could not support, or that did not match the requested type, are null."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "provider",
+          "attempts",
+          "providerRunId",
+          "answers"
+        ],
+        "additionalProperties": false
       },
       "RetrieveRequest": {
         "type": "object",

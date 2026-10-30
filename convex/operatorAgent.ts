@@ -18,6 +18,11 @@ import {
   createInformationFormByOperator,
   procurementInformationOverview,
 } from "./lib/procurementInformationOperator";
+import {
+  informationSuggestionReviewSummary,
+  researchInformationByOperator,
+  reviewInformationSuggestionsByOperator,
+} from "./procurementInformationSuggestions";
 import { NoWriteInputError, rethrowNoWriteInput } from "./lib/noWriteInputError";
 import { operatorTeamAddressFor } from "./lib/teamEmail";
 import { ensureOperatorInbox } from "./lib/operatorInbox";
@@ -65,6 +70,7 @@ import {
   scheduleWebsiteTechScan,
 } from "./websiteTech";
 import { websiteTechDomain } from "./lib/websiteTech";
+import { acknowledgeClientWebMonitorEvents } from "./clientWebMonitors";
 import { clientRecipientOptions } from "./lib/clientOutreach";
 import { appendWikiSection } from "./lib/wikiAppend";
 import {
@@ -403,6 +409,7 @@ const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "load_skill",
   "read_skill_file",
   "run_skill_script",
+  "manage_client_web_monitor",
   "import_policy_files",
   "fill_pdf_form",
   "edit_pdf_form",
@@ -679,6 +686,12 @@ async function operatorConfirmationSummary(
   }
   if (isClientBatchToolName(toolName)) {
     return clientBatchConfirmationSummary(ctx, toolName, input);
+  }
+  if (toolName === "review_procurement_information_suggestions") {
+    return informationSuggestionReviewSummary(
+      ctx,
+      OPERATOR_AGENT_TOOL_REGISTRY.review_procurement_information_suggestions.inputSchema.parse(input).items,
+    );
   }
   if (
     toolName === "ensure_broker_network_profiles" ||
@@ -1232,6 +1245,19 @@ function normalizeInformationFormId(
     throw new NoWriteInputError(
       "invalid_identifier",
       "Use an exact information form ID from list_procurement_information",
+    );
+  return id;
+}
+
+function normalizeInformationSuggestionId(
+  ctx: QueryCtx | MutationCtx,
+  value: string,
+) {
+  const id = ctx.db.normalizeId("procurementInformationSuggestions", value);
+  if (!id)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Use an exact suggestionId from get_procurement_information",
     );
   return id;
 }
@@ -3956,6 +3982,26 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
     });
   }
 
+  if (toolName === "research_procurement_information") {
+    return await researchInformationByOperator(
+      ctx,
+      args.operatorUserId,
+      normalizeProcurementRequestId(ctx, input.procurementRequestId),
+    );
+  }
+
+  if (toolName === "review_procurement_information_suggestions") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.review_procurement_information_suggestions.inputSchema.parse(input);
+    return await reviewInformationSuggestionsByOperator(
+      ctx,
+      args.operatorUserId,
+      parsed.items.map((item) => ({
+        suggestionId: normalizeInformationSuggestionId(ctx, item.suggestionId),
+        action: item.action,
+      })),
+    );
+  }
+
   if (toolName === "stop_procurement_provider_outreach") {
     const sequenceId = typeof input.sequenceId === "string"
       ? ctx.db.normalizeId("procurementOutreachSequences", input.sequenceId)
@@ -4145,6 +4191,14 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
       fields: Object.keys(patch),
       companyResearch: (await ctx.db.get(orgId))?.companyResearch ?? null,
     };
+  }
+
+  if (toolName === "acknowledge_client_web_monitor_events") {
+    return await acknowledgeClientWebMonitorEvents(ctx, {
+      orgId: normalizeOrganizationId(ctx, input.orgId),
+      eventIds: input.eventIds as string[],
+      userId: args.operatorUserId,
+    });
   }
 
   if (toolName === "research_client_tech_stack") {

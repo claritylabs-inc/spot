@@ -2878,6 +2878,10 @@ export default defineSchema({
     // Deprecated: inert compatibility storage; future-intake reuse has been removed.
     libraryId: v.optional(v.id("procurementQuestionLibrary")),
     answerId: v.optional(v.id("procurementInformationAnswers")),
+    // The answer revision public research last assessed (set with its time);
+    // automatic research skips a question until its answer changes.
+    researchAssessedAnswerId: v.optional(v.id("procurementInformationAnswers")),
+    researchAssessedAt: v.optional(v.number()),
     createdByUserId: v.id("users"),
     createdAt: v.number(),
   }).index("by_requestId", ["requestId"]),
@@ -2951,6 +2955,76 @@ export default defineSchema({
     recordedByUserId: v.id("users"),
     createdAt: v.number(),
   }).index("by_requestId", ["requestId"]),
+  // Public web research runs that pre-answer unresolved questions. Metadata only;
+  // provider output is never stored here.
+  procurementInformationResearchRuns: defineTable({
+    requestId: v.id("procurementRequests"),
+    // sha256 of the sorted eligible question/answer revisions and the entity.
+    fingerprint: v.string(),
+    automatic: v.boolean(),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("partial"),
+      v.literal("failed"),
+    ),
+    // Questions this run assessed; on completion only those actually researched.
+    questions: v.array(
+      v.object({
+        questionId: v.id("procurementInformationQuestions"),
+        answerId: v.optional(v.id("procurementInformationAnswers")),
+      }),
+    ),
+    questionCount: v.number(),
+    suggestionCount: v.number(),
+    provider: v.optional(v.string()),
+    // Short Spot-owned code; never provider text.
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_request", ["requestId"])
+    .index("by_request_and_fingerprint", ["requestId", "fingerprint"]),
+  // Cited answers proposed from public research. Never answers: an operator or
+  // the client confirms them through the existing answer writers.
+  procurementInformationSuggestions: defineTable({
+    requestId: v.id("procurementRequests"),
+    questionId: v.id("procurementInformationQuestions"),
+    // The question's answer revision when researched; a later answer makes it stale.
+    answerIdAtSuggestion: v.optional(v.id("procurementInformationAnswers")),
+    answer: v.string(),
+    confidence: v.union(v.literal("high"), v.literal("medium")),
+    citations: v.array(
+      v.object({
+        url: v.string(),
+        title: v.optional(v.string()),
+        excerpt: v.optional(v.string()),
+      }),
+    ),
+    provider: v.string(),
+    researchRunId: v.id("procurementInformationResearchRuns"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("dismissed"),
+      v.literal("superseded"),
+    ),
+    resolution: v.optional(
+      v.union(
+        v.literal("operator_accepted"),
+        v.literal("client_confirmed"),
+        v.literal("client_edited"),
+        v.literal("dismissed"),
+        v.literal("answered_elsewhere"),
+      ),
+    ),
+    resolvedAt: v.optional(v.number()),
+    resolvedByUserId: v.optional(v.id("users")),
+    createdAt: v.number(),
+  })
+    .index("by_request_status", ["requestId", "status"])
+    .index("by_question", ["questionId"]),
   // Deprecated: retained for existing records, without readers or writers.
   procurementQuestionLibrary: defineTable({
     question: followupQuestionValidator,
@@ -4244,6 +4318,58 @@ export default defineSchema({
     .index("by_category_and_createdAt", ["category", "createdAt"])
     .index("by_category_and_status", ["category", "status"]),
 
+  // Client web monitors: one cl-router monitor per client watching public
+  // events. The callback capability token is stored only as a hash.
+  clientWebMonitors: defineTable({
+    orgId: v.id("organizations"),
+    routerMonitorId: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("active"),
+      v.literal("cancelled"),
+      v.literal("failed"),
+    ),
+    query: v.string(),
+    frequency: v.string(),
+    tokenHash: v.optional(v.string()),
+    createdAt: v.number(),
+    createdByUserId: v.id("users"),
+    cancelledAt: v.optional(v.number()),
+    lastEventAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_router_monitor", ["routerMonitorId"]),
+
+  // Bounded, cited events from a monitor callback; headline and summary are
+  // untrusted public web content.
+  clientWebMonitorEvents: defineTable({
+    orgId: v.id("organizations"),
+    monitorId: v.id("clientWebMonitors"),
+    deliveryId: v.string(),
+    eventId: v.string(),
+    eventDate: v.optional(v.string()),
+    category: v.optional(v.string()),
+    headline: v.string(),
+    summary: v.optional(v.string()),
+    materiality: v.optional(
+      v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+    ),
+    citations: v.array(
+      v.object({
+        url: v.string(),
+        title: v.optional(v.string()),
+        excerpt: v.optional(v.string()),
+      }),
+    ),
+    receivedAt: v.number(),
+    acknowledgedAt: v.optional(v.number()),
+    acknowledgedByUserId: v.optional(v.id("users")),
+  })
+    .index("by_org_received", ["orgId", "receivedAt"])
+    .index("by_monitor_and_delivery", ["monitorId", "deliveryId"]),
+
   // ── Notifications ──
 
   notifications: defineTable({
@@ -5512,6 +5638,7 @@ export default defineSchema({
       v.literal("transcribe"),
       v.literal("browse"),
       v.literal("exec"),
+      v.literal("research"),
     ),
     fingerprint: v.string(),
     status: v.union(

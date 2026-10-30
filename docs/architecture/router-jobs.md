@@ -47,7 +47,7 @@ in one query, and `bind` returns the bound row, so the common path is lookup,
 }
 ```
 
-Operations are `generate`, `manual`, `embed`, `retrieve`, `transcribe`, `browse`, and `exec` (skill scripts; see `operator-skills.md`). `exec` requests may be up to 12 MiB (`ROUTER_JOB_EXEC_REQUEST_BYTES`, base64 files), the others 4 MiB. When
+Operations are `generate`, `manual`, `embed`, `retrieve`, `transcribe`, `browse`, `exec` (skill scripts; see `operator-skills.md`), and `research`. `exec` requests may be up to 12 MiB (`ROUTER_JOB_EXEC_REQUEST_BYTES`, base64 files), the others 4 MiB. When
 `/v1/capabilities` lists `inline_job_input`, generate and manual submissions replace
 `requestUrl` with `input`: the exact stored request text, so the fingerprint is unchanged
 and the router skips its request fetch. Other operations, older routers and an unavailable
@@ -243,6 +243,10 @@ Explicit Jev decision budgets remain separate from generation routing:
 - Research, evidence verification, proposal review, wiki extraction, outreach
   and other batch decisions: existing 60–120 second budgets.
 - Website browsing: 6 minutes for the bounded browser workflow.
+- Procurement information research: 5 minutes per `research` job (at most
+  10 fields, `standard` depth); jobs for one run execute in parallel inside one
+  action, followed by bounded grounding retrieval and a 90-second Jev
+  verification. A 15-minute watchdog fails runs whose action was lost.
 - Durable job control requests: 5 seconds to submit/read/cancel; this does not
   impose a deadline on inference or permit replay after an unknown response.
 

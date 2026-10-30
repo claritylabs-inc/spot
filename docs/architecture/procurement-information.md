@@ -102,6 +102,100 @@ synchronous transport for this task kind. Email content cannot send messages,
 change the accepted application, grant access or make insurance eligibility
 choices.
 
+## Public research suggestions
+
+Before the client is asked, Spot tries to pre-answer unresolved questions from
+cited public research. `convex/lib/procurementInformationResearch.ts` owns
+eligibility, answer normalization, queueing and suggestion resolution;
+`convex/actions/procurementInformationResearch.ts` runs the research and
+`convex/procurementInformationSuggestions.ts` owns runs, reads and review.
+
+A run considers needed, applicable, company-scoped questions (subject
+`company`; other subjects can name people, vehicles or sites) of kind yes/no,
+short text, number, currency, date or dropdown (never long text or routes) without a pending or
+dismissed suggestion for their current answer revision. Automatic runs also skip
+a question whose current answer revision any earlier completed or partial run
+assessed (`researchAssessedAnswerId` / `researchAssessedAt` on the question).
+Questions added by the
+Information panel, provider email extraction or `add_procurement_information_questions`
+queue an automatic run after 60 seconds, so questions added together share it;
+an active run is reused and its completion queues a follow-up for questions it
+missed. `research_procurement_information` queues one immediately. Runs are
+idempotent on a fingerprint of the sorted question/answer revisions and the
+entity; a failed run, or one that found nothing to assess when it started, is
+never reused. A run starts by recomputing its questions; a failure doing so ends
+it as failed (`claim_failed`). A watchdog scheduled at enqueue fails a run still
+queued or running 15 minutes after its scheduled start. When cl-router does not advertise a
+configured research provider (`/v1/capabilities` `research.providers`), an
+automatic run is dropped and an operator run fails with `research_unavailable`.
+
+Exactly this is sent to the research providers: the client's name, its public
+website, and the city and state/province of its registered (else mailing)
+address as the entity; a fixed objective; and, per researched question, its type,
+its dropdown options and a description made of the question label, the reporting
+period when not `current`, the coverage line when known, the currency for amounts
+and the dropdown options. The question's subject, answers, request content,
+emails, wiki notes and provider identities are never sent.
+
+Question wording can come from a provider's email, so the label and options are
+gated before research. A question is provider-originated when any of its
+requirements links a provider outreach or a source email (`outreachId` or
+`sourceMessageId`). Catalog questions (non-empty `source`) and Spot's own
+questions, whose requirements have neither (added by an operator as Spot
+(application) or by the agent without a provider), pass deterministically. The
+action then:
+
+1. Asks one batched Jev request with a Noul per question: could a careful
+   researcher answer it from public sources without private information
+   (`jevProceeds` required). For each provider-originated question the same
+   request asks whether its label or options contain specifics of the client's
+   own situation (amounts, incident or loss dates, people's names, street
+   addresses, claim, policy or account numbers); it proceeds only when that is
+   confidently false, at most `1 − JEV_PREFILL_THRESHOLD` (the prefill band's
+   low verdict). At most 40 questions are researched per run; rejected
+   questions count as assessed. Jev sees the label, kind, options, period,
+   coverage and currency, never the subject.
+2. Calls cl-router `research` (durable `/v1/jobs`, task kind
+   `procurement_information_research`) with at most 10 typed fields per job and
+   `standard` depth. Yes/no maps to boolean, number/currency to number, date to
+   date, dropdown to enum and short text to string.
+3. Keeps values that fit the question (normalized to `Yes`/`No`, number strings,
+   ISO dates or an exact option), have high or medium provider confidence and at
+   least one public citation. A citation without excerpts (Exa) is grounded by a
+   bounded retrieval of that page (its URL and the field description); an answer
+   without grounding text is dropped. Excerpts are cut to 600 characters here.
+4. Verifies every candidate in one Jev request with two atomic Nouls: the
+   evidence is about this company rather than a namesake, and the excerpt states
+   the answer for the question's period. Both must `jevProceeds`.
+
+Suggestions store the normalized answer, provider confidence, provider, up to
+five citations (only the leading citation's excerpt, exactly the verified text of
+at most 600 characters, which operators see in full) and the
+question's answer revision. Web content is untrusted evidence; runs store only
+counts and short Spot-owned error codes, never provider output.
+
+Suggestions are never answers and do not resolve questions or close forms. Any
+recorded answer (operator, client form or client email) supersedes the question's
+pending suggestions as `answered_elsewhere`, and reads ignore suggestions whose
+answer revision is no longer current. Operators accept (the operator answer
+writer records it with `Public web research (<provider>), accepted by operator:
+<source>` provenance) or dismiss them in `procurementInformationSuggestions` or
+with `review_procurement_information_suggestions`; `get_procurement_information`
+shows each question's pending suggestion and the latest run. The client form read
+includes only high-confidence pending suggestions for an open form's unchanged
+questions, with source URLs and titles. Submitting the form confirms a shown
+suggestion whose answer matches (`client_confirmed`) or records the correction
+(`client_edited`); clients never see medium-confidence suggestions, run status or
+other requests' suggestions. The internal `stats` query reports status, resolution
+and confidence counts for acceptance and correction rates.
+
+In the operator request view, `components/procurement/information/suggestion.tsx`
+shows a pending suggestion under its question (answer, High/Medium, up to three
+sources, Accept/Dismiss) and the "Research public sources" action
+(`procurementInformationSuggestions.research`) with the latest run state. The
+client form prefills unanswered questions from their suggestion with a
+"Suggested from public sources" note; submitting is the confirmation.
+
 ## Batched client forms and invitations
 
 Information Needed is the complete request-owned question list. Forms have their

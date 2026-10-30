@@ -11,6 +11,7 @@
 import type * as actions_brokerContactDefaults from "../actions/brokerContactDefaults.js";
 import type * as actions_chatPresentations from "../actions/chatPresentations.js";
 import type * as actions_clientFileNaming from "../actions/clientFileNaming.js";
+import type * as actions_clientWebMonitors from "../actions/clientWebMonitors.js";
 import type * as actions_compactOperatorThreadHistory from "../actions/compactOperatorThreadHistory.js";
 import type * as actions_compactThreadHistory from "../actions/compactThreadHistory.js";
 import type * as actions_companyInformationExtraction from "../actions/companyInformationExtraction.js";
@@ -66,6 +67,7 @@ import type * as actions_ownComplianceMonitor from "../actions/ownComplianceMoni
 import type * as actions_policyExtraction from "../actions/policyExtraction.js";
 import type * as actions_processThreadChat from "../actions/processThreadChat.js";
 import type * as actions_procurementInformation from "../actions/procurementInformation.js";
+import type * as actions_procurementInformationResearch from "../actions/procurementInformationResearch.js";
 import type * as actions_proposalExtraction from "../actions/proposalExtraction.js";
 import type * as actions_proposalReview from "../actions/proposalReview.js";
 import type * as actions_providerOutreach from "../actions/providerOutreach.js";
@@ -119,6 +121,7 @@ import type * as clientDeletion from "../clientDeletion.js";
 import type * as clientFiles from "../clientFiles.js";
 import type * as clientOutreach from "../clientOutreach.js";
 import type * as clientProcurementRequests from "../clientProcurementRequests.js";
+import type * as clientWebMonitors from "../clientWebMonitors.js";
 import type * as collab from "../collab.js";
 import type * as companyInformation from "../companyInformation.js";
 import type * as companyResearch from "../companyResearch.js";
@@ -212,6 +215,7 @@ import type * as lib_clientFiles from "../lib/clientFiles.js";
 import type * as lib_clientOutreach from "../lib/clientOutreach.js";
 import type * as lib_clientOutreachEmail from "../lib/clientOutreachEmail.js";
 import type * as lib_clientProfile from "../lib/clientProfile.js";
+import type * as lib_clientWebMonitors from "../lib/clientWebMonitors.js";
 import type * as lib_coiAttachmentGuards from "../lib/coiAttachmentGuards.js";
 import type * as lib_coiGenerator from "../lib/coiGenerator.js";
 import type * as lib_companyInformationExtraction from "../lib/companyInformationExtraction.js";
@@ -442,6 +446,7 @@ import type * as lib_procurementInformationDecisions from "../lib/procurementInf
 import type * as lib_procurementInformationOperator from "../lib/procurementInformationOperator.js";
 import type * as lib_procurementInformationProviderExtraction from "../lib/procurementInformationProviderExtraction.js";
 import type * as lib_procurementInformationRequirements from "../lib/procurementInformationRequirements.js";
+import type * as lib_procurementInformationResearch from "../lib/procurementInformationResearch.js";
 import type * as lib_procurementInformationSchema from "../lib/procurementInformationSchema.js";
 import type * as lib_procurementInformationSegments from "../lib/procurementInformationSegments.js";
 import type * as lib_procurementNarrative from "../lib/procurementNarrative.js";
@@ -599,6 +604,7 @@ import type * as presence from "../presence.js";
 import type * as procurementInformation from "../procurementInformation.js";
 import type * as procurementInformationEmail from "../procurementInformationEmail.js";
 import type * as procurementInformationForms from "../procurementInformationForms.js";
+import type * as procurementInformationSuggestions from "../procurementInformationSuggestions.js";
 import type * as procurementPacket from "../procurementPacket.js";
 import type * as procurementProposals from "../procurementProposals.js";
 import type * as procurementRequests from "../procurementRequests.js";
@@ -655,6 +661,7 @@ declare const fullApi: ApiFromModules<{
   "actions/brokerContactDefaults": typeof actions_brokerContactDefaults;
   "actions/chatPresentations": typeof actions_chatPresentations;
   "actions/clientFileNaming": typeof actions_clientFileNaming;
+  "actions/clientWebMonitors": typeof actions_clientWebMonitors;
   "actions/compactOperatorThreadHistory": typeof actions_compactOperatorThreadHistory;
   "actions/compactThreadHistory": typeof actions_compactThreadHistory;
   "actions/companyInformationExtraction": typeof actions_companyInformationExtraction;
@@ -710,6 +717,7 @@ declare const fullApi: ApiFromModules<{
   "actions/policyExtraction": typeof actions_policyExtraction;
   "actions/processThreadChat": typeof actions_processThreadChat;
   "actions/procurementInformation": typeof actions_procurementInformation;
+  "actions/procurementInformationResearch": typeof actions_procurementInformationResearch;
   "actions/proposalExtraction": typeof actions_proposalExtraction;
   "actions/proposalReview": typeof actions_proposalReview;
   "actions/providerOutreach": typeof actions_providerOutreach;
@@ -763,6 +771,7 @@ declare const fullApi: ApiFromModules<{
   clientFiles: typeof clientFiles;
   clientOutreach: typeof clientOutreach;
   clientProcurementRequests: typeof clientProcurementRequests;
+  clientWebMonitors: typeof clientWebMonitors;
   collab: typeof collab;
   companyInformation: typeof companyInformation;
   companyResearch: typeof companyResearch;
@@ -856,6 +865,7 @@ declare const fullApi: ApiFromModules<{
   "lib/clientOutreach": typeof lib_clientOutreach;
   "lib/clientOutreachEmail": typeof lib_clientOutreachEmail;
   "lib/clientProfile": typeof lib_clientProfile;
+  "lib/clientWebMonitors": typeof lib_clientWebMonitors;
   "lib/coiAttachmentGuards": typeof lib_coiAttachmentGuards;
   "lib/coiGenerator": typeof lib_coiGenerator;
   "lib/companyInformationExtraction": typeof lib_companyInformationExtraction;
@@ -1086,6 +1096,7 @@ declare const fullApi: ApiFromModules<{
   "lib/procurementInformationOperator": typeof lib_procurementInformationOperator;
   "lib/procurementInformationProviderExtraction": typeof lib_procurementInformationProviderExtraction;
   "lib/procurementInformationRequirements": typeof lib_procurementInformationRequirements;
+  "lib/procurementInformationResearch": typeof lib_procurementInformationResearch;
   "lib/procurementInformationSchema": typeof lib_procurementInformationSchema;
   "lib/procurementInformationSegments": typeof lib_procurementInformationSegments;
   "lib/procurementNarrative": typeof lib_procurementNarrative;
@@ -1243,6 +1254,7 @@ declare const fullApi: ApiFromModules<{
   procurementInformation: typeof procurementInformation;
   procurementInformationEmail: typeof procurementInformationEmail;
   procurementInformationForms: typeof procurementInformationForms;
+  procurementInformationSuggestions: typeof procurementInformationSuggestions;
   procurementPacket: typeof procurementPacket;
   procurementProposals: typeof procurementProposals;
   procurementRequests: typeof procurementRequests;

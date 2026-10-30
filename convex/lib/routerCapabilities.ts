@@ -50,6 +50,10 @@ export type RouterCapabilities = {
   providers: RouterProviderEntry[];
   models?: RouterModelEntry[];
   webRetrieval: { providers: RouterProviderEntry[] };
+  /** Absent on routers without monitors, which then count as unsupported. */
+  monitors?: { providers: RouterProviderEntry[] };
+  /** Structured research providers; older routers omit it and do not support research. */
+  research?: { providers: RouterProviderEntry[] };
   /**
    * Optional request fields this router accepts. Older routers omit the list
    * and reject the fields, so callers send a field only when it is listed.
@@ -203,16 +207,41 @@ export function parseRouterCapabilities(
   const providers = parseProviders(value.providers);
   const webRetrievalProviders = parseProviders(value.webRetrieval.providers);
   const models = parseRouterModels(value.models);
+  const monitorProviders = isRecord(value.monitors)
+    ? parseProviders(value.monitors.providers)
+    : null;
   if (!providers || !webRetrievalProviders || models === undefined) return null;
+  // A malformed optional section advertises nothing rather than invalidating the catalog.
+  const researchProviders = isRecord(value.research)
+    ? parseProviders(value.research.providers)
+    : null;
   return {
     apiVersion: "v1",
     credentialMode: "router",
     providers,
     webRetrieval: { providers: webRetrievalProviders },
     ...(models ? { models } : {}),
+    ...(monitorProviders ? { monitors: { providers: monitorProviders } } : {}),
+    ...(researchProviders ? { research: { providers: researchProviders } } : {}),
     // A malformed list advertises nothing rather than invalidating the catalog.
     ...(Array.isArray(value.features) && value.features.every(isIdentifier)
       ? { features: value.features }
       : {}),
   };
+}
+
+/** True when the router advertises a configured monitor provider. */
+export function routerSupportsMonitors(capabilities: RouterCapabilities) {
+  return Boolean(
+    capabilities.monitors?.providers.some((provider) => provider.configured),
+  );
+}
+
+/** Research runs only when the router advertises a configured research provider. */
+export function routerResearchConfigured(
+  capabilities: RouterCapabilities,
+): boolean {
+  return (
+    capabilities.research?.providers.some((entry) => entry.configured) ?? false
+  );
 }

@@ -5,6 +5,7 @@ import {
   resultHttp as routerJobResult,
   assetHttp as routerJobAsset,
 } from "./routerJobs";
+import { eventsHttp as clientWebMonitorEvents } from "./clientWebMonitors";
 import { ConvexError } from "convex/values";
 import dayjs from "dayjs";
 import { httpAction } from "./_generated/server";
@@ -3068,6 +3069,11 @@ http.route({
   path: "/router-jobs/asset",
   method: "GET",
   handler: routerJobAsset,
+});
+http.route({
+  path: "/router-monitors/events",
+  method: "POST",
+  handler: clientWebMonitorEvents,
 });
 
 export default http;

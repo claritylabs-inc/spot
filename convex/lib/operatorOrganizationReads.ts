@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { readClientWebMonitor } from "../clientWebMonitors";
 import { readOrgWiki } from "../orgWiki";
 import { readWebsiteTechProfile } from "../websiteTech";
 import { isSpotOwnedBrokerIdentity } from "./brokerProfileValidation";
@@ -96,7 +97,9 @@ export async function organizationDetail(
   const applicable = (section: OrganizationIncludeSection) =>
     section === "wiki"
       ? isBroker
-      : section === "businessProfile" || section === "websiteTech"
+      : section === "businessProfile" ||
+        section === "websiteTech" ||
+        section === "webMonitor"
         ? isClient
         : true;
   const omitted = ORGANIZATION_INCLUDE_SECTIONS.filter(
@@ -130,6 +133,9 @@ export async function organizationDetail(
       ? {
           websiteTech: await readWebsiteTechProfile(ctx, organization.website),
         }
+      : {}),
+    ...(isClient && include.has("webMonitor")
+      ? { webMonitor: await readClientWebMonitor(ctx, orgId) }
       : {}),
     ...(isBroker && include.has("wiki")
       ? { companyWiki: await readOrgWiki(ctx, orgId) }

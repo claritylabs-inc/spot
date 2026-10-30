@@ -23,6 +23,11 @@ import { type Actions, coverageLabel, displaySubject, attempt } from "./shared";
 import { InformationProviders } from "./providers";
 import { InformationFormActions } from "./form-workspace";
 import { InlineInformationAnswer } from "./inline-answer";
+import {
+  InformationResearchStatus,
+  ResearchSourcesAction,
+  useInformationSuggestions,
+} from "./suggestion";
 
 export function InformationRequestActions(props: Actions) {
   const { requestId, readOnly, onOpenDrawer: open } = props;
@@ -62,6 +67,7 @@ export function InformationRequestActions(props: Actions) {
         <RefreshCw className={`size-3.5${syncing ? " animate-spin" : ""}`} />
         Sync from email
       </PillButton>
+      <ResearchSourcesAction requestId={requestId} />
       <PillButton variant="primary" onClick={() => open({ kind: "add" })}>
         <Plus className="size-3.5" />
         Add question
@@ -74,6 +80,7 @@ export function InformationRequests(props: Actions) {
   const { requestId, readOnly, onOpenDrawer: open } = props;
   const panel = useQuery(api.procurementInformation.panel, { requestId });
   const archive = useMutation(api.procurementInformation.archiveQuestion);
+  const { suggestions } = useInformationSuggestions(requestId, readOnly);
   const [search, setSearch] = useFollowedState(
     `procurement:${requestId}:information:search`,
     "",
@@ -141,6 +148,7 @@ export function InformationRequests(props: Actions) {
             )}
           </p>
         )}
+        {!readOnly && <InformationResearchStatus requestId={requestId} />}
         {!tabQuestions.length ? (
           <EmptyStateCard
             icon={<FileQuestion className="size-6" />}
@@ -232,6 +240,7 @@ export function InformationRequests(props: Actions) {
                         files={panel.files}
                         currency={panel.currency}
                         disabled={readOnly || applicability !== "applies"}
+                        suggestion={suggestions.get(q._id)}
                       />
                     </InlineFieldRow>
                     <InlineFieldRow label="Requested by">

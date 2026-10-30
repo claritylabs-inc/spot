@@ -10,6 +10,8 @@ import { isRemainingBatchToolName, prepareRemainingBatch, resolveBatchAttachment
 import { normalizeCompletionOutcome } from "./procurementCompletionOutcome";
 import { prepareApplicationToolUpdate } from "../procurementRequests";
 import { prepareBusinessProfileToolUpdate } from "../orgWiki";
+import { currentMonitor } from "../clientWebMonitors";
+import { NoWriteInputError } from "./noWriteInputError";
 import { getMarkdownDocument } from "../markdownDocuments";
 import { preparePacketDocumentUpdate } from "../procurementPacket";
 import { requireCompanyRequest } from "./companyRequest";
@@ -68,6 +70,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "stop_procurement_provider_outreach",
   "create_procurement_information_form",
   "cancel_procurement_information_form",
+  "review_procurement_information_suggestions",
   "link_team_inbox_thread",
   "link_team_inbox_threads",
   "update_procurement_broker_outreach",
@@ -103,6 +106,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "update_organization_profiles",
   "update_client_business_profile",
   "research_client",
+  "manage_client_web_monitor",
   "research_broker",
   "research_brokers",
   "set_client_access_status",
@@ -1144,6 +1148,20 @@ export async function preflightOperatorToolConfirmation(
       if (form.status !== "open") throw new Error("Only open forms can be cancelled");
       return;
     }
+    case "review_procurement_information_suggestions": {
+      const items = Array.isArray(args.input.items) ? (args.input.items as { suggestionId?: unknown }[]) : [];
+      if (new Set(items.map((item) => item.suggestionId)).size !== items.length)
+        throw new Error("Review each suggestion once");
+      for (const item of items) {
+        const suggestion = await requireDocument(ctx, "procurementInformationSuggestions", item.suggestionId, "Suggestion");
+        if (suggestion.status !== "pending")
+          throw new Error(`Suggestion ${suggestion._id} was already ${suggestion.status}`);
+        const question = await ctx.db.get(suggestion.questionId);
+        if (!question || question.archivedAt || question.answerId !== suggestion.answerIdAtSuggestion)
+          throw new Error(`Suggestion ${suggestion._id} is out of date: its question changed after research. Read get_procurement_information again.`);
+      }
+      return;
+    }
     case "link_team_inbox_thread": {
       const thread = await requireTeamEmailThread(ctx, args.input.teamEmailThreadId);
       if (isOutreachLocked(thread)) throw new Error("Outreach conversations stay with their originating request");
@@ -1285,6 +1303,21 @@ export async function preflightOperatorToolConfirmation(
     case "research_client":
       await requireClientOrganization(ctx, args.input.orgId);
       return;
+    case "manage_client_web_monitor": {
+      const organization = await requireClientOrganization(ctx, args.input.orgId);
+      const monitor = await currentMonitor(ctx, organization._id);
+      if (args.input.action === "create" && monitor)
+        throw new NoWriteInputError(
+          "web_monitor_exists",
+          "This client already has a web monitor. Cancel it before creating another.",
+        );
+      if (args.input.action === "cancel" && monitor?.status !== "active")
+        throw new NoWriteInputError(
+          "web_monitor_missing",
+          "This client has no active web monitor to cancel.",
+        );
+      return;
+    }
     case "set_client_assignees":
     case "set_client_access_statuses":
     case "set_client_feature_flags":

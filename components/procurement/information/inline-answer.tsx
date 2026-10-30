@@ -16,19 +16,22 @@ import {
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import { type Panel, type Question, Choice } from "./shared";
+import { type Panel, type Question, type Suggestion, Choice } from "./shared";
 import { InformationAttachments } from "./attachments";
+import { InformationSuggestion } from "./suggestion";
 
 export function InlineInformationAnswer({
   question: q,
   files,
   currency,
   disabled,
+  suggestion,
 }: {
   question: Question;
   files: Panel["files"];
   currency: string;
   disabled: boolean;
+  suggestion?: Suggestion;
 }) {
   const record = useMutation(api.procurementInformation.recordAnswer);
   const canonical = q.answer?.unsure
@@ -97,7 +100,10 @@ export function InlineInformationAnswer({
     onBlur: () => void save(),
   };
   return (
-    <div className="min-w-0 space-y-1">
+    <div
+      className="min-w-0 space-y-1"
+      data-inline-multiline={suggestion && !disabled ? "" : undefined}
+    >
       {q.question.kind === "yes_no" || q.question.kind === "dropdown" ? (
         <Choice
           placeholder="Choose an answer"
@@ -176,6 +182,9 @@ export function InlineInformationAnswer({
         </div>
       )}
       <InformationAttachments ids={q.answer?.fileItemIds ?? []} files={files} />
+      {suggestion && !disabled && (
+        <InformationSuggestion question={q} suggestion={suggestion} />
+      )}
     </div>
   );
 }

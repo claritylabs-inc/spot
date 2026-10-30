@@ -10,6 +10,10 @@ import { internalAction } from "../_generated/server";
 import type { AgentScope } from "../lib/agentScope";
 import { buildAgentToolExecutors } from "../lib/agentToolExecutors";
 import { readStoredAgentFile } from "../lib/storedAgentFile";
+import {
+  cancelClientWebMonitor,
+  createClientWebMonitor,
+} from "./clientWebMonitors";
 import { runOperatorWebRetrieval } from "../lib/webRetrieval";
 import { fetchPublicUrl } from "../lib/fetchPublicUrl";
 import { parseOperatorAgentToolInput } from "../lib/operatorAgentToolRegistry";
@@ -122,6 +126,28 @@ export const runInternal = internalAction({
     if (args.toolName === "web_search") {
       const input = parseOperatorAgentToolInput("web_search", args.input);
       return { result: await runOperatorWebRetrieval(ctx, input) };
+    }
+
+    if (args.toolName === "manage_client_web_monitor") {
+      const input = parseOperatorAgentToolInput(
+        "manage_client_web_monitor",
+        args.input,
+      );
+      return {
+        result:
+          input.action === "create"
+            ? await createClientWebMonitor(ctx, {
+                orgId: String(input.orgId),
+                userId: args.operatorUserId,
+                frequency:
+                  typeof input.frequency === "string"
+                    ? input.frequency
+                    : undefined,
+              })
+            : await cancelClientWebMonitor(ctx, {
+                orgId: String(input.orgId),
+              }),
+      };
     }
 
     if (args.toolName === "fetch_url") {
