@@ -1925,12 +1925,6 @@ export function ProcurementRequestWorkspace({
     [policies],
   );
   const closeRightPanel = useCallback(() => onRightPanel(null), [onRightPanel]);
-  // The panel effect opens a conversation through the latest changeView.
-  const changeViewRef = useRef<typeof changeView | null>(null);
-  useEffect(() => {
-    changeViewRef.current = changeView;
-  });
-
   const openNotes = useCallback(async () => {
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
@@ -2025,11 +2019,14 @@ export function ProcurementRequestWorkspace({
     router.replace(`${basePath}/${requestId}?view=email`, { scroll: false });
   }, [closeRightPanel, router, basePath, requestId]);
   const openEmail = useCallback(
-    async (thread: {
-      _id: Id<"teamEmailThreads">;
-      subject?: string;
-      source?: InboxThread["source"];
-    }) => {
+    async (
+      thread: {
+        _id: Id<"teamEmailThreads">;
+        subject?: string;
+        source?: InboxThread["source"];
+      },
+      onClose: () => void = closeEmail,
+    ) => {
       if (
         openedEmailId.current === thread._id ||
         openingEmailId.current === thread._id
@@ -2041,7 +2038,7 @@ export function ProcurementRequestWorkspace({
           return;
         closePdf();
         onRightPanel(
-          <ReaderBoundary resetKey={thread._id} onClose={closeEmail}>
+          <ReaderBoundary resetKey={thread._id} onClose={onClose}>
             <ProcurementEmailDrawer
               ref={emailDrawerRef}
               emailThreadId={thread._id}
@@ -2050,7 +2047,7 @@ export function ProcurementRequestWorkspace({
               requestId={requestId}
               includeArchived
               readOnly={readOnly}
-              onClose={closeEmail}
+              onClose={onClose}
             />
           </ReaderBoundary>,
         );
@@ -2178,7 +2175,10 @@ export function ProcurementRequestWorkspace({
             removingFileId={removingFileId}
             onRemoveFile={(fileItemId) => void handleRemoveFile(fileItemId)}
             onOpenThread={(threadId) =>
-              void changeViewRef.current?.("email", threadId)
+              void openEmail(
+                { _id: threadId, source: "outreach" },
+                closeRightPanel,
+              )
             }
             onOpenFile={(file) => {
               if (!file.url) return;
@@ -2338,6 +2338,7 @@ export function ProcurementRequestWorkspace({
     details,
     handleRemoveFile,
     onRightPanel,
+    openEmail,
     openWithUrl,
     panel,
     proposals,
