@@ -223,6 +223,13 @@ html {
   }
 }
 
+/* A select styled as a tag pill keeps the tag type size inside operator surfaces. */
+[data-compact-tag-select],
+[data-compact-tag-select] * {
+  font-size: var(--text-tag) !important;
+  line-height: var(--text-tag--line-height) !important;
+}
+
 /* Compact searchable selects retain their shared menu type through portals. */
 [data-typography-role="control.menu"] {
   font-size: var(--text-base) !important;
