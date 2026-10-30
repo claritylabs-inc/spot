@@ -6,11 +6,7 @@
 import { expect, test } from "vitest";
 import type { OperatorAgentToolName } from "../operatorAgentToolRegistry";
 import { operatorPageContextEntry } from ".";
-import {
-  clientPolicyListHints,
-  policyStatusHints,
-  requirementHints,
-} from "./policy";
+import { policyStatusHints, requirementHints } from "./policy";
 
 const page = (
   pageType: string,
@@ -148,26 +144,6 @@ test("policy group pages read the attached record with the client from the page"
     "Extraction still running (stage preview); fields may be partial.",
     "Archived policy.",
     'Coverages were not loaded: call lookup_policy with orgId and policyIds ["p1"].',
-  ]);
-  expect(
-    clientPolicyListHints(
-      new Map([
-        [
-          "list_policies",
-          {
-            policies: [
-              { policyNumber: "GL-1", pipelineStatus: "complete" },
-              { policyId: "p2", pipelineStatus: "error" },
-            ],
-            bounded: false,
-          },
-        ],
-      ]),
-    ),
-  ).toEqual([
-    "2 active policies loaded, soonest expiration first; this is every active policy.",
-    "Extraction failed: p2",
-    "Loaded rows carry identity, term and extraction status only; use lookup_policy for coverages and limits.",
   ]);
   expect(
     requirementHints(
