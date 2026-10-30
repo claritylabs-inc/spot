@@ -3682,6 +3682,28 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     target: (input) => ({ kind: "organization", id: input.orgId }),
     summarize: (input) => `Research and enrich client ${input.orgId}`,
   }),
+  research_client_profiles: defineOperatorTool({
+    family: "organizations",
+    version: 1,
+    description:
+      "Research public profile facts (year founded, employee count, primary operations, industry, headquarters, location count, ownership) for 1–50 distinct clients in one durable batch, and add verified cited facts to each client's company Markdown. Each answer needs a grounded citation and Jev confirmation that it is about the client and states the value; others stay unresolvedFields. Never changes the typed business profile. Returns per-client research status objects (queued/running is not complete); clients whose research is already queued or running are reported and skipped. Check progress with get_research_status (optional waitSeconds) and outcomes with get_organization include research.",
+    inputSchema: z.object({
+      orgIds: z
+        .array(organizationId)
+        .min(1)
+        .max(50)
+        .refine((ids) => new Set(ids).size === ids.length, {
+          message: "orgIds must be distinct",
+        }),
+    }),
+    capability: "operator.organizations.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({ kind: "batch", id: "research_client_profiles" }),
+    summarize: (input) =>
+      `Research public profile facts for ${input.orgIds.length} clients`,
+  }),
   research_client_tech_stack: defineOperatorTool({
     family: "organizations",
     version: 2,
@@ -3755,7 +3777,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "organizations",
     version: 1,
     description:
-      "Read the status of an organization's async public research: company research (research_client, research_brokers) and, for clients, the tech-stack scan. Each entry has state (not_started, queued, running, completed, partial, failed), settled, timestamps and finding counts; read get_organization with include research (or websiteTech) for the findings. Pass website instead of orgId for a prospect's tech-stack scan. waitSeconds (up to 60) waits for the runs to settle before answering.",
+      "Read the status of an organization's async public research: company research (research_client, research_client_profiles, research_brokers) and, for clients, the tech-stack scan. Each entry has state (not_started, queued, running, completed, partial, failed), settled, timestamps and finding counts; read get_organization with include research (or websiteTech) for the findings. Pass website instead of orgId for a prospect's tech-stack scan. waitSeconds (up to 60) waits for the runs to settle before answering.",
     inputSchema: z
       .object({
         orgId: omittable(organizationId),

@@ -47,7 +47,7 @@ in one query, and `bind` returns the bound row, so the common path is lookup,
 }
 ```
 
-Operations are `generate`, `manual`, `embed`, `retrieve`, `transcribe`, `browse`, `exec` (skill scripts; see `operator-skills.md`), and `research`. `exec` requests may be up to 12 MiB (`ROUTER_JOB_EXEC_REQUEST_BYTES`, base64 files), the others 4 MiB. When
+Operations are `generate`, `manual`, `embed`, `retrieve`, `transcribe`, `browse`, `exec` (skill scripts; see `operator-skills.md`), `research`, and `research_batch` (`/v1/research/batch`, one job per call). `exec` requests may be up to 12 MiB (`ROUTER_JOB_EXEC_REQUEST_BYTES`, base64 files), the others 4 MiB. When
 `/v1/capabilities` lists `inline_job_input`, generate and manual submissions replace
 `requestUrl` with `input`: the exact stored request text, so the fingerprint is unchanged
 and the router skips its request fetch. Other operations, older routers and an unavailable
@@ -247,6 +247,10 @@ Explicit Jev decision budgets remain separate from generation routing:
   10 fields, `standard` depth); jobs for one run execute in parallel inside one
   action, followed by bounded grounding retrieval and a 90-second Jev
   verification. A 15-minute watchdog fails runs whose action was lost.
+- Client profile batch research: 5 minutes for one `research_batch` job of up
+  to 50 clients and seven fields (`standard` depth), then per-client grounding
+  (no new fetch after 7.5 minutes) and a 60-second Jev verification per client
+  (none started after 8 minutes), ten clients at a time, inside one action.
 - Durable job control requests: 5 seconds to submit/read/cancel; this does not
   impose a deadline on inference or permit replay after an unknown response.
 

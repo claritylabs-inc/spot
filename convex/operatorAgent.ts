@@ -238,6 +238,10 @@ import {
 } from "./lib/operatorAgentConfirmationPreflight";
 import { clientBatchConfirmationSummary, isClientBatchToolName, type ClientBatchResult } from "./lib/operatorClientBatch";
 import {
+  clientProfileResearchSummary,
+  queueClientProfileBatchResearch,
+} from "./lib/clientProfileBatchResearch";
+import {
   describeOperatorRecordFields,
   type OperatorDescribableRecord,
 } from "./lib/operatorRecordFieldCatalog";
@@ -704,6 +708,14 @@ async function operatorConfirmationSummary(
     return providerCandidateReviewSummary(
       ctx,
       OPERATOR_AGENT_TOOL_REGISTRY.review_provider_candidates.inputSchema.parse(input),
+    );
+  }
+  if (toolName === "research_client_profiles") {
+    return clientProfileResearchSummary(
+      ctx,
+      OPERATOR_AGENT_TOOL_REGISTRY.research_client_profiles.inputSchema.parse(
+        input,
+      ).orgIds,
     );
   }
   if (toolName === "review_procurement_information_suggestions") {
@@ -4258,6 +4270,17 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
       research: await techStackResearchStatus(ctx, website),
       current: await readWebsiteTechProfile(ctx, website),
     };
+  }
+
+  if (toolName === "research_client_profiles") {
+    const { orgIds } =
+      OPERATOR_AGENT_TOOL_REGISTRY.research_client_profiles.inputSchema.parse(
+        input,
+      );
+    return await queueClientProfileBatchResearch(
+      ctx,
+      orgIds.map((orgId) => normalizeOrganizationId(ctx, orgId)),
+    );
   }
 
   if (toolName === "research_client" || toolName === "research_broker") {
