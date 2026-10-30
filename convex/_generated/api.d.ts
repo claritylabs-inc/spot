@@ -70,6 +70,7 @@ import type * as actions_procurementInformation from "../actions/procurementInfo
 import type * as actions_procurementInformationResearch from "../actions/procurementInformationResearch.js";
 import type * as actions_proposalExtraction from "../actions/proposalExtraction.js";
 import type * as actions_proposalReview from "../actions/proposalReview.js";
+import type * as actions_providerDiscovery from "../actions/providerDiscovery.js";
 import type * as actions_providerOutreach from "../actions/providerOutreach.js";
 import type * as actions_providerOutreachDrafts from "../actions/providerOutreachDrafts.js";
 import type * as actions_reExtractFromFile from "../actions/reExtractFromFile.js";
@@ -455,6 +456,7 @@ import type * as lib_profileResearchOrchestrator from "../lib/profileResearchOrc
 import type * as lib_proposalAggregation from "../lib/proposalAggregation.js";
 import type * as lib_proposalMarkdown from "../lib/proposalMarkdown.js";
 import type * as lib_proposalReview from "../lib/proposalReview.js";
+import type * as lib_providerDiscovery from "../lib/providerDiscovery.js";
 import type * as lib_providerOutreachDrafts from "../lib/providerOutreachDrafts.js";
 import type * as lib_providerOutreachEmail from "../lib/providerOutreachEmail.js";
 import type * as lib_providerOutreachLifecycle from "../lib/providerOutreachLifecycle.js";
@@ -612,6 +614,7 @@ import type * as procurementSms from "../procurementSms.js";
 import type * as proposalExtraction from "../proposalExtraction.js";
 import type * as proposalSourceNodes from "../proposalSourceNodes.js";
 import type * as proposalSourceSpans from "../proposalSourceSpans.js";
+import type * as providerDiscovery from "../providerDiscovery.js";
 import type * as providerOutreach from "../providerOutreach.js";
 import type * as providerOutreachDrafts from "../providerOutreachDrafts.js";
 import type * as providerSubmissionDefaults from "../providerSubmissionDefaults.js";
@@ -720,6 +723,7 @@ declare const fullApi: ApiFromModules<{
   "actions/procurementInformationResearch": typeof actions_procurementInformationResearch;
   "actions/proposalExtraction": typeof actions_proposalExtraction;
   "actions/proposalReview": typeof actions_proposalReview;
+  "actions/providerDiscovery": typeof actions_providerDiscovery;
   "actions/providerOutreach": typeof actions_providerOutreach;
   "actions/providerOutreachDrafts": typeof actions_providerOutreachDrafts;
   "actions/reExtractFromFile": typeof actions_reExtractFromFile;
@@ -1105,6 +1109,7 @@ declare const fullApi: ApiFromModules<{
   "lib/proposalAggregation": typeof lib_proposalAggregation;
   "lib/proposalMarkdown": typeof lib_proposalMarkdown;
   "lib/proposalReview": typeof lib_proposalReview;
+  "lib/providerDiscovery": typeof lib_providerDiscovery;
   "lib/providerOutreachDrafts": typeof lib_providerOutreachDrafts;
   "lib/providerOutreachEmail": typeof lib_providerOutreachEmail;
   "lib/providerOutreachLifecycle": typeof lib_providerOutreachLifecycle;
@@ -1262,6 +1267,7 @@ declare const fullApi: ApiFromModules<{
   proposalExtraction: typeof proposalExtraction;
   proposalSourceNodes: typeof proposalSourceNodes;
   proposalSourceSpans: typeof proposalSourceSpans;
+  providerDiscovery: typeof providerDiscovery;
   providerOutreach: typeof providerOutreach;
   providerOutreachDrafts: typeof providerOutreachDrafts;
   providerSubmissionDefaults: typeof providerSubmissionDefaults;

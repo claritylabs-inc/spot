@@ -2279,3 +2279,122 @@ export async function clRouterCancelMonitor(
     ),
   );
 }
+
+export type ClRouterDiscoveryGenerator = "base" | "core" | "pro";
+
+export type ClRouterCreateDiscoveryRequest = {
+  tenantId?: string;
+  orgId?: string;
+  input: {
+    objective: string;
+    entityType: string;
+    matchConditions: Array<{ name: string; description: string }>;
+    matchLimit: number;
+    generator?: ClRouterDiscoveryGenerator;
+    exclude?: Array<{ name: string; url: string }>;
+    fields?: ClRouterResearchRequest["input"]["fields"];
+  };
+  /** Carries a capability token in its query string; never log it. */
+  callbackUrl: string;
+};
+
+export type ClRouterDiscoveryStatus = {
+  discoveryId: string;
+  provider: "parallel";
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  createdAt: number;
+  completedAt?: number;
+  matchedCount?: number;
+};
+
+const CREATE_DISCOVERY_BODY_KEYS = [
+  "orgId",
+  "input",
+  "callbackUrl",
+] as const satisfies readonly (keyof ClRouterCreateDiscoveryRequest)[];
+
+const DISCOVERY_STATUSES = [
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "cancelled",
+] as const;
+
+function isDiscoveryStatus(
+  value: unknown,
+): value is ClRouterDiscoveryStatus["status"] {
+  return DISCOVERY_STATUSES.some((status) => status === value);
+}
+
+const isOptionalFiniteNumber = (value: unknown) =>
+  value === undefined || (typeof value === "number" && Number.isFinite(value));
+
+function readDiscoveryStatus(payload: unknown): ClRouterDiscoveryStatus {
+  if (
+    !isRecord(payload) ||
+    !isNonEmptyString(payload.discoveryId) ||
+    payload.provider !== "parallel" ||
+    !isDiscoveryStatus(payload.status) ||
+    typeof payload.createdAt !== "number" ||
+    !Number.isFinite(payload.createdAt) ||
+    !isOptionalFiniteNumber(payload.completedAt) ||
+    !isOptionalFiniteNumber(payload.matchedCount)
+  ) {
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router discovery response is invalid",
+    );
+  }
+  return {
+    discoveryId: payload.discoveryId,
+    provider: payload.provider,
+    status: payload.status,
+    createdAt: payload.createdAt,
+    ...(typeof payload.completedAt === "number"
+      ? { completedAt: payload.completedAt }
+      : {}),
+    ...(typeof payload.matchedCount === "number"
+      ? { matchedCount: payload.matchedCount }
+      : {}),
+  };
+}
+
+const discoveryPath = (discoveryId: string, suffix = "") =>
+  `/v1/discoveries/${encodeURIComponent(discoveryId)}${suffix}?tenantId=${encodeURIComponent(CL_ROUTER_TENANT_ID)}`;
+
+/** Starts a public-web entity discovery whose matches the router posts to `callbackUrl`. */
+export async function clRouterCreateDiscovery(
+  request: ClRouterCreateDiscoveryRequest,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterDiscoveryStatus> {
+  return readDiscoveryStatus(
+    await postJson(
+      "/v1/discoveries",
+      requestBody(request, CREATE_DISCOVERY_BODY_KEYS),
+      options,
+    ),
+  );
+}
+
+export async function clRouterGetDiscovery(
+  discoveryId: string,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterDiscoveryStatus> {
+  return readDiscoveryStatus(
+    await clRouterFetch(discoveryPath(discoveryId), { method: "GET" }, options),
+  );
+}
+
+export async function clRouterCancelDiscovery(
+  discoveryId: string,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterDiscoveryStatus> {
+  return readDiscoveryStatus(
+    await clRouterFetch(
+      discoveryPath(discoveryId, "/cancel"),
+      { method: "POST" },
+      options,
+    ),
+  );
+}
