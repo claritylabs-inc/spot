@@ -1460,6 +1460,7 @@ async function handleOperatorMcpToolCall(
       OPERATOR_AGENT_TOOL_REGISTRY[
         name as keyof typeof OPERATOR_AGENT_TOOL_REGISTRY
       ];
+    if (spec.agentOnly) throw new Error(`Unknown tool: ${name}`);
     if (spec.effect !== "read") requireMcpWriteScope(identity);
     const result = await ctx.runAction(
       spec.effect === "read"

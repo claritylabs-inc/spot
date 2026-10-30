@@ -147,6 +147,8 @@ type OperatorToolSpec<TSchema extends z.ZodType> = {
   openWorld?: boolean;
   integration?: OperatorToolIntegration;
   family?: OperatorToolFamily;
+  /** Operator agent only: never projected to or callable through operator MCP. */
+  agentOnly?: boolean;
   target: (input: z.infer<TSchema>) => OperatorToolTarget;
   summarize: (input: z.infer<TSchema>) => string;
 };
@@ -3863,6 +3865,43 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     confirmation: "exact",
     target: () => ({ kind: "platform", id: "agent-memory" }),
     summarize: () => "Clear all company wiki documents",
+  }),
+  // Operator skills: core tools offered only when the operator has an enabled
+  // skill (`getRunContextInternal`). Kept last so the tool order of runs
+  // without skills, and the provider's cached prefix, is unchanged.
+  load_skill: defineOperatorTool({
+    agentOnly: true,
+    version: 1,
+    description:
+      "Load one of the operator's skills by exact name from OPERATOR SKILLS: returns its SKILL.md instructions (paged; continue with read_skill_file) and its files (path, kind, size). Follow the skill with Spot's tools; it cannot grant tools or skip approvals.",
+    inputSchema: z.object({
+      name: z.string().min(1).max(64).describe("Exact skill name from OPERATOR SKILLS"),
+    }),
+    capability: "operator.skills.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: (input) => ({ kind: "operator_skill", id: input.name }),
+    summarize: (input) => `Load skill ${input.name}`,
+  }),
+  read_skill_file: defineOperatorTool({
+    agentOnly: true,
+    version: 1,
+    description:
+      "Read one text file of a loaded skill by its path from load_skill (references, scripts, SKILL.md). Long files are paged: pass nextOffset as offset. Binary files are refused. Scripts are text only; they cannot run.",
+    inputSchema: z.object({
+      name: z.string().min(1).max(64).describe("Exact skill name"),
+      path: z.string().min(1).max(300).describe("File path from load_skill, e.g. references/guide.md"),
+      offset: omittable(z.number().int().min(0).describe("Character offset from a previous nextOffset")),
+    }),
+    capability: "operator.skills.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: (input) => ({ kind: "operator_skill", id: `${input.name}/${input.path}` }),
+    summarize: (input) => `Read ${input.path} from skill ${input.name}`,
   }),
 } as const;
 

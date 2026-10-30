@@ -196,6 +196,12 @@ import {
 } from "./lib/operatorBrokerProfiles";
 import { readOrgWiki, upsertOrgWikiDocumentByOperator } from "./orgWiki";
 import { loadEmailPrompts } from "./lib/emailPrompts";
+import { enabledOperatorSkills } from "./lib/operatorSkillStore";
+import {
+  OPERATOR_SKILL_TOOL_NAMES,
+  operatorSkillsPromptBlock,
+} from "./lib/operatorSkills";
+import { runOperatorSkillTool } from "./lib/operatorSkillTools";
 import {
   listPacketLinksForOperator,
   listPacketDocuments,
@@ -4465,6 +4471,9 @@ async function executeToolActionDomain(
   },
 ): Promise<OperatorActionToolResult> {
   args = { ...args, ...resolveOperatorToolDispatch(args.toolName, args.input) };
+  if (OPERATOR_SKILL_TOOL_NAMES.has(args.toolName)) {
+    return { result: await runOperatorSkillTool(ctx, args) };
+  }
   if (args.toolName === "get_procurement_forwarding_address") {
     const parsed = OPERATOR_AGENT_TOOL_REGISTRY.get_procurement_forwarding_address.inputSchema.parse(args.input);
     const context = await ctx.runQuery(internal.operatorAgent.forwardingContextInternal, {
@@ -7527,15 +7536,22 @@ export const getRunContextInternal = internalQuery({
     } catch {
       // Profile remains available when email identity is not configured yet.
     }
+    const operatorSkillsPrompt = operatorSkillsPromptBlock(
+      await enabledOperatorSkills(ctx, run.operatorUserId),
+    );
     return {
       run,
       thread,
       messages: messages.reverse(),
-      toolNames,
+      // Skill tools are offered only to operators with an enabled skill.
+      toolNames: operatorSkillsPrompt
+        ? toolNames
+        : toolNames.filter((name) => !OPERATOR_SKILL_TOOL_NAMES.has(name)),
       operatorName: operator.user.name,
       operatorEmail: operator.user.email,
       operatorTeamAddress,
       emailPrompts: await loadEmailPrompts(ctx, run.operatorUserId),
+      operatorSkillsPrompt,
     };
   },
 });
