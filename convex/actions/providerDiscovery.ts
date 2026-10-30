@@ -21,7 +21,6 @@ import {
   PROVIDER_DISCOVERY_CALLBACK_PATH,
   providerDiscoveryInput,
   type ProviderDiscoveryCriteria,
-  type ProviderDiscoveryOverrides,
 } from "../lib/providerDiscovery";
 import { routerDiscoveryConfigured } from "../lib/routerCapabilities";
 import { callbackSiteUrl } from "../lib/routerJobClient";
@@ -56,22 +55,15 @@ async function assertRouterSupportsDiscovery() {
 /** Starts a paid router discovery; the raw callback token never leaves this action. */
 export async function startProviderDiscovery(
   ctx: ActionCtx,
-  args: ProviderDiscoveryOverrides & {
-    requestId: string;
+  args: {
+    lines: string[];
+    states: string[];
+    industry?: string;
     userId: Id<"users">;
     matchLimit?: number;
     generator?: ClRouterDiscoveryGenerator;
   },
 ): Promise<StartedDiscovery> {
-  const requestId = await ctx.runQuery(
-    internal.providerDiscovery.normalizeRequestIdInternal,
-    { requestId: args.requestId },
-  );
-  if (!requestId)
-    throw new NoWriteInputError(
-      "invalid_identifier",
-      "Invalid procurement request ID",
-    );
   const matchLimit = args.matchLimit ?? DEFAULT_PROVIDER_DISCOVERY_MATCH_LIMIT;
   if (
     !Number.isInteger(matchLimit) ||
@@ -86,19 +78,17 @@ export async function startProviderDiscovery(
   const token = newClientWebMonitorToken();
   const pending = await ctx
     .runMutation(internal.providerDiscovery.beginInternal, {
-      requestId,
       userId: args.userId,
       tokenHash: await routerJobTokenHash(token),
       matchLimit,
-      ...(args.lines ? { lines: args.lines } : {}),
-      ...(args.states ? { states: args.states } : {}),
+      lines: args.lines,
+      states: args.states,
       ...(args.industry ? { industry: args.industry } : {}),
     })
     .catch(rethrowNoWriteInput);
   let routerDiscoveryId: string | undefined;
   try {
     const created = await clRouterCreateDiscovery({
-      ...(pending.orgId ? { orgId: pending.orgId } : {}),
       input: providerDiscoveryInput(pending.criteria, {
         matchLimit,
         generator: args.generator ?? "core",
@@ -165,7 +155,9 @@ async function forOperatorUi<T>(work: Promise<T>) {
 
 export const start = action({
   args: {
-    requestId: v.id("procurementRequests"),
+    lines: v.array(v.string()),
+    states: v.array(v.string()),
+    industry: v.optional(v.string()),
     matchLimit: v.optional(v.number()),
   },
   handler: async (
@@ -179,7 +171,7 @@ export const start = action({
     if (!userId) throwUserFacingError(userFacingErrorCodes.authRequired);
     await ctx.runQuery(
       internal.providerDiscovery.authorizeOperatorStartInternal,
-      { userId, requestId: args.requestId },
+      { userId },
     );
     const { discoveryId, status } = await forOperatorUi(
       startProviderDiscovery(ctx, { ...args, userId }),

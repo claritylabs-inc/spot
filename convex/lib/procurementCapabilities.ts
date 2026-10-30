@@ -109,9 +109,10 @@ export const PROCUREMENT_CAPABILITIES = [
   },
   {
     id: "provider.market_discovery",
-    browserSurface: "Find markets: start discovery, candidate list, Add to network/Dismiss",
+    browserSurface: "Insurance providers → Find markets tab",
     agentTools: [
       "discover_providers",
+      "list_provider_discoveries",
       "list_provider_candidates",
       "review_provider_candidates",
     ],

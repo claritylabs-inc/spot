@@ -155,14 +155,13 @@ export const runInternal = internalAction({
     }
 
     if (args.toolName === "discover_providers") {
-      const { procurementRequestId, ...input } =
+      const input =
         OPERATOR_AGENT_TOOL_REGISTRY.discover_providers.inputSchema.parse(
           args.input,
         );
       return {
         result: await startProviderDiscovery(ctx, {
           ...input,
-          requestId: procurementRequestId,
           userId: args.operatorUserId,
         }),
       };
