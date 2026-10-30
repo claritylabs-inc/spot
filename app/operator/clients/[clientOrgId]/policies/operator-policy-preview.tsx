@@ -64,7 +64,6 @@ export function OperatorPolicyPreview({
               type="button"
               size="compact"
               variant="secondary"
-              className="w-full sm:w-auto"
               onClick={() =>
                 openWithUrl(
                   activeActions.fileUrl!,
@@ -80,10 +79,9 @@ export function OperatorPolicyPreview({
           <PillButton
             href={`/operator/clients/${clientOrgId}/policies/${policyId}`}
             size="compact"
-            className="w-full sm:w-auto"
           >
             <PanelRightOpen className="size-3.5" />
-            Open full workspace
+            Open policy
           </PillButton>
         </>
       }

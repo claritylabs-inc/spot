@@ -99,13 +99,6 @@ export function BetaFeaturesSection() {
         footer={
           <>
             <PillButton
-              variant="secondary"
-              onClick={() => setShowResetDialog(false)}
-              disabled={resetting}
-            >
-              Cancel
-            </PillButton>
-            <PillButton
               variant="destructive"
               onClick={handleReset}
               disabled={resetting || restarting}

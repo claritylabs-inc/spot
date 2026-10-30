@@ -43,7 +43,8 @@ import {
 } from "@claritylabs-inc/ui/components/select";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { StatusTag, type StatusIndicatorKind, type StatusPresentation, type StatusTagTone } from "@claritylabs-inc/ui/components/status-tag";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { Tabs, TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { DrawerTabs, DrawerTabsList } from "@/components/ui/folder-tabs";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/date-format";
 import { getPublicAgentDomain } from "@/lib/domains";
 import { openOAuthTab } from "@/lib/oauth-tab";
@@ -1225,20 +1226,8 @@ export function AgentChannelsSection({
         busy={busy === "settings"}
         onSave={(nextSettings) => void save(nextSettings)}
       />
-      <Tabs
-        value={compactSlackTab}
-        onValueChange={(value) => setCompactSlackTab(String(value))}
-        className="gap-5"
-      >
-        <TabsList variant="pill">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="channels" disabled={!slackReady}>
-            Channels
-          </TabsTrigger>
-          <TabsTrigger value="automations" disabled={!slackReady}>
-            Automations
-          </TabsTrigger>
-        </TabsList>
+      {/* Views switch from the drawer's header tabs (`compactSlackTabs`). */}
+      <Tabs value={compactSlackTab} className="gap-5">
 
         <TabsContent value="overview" className="space-y-5">
           <FormSection
@@ -1699,6 +1688,23 @@ export function AgentChannelsSection({
       </>
     ) : null;
 
+  const compactSlackTabs = settings ? (
+    <DrawerTabs
+      value={compactSlackTab}
+      onValueChange={(value) => setCompactSlackTab(String(value))}
+    >
+      <DrawerTabsList aria-label="Slack">
+        <TabsTrigger value="overview">Overview</TabsTrigger>
+        <TabsTrigger value="channels" disabled={!slackReady}>
+          Channels
+        </TabsTrigger>
+        <TabsTrigger value="automations" disabled={!slackReady}>
+          Automations
+        </TabsTrigger>
+      </DrawerTabsList>
+    </DrawerTabs>
+  ) : null;
+
   const showWizard = isOperator && setupInProgress;
   const slackContent = showWizard
     ? setupContent
@@ -1723,6 +1729,10 @@ export function AgentChannelsSection({
           ? null
           : compactFooter
       : null;
+  const drawerTabs =
+    activeDrawer === "slack" && !showWizard && !clientSetupPending
+      ? compactSlackTabs
+      : null;
   const drawerContent =
     activeDrawer === "email"
       ? emailContent
@@ -1742,6 +1752,7 @@ export function AgentChannelsSection({
           if (!open) setActiveDrawer(null);
         }}
         title={drawerTitle}
+        tabs={drawerTabs}
         footer={drawerFooter}
       >
         {drawerContent}

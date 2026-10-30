@@ -267,7 +267,6 @@ function ProcurementRequestPreview({
   onClose: () => void;
   readOnly: boolean;
 }) {
-  const router = useRouter();
   const details = useQuery(api.procurementRequests.get, {
     requestId: request._id,
   });
@@ -325,41 +324,25 @@ function ProcurementRequestPreview({
       }}
       title={currentRequest.title}
       footer={
-        <div className="flex w-full flex-wrap items-center justify-end gap-2">
+        <>
           {!readOnly ? (
-            <>
-              <PillButton
-                variant="secondary"
-                disabled={!details}
-                onClick={() => {
-                  onClose();
-                  router.push(`${basePath}/${request._id}`);
-                }}
-              >
-                Open request
-              </PillButton>
-              <PillButton
-                variant="secondary"
-                disabled={links === undefined}
-                onClick={() => setView("links")}
-              >
-                {links === undefined
-                  ? "Loading provider link…"
-                  : hasBrokerLink
-                    ? "View provider link"
-                    : "Create provider link"}
-              </PillButton>
-            </>
+            <PillButton
+              variant="secondary"
+              disabled={links === undefined}
+              onClick={() => setView("links")}
+            >
+              {links === undefined
+                ? "Loading provider link…"
+                : hasBrokerLink
+                  ? "View provider link"
+                  : "Create provider link"}
+            </PillButton>
           ) : null}
-          <PillButton
-            href={`${basePath}/${currentRequest._id}`}
-            size="compact"
-            className="w-full sm:w-auto"
-          >
+          <PillButton href={`${basePath}/${currentRequest._id}`}>
             <PanelRightOpen className="size-3.5" />
-            Open full workspace
+            Open request
           </PillButton>
-        </div>
+        </>
       }
     >
       <div className="space-y-5">
@@ -555,7 +538,7 @@ function NewProcurementRequestDrawer({
               onClose();
             }}
           >
-            Cancel
+            Discard
           </PillButton>
           <PillButton type="button" onClick={create} disabled={saving}>
             {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}

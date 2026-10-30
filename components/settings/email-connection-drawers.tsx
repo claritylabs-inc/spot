@@ -230,13 +230,6 @@ export function AddMailboxDrawer({
       title="Add mailbox"
       footer={
         <>
-          <PillButton
-            variant="secondary"
-            disabled={connecting}
-            onClick={() => onOpenChange(false)}
-          >
-            Cancel
-          </PillButton>
           <PillButton type="submit" form={formId} disabled={!canConnect}>
             {connecting ? (
               <Loader2 className="size-3.5 animate-spin" />

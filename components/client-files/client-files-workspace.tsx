@@ -59,6 +59,7 @@ import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { formatDisplayDate } from "@/lib/date-format";
 import { inferAttachmentContentType } from "@/lib/thread-prompt";
 import { typeStyle } from "@/lib/typography";
+import { ImageFileDrawer } from "@/components/client-files/image-file-drawer";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const NO_POLICY = "__none__";
@@ -211,45 +212,6 @@ function PolicySelect({
         ))}
       </SelectContent>
     </Select>
-  );
-}
-
-function ClientFileImagePanel({
-  file,
-  onClose,
-}: {
-  file: ClientFileRow;
-  onClose: () => void;
-}) {
-  return (
-    <SettingsDrawer
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      title={file.name}
-      footer={
-        file.url ? (
-          <FileDownloadButton href={file.url} fileName={file.name} />
-        ) : null
-      }
-    >
-      {file.url ? (
-        <div className="relative flex min-h-80 items-center justify-center overflow-hidden rounded-lg border border-border bg-foreground/[0.02]">
-          {/* Convex storage URLs are dynamic and intentionally bypass Next image optimization. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={file.url}
-            alt={file.name}
-            className="h-auto max-h-[calc(100vh-11rem)] w-auto max-w-full object-contain"
-          />
-        </div>
-      ) : (
-        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-          This image is no longer available.
-        </p>
-      )}
-    </SettingsDrawer>
   );
 }
 
@@ -830,7 +792,7 @@ export function ClientFilesWorkspace({
       );
     } else if (panelFile && panelKind === "image") {
       node = (
-        <ClientFileImagePanel file={panelFile} onClose={closeRightPanel} />
+        <ImageFileDrawer file={panelFile} onClose={closeRightPanel} />
       );
     } else if (panelFile && panelKind === "edit") {
       node = (

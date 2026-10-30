@@ -262,7 +262,7 @@ function McpServerEditor({
       }}
       title={server ? server.name : "Add MCP server"}
       footer={
-        <div className="flex flex-wrap gap-2">
+        <>
           {discard ? (
             <>
               <PillButton onClick={() => setDiscard(false)}>
@@ -274,26 +274,6 @@ function McpServerEditor({
             </>
           ) : (
             <>
-              <PillButton
-                disabled={disabled || busy || !name.trim() || !url.trim()}
-                onClick={() => void persist()}
-              >
-                {busy
-                  ? "Connecting…"
-                  : needsOAuth
-                    ? "Save and connect"
-                    : enabled
-                      ? "Save and refresh tools"
-                      : "Save"}
-              </PillButton>
-              {server?.authType === "oauth" ? (
-                <PillButton
-                  disabled={disabled || busy || dirty}
-                  onClick={() => void reconnect()}
-                >
-                  {server.hasOAuth ? "Reconnect OAuth" : "Connect OAuth"}
-                </PillButton>
-              ) : null}
               {server ? (
                 <PillButton
                   variant="destructive"
@@ -323,9 +303,29 @@ function McpServerEditor({
                   {confirmRemove ? "Confirm remove" : "Remove server"}
                 </PillButton>
               ) : null}
+              {server?.authType === "oauth" ? (
+                <PillButton
+                  disabled={disabled || busy || dirty}
+                  onClick={() => void reconnect()}
+                >
+                  {server.hasOAuth ? "Reconnect OAuth" : "Connect OAuth"}
+                </PillButton>
+              ) : null}
+              <PillButton
+                disabled={disabled || busy || !name.trim() || !url.trim()}
+                onClick={() => void persist()}
+              >
+                {busy
+                  ? "Connecting…"
+                  : needsOAuth
+                    ? "Save and connect"
+                    : enabled
+                      ? "Save and refresh tools"
+                      : "Save"}
+              </PillButton>
             </>
           )}
-        </div>
+        </>
       }
     >
       <div className="space-y-5">
