@@ -5710,6 +5710,7 @@ export default defineSchema({
       v.literal("browse"),
       v.literal("exec"),
       v.literal("research"),
+      v.literal("research_batch"),
     ),
     fingerprint: v.string(),
     status: v.union(

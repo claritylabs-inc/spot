@@ -591,6 +591,35 @@ export type ClRouterResearchResponse = {
   warnings?: string[];
 };
 
+export type ClRouterResearchBatchRequest = {
+  tenantId?: string;
+  orgId?: string;
+  input: Omit<ClRouterResearchRequest["input"], "entity"> & {
+    entities: Array<{
+      key: string;
+      name: string;
+      website?: string;
+      location?: string;
+    }>;
+  };
+  config?: ClRouterResearchRequest["config"];
+  executionBudgetMs?: number;
+};
+
+export type ClRouterResearchBatchResult = {
+  status: "completed" | "failed";
+  providerRunId?: string;
+  answers?: Record<string, ClRouterResearchAnswer>;
+};
+
+export type ClRouterResearchBatchResponse = {
+  provider: "parallel" | "exa";
+  attempts: Array<{ provider: string; ok: boolean; error?: string }>;
+  groupId?: string;
+  results: Record<string, ClRouterResearchBatchResult>;
+  warnings?: string[];
+};
+
 export type ClRouterErrorKind =
   | "configuration"
   | "connection"
@@ -712,7 +741,8 @@ export type ClRouterClientOptions = {
       | "retrieve"
       | "transcribe"
       | "browse"
-      | "research",
+      | "research"
+      | "research_batch",
     payload: unknown,
     abortSignal?: AbortSignal,
   ) => Promise<unknown>;
@@ -1046,7 +1076,10 @@ async function postJson(
 ): Promise<unknown> {
   validateRouterAssets(body, options.environment ?? process.env);
   const serialized = serializeRouterRequest(body);
-  const operation = path.replace(/^\/v1\//, "").split("/")[0];
+  const operation =
+    path === "/v1/research/batch"
+      ? "research_batch"
+      : path.replace(/^\/v1\//, "").split("/")[0];
   if (
     options.executeJob &&
     [
@@ -1057,6 +1090,7 @@ async function postJson(
       "transcribe",
       "browse",
       "research",
+      "research_batch",
     ].includes(operation)
   ) {
     return options.executeJob(
@@ -1067,7 +1101,8 @@ async function postJson(
         | "retrieve"
         | "transcribe"
         | "browse"
-        | "research",
+        | "research"
+        | "research_batch",
       body,
       options.abortSignal,
     );
@@ -2106,6 +2141,75 @@ export async function clRouterResearch(
     );
   }
   return payload as ClRouterResearchResponse;
+}
+
+const RESEARCH_BATCH_BODY_KEYS = [
+  "orgId",
+  "input",
+  "config",
+  "executionBudgetMs",
+] as const satisfies readonly (keyof ClRouterResearchBatchRequest)[];
+
+function isResearchBatchResult(
+  value: unknown,
+  fields: ClRouterResearchBatchRequest["input"]["fields"],
+): value is ClRouterResearchBatchResult {
+  return (
+    isRecord(value) &&
+    (value.status === "completed" || value.status === "failed") &&
+    (value.providerRunId === undefined ||
+      typeof value.providerRunId === "string") &&
+    (value.answers === undefined ||
+      (isRecord(value.answers) &&
+        fields.every(
+          (field) =>
+            isRecord(value.answers) &&
+            isResearchAnswer(value.answers[field.key]),
+        )))
+  );
+}
+
+/** Structured public research about up to 50 entities, one result per entity key. */
+export async function clRouterResearchBatch(
+  request: ClRouterResearchBatchRequest,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterResearchBatchResponse> {
+  const payload = await postJson(
+    "/v1/research/batch",
+    requestBody(request, RESEARCH_BATCH_BODY_KEYS),
+    options,
+  );
+  if (
+    !isRecord(payload) ||
+    (payload.provider !== "parallel" && payload.provider !== "exa") ||
+    !Array.isArray(payload.attempts) ||
+    !payload.attempts.every(
+      (attempt) =>
+        isRecord(attempt) &&
+        isNonEmptyString(attempt.provider) &&
+        typeof attempt.ok === "boolean" &&
+        (attempt.error === undefined || typeof attempt.error === "string"),
+    ) ||
+    (payload.groupId !== undefined && typeof payload.groupId !== "string") ||
+    !isRecord(payload.results) ||
+    !request.input.entities.every(
+      (entity) =>
+        isRecord(payload.results) &&
+        isResearchBatchResult(
+          payload.results[entity.key],
+          request.input.fields,
+        ),
+    ) ||
+    (payload.warnings !== undefined &&
+      (!Array.isArray(payload.warnings) ||
+        !payload.warnings.every((warning) => typeof warning === "string")))
+  ) {
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router research batch response is invalid",
+    );
+  }
+  return payload as ClRouterResearchBatchResponse;
 }
 
 export async function clRouterEmbed(
