@@ -31,6 +31,11 @@ import {
 } from "@/components/ui/list-toolbar";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { AppShellPortal } from "@/components/app-shell-slots";
+import {
+  OperatorPageContextRegistration,
+  operatorContextList,
+  operatorContextSummary,
+} from "@/components/operator-agent/operator-page-context";
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
@@ -809,8 +814,35 @@ export function TeamInbox({
     );
   }
 
+  const clientName = clients?.find((client) => client._id === clientOrgId)?.name;
+  const ownerName = operators?.find((person) => person.userId === filter)?.name;
+  const pageSummary = operatorContextSummary(
+    `Shared team inbox, ${MAILBOX_TABS.find((tab) => tab.value === mailbox)?.label ?? mailbox} mailbox`,
+    filter === "unlinked"
+      ? "unlinked conversations only"
+      : filter !== "all" && `owned by ${ownerName ?? "operator"} (${filter})`,
+    clientOrgId && `client ${clientName ?? "organization"} (${clientOrgId})`,
+    category !== ALL_CATEGORIES &&
+      `category ${CATEGORY_LABELS[category as Category] ?? category}`,
+    term && `searching loaded conversations for "${term.slice(0, 100)}"`,
+    status !== "LoadingFirstPage" &&
+      `${visible.length} conversation${visible.length === 1 ? "" : "s"} shown${canLoadMore ? ", more older mail" : ""}`,
+    checkedVisible.length > 0 &&
+      `checked ${operatorContextList(
+        checkedVisible.map(
+          (thread) => `"${thread.subject.slice(0, 60)}" (${thread._id})`,
+        ),
+        3,
+      )}`,
+  );
+
   return (
     <section className="@container space-y-3">
+      {scope.kind === "team" ? (
+        <OperatorPageContextRegistration
+          context={{ pageType: "operator_inbox", summary: pageSummary }}
+        />
+      ) : null}
       {scope.kind === "team" ? (
         <AppShellPortal slot="actions">
           <div className="flex items-center gap-2">

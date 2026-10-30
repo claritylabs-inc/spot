@@ -6,6 +6,10 @@ import { Check, Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import { AppShell } from "@/components/app-shell";
+import {
+  OperatorPageContextRegistration,
+  operatorContextSummary,
+} from "@/components/operator-agent/operator-page-context";
 import { Input } from "@claritylabs-inc/ui/components/input";
 import { PillButton } from "@/components/ui/pill-button";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
@@ -87,6 +91,11 @@ function ChannelDetail({
 }
 
 const CHANNEL_TABS = ["slack", "google-workspace", "mcp"] as const;
+const CHANNEL_TAB_LABELS: Record<(typeof CHANNEL_TABS)[number], string> = {
+  slack: "Slack",
+  "google-workspace": "Google Workspace",
+  mcp: "MCP",
+};
 
 function OperatorChannelTabs({
   children,
@@ -410,6 +419,22 @@ function OperatorChannelsContent({
     }
   }
 
+  const [activeTab] = useTabParam(CHANNEL_TABS);
+  const pageSummary = operatorContextSummary(
+    "Agent channels",
+    `${CHANNEL_TAB_LABELS[activeTab]} tab`,
+    activeTab === "slack" &&
+      hostStatus &&
+      (mockMode || hostInstallation
+        ? `Slack workspace ${workspaceName ?? workspaceTeamId} connected`
+        : "Slack workspace not connected"),
+    activeTab === "slack" &&
+      (savedIdentity.slackUserId
+        ? `your Slack member ID ${savedIdentity.slackUserId}${currentIdentityWorkspaceMismatch ? " (other workspace)" : ""}`
+        : "your Slack identity is not linked"),
+    googleSettingsDrawerOpen && "Google Workspace settings drawer open",
+  );
+
   const rightPanel = googleSettingsDrawerOpen ? (
     <OperatorGoogleWorkspaceSettingsDrawer
       open
@@ -419,6 +444,9 @@ function OperatorChannelsContent({
 
   return (
     <AppShell rightPanel={rightPanel}>
+      <OperatorPageContextRegistration
+        context={{ pageType: "operator_channels", summary: pageSummary }}
+      />
       <main className="w-full">
         <OperatorChannelTabs
           onTabChange={() => {
