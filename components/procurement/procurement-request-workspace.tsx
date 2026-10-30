@@ -1917,7 +1917,7 @@ export function ProcurementRequestWorkspace({
       `${basePath}/${requestId}?view=${nextView}${threadId ? `&thread=${threadId}` : ""}${informationFormId ? `&form=${encodeURIComponent(informationFormId)}` : ""}`,
     );
   };
-  const { openWithUrl, closePdf } = usePdf();
+  const { openWithUrl } = usePdf();
 
   const details = result as RequestDetails | null | undefined;
   const policyOptions = useMemo(
@@ -1928,9 +1928,8 @@ export function ProcurementRequestWorkspace({
   const openNotes = useCallback(async () => {
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
       return;
-    closePdf();
     setPanel({ kind: "notes" });
-  }, [closePdf, setPanel]);
+  }, [setPanel]);
 
   const openPacketLink = useCallback(async () => {
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
@@ -1940,9 +1939,8 @@ export function ProcurementRequestWorkspace({
       !(await submissionNotesRef.current.save())
     )
       return;
-    closePdf();
     setPanel({ kind: "packet-link" });
-  }, [closePdf, setPanel]);
+  }, [setPanel]);
 
   const openOutreachEditor = useCallback(
     (outreach?: Outreach, proposalId?: Id<"procurementProposals">) => {
@@ -1998,19 +1996,17 @@ export function ProcurementRequestWorkspace({
         ? "policy"
         : "supporting",
     ) => {
-      closePdf();
       setPanel({ kind: "upload", documentCategory });
     },
-    [closePdf, setPanel, applicationSection],
+    [setPanel, applicationSection],
   );
 
   const openFileEditor = useCallback(
     (fileItem: ProcurementFileItem) => {
       if (!details) return;
-      closePdf();
       setPanel({ kind: "file", fileItemId: fileItem._id });
     },
-    [closePdf, details, setPanel],
+    [details, setPanel],
   );
 
   const emailDrawerRef = useRef<ProcurementEmailDrawerHandle>(null);
@@ -2036,7 +2032,6 @@ export function ProcurementRequestWorkspace({
       try {
         if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
           return;
-        closePdf();
         onRightPanel(
           <ReaderBoundary resetKey={thread._id} onClose={onClose}>
             <ProcurementEmailDrawer
@@ -2056,7 +2051,7 @@ export function ProcurementRequestWorkspace({
         openingEmailId.current = null;
       }
     },
-    [closePdf, closeEmail, onRightPanel, readOnly, requestId],
+    [closeEmail, onRightPanel, readOnly, requestId],
   );
 
   // The reader opens from the URL on its own, so a saved link works whether or
@@ -2095,7 +2090,6 @@ export function ProcurementRequestWorkspace({
     ) => {
       if (emailDrawerRef.current && !(await emailDrawerRef.current.save()))
         return;
-      closePdf();
       // The prefilled draft stays with the leader; followers only see which form is open.
       composerDraft.current = {
         text: initialText,
@@ -2107,7 +2101,7 @@ export function ProcurementRequestWorkspace({
       );
       setPanel({ kind: "composer", audience: "client", informationFormId });
     },
-    [basePath, closePdf, requestId, router, setPanel],
+    [basePath, requestId, router, setPanel],
   );
 
   useEffect(() => {
@@ -2250,7 +2244,6 @@ export function ProcurementRequestWorkspace({
                 file.contentType === "application/pdf" ||
                 /\.pdf$/i.test(file.name)
               ) {
-                onRightPanel(null);
                 openWithUrl(file.url, undefined, undefined, {
                   kind: "clientFile",
                   clientFileId: file._id,
@@ -2353,10 +2346,9 @@ export function ProcurementRequestWorkspace({
 
   const openInformationDrawer = useCallback(
     (target: InformationDrawerTarget) => {
-      closePdf();
       setPanel({ kind: "information", target });
     },
-    [closePdf, setPanel],
+    [setPanel],
   );
 
   const askClientForInformation = useCallback(

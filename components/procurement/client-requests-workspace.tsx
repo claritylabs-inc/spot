@@ -330,10 +330,7 @@ export function ClientRequestDetail({
                 selectedFile.name.toLowerCase().endsWith(".pdf") ? (
                   <PillButton
                     variant="secondary"
-                    onClick={() => {
-                      setSelectedFileId(null);
-                      openWithUrl(selectedFile.url!);
-                    }}
+                    onClick={() => openWithUrl(selectedFile.url!)}
                   >
                     Preview
                   </PillButton>

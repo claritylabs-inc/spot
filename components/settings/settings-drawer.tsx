@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Dialog } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
+import { useShellPanel } from "@/components/shell-panels";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
 
@@ -37,6 +38,19 @@ export function SettingsDrawer({
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const hasFooter = Boolean(footer);
+
+  // Opening the drawer, or showing another record in it, scrolls its panel
+  // into view; the shell can close it the way the close button does.
+  const panel = useShellPanel();
+  const record = typeof title === "string" ? title : null;
+  useEffect(() => {
+    if (open) panel?.focus();
+  }, [open, panel, record]);
+  useEffect(() => {
+    if (!panel || !open) return;
+    panel.setOnClose(() => onOpenChange(false));
+    return () => panel.setOnClose(undefined);
+  }, [onOpenChange, open, panel]);
 
   useEffect(() => {
     if (!open || !footerElement) return;
@@ -97,9 +111,8 @@ export function SettingsDrawer({
                     transition={{ duration: 0.08, ease: EASE }}
                   />
                 }
-                // Full screen on phones, a drawer over the page on tablets, a
-                // column beside it on desktop.
-                className="max-lg:fixed! max-lg:inset-0! max-lg:z-50! md:max-lg:left-auto! md:max-lg:w-[min(36rem,88%)]! md:max-lg:shadow-[-16px_0_40px_-24px_rgba(0,0,0,0.35)] flex h-full w-full shrink-0 overflow-hidden outline-none"
+                // The shell places the panel: a column, or full screen on phones.
+                className="flex h-full w-full shrink-0 overflow-hidden outline-none"
               >
                 <motion.div
                   initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: 8 }}

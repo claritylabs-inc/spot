@@ -731,7 +731,7 @@ export function ClientFilesWorkspace({
     orgId: clientOrgId,
     documentType: "policy",
   });
-  const { openWithUrl, closePdf } = usePdf();
+  const { openWithUrl } = usePdf();
   const policies = useMemo(
     () => (policyRows ?? []) as ClientFilePolicyOption[],
     [policyRows],
@@ -747,12 +747,11 @@ export function ClientFilesWorkspace({
 
   const closeRightPanel = useCallback(() => setPanel(null), [setPanel]);
   const openUpload = useCallback(() => {
-    closePdf();
     setPanel({
       kind: "upload",
       ...(view === "shared" ? { clientVisible: true } : {}),
     });
-  }, [closePdf, setPanel, view]);
+  }, [setPanel, view]);
   const changeStatus = useCallback(
     (next: ClientFilesStatus) => {
       setStatus(next);
@@ -774,7 +773,6 @@ export function ClientFilesWorkspace({
     (file: ClientFileRow) => {
       if (!file.url) return;
       if (isPdf(file)) {
-        setPanel(null);
         openWithUrl(file.url, undefined, undefined, {
           kind: "clientFile",
           clientFileId: file._id,
@@ -783,19 +781,17 @@ export function ClientFilesWorkspace({
         return;
       }
       if (isImage(file)) {
-        closePdf();
         setPanel({ kind: "image", fileId: file._id });
       }
     },
-    [closePdf, openWithUrl, setPanel],
+    [openWithUrl, setPanel],
   );
 
   const edit = useCallback(
     (file: ClientFileRow) => {
-      closePdf();
       setPanel({ kind: "edit", fileId: file._id });
     },
-    [closePdf, setPanel],
+    [setPanel],
   );
 
   const panelFile = useMemo(() => {

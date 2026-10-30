@@ -7,7 +7,6 @@ import {
   Suspense,
   createContext,
   isValidElement,
-  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -31,7 +30,6 @@ import {
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarVariantTransition } from "@/components/app-sidebar/sidebar-variant-transition";
 import { useSidebarPreference } from "@/components/app-sidebar/use-sidebar-preference";
-import { AppShellPanelLayout } from "@/components/app-shell-panel-layout";
 import {
   AppShellPortal,
   AppShellSlotsProvider,
@@ -49,6 +47,12 @@ import { OperatorSidebar } from "@/app/operator/operator-sidebar";
 import { OperatorSettingsSidebar } from "@/app/operator/settings/operator-settings-sidebar";
 import { OperatorClientShellSidebar } from "@/app/operator/clients/[clientOrgId]/operator-client-sidebar";
 import { PdfProvider, usePdf } from "@/components/pdf-context";
+import {
+  ShellPanel,
+  ShellPanelsLayout,
+  ShellPanelsProvider,
+  useShellPanels,
+} from "@/components/shell-panels";
 import { PageContextProvider } from "@/hooks/use-page-context";
 import {
   EntityPreviewProvider,
@@ -177,23 +181,6 @@ function OperatorShellSidebar({
   );
 }
 
-/** Holds `host` in place; moving it between outlets keeps its React content mounted. */
-function PanelHostOutlet({
-  host,
-  className,
-}: {
-  host: HTMLElement | null;
-  className?: string;
-}) {
-  const attach = useCallback(
-    (element: HTMLDivElement | null) => {
-      if (element && host) element.appendChild(host);
-    },
-    [host],
-  );
-  return <div ref={attach} className={className} />;
-}
-
 const SidebarRenderContext = createContext<SidebarRenderProps | null>(null);
 const RightPanelWideContext = createContext<
   ((wide: boolean) => void) | null
@@ -222,8 +209,9 @@ function ShellFrame({
           "operator-sidebar")
       : "sidebar-collapsed",
   );
-  const { isPdfOpen, fileUrl } = usePdf();
-  const { preview: entityPreview } = useEntityPreview();
+  const { isPdfOpen, fileUrl, closePdf } = usePdf();
+  const { preview: entityPreview, closePreview } = useEntityPreview();
+  const shellPanels = useShellPanels();
   const { filled: hasActions, setTarget: setActionsTarget } =
     useAppShellSlot("actions");
   const { filled: hasBreadcrumbDetail, setTarget: setBreadcrumbTarget } =
@@ -248,26 +236,6 @@ function ShellFrame({
   const viewer = useCachedQuery("users.viewer", api.users.viewer, {});
   const [rightPanelWide, setRightPanelWide] = useState(false);
   const hasPdfPanel = isPdfOpen && !!fileUrl;
-  const hasEntityPanel = !!entityPreview;
-  const hasRightPanel = hasPageRightPanel;
-  // Too narrow for the list, detail and PDF side by side: the PDF keeps its
-  // column and the detail panel floats over the page.
-  const appIsWide = useAppMinWidth(1536);
-  const rightPanelOverlay =
-    hasRightPanel && hasPdfPanel && appIsDesktop && !appIsWide;
-  // The right panel renders into one node that moves between its column and
-  // the overlay, so switching keeps its state.
-  const [rightPanelHost] = useState(() => {
-    if (typeof document === "undefined") return null;
-    const host = document.createElement("div");
-    host.className = "flex h-full min-h-0 w-full min-w-0";
-    return host;
-  });
-  useLayoutEffect(() => {
-    if (!rightPanelHost) return;
-    setRightPanelTarget(rightPanelHost);
-    return () => setRightPanelTarget(null);
-  }, [rightPanelHost, setRightPanelTarget]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMobileOpen(false));
@@ -283,7 +251,8 @@ function ShellFrame({
   );
 
   const panelLayout = (
-    <AppShellPanelLayout
+    <ShellPanelsLayout
+      storageUserId={scope.userId}
       main={
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <AppTopBar
@@ -325,40 +294,47 @@ function ShellFrame({
               </main>
             </div>
           </div>
-          {rightPanelOverlay ? (
-            <PanelHostOutlet
-              host={rightPanelHost}
-              className="absolute inset-y-0 right-0 z-30 flex w-[min(40rem,100%)] shadow-[-16px_0_40px_-24px_rgba(0,0,0,0.35)]"
-            />
-          ) : null}
         </div>
       }
-      entityPanel={hasEntityPanel ? <EntityPreviewPanel /> : undefined}
-      rightPanel={
-        hasRightPanel && !rightPanelOverlay ? (
-          // Safari can scroll the resizable panel when a nested popup receives
-          // focus. Clip at its positioned wrapper without creating a scrollport.
-          // Below lg the panel is a drawer over the page, so it takes no width.
-          <div className="relative flex h-full min-h-0 w-full min-w-0 max-lg:w-0 max-lg:flex-none lg:overflow-clip">
-            <PanelHostOutlet
-              host={rightPanelHost}
-              className="flex h-full min-h-0 w-full min-w-0"
-            />
-          </div>
-        ) : undefined
-      }
-      previewPanel={
-        hasPreviewPanel ? (
+    />
+  );
+
+  // Today's single-instance panels; pages that show several drawers render
+  // their own `ShellPanel`s.
+  const sidePanels = (
+    <>
+      {hasPageRightPanel ? (
+        <ShellPanel id="detail" kind="detail" wide={rightPanelWide}>
+          <div
+            ref={setRightPanelTarget}
+            className="flex h-full min-h-0 w-full min-w-0"
+          />
+        </ShellPanel>
+      ) : null}
+      {hasPreviewPanel ? (
+        <ShellPanel id="preview" kind="preview">
           <div
             ref={setPreviewPanelTarget}
-            className="flex h-full min-h-0 w-full min-w-0 overflow-clip"
+            className="flex h-full min-h-0 w-full min-w-0"
           />
-        ) : undefined
-      }
-      pdfPanel={hasPdfPanel ? <PdfPanel /> : undefined}
-      rightPanelWide={rightPanelWide}
-      storageUserId={scope.userId}
-    />
+        </ShellPanel>
+      ) : null}
+      {entityPreview ? (
+        <ShellPanel
+          id="entity"
+          kind="entity"
+          focusKey={entityPreview.id}
+          onClose={closePreview}
+        >
+          <EntityPreviewPanel />
+        </ShellPanel>
+      ) : null}
+      {hasPdfPanel ? (
+        <ShellPanel id="pdf" kind="pdf" focusKey={fileUrl} onClose={closePdf}>
+          <PdfPanel />
+        </ShellPanel>
+      ) : null}
+    </>
   );
 
   const app = (
@@ -454,6 +430,7 @@ function ShellFrame({
         )}
       </div>
       <OperatorImpersonationBanner />
+      {sidePanels}
     </div>
   );
 
@@ -471,7 +448,7 @@ function ShellFrame({
       artifactPanelRef={agentEnabled ? setArtifactPanelTarget : undefined}
       artifactPlacement={isDesktop ? "side" : "overlay"}
       artifactOpen={hasArtifactPanel}
-      detailPanelOpen={hasRightPanel || hasEntityPanel || hasPdfPanel || hasPreviewPanel}
+      detailPanelOpen={(shellPanels?.panels.length ?? 0) > 0}
     />
   );
 }
@@ -517,15 +494,17 @@ export function AppShellLayout({
         <PdfProvider resetKey={pathname}>
           <EntityPreviewProvider resetKey={pathname}>
             <AppShellSlotsProvider>
-              <AgentDockProvider surface={route.surface} userId={scope.userId}>
-                {loading || route.surface === "operator" ? (
-                  <ShellFrame route={route} agentEnabled={!loading}>
-                    {children}
-                  </ShellFrame>
-                ) : (
-                  <ClientAgentGate route={route}>{children}</ClientAgentGate>
-                )}
-              </AgentDockProvider>
+              <ShellPanelsProvider>
+                <AgentDockProvider surface={route.surface} userId={scope.userId}>
+                  {loading || route.surface === "operator" ? (
+                    <ShellFrame route={route} agentEnabled={!loading}>
+                      {children}
+                    </ShellFrame>
+                  ) : (
+                    <ClientAgentGate route={route}>{children}</ClientAgentGate>
+                  )}
+                </AgentDockProvider>
+              </ShellPanelsProvider>
             </AppShellSlotsProvider>
           </EntityPreviewProvider>
         </PdfProvider>

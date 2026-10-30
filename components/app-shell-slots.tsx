@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { ShellPanelScope } from "@/components/shell-panels";
 import { PillButtonIconOnlyProvider } from "@/components/ui/pill-button";
 
 export type AppShellSlotName =
@@ -120,6 +121,12 @@ export function useOptionalAppShellSlots() {
   return useContext(AppShellSlotsContext) !== null;
 }
 
+/** Slots the shell shows as side panels (see `ShellFrame`). */
+const SLOT_PANEL_IDS: Partial<Record<AppShellSlotName, string>> = {
+  rightPanel: "detail",
+  previewPanel: "preview",
+};
+
 /** Renders `children` into a shell slot; the latest mounted claim wins. */
 export function AppShellPortal({
   slot,
@@ -143,9 +150,11 @@ export function AppShellPortal({
   if (!active || !target || owners[slot].at(-1) !== token) return null;
   const iconOnly = slot === "actions";
   return createPortal(
-    <PillButtonIconOnlyProvider enabled={iconOnly}>
-      {children}
-    </PillButtonIconOnlyProvider>,
+    <ShellPanelScope id={SLOT_PANEL_IDS[slot] ?? null}>
+      <PillButtonIconOnlyProvider enabled={iconOnly}>
+        {children}
+      </PillButtonIconOnlyProvider>
+    </ShellPanelScope>,
     target,
   );
 }
