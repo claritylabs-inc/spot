@@ -261,7 +261,7 @@ export async function readProviderCandidates(
   };
 }
 
-async function reviewableCandidates(
+export async function reviewableCandidates(
   ctx: QueryCtx,
   items: { candidateId: string; action: "add" | "dismiss" }[],
 ) {
