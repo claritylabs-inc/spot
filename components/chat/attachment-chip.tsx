@@ -13,6 +13,7 @@ import { operatorAgentApi } from "@/lib/operator-agent-api";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
+import { AttachmentImagePreview, isImageAttachment } from "./attachment-image-preview";
 
 export type ChatAttachmentChipProps = {
   attachment: { filename: string; contentType?: string; fileId?: Id<"_storage"> };
@@ -73,6 +74,10 @@ export function ChatAttachmentChip({
   const isPdf =
     attachment.contentType?.toLowerCase().includes("pdf") ||
     attachment.filename.toLowerCase().endsWith(".pdf");
+  const isImage = isImageAttachment({
+    filename: attachment.filename,
+    contentType: attachment.contentType,
+  });
   const isCompact = size === "compact";
   const source =
     pdfSource ??
@@ -92,9 +97,12 @@ export function ChatAttachmentChip({
   const iconClass = cn("shrink-0 text-muted-foreground", isCompact ? "h-2.5 w-2.5" : "h-3 w-3");
 
   const shared = {
-    title: canOpen
-      ? attachment.filename
-      : (unavailableTitle ?? `${attachment.filename} is not available yet`),
+    title:
+      isImage && resolvedUrl
+        ? undefined
+        : canOpen
+          ? attachment.filename
+          : (unavailableTitle ?? `${attachment.filename} is not available yet`),
     style: { maxWidth: isCompact ? "11rem" : "13rem" },
     className: cn(
       `inline-flex min-w-0 items-center rounded-full transition-colors disabled:pointer-events-none disabled:opacity-50 ${typeStyle("body.medium")}`,
@@ -119,7 +127,7 @@ export function ChatAttachmentChip({
     ),
   };
 
-  const chip = handleOpen ? (
+  const baseChip = handleOpen ? (
     <button
       type="button"
       onClick={handleOpen}
@@ -136,6 +144,14 @@ export function ChatAttachmentChip({
       aria-label={resolvedUrl ? `Open ${attachment.filename}` : attachment.filename}
       {...shared}
     />
+  );
+
+  const chip = isImage ? (
+    <AttachmentImagePreview url={resolvedUrl} filename={attachment.filename}>
+      {baseChip}
+    </AttachmentImagePreview>
+  ) : (
+    baseChip
   );
 
   if (!action) return chip;

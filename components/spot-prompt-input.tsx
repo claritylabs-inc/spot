@@ -1,5 +1,6 @@
 "use client";
 
+import { AttachmentImagePreview, isImageAttachment } from "@/components/chat/attachment-image-preview";
 import { TagRemoveButton } from "@/components/ui/tag-remove-button";
 import { toast } from "sonner";
 
@@ -149,7 +150,8 @@ function AttachmentTags({
         roomyOnMobile ? "px-4 sm:px-3 pt-3 pb-0" : "px-3 pt-3 pb-0",
       )}
     >
-      {attachments.files.map((file) => (
+      {attachments.files.map((file) => {
+        const tag = (
         <span
           key={file.id}
           className={cn(
@@ -177,7 +179,7 @@ function AttachmentTags({
             ) : (
               <span
                 className="block max-w-45 truncate sm:max-w-60"
-                title={file.filename}
+                title={isImageAttachment(file) ? undefined : file.filename}
               >
                 {file.filename}
               </span>
@@ -195,7 +197,15 @@ function AttachmentTags({
             onClick={() => attachments.remove(file.id)}
           />
         </span>
-      ))}
+        );
+        return isImageAttachment(file) ? (
+          <AttachmentImagePreview key={file.id} url={file.url} filename={file.filename ?? "image"}>
+            {tag}
+          </AttachmentImagePreview>
+        ) : (
+          tag
+        );
+      })}
     </div>
   );
 }
