@@ -10,13 +10,18 @@ export function OperatorPageContextRegistration({
   context: PageContext;
 }) {
   const { setPageContext } = usePageContext();
+  // Keyed by value so a freshly built array does not re-register.
+  const related = context.related?.length
+    ? JSON.stringify(context.related)
+    : undefined;
   const stableContext = useMemo(
     () => ({
       pageType: context.pageType,
       entityId: context.entityId,
       summary: context.summary,
+      ...(related ? { related: JSON.parse(related) } : {}),
     }),
-    [context.entityId, context.pageType, context.summary],
+    [context.entityId, context.pageType, context.summary, related],
   );
 
   useEffect(() => {

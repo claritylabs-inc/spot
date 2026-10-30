@@ -82,9 +82,16 @@ export default function OperatorClientPoliciesPage() {
           pageType: "policy",
           entityId: previewPolicyId,
           summary: pageContextSummary([
-            `Policy preview on ${clientName}'s policies tab (client org ${clientOrgId})`,
+            `Policy preview on ${clientName}'s policies tab`,
             previewedPolicy && policyContextLabel(previewedPolicy),
           ]),
+          related: [
+            {
+              kind: "organization",
+              id: clientOrgId,
+              ...(client ? { label: client.dba ?? client.name } : {}),
+            },
+          ],
         }
       : null,
   );

@@ -21,6 +21,7 @@ import {
   OperationalPanelHeader,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
+import type { PageContext } from "@/hooks/use-page-context";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
   useCachedOperatorClients,
@@ -28,19 +29,37 @@ import {
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 
-function filesPageContextSummary(
+function filesPageContext(
+  clientOrgId: string,
   clientName: string,
   state: ClientFilesContextState,
-) {
+): PageContext {
   const file = state.openFile;
-  return pageContextSummary([
-    file
-      ? `${file.panel === "image" ? "Viewing" : "Editing"} client file “${file.name.slice(0, 120)}” (clientFileId ${file.id}, ${file.contentType}, ${file.clientVisible ? "shared with client" : "private"}${file.archived ? ", archived" : ""}${file.policyId ? `, linked to policy ${file.policyLabel ?? ""} (${file.policyId})` : ", no linked policy"})`
-      : null,
-    `Files held for ${clientName}`,
-    `${state.status === "archived" ? "archived" : "active"} ${state.view === "all" ? "" : `${state.view} `}files, ${state.shownCount} shown${state.truncated ? " (latest 200 only)" : ""}`,
-    state.uploadOpen && "upload drawer open",
-  ]);
+  return {
+    pageType: "operator_client_files",
+    entityId: clientOrgId,
+    summary: pageContextSummary([
+      file &&
+        `${file.panel === "image" ? "Viewing" : "Editing"} client file “${file.name.slice(0, 120)}” (${file.contentType}, ${file.clientVisible ? "shared with client" : "private"}${file.archived ? ", archived" : ""}${file.policyId ? `, linked to policy ${file.policyLabel ?? ""}` : ", no linked policy"})`,
+      `Files held for ${clientName}`,
+      `${state.status === "archived" ? "archived" : "active"} ${state.view === "all" ? "" : `${state.view} `}files, ${state.shownCount} shown${state.truncated ? " (latest 200 only)" : ""}`,
+      state.uploadOpen && "upload drawer open",
+    ]),
+    related: file
+      ? [
+          { kind: "client_file", id: file.id, label: file.name },
+          ...(file.policyId
+            ? [
+                {
+                  kind: "policy",
+                  id: file.policyId,
+                  ...(file.policyLabel ? { label: file.policyLabel } : {}),
+                },
+              ]
+            : []),
+        ]
+      : undefined,
+  };
 }
 
 export default function OperatorClientFilesPage() {
@@ -128,11 +147,9 @@ export default function OperatorClientFilesPage() {
             }
             onActions={setWorkspaceActions}
             onRightPanel={setRightPanel}
-            pageContext={(state) => ({
-              pageType: "operator_client_files",
-              entityId: clientOrgId,
-              summary: filesPageContextSummary(clientContextName(client), state),
-            })}
+            pageContext={(state) =>
+              filesPageContext(clientOrgId, clientContextName(client), state)
+            }
           />
         </main>
       )}
