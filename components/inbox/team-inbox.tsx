@@ -17,9 +17,11 @@ import dayjs from "dayjs";
 import {
   Archive,
   ArchiveRestore,
+  Building2,
   Inbox,
   PenSquare,
   Tag,
+  Users,
 } from "lucide-react";
 
 import { PillButton } from "@/components/ui/pill-button";
@@ -603,6 +605,7 @@ export function TeamInbox({
           {
             id: "client",
             label: "Client",
+            icon: <Building2 />,
             value: clientOrgId ? [clientOrgId] : [],
             onChange: (value: string[]) => {
               setClientOrgId(value[0] ?? "");
@@ -628,6 +631,7 @@ export function TeamInbox({
       ? [{
           id: "scope",
           label: "Scope",
+          icon: <Users />,
           value: filter === "all" ? [] : [filter],
           onChange: (value: string[]) => {
             const next = (value[0] ?? "all") as TeamFilter;
@@ -637,7 +641,17 @@ export function TeamInbox({
           options: [
             ...(operators ?? [])
               .filter((person) => person.status !== "disabled")
-              .map((person) => ({ value: person.userId, label: person.name })),
+              .map((person) => ({
+                value: person.userId,
+                label: person.name,
+                icon: (
+                  <Avatar
+                    name={person.name}
+                    imageUrl={person.avatarUrl}
+                    className="size-4"
+                  />
+                ),
+              })),
             { value: "unlinked", label: "Unlinked" },
           ],
         }]
