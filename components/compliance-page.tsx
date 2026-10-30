@@ -706,10 +706,14 @@ function requirementContextSummary(
   ]);
 }
 
-/** The client, source and policies matched to a requirement. */
+/**
+ * The requirement itself (its title narrows the agent's lookup), then its
+ * client, source and matched policies.
+ */
 function requirementContextRelated(requirement: Requirement) {
   const matched = requirement.complianceCheck?.matchedPolicy;
   return relatedRecords([
+    { kind: "requirement", id: requirement._id, label: requirement.title },
     { kind: "organization", id: requirement.orgId },
     {
       kind: "requirement_source",
@@ -2985,6 +2989,11 @@ function ComplianceWorkspace({
                 generating,
               ),
               related: relatedRecords([
+                {
+                  kind: "requirement_source",
+                  id: focusedSource._id,
+                  label: focusedSource.title,
+                },
                 { kind: "organization", id: focusedSource.orgId },
               ]),
             }

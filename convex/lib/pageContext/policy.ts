@@ -193,22 +193,16 @@ export function requirementSourceHints(
 }
 
 /**
- * The record's title from the summary the page wrote, e.g. `Requirement:
- * <title> · …` (see components/compliance-page.tsx), to narrow the lookup.
+ * The page's own requirement or source, narrowed by the title the page gives
+ * as its self entry in `related`. Without a title it is skipped rather than
+ * reading every requirement.
  */
-function summaryTitle(page: OperatorPrefetchPage | undefined, prefix: string) {
-  const summary = page?.summary;
-  if (!summary?.startsWith(prefix)) return undefined;
-  return summary.slice(prefix.length).split(" · ")[0]?.trim().slice(0, 200) || undefined;
-}
-
 const requirementsLookup =
-  (prefix: string): Input =>
-  ({ page, relatedId }) => {
+  (kind: "requirement" | "requirement_source"): Input =>
+  ({ relatedId, relatedLabel }) => {
     const orgId = relatedId?.("organization");
-    if (!orgId) return undefined;
-    const query = summaryTitle(page, prefix);
-    return { orgId, scope: "all", ...(query ? { query } : {}) };
+    const query = relatedLabel?.(kind)?.slice(0, 500);
+    return orgId && query ? { orgId, scope: "all", query } : undefined;
   };
 
 const POLICY_SUMMARY_PARTIAL =
@@ -298,7 +292,7 @@ export const policyPageContexts: readonly OperatorPageContextEntry[] = [
       [
         {
           toolName: "lookup_compliance_requirements",
-          input: requirementsLookup("Requirement: "),
+          input: requirementsLookup("requirement"),
         },
       ],
       [
@@ -334,7 +328,7 @@ export const policyPageContexts: readonly OperatorPageContextEntry[] = [
       [
         {
           toolName: "lookup_compliance_requirements",
-          input: requirementsLookup("Requirement source: "),
+          input: requirementsLookup("requirement_source"),
         },
       ],
     ],
