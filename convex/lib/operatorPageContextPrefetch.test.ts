@@ -9,6 +9,8 @@ import { isOperatorToolFamily } from "./operatorAgentToolRegistry";
 import {
   buildOperatorPageContextBlock,
   decideOperatorPageContextPrefetch,
+  PAGE_CONTEXT_PREFETCH_CALL_PREFIX,
+  recentOperatorPagePrefetches,
 } from "./operatorPageContextPrefetch";
 import { normalizeOperatorPageContext } from "./threadPageContext";
 import {
@@ -111,6 +113,7 @@ test("a sticky page context is prefetched once per attachment unless still in hi
     previousContext: { pageType: string; entityId?: string } | null,
     recentToolCalls: Array<{ name: string; input?: string; output?: string }>,
     intentReads: Array<{ toolName: string; input: Record<string, unknown> }> = [],
+    recentPagePrefetches: Array<{ pageType: string; entityId?: string }> = [],
   ) =>
     decideOperatorPageContextPrefetch({
       entry,
@@ -118,6 +121,7 @@ test("a sticky page context is prefetched once per attachment unless still in hi
       previousContext,
       recentToolCalls,
       intentReads,
+      recentPagePrefetches,
     });
 
   // First run after attaching or changing the page always reads it.
@@ -137,6 +141,36 @@ test("a sticky page context is prefetched once per attachment unless still in hi
     prefetch: true,
     trigger: "not_in_history",
   });
+  // Reads keyed by something other than the entity (an orgId, a related
+  // policy) still count once a recent turn prefetched the same page.
+  const orgRead = {
+    name: "get_organization",
+    toolCallId: `${PAGE_CONTEXT_PREFETCH_CALL_PREFIX}get_organization`,
+    input: JSON.stringify({ orgId: "o1" }),
+    output: JSON.stringify({ status: "succeeded", result: {} }),
+  };
+  const run = { agentMessageId: "a2", createdAt: 10_000 };
+  const turns = [
+    { _id: "u1", role: "user", createdAt: 1_000, pageContext: context },
+    { _id: "a1", role: "agent", createdAt: 2_000, replyToMessageId: "u1", toolCalls: [orgRead] },
+    { _id: "u2", role: "user", createdAt: 9_000, pageContext: context },
+  ];
+  const recent = recentOperatorPagePrefetches(run, turns);
+  expect(recent).toEqual([context]);
+  expect(decide(context, [orgRead], [], recent)).toEqual({
+    prefetch: false,
+    reason: "prefetched_earlier",
+  });
+  // A failed prefetch, or one of another page, does not count.
+  expect(
+    recentOperatorPagePrefetches(run, [
+      turns[0],
+      { ...turns[1], toolCalls: [{ ...orgRead, output: '{"status":"failed"}' }] },
+    ]),
+  ).toEqual([]);
+  expect(
+    decide(context, [], [], [{ pageType: "team_email_thread", entityId: "t9" }]),
+  ).toEqual({ prefetch: true, trigger: "not_in_history" });
   // A starter intent that already read the record covers it.
   expect(
     decide(null, [], [

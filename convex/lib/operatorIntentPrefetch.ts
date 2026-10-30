@@ -93,7 +93,8 @@ type PrefetchArgs = {
  * model calls, so a replayed step returns the stored result). Stages run in
  * order; reads within a stage run together. Fails open: a failed or skipped
  * read is left for the model to make itself. Activity ids are
- * `prefetch_<tool>`, suffixed when `reservedToolCallIds` already holds one.
+ * `<toolCallIdPrefix><tool>` (default `prefetch_`), suffixed when
+ * `reservedToolCallIds` already holds one.
  */
 export async function runOperatorPrefetchReads(
   ctx: ActionCtx,
@@ -101,6 +102,7 @@ export async function runOperatorPrefetchReads(
     stages: ReadonlyArray<readonly OperatorIntentPrefetchRead[]>;
     focus: Readonly<Record<string, string>>;
     page?: OperatorPrefetchPage;
+    toolCallIdPrefix?: string;
     reservedToolCallIds?: ReadonlySet<string>;
   },
 ) {
@@ -109,9 +111,9 @@ export async function runOperatorPrefetchReads(
   const statuses: PrefetchReadStatus[] = [];
   const reserved = new Set(args.reservedToolCallIds);
   const toolCallIdFor = (toolName: OperatorAgentToolName) => {
-    let id = `prefetch_${toolName}`;
-    for (let index = 2; reserved.has(id); index += 1)
-      id = `prefetch_${toolName}_${index}`;
+    const base = `${args.toolCallIdPrefix ?? "prefetch_"}${toolName}`;
+    let id = base;
+    for (let index = 2; reserved.has(id); index += 1) id = `${base}_${index}`;
     reserved.add(id);
     return id;
   };

@@ -39,9 +39,47 @@ type AuditedMessage = {
   _id: string;
   role: string;
   createdAt: number;
+  replyToMessageId?: string;
   pageContext?: { pageType: string; entityId?: string } | null;
-  toolCalls?: ReadonlyArray<{ name: string; input?: string; output?: string }>;
+  toolCalls?: ReadonlyArray<{
+    name: string;
+    toolCallId?: string;
+    input?: string;
+    output?: string;
+  }>;
 };
+
+/**
+ * Page-context reads are audited under this call-id prefix, so a later turn
+ * can tell that its page was prefetched even when the reads take other ids
+ * (an orgId or related policy) than the page's entityId.
+ */
+export const PAGE_CONTEXT_PREFETCH_CALL_PREFIX = "prefetch_page_";
+
+const succeeded = (output: string | undefined) =>
+  output?.startsWith('{"status":"succeeded"') === true;
+
+/**
+ * Page contexts of recent agent turns that prefetched their page, read from
+ * each turn's audit and the operator message it answered.
+ */
+export function recentOperatorPagePrefetches<T extends AuditedMessage>(
+  run: { agentMessageId: string; createdAt: number },
+  messages: readonly T[],
+) {
+  return recentOperatorAgentTurns(run, messages).flatMap((turn) => {
+    const prefetched = turn.toolCalls?.some(
+      (call) =>
+        call.toolCallId?.startsWith(PAGE_CONTEXT_PREFETCH_CALL_PREFIX) &&
+        succeeded(call.output),
+    );
+    const context = prefetched
+      ? messages.find((message) => message._id === turn.replyToMessageId)
+          ?.pageContext
+      : undefined;
+    return context ? [context] : [];
+  });
+}
 
 /**
  * Agent turns whose audits carry over to a run: the previous eight within a
@@ -69,7 +107,10 @@ export function operatorPageContextFamilies(context: PageContext | undefined) {
 
 export type OperatorPageContextPrefetchDecision =
   | { prefetch: true; trigger: "attached" | "not_in_history" }
-  | { prefetch: false; reason: "in_history" | "covered_by_intent" };
+  | {
+      prefetch: false;
+      reason: "in_history" | "prefetched_earlier" | "covered_by_intent";
+    };
 
 const sameRecord = (
   left: { pageType: string; entityId?: string } | null | undefined,
@@ -82,8 +123,9 @@ const referencesEntity = (value: unknown, entityId: string) =>
 /**
  * The page context is sticky, so its record is prefetched only on the first
  * run after it was attached or changed, or while no recent turn holds a
- * successful read of the entity by the entry's first-stage tools. A starter
- * intent whose prefetch already read the entity covers it.
+ * successful read of the entity by the entry's first-stage tools or a
+ * successful prefetch of the same page. A starter intent whose prefetch
+ * already read the entity covers it.
  */
 export function decideOperatorPageContextPrefetch(args: {
   entry: Pick<OperatorPageContextEntry, "prefetch">;
@@ -91,6 +133,8 @@ export function decideOperatorPageContextPrefetch(args: {
   /** The page context stored on the previous operator message, if any. */
   previousContext?: { pageType: string; entityId?: string } | null;
   recentToolCalls: ReadonlyArray<{ name: string; input?: string; output?: string }>;
+  /** Page contexts of recent turns that prefetched their page. */
+  recentPagePrefetches?: ReadonlyArray<{ pageType: string; entityId?: string }>;
   intentReads: ReadonlyArray<{ toolName: string; input: Record<string, unknown> }>;
 }): OperatorPageContextPrefetchDecision {
   const { entityId } = args.context;
@@ -110,10 +154,13 @@ export function decideOperatorPageContextPrefetch(args: {
     (call) =>
       recordTools.has(call.name) &&
       call.input?.includes(quotedId) &&
-      call.output?.startsWith('{"status":"succeeded"'),
+      succeeded(call.output),
   );
-  return readEarlier
-    ? { prefetch: false, reason: "in_history" }
+  if (readEarlier) return { prefetch: false, reason: "in_history" };
+  return args.recentPagePrefetches?.some((page) =>
+    sameRecord(page, args.context),
+  )
+    ? { prefetch: false, reason: "prefetched_earlier" }
     : { prefetch: true, trigger: "not_in_history" };
 }
 
@@ -171,6 +218,7 @@ export async function prefetchOperatorPageContext(
     recentToolCalls: recentOperatorAgentTurns(args.run, args.messages).flatMap(
       (message) => message.toolCalls ?? [],
     ),
+    recentPagePrefetches: recentOperatorPagePrefetches(args.run, args.messages),
     intentReads,
   });
   const declared = entry.prefetch.flat().map((read) => read.toolName);
@@ -205,6 +253,7 @@ export async function prefetchOperatorPageContext(
     stages: entry.prefetch,
     focus: { entityId },
     page,
+    toolCallIdPrefix: PAGE_CONTEXT_PREFETCH_CALL_PREFIX,
     reservedToolCallIds: new Set(intentReads.map((read) => read.toolCallId)),
   });
   const recordTools = new Set<string>(
