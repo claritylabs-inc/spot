@@ -6,6 +6,9 @@ export const CLIENT_WEB_MONITOR_CALLBACK_PATH = "/router-monitors/events";
 export const CLIENT_WEB_MONITOR_BODY_BYTES = 256 * 1024;
 export const DEFAULT_CLIENT_WEB_MONITOR_FREQUENCY = "1d";
 export const CLIENT_WEB_MONITOR_ATTENTION_DAYS = 30;
+export const CLIENT_WEB_MONITOR_ACKNOWLEDGED_RETENTION_DAYS = 180;
+export const CLIENT_WEB_MONITOR_RETENTION_DAYS = 365;
+export const CLIENT_WEB_MONITOR_SWEEP_BATCH = 200;
 // A create that never finished (the action died between its steps) stops
 // blocking a new monitor after this long.
 export const CLIENT_WEB_MONITOR_PENDING_MS = 10 * 60 * 1000;

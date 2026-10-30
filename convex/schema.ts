@@ -4368,6 +4368,7 @@ export default defineSchema({
     acknowledgedByUserId: v.optional(v.id("users")),
   })
     .index("by_org_received", ["orgId", "receivedAt"])
+    .index("by_receivedAt", ["receivedAt"])
     .index("by_monitor_and_delivery", ["monitorId", "deliveryId"]),
 
   // ── Notifications ──

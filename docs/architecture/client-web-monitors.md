@@ -77,4 +77,12 @@ payload.
   create and cancel helpers. Event text renders as plain text.
 
 Event text is untrusted public web content: tools label it as evidence, never
-instructions. Retained events are not yet pruned.
+instructions.
+
+## Retention
+
+A daily cron (`clientWebMonitors.sweepExpired`, 04:20 UTC) deletes acknowledged
+events received more than 180 days ago and any event received more than 365 days
+ago. It walks the `by_receivedAt` index oldest-first in pages of 200 and
+reschedules itself with the page cursor until the window is exhausted, so
+unacknowledged events inside the window do not block later pages.

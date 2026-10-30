@@ -296,6 +296,7 @@ export const run = internalAction({
                 allowedDomains: publicResearchAllowedDomains(citation.url),
                 goal: `Quote the passage on this page that states: ${researchFieldDescription(candidate.question)}`,
                 maxResults: 1,
+                executionBudgetMs: 45_000,
                 taskKind: "procurement_information_grounding",
                 trace,
               });
