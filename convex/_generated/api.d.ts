@@ -69,6 +69,7 @@ import type * as actions_procurementInformation from "../actions/procurementInfo
 import type * as actions_proposalExtraction from "../actions/proposalExtraction.js";
 import type * as actions_proposalReview from "../actions/proposalReview.js";
 import type * as actions_providerOutreach from "../actions/providerOutreach.js";
+import type * as actions_providerOutreachDrafts from "../actions/providerOutreachDrafts.js";
 import type * as actions_reExtractFromFile from "../actions/reExtractFromFile.js";
 import type * as actions_reextractLegacyPolicies from "../actions/reextractLegacyPolicies.js";
 import type * as actions_renderEmailPreview from "../actions/renderEmailPreview.js";
@@ -434,9 +435,11 @@ import type * as lib_profileResearchOrchestrator from "../lib/profileResearchOrc
 import type * as lib_proposalAggregation from "../lib/proposalAggregation.js";
 import type * as lib_proposalMarkdown from "../lib/proposalMarkdown.js";
 import type * as lib_proposalReview from "../lib/proposalReview.js";
+import type * as lib_providerOutreachDrafts from "../lib/providerOutreachDrafts.js";
 import type * as lib_providerOutreachEmail from "../lib/providerOutreachEmail.js";
 import type * as lib_providerOutreachLifecycle from "../lib/providerOutreachLifecycle.js";
 import type * as lib_providerOutreachMatch from "../lib/providerOutreachMatch.js";
+import type * as lib_providerOutreachMerge from "../lib/providerOutreachMerge.js";
 import type * as lib_providerOutreachSchedule from "../lib/providerOutreachSchedule.js";
 import type * as lib_providerOutreachSummary from "../lib/providerOutreachSummary.js";
 import type * as lib_providerOutreachValidators from "../lib/providerOutreachValidators.js";
@@ -588,6 +591,7 @@ import type * as proposalExtraction from "../proposalExtraction.js";
 import type * as proposalSourceNodes from "../proposalSourceNodes.js";
 import type * as proposalSourceSpans from "../proposalSourceSpans.js";
 import type * as providerOutreach from "../providerOutreach.js";
+import type * as providerOutreachDrafts from "../providerOutreachDrafts.js";
 import type * as providerSubmissionDefaults from "../providerSubmissionDefaults.js";
 import type * as quoBrokerWebhook from "../quoBrokerWebhook.js";
 import type * as rateLimits from "../rateLimits.js";
@@ -693,6 +697,7 @@ declare const fullApi: ApiFromModules<{
   "actions/proposalExtraction": typeof actions_proposalExtraction;
   "actions/proposalReview": typeof actions_proposalReview;
   "actions/providerOutreach": typeof actions_providerOutreach;
+  "actions/providerOutreachDrafts": typeof actions_providerOutreachDrafts;
   "actions/reExtractFromFile": typeof actions_reExtractFromFile;
   "actions/reextractLegacyPolicies": typeof actions_reextractLegacyPolicies;
   "actions/renderEmailPreview": typeof actions_renderEmailPreview;
@@ -1058,9 +1063,11 @@ declare const fullApi: ApiFromModules<{
   "lib/proposalAggregation": typeof lib_proposalAggregation;
   "lib/proposalMarkdown": typeof lib_proposalMarkdown;
   "lib/proposalReview": typeof lib_proposalReview;
+  "lib/providerOutreachDrafts": typeof lib_providerOutreachDrafts;
   "lib/providerOutreachEmail": typeof lib_providerOutreachEmail;
   "lib/providerOutreachLifecycle": typeof lib_providerOutreachLifecycle;
   "lib/providerOutreachMatch": typeof lib_providerOutreachMatch;
+  "lib/providerOutreachMerge": typeof lib_providerOutreachMerge;
   "lib/providerOutreachSchedule": typeof lib_providerOutreachSchedule;
   "lib/providerOutreachSummary": typeof lib_providerOutreachSummary;
   "lib/providerOutreachValidators": typeof lib_providerOutreachValidators;
@@ -1212,6 +1219,7 @@ declare const fullApi: ApiFromModules<{
   proposalSourceNodes: typeof proposalSourceNodes;
   proposalSourceSpans: typeof proposalSourceSpans;
   providerOutreach: typeof providerOutreach;
+  providerOutreachDrafts: typeof providerOutreachDrafts;
   providerSubmissionDefaults: typeof providerSubmissionDefaults;
   quoBrokerWebhook: typeof quoBrokerWebhook;
   rateLimits: typeof rateLimits;

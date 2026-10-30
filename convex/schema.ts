@@ -3145,6 +3145,25 @@ export default defineSchema({
     .index("by_status_and_leaseUntil", ["status", "leaseUntil"])
     .index("by_resendEmailId", ["resendEmailId"]),
 
+  /**
+   * Spot's draft of a request's first provider email: one per provider, and one
+   * without `brokerOrgId` holding the mail-merge template for sending to
+   * several providers. The composer shows it until the operator edits; the AI
+   * panel revises it. Sending never reads a draft the operator did not see:
+   * launches pass the email or bind its fingerprint.
+   */
+  providerOutreachDrafts: defineTable({
+    requestId: v.id("procurementRequests"),
+    brokerOrgId: v.optional(v.id("organizations")),
+    status: v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
+    subject: v.optional(v.string()),
+    body: v.optional(v.string()),
+    /** `spot`: tailored by Spot's drafting model; `agent`: written by the AI panel. */
+    source: v.optional(v.union(v.literal("spot"), v.literal("agent"))),
+    generationStartedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  }).index("by_requestId_and_brokerOrgId", ["requestId", "brokerOrgId"]),
+
   procurementOutreachCadences: defineTable({
     requestId: v.id("procurementRequests"),
     fingerprint: v.string(),

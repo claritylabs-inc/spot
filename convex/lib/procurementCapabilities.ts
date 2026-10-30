@@ -25,8 +25,14 @@ type CapabilityException = {
 export const PROCUREMENT_CAPABILITIES = [
   {
     id: "provider.automated_outreach",
-    browserSurface: "request Providers matching and sequence panel",
-    agentTools: ["list_procurement_provider_matches", "launch_procurement_provider_outreach", "stop_procurement_provider_outreach"],
+    browserSurface: "request Providers matching, provider email composer and sequence panel",
+    agentTools: [
+      "list_procurement_provider_matches",
+      "get_procurement_provider_emails",
+      "update_procurement_provider_emails",
+      "launch_procurement_provider_outreach",
+      "stop_procurement_provider_outreach",
+    ],
   },
   {
     id: "client.information_request",

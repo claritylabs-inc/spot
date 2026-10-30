@@ -20,6 +20,7 @@ import {
   type OutreachEmailInput,
 } from "../lib/providerOutreachEmail";
 import { composeClientOutreachEmail } from "../lib/clientOutreachEmail";
+import { renderProviderEmail } from "../lib/providerOutreachMerge";
 import { composeThreadFollowUpEmail } from "../lib/threadFollowUps";
 import { writeThreadFollowUp } from "./threadFollowUps";
 import type {
@@ -36,7 +37,7 @@ import { getEmailDeliveryMode } from "../lib/resend";
 import { ensureOperatorInbox, validateAlwaysCcEmail } from "../lib/operatorInbox";
 import { outreachIdentityFingerprint } from "../lib/outreachIdentity";
 import { operatorEmailAliases } from "../lib/operatorIdentity";
-import { isTeamEmailError } from "../lib/teamEmail";
+import { buildOperatorSignature, isTeamEmailError } from "../lib/teamEmail";
 import {
   capturedResourceId,
   createDraft,
@@ -405,6 +406,19 @@ async function resolveDraft(
         ...(written ? { body: written } : {}),
       }),
     );
+  }
+  // The first email exactly as the operator reviewed it, with this provider's packet link filled in.
+  if (claim.step.kind === "initial" && claim.sequence.message) {
+    if (!claim.packet) return null;
+    return await save({
+      ...renderProviderEmail({
+        subject: claim.sequence.message.subject,
+        body: claim.sequence.message.text,
+        packetUrl: claim.packet.url,
+        signature: buildOperatorSignature(operator, { toProvider: true }),
+      }),
+      source: "operator",
+    });
   }
   if (!claim.request || !claim.broker || !claim.packet) return null;
   const input = emailInputFor(claim, claim.request, claim.broker, claim.packet, operator);

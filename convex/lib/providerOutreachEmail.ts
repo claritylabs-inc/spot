@@ -13,6 +13,7 @@ import {
 } from "./emailSkill";
 import type { OutreachStyle } from "./providerOutreachSchedule";
 import type { OutreachSummaryItem } from "./providerOutreachSummary";
+import { APPLICATION_LINK, contactFirstName, outreachBodyHtml } from "./providerOutreachMerge";
 
 /**
  * Provider outreach email composition.
@@ -138,15 +139,7 @@ function boundedContext(input: OutreachEmailInput) {
 }
 
 /** Routing labels are not people; greet the provider company instead. */
-function firstName(name: string | undefined, providerName?: string): string | undefined {
-  const contact = clean(name, 160)?.split(/\s+[—–-]\s+/)[0].trim();
-  if (
-    !contact ||
-    contact.toLowerCase() === clean(providerName, 160)?.toLowerCase() ||
-    /\b(?:general|inquiry|inquiries|routing|reception|support|sales|service|desk|team|department|advisors?|office|contact)\b/i.test(contact)
-  ) return undefined;
-  return contact.split(" ")[0];
-}
+const firstName = contactFirstName;
 
 function bodyLimit(input: Pick<OutreachEmailInput, "kind" | "style">): number {
   return LIMITS.bodyChars[input.kind === "initial" ? "initial" : input.style];
@@ -378,20 +371,7 @@ function summaryItems(input: OutreachEmailInput): OutreachSummaryItem[] {
 }
 
 /** Initial summaries are deterministic; HTML and plain text carry the same facts. */
-function bodyHtml(body: string): string {
-  return body.split(/\n{2,}/).map((block) => {
-    const lines = block.split("\n");
-    return lines.every((line) => line.startsWith("- "))
-      ? `<ul style="margin:0 0 16px;padding-left:24px">${lines.map((line) => {
-          const separator = line.indexOf(": ", 2);
-          const content = separator > 2
-            ? `<strong>${escapeHtml(line.slice(2, separator + 1))}</strong> ${escapeHtml(line.slice(separator + 2))}`
-            : escapeHtml(line.slice(2));
-          return `<li style="margin:0 0 8px">${content}</li>`;
-        }).join("")}</ul>`
-      : `<p style="margin:0 0 16px">${escapeHtml(block).replace(/\n/g, "<br>")}</p>`;
-  }).join("");
-}
+const bodyHtml = outreachBodyHtml;
 
 /** Deterministic subject and body used when generation fails or is invalid. */
 export function templateOutreachText(input: OutreachEmailInput): {
@@ -399,6 +379,38 @@ export function templateOutreachText(input: OutreachEmailInput): {
   body: string;
 } {
   return { subject: templateSubject(input), body: templateBody(input) };
+}
+
+/**
+ * The request's first provider email as a mail-merge template: the
+ * deterministic company-first layout, with the greeting, introduction and
+ * application link left as variables so each provider gets its own.
+ */
+export function defaultProviderEmailTemplate(
+  input: Pick<OutreachEmailInput, "client" | "request">,
+): { subject: string; body: string } {
+  const shaped: OutreachEmailInput = {
+    ...input,
+    kind: "initial",
+    style: "brief_nudge",
+    followUpNumber: 0,
+    isFinal: false,
+    providerName: "",
+    networkStatus: "active",
+    operator: { name: "", address: "" },
+  };
+  const body = templateBody(shaped);
+  return {
+    subject: templateSubject(shaped),
+    body: [
+      "Hey {{first_name}},",
+      "{{introduction}}",
+      body,
+      `Click the link below for the full application, supporting documents and more information:\n${APPLICATION_LINK}`,
+      "Let us know if you need more information.",
+      "Thanks,",
+    ].join("\n\n"),
+  };
 }
 
 // --- Composition ----------------------------------------------------------------

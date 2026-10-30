@@ -15,7 +15,12 @@ import { preparePacketDocumentUpdate } from "../procurementPacket";
 import { requireCompanyRequest } from "./companyRequest";
 import { appendWikiSection } from "./wikiAppend";
 import { validateClientOutreachLaunch } from "../clientOutreach";
-import { previewProviderOutreachLaunch } from "../providerOutreach";
+import {
+  currentRequestCadence,
+  loadCompanyRequest,
+  previewProviderOutreachLaunch,
+} from "../providerOutreach";
+import type { OutreachCadenceInput } from "./providerOutreachValidators";
 import { operatorNoWriteCode } from "./operatorAgentToolFailure";
 import {
   parseDocumentVisibility,
@@ -1104,20 +1109,21 @@ export async function preflightOperatorToolConfirmation(
         throw new Error(
           `Provider not found for ${invalid.join(", ")}. Use brokerOrgId values from list_procurement_provider_matches or list_broker_network_profiles.`,
         );
-      const providers = await previewProviderOutreachLaunch(ctx, {
+      const plan = await providerLaunchPlan(ctx, {
         operatorUserId: args.operatorUserId,
-        requestId: request._id,
-        brokerOrgIds: args.input.brokerOrgIds as Id<"organizations">[],
+        input: args.input,
       });
-      if (!providers.some((provider) => provider.willSend))
+      if (!plan.providers.some((provider) => provider.willSend))
         throw new Error(
-          `None of the selected providers can receive outreach: ${providers
+          `None of the selected providers can receive outreach: ${plan.providers
             .map(
               (provider) =>
                 `${provider.brokerName ?? provider.brokerOrgId} (${provider.reason ?? "unavailable"})`,
             )
             .join(", ")}`,
         );
+      if (plan.problem)
+        throw new Error(`${plan.problem} Revise the email with update_procurement_provider_emails first.`);
       return;
     }
     case "send_procurement_client_email": {
@@ -1364,32 +1370,73 @@ export async function preflightOperatorToolConfirmation(
   }
 }
 
-/** Approval-card lines naming every provider and what launch would do for it. */
-export async function providerLaunchApprovalLines(
+/** What an agent launch would send, with the request's cadence when the input names none. */
+export async function providerLaunchPlan(
   ctx: MutationCtx,
   args: { operatorUserId: Id<"users">; input: Record<string, unknown> },
 ) {
-  const providers = await previewProviderOutreachLaunch(ctx, {
+  const requestId = exactId(ctx, "procurementRequests", args.input.procurementRequestId, "Procurement request");
+  const { request, client } = await loadCompanyRequest(ctx, requestId);
+  const cadence = args.input.cadence
+    ? (args.input.cadence as OutreachCadenceInput)
+    : (await currentRequestCadence(ctx, request, client)).cadence;
+  return await previewProviderOutreachLaunch(ctx, {
     operatorUserId: args.operatorUserId,
-    requestId: exactId(
-      ctx,
-      "procurementRequests",
-      args.input.procurementRequestId,
-      "Procurement request",
-    ),
+    requestId,
     brokerOrgIds: (args.input.brokerOrgIds as unknown[]).map((id) =>
       exactId(ctx, "organizations", id, "Provider organization"),
     ),
+    cadence,
   });
+}
+
+/** The fingerprint an agent launch is approved with: sender, cadence, recipients and every merged email. */
+export async function providerLaunchFingerprint(
+  ctx: MutationCtx,
+  args: { operatorUserId: Id<"users">; input: Record<string, unknown> },
+) {
+  const plan = await providerLaunchPlan(ctx, args);
+  if (plan.problem || !plan.fingerprint) throw new Error(plan.problem ?? "None of these providers can receive outreach.");
+  return plan.fingerprint;
+}
+
+/**
+ * Approval-card lines: every provider and what launch would do for it, the
+ * cadence, the mail-merge template and each provider's own email. Recipients
+ * and own-email bodies are dropped, in that order, to fit the card.
+ */
+export async function providerLaunchApprovalLines(
+  ctx: MutationCtx,
+  args: { operatorUserId: Id<"users">; input: Record<string, unknown>; budget: number },
+) {
+  const plan = await providerLaunchPlan(ctx, args);
+  const { providers, cadence, template } = plan;
   const label = (provider: (typeof providers)[number]) =>
     (provider.brokerName ?? String(provider.brokerOrgId)).slice(0, 45);
-  const lines = (withRecipient: boolean) => [
-    `Providers (${providers.filter((provider) => provider.willSend).length} will send of ${providers.length} named):`,
+  const sending = providers.filter((provider) => provider.willSend);
+  const own = sending.filter((provider) => provider.email?.source === "draft");
+  const merged = sending.length > own.length;
+  const lines = (withRecipient: boolean, withOwnBodies: boolean) => [
+    `Providers (${sending.length} will send of ${providers.length} named; one email each):`,
     ...providers.map((provider) =>
       provider.willSend
-        ? `- ${label(provider)}${withRecipient ? ` <${provider.recipientEmail}>` : ""}`
+        ? `- ${label(provider)}${withRecipient ? ` <${provider.recipient?.email}>` : ""}${provider.email?.source === "draft" ? " (own email)" : ""}`
         : `- ${label(provider)}: skipped (${(provider.reason ?? "unavailable").replaceAll("_", " ")})`,
     ),
+    `Follow-ups: ${cadence.followUpCount === 0 ? "none" : `${cadence.followUpCount} every ${cadence.intervalBusinessDays} business days (${cadence.style.replaceAll("_", " ")})`}`,
+    ...(merged
+      ? ["", "Email (variables are filled in per provider):", `Subject: ${template.subject}`, "", template.body]
+      : []),
+    ...own.flatMap((provider) => [
+      "",
+      `${label(provider)}'s email:`,
+      `Subject: ${provider.email!.subject}`,
+      ...(withOwnBodies ? ["", provider.email!.body] : []),
+    ]),
   ];
-  return lines(true).join("\n").length > 2_800 ? lines(false) : lines(true);
+  for (const [withRecipient, withOwnBodies] of [[true, true], [false, true], [false, false]] as const) {
+    const candidate = lines(withRecipient, withOwnBodies);
+    if (candidate.join("\n").length <= args.budget) return candidate;
+  }
+  return lines(false, false);
 }

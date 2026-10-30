@@ -212,6 +212,8 @@ function ShellFrame({
     useAppShellSlot("breadcrumb");
   const { filled: hasPageRightPanel, setTarget: setRightPanelTarget } =
     useAppShellSlot("rightPanel");
+  const { filled: hasPreviewPanel, setTarget: setPreviewPanelTarget } =
+    useAppShellSlot("previewPanel");
   const { filled: hasArtifactPanel, setTarget: setArtifactPanelTarget } =
     useAppShellSlot("artifactPanel");
   const { filled: hasSecondaryNav, setTarget: setSecondaryNavTarget } =
@@ -301,6 +303,14 @@ function ShellFrame({
               className="flex h-full min-h-0 w-full min-w-0"
             />
           </div>
+        ) : undefined
+      }
+      previewPanel={
+        hasPreviewPanel ? (
+          <div
+            ref={setPreviewPanelTarget}
+            className="flex h-full min-h-0 w-full min-w-0 overflow-clip"
+          />
         ) : undefined
       }
       pdfPanel={hasPdfPanel ? <PdfPanel /> : undefined}
@@ -419,7 +429,7 @@ function ShellFrame({
       artifactPanelRef={agentEnabled ? setArtifactPanelTarget : undefined}
       artifactPlacement={isDesktop ? "side" : "overlay"}
       artifactOpen={hasArtifactPanel}
-      detailPanelOpen={hasRightPanel || hasEntityPanel || hasPdfPanel}
+      detailPanelOpen={hasRightPanel || hasEntityPanel || hasPdfPanel || hasPreviewPanel}
     />
   );
 }

@@ -581,3 +581,17 @@ input[type="number"]:not(:focus)::-webkit-outer-spin-button {
 @media (prefers-reduced-motion: reduce) {
   .reply-editor [data-blank] { transition: none; }
 }
+
+/* Reply editor merge variables: brand-tinted chips filled in per recipient on send. */
+.reply-editor [data-variable] {
+  padding: 0 4px;
+  border-radius: 4px;
+  color: var(--foreground);
+  background-color: color-mix(in oklab, var(--primary) 14%, transparent);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.reply-editor [data-variable].ProseMirror-selectednode {
+  outline: none;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 50%, transparent);
+}
