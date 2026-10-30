@@ -48,7 +48,7 @@ export default function OperatorTeamPage() {
               [
                 `${session.name} on ${resolveAppBreadcrumb(session.pathname).label ?? session.pathname}`,
                 session.email &&
-                  `${session.email.activity === "replying" ? "replying to" : "viewing"} email "${session.email.subject || "(no subject)"}" (${session.email.id})`,
+                  `${session.email.activity === "replying" ? "replying to" : "viewing"} email "${session.email.subject || "(no subject)"}"`,
               ]
                 .filter(Boolean)
                 .join(", "),
@@ -60,7 +60,29 @@ export default function OperatorTeamPage() {
   return (
     <AppShell>
       <OperatorPageContextRegistration
-        context={{ pageType: "operator_team", summary: pageSummary }}
+        context={{
+          pageType: "operator_team",
+          summary: pageSummary,
+          // Open emails first: the context keeps the first ten records.
+          related: [
+            ...others.flatMap((session) =>
+              session.email
+                ? [
+                    {
+                      kind: "team_email_thread",
+                      id: session.email.id,
+                      label: session.email.subject || "(no subject)",
+                    },
+                  ]
+                : [],
+            ),
+            ...others.map((session) => ({
+              kind: "user",
+              id: session.userId,
+              label: session.name,
+            })),
+          ],
+        }}
       />
       {sessions === undefined ? null : others.length === 0 ? (
         <EmptyStateCard
