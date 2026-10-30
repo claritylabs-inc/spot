@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { ManagedClientPolicyWorkspace } from "@/components/policies/managed-client-policy-workspace";
 import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
@@ -28,6 +29,7 @@ import {
   useCachedOperatorClients,
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
+import { contextSummary } from "@/lib/policy-page-context";
 import { typeStyle } from "@/lib/typography";
 import { OperatorPolicyPreview } from "./operator-policy-preview";
 
@@ -182,6 +184,16 @@ export default function OperatorClientPoliciesPage() {
         </OperationalPanel>
       ) : (
         <main className="w-full space-y-6">
+          <OperatorPageContextRegistration
+            context={{
+              pageType: "operator_client_policies",
+              entityId: clientOrgId,
+              summary: contextSummary([
+                `${client.name} policies`,
+                showArchived ? "archived policies shown" : undefined,
+              ]),
+            }}
+          />
           {hasArchivedPolicies ? statusNavigation : null}
           {activeImpersonation ? (
             <OperationalPanel

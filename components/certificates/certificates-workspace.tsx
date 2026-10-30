@@ -29,6 +29,10 @@ import { usePageContext } from "@/hooks/use-page-context";
 import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { usePdf } from "@/components/pdf-context";
+import {
+  certificateContextSummary,
+  contextSummary,
+} from "@/lib/policy-page-context";
 import { typeStyle } from "@/lib/typography";
 import { CertificateGeneratePanel } from "@/components/certificates/certificate-generate-panel";
 
@@ -89,20 +93,33 @@ function CertificateEmptyPanel({
 }
 
 function CertificatesPageContext({
-  activeCount,
+  summary,
+  selected,
 }: {
-  activeCount: number;
+  summary: string;
+  /** The certificate whose panel is open. */
+  selected: PolicyCertificateRecord | null;
 }) {
-  const { setPageContext } = usePageContext();
+  const { setPageContext, pushPageContext } = usePageContext();
 
   useEffect(() => {
-    setPageContext({
-      pageType: "certificates",
-      summary: `${activeCount} active certificate${activeCount === 1 ? "" : "s"}`,
-    });
+    setPageContext({ pageType: "certificates", summary });
 
     return () => setPageContext(null);
-  }, [activeCount, setPageContext]);
+  }, [setPageContext, summary]);
+
+  const selectedId = selected?._id;
+  const selectedSummary = selected
+    ? certificateContextSummary(selected)
+    : undefined;
+  useEffect(() => {
+    if (!selectedId) return;
+    return pushPageContext({
+      pageType: "certificate",
+      entityId: selectedId,
+      summary: selectedSummary,
+    });
+  }, [pushPageContext, selectedId, selectedSummary]);
 
   return null;
 }
@@ -366,7 +383,21 @@ export function CertificatesWorkspace({
   ];
   const content = (
     <>
-      <CertificatesPageContext activeCount={activeCertificates.length} />
+      <CertificatesPageContext
+        summary={contextSummary([
+          `${activeCertificates.length} active certificate${activeCertificates.length === 1 ? "" : "s"}`,
+          visibleTab === "archived"
+            ? `showing ${archivedCertificates.length} archived`
+            : undefined,
+          effectivePolicyFilter.length
+            ? `filtered to ${policyFilters
+                .filter((option) => effectivePolicyFilter.includes(option.value))
+                .map((option) => option.label)
+                .join(", ")}`
+            : undefined,
+        ])}
+        selected={generateOpen ? null : selectedCertificate}
+      />
       <div className="space-y-4">
         {certificateFilters.length > 0 ? (
           <ListToolbar followKey={uiKey} filters={certificateFilters} />

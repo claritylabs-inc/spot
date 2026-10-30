@@ -81,6 +81,7 @@ import {
 } from "@/components/shared/reextract-control";
 import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";
 import { extractionState, hasFinalExtraction } from "@/lib/extraction-state";
+import { policyContextSummary } from "@/lib/policy-page-context";
 import { typeStyle } from "@/lib/typography";
 
 type PolicyDetailTab =
@@ -446,19 +447,6 @@ export function PolicyDetailBody({
 
   const { openWithUrl, setFileUrl: preloadPdfUrl } = usePdf();
   const { setPageContext } = usePageContext();
-
-  useEffect(() => {
-    if (policy) {
-      const lines = policyLobCodes(policy).map(lobLabel);
-      const parties = resolvePolicyPartyContext(policy);
-      setPageContext({
-        pageType: "policy",
-        entityId: policy._id,
-        summary: `${parties.primaryDisplayName ?? "Unknown"} ${policy.policyNumber ?? ""} — ${lines.join(", ")}`,
-      });
-    }
-    return () => setPageContext(null);
-  }, [policy, setPageContext]);
 
   const didAutoOpen = useRef(false);
   useEffect(() => {
@@ -888,6 +876,62 @@ export function PolicyDetailBody({
     setEditingPolicyDetails,
     setSelectedCertificateId,
   ]);
+
+  const contextPolicyId = policy?._id;
+  const contextTabLabel = visibleTabs.find(
+    (tab) => tab.id === visibleActiveTab,
+  )?.label;
+  const contextSummary = useMemo(() => {
+    if (!policy) return undefined;
+    if (!operatorMode) {
+      const lines = policyLobCodes(policy).map(lobLabel);
+      const parties = resolvePolicyPartyContext(policy);
+      return `${parties.primaryDisplayName ?? "Unknown"} ${policy.policyNumber ?? ""} — ${lines.join(", ")}`;
+    }
+    return policyContextSummary(policy, [
+      {
+        extracting: "extraction running",
+        failed: "extraction failed",
+        not_a_policy: "not a policy document",
+        needs_review: "extraction review questions open",
+        ready: undefined,
+      }[state.kind],
+      contextTabLabel ? `${contextTabLabel} tab` : undefined,
+      // Mirrors the right panel effect above.
+      showCertificateSheet && !readOnly && isPolicyFinal
+        ? "generating a certificate"
+        : editingPolicyDetails && canEditPolicyDetails
+          ? `editing ${editingPolicyDetails} details`
+          : showEditExtractedFields && canEditExtractedFields && !isArchived
+            ? "editing coverages"
+            : selectedCertificateForPanel
+              ? `certificate for ${selectedCertificateForPanel.holder?.displayName ?? "unknown holder"} open (certificateId=${selectedCertificateForPanel._id})`
+              : undefined,
+    ]);
+  }, [
+    canEditExtractedFields,
+    canEditPolicyDetails,
+    contextTabLabel,
+    editingPolicyDetails,
+    isArchived,
+    isPolicyFinal,
+    operatorMode,
+    policy,
+    readOnly,
+    selectedCertificateForPanel,
+    showCertificateSheet,
+    showEditExtractedFields,
+    state.kind,
+  ]);
+  useEffect(() => {
+    if (!contextPolicyId) return;
+    setPageContext({
+      pageType: "policy",
+      entityId: contextPolicyId,
+      summary: contextSummary,
+    });
+    return () => setPageContext(null);
+  }, [contextPolicyId, contextSummary, setPageContext]);
 
   if (policy === undefined) {
     return <PolicyDetailSkeleton />;

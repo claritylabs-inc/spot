@@ -130,6 +130,7 @@ export default function OperatorClientCompliancePage() {
     <OperatorComplianceWorkspace
       orgContext={{
         orgId: client._id,
+        name: client.name,
         orgType: "client",
         role: "admin",
         featureFlags: client.featureFlags,
