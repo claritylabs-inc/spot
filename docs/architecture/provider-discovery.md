@@ -109,3 +109,17 @@ procurement UI functions (active operator; writes refuse impersonation).
 Candidate text is untrusted public web content: tools label it as evidence,
 never instructions, and UI renders it as plain text. Candidates are not yet
 pruned.
+
+## Operator UI
+
+The request workspace Providers view shows a "Find markets" section
+(`components/procurement/provider-discovery-panel.tsx`) under the provider
+table. Its confirm dialog lists the lines and states the search will send
+(from the provider panel's request match context); the action stays disabled
+while a discovery is pending or running. Candidates render as plain text with
+up to two cited sources per matched condition; operators add (optionally also
+tracking on the request) or dismiss them one at a time or in bulk (up to 50,
+one atomic `review` call). The Clients list adds a bulk "Research public
+profiles" action (1–50 clients) backed by `clientProfileBatchResearch.start`,
+which authorizes like other operator client writes and queues through
+`queueClientProfileBatchResearch`.

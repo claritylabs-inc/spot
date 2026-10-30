@@ -46,6 +46,7 @@ import {
 } from "./client-model";
 import { typeStyle } from "@/lib/typography";
 import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
+import { BulkProfileResearch } from "@/components/operator/bulk-profile-research";
 import {
   BulkDeleteBar,
   useRowSelection,
@@ -295,7 +296,9 @@ export default function OperatorClientsScreen() {
               applicationIds={selectedApplicationIds}
               disabled={readOnly}
               onClear={selection.clear}
-            />
+            >
+              <BulkProfileResearch orgIds={selectedOrgIds} disabled={readOnly} />
+            </BulkDeleteBar>
           }
         />
         <OperationalPanel data-operator-inline-fields>
