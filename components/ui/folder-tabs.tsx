@@ -48,3 +48,21 @@ export function SectionTabsList(
 ) {
   return <TabsList variant="folder" {...props} />;
 }
+
+/**
+ * Tabs for a drawer's own views, passed as `SettingsDrawer` `tabs`. The
+ * drawer header lays them out like the page top bar: beside the title when
+ * there is room, on their own row under it when narrow.
+ */
+export function DrawerTabs({
+  className,
+  ...props
+}: ComponentProps<typeof Tabs>) {
+  return <Tabs className={cn("gap-0", className)} {...props} />;
+}
+
+export function DrawerTabsList(
+  props: Omit<ComponentProps<typeof TabsList>, "variant">,
+) {
+  return <TabsList variant="navbar" {...props} />;
+}
