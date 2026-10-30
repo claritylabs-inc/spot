@@ -23,6 +23,7 @@ import {
   canViewOperatorSkill,
   findLoadableOperatorSkill,
   visibleOperatorSkills,
+  enabledOperatorSkills,
 } from "./lib/operatorSkillStore";
 import {
   SKILL_INSTRUCTIONS_PATH,
@@ -119,6 +120,18 @@ export const list = query({
       personal: personal.map((skill) => skillRow(skill, operator.userId, names)),
       shared: shared.map((skill) => skillRow(skill, operator.userId, names)),
     };
+  },
+});
+
+/** Skills the operator can invoke with `/name` in operator chat: enabled, personal over shared. */
+export const invocable = query({
+  args: {},
+  handler: async (ctx) => {
+    const operator = await requireOperator(ctx);
+    return (await enabledOperatorSkills(ctx, operator.userId)).map(({ name, description }) => ({
+      name,
+      description,
+    }));
   },
 });
 

@@ -5771,6 +5771,8 @@ export default defineSchema({
     // OAuth client that started the run over MCP.
     mcpClientId: v.optional(v.string()),
     planRequested: v.optional(v.boolean()),
+    /** Skills the operator invoked with `/name` for this turn. */
+    requestedSkills: v.optional(v.array(v.string())),
     planningAssessment: v.optional(operatorPlanningAssessmentValidator),
     executionPlan: v.optional(operatorExecutionPlanValidator),
     status: v.union(

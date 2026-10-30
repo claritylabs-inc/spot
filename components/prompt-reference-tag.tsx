@@ -9,7 +9,8 @@ import { typeStyle } from "@/lib/typography";
 export type PromptReferenceTagKind =
   | "policy"
   | "requirement"
-  | "mailbox";
+  | "mailbox"
+  | "skill";
 
 export type PromptReference = {
   kind: PromptReferenceTagKind;
@@ -22,7 +23,7 @@ type PromptReferenceTextPart =
   | { type: "reference"; reference: PromptReference };
 
 export function promptReferenceMarker(kind: PromptReferenceTagKind) {
-  return kind === "mailbox" ? "/" : "@";
+  return kind === "mailbox" || kind === "skill" ? "/" : "@";
 }
 
 function referenceMentionCandidates(reference: PromptReference) {

@@ -390,8 +390,13 @@ function mergeDefaultReferencesIntoTokens(
   ];
 }
 
-function targetKindsForTrigger(trigger: PromptTrigger): PromptTargetKind[] {
+function targetKindsForTrigger(
+  trigger: PromptTrigger,
+  skillsEnabled = false,
+): PromptTargetKind[] {
   if (trigger.preparedKinds) return trigger.preparedKinds;
+  // Operator chat has skills and no mailboxes: `/` invokes a skill.
+  if (trigger.marker === "/" && skillsEnabled) return ["skill"];
   if (trigger.marker === "/") return PREPARED_MAILBOX_TARGET_KINDS;
   return ["policy", "requirement"];
 }
@@ -400,6 +405,7 @@ function targetScopeLabel(kinds: PromptTargetKind[]) {
   const hasPolicyTargets = kinds.includes("policy");
   const hasRequirementTargets = kinds.includes("requirement");
   const hasMailboxTargets = kinds.includes("mailbox");
+  if (kinds.includes("skill")) return "Skills";
 
   if (hasPolicyTargets && hasRequirementTargets) {
     return "Policies and compliance requirements";
@@ -413,6 +419,7 @@ function targetScopeLabel(kinds: PromptTargetKind[]) {
 function referenceIcon(kind: PromptReference["kind"]) {
   if (kind === "requirement") return <BadgeCheck className="size-3.5" />;
   if (kind === "mailbox") return <Inbox className="size-3.5" />;
+  if (kind === "skill") return <span aria-hidden="true">/</span>;
   return <FileText className="size-3.5" />;
 }
 
@@ -597,7 +604,7 @@ function findActiveTrigger(
   const prefix = value.slice(0, cursor);
   const match = prefix.match(/(^|\s)([@/])([^\s@/]*)$/);
   if (!match) return null;
-  const marker = match[2] as "@" | "/";
+  const marker = match[2] as PromptTrigger["marker"];
   const query = match[3] ?? "";
   return {
     marker,
@@ -639,6 +646,11 @@ export interface SpotPromptInputProps {
   toolbarEnd?: React.ReactNode;
   /** Ghost text shown while the prompt is empty; Tab accepts it. */
   suggestion?: string;
+  /**
+   * Skills the operator can invoke. When set, `/` opens a skill picker
+   * and a chosen skill is sent as a `skill` reference.
+   */
+  skills?: ReadonlyArray<{ name: string; description: string }>;
 }
 
 export const SpotPromptInput = forwardRef<
@@ -665,9 +677,11 @@ export const SpotPromptInput = forwardRef<
     contextChip,
     toolbarEnd,
     suggestion,
+    skills,
   },
   ref,
 ) {
+  const skillsEnabled = Boolean(skills?.length);
   const isCommandVariant = variant === "command";
   const isDockVariant = variant === "dock";
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -765,22 +779,30 @@ export const SpotPromptInput = forwardRef<
   const defaultReferencesSignatureRef = useRef(defaultReferencesSignature);
 
   const mentionTargets = useMemo<MentionTarget[]>(() => {
-    if (!targets) return [];
+    const skillTargets: MentionTarget[] = (skills ?? []).map((skill) => ({
+      kind: "skill",
+      id: skill.name,
+      label: skill.name,
+      sublabel: skill.description,
+    }));
+    if (!targets) return skillTargets;
     return [
       ...targets.policies,
       ...targets.requirements,
       ...targets.mailboxes,
-    ].map((target) => ({
-      kind: target.kind,
-      id: target.id,
-      label: target.label,
-      sublabel: target.sublabel,
-    }));
-  }, [targets]);
+    ]
+      .map((target): MentionTarget => ({
+        kind: target.kind,
+        id: target.id,
+        label: target.label,
+        sublabel: target.sublabel,
+      }))
+      .concat(skillTargets);
+  }, [skills, targets]);
 
   const suggestions = useMemo(() => {
     if (!activeTrigger) return [];
-    const allowedKinds = targetKindsForTrigger(activeTrigger);
+    const allowedKinds = targetKindsForTrigger(activeTrigger, skillsEnabled);
     const query = activeTrigger.query.toLowerCase();
     return mentionTargets
       .filter((target) => allowedKinds.includes(target.kind))
@@ -790,8 +812,14 @@ export const SpotPromptInput = forwardRef<
           .toLowerCase()
           .includes(query);
       })
-      .slice(0, 8);
-  }, [activeTrigger, mentionTargets]);
+      // Skill names match first; the list scrolls like a command palette.
+      .sort((a, b) =>
+        a.kind === "skill" && b.kind === "skill" && query
+          ? Number(!a.label.startsWith(query)) - Number(!b.label.startsWith(query))
+          : 0,
+      )
+      .slice(0, allowedKinds.includes("skill") ? 50 : 8);
+  }, [activeTrigger, mentionTargets, skillsEnabled]);
 
   const updatePickerRect = useCallback(() => {
     const wrapper = wrapperRef.current;
@@ -1347,7 +1375,7 @@ export const SpotPromptInput = forwardRef<
     !isGenerating &&
     !isDraggingFiles;
   const activeTargetScopeLabel = activeTrigger
-    ? targetScopeLabel(targetKindsForTrigger(activeTrigger))
+    ? targetScopeLabel(targetKindsForTrigger(activeTrigger, skillsEnabled))
     : null;
   const isSearchDropdownOpen = Boolean(activeTrigger && suggestions.length > 0);
   const pickerPortalRoot =
@@ -1526,6 +1554,11 @@ export const SpotPromptInput = forwardRef<
                 {suggestions.map((target, index) => (
                   <button
                     key={`${target.kind}-${target.id}`}
+                    ref={
+                      index === selectedIndex
+                        ? (node) => node?.scrollIntoView({ block: "nearest" })
+                        : undefined
+                    }
                     type="button"
                     onMouseDown={(event) => {
                       event.preventDefault();
@@ -1546,11 +1579,26 @@ export const SpotPromptInput = forwardRef<
                     <span className="flex w-5 shrink-0 items-center justify-center text-muted-foreground">
                       {referenceIcon(target.kind)}
                     </span>
-                    <span
-                      className={`min-w-0 flex-1 truncate ${typeStyle("body.medium")}`}
-                    >
-                      {target.label}
-                    </span>
+                    {target.kind === "skill" ? (
+                      <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                        <span className={`shrink-0 ${typeStyle("body.medium")}`}>
+                          {target.label}
+                        </span>
+                        {target.sublabel ? (
+                          <span
+                            className={`min-w-0 truncate text-muted-foreground ${typeStyle("caption.default")}`}
+                          >
+                            {target.sublabel}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <span
+                        className={`min-w-0 flex-1 truncate ${typeStyle("body.medium")}`}
+                      >
+                        {target.label}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>

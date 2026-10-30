@@ -81,6 +81,7 @@ export function OperatorAgentChat({
   const registerUpload = useMutation(operatorAgentApi.registerUpload);
   const discardUploads = useMutation(operatorAgentApi.discardUploads);
   const sendMessage = useMutation(operatorAgentApi.sendMessage);
+  const invocableSkills = useQuery(api.operatorSkills.invocable);
   const cancelRun = useMutation(operatorAgentApi.cancelRun);
   const confirmAction = useMutation(operatorAgentApi.confirmAction);
   const startIntent = useMutation(operatorAgentApi.startIntent);
@@ -191,6 +192,9 @@ export function OperatorAgentChat({
     (message: PromptInputMessage) => {
       const text = message.text.trim();
       if (!text && message.files.length === 0) return;
+      const skills = (message.references ?? [])
+        .filter((reference) => reference.kind === "skill")
+        .map((reference) => reference.id);
       return runSubmission(async () => {
         const uploadedIntents: Array<{
           uploadIntentId: Id<"operatorAgentUploadIntents">;
@@ -238,6 +242,7 @@ export function OperatorAgentChat({
               ? { pageContext: availablePageContext }
               : {}),
             ...(planMode ? { planMode: true } : {}),
+            ...(skills.length > 0 ? { skills } : {}),
           });
           setPlanMode(false);
         } catch (error) {
@@ -335,7 +340,12 @@ export function OperatorAgentChat({
                 reportError("Could not stop the task"),
               );
             }}
-            placeholder="Ask the operator agent…"
+            placeholder={
+              invocableSkills?.length
+                ? "Ask the operator agent… (/ for skills)"
+                : "Ask the operator agent…"
+            }
+            skills={invocableSkills}
             suggestion={nextMessageSuggestion}
             attachmentAccept={OPERATOR_ATTACHMENT_ACCEPT}
             multipleAttachments
