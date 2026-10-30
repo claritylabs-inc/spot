@@ -6,7 +6,8 @@ import dayjs from "dayjs";
 import { intakeCurrency } from "../lib/intake-money";
 import { v } from "convex/values";
 import { orgBrandFields } from "./lib/orgBranding";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, type MutationCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { requireOperator } from "./lib/operatorIdentity";
 import { requireRequest } from "./procurementRequests";
 import { informationRequirementStatus } from "./lib/procurementInformationSchema";
@@ -29,6 +30,10 @@ import {
   requirementArgs,
   addRequirementForRequest,
 } from "./lib/procurementInformationRequirements";
+import {
+  queueAutomaticInformationResearch,
+  resolvePendingSuggestions,
+} from "./lib/procurementInformationResearch";
 
 export const operatorForms = query({
   args: { requestId: v.id("procurementRequests") },
@@ -250,7 +255,14 @@ export const addRequirement = mutation({
   args: requirementArgs,
   handler: async (ctx, args) => {
     const { operator, request } = await operatorWrite(ctx, args.requestId);
-    return addRequirementForRequest(ctx, args, request, operator.userId);
+    const requirementId = await addRequirementForRequest(
+      ctx,
+      args,
+      request,
+      operator.userId,
+    );
+    await queueAutomaticInformationResearch(ctx, request._id);
+    return requirementId;
   },
 });
 export const setRequirementStatus = mutation({
@@ -313,54 +325,76 @@ export const recordAnswer = mutation({
     const q = await ctx.db.get(args.questionId);
     if (!q) throw new Error("Question not found");
     const { operator, request } = await operatorWrite(ctx, q.requestId);
-    if (q.answerId !== args.previousAnswerId)
-      throw new Error("Answer changed. Reload before saving");
-    if (
-      informationApplicability(q, await requestFacts(ctx, q.requestId)) !==
-      "applies"
-    )
-      throw new Error("Resolve the prerequisite before recording this answer");
-    const raw = args.answer.trim();
-    const unsure = !raw || raw === "I'm not sure";
-    const answer = unsure ? "" : text(raw, 2000);
-    if (!unsure) validateFollowupAnswers([{ ...q.question, answer }]);
-    if (
-      !unsure &&
-      q.question.kind === "date" &&
-      (!/^\d{4}-\d{2}-\d{2}$/.test(answer) ||
-        !dayjs(answer).isValid() ||
-        dayjs(answer).format("YYYY-MM-DD") !== answer)
-    )
-      throw new Error("Enter a valid calendar date");
-    const allowed = new Set(
-      (await filesForClient(ctx, q.requestId)).map((f) => f.id),
-    );
-    if (
-      args.fileItemIds.length > 10 ||
-      args.fileItemIds.some((id) => !allowed.has(id))
-    )
-      throw new Error("Invalid files");
-    const answerId = await ctx.db.insert("procurementInformationAnswers", {
-      requestId: q.requestId,
-      questionId: q._id,
-      answer,
-      unsure,
-      fileItemIds: args.fileItemIds,
-      suppliedByUserId: operator.user._id,
-      provenance: text(args.provenance, 1000),
-      createdAt: dayjs().valueOf(),
-    });
-    await ctx.db.patch(q._id, { answerId });
-    await cancelSupersededForms(ctx, q.requestId, q._id);
-    await audit(
+    return recordInformationAnswerByOperator(
       ctx,
       operator.user._id,
       request,
-      "Recorded supplementary answer with provenance",
+      q,
+      args,
     );
-    return answerId;
   },
 });
+/** The operator answer writer, shared with accepted research suggestions. */
+export async function recordInformationAnswerByOperator(
+  ctx: MutationCtx,
+  operatorUserId: Id<"users">,
+  request: Doc<"procurementRequests">,
+  q: Doc<"procurementInformationQuestions">,
+  args: {
+    previousAnswerId?: Id<"procurementInformationAnswers">;
+    answer: string;
+    provenance: string;
+    fileItemIds: Id<"procurementFileItems">[];
+  },
+) {
+  if (q.answerId !== args.previousAnswerId)
+    throw new Error("Answer changed. Reload before saving");
+  if (
+    informationApplicability(q, await requestFacts(ctx, q.requestId)) !==
+    "applies"
+  )
+    throw new Error("Resolve the prerequisite before recording this answer");
+  const raw = args.answer.trim();
+  const unsure = !raw || raw === "I'm not sure";
+  const answer = unsure ? "" : text(raw, 2000);
+  if (!unsure) validateFollowupAnswers([{ ...q.question, answer }]);
+  if (
+    !unsure &&
+    q.question.kind === "date" &&
+    (!/^\d{4}-\d{2}-\d{2}$/.test(answer) ||
+      !dayjs(answer).isValid() ||
+      dayjs(answer).format("YYYY-MM-DD") !== answer)
+  )
+    throw new Error("Enter a valid calendar date");
+  const allowed = new Set(
+    (await filesForClient(ctx, q.requestId)).map((f) => f.id),
+  );
+  if (
+    args.fileItemIds.length > 10 ||
+    args.fileItemIds.some((id) => !allowed.has(id))
+  )
+    throw new Error("Invalid files");
+  const answerId = await ctx.db.insert("procurementInformationAnswers", {
+    requestId: q.requestId,
+    questionId: q._id,
+    answer,
+    unsure,
+    fileItemIds: args.fileItemIds,
+    suppliedByUserId: operatorUserId,
+    provenance: text(args.provenance, 1000),
+    createdAt: dayjs().valueOf(),
+  });
+  await ctx.db.patch(q._id, { answerId });
+  await cancelSupersededForms(ctx, q.requestId, q._id);
+  await resolvePendingSuggestions(ctx, q._id);
+  await audit(
+    ctx,
+    operatorUserId,
+    request,
+    "Recorded supplementary answer with provenance",
+  );
+  return answerId;
+}
 export const archiveQuestion = mutation({
   args: {
     questionId: v.id("procurementInformationQuestions"),

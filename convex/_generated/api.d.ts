@@ -65,6 +65,7 @@ import type * as actions_ownComplianceMonitor from "../actions/ownComplianceMoni
 import type * as actions_policyExtraction from "../actions/policyExtraction.js";
 import type * as actions_processThreadChat from "../actions/processThreadChat.js";
 import type * as actions_procurementInformation from "../actions/procurementInformation.js";
+import type * as actions_procurementInformationResearch from "../actions/procurementInformationResearch.js";
 import type * as actions_proposalExtraction from "../actions/proposalExtraction.js";
 import type * as actions_proposalReview from "../actions/proposalReview.js";
 import type * as actions_providerOutreach from "../actions/providerOutreach.js";
@@ -439,6 +440,7 @@ import type * as lib_procurementInformationDecisions from "../lib/procurementInf
 import type * as lib_procurementInformationOperator from "../lib/procurementInformationOperator.js";
 import type * as lib_procurementInformationProviderExtraction from "../lib/procurementInformationProviderExtraction.js";
 import type * as lib_procurementInformationRequirements from "../lib/procurementInformationRequirements.js";
+import type * as lib_procurementInformationResearch from "../lib/procurementInformationResearch.js";
 import type * as lib_procurementInformationSchema from "../lib/procurementInformationSchema.js";
 import type * as lib_procurementInformationSegments from "../lib/procurementInformationSegments.js";
 import type * as lib_procurementNarrative from "../lib/procurementNarrative.js";
@@ -596,6 +598,7 @@ import type * as presence from "../presence.js";
 import type * as procurementInformation from "../procurementInformation.js";
 import type * as procurementInformationEmail from "../procurementInformationEmail.js";
 import type * as procurementInformationForms from "../procurementInformationForms.js";
+import type * as procurementInformationSuggestions from "../procurementInformationSuggestions.js";
 import type * as procurementPacket from "../procurementPacket.js";
 import type * as procurementProposals from "../procurementProposals.js";
 import type * as procurementRequests from "../procurementRequests.js";
@@ -706,6 +709,7 @@ declare const fullApi: ApiFromModules<{
   "actions/policyExtraction": typeof actions_policyExtraction;
   "actions/processThreadChat": typeof actions_processThreadChat;
   "actions/procurementInformation": typeof actions_procurementInformation;
+  "actions/procurementInformationResearch": typeof actions_procurementInformationResearch;
   "actions/proposalExtraction": typeof actions_proposalExtraction;
   "actions/proposalReview": typeof actions_proposalReview;
   "actions/providerOutreach": typeof actions_providerOutreach;
@@ -1080,6 +1084,7 @@ declare const fullApi: ApiFromModules<{
   "lib/procurementInformationOperator": typeof lib_procurementInformationOperator;
   "lib/procurementInformationProviderExtraction": typeof lib_procurementInformationProviderExtraction;
   "lib/procurementInformationRequirements": typeof lib_procurementInformationRequirements;
+  "lib/procurementInformationResearch": typeof lib_procurementInformationResearch;
   "lib/procurementInformationSchema": typeof lib_procurementInformationSchema;
   "lib/procurementInformationSegments": typeof lib_procurementInformationSegments;
   "lib/procurementNarrative": typeof lib_procurementNarrative;
@@ -1237,6 +1242,7 @@ declare const fullApi: ApiFromModules<{
   procurementInformation: typeof procurementInformation;
   procurementInformationEmail: typeof procurementInformationEmail;
   procurementInformationForms: typeof procurementInformationForms;
+  procurementInformationSuggestions: typeof procurementInformationSuggestions;
   procurementPacket: typeof procurementPacket;
   procurementProposals: typeof procurementProposals;
   procurementRequests: typeof procurementRequests;
