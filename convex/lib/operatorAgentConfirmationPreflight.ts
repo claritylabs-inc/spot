@@ -14,7 +14,6 @@ import { getMarkdownDocument } from "../markdownDocuments";
 import { preparePacketDocumentUpdate } from "../procurementPacket";
 import { requireCompanyRequest } from "./companyRequest";
 import { appendWikiSection } from "./wikiAppend";
-import { validateClientOutreachLaunch } from "../clientOutreach";
 import {
   currentRequestCadence,
   loadCompanyRequest,
@@ -44,7 +43,6 @@ import { resolveOperatorPolicySources } from "../operatorPolicyImports";
 import { validateOperatorInvitation } from "../operatorInvitations";
 import { requireSendableOperatorEmailDraft } from "../operatorEmailDrafts";
 import { isOutreachLocked } from "./teamEmailStore";
-import { previewTeamEmailReply } from "./teamEmailReply";
 import { assertOutreachIdentity } from "./outreachIdentity";
 
 export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
@@ -64,13 +62,11 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "update_procurement_requests",
   "update_procurement_application",
   "create_procurement_broker_outreach",
+  "send_procurement_provider_emails",
   "launch_procurement_provider_outreach",
   "stop_procurement_provider_outreach",
-  "send_procurement_client_email",
   "create_procurement_information_form",
   "cancel_procurement_information_form",
-  "reply_procurement_email_thread",
-  "reply_email_thread",
   "link_team_inbox_thread",
   "link_team_inbox_threads",
   "update_procurement_broker_outreach",
@@ -1074,6 +1070,7 @@ export async function preflightOperatorToolConfirmation(
     case "update_procurement_request":
       await preflightProcurementRequestUpdate(ctx, args.input);
       return;
+    case "send_procurement_provider_emails":
     case "launch_procurement_provider_outreach": {
       await assertOutreachIdentity(ctx, args.operatorUserId);
       const request = await requireProcurementRequest(
@@ -1126,34 +1123,6 @@ export async function preflightOperatorToolConfirmation(
         throw new Error(`${plan.problem} Revise the email with update_procurement_provider_emails first.`);
       return;
     }
-    case "send_procurement_client_email": {
-      await assertOutreachIdentity(ctx, args.operatorUserId);
-      const request = await requireProcurementRequest(
-        ctx,
-        args.input.procurementRequestId,
-      );
-      const cadence = args.input.cadence as {
-        followUpCount: number;
-        intervalBusinessDays: number;
-      };
-      await validateClientOutreachLaunch(ctx, {
-        requestId: request._id,
-        recipientEmail: String(args.input.recipientEmail ?? ""),
-        subject: String(args.input.subject ?? ""),
-        text: String(args.input.message ?? ""),
-        cadence: { ...cadence, style: "brief_nudge" },
-        informationFormId:
-          args.input.informationFormId == null
-            ? undefined
-            : (await requireDocument(
-                ctx,
-                "procurementInformationForms",
-                args.input.informationFormId,
-                "Information form",
-              ))._id,
-      });
-      return;
-    }
     case "create_procurement_information_form":
       await requireProcurementRequest(ctx, args.input.procurementRequestId);
       if (Array.isArray(args.input.questionIds))
@@ -1163,22 +1132,6 @@ export async function preflightOperatorToolConfirmation(
     case "cancel_procurement_information_form": {
       const form = await requireDocument(ctx, "procurementInformationForms", args.input.informationFormId, "Information form");
       if (form.status !== "open") throw new Error("Only open forms can be cancelled");
-      return;
-    }
-    case "reply_procurement_email_thread":
-    case "reply_email_thread": {
-      const thread = await requireTeamEmailThread(ctx, args.input.teamEmailThreadId ?? args.input.procurementEmailThreadId);
-      if (args.input.procurementRequestId) {
-        const request = await requireProcurementRequest(ctx, args.input.procurementRequestId);
-        if (thread.requestId !== request._id) throw new Error("Email conversation does not belong to the request");
-      }
-      if (thread.archivedAt) throw new Error("Restore this conversation before replying");
-      const reply = await previewTeamEmailReply(ctx, {
-        operatorUserId: args.operatorUserId,
-        teamEmailThreadId: thread._id,
-        message: String(args.input.message ?? ""),
-      });
-      if (!reply.ok) throw new Error(reply.reason);
       return;
     }
     case "link_team_inbox_thread": {

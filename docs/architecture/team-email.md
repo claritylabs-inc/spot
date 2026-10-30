@@ -102,6 +102,18 @@ the same team tables.
 
 ## Sending and recovery
 
+Every operator-agent and MCP email starts as a chat draft (`save_email_draft`)
+that operators can edit in the shared composer before `send_email_draft` or the
+composer's Send. A reply is a draft linked to its conversation (reply-all
+recipients, `Re:` subject, threading and quoted history from the thread); a
+client information request is a draft with `clientOutreach` that launches the
+request's client sequence on send. Follow-ups are stored on the draft and start
+on send. The retired `reply_email_thread` and `send_procurement_client_email`
+names only save these drafts. An agent approval of a send binds
+`operatorDraftSendFingerprint`: the draft fingerprint plus its follow-ups and
+client request link. With approve-all on, the draft sends as soon as it is
+approved automatically.
+
 Web, channel and operator MCP callers use the current operator identity; in the
 web app a reply, new email or agent chat draft can instead be sent as any active
 operator with a team address (`fromUserId`), signed as them, with the clicking

@@ -110,19 +110,19 @@ export const OPERATOR_TOOL_FAMILY_ALIASES: Readonly<
 > = { threads: "operator_conversations" };
 
 const OUTBOUND_EMAIL_GUIDANCE = `EMAIL DRAFTS AND DELIVERY:
-Use save_email_draft to create or revise the saved draft, adding requested clientFileIds or policyIds in the same call. On edits, omitted fields and attachments are preserved; use explicit empty arrays to clear copies or retained attachments. Every edit invalidates prior send approval. send_email_draft requires a current affirmative send request; draft-only, negated, advisory and uncertain requests remain drafts.
+Every email starts as a draft: save_email_draft creates or revises it (a new email, a reply with teamEmailThreadId, or a client information request with informationFormId), adding requested clientFileIds or policyIds and followUps in the same call, and send_email_draft sends it. The operator can edit the draft before it sends. On edits, omitted fields and attachments are preserved; use explicit empty arrays to clear copies or retained attachments. Every edit invalidates prior send approval. send_email_draft requires a current affirmative send request; draft-only, negated, advisory and uncertain requests remain drafts.
 Attach only requested documents. For a COI request, include only the generated COI unless an original policy PDF was separately requested. Each recipient receives only their own COI; a bundle of several COIs needs exact recipient and attachment confirmation. Never claim a file is attached before the tool succeeds, and do not reattach files already on the draft.
 ${COI_DISCLAIMER}
 Use 1–3 short paragraphs or a short bullet list. Include only policy facts useful to the recipient unless a detailed memo was requested.
 ${NO_OPEN_ENDED_OFFERS}
 
 Follow the EMAIL WRITING RULES and PROVIDER RULES sections of this prompt.
-Provider outreach for a procurement request goes through launch_procurement_provider_outreach, which applies these rules and the provider's relationship automatically.
+Provider outreach for a procurement request goes through get/update/send_procurement_provider_emails, which applies these rules and the provider's relationship automatically.
 
 OPERATOR OUTBOUND EMAIL:
-These tools draft and send from your personal team address, signed with your full name and Spot. Write in first person as the operator, but never sign your name; the signature is added on send. Your saved Always CC is included in the displayed draft and exact approval. Replies return to the shared team inbox. Always pass the recipient's exact address in "to".
+These tools draft and send from your personal team address, signed with your full name and Spot. Write in first person as the operator, but never sign your name; the signature is added on send. Your saved Always CC is included in the displayed draft and exact approval. Replies return to the shared team inbox. For a new email, always pass the recipient's exact address in "to".
 These tools are for separately requested emails. A direct answer to the operator belongs in your final response; command email delivers that response automatically. A request for no changes does not authorize saving a draft.
-Ad hoc email needs no client organization. When it concerns a known client or request, pass its exact orgId or procurementRequestId so it is filed correctly. For a reply, pass teamEmailThreadId. Each conversation's reply box holds a suggested reply (replySuggestion in get_team_inbox_thread); when the operator asks to change the reply on a conversation, revise it with update_team_reply_draft, and send only on an explicit instruction with reply_email_thread. Find mail by its content with search_team_inbox. Revisions re-sign as the current operator and invalidate earlier approval. Read an existing thread before replying, and use only its verified recipients.
+Ad hoc email needs no client organization. When it concerns a known client or request, pass its exact orgId or procurementRequestId so it is filed correctly. For a reply, pass teamEmailThreadId and the body; recipients, subject and threading come from the thread. Each conversation's reply box holds a suggested reply (replySuggestion in get_team_inbox_thread); when the operator asks to change the reply in the inbox, revise it with update_team_reply_draft. To send a reply from this conversation, save it with save_email_draft (teamEmailThreadId) and send it with send_email_draft on an explicit instruction. Find mail by its content with search_team_inbox. Revisions re-sign as the current operator and invalidate earlier approval. Read an existing thread before replying, and use only its verified recipients.
 Attachments: use save_email_draft policyIds for explicitly requested original policy PDFs, or clientFileIds for exact stored client files (list_client_files). To send a certificate of insurance, first call generate_coi (it needs the operator's exact approval); its result gives each certificate's clientFileId, then add its clientFileId with save_email_draft. Do not describe a certificate or file as attached until the tool returns.
 Resolve recipients and the target organization from records, never from memory. For the applicant on a procurement request use applicantContact (name, email, phone) from get_procurement_request; for a provider use its recorded contact. Pass the request's client organization ID as orgId. If no address is on record, ask the operator for it. Never invent an address, and never leave placeholders such as [Contact Name], [Your Name] or bracketed fields in a draft; use the real name from the record or leave the greeting generic.
 When asked to request missing information, read the request and application first, then ask only for what is actually missing, short and prioritized (the few items that unblock the work most, grouped and in plain words). Do not restate what we already have.
@@ -340,11 +340,13 @@ function summarizeUpdate(
   return `${title}\n${changes.join("\n")}`;
 }
 
+// Retired send tool: a reply is now a draft (save_email_draft with teamEmailThreadId).
 const replyEmailThreadSpec = defineOperatorTool({
   family: "outbound_email",
-  version: 2,
+  version: 3,
+  offered: false,
   description:
-    "Reply to a shared team email thread from your own team address, signed with your name. A reply on another operator's thread CCs its owner. Automated follow-ups stop first. Read the thread first; the exact reply is reviewed before sending.",
+    "Save a reply draft on a shared team email thread (same as save_email_draft with teamEmailThreadId). Never sends; send it with send_email_draft.",
   inputSchema: z.object({
     teamEmailThreadId: omittable(teamEmailThreadId),
     procurementEmailThreadId: omittable(procurementEmailThreadId),
@@ -356,13 +358,55 @@ const replyEmailThreadSpec = defineOperatorTool({
     "Provide one exact teamEmailThreadId (procurementEmailThreadId is the compatibility alias)",
   ),
   capability: "operator.email.write",
+  effect: "reversible_write",
+  requiredRole: "operator",
+  confirmation: "none",
+  execution: "action",
+  target: (input) => ({ kind: "team_email_thread", id: input.teamEmailThreadId ?? input.procurementEmailThreadId }),
+  summarize: (input) => `Draft a reply on email thread ${input.teamEmailThreadId ?? input.procurementEmailThreadId}`,
+});
+
+const sendProcurementProviderEmailsSpec = defineOperatorTool({
+  family: "procurement",
+  version: 4,
+  description:
+    "Email the named providers now, one individual email each from your team address, and schedule follow-ups. Each provider gets exactly the email get_procurement_provider_emails shows: its own draft, else the request's mail-merge template with its values filled in; revise first with update_procurement_provider_emails. Externally visible; needs exact approval, which lists every provider, whether it will send, and the emails. Name at most 50 providers. Unknown-fit providers need individual selection, excluded providers cannot receive outreach, and providers with a live or responded sequence are skipped. Omit cadence to use the request's follow-up cadence.",
+  inputSchema: z.object({
+    procurementRequestId,
+    brokerOrgIds: z.array(organizationId).min(1).max(50),
+    cadence: omittable(
+      z.object({
+        followUpCount: z.number().int().min(0).max(4),
+        intervalBusinessDays: z.union([
+          z.literal(2),
+          z.literal(3),
+          z.literal(5),
+          z.literal(7),
+        ]),
+        style: z.enum(["brief_nudge", "concise_recap", "detailed_recap"]),
+      }),
+    ),
+  }),
+  capability: "operator.procurement.write",
   effect: "external_send",
   requiredRole: "operator",
   confirmation: "exact",
-  execution: "action",
-  target: (input) => ({ kind: "team_email_thread", id: input.teamEmailThreadId ?? input.procurementEmailThreadId }),
-  summarize: (input) => `Reply on email thread ${input.teamEmailThreadId ?? input.procurementEmailThreadId}`,
+  target: (input) => ({
+    kind: "procurement_request",
+    id: input.procurementRequestId,
+  }),
+  summarize: (input) =>
+    `Send outreach to ${input.brokerOrgIds.length} provider${input.brokerOrgIds.length === 1 ? "" : "s"} for ${input.procurementRequestId}, ${
+      input.cadence
+        ? `with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days (${input.cadence.style})`
+        : "with the request's follow-up cadence"
+    }`,
 });
+
+/** True for the provider outreach send and its retired name. */
+export function isProviderEmailSendTool(toolName: string) {
+  return toolName === "send_procurement_provider_emails" || toolName === "launch_procurement_provider_outreach";
+}
 
 const createClientOrganizationInputSchema = z.object({
   name: z.string().min(1).max(200),
@@ -1842,7 +1886,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   update_team_reply_draft: defineOperatorTool({
     family: "outbound_email",
     version: 1,
-    description: `Write or revise the suggested reply shown in a team conversation's reply box (get_team_inbox_thread returns the current one as replySuggestion). Never sends; the operator edits and sends it, or ask to send with reply_email_thread. Follow the email writing rules, including the provider rules when replying to a provider. Plain text except for factual bullets, opening with the greeting from the rules. ${REPLY_DRAFT_SIGN_OFF} The signature and quoted history are added on send. Use [needs: …] only for facts nobody has provided.`,
+    description: `Write or revise the suggested reply shown in a team conversation's reply box (get_team_inbox_thread returns the current one as replySuggestion). Never sends; the operator edits and sends it from the inbox. To send from this conversation, draft the reply with save_email_draft (teamEmailThreadId) and send it with send_email_draft. Follow the email writing rules, including the provider rules when replying to a provider. Plain text except for factual bullets, opening with the greeting from the rules. ${REPLY_DRAFT_SIGN_OFF} The signature and quoted history are added on send. Use [needs: …] only for facts nobody has provided.`,
     inputSchema: z.object({
       teamEmailThreadId,
       reply: z.string().trim().min(1).max(10_000).describe("Complete plain-text reply body"),
@@ -2043,8 +2087,8 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   }),
   save_email_draft: defineOperatorTool({
     family: "outbound_email",
-    version: 1,
-    description: "Create a team email draft, or edit draftId in this conversation. Never sends. Omitted fields and existing attachments are preserved on edits; [] clears copies or retained attachments. A draft keeps its sender unless fromUserId names another operator. Every edit re-signs and invalidates send approval. clientFileIds adds exact files from the draft's client; policyIds requires an explicit request for original PDFs. Real recipients and complete placeholder-free subject/body are required on creation. A new draft to the same recipient replaces the earlier draft.",
+    version: 2,
+    description: "Create or revise (draftId) the one draft for every email you send; it never sends, and the operator can edit it before send_email_draft. Three modes, chosen by fields: a new email (to, subject, body; add orgId or procurementRequestId to file it); a reply (teamEmailThreadId and body; recipients, \"Re:\" subject, threading, quoted history, Always CC and an owner copy are filled in, override with to/cc); a client information request (procurementRequestId, informationFormId, to = a listed client contact, subject, body without greeting or signature; sending starts the request's client email sequence, and reminders stop when they reply or submit the form). Do not combine teamEmailThreadId with informationFormId. followUps nudges the recipient on the same thread until anyone replies: {followUpCount, intervalBusinessDays}, \"auto\" for Spot's schedule, or null for none. Omitted fields and existing attachments are preserved on edits; [] clears copies or retained attachments. A draft keeps its sender unless fromUserId names another operator. Every edit re-signs and invalidates send approval. clientFileIds adds exact files from the draft's client; policyIds requires an explicit request for original PDFs. Use real recipients and a complete, placeholder-free body. A new draft to the same recipient (or on the same thread) replaces the earlier draft.",
     inputSchema: z.object({
       draftId: omittable(z.string().trim().min(1)),
       fromUserId: omittable(
@@ -2061,13 +2105,30 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       bcc: omittable(z.array(operatorEmailAddress).max(10)),
       subject: omittable(z.string().trim().min(1).max(300)),
       body: omittable(z.string().trim().min(1).max(10_000)),
+      informationFormId: optionalExactId(
+        "Client information form this email asks the client to complete (create_procurement_information_form); include its url in the body. Makes the draft a client information request",
+      ),
+      followUps: omittable(
+        z.union([
+          z.object({
+            followUpCount: z.number().int().min(1).max(4),
+            intervalBusinessDays: z.union([z.literal(2), z.literal(3), z.literal(5), z.literal(7)]),
+          }),
+          z.literal("auto"),
+          z.null(),
+        ]),
+      ),
       attachmentFileIds: omittable(z.array(z.string().min(1)).max(10)),
       clientFileIds: omittable(z.array(clientFileId).max(10)),
       policyIds: omittable(z.array(policyId).max(10)),
       explicitArtifactRequest: omittable(z.literal("original_policy_document")),
       intentEvidence: omittable(z.string().trim().min(1).max(1_000)),
-    }).refine((input) => !!input.draftId || (!!input.to && !!input.subject && !!input.body),
-      "Creating a draft requires to, subject and body; edits require draftId")
+    }).refine((input) => !!input.draftId || (!!input.body && (!!input.teamEmailThreadId || (!!input.to && !!input.subject))),
+      "Creating a draft requires body plus either teamEmailThreadId (a reply) or to and subject; edits require draftId")
+      .refine((input) => !input.teamEmailThreadId || !input.informationFormId,
+        "A client information request (informationFormId) starts a new conversation: omit teamEmailThreadId, or omit informationFormId to reply on the thread")
+      .refine((input) => !input.informationFormId || !!input.draftId || !!input.procurementRequestId,
+        "A client information request (informationFormId) needs its procurementRequestId")
       .refine((input) => !input.policyIds?.length || (!!input.explicitArtifactRequest && !!input.intentEvidence),
         "policyIds requires explicitArtifactRequest original_policy_document and the operator's intentEvidence")
       .refine((input) => !!input.draftId || !input.attachmentFileIds?.length,
@@ -2221,7 +2282,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "outbound_email",
     version: 1,
     description:
-      "Send one saved draft from this conversation as an email to its external recipients. Delivery is externally visible and requires the operator's exact approval of the complete email; any later edit voids the approval. Call only after the operator clearly asked to send.",
+      "Send one saved draft from this conversation: an email, a reply on its team thread, or a client information request (which starts its client email sequence), with the draft's follow-ups. Delivery is externally visible and requires the operator's exact approval of the complete email; any later edit voids the approval. Call only after the operator clearly asked to send.",
     inputSchema: z.object({
       draftId: z.string().min(1).describe("Exact draft ID"),
     }),
@@ -2952,7 +3013,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Read the first emails launch_procurement_provider_outreach would send for one company-linked request: the request's mail-merge template (subject and body with {{variables}}) and, per provider, the recipient, whether it will send or why not, the merge values, and its email source. A provider's own draft (tailored by Spot, edited by the operator in a mail merge preview, or written with update_procurement_provider_emails) wins over the template; its merged body is returned. Omit brokerOrgIds for every matched provider (up to 50). Use list_procurement_provider_matches to find providers by fit; use this before revising or sending.",
+      "Read the first emails send_procurement_provider_emails would send for one company-linked request: the request's mail-merge template (subject and body with {{variables}}) and, per provider, the recipient, whether it will send or why not, the merge values, and its email source. A provider's own draft (tailored by Spot, edited by the operator in a mail merge preview, or written with update_procurement_provider_emails) wins over the template; its merged body is returned. Omit brokerOrgIds for every matched provider (up to 50). Use list_procurement_provider_matches to find providers by fit; use this before revising or sending.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgIds: omittable(z.array(organizationId).min(1).max(50)),
@@ -2989,42 +3050,13 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `Update ${input.items.length} provider email${input.items.length === 1 ? "" : "s"} for ${input.procurementRequestId}`,
   }),
-  launch_procurement_provider_outreach: defineOperatorTool({
-    family: "procurement",
-    version: 4,
-    description:
-      "Email the named providers now, one individual email each from your team address, and schedule follow-ups. Each provider gets exactly the email get_procurement_provider_emails shows: its own draft, else the request's mail-merge template with its values filled in; revise first with update_procurement_provider_emails. Externally visible; needs exact approval, which lists every provider, whether it will send, and the emails. Name at most 50 providers. Unknown-fit providers need individual selection, excluded providers cannot receive outreach, and providers with a live or responded sequence are skipped. Omit cadence to use the request's follow-up cadence.",
-    inputSchema: z.object({
-      procurementRequestId,
-      brokerOrgIds: z.array(organizationId).min(1).max(50),
-      cadence: omittable(
-        z.object({
-          followUpCount: z.number().int().min(0).max(4),
-          intervalBusinessDays: z.union([
-            z.literal(2),
-            z.literal(3),
-            z.literal(5),
-            z.literal(7),
-          ]),
-          style: z.enum(["brief_nudge", "concise_recap", "detailed_recap"]),
-        }),
-      ),
-    }),
-    capability: "operator.procurement.write",
-    effect: "external_send",
-    requiredRole: "operator",
-    confirmation: "exact",
-    target: (input) => ({
-      kind: "procurement_request",
-      id: input.procurementRequestId,
-    }),
-    summarize: (input) =>
-      `Send outreach to ${input.brokerOrgIds.length} provider${input.brokerOrgIds.length === 1 ? "" : "s"} for ${input.procurementRequestId}, ${
-        input.cadence
-          ? `with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days (${input.cadence.style})`
-          : "with the request's follow-up cadence"
-      }`,
-  }),
+  send_procurement_provider_emails: sendProcurementProviderEmailsSpec,
+  // Kept callable for stored runs and existing MCP clients.
+  launch_procurement_provider_outreach: {
+    ...sendProcurementProviderEmailsSpec,
+    offered: false,
+    description: "Alias of send_procurement_provider_emails, kept for compatibility.",
+  },
   list_procurement_client_outreach: defineOperatorTool({
     offered: false,
     family: "procurement",
@@ -3150,7 +3182,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "procurement",
     version: 1,
     description:
-      "Create a client information form (an easy fill-in questionnaire link) for unanswered questions on a procurement request without emailing anyone. Omit questionIds to include every question ready for a form; prerequisite yes/no questions are added automatically, and an identical open form is returned instead of a duplicate. The client portal also lists open forms. Share the returned url in save_email_draft, or pass informationFormId to send_procurement_client_email so reminders stop when the client submits.",
+      "Create a client information form (an easy fill-in questionnaire link) for unanswered questions on a procurement request without emailing anyone. Omit questionIds to include every question ready for a form; prerequisite yes/no questions are added automatically, and an identical open form is returned instead of a duplicate. The client portal also lists open forms. Email it with save_email_draft: pass informationFormId with the request and a client contact so reminders stop when the client submits, and include the returned url in the body.",
     inputSchema: z.object({
       procurementRequestId,
       questionIds: omittable(
@@ -3193,10 +3225,12 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Cancel client information form ${input.informationFormId}`,
   }),
   send_procurement_client_email: defineOperatorTool({
+    // Retired send tool: a client information request is now a draft (save_email_draft with informationFormId).
     family: "procurement",
-    version: 4,
+    version: 5,
+    offered: false,
     description:
-      "Email one client contact to request information for a procurement request, then send automated same-thread nudges until they reply. Externally visible; needs exact approval of the complete signed email. List client outreach first and use an exact listed recipient email. The first email is exactly the subject and message given (greeting and signature are added); replies and attachments land in the request Inbox. Follow-ups stop when the request closes, the recipient stops being a client contact, the linked form is submitted or cancelled, or follow-ups are stopped. To prepare a questionnaire without emailing, use create_procurement_information_form.",
+      "Save a client information request draft (same as save_email_draft with procurementRequestId and informationFormId). Never sends; send it with send_email_draft.",
     inputSchema: z.object({
       procurementRequestId,
       recipientEmail: emailAddress.describe(
@@ -3223,15 +3257,16 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       }),
     }),
     capability: "operator.procurement.write",
-    effect: "external_send",
+    effect: "reversible_write",
     requiredRole: "operator",
-    confirmation: "exact",
+    confirmation: "none",
+    execution: "action",
     target: (input) => ({
       kind: "procurement_request",
       id: input.procurementRequestId,
     }),
     summarize: (input) =>
-      `Email ${input.recipientEmail} "${input.subject}" for ${input.procurementRequestId}, with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days`,
+      `Draft an email to ${input.recipientEmail} "${input.subject}" for ${input.procurementRequestId}, with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days`,
   }),
   // Kept callable for existing MCP clients; the shorter description steers models to reply_email_thread.
   reply_procurement_email_thread: {

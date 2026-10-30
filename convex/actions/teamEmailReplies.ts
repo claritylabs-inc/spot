@@ -4,7 +4,7 @@ import { v } from "convex/values";
 
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { action, internalAction, type ActionCtx } from "../_generated/server";
+import { action, type ActionCtx } from "../_generated/server";
 import { sendOperatorInboxDraft } from "../lib/operatorInboxSend";
 import {
   isReplyKeyMismatch,
@@ -136,24 +136,3 @@ async function settled(
   }
   return { status: "not_sent", pendingEmailId, message: SAFE_FALLBACK };
 }
-
-/** Operator-agent and MCP replies; the completed exact confirmation is the grant. */
-export const sendAgentReplyInternal = internalAction({
-  args: {
-    operatorUserId: v.id("users"),
-    confirmationId: v.id("operatorAgentConfirmations"),
-    teamEmailThreadId: v.id("teamEmailThreads"),
-    message: v.string(),
-  },
-  handler: async (ctx, args): Promise<TeamReplySent> => {
-    const { pendingEmailId } = await ctx.runMutation(
-      internal.teamEmailReplies.prepareAgentReplyInternal,
-      args,
-    );
-    const { recipientEmail } = await sendOperatorInboxDraft(ctx, {
-      pendingEmailId,
-      confirmationId: args.confirmationId,
-    });
-    return await finish(ctx, pendingEmailId, recipientEmail);
-  },
-});

@@ -27,6 +27,7 @@ import {
 import {
   DraftedBySpot,
   EmailComposerBar,
+  EmailComposerNotes,
   FullEmailToggle,
   followUpsRequest,
   type FollowUps,
@@ -76,6 +77,21 @@ function draftRecipients(draft: OperatorEmailDraftView) {
   return cc ? `To ${to} · Cc ${cc}` : `To ${to}`;
 }
 
+/** What sending a draft starts besides the email: follow-ups, or a client information request. */
+export function draftSendDetail(draft: OperatorEmailDraftView) {
+  const cadence = draft.followUps?.cadence;
+  const followUps = !draft.followUps
+    ? null
+    : cadence
+      ? `${cadence.followUpCount} follow-up${cadence.followUpCount === 1 ? "" : "s"} every ${cadence.intervalBusinessDays} business days`
+      : "Follow-ups on Spot's schedule";
+  const parts = [
+    draft.clientRequest ? "Client information request" : null,
+    followUps,
+  ].filter((part): part is string => part !== null);
+  return parts.length ? parts.join(" · ") : undefined;
+}
+
 function bodyPreview(text: string) {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -108,6 +124,7 @@ function DraftCard({
 }) {
   const status = draftStatus(draft);
   const preview = bodyPreview(draft.text);
+  const detail = draftSendDetail(draft);
   return (
     <EmailCardFrame>
       <button
@@ -141,6 +158,13 @@ function DraftCard({
         >
           {draft.sendBlockedReason ?? draftRecipients(draft)}
         </span>
+        {detail ? (
+          <span
+            className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}
+          >
+            {detail}
+          </span>
+        ) : null}
         {preview ? (
           <span
             className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}
@@ -349,7 +373,7 @@ function OperatorEmailDraftComposer({
     errorMessage: (error) =>
       getUserFacingErrorMessage(error, "Failed to save draft"),
   });
-  const [followUps, setFollowUps] = useState<FollowUps | null>(null);
+  const [followUps, setFollowUps] = useState<FollowUps | null>(draft.followUps);
   useSharedValue(`${scope}:follow-ups`, followUps, setFollowUps);
   const [sending, setSending] = useState(false);
   const busy = sending || cancel.cancelling;
@@ -496,6 +520,14 @@ function OperatorEmailDraftComposer({
           onSubmit={() => void send()}
           onEscape={() => {}}
         />
+        {draft.clientRequest ? (
+          <EmailComposerNotes>
+            <p>
+              Client information request: Spot adds the greeting and signature,
+              and follow-ups stop when they reply or submit the form.
+            </p>
+          </EmailComposerNotes>
+        ) : null}
         <FullEmailToggle followKey={scope} text={draft.text} />
       </div>
     </ChatArtifact>

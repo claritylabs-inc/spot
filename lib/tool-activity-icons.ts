@@ -83,6 +83,7 @@ const operatorToolCategories = {
   list_procurement_provider_matches: "brokers",
   get_procurement_provider_emails: "email",
   update_procurement_provider_emails: "email",
+  send_procurement_provider_emails: "send",
   launch_procurement_provider_outreach: "send",
   stop_procurement_provider_outreach: "brokers",
   list_procurement_client_outreach: "email",

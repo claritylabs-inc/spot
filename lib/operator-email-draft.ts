@@ -31,5 +31,11 @@ export type OperatorEmailDraftView = {
   sendBlockedReason?: string;
   /** The exact content an operator approves by sending from the artifact. */
   fingerprint: string;
+  /** Follow-ups sending starts; a null cadence lets Spot pick the schedule. */
+  followUps: {
+    cadence: { followUpCount: number; intervalBusinessDays: number } | null;
+  } | null;
+  /** Sending launches the request's client information request sequence. */
+  clientRequest: boolean;
   updatedAt: number;
 };

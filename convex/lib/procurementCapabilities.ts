@@ -30,14 +30,14 @@ export const PROCUREMENT_CAPABILITIES = [
       "list_procurement_provider_matches",
       "get_procurement_provider_emails",
       "update_procurement_provider_emails",
-      "launch_procurement_provider_outreach",
+      "send_procurement_provider_emails",
       "stop_procurement_provider_outreach",
     ],
   },
   {
     id: "client.information_request",
     browserSurface: "request Inbox Email client composer and reader follow-up controls",
-    agentTools: ["list_procurement_client_outreach", "send_procurement_client_email", "stop_procurement_provider_outreach"],
+    agentTools: ["list_procurement_client_outreach", "save_email_draft", "send_email_draft", "stop_procurement_provider_outreach"],
   },
   {
     id: "client.information_form",
@@ -52,7 +52,7 @@ export const PROCUREMENT_CAPABILITIES = [
   {
     id: "correspondence.reply",
     browserSurface: "request Inbox reply composer",
-    agentTools: ["reply_procurement_email_thread"],
+    agentTools: ["save_email_draft", "send_email_draft"],
   },
   {
     id: "client.create",
