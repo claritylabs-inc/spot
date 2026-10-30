@@ -13,10 +13,19 @@ export function threadPageContext<T>(thread: {
     : (thread.pageContext ?? undefined);
 }
 
+const MAX_RELATED = 10;
+const RELATED_KIND = /^[a-z][a-z_]{1,39}$/;
+
 /** Trims and bounds a client-supplied operator page context. */
 export function normalizeOperatorPageContext(
   context:
-    | { pageType: string; entityId?: string; summary?: string; href?: string }
+    | {
+        pageType: string;
+        entityId?: string;
+        summary?: string;
+        href?: string;
+        related?: Array<{ kind: string; id: string; label?: string }>;
+      }
     | undefined,
 ) {
   if (!context) return undefined;
@@ -36,10 +45,38 @@ export function normalizeOperatorPageContext(
   if (href && href.length > 2000) {
     throw new Error("Operator page URL must be at most 2000 characters");
   }
+  // Order is kept; entries without a kind or id are dropped.
+  const related = (context.related ?? [])
+    .map((entry) => ({
+      kind: entry.kind.trim(),
+      id: entry.id.trim(),
+      label: entry.label?.trim().slice(0, 200) || undefined,
+    }))
+    .filter((entry) => entry.kind && entry.id)
+    .slice(0, MAX_RELATED);
+  for (const entry of related) {
+    if (!RELATED_KIND.test(entry.kind)) {
+      throw new Error(
+        `Operator page related kind "${entry.kind.slice(0, 40)}" is invalid`,
+      );
+    }
+    if (entry.id.length > 200) {
+      throw new Error("Operator page related IDs must be at most 200 characters");
+    }
+  }
   return {
     pageType,
     ...(entityId ? { entityId } : {}),
     ...(summary ? { summary } : {}),
     ...(href ? { href } : {}),
+    ...(related.length > 0
+      ? {
+          related: related.map(({ kind, id, label }) => ({
+            kind,
+            id,
+            ...(label ? { label } : {}),
+          })),
+        }
+      : {}),
   };
 }

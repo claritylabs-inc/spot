@@ -278,6 +278,11 @@ const pageContextValidator = v.object({
   entityId: v.optional(v.string()),
   summary: v.optional(v.string()),
   href: v.optional(v.string()),
+  related: v.optional(
+    v.array(
+      v.object({ kind: v.string(), id: v.string(), label: v.optional(v.string()) }),
+    ),
+  ),
 });
 
 const operatorToolExecutionArgs = {
@@ -1490,6 +1495,7 @@ async function insertOperatorThread(
       entityId?: string;
       summary?: string;
       href?: string;
+      related?: Array<{ kind: string; id: string; label?: string }>;
     };
     conversationKey?: string;
     visibility?: "private" | "shared";
@@ -1621,6 +1627,7 @@ export async function enqueueOperatorMessage(
       entityId?: string;
       summary?: string;
       href?: string;
+      related?: Array<{ kind: string; id: string; label?: string }>;
     };
     slackThreadContext?: SlackThreadContextSnapshot;
     toolArtifacts?: Array<{ type: string; data: unknown }>;

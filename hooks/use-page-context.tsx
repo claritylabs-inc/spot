@@ -7,6 +7,8 @@ export interface PageContext {
   entityId?: string;
   summary?: string;
   href?: string;
+  /** Records related to the entity, e.g. `{ kind: "organization", id }`. */
+  related?: { kind: string; id: string; label?: string }[];
 }
 
 interface PageContextValue {
