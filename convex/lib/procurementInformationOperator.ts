@@ -196,7 +196,8 @@ function compactSuggestion(
     answer: suggestion.answer,
     confidence: suggestion.confidence,
     sourceUrl: source.url,
-    excerpt: source.excerpt?.slice(0, 300) ?? null,
+    // The full stored excerpt (at most 600 characters) is the verified support.
+    excerpt: source.excerpt ?? null,
   };
 }
 

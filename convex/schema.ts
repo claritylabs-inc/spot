@@ -2878,6 +2878,10 @@ export default defineSchema({
     // Deprecated: inert compatibility storage; future-intake reuse has been removed.
     libraryId: v.optional(v.id("procurementQuestionLibrary")),
     answerId: v.optional(v.id("procurementInformationAnswers")),
+    // The answer revision public research last assessed (set with its time);
+    // automatic research skips a question until its answer changes.
+    researchAssessedAnswerId: v.optional(v.id("procurementInformationAnswers")),
+    researchAssessedAt: v.optional(v.number()),
     createdByUserId: v.id("users"),
     createdAt: v.number(),
   }).index("by_requestId", ["requestId"]),

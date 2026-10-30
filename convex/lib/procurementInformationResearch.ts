@@ -190,13 +190,16 @@ const revisionKey = (questionId: string, answerId: string | undefined) =>
  * Unresolved, applicable questions research could pre-answer. A pending or
  * dismissed suggestion for the same answer revision excludes a question;
  * automatic runs also skip revisions an earlier run already assessed.
+ * `fromProvider` marks questions whose wording may come from a provider: any
+ * requirement links a provider outreach or source email. Catalog questions and
+ * Spot's own (operator-authored, no outreach) questions are not.
  */
 export async function researchableInformationQuestions(
   ctx: Ctx,
   requestId: Id<"procurementRequests">,
   automatic: boolean,
 ) {
-  const [facts, requirements, pending, dismissed, runs] = await Promise.all([
+  const [facts, requirements, pending, dismissed] = await Promise.all([
     requestFacts(ctx, requestId),
     bounded(
       ctx.db
@@ -206,18 +209,12 @@ export async function researchableInformationQuestions(
     ),
     suggestionsWithStatus(ctx, requestId, "pending"),
     suggestionsWithStatus(ctx, requestId, "dismissed"),
-    automatic ? latestResearchRuns(ctx, requestId) : [],
   ]);
-  const excluded = new Set([
-    ...[...pending, ...dismissed].map((s) =>
+  const excluded = new Set(
+    [...pending, ...dismissed].map((s) =>
       revisionKey(s.questionId, s.answerIdAtSuggestion),
     ),
-    ...runs
-      .filter((run) => run.status === "completed" || run.status === "partial")
-      .flatMap((run) =>
-        run.questions.map((q) => revisionKey(q.questionId, q.answerId)),
-      ),
-  ]);
+  );
   return neededInformationQuestions(facts, requirements)
     .filter(
       (q) =>
@@ -225,9 +222,22 @@ export async function researchableInformationQuestions(
         // Other subjects (people, vehicles, sites) could disclose private details.
         q.scope.subject === "company" &&
         informationApplicability(q, facts) === "applies" &&
-        !excluded.has(revisionKey(q._id, q.answerId)),
+        !excluded.has(revisionKey(q._id, q.answerId)) &&
+        !(
+          automatic &&
+          q.researchAssessedAt !== undefined &&
+          q.researchAssessedAnswerId === q.answerId
+        ),
     )
-    .slice(0, MAX_ELIGIBILITY_QUESTIONS);
+    .slice(0, MAX_ELIGIBILITY_QUESTIONS)
+    .map((q) => ({
+      ...q,
+      fromProvider:
+        !q.question.source?.trim() &&
+        requirements.some(
+          (r) => r.questionId === q._id && (r.outreachId || r.sourceMessageId),
+        ),
+    }));
 }
 
 function suggestionsWithStatus(
@@ -310,7 +320,8 @@ export async function enqueueInformationResearch(
     )
     .order("desc")
     .first();
-  if (previous && previous.status !== "failed")
+  // A failed run, or one that found nothing to assess when it started, is not reused.
+  if (previous && previous.status !== "failed" && previous.questionCount > 0)
     return { run: previous, reused: true };
   const runId = await ctx.db.insert("procurementInformationResearchRuns", {
     requestId: request._id,
@@ -325,9 +336,16 @@ export async function enqueueInformationResearch(
     suggestionCount: 0,
     createdAt: dayjs().valueOf(),
   });
+  const delay = automatic ? AUTOMATIC_RESEARCH_DELAY_MS : 0;
   await ctx.scheduler.runAfter(
-    automatic ? AUTOMATIC_RESEARCH_DELAY_MS : 0,
+    delay,
     internal.actions.procurementInformationResearch.run,
+    { runId },
+  );
+  // Fails the run if it never starts or its action is lost.
+  await ctx.scheduler.runAfter(
+    delay + RESEARCH_RUN_TIMEOUT_MS,
+    internal.procurementInformationSuggestions.expireRun,
     { runId },
   );
   return { run: (await ctx.db.get(runId))!, reused: false };

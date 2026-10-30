@@ -1,7 +1,6 @@
 import dayjs from "dayjs";
 import { v } from "convex/values";
 import { informationApplicability } from "../lib/procurement-information";
-import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import {
   query,
@@ -27,7 +26,6 @@ import {
   requireInformationQuestion,
 } from "./lib/procurementInformationAccess";
 import {
-  RESEARCH_RUN_TIMEOUT_MS,
   currentPendingSuggestions,
   enqueueInformationResearch,
   latestResearchRuns,
@@ -311,50 +309,64 @@ export const claimRun = internalMutation({
   handler: async (ctx, { runId }) => {
     const run = await ctx.db.get(runId);
     if (!run || run.status !== "queued") return null;
-    const request = await ctx.db.get(run.requestId);
-    const entity =
-      request && !request.deletedAt ? await researchEntity(ctx, request) : null;
-    const questions = entity
-      ? await researchableInformationQuestions(
-          ctx,
-          run.requestId,
-          run.automatic,
-        )
-      : [];
-    const now = dayjs().valueOf();
-    if (!request || !entity || !questions.length) {
+    try {
+      const request = await ctx.db.get(run.requestId);
+      const entity =
+        request && !request.deletedAt
+          ? await researchEntity(ctx, request)
+          : null;
+      const questions = entity
+        ? await researchableInformationQuestions(
+            ctx,
+            run.requestId,
+            run.automatic,
+          )
+        : [];
+      if (!request || !entity || !questions.length) {
+        await ctx.db.patch(run._id, {
+          status: "completed",
+          questions: [],
+          questionCount: 0,
+          completedAt: dayjs().valueOf(),
+        });
+        return null;
+      }
       await ctx.db.patch(run._id, {
-        status: "completed",
-        questions: [],
-        questionCount: 0,
-        completedAt: now,
+        status: "running",
+        fingerprint: await researchFingerprint(entity, questions),
+        questions: questions.map((q) => ({
+          questionId: q._id,
+          answerId: q.answerId,
+        })),
+        questionCount: questions.length,
+      });
+      return {
+        requestId: run.requestId,
+        orgId: request.clientOrgId,
+        entity,
+        questions: questions.map((q) => ({
+          questionId: q._id,
+          question: q.question,
+          scope: q.scope,
+          fromProvider: q.fromProvider,
+        })),
+      };
+    } catch (error) {
+      // A run that cannot start must end rather than block the request's research.
+      console.warn("[procurementInformationResearch] claim failed", {
+        runId,
+        error:
+          error instanceof Error
+            ? error.message.slice(0, 300)
+            : "Unknown claim failure",
+      });
+      await ctx.db.patch(run._id, {
+        status: "failed",
+        error: "claim_failed",
+        completedAt: dayjs().valueOf(),
       });
       return null;
     }
-    await ctx.db.patch(run._id, {
-      status: "running",
-      fingerprint: await researchFingerprint(entity, questions),
-      questions: questions.map((q) => ({
-        questionId: q._id,
-        answerId: q.answerId,
-      })),
-      questionCount: questions.length,
-    });
-    await ctx.scheduler.runAfter(
-      RESEARCH_RUN_TIMEOUT_MS,
-      internal.procurementInformationSuggestions.expireRun,
-      { runId },
-    );
-    return {
-      requestId: run.requestId,
-      orgId: request.clientOrgId,
-      entity,
-      questions: questions.map((q) => ({
-        questionId: q._id,
-        question: q.question,
-        scope: q.scope,
-      })),
-    };
   },
 });
 
@@ -416,26 +428,35 @@ export const finishRun = internalMutation({
       inserted++;
     }
     const researched = new Set<string>(args.researchedQuestionIds);
+    const assessed = run.questions.filter((q) => researched.has(q.questionId));
+    const now = dayjs().valueOf();
     await ctx.db.patch(run._id, {
       status: args.status,
       error: args.error?.slice(0, 100),
       provider: args.provider,
       suggestionCount: inserted,
-      questions: run.questions.filter((q) => researched.has(q.questionId)),
-      completedAt: dayjs().valueOf(),
+      questions: assessed,
+      completedAt: now,
     });
+    // Automatic runs skip these revisions for good, beyond any run history window.
+    for (const q of assessed)
+      if (facts.some((fact) => fact._id === q.questionId))
+        await ctx.db.patch(q.questionId, {
+          researchAssessedAnswerId: q.answerId,
+          researchAssessedAt: now,
+        });
     // Questions added while this run was active, or beyond its cap, get their own run.
     if (args.status !== "failed")
       await queueAutomaticInformationResearch(ctx, run.requestId);
   },
 });
 
-/** A run whose action was lost stops counting as active. */
+/** A run that never started or whose action was lost stops counting as active. */
 export const expireRun = internalMutation({
   args: { runId: v.id("procurementInformationResearchRuns") },
   handler: async (ctx, { runId }) => {
     const run = await ctx.db.get(runId);
-    if (run?.status === "running")
+    if (run?.status === "queued" || run?.status === "running")
       await ctx.db.patch(run._id, {
         status: "failed",
         error: "timed_out",

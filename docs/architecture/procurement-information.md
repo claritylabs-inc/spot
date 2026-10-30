@@ -114,24 +114,47 @@ A run considers needed, applicable, company-scoped questions (subject
 `company`; other subjects can name people, vehicles or sites) of kind yes/no,
 short text, number, currency, date or dropdown (never long text or routes) without a pending or
 dismissed suggestion for their current answer revision. Automatic runs also skip
-revisions an earlier completed or partial run assessed. Questions added by the
+a question whose current answer revision any earlier completed or partial run
+assessed (`researchAssessedAnswerId` / `researchAssessedAt` on the question).
+Questions added by the
 Information panel, provider email extraction or `add_procurement_information_questions`
 queue an automatic run after 60 seconds, so questions added together share it;
 an active run is reused and its completion queues a follow-up for questions it
 missed. `research_procurement_information` queues one immediately. Runs are
 idempotent on a fingerprint of the sorted question/answer revisions and the
-entity; only a failed run is retried. A run starts by recomputing its questions,
-and a watchdog fails it after 15 minutes. When cl-router does not advertise a
+entity; a failed run, or one that found nothing to assess when it started, is
+never reused. A run starts by recomputing its questions; a failure doing so ends
+it as failed (`claim_failed`). A watchdog scheduled at enqueue fails a run still
+queued or running 15 minutes after its scheduled start. When cl-router does not advertise a
 configured research provider (`/v1/capabilities` `research.providers`), an
 automatic run is dropped and an operator run fails with `research_unavailable`.
 
-Only public identity facts leave Spot: the client's name, website and the
-city/region of its registered or mailing address. No request content, email,
-wiki notes or answers are sent. The action then:
+Exactly this is sent to the research providers: the client's name, its public
+website, and the city and state/province of its registered (else mailing)
+address as the entity; a fixed objective; and, per researched question, its type,
+its dropdown options and a description made of the question label, the reporting
+period when not `current`, the coverage line when known, the currency for amounts
+and the dropdown options. The question's subject, answers, request content,
+emails, wiki notes and provider identities are never sent.
 
-1. Asks one batched Jev Noul per question: could a careful researcher answer it
-   from public sources without private information. Only `jevProceeds` answers
-   are researched, at most 40 per run; Jev-rejected questions count as assessed.
+Question wording can come from a provider's email, so the label and options are
+gated before research. A question is provider-originated when any of its
+requirements links a provider outreach or a source email (`outreachId` or
+`sourceMessageId`). Catalog questions (non-empty `source`) and Spot's own
+questions, whose requirements have neither (added by an operator as Spot
+(application) or by the agent without a provider), pass deterministically. The
+action then:
+
+1. Asks one batched Jev request with a Noul per question: could a careful
+   researcher answer it from public sources without private information
+   (`jevProceeds` required). For each provider-originated question the same
+   request asks whether its label or options contain specifics of the client's
+   own situation (amounts, incident or loss dates, people's names, street
+   addresses, claim, policy or account numbers); it proceeds only when that is
+   confidently false, at most `1 − JEV_PREFILL_THRESHOLD` (the prefill band's
+   low verdict). At most 40 questions are researched per run; rejected
+   questions count as assessed. Jev sees the label, kind, options, period,
+   coverage and currency, never the subject.
 2. Calls cl-router `research` (durable `/v1/jobs`, task kind
    `procurement_information_research`) with at most 10 typed fields per job and
    `standard` depth. Yes/no maps to boolean, number/currency to number, date to
@@ -139,13 +162,15 @@ wiki notes or answers are sent. The action then:
 3. Keeps values that fit the question (normalized to `Yes`/`No`, number strings,
    ISO dates or an exact option), have high or medium provider confidence and at
    least one public citation. A citation without excerpts (Exa) is grounded by a
-   bounded retrieval of that page; an answer without grounding text is dropped.
+   bounded retrieval of that page (its URL and the field description); an answer
+   without grounding text is dropped. Excerpts are cut to 600 characters here.
 4. Verifies every candidate in one Jev request with two atomic Nouls: the
    evidence is about this company rather than a namesake, and the excerpt states
-   the answer for the question's scope and period. Both must `jevProceeds`.
+   the answer for the question's period. Both must `jevProceeds`.
 
 Suggestions store the normalized answer, provider confidence, provider, up to
-five citations (only the verified excerpt, at most 600 characters) and the
+five citations (only the leading citation's excerpt, exactly the verified text of
+at most 600 characters, which operators see in full) and the
 question's answer revision. Web content is untrusted evidence; runs store only
 counts and short Spot-owned error codes, never provider output.
 

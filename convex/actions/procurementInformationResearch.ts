@@ -16,7 +16,7 @@ import {
   publicResearchAllowedDomains,
   publicResearchUrl,
 } from "../lib/companyResearch";
-import { jevProceeds } from "../lib/jevThreshold";
+import { jevDecisionBand, jevProceeds } from "../lib/jevThreshold";
 import {
   MAX_RESEARCHED_QUESTIONS,
   MAX_RESEARCH_FIELDS,
@@ -53,19 +53,33 @@ function questionState({ question, scope }: ClaimedQuestion) {
     label: question.label,
     kind: question.kind,
     options: question.options,
-    subject: scope.subject,
     period: scope.period,
     coverage: scope.coverage,
     ...(scope.currency ? { currency: scope.currency } : {}),
   };
 }
 
-function proceeds(
+function noul(
   answers: Awaited<ReturnType<typeof clRouterDecide>>["answers"],
   key: string,
 ) {
   const answer = answers[key];
-  return answer?.type === "noul" && jevProceeds(answer.noul);
+  return answer?.type === "noul" ? answer.noul : undefined;
+}
+
+function proceeds(
+  answers: Awaited<ReturnType<typeof clRouterDecide>>["answers"],
+  key: string,
+) {
+  return jevProceeds(noul(answers, key));
+}
+
+/** A provider's wording reaches research only when Jev confidently finds no client specifics. */
+function clearlyGeneric(
+  answers: Awaited<ReturnType<typeof clRouterDecide>>["answers"],
+  key: string,
+) {
+  return jevDecisionBand(noul(answers, key), "prefill") === "low";
 }
 
 export const run = internalAction({
@@ -113,8 +127,8 @@ export const run = internalAction({
               ]),
             ),
           },
-          questions: Object.fromEntries(
-            claim.questions.map((_, index) => [
+          questions: Object.fromEntries([
+            ...claim.questions.map((_, index) => [
               `public${index}`,
               {
                 type: "noul",
@@ -132,21 +146,55 @@ export const run = internalAction({
                 },
               } satisfies DecisionQuestion,
             ]),
-          ),
+            ...claim.questions.flatMap((q, index) =>
+              q.fromProvider
+                ? [
+                    [
+                      `private${index}`,
+                      {
+                        type: "noul",
+                        instructions: {
+                          question: `Does \`questions.q${index}.label\` (or its options) contain specifics about this client's own situation, such as amounts, dates of incidents or losses, people's names, street addresses, claim, policy or account numbers?`,
+                          note: "The wording may come from an insurance provider's email. Judge only the question text, not whether its answer is public.",
+                        },
+                        criteria: {
+                          true: {
+                            what: "The text names or quotes a detail of this client's own circumstances.",
+                            examples: [
+                              "Was the $85,000 water damage loss on March 3 repaired?",
+                              "Is Jane Doe still the operations manager?",
+                            ],
+                          },
+                          false: {
+                            what: "A generic question any company could be asked, with no client-specific details.",
+                            examples: [
+                              "Does the company sell products online?",
+                            ],
+                          },
+                        },
+                      } satisfies DecisionQuestion,
+                    ],
+                  ]
+                : [],
+            ),
+          ]),
           executionBudgetMs: 60_000,
         },
         { telemetry: ctx },
       );
-      const eligible = claim.questions.filter((_, index) =>
-        proceeds(eligibility.answers, `public${index}`),
+      const eligible = claim.questions.filter(
+        (q, index) =>
+          proceeds(eligibility.answers, `public${index}`) &&
+          (!q.fromProvider ||
+            clearlyGeneric(eligibility.answers, `private${index}`)),
       );
       // Questions beyond the cap stay unassessed for the follow-up run.
       const researchable = eligible.slice(0, MAX_RESEARCHED_QUESTIONS);
-      const notPublic = claim.questions.filter((q) => !eligible.includes(q));
+      const ineligible = claim.questions.filter((q) => !eligible.includes(q));
       if (!researchable.length) {
         await finish({
           status: "completed",
-          researchedQuestionIds: notPublic.map((q) => q.questionId),
+          researchedQuestionIds: ineligible.map((q) => q.questionId),
           suggestions: [],
         });
         return null;
@@ -202,8 +250,9 @@ export const run = internalAction({
             return [];
           const citations = found.citations.flatMap((citation) => {
             const url = publicResearchUrl(citation.url);
+            // Trimmed to the stored length, so verification sees exactly what is kept.
             const excerpt = citation.excerpts
-              ?.map((value) => value.trim())
+              ?.map((value) => value.trim().slice(0, STORED_EXCERPT_CHARS))
               .find(Boolean);
             return url
               ? [
@@ -250,7 +299,7 @@ export const run = internalAction({
                 taskKind: "procurement_information_grounding",
                 trace,
               });
-              const text = page.text.trim().slice(0, 1500);
+              const text = page.text.trim().slice(0, STORED_EXCERPT_CHARS);
               if (text) citation.excerpt = text;
             } catch {
               // Ungrounded answers are dropped below.
@@ -276,7 +325,7 @@ export const run = internalAction({
                     url: candidate.citations[0].url,
                     title: candidate.citations[0].title ?? null,
                   },
-                  excerpt: candidate.citations[0].excerpt!.slice(0, 1500),
+                  excerpt: candidate.citations[0].excerpt!,
                 })),
               },
               questions: Object.fromEntries(
@@ -304,12 +353,12 @@ export const run = internalAction({
                     {
                       type: "noul",
                       instructions: {
-                        question: `Does \`candidates[${index}].excerpt\` state \`candidates[${index}].answer\` as the answer to \`candidates[${index}].question\`, for its subject and period?`,
+                        question: `Does \`candidates[${index}].excerpt\` state \`candidates[${index}].answer\` as the answer to \`candidates[${index}].question\`, for its period?`,
                         note: UNTRUSTED_EVIDENCE,
                       },
                       criteria: {
                         true: {
-                          what: "The excerpt directly states the answer for the asked subject and period, including an explicit negation for No.",
+                          what: "The excerpt directly states the answer for the asked period, including an explicit negation for No.",
                         },
                         false: {
                           what: "The excerpt is silent, only suggests the answer, supports a different value, or is about another period.",
@@ -340,7 +389,7 @@ export const run = internalAction({
           : { error: "research_partially_failed" }),
         provider: results.find((result) => result.status === "fulfilled")!.value
           .provider,
-        researchedQuestionIds: [...notPublic, ...researched.flat()].map(
+        researchedQuestionIds: [...ineligible, ...researched.flat()].map(
           (q) => q.questionId,
         ),
         suggestions: verified.map((candidate) => ({
@@ -353,9 +402,7 @@ export const run = internalAction({
               url,
               ...(title ? { title } : {}),
               // Only the verified excerpt is kept.
-              ...(index === 0 && excerpt
-                ? { excerpt: excerpt.slice(0, STORED_EXCERPT_CHARS) }
-                : {}),
+              ...(index === 0 && excerpt ? { excerpt } : {}),
             }),
           ),
         })),
