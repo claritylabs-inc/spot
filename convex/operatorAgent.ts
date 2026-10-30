@@ -75,6 +75,7 @@ import {
   providerCandidateReviewSummary,
   providerDiscoveryApprovalSummary,
   readProviderCandidates,
+  recentProviderDiscoveries,
   reviewProviderCandidatesByOperator,
 } from "./providerDiscovery";
 import { clientRecipientOptions } from "./lib/clientOutreach";
@@ -4228,13 +4229,27 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
     };
   }
 
+  if (toolName === "list_provider_discoveries") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.list_provider_discoveries.inputSchema.parse(input);
+    return { discoveries: await recentProviderDiscoveries(ctx, parsed.limit ?? 10) };
+  }
+
   if (toolName === "list_provider_candidates") {
     const parsed = OPERATOR_AGENT_TOOL_REGISTRY.list_provider_candidates.inputSchema.parse(input);
-    return await readProviderCandidates(
-      ctx,
-      normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
-      { status: parsed.status, limit: parsed.limit ?? 10, excerptChars: 240 },
-    );
+    const discoveryId = parsed.discoveryId
+      ? ctx.db.normalizeId("providerDiscoveries", parsed.discoveryId)
+      : undefined;
+    if (discoveryId === null)
+      throw new NoWriteInputError(
+        "invalid_identifier",
+        "Invalid provider discovery ID. Use discoveryId values from list_provider_candidates.",
+      );
+    return await readProviderCandidates(ctx, {
+      discoveryId,
+      status: parsed.status,
+      limit: parsed.limit ?? 10,
+      excerptChars: 240,
+    });
   }
 
   if (toolName === "review_provider_candidates") {

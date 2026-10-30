@@ -84,6 +84,7 @@ const operatorToolCategories = {
   create_broker_network_profile: "brokers",
   ensure_broker_network_profiles: "brokers",
   discover_providers: "web",
+  list_provider_discoveries: "brokers",
   list_provider_candidates: "brokers",
   review_provider_candidates: "brokers",
   update_broker_network_profiles: "brokers",

@@ -117,10 +117,8 @@ export async function resolveOperatorNotificationTarget(
     }
     case "provider_discovery": {
       const discovery = await ctx.db.get(target.discoveryId);
-      const request = discovery ? await ctx.db.get(discovery.requestId) : null;
-      if (discovery?.status !== "completed" || !request || request.deletedAt !== undefined ||
-        !request.clientOrgId || !await liveClient(ctx, request.clientOrgId)) return null;
-      return `${base}/operator/clients/${request.clientOrgId}/procurement/${request._id}`;
+      if (discovery?.status !== "completed") return null;
+      return `${base}/operator/brokers?tab=markets&discovery=${discovery._id}`;
     }
     case "proposal": {
       const proposal = await ctx.db.get(target.proposalId);

@@ -1336,9 +1336,10 @@ export async function preflightOperatorToolConfirmation(
       return;
     }
     case "discover_providers": {
-      const input = OPERATOR_AGENT_TOOL_REGISTRY.discover_providers.inputSchema.parse(args.input);
-      const request = await requireProcurementRequest(ctx, input.procurementRequestId);
-      await prepareProviderDiscovery(ctx, request._id, input);
+      await prepareProviderDiscovery(
+        ctx,
+        OPERATOR_AGENT_TOOL_REGISTRY.discover_providers.inputSchema.parse(args.input),
+      );
       return;
     }
     case "review_provider_candidates":

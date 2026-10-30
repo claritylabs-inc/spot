@@ -1,18 +1,13 @@
 import { z } from "zod";
-import type { IntakeDetails } from "../../lib/insurance-intake-details";
+import { MARKET_SEARCH_COVERAGE_LABELS } from "../../lib/insurance-intake-details";
 import type {
   ClRouterCreateDiscoveryRequest,
   ClRouterDiscoveryGenerator,
 } from "./clRouterClient";
-import { CANADIAN_PROVINCES, USPS_STATE_NAMES } from "./brokerProfileValidation";
+import { USPS_STATE_CODES, USPS_STATE_NAMES } from "./brokerProfileValidation";
 import { publicResearchUrl } from "./companyResearch";
 import { NoWriteInputError } from "./noWriteInputError";
 import { providerDomain } from "./operatorBrokerProfiles";
-import {
-  normalizeRegion,
-  requestGeography,
-  requestLobNeeds,
-} from "./providerOutreachMatch";
 
 export const PROVIDER_DISCOVERY_CALLBACK_PATH = "/router-discoveries/events";
 export const PROVIDER_DISCOVERY_BODY_BYTES = 1024 * 1024;
@@ -71,64 +66,68 @@ export type ProviderDiscoveryCriteria = {
   industry?: string;
 };
 
-export type ProviderDiscoveryOverrides = {
-  lines?: string[];
-  states?: string[];
-  industry?: string;
-};
+export const MAX_PROVIDER_DISCOVERY_LINES = 10;
+export const MAX_PROVIDER_DISCOVERY_STATES = 20;
+export const MAX_PROVIDER_DISCOVERY_INDUSTRY_CHARS = 80;
+
+const LINE_BY_KEY = new Map(
+  MARKET_SEARCH_COVERAGE_LABELS.map((label) => [label.toLowerCase(), label]),
+);
+const STATE_CODES = new Set<string>(USPS_STATE_CODES);
 
 /**
- * Only public, non-identifying criteria: catalog coverage labels, state codes
- * and an operator-chosen industry. Never the client's name, website, revenue
- * or request prose.
+ * Only public, non-identifying criteria: coverage catalog labels, USPS state
+ * codes and an optional generic industry. Never client or request details.
  */
-export function providerDiscoveryCriteria(
-  details: IntakeDetails | null,
-  overrides: ProviderDiscoveryOverrides,
-): ProviderDiscoveryCriteria {
+export function providerDiscoveryCriteria(input: {
+  lines: string[];
+  states: string[];
+  industry?: string;
+}): ProviderDiscoveryCriteria {
   const lines = [
     ...new Set(
-      (
-        overrides.lines ??
-        requestLobNeeds(details).needs.map((need) => need.label)
-      ).map((line) => line.trim()),
+      input.lines.map((line) => {
+        const label = LINE_BY_KEY.get(line.trim().toLowerCase());
+        if (!label)
+          throw new NoWriteInputError(
+            "invalid_line",
+            `${JSON.stringify(line)} is not a coverage line. Use one of: ${MARKET_SEARCH_COVERAGE_LABELS.join(", ")}.`,
+          );
+        return label;
+      }),
     ),
-  ].filter(Boolean);
-  if (!lines.length)
+  ];
+  if (!lines.length || lines.length > MAX_PROVIDER_DISCOVERY_LINES)
     throw new NoWriteInputError(
-      "discovery_lines_missing",
-      "The request has no coverage lines to search for; pass lines.",
+      "invalid_lines",
+      `Pass 1–${MAX_PROVIDER_DISCOVERY_LINES} coverage lines.`,
     );
-  const states = overrides.states
-    ? overrides.states.map((state) => {
-        const region = normalizeRegion(state);
-        if (!region)
+  const states = [
+    ...new Set(
+      input.states.map((state) => {
+        const code = state.trim().toUpperCase();
+        if (!STATE_CODES.has(code))
           throw new NoWriteInputError(
             "invalid_state",
-            `${JSON.stringify(state)} is not a US state or Canadian province code.`,
+            `${JSON.stringify(state)} is not a US state code.`,
           );
-        return region;
-      })
-    : requestGeography(details).places.flatMap((place) =>
-        place.region ? [place.region] : [],
-      );
-  if (!states.length)
+        return code;
+      }),
+    ),
+  ];
+  if (!states.length || states.length > MAX_PROVIDER_DISCOVERY_STATES)
     throw new NoWriteInputError(
-      "discovery_states_missing",
-      "The client's business profile has no state to search in; pass states.",
+      "invalid_states",
+      `Pass 1–${MAX_PROVIDER_DISCOVERY_STATES} US state codes.`,
     );
-  const industry = overrides.industry?.trim();
-  return {
-    lines,
-    states: [...new Set(states)],
-    ...(industry ? { industry } : {}),
-  };
+  const industry = input.industry?.trim();
+  if (industry && industry.length > MAX_PROVIDER_DISCOVERY_INDUSTRY_CHARS)
+    throw new NoWriteInputError(
+      "invalid_industry",
+      `Keep the industry to ${MAX_PROVIDER_DISCOVERY_INDUSTRY_CHARS} characters.`,
+    );
+  return { lines, states, ...(industry ? { industry } : {}) };
 }
-
-const REGION_NAMES: Readonly<Record<string, string>> = {
-  ...USPS_STATE_NAMES,
-  ...CANADIAN_PROVINCES,
-};
 
 function listText(values: string[]) {
   return values.length > 1
@@ -146,7 +145,7 @@ export function providerDiscoveryInput(
   },
 ): ClRouterCreateDiscoveryRequest["input"] {
   const lines = listText(criteria.lines);
-  const states = listText(criteria.states.map((code) => REGION_NAMES[code] ?? code));
+  const states = listText(criteria.states.map((code) => USPS_STATE_NAMES[code] ?? code));
   return {
     objective: `Find insurance markets that write ${lines} for ${criteria.industry ? `${criteria.industry} ` : ""}businesses in ${states} and accept submissions from retail brokers.`,
     entityType: PROVIDER_DISCOVERY_ENTITY_TYPE,

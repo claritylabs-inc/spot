@@ -33,7 +33,7 @@ export const OPERATOR_NOTIFICATION_CATEGORIES = [
   { category: "intake", label: "Applications", description: "Submitted and resubmitted insurance applications.", title: "An application is ready for review", body: "Open the application in Spot to review the submitted details." },
   { category: "failure", label: "Failures", description: "Terminal agent and policy processing failures.", title: "A task needs attention", body: "Open the record in Spot to review the failure." },
   { category: "client_monitor", label: "Client monitoring", description: "Material public developments found for monitored clients.", title: "A monitored client has a public development", body: "Open the client in Spot to review the cited event." },
-  { category: "provider_discovery", label: "Provider discovery", description: "Finished searches for new insurance markets for a request.", title: "Provider discovery finished", body: "Open the request in Spot to review the cited provider candidates." },
+  { category: "provider_discovery", label: "Provider discovery", description: "Finished searches for new insurance markets for the provider network.", title: "Provider discovery finished", body: "Open Find markets in Spot to review the cited provider candidates." },
 ] as const satisfies ReadonlyArray<{ category: OperatorNotificationCategory; label: string; description: string; title: string; body: string }>;
 
 export type OperatorNotificationInput = {

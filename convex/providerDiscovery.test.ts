@@ -10,8 +10,8 @@ const harness = () => convexTest(schema, modules);
 type Harness = ReturnType<typeof harness>;
 
 // Callback capability invariants: a token authorizes exactly one live
-// discovery, candidates land only on that discovery and its request, a
-// delivery is applied once, and malformed or oversized bodies write nothing.
+// discovery, candidates land only on that discovery, a delivery is applied
+// once, and malformed or oversized bodies write nothing.
 const tokenA = "a".repeat(64);
 const tokenB = "b".repeat(64);
 const tokenPending = "e".repeat(64);
@@ -26,18 +26,7 @@ async function seed(t: Harness) {
       status: "running" | "cancelled" | "pending" = "running",
     ) => {
       const orgId = await ctx.db.insert("organizations", { name, type: "client" });
-      const requestId = await ctx.db.insert("procurementRequests", {
-        clientOrgId: orgId,
-        title: `${name} request`,
-        status: "marketing",
-        inboxToken: `${name}-inbox`,
-        createdByUserId: userId,
-        updatedByUserId: userId,
-        createdAt: 1,
-        updatedAt: 1,
-      });
       const discoveryId = await ctx.db.insert("providerDiscoveries", {
-        requestId,
         createdByUserId: userId,
         status,
         ...(routerDiscoveryId ? { routerDiscoveryId } : {}),
@@ -46,7 +35,7 @@ async function seed(t: Harness) {
         matchLimit: 25,
         createdAt: Date.now(),
       });
-      return { orgId, requestId, discoveryId };
+      return { orgId, discoveryId };
     };
     const a = await insertDiscovery("Client A", tokenA, "fa_a");
     const b = await insertDiscovery("Client B", tokenB, "fa_b");
@@ -102,11 +91,11 @@ function post(t: Harness, token: string | null, body: unknown) {
   );
 }
 
-const candidates = (t: Harness, requestId: Id<"procurementRequests">) =>
+const candidates = (t: Harness, discoveryId: Id<"providerDiscoveries">) =>
   t.run((ctx) =>
     ctx.db
       .query("providerDiscoveryCandidates")
-      .withIndex("by_requestId_and_status", (q) => q.eq("requestId", requestId))
+      .withIndex("by_discoveryId", (q) => q.eq("discoveryId", discoveryId))
       .collect(),
   );
 
@@ -119,20 +108,20 @@ test("rejects missing, malformed, unknown and cancelled tokens", async () => {
   expect(
     (await post(t, "c".repeat(64), callback({ discoveryId: "fa_c" }))).status,
   ).toBe(404);
-  expect(await candidates(t, cancelled.requestId)).toHaveLength(0);
+  expect(await candidates(t, cancelled.discoveryId)).toHaveLength(0);
 });
 
-test("a token cannot write candidates for another discovery or request", async () => {
+test("a token cannot write candidates for another discovery or organization", async () => {
   const t = harness();
   const { a, b } = await seed(t);
   expect((await post(t, tokenA, callback({ discoveryId: "fa_b" }))).status).toBe(409);
-  expect(await candidates(t, a.requestId)).toHaveLength(0);
-  expect(await candidates(t, b.requestId)).toHaveLength(0);
+  expect(await candidates(t, a.discoveryId)).toHaveLength(0);
+  expect(await candidates(t, b.discoveryId)).toHaveLength(0);
   expect(
     (await post(t, tokenB, callback({ discoveryId: "fa_b", orgId: a.orgId }))).status,
   ).toBe(409);
-  expect(await candidates(t, a.requestId)).toHaveLength(0);
-  expect(await candidates(t, b.requestId)).toHaveLength(0);
+  expect(await candidates(t, a.discoveryId)).toHaveLength(0);
+  expect(await candidates(t, b.discoveryId)).toHaveLength(0);
 });
 
 test("applies a delivery once to the token's discovery only", async () => {
@@ -140,22 +129,21 @@ test("applies a delivery once to the token's discovery only", async () => {
   const { a, b } = await seed(t);
   expect((await post(t, tokenA, callback())).status).toBe(200);
   expect((await post(t, tokenA, callback())).status).toBe(200);
-  const stored = await candidates(t, a.requestId);
+  const stored = await candidates(t, a.discoveryId);
   expect(stored).toHaveLength(1);
   expect(stored[0]).toMatchObject({
     discoveryId: a.discoveryId,
-    requestId: a.requestId,
     name: "Example Specialty MGA",
     domain: "example-mga.com",
     providerType: "mga",
     status: "pending",
   });
-  expect(await candidates(t, b.requestId)).toHaveLength(0);
+  expect(await candidates(t, b.discoveryId)).toHaveLength(0);
   const discovery = await t.run((ctx) => ctx.db.get(a.discoveryId));
   expect(discovery).toMatchObject({ status: "completed", candidateCount: 1 });
   // A different delivery for an already completed discovery writes nothing.
   expect((await post(t, tokenA, callback({ deliveryId: "delivery-2" }))).status).toBe(409);
-  expect(await candidates(t, a.requestId)).toHaveLength(1);
+  expect(await candidates(t, a.discoveryId)).toHaveLength(1);
 });
 
 test("answers 503 while the discovery is still being created", async () => {
@@ -164,7 +152,7 @@ test("answers 503 while the discovery is still being created", async () => {
   expect(
     (await post(t, tokenPending, callback({ discoveryId: "fa_d" }))).status,
   ).toBe(503);
-  expect(await candidates(t, pending.requestId)).toHaveLength(0);
+  expect(await candidates(t, pending.discoveryId)).toHaveLength(0);
 });
 
 test("rejects oversized, malformed and unrecognized bodies without writing", async () => {
@@ -186,5 +174,5 @@ test("rejects oversized, malformed and unrecognized bodies without writing", asy
       )
     ).status,
   ).toBe(400);
-  expect(await candidates(t, a.requestId)).toHaveLength(0);
+  expect(await candidates(t, a.discoveryId)).toHaveLength(0);
 });
