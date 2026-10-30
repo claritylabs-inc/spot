@@ -1,48 +1,76 @@
-// Failure modes: a drawer's proposal or information read issued without its
+// Failure modes: a section or drawer read issued without its section or
 // related record, or for another request's proposal without saying so.
 import { expect, test } from "vitest";
 import { operatorPageContextEntry } from ".";
 import { procurementRequestHints } from "./procurement";
 
-test("a procurement request reads its drawer's records only when they are attached", () => {
+test("a procurement request reads what its section and drawer show", () => {
   const entry = operatorPageContextEntry("procurement_request")!;
   const [stage] = entry.prefetch;
-  const inputs = (related: Record<string, string>) =>
-    stage.map((read) => [
-      read.toolName,
-      read.input({
-        focus: { entityId: "r1" },
-        results: new Map(),
-        relatedId: (kind) => related[kind],
+  const inputs = (
+    page: { href?: string; summary?: string },
+    related: Record<string, string> = {},
+  ) =>
+    Object.fromEntries(
+      stage.flatMap((read) => {
+        const input = read.input({
+          focus: { entityId: "r1" },
+          results: new Map(),
+          relatedId: (kind) => related[kind],
+          page: {
+            pageType: "procurement_request",
+            entityId: "r1",
+            ...page,
+            related: Object.entries(related).map(([kind, id]) => ({
+              kind,
+              id,
+            })),
+          },
+        });
+        return input ? [[read.toolName, input]] : [];
       }),
-    ]);
-  expect(inputs({ organization: "o1" })).toEqual([
-    [
-      "get_procurement_request",
-      {
-        procurementRequestId: "r1",
-        include: ["outreach", "proposals"],
-        view: "summary",
-      },
-    ],
-    ["get_procurement_proposal", undefined],
-    ["get_procurement_information", undefined],
-  ]);
+    );
+  const href = (view: string) =>
+    `/operator/clients/o1/procurement/r1?view=${view}`;
+  // The application view reads the request's summary only.
+  expect(inputs({ href: href("application") }, { organization: "o1" })).toEqual(
+    {
+      get_procurement_request: { procurementRequestId: "r1", view: "summary" },
+    },
+  );
+  expect(inputs({ href: href("market") })).toEqual({
+    get_procurement_request: {
+      procurementRequestId: "r1",
+      include: ["outreach", "proposals"],
+      view: "summary",
+    },
+  });
+  expect(inputs({ href: href("information") })).toMatchObject({
+    get_procurement_information: {
+      procurementRequestId: "r1",
+      include: ["information"],
+    },
+  });
   expect(
-    inputs({
-      procurement_proposal: "p1",
-      procurement_information_question: "q1",
-    }).slice(1),
-  ).toEqual([
-    [
-      "get_procurement_proposal",
-      { procurementProposalId: "p1", view: "compact" },
-    ],
-    [
-      "get_procurement_information",
-      { procurementRequestId: "r1", include: ["information"] },
-    ],
-  ]);
+    inputs({ summary: "GL · Viewing Application › Submission notes" }),
+  ).toMatchObject({
+    get_procurement_packet: { procurementRequestId: "r1", view: "internal" },
+  });
+  // A drawer's records are read whatever the section.
+  expect(
+    inputs(
+      { href: href("application") },
+      { procurement_proposal: "p1", client_file: "f1" },
+    ),
+  ).toEqual({
+    get_procurement_request: {
+      procurementRequestId: "r1",
+      include: ["outreach", "proposals"],
+      view: "summary",
+    },
+    get_procurement_proposal: { procurementProposalId: "p1", view: "compact" },
+    read_client_file: { clientFileId: "f1", maxChars: 6_000 },
+  });
 
   const request = {
     request: {
