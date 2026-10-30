@@ -5,6 +5,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { internalAction } from "../_generated/server";
 import {
+  ClRouterRequestError,
   clRouterCancelMonitor,
   clRouterCapabilities,
   clRouterCreateMonitor,
@@ -125,7 +126,12 @@ export const cancel = internalAction({
       internal.clientWebMonitors.beginCancelInternal,
       { orgId: args.orgId },
     );
-    await clRouterCancelMonitor(monitor.routerMonitorId);
+    // A monitor the router no longer knows can't deliver callbacks, so the
+    // row is cancelled either way.
+    await clRouterCancelMonitor(monitor.routerMonitorId).catch((error) => {
+      if (!(error instanceof ClRouterRequestError) || error.status !== 404)
+        throw error;
+    });
     await ctx.runMutation(internal.clientWebMonitors.markCancelledInternal, {
       monitorId: monitor.monitorId,
     });
