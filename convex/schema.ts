@@ -996,6 +996,15 @@ export default defineSchema({
     importedAt: v.number(),
     updatedBy: v.id("users"),
     updatedAt: v.number(),
+    /** Public hostnames `run_skill_script` may let a run reach; none by default. */
+    allowedDomains: v.optional(v.array(v.string())),
+    /**
+     * Shared skills only: another operator (not the importer) reviewed the
+     * scripts of `scriptsReviewedRevision`. A re-import clears it.
+     */
+    scriptsReviewedBy: v.optional(v.id("users")),
+    scriptsReviewedRevision: v.optional(v.number()),
+    scriptsReviewedAt: v.optional(v.number()),
   })
     .index("by_scope_and_ownerUserId_and_name", ["scope", "ownerUserId", "name"])
     .index("by_scope_and_name", ["scope", "name"]),
@@ -5502,6 +5511,7 @@ export default defineSchema({
       v.literal("retrieve"),
       v.literal("transcribe"),
       v.literal("browse"),
+      v.literal("exec"),
     ),
     fingerprint: v.string(),
     status: v.union(

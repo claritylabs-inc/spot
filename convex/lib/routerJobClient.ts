@@ -18,7 +18,10 @@ import {
 } from "./clRouterClient";
 import type { ModelRoute } from "./modelCatalog";
 import { routerAssetSigningConfiguration } from "./routerAssetSignature";
-import { ROUTER_JOB_INLINE_REQUEST_BYTES } from "./routerJobLimits";
+import {
+  ROUTER_JOB_EXEC_REQUEST_BYTES,
+  ROUTER_JOB_INLINE_REQUEST_BYTES,
+} from "./routerJobLimits";
 import { parseRouterJobError, type RouterJobFailure } from "./routerJobFailure";
 
 const REQUEST_BYTES = 4 * 1024 * 1024;
@@ -40,7 +43,8 @@ export type RouterJobOperation =
   | "embed"
   | "retrieve"
   | "transcribe"
-  | "browse";
+  | "browse"
+  | "exec";
 
 export function callbackSiteUrl(): string {
   const canonical = routerAssetSigningConfiguration().siteUrl;
@@ -137,6 +141,7 @@ async function stageRequest(
   siteUrl: string,
   storageIds: Id<"_storage">[],
   signal?: AbortSignal,
+  maxBytes = REQUEST_BYTES,
 ): Promise<string> {
   let totalBytes = 0;
   async function visit(
@@ -192,9 +197,11 @@ async function stageRequest(
   const serialized = JSON.stringify(await visit(payload, false, true));
   if (
     typeof serialized !== "string" ||
-    new TextEncoder().encode(serialized).byteLength > REQUEST_BYTES
+    new TextEncoder().encode(serialized).byteLength > maxBytes
   )
-    throw new Error("Router request exceeds 4 MiB");
+    throw new Error(
+      `Router request exceeds ${maxBytes / 1024 / 1024} MiB`,
+    );
   return serialized;
 }
 
@@ -236,7 +243,15 @@ async function prepareJob(
   let retained = false;
   try {
     const serialized = await timed(timing, "submit.stage", () =>
-      stageRequest(ctx, payload, requestToken, siteUrl, assets, signal),
+      stageRequest(
+        ctx,
+        payload,
+        requestToken,
+        siteUrl,
+        assets,
+        signal,
+        operation === "exec" ? ROUTER_JOB_EXEC_REQUEST_BYTES : REQUEST_BYTES,
+      ),
     );
     const [fingerprint, requestTokenHash, resultTokenHash] = await timed(
       timing,

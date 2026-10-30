@@ -48,6 +48,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@claritylabs-inc/ui/components/tooltip";
+import { TokenListField } from "@/components/broker-network/token-list-field";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
@@ -82,7 +83,7 @@ type SkillLists = FunctionReturnType<typeof api.operatorSkills.list>;
 type SkillRow = SkillLists["personal"][number];
 
 const SCRIPTS_TOOLTIP =
-  "Scripts are stored with the skill but can't run in Spot yet.";
+  "Spot runs these scripts in an isolated sandbox only after an operator approves each run, once script execution is enabled.";
 const KIND_LABELS = {
   instructions: "Instructions",
   reference: "Reference",
@@ -354,6 +355,9 @@ function SkillListRow({
             {row.name}
           </span>
           {row.hasScripts ? <ScriptsTag /> : null}
+          {row.hasScripts && row.scope === "shared" && !row.scriptsReview ? (
+            <StatusTag tone="neutral">Scripts need review</StatusTag>
+          ) : null}
         </span>
         <span
           className={cn(
@@ -501,6 +505,123 @@ function RemoveSkillDialog({
   );
 }
 
+/** Who may run the scripts, the review a shared skill needs and its network allowlist. */
+function SkillScriptsSection({ skill }: { skill: SkillRow }) {
+  const setReviewed = useLeaderOnly(useMutation(api.operatorSkills.setScriptsReviewed));
+  const setAllowedDomains = useLeaderOnly(
+    useMutation(api.operatorSkills.setAllowedDomains),
+  );
+  const [busy, setBusy] = useState(false);
+  const review = skill.scriptsReview;
+  const run = (work: () => Promise<unknown>, success: string, failure: string) => {
+    setBusy(true);
+    void work()
+      .then(() => toast.success(success))
+      .catch((error) => toast.error(getUserFacingErrorMessage(error, failure)))
+      .finally(() => setBusy(false));
+  };
+  const caption = cn("text-muted-foreground", typeStyle("caption.default"));
+  return (
+    <section className="space-y-3" data-collab-scope={`skill-scripts:${skill._id}`}>
+      <h3 className={cn("text-muted-foreground", typeStyle("heading.micro"))}>
+        Scripts
+      </h3>
+      {skill.scope === "personal" ? (
+        <p className={caption}>
+          Only you can run these, and Spot asks you to approve every run.
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          {review ? (
+            <StatusTag tone="success">
+              Reviewed by {review.reviewedByViewer ? "you" : review.reviewerName}
+            </StatusTag>
+          ) : (
+            <StatusTag tone="warning">Not reviewed</StatusTag>
+          )}
+          <span className={caption}>
+            {review
+              ? `Revision ${skill.revision}. Any operator can run them after approving each run.`
+              : skill.importedByViewer
+                ? `Revision ${skill.revision} can't run until another operator reviews its scripts.`
+                : `Revision ${skill.revision}, imported by ${skill.importedByName}. Read the scripts below, then mark them reviewed so operators can run them.`}
+          </span>
+          {!review && !skill.importedByViewer ? (
+            <PillButton
+              size="compact"
+              disabled={busy}
+              onClick={() =>
+                run(
+                  () =>
+                    setReviewed({
+                      skillId: skill._id,
+                      revision: skill.revision,
+                      reviewed: true,
+                    }),
+                  `Marked the scripts of ${skill.name} reviewed`,
+                  "The review could not be saved.",
+                )
+              }
+            >
+              Mark scripts reviewed
+            </PillButton>
+          ) : null}
+          {review && (review.reviewedByViewer || skill.isOwner) ? (
+            <PillButton
+              variant="ghost"
+              size="compact"
+              disabled={busy}
+              onClick={() =>
+                run(
+                  () =>
+                    setReviewed({
+                      skillId: skill._id,
+                      revision: skill.revision,
+                      reviewed: false,
+                    }),
+                  `Cleared the script review of ${skill.name}`,
+                  "The review could not be cleared.",
+                )
+              }
+            >
+              Clear review
+            </PillButton>
+          ) : null}
+        </div>
+      )}
+      <div className="space-y-1.5">
+        <p className={cn("text-foreground", typeStyle("label.field"))}>
+          Allowed domains
+        </p>
+        {skill.isOwner ? (
+          <TokenListField
+            ariaLabel={`Allowed domains for ${skill.name}`}
+            placeholder="api.example.com"
+            value={skill.allowedDomains}
+            disabled={busy}
+            normalize={(item) => item.toLowerCase()}
+            onChange={(domains) =>
+              run(
+                () => setAllowedDomains({ skillId: skill._id, domains }),
+                "Allowed domains saved",
+                "The domains could not be saved.",
+              )
+            }
+          />
+        ) : (
+          <p className={cn("text-foreground", typeStyle("body.default"))}>
+            {skill.allowedDomains.join(", ") || "None"}
+          </p>
+        )}
+        <p className={caption}>
+          Runs have no network unless the approved run asks for some of these
+          public hostnames.{skill.isOwner ? "" : " Only the owner can change them."}
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function SkillDrawer({ skill, onClose }: { skill: SkillRow; onClose: () => void }) {
   const detail = useQuery(api.operatorSkills.get, { skillId: skill._id });
   const [openPath, setOpenPath] = useFollowedState<string | null>(
@@ -557,6 +678,7 @@ function SkillDrawer({ skill, onClose }: { skill: SkillRow; onClose: () => void 
             ))}
           </ul>
         ) : null}
+        {skill.hasScripts ? <SkillScriptsSection skill={skill} /> : null}
         <section className="space-y-2">
           <h3 className={cn("text-muted-foreground", typeStyle("heading.micro"))}>
             SKILL.md

@@ -12,8 +12,20 @@ import {
 // so long text is paged with `offset` instead of being cut mid-result.
 const TEXT_PAGE_BYTES = 14_000;
 const FILE_LIST_BYTES = 6_000;
-const SCRIPTS_NOTE =
-  "Scripts in this skill are stored but cannot run in Spot yet. Do not claim a script ran; do the step with Spot's tools or tell the operator it needs to be run elsewhere.";
+/** What the model may do with this skill's scripts right now. */
+function scriptsNote(skill: {
+  name: string;
+  scope: "personal" | "shared";
+  revision: number;
+  scriptsReviewedRevision?: number;
+  allowedDomains: string[];
+}, runnable: boolean) {
+  if (!runnable)
+    return "Scripts in this skill are stored but cannot run in Spot yet. Do not claim a script ran; do the step with Spot's tools or tell the operator it needs to be run elsewhere.";
+  if (skill.scope === "shared" && skill.scriptsReviewedRevision !== skill.revision)
+    return `This shared skill's scripts can't run until another operator (not its importer) marks revision ${skill.revision} Scripts reviewed in Settings → Skills. Tell the operator; do not claim a script ran.`;
+  return `Run a script with run_skill_script after the operator approves the exact run. Network is off unless you pass some of: ${skill.allowedDomains.join(", ") || "(no domains allowed)"}. Never claim a script ran unless run_skill_script returned its result.`;
+}
 
 /** One page of `text` from character `offset`, at most TEXT_PAGE_BYTES of UTF-8. */
 function textPage(text: string, offset: number) {
@@ -60,6 +72,8 @@ export async function runOperatorSkillTool(
     operatorUserId: Id<"users">;
     toolName: string;
     input: Record<string, unknown>;
+    /** cl-router advertises `exec`. */
+    scriptsRunnable: boolean;
   },
 ) {
   const name = String(args.input.name ?? "");
@@ -98,7 +112,9 @@ export async function runOperatorSkillTool(
         : {}),
       files,
       ...(files.length < otherFiles ? { filesOmitted: otherFiles - files.length } : {}),
-      ...(skill.hasScripts ? { scriptsNote: SCRIPTS_NOTE } : {}),
+      ...(skill.hasScripts
+        ? { scriptsNote: scriptsNote(skill, args.scriptsRunnable) }
+        : {}),
     };
   }
 
@@ -132,6 +148,8 @@ export async function runOperatorSkillTool(
     size: file.size,
     ...(offset ? { offset } : {}),
     ...page,
-    ...(file.kind === "script" ? { scriptsNote: SCRIPTS_NOTE } : {}),
+    ...(file.kind === "script"
+      ? { scriptsNote: scriptsNote(skill, args.scriptsRunnable) }
+      : {}),
   };
 }

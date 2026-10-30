@@ -18,7 +18,7 @@ import {
   createInformationFormByOperator,
   procurementInformationOverview,
 } from "./lib/procurementInformationOperator";
-import { NoWriteInputError } from "./lib/noWriteInputError";
+import { NoWriteInputError, rethrowNoWriteInput } from "./lib/noWriteInputError";
 import { operatorTeamAddressFor } from "./lib/teamEmail";
 import { ensureOperatorInbox } from "./lib/operatorInbox";
 import { listTeamInbox, getTeamThreadDetails, linkTeamEmailThreadByOperator } from "./teamInbox";
@@ -199,9 +199,12 @@ import { loadEmailPrompts } from "./lib/emailPrompts";
 import { enabledOperatorSkills } from "./lib/operatorSkillStore";
 import {
   OPERATOR_SKILL_TOOL_NAMES,
-  operatorSkillsPromptBlock,
+  RUN_SKILL_SCRIPT_TOOL,
 } from "./lib/operatorSkills";
-import { runOperatorSkillTool } from "./lib/operatorSkillTools";
+import {
+  resolveSkillScriptRun,
+  type SkillScriptInput,
+} from "./lib/operatorSkillScripts";
 import {
   listPacketLinksForOperator,
   listPacketDocuments,
@@ -397,6 +400,9 @@ type OperatorActionToolResult = {
 };
 
 const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
+  "load_skill",
+  "read_skill_file",
+  "run_skill_script",
   "import_policy_files",
   "fill_pdf_form",
   "edit_pdf_form",
@@ -700,6 +706,15 @@ async function operatorConfirmationSummary(
       throw new Error("This email is too long to review here. Send it from the request's Email client composer.");
     }
     return summary;
+  }
+  if (toolName === "run_skill_script") {
+    return (
+      await resolveSkillScriptRun(
+        ctx,
+        context.operatorUserId,
+        input as SkillScriptInput,
+      )
+    ).summary;
   }
   if (toolName === "call_mcp_tool") {
     const id = ctx.db.normalizeId("operatorMcpServers", String(input.serverId));
@@ -4471,9 +4486,6 @@ async function executeToolActionDomain(
   },
 ): Promise<OperatorActionToolResult> {
   args = { ...args, ...resolveOperatorToolDispatch(args.toolName, args.input) };
-  if (OPERATOR_SKILL_TOOL_NAMES.has(args.toolName)) {
-    return { result: await runOperatorSkillTool(ctx, args) };
-  }
   if (args.toolName === "get_procurement_forwarding_address") {
     const parsed = OPERATOR_AGENT_TOOL_REGISTRY.get_procurement_forwarding_address.inputSchema.parse(args.input);
     const context = await ctx.runQuery(internal.operatorAgent.forwardingContextInternal, {
@@ -4594,9 +4606,8 @@ async function executeToolActionDomain(
   }
 
   if (OPERATOR_RICH_ACTION_TOOLS.has(args.toolName)) {
-    return (await ctx.runAction(
-      internal.actions.operatorAgentRichTools.runInternal,
-      {
+    return (await ctx
+      .runAction(internal.actions.operatorAgentRichTools.runInternal, {
         operatorUserId: args.operatorUserId,
         threadId: args.threadId,
         toolName: args.toolName,
@@ -4604,8 +4615,8 @@ async function executeToolActionDomain(
         channel: args.channel,
         confirmationId: args.confirmationId,
         messageId: args.threadMessageId,
-      },
-    )) as OperatorActionToolResult;
+      })
+      .catch(rethrowNoWriteInput)) as OperatorActionToolResult;
   }
 
   if (args.toolName === "lookup_address") {
@@ -6047,6 +6058,21 @@ async function confirmOperatorAction(
       if ((await providerLaunchFingerprint(ctx, { operatorUserId: operator.userId, input })) !== payload.sourceFingerprint) {
         throw new Error("The provider emails changed since confirmation; request a fresh approval.");
       }
+    }
+    if (
+      payload.toolName === "run_skill_script" &&
+      payload.sourceFingerprint !==
+        (
+          await resolveSkillScriptRun(
+            ctx,
+            operator.userId,
+            input as SkillScriptInput,
+          )
+        ).fingerprint
+    ) {
+      throw new Error(
+        "The skill, its script or the run's inputs changed since this was requested; ask for a fresh approval.",
+      );
     }
     if (payload.toolName === "import_policy_files") {
       const files = await resolveOperatorPolicySources(ctx, {
@@ -7536,22 +7562,25 @@ export const getRunContextInternal = internalQuery({
     } catch {
       // Profile remains available when email identity is not configured yet.
     }
-    const operatorSkillsPrompt = operatorSkillsPromptBlock(
-      await enabledOperatorSkills(ctx, run.operatorUserId),
-    );
+    const operatorSkills = await enabledOperatorSkills(ctx, run.operatorUserId);
+    const scriptSkills = operatorSkills.some((skill) => skill.hasScripts);
     return {
       run,
       thread,
       messages: messages.reverse(),
-      // Skill tools are offered only to operators with an enabled skill.
-      toolNames: operatorSkillsPrompt
-        ? toolNames
-        : toolNames.filter((name) => !OPERATOR_SKILL_TOOL_NAMES.has(name)),
+      // Skill tools are offered only to operators with an enabled skill,
+      // run_skill_script only when one of them has scripts.
+      toolNames: toolNames.filter(
+        (name) =>
+          !OPERATOR_SKILL_TOOL_NAMES.has(name) ||
+          (operatorSkills.length > 0 &&
+            (name !== RUN_SKILL_SCRIPT_TOOL || scriptSkills)),
+      ),
       operatorName: operator.user.name,
       operatorEmail: operator.user.email,
       operatorTeamAddress,
       emailPrompts: await loadEmailPrompts(ctx, run.operatorUserId),
-      operatorSkillsPrompt,
+      operatorSkills,
     };
   },
 });
@@ -7699,6 +7728,11 @@ async function requestOrExecuteTool(
     checkpointSummary?: string;
   },
 ): Promise<DirectToolOutcome> {
+  // Never ask the operator to approve a script run the router cannot execute.
+  if (args.toolName === "run_skill_script")
+    await ctx
+      .runAction(internal.actions.operatorSkillScripts.assertRunnableInternal, {})
+      .catch(rethrowNoWriteInput);
   const outcome = await ctx.runMutation(
     internal.operatorAgent.requestToolConfirmationInternal,
     args,
@@ -7892,6 +7926,14 @@ export const requestToolConfirmationInternal = internalMutation({
               ).fingerprint
             : isProviderEmailSendTool(args.toolName)
             ? await providerLaunchFingerprint(ctx, { operatorUserId: args.operatorUserId, input })
+            : args.toolName === "run_skill_script"
+            ? (
+                await resolveSkillScriptRun(
+                  ctx,
+                  args.operatorUserId,
+                  input as SkillScriptInput,
+                )
+              ).fingerprint
             : args.toolName === "import_policy_files"
             ? await operatorPolicySourceFingerprint(
                 await resolveOperatorPolicySources(ctx, {

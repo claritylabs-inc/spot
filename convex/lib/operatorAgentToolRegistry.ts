@@ -34,6 +34,7 @@ import {
 import { bulkReadIds } from "./operatorReadViews";
 import { estimateAgentHistoryTokens } from "./agentMessageHistory";
 import { PROCUREMENT_FAMILY_GUIDANCE } from "./operatorToolFamilyGuidance";
+import { skillScriptApprovalSummary } from "./operatorSkills";
 import { PDF_FORM_SOURCE_FORMATS } from "./pdfFormSource";
 import {
   GENERATE_COI_DESCRIPTION,
@@ -3902,6 +3903,41 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     execution: "action",
     target: (input) => ({ kind: "operator_skill", id: `${input.name}/${input.path}` }),
     summarize: (input) => `Read ${input.path} from skill ${input.name}`,
+  }),
+  run_skill_script: defineOperatorTool({
+    agentOnly: true,
+    version: 1,
+    description:
+      "Run one script of a loaded skill in an isolated sandbox (Ubuntu with Python 3, Node 24, bash) after the operator approves this exact run. argv is a script path from load_skill, optionally after its interpreter (python3, node, bash), then its arguments. The working directory holds every skill file at its path, plus inputClientFileIds under input/<file name>. Files the script writes under out/ come back as attachments on this conversation; file them with add_client_files only when the operator asks. Network is off unless you pass domains from the skill's allowed domains. A shared skill's scripts must be reviewed by another operator first. Returns exitCode, timedOut, bounded stdout/stderr and the output files; a nonzero exit is the script's own failure. Report what it returned; never claim a run that did not return.",
+    inputSchema: z.object({
+      name: z.string().min(1).max(64).describe("Exact skill name"),
+      argv: z
+        .array(z.string().max(4096))
+        .min(1)
+        .max(64)
+        .describe('Script path and arguments, e.g. ["scripts/check.py", "--limit", "1000000"] or ["python3", "scripts/check.py"]'),
+      stdin: omittable(z.string().max(256 * 1024).describe("Text piped to the script")),
+      inputClientFileIds: omittable(
+        z.array(z.string().min(1)).max(10).describe("Exact client file IDs (list_client_files) copied to input/"),
+      ),
+      timeoutSeconds: omittable(z.number().int().min(1).max(300).describe("Default 120")),
+      network: omittable(
+        z.array(z.string().min(1).max(253)).max(32).describe("Hostnames the run may reach; only the skill's allowed domains"),
+      ),
+    }),
+    capability: "operator.skills.execute",
+    effect: "external_send",
+    requiredRole: "operator",
+    confirmation: "exact",
+    execution: "action",
+    target: (input) => ({ kind: "operator_skill", id: input.name }),
+    summarize: (input) =>
+      skillScriptApprovalSummary({
+        name: input.name,
+        argv: input.argv,
+        workingFiles: (input.inputClientFileIds ?? []).map((id) => `client file ${id}`),
+        network: input.network ?? [],
+      }),
   }),
 } as const;
 

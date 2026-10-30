@@ -24,6 +24,15 @@ import {
   OPERATOR_EMAIL_TOOL_NAMES,
   runOperatorEmailTool,
 } from "../lib/operatorEmailTools";
+import {
+  OPERATOR_SKILL_TOOL_NAMES,
+  RUN_SKILL_SCRIPT_TOOL,
+} from "../lib/operatorSkills";
+import { runOperatorSkillTool } from "../lib/operatorSkillTools";
+import {
+  runSkillScript,
+  skillScriptsRunnable,
+} from "../lib/operatorSkillScriptRunner";
 
 // Keeps ten bulk-read files within one tool result.
 const BULK_FILE_TEXT_CHARS = 8_000;
@@ -78,6 +87,24 @@ export const runInternal = internalAction({
     await ctx.runQuery(internal.operator.requireOperatorForUserInternal, {
       userId: args.operatorUserId,
     });
+
+    if (args.toolName === RUN_SKILL_SCRIPT_TOOL) {
+      return await runSkillScript(ctx, {
+        operatorUserId: args.operatorUserId,
+        input: args.input as Record<string, unknown>,
+        confirmationId: args.confirmationId,
+      });
+    }
+    if (OPERATOR_SKILL_TOOL_NAMES.has(args.toolName)) {
+      return {
+        result: await runOperatorSkillTool(ctx, {
+          operatorUserId: args.operatorUserId,
+          toolName: args.toolName,
+          input: args.input as Record<string, unknown>,
+          scriptsRunnable: await skillScriptsRunnable(),
+        }),
+      };
+    }
 
     if (OPERATOR_EMAIL_TOOL_NAMES.has(args.toolName)) {
       return {

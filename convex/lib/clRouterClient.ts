@@ -341,7 +341,8 @@ export type ClRouterFeature =
   | "inline_job_input"
   | "prompt_cache_key"
   | "agent_loop"
-  | "parallel_tool_calls";
+  | "parallel_tool_calls"
+  | "exec";
 
 /**
  * One agent-loop step: the router asks no tool questions and offers every

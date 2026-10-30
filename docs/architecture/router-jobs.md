@@ -47,7 +47,7 @@ in one query, and `bind` returns the bound row, so the common path is lookup,
 }
 ```
 
-Operations are `generate`, `manual`, `embed`, `retrieve`, `transcribe`, and `browse`. When
+Operations are `generate`, `manual`, `embed`, `retrieve`, `transcribe`, `browse`, and `exec` (skill scripts; see `operator-skills.md`). `exec` requests may be up to 12 MiB (`ROUTER_JOB_EXEC_REQUEST_BYTES`, base64 files), the others 4 MiB. When
 `/v1/capabilities` lists `inline_job_input`, generate and manual submissions replace
 `requestUrl` with `input`: the exact stored request text, so the fingerprint is unchanged
 and the router skips its request fetch. Other operations, older routers and an unavailable

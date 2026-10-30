@@ -12,21 +12,24 @@ export function TokenListField({
   placeholder,
   ariaLabel,
   disabled = false,
+  normalize = (item) => item.toUpperCase(),
 }: {
   value: string[];
   onChange: (value: string[]) => void;
   placeholder: string;
   ariaLabel: string;
   disabled?: boolean;
+  /** Applied to each typed entry; uppercase by default (codes). */
+  normalize?: (item: string) => string;
 }) {
   const [draft, setDraft] = useState("");
 
   function add(raw: string) {
     const additions = raw
       .trim()
-      .toUpperCase()
       .split(/[\s,]+/)
       .filter(Boolean)
+      .map(normalize)
       .filter((item) => !value.includes(item));
     if (additions.length) onChange([...value, ...additions]);
     setDraft("");
