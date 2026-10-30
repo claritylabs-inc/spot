@@ -1,52 +1,45 @@
 import type { PageContext } from "@/hooks/use-page-context";
 
-/** `normalizeOperatorPageContext` rejects longer summaries. */
+/** `normalizeOperatorPageContext` rejects longer summaries and keeps 10 related records. */
 const MAX_SUMMARY_LENGTH = 500;
+const MAX_RELATED = 10;
 
-/** IDs are named after the operator tool arguments that take them. */
-export type ProcurementContextRef = {
-  arg:
-    | "orgId"
-    | "procurementOutreachId"
-    | "procurementProposalId"
-    | "procurementFileItemId"
-    | "clientFileId"
-    | "informationFormId"
-    | "questionId"
-    | "procurementRequestId";
-  id: string;
+export type ProcurementContextRef = NonNullable<PageContext["related"]>[number];
+
+export type ProcurementContextPart = {
+  text: string;
+  /** The records the part names, in `related`. */
+  refs?: readonly ProcurementContextRef[];
 };
 
 const clip = (text: string, max: number) =>
   text.length > max ? `${text.slice(0, max - 1)}…` : text;
 
-type SummaryPart = { text: string; refs?: readonly ProcurementContextRef[] };
-
-const renderPart = (part: SummaryPart) =>
-  part.refs?.length
-    ? `${part.text} (${part.refs.map((ref) => `${ref.arg} ${ref.id}`).join(", ")})`
-    : part.text;
-
 /**
- * Joins summary parts within the normalizer's bound. The first part's text
- * (the record's name) gives way first so trailing IDs are never cut.
+ * Joins summary parts within the normalizer's bounds and collects their
+ * records. Earlier parts' records come first, so the open drawer's record is
+ * the first of its kind.
  */
-function summary(parts: ReadonlyArray<SummaryPart | null | undefined>) {
-  const [first, ...rest] = parts.filter((part): part is SummaryPart =>
-    Boolean(part?.text.trim()),
+function describe(
+  parts: ReadonlyArray<ProcurementContextPart | null | undefined>,
+) {
+  const present = parts.filter(
+    (part): part is ProcurementContextPart => part != null,
   );
-  if (!first) return "";
-  const tail = rest.map(renderPart);
-  const overflow =
-    [renderPart(first), ...tail].join(" · ").length - MAX_SUMMARY_LENGTH;
-  const head =
-    overflow > 0
-      ? {
-          ...first,
-          text: clip(first.text, Math.max(20, first.text.length - overflow)),
-        }
-      : first;
-  return clip([renderPart(head), ...tail].join(" · "), MAX_SUMMARY_LENGTH);
+  const related = present
+    .flatMap((part) => part.refs ?? [])
+    .slice(0, MAX_RELATED)
+    .map((ref) => (ref.label ? { ...ref, label: clip(ref.label, 200) } : ref));
+  return {
+    summary: clip(
+      present
+        .map((part) => part.text.trim())
+        .filter(Boolean)
+        .join(" · "),
+      MAX_SUMMARY_LENGTH,
+    ),
+    ...(related.length ? { related } : {}),
+  };
 }
 
 /**
@@ -59,13 +52,13 @@ export function procurementRequestPageContext(args: {
   title?: string;
   clientName?: string;
   status?: string;
-  section?: SummaryPart;
-  open?: SummaryPart | null;
+  section?: ProcurementContextPart;
+  open?: ProcurementContextPart | null;
 }): PageContext {
   return {
     pageType: "procurement_request",
     entityId: args.requestId,
-    summary: summary([
+    ...describe([
       {
         text: args.title
           ? `${clip(args.title, 120)} procurement for ${clip(args.clientName ?? "client", 80)}`
@@ -78,7 +71,16 @@ export function procurementRequestPageContext(args: {
       args.open
         ? { ...args.open, text: `Open drawer: ${args.open.text}` }
         : null,
-      { text: "Client", refs: [{ arg: "orgId", id: args.clientOrgId }] },
+      {
+        text: "",
+        refs: [
+          {
+            kind: "organization",
+            id: args.clientOrgId,
+            ...(args.clientName ? { label: args.clientName } : {}),
+          },
+        ],
+      },
     ]),
   };
 }
@@ -96,13 +98,13 @@ export function procurementListPageContext(args: {
   checked: ReadonlyArray<{ id: string; title: string }>;
   open?: string;
 }): PageContext {
-  const checked = args.checked.slice(0, 3);
+  const named = args.checked.slice(0, 3);
   return {
     pageType: args.clientOrgId
       ? "operator_client_procurement"
       : "operator_procurement",
     ...(args.clientOrgId ? { entityId: args.clientOrgId } : {}),
-    summary: summary([
+    ...describe([
       {
         text: args.clientOrgId
           ? `New-policy procurement for ${clip(args.clientName ?? "client", 80)}`
@@ -113,12 +115,13 @@ export function procurementListPageContext(args: {
             text: `Filtered by ${args.filters.join("; ")}: ${args.shown} of ${args.total} requests shown`,
           }
         : null,
-      checked.length
+      args.checked.length
         ? {
-            text: `Checked ${args.checked.length}: ${checked.map((row) => clip(row.title, 60)).join(", ")}${args.checked.length > checked.length ? ", …" : ""}`,
-            refs: checked.map((row) => ({
-              arg: "procurementRequestId" as const,
+            text: `Checked ${args.checked.length}: ${named.map((row) => clip(row.title, 60)).join(", ")}${args.checked.length > named.length ? ", …" : ""}`,
+            refs: args.checked.map((row) => ({
+              kind: "procurement_request",
               id: row.id,
+              label: row.title,
             })),
           }
         : null,

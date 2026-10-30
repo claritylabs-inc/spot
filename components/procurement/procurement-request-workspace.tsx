@@ -113,7 +113,7 @@ import {
 } from "@/components/procurement/procurement-shared";
 import {
   procurementRequestPageContext,
-  type ProcurementContextRef,
+  type ProcurementContextPart,
 } from "@/components/procurement/procurement-page-context";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
@@ -291,7 +291,7 @@ function requestPanelContext(
       staffConclusion?: keyof typeof REVIEW_CONCLUSION_LABELS;
     }>;
   }>,
-): { text: string; refs?: ProcurementContextRef[] } | null {
+): ProcurementContextPart | null {
   if (!panel) return null;
   switch (panel.kind) {
     case "notes":
@@ -306,14 +306,22 @@ function requestPanelContext(
       return {
         text: `new ${panel.audience} email`,
         refs: panel.informationFormId
-          ? [{ arg: "informationFormId", id: panel.informationFormId }]
+          ? [{
+                kind: "procurement_information_form",
+                id: panel.informationFormId,
+              }]
           : undefined,
       };
     case "information":
       return panel.target.questionId
         ? {
             text: "information question",
-            refs: [{ arg: "questionId", id: panel.target.questionId }],
+            refs: [
+              {
+                kind: "procurement_information_question",
+                id: panel.target.questionId,
+              },
+            ],
           }
         : { text: "new information question" };
     case "file":
@@ -323,9 +331,9 @@ function requestPanelContext(
       return {
         text: `request document "${file.label.slice(0, 120)}"`,
         refs: [
-          { arg: "procurementFileItemId", id: file._id },
+          { kind: "procurement_file_item", id: file._id, label: file.label },
           ...(file.clientFileId
-            ? [{ arg: "clientFileId" as const, id: file.clientFileId }]
+            ? [{ kind: "client_file", id: file.clientFileId }]
             : []),
         ],
       };
@@ -358,9 +366,13 @@ function requestPanelContext(
           .filter(Boolean)
           .join(" with "),
         refs: [
-          { arg: "procurementOutreachId", id: outreach._id },
+          {
+            kind: "procurement_outreach",
+            id: outreach._id,
+            label: outreach.brokerName,
+          },
           ...(proposal
-            ? [{ arg: "procurementProposalId" as const, id: proposal._id }]
+            ? [{ kind: "procurement_proposal", id: proposal._id }]
             : []),
         ],
       };
@@ -3060,7 +3072,12 @@ export function ProcurementRequestWorkspace({
             : ""
         }`,
         refs: selectedInformationForm
-          ? [{ arg: "informationFormId", id: selectedInformationForm }]
+          ? [
+              {
+                kind: "procurement_information_form",
+                id: selectedInformationForm,
+              },
+            ]
           : undefined,
       },
     open: requestPanelContext(panel, details, proposals),

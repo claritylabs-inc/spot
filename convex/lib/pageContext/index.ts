@@ -1,4 +1,5 @@
 import { emailPageContexts } from "./email";
+import { procurementPageContexts } from "./procurement";
 import type { OperatorPageContextEntry } from "./types";
 
 export type { OperatorPageContextEntry } from "./types";
@@ -6,6 +7,7 @@ export type { OperatorPageContextEntry } from "./types";
 // One module per page-type group; each page type belongs to one entry.
 export const OPERATOR_PAGE_CONTEXTS: readonly OperatorPageContextEntry[] = [
   ...emailPageContexts,
+  ...procurementPageContexts,
 ];
 
 export function operatorPageContextEntry(pageType: string) {
