@@ -368,6 +368,7 @@ import type * as lib_operatorMcpToolCatalog from "../lib/operatorMcpToolCatalog.
 import type * as lib_operatorNotificationTypes from "../lib/operatorNotificationTypes.js";
 import type * as lib_operatorNotify from "../lib/operatorNotify.js";
 import type * as lib_operatorOrganizationReads from "../lib/operatorOrganizationReads.js";
+import type * as lib_operatorPageContextPrefetch from "../lib/operatorPageContextPrefetch.js";
 import type * as lib_operatorPlanning from "../lib/operatorPlanning.js";
 import type * as lib_operatorProcurementReads from "../lib/operatorProcurementReads.js";
 import type * as lib_operatorReadViews from "../lib/operatorReadViews.js";
@@ -395,6 +396,9 @@ import type * as lib_otp from "../lib/otp.js";
 import type * as lib_outreachIdentity from "../lib/outreachIdentity.js";
 import type * as lib_outreachInboxSupport from "../lib/outreachInboxSupport.js";
 import type * as lib_packetDocuments from "../lib/packetDocuments.js";
+import type * as lib_pageContext_email from "../lib/pageContext/email.js";
+import type * as lib_pageContext_index from "../lib/pageContext/index.js";
+import type * as lib_pageContext_types from "../lib/pageContext/types.js";
 import type * as lib_passwordAuth from "../lib/passwordAuth.js";
 import type * as lib_pdfFiller from "../lib/pdfFiller.js";
 import type * as lib_pdfFormFields from "../lib/pdfFormFields.js";
@@ -992,6 +996,7 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorNotificationTypes": typeof lib_operatorNotificationTypes;
   "lib/operatorNotify": typeof lib_operatorNotify;
   "lib/operatorOrganizationReads": typeof lib_operatorOrganizationReads;
+  "lib/operatorPageContextPrefetch": typeof lib_operatorPageContextPrefetch;
   "lib/operatorPlanning": typeof lib_operatorPlanning;
   "lib/operatorProcurementReads": typeof lib_operatorProcurementReads;
   "lib/operatorReadViews": typeof lib_operatorReadViews;
@@ -1019,6 +1024,9 @@ declare const fullApi: ApiFromModules<{
   "lib/outreachIdentity": typeof lib_outreachIdentity;
   "lib/outreachInboxSupport": typeof lib_outreachInboxSupport;
   "lib/packetDocuments": typeof lib_packetDocuments;
+  "lib/pageContext/email": typeof lib_pageContext_email;
+  "lib/pageContext/index": typeof lib_pageContext_index;
+  "lib/pageContext/types": typeof lib_pageContext_types;
   "lib/passwordAuth": typeof lib_passwordAuth;
   "lib/pdfFiller": typeof lib_pdfFiller;
   "lib/pdfFormFields": typeof lib_pdfFormFields;

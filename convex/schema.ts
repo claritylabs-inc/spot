@@ -5040,6 +5040,15 @@ export default defineSchema({
         entityId: v.optional(v.string()),
         summary: v.optional(v.string()),
         href: v.optional(v.string()),
+        related: v.optional(
+          v.array(
+            v.object({
+              kind: v.string(),
+              id: v.string(),
+              label: v.optional(v.string()),
+            }),
+          ),
+        ),
       }),
     ),
     pageContext: v.optional(
@@ -5049,6 +5058,15 @@ export default defineSchema({
           entityId: v.optional(v.string()),
           summary: v.optional(v.string()),
           href: v.optional(v.string()),
+          related: v.optional(
+            v.array(
+              v.object({
+                kind: v.string(),
+                id: v.string(),
+                label: v.optional(v.string()),
+              }),
+            ),
+          ),
         }),
         v.null(),
       ),
@@ -5116,6 +5134,15 @@ export default defineSchema({
         entityId: v.optional(v.string()),
         summary: v.optional(v.string()),
         href: v.optional(v.string()),
+        related: v.optional(
+          v.array(
+            v.object({
+              kind: v.string(),
+              id: v.string(),
+              label: v.optional(v.string()),
+            }),
+          ),
+        ),
       }),
     ),
     presentation: v.optional(chatPresentationValidator),
