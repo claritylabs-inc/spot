@@ -24,10 +24,10 @@ import {
   requireOperatorForUser,
 } from "./lib/operatorIdentity";
 import { emitOperatorNotification } from "./lib/operatorNotify";
-import { requestApplicationDetails } from "./lib/providerOutreachMatch";
 import {
   DEFAULT_PROVIDER_DISCOVERY_MATCH_LIMIT,
   MAX_PROVIDER_DISCOVERY_EXCLUDES,
+  MAX_PROVIDER_DISCOVERY_MATCH_LIMIT,
   PROVIDER_DISCOVERY_BODY_BYTES,
   PROVIDER_DISCOVERY_PENDING_MS,
   PROVIDER_DISCOVERY_RUNNING_MS,
@@ -35,13 +35,9 @@ import {
   providerDiscoveryCandidateFields,
   providerDiscoveryCriteria,
   providerDiscoveryDomain,
-  type ProviderDiscoveryOverrides,
 } from "./lib/providerDiscovery";
 import type { ProviderBatchResult } from "./operatorBrokerBatches";
-import {
-  requireDirectOperatorWrite,
-  requireRequest,
-} from "./procurementRequests";
+import { requireDirectOperatorWrite } from "./procurementRequests";
 import { routerJobTokenHash } from "./routerJobs";
 
 const UNTRUSTED_NOTE =
@@ -70,9 +66,9 @@ const candidateFieldsValidator = v.object({
   statesServed: v.optional(v.string()),
   appointmentUrl: v.optional(v.string()),
 });
-const overridesValidator = {
-  lines: v.optional(v.array(v.string())),
-  states: v.optional(v.array(v.string())),
+const criteriaValidator = {
+  lines: v.array(v.string()),
+  states: v.array(v.string()),
   industry: v.optional(v.string()),
 };
 const reviewItemsValidator = v.array(
@@ -82,27 +78,11 @@ const reviewItemsValidator = v.array(
   }),
 );
 
-async function liveRequest(
-  ctx: QueryCtx,
-  requestId: Id<"procurementRequests">,
-) {
-  const request = await requireRequest(ctx, requestId);
-  if (request.deletedAt !== undefined)
-    throw new NoWriteInputError(
-      "invalid_identifier",
-      "Procurement request not found.",
-    );
-  return request;
-}
-
-/** The discovery running or being created for a request, if any. */
-async function currentDiscovery(
-  ctx: QueryCtx,
-  requestId: Id<"procurementRequests">,
-) {
+/** The network discovery running or being created, if any. */
+async function currentDiscovery(ctx: QueryCtx) {
   const rows = await ctx.db
     .query("providerDiscoveries")
-    .withIndex("by_requestId_and_createdAt", (q) => q.eq("requestId", requestId))
+    .withIndex("by_createdAt")
     .order("desc")
     .take(10);
   const freshPending = dayjs().subtract(
@@ -129,58 +109,41 @@ function brokersByDomain(brokers: Doc<"organizations">[]) {
   return byDomain;
 }
 
+type DiscoveryCriteriaInput = Parameters<typeof providerDiscoveryCriteria>[0];
+
 /**
- * Criteria and exclusions for a new discovery. Rejects a request that already
- * has one running, so a repeated call never pays twice.
+ * Criteria and exclusions for a new discovery. Rejects a start while another
+ * discovery is running, so a repeated call never pays twice.
  */
 export async function prepareProviderDiscovery(
   ctx: QueryCtx,
-  requestId: Id<"procurementRequests">,
-  overrides: ProviderDiscoveryOverrides,
+  input: DiscoveryCriteriaInput,
 ) {
-  const request = await liveRequest(ctx, requestId);
-  if (await currentDiscovery(ctx, requestId))
+  const criteria = providerDiscoveryCriteria(input);
+  if (await currentDiscovery(ctx))
     throw new NoWriteInputError(
       "provider_discovery_running",
-      "A provider discovery is already running for this request; read list_provider_candidates for its status.",
+      "A provider discovery is already running; read list_provider_candidates for its status.",
     );
-  const org = request.clientOrgId ? await ctx.db.get(request.clientOrgId) : null;
-  const criteria = providerDiscoveryCriteria(
-    requestApplicationDetails(request, org),
-    overrides,
-  );
   const exclude: Array<{ name: string; url: string }> = [];
   for (const [domain, broker] of brokersByDomain(await providerDirectory(ctx))) {
     if (exclude.length === MAX_PROVIDER_DISCOVERY_EXCLUDES) break;
     if (broker)
       exclude.push({ name: broker.name.slice(0, 200), url: `https://${domain}` });
   }
-  return { request, criteria, exclude };
+  return { criteria, exclude };
 }
 
 /** Exact approval text: what the paid search sends to the provider. */
 export async function providerDiscoveryApprovalSummary(
   ctx: QueryCtx,
-  input: ProviderDiscoveryOverrides & {
-    procurementRequestId: string;
-    matchLimit?: number;
-    generator?: string;
-  },
+  input: DiscoveryCriteriaInput & { matchLimit?: number; generator?: string },
 ) {
-  const requestId = ctx.db.normalizeId(
-    "procurementRequests",
-    input.procurementRequestId,
-  );
-  if (!requestId) throw new Error("Procurement request not found");
-  const { request, criteria, exclude } = await prepareProviderDiscovery(
-    ctx,
-    requestId,
-    input,
-  );
+  const { criteria, exclude } = await prepareProviderDiscovery(ctx, input);
   return [
-    `Find up to ${input.matchLimit ?? DEFAULT_PROVIDER_DISCOVERY_MATCH_LIMIT} insurance markets for ${JSON.stringify(request.title)} with a paid public-web discovery (cl-router, Parallel FindAll, ${input.generator ?? "core"} generator).`,
+    `Find up to ${input.matchLimit ?? DEFAULT_PROVIDER_DISCOVERY_MATCH_LIMIT} new insurance markets for the provider network with a paid public-web discovery (cl-router, Parallel FindAll, ${input.generator ?? "core"} generator).`,
     `Sent to the provider: lines ${criteria.lines.join(", ")}; states ${criteria.states.join(", ")}; industry ${criteria.industry ? JSON.stringify(criteria.industry) : "not specified"}.`,
-    `Excludes ${exclude.length} existing network providers by website. The client's name, website, revenue and request details are not sent.`,
+    `Excludes ${exclude.length} existing network providers by website. No client or request details are sent.`,
     "Candidates arrive later for review; nothing is added to the network until reviewed.",
   ].join("\n");
 }
@@ -202,35 +165,51 @@ function discoveryStatus(discovery: Doc<"providerDiscoveries">) {
   };
 }
 
-/** Latest discovery status plus the request's candidates, newest first within status. */
+/** Recent network discoveries, newest first. */
+export async function recentProviderDiscoveries(ctx: QueryCtx, limit: number) {
+  const rows = await ctx.db
+    .query("providerDiscoveries")
+    .withIndex("by_createdAt")
+    .order("desc")
+    .take(limit);
+  return rows.map(discoveryStatus);
+}
+
+/** One discovery's status and its candidates in the router's order; the latest discovery when none is named. */
 export async function readProviderCandidates(
   ctx: QueryCtx,
-  requestId: Id<"procurementRequests">,
   options: {
+    discoveryId?: Id<"providerDiscoveries">;
     status?: Doc<"providerDiscoveryCandidates">["status"];
     limit: number;
     excerptChars: number;
   },
 ) {
-  const [latest, rows] = await Promise.all([
-    ctx.db
-      .query("providerDiscoveries")
-      .withIndex("by_requestId_and_createdAt", (q) => q.eq("requestId", requestId))
-      .order("desc")
-      .first(),
-    ctx.db
-      .query("providerDiscoveryCandidates")
-      .withIndex("by_requestId_and_status", (q) =>
-        options.status
-          ? q.eq("requestId", requestId).eq("status", options.status)
-          : q.eq("requestId", requestId),
-      )
-      .order("desc")
-      .take(options.limit + 1),
-  ]);
+  const discovery = options.discoveryId
+    ? await ctx.db.get(options.discoveryId)
+    : await ctx.db
+        .query("providerDiscoveries")
+        .withIndex("by_createdAt")
+        .order("desc")
+        .first();
+  if (options.discoveryId && !discovery)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Provider discovery not found.",
+    );
+  // A discovery stores at most MAX_PROVIDER_DISCOVERY_MATCH_LIMIT candidates.
+  const rows = discovery
+    ? await ctx.db
+        .query("providerDiscoveryCandidates")
+        .withIndex("by_discoveryId", (q) => q.eq("discoveryId", discovery._id))
+        .take(MAX_PROVIDER_DISCOVERY_MATCH_LIMIT * 2)
+    : [];
+  const matching = options.status
+    ? rows.filter((candidate) => candidate.status === options.status)
+    : rows;
   return {
-    discovery: latest ? discoveryStatus(latest) : null,
-    candidates: rows.slice(0, options.limit).map((candidate) => ({
+    discovery: discovery ? discoveryStatus(discovery) : null,
+    candidates: matching.slice(0, options.limit).map((candidate) => ({
       candidateId: candidate._id,
       name: candidate.name,
       url: candidate.url,
@@ -256,7 +235,7 @@ export async function readProviderCandidates(
         })),
       })),
     })),
-    bounded: rows.length > options.limit,
+    bounded: matching.length > options.limit,
     note: UNTRUSTED_NOTE,
   };
 }
@@ -284,7 +263,6 @@ export async function reviewableCandidates(
         "invalid_candidate",
         `Item ${index + 1} (${candidate.name}) was already ${candidate.status}.`,
       );
-    await liveRequest(ctx, candidate.requestId);
     candidates.push({ candidate, action: item.action });
   }
   return candidates;
@@ -293,15 +271,12 @@ export async function reviewableCandidates(
 /** Exact approval text: each candidate, its site and the action. */
 export async function providerCandidateReviewSummary(
   ctx: QueryCtx,
-  input: {
-    items: { candidateId: string; action: "add" | "dismiss" }[];
-    attachToRequest?: boolean;
-  },
+  input: { items: { candidateId: string; action: "add" | "dismiss" }[] },
 ) {
   const reviewed = await reviewableCandidates(ctx, input.items);
   const adds = reviewed.filter((item) => item.action === "add").length;
   const lines = [
-    `Review ${reviewed.length} provider candidate${reviewed.length === 1 ? "" : "s"}${adds ? `; added ones are matched to the network by domain, then exact name, or created with public enrichment queued${input.attachToRequest ? ", and attached to their request's provider tracking (no email is sent)" : ""}` : ""}.`,
+    `Review ${reviewed.length} provider candidate${reviewed.length === 1 ? "" : "s"}${adds ? `; added ones are matched to the network by domain, then exact name, or created with public enrichment queued` : ""}. No email is sent.`,
     ...reviewed.map(({ candidate, action }) =>
       `- ${action === "add" ? "Add" : "Dismiss"} ${JSON.stringify(candidate.name)} (${candidate.domain})${candidate.providerType ? `, ${candidate.providerType}` : ""}`,
     ),
@@ -313,45 +288,32 @@ export async function providerCandidateReviewSummary(
 export async function reviewProviderCandidatesByOperator(
   ctx: MutationCtx,
   operatorUserId: Id<"users">,
-  input: {
-    items: { candidateId: string; action: "add" | "dismiss" }[];
-    attachToRequest?: boolean;
-  },
+  input: { items: { candidateId: string; action: "add" | "dismiss" }[] },
 ) {
   await requireDirectOperatorWrite(ctx, operatorUserId);
   const reviewed = await reviewableCandidates(ctx, input.items);
   const reviewedAt = dayjs().valueOf();
-  const addsByRequest = new Map<
-    Id<"procurementRequests">,
-    Doc<"providerDiscoveryCandidates">[]
-  >();
-  for (const { candidate, action } of reviewed)
-    if (action === "add")
-      addsByRequest.set(candidate.requestId, [
-        ...(addsByRequest.get(candidate.requestId) ?? []),
-        candidate,
-      ]);
+  const adds = reviewed.flatMap(({ candidate, action }) =>
+    action === "add" ? [candidate] : [],
+  );
   const outcomes = new Map<
     Id<"providerDiscoveryCandidates">,
     ProviderBatchResult["results"][number]
   >();
-  for (const [requestId, candidates] of addsByRequest) {
+  if (adds.length) {
     const batch: ProviderBatchResult = await ctx
       .runMutation(internal.operatorBrokerBatches.execute, {
         operatorUserId,
         toolName: "ensure_broker_network_profiles",
         input: {
-          items: candidates.map((candidate) => ({
+          items: adds.map((candidate) => ({
             name: candidate.name.slice(0, 200),
             domain: candidate.domain,
           })),
-          ...(input.attachToRequest
-            ? { attachToProcurementRequestId: requestId }
-            : {}),
         },
       })
       .catch(rethrowNoWriteInput);
-    candidates.forEach((candidate, index) =>
+    adds.forEach((candidate, index) =>
       outcomes.set(candidate._id, batch.results[index]),
     );
   }
@@ -369,31 +331,38 @@ export async function reviewProviderCandidatesByOperator(
       name: candidate.name,
       status: action === "add" ? ("added" as const) : ("dismissed" as const),
       ...(outcome
-        ? {
-            brokerOrgId: outcome.orgId,
-            outcome: outcome.outcome,
-            ...(outcome.outreachId ? { outreachId: outcome.outreachId } : {}),
-          }
+        ? { brokerOrgId: outcome.orgId, outcome: outcome.outcome }
         : {}),
     });
   }
   return { results };
 }
 
-export const listForRequest = query({
-  args: { requestId: v.id("procurementRequests") },
-  handler: async (ctx, { requestId }) => {
+export const list = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
     await requireOperator(ctx);
-    await liveRequest(ctx, requestId);
-    return await readProviderCandidates(ctx, requestId, {
-      limit: 100,
+    return await recentProviderDiscoveries(
+      ctx,
+      Math.min(Math.max(Math.floor(args.limit ?? 20), 1), 50),
+    );
+  },
+});
+
+export const candidates = query({
+  args: { discoveryId: v.id("providerDiscoveries") },
+  handler: async (ctx, { discoveryId }) => {
+    await requireOperator(ctx);
+    return await readProviderCandidates(ctx, {
+      discoveryId,
+      limit: MAX_PROVIDER_DISCOVERY_MATCH_LIMIT * 2,
       excerptChars: 600,
     });
   },
 });
 
 export const review = mutation({
-  args: { items: reviewItemsValidator, attachToRequest: v.optional(v.boolean()) },
+  args: { items: reviewItemsValidator },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     return await reviewProviderCandidatesByOperator(ctx, operator.userId, args);
@@ -402,37 +371,24 @@ export const review = mutation({
 
 /** Operator authorization for the start action. */
 export const authorizeOperatorStartInternal = internalQuery({
-  args: { userId: v.id("users"), requestId: v.id("procurementRequests") },
+  args: { userId: v.id("users") },
   handler: async (ctx, args) => {
     await requireOperatorForUser(ctx, args.userId);
     await assertNoOperatorImpersonation(ctx, args.userId);
-    await liveRequest(ctx, args.requestId);
   },
-});
-
-export const normalizeRequestIdInternal = internalQuery({
-  args: { requestId: v.string() },
-  handler: async (ctx, args) =>
-    ctx.db.normalizeId("procurementRequests", args.requestId),
 });
 
 /** Creates the pending row a router discovery will be attached to. */
 export const beginInternal = internalMutation({
   args: {
-    requestId: v.id("procurementRequests"),
     userId: v.id("users"),
     tokenHash: v.string(),
     matchLimit: v.number(),
-    ...overridesValidator,
+    ...criteriaValidator,
   },
   handler: async (ctx, args) => {
-    const { request, criteria, exclude } = await prepareProviderDiscovery(
-      ctx,
-      args.requestId,
-      args,
-    );
+    const { criteria, exclude } = await prepareProviderDiscovery(ctx, args);
     const discoveryId = await ctx.db.insert("providerDiscoveries", {
-      requestId: request._id,
       createdByUserId: args.userId,
       status: "pending",
       tokenHash: args.tokenHash,
@@ -446,10 +402,9 @@ export const beginInternal = internalMutation({
       internal.providerDiscovery.expireInternal,
       { discoveryId, status: "pending" },
     );
-    return { discoveryId, orgId: request.clientOrgId, criteria, exclude };
+    return { discoveryId, criteria, exclude };
   },
 });
-
 /** False when the watchdog already failed the row; the caller cancels the router run. */
 export const markRunningInternal = internalMutation({
   args: {
@@ -551,7 +506,10 @@ export const ingestInternal = internalMutation({
     // Results can arrive before the create call records the router's ID; the
     // router retries a non-2xx answer.
     if (discovery.routerDiscoveryId === undefined) return "pending";
-    const request = await ctx.db.get(discovery.requestId);
+    // Network discoveries send no orgId; a legacy request discovery sent its client's.
+    const request = discovery.requestId
+      ? await ctx.db.get(discovery.requestId)
+      : null;
     if (
       discovery.routerDiscoveryId !== args.routerDiscoveryId ||
       (args.orgId !== undefined && args.orgId !== request?.clientOrgId)
@@ -581,7 +539,6 @@ export const ingestInternal = internalMutation({
       await ctx.db.insert("providerDiscoveryCandidates", {
         ...candidate,
         discoveryId: discovery._id,
-        requestId: discovery.requestId,
         status: broker ? "added" : "pending",
         ...(broker ? { brokerOrgId: broker._id } : {}),
         createdAt: now,

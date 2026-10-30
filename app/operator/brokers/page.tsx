@@ -14,11 +14,15 @@ import {
 
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { useSearchParams } from "next/navigation";
 import { Globe, Loader2, MapPin, Plus, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { AppShell } from "@/components/app-shell";
+import { FindMarkets } from "@/components/broker-network/find-markets";
+import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
+import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import {
   OperatorPageContextRegistration,
   operatorContextList,
@@ -61,6 +65,7 @@ import {
 import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useTableSort } from "@/hooks/use-table-sort";
+import { useTabParam } from "@/hooks/use-tab-param";
 import type { FunctionReturnType } from "convex/server";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import {
@@ -132,6 +137,7 @@ function serviceArea(row: BrokerRow) {
   ].join(", ");
 }
 
+const BROKER_TABS = ["network", "markets"] as const;
 const STATUS_ORDER = Object.keys(NETWORK_STATUS_LABELS);
 const NO_BROKERS: BrokerRow[] = [];
 const BROKER_SORT_COLUMNS = {
@@ -143,6 +149,8 @@ const BROKER_SORT_COLUMNS = {
 };
 
 export default function OperatorBrokersPage() {
+  const [tab, selectTab] = useTabParam(BROKER_TABS);
+  const discoveryParam = useSearchParams().get("discovery");
   const [creating, setCreating] = useFollowedState("brokers:creating", false);
   const [countries, setCountries] = useSavedFollowedState<string[]>(
     "brokers:countries",
@@ -214,20 +222,23 @@ export default function OperatorBrokersPage() {
   const selectedRows = (rows ?? []).filter((row) =>
     selection.isSelected(row.broker._id),
   );
-  const pageSummary = operatorContextSummary(
-    "Insurance providers",
-    statuses.length > 0 &&
-      `status ${operatorContextList(statuses.map((status) => NETWORK_STATUS_LABELS[status as NetworkStatus] ?? status))}`,
-    countries.length > 0 && `writing in ${operatorContextList(countries)}`,
-    regions.length > 0 && `serving ${operatorContextList(regions)}`,
-    lines.length > 0 && `lines ${operatorContextList(lines)}`,
-    filteredRows && rows && `${filteredRows.length} of ${rows.length} shown`,
-    selectedRows.length > 0 &&
-      `selected ${operatorContextList(
-        selectedRows.map((row) => row.broker.name),
-        3,
-      )}`,
-  );
+  const pageSummary =
+    tab === "markets"
+      ? operatorContextSummary("Insurance providers", "Find markets tab")
+      : operatorContextSummary(
+          "Insurance providers",
+          statuses.length > 0 &&
+            `status ${operatorContextList(statuses.map((status) => NETWORK_STATUS_LABELS[status as NetworkStatus] ?? status))}`,
+          countries.length > 0 && `writing in ${operatorContextList(countries)}`,
+          regions.length > 0 && `serving ${operatorContextList(regions)}`,
+          lines.length > 0 && `lines ${operatorContextList(lines)}`,
+          filteredRows && rows && `${filteredRows.length} of ${rows.length} shown`,
+          selectedRows.length > 0 &&
+            `selected ${operatorContextList(
+              selectedRows.map((row) => row.broker.name),
+              3,
+            )}`,
+        );
   // Changing filters drops a selection the rows may no longer show.
   const filterSetter =
     (set: (value: string[]) => void) => (value: string[]) => {
@@ -238,203 +249,219 @@ export default function OperatorBrokersPage() {
   return (
     <AppShell
       actions={
-        <PillButton
-          size="compact"
-          // Keep focus in an open draft row so its blur does not submit it.
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => {
-            setCreating(true);
-            document.getElementById(NEW_BROKER_NAME_ID)?.focus();
-          }}
-        >
-          <Plus className="size-3.5" />
-          Create provider
-        </PillButton>
+        tab === "network" ? (
+          <PillButton
+            size="compact"
+            // Keep focus in an open draft row so its blur does not submit it.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              setCreating(true);
+              document.getElementById(NEW_BROKER_NAME_ID)?.focus();
+            }}
+          >
+            <Plus className="size-3.5" />
+            Create provider
+          </PillButton>
+        ) : undefined
       }
     >
       <OperatorPageContextRegistration
         context={{
           pageType: "operator_brokers",
           summary: pageSummary,
-          related: selectedRows.map((row) => ({
+          related: (tab === "network" ? selectedRows : []).map((row) => ({
             kind: "broker",
             id: row.broker._id,
             label: row.broker.name,
           })),
         }}
       />
-      <div className="@container/brokers space-y-4">
-        <ListToolbar
-          followKey="brokers:list"
-          filters={[
-            {
-              id: "status",
-              label: "Status",
-              inline: true,
-              multiple: true,
-              options: statusOptions,
-              value: statuses,
-              onChange: filterSetter(setStatuses),
-            },
-            {
-              id: "country",
-              label: "Country",
-              icon: <Globe />,
-              multiple: true,
-              options: countryOptions,
-              value: countries,
-              onChange: (next) => {
-                filterSetter(setCountries)(next);
-                // Keep only states and provinces in the chosen countries.
-                if (next.length)
-                  setRegions((current) =>
-                    current.filter((region) =>
-                      next.includes(brokerRegionCountry(region)),
-                    ),
-                  );
-              },
-            },
-            {
-              id: "region",
-              label: "State",
-              icon: <MapPin />,
-              multiple: true,
-              options: countries.length
-                ? regionOptions.filter((option) =>
-                    countries.includes(option.country),
-                  )
-                : regionOptions,
-              value: regions,
-              onChange: filterSetter(setRegions),
-            },
-            {
-              id: "line",
-              label: "Coverage line",
-              icon: <Shield />,
-              multiple: true,
-              options: lineOptions,
-              value: lines,
-              onChange: filterSetter(setLines),
-            },
-          ]}
-        />
-        <BulkDeleteBar
-          type="broker"
-          orgIds={selection.selectedIds}
-          className="justify-end"
-          onClear={selection.clear}
-        />
-        <OperationalPanel data-operator-inline-fields>
-          <Table storageKey="spot:brokers:list:columns" className="min-w-[800px] table-fixed">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-11 pl-4 pr-0">
-                  <Checkbox
-                    data-collab-ignore
-                    aria-label="Select all providers"
-                    checked={selection.allSelected}
-                    indeterminate={selection.someSelected}
-                    disabled={selection.visibleCount === 0}
-                    onCheckedChange={selection.toggleAll}
-                  />
-                </TableHead>
-                <SortableTableHead
-                  className="w-[40%] px-4"
-                  {...tableSort.head("name")}
-                >
-                  Provider
-                </SortableTableHead>
-                <SortableTableHead {...tableSort.head("status")}>
-                  Status
-                </SortableTableHead>
-                <SortableTableHead {...tableSort.head("area")}>
-                  Service area
-                </SortableTableHead>
-                <SortableTableHead {...tableSort.head("lines")}>
-                  Lines
-                </SortableTableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {creating ? (
-                <NewBrokerRow onDone={() => setCreating(false)} />
-              ) : null}
-              {rows === undefined ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-32">
-                    <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
-                  </TableCell>
-                </TableRow>
-              ) : filteredRows?.length === 0 && !creating ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
-                  >
-                    {hasFilters
-                      ? "No providers match these filters."
-                      : "No insurance providers yet."}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                tableSort.rows.map((row) => (
-                  <TableRow
-                    key={row.broker._id}
-                    data-state={
-                      selection.isSelected(row.broker._id)
-                        ? "selected"
-                        : undefined
-                    }
-                  >
-                    <TableCell className="pl-4 pr-0">
+      <PageTabs value={tab} onValueChange={selectTab}>
+        <PageTabsList aria-label="Insurance providers">
+          <TabsTrigger value="network">Network</TabsTrigger>
+          <TabsTrigger value="markets">Find markets</TabsTrigger>
+        </PageTabsList>
+        <TabsContent value="markets">
+          <FindMarkets initialDiscoveryId={discoveryParam} />
+        </TabsContent>
+        <TabsContent value="network">
+          <div className="@container/brokers space-y-4">
+            <ListToolbar
+              followKey="brokers:list"
+              filters={[
+                {
+                  id: "status",
+                  label: "Status",
+                  inline: true,
+                  multiple: true,
+                  options: statusOptions,
+                  value: statuses,
+                  onChange: filterSetter(setStatuses),
+                },
+                {
+                  id: "country",
+                  label: "Country",
+                  icon: <Globe />,
+                  multiple: true,
+                  options: countryOptions,
+                  value: countries,
+                  onChange: (next) => {
+                    filterSetter(setCountries)(next);
+                    // Keep only states and provinces in the chosen countries.
+                    if (next.length)
+                      setRegions((current) =>
+                        current.filter((region) =>
+                          next.includes(brokerRegionCountry(region)),
+                        ),
+                      );
+                  },
+                },
+                {
+                  id: "region",
+                  label: "State",
+                  icon: <MapPin />,
+                  multiple: true,
+                  options: countries.length
+                    ? regionOptions.filter((option) =>
+                        countries.includes(option.country),
+                      )
+                    : regionOptions,
+                  value: regions,
+                  onChange: filterSetter(setRegions),
+                },
+                {
+                  id: "line",
+                  label: "Coverage line",
+                  icon: <Shield />,
+                  multiple: true,
+                  options: lineOptions,
+                  value: lines,
+                  onChange: filterSetter(setLines),
+                },
+              ]}
+            />
+            <BulkDeleteBar
+              type="broker"
+              orgIds={selection.selectedIds}
+              className="justify-end"
+              onClear={selection.clear}
+            />
+            <OperationalPanel data-operator-inline-fields>
+              <Table
+                storageKey="spot:brokers:list:columns"
+                className="min-w-[800px] table-fixed"
+              >
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-11 pl-4 pr-0">
                       <Checkbox
                         data-collab-ignore
-                        aria-label={`Select ${row.broker.name}`}
-                        checked={selection.isSelected(row.broker._id)}
-                        onCheckedChange={(checked) =>
-                          selection.toggle(row.broker._id, checked)
-                        }
+                        aria-label="Select all providers"
+                        checked={selection.allSelected}
+                        indeterminate={selection.someSelected}
+                        disabled={selection.visibleCount === 0}
+                        onCheckedChange={selection.toggleAll}
                       />
-                    </TableCell>
-                    <TableCell className="px-4">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <OrgBrandIcon
-                          name={row.broker.name}
-                          iconUrl={row.broker.iconUrl}
-                          website={row.broker.website}
-                          size="md"
-                        />
-                        <TableNameLink
-                          href={`/operator/brokers/${row.broker._id}`}
-                          className="truncate"
-                        >
-                          {row.broker.name}
-                        </TableNameLink>
-                        {row.profile?.isTest ? (
-                          <StatusTag tone="neutral">Test</StatusTag>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <BrokerStatusField
-                        brokerOrgId={row.broker._id}
-                        name={row.broker.name}
-                        status={row.profile?.networkStatus ?? "prospect"}
-                      />
-                    </TableCell>
-                    <TableCell className="whitespace-normal text-muted-foreground">
-                      {serviceArea(row) || "—"}
-                    </TableCell>
-                    <TableCell className="whitespace-normal text-muted-foreground">
-                      {row.profile?.lineOfBusinessCodes.join(", ") || "—"}
-                    </TableCell>
+                    </TableHead>
+                    <SortableTableHead
+                      className="w-[40%] px-4"
+                      {...tableSort.head("name")}
+                    >
+                      Provider
+                    </SortableTableHead>
+                    <SortableTableHead {...tableSort.head("status")}>
+                      Status
+                    </SortableTableHead>
+                    <SortableTableHead {...tableSort.head("area")}>
+                      Service area
+                    </SortableTableHead>
+                    <SortableTableHead {...tableSort.head("lines")}>
+                      Lines
+                    </SortableTableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </OperationalPanel>
-      </div>
+                </TableHeader>
+                <TableBody>
+                  {creating ? (
+                    <NewBrokerRow onDone={() => setCreating(false)} />
+                  ) : null}
+                  {rows === undefined ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-32">
+                        <Loader2 className="mx-auto size-5 animate-spin text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredRows?.length === 0 && !creating ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className={`h-32 px-4 text-muted-foreground ${typeStyle("body.default")}`}
+                      >
+                        {hasFilters
+                          ? "No providers match these filters."
+                          : "No insurance providers yet."}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    tableSort.rows.map((row) => (
+                      <TableRow
+                        key={row.broker._id}
+                        data-state={
+                          selection.isSelected(row.broker._id)
+                            ? "selected"
+                            : undefined
+                        }
+                      >
+                        <TableCell className="pl-4 pr-0">
+                          <Checkbox
+                            data-collab-ignore
+                            aria-label={`Select ${row.broker.name}`}
+                            checked={selection.isSelected(row.broker._id)}
+                            onCheckedChange={(checked) =>
+                              selection.toggle(row.broker._id, checked)
+                            }
+                          />
+                        </TableCell>
+                        <TableCell className="px-4">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <OrgBrandIcon
+                              name={row.broker.name}
+                              iconUrl={row.broker.iconUrl}
+                              website={row.broker.website}
+                              size="md"
+                            />
+                            <TableNameLink
+                              href={`/operator/brokers/${row.broker._id}`}
+                              className="truncate"
+                            >
+                              {row.broker.name}
+                            </TableNameLink>
+                            {row.profile?.isTest ? (
+                              <StatusTag tone="neutral">Test</StatusTag>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <BrokerStatusField
+                            brokerOrgId={row.broker._id}
+                            name={row.broker.name}
+                            status={row.profile?.networkStatus ?? "prospect"}
+                          />
+                        </TableCell>
+                        <TableCell className="whitespace-normal text-muted-foreground">
+                          {serviceArea(row) || "—"}
+                        </TableCell>
+                        <TableCell className="whitespace-normal text-muted-foreground">
+                          {row.profile?.lineOfBusinessCodes.join(", ") || "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </OperationalPanel>
+          </div>
+        </TabsContent>
+      </PageTabs>
     </AppShell>
   );
 }

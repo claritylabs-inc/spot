@@ -4372,10 +4372,12 @@ export default defineSchema({
     .index("by_monitor_and_delivery", ["monitorId", "deliveryId"]),
 
   // Provider discovery: one cl-router discovery run that finds insurance
-  // markets for a request from public, non-identifying criteria. The callback
+  // markets for the provider network from public, non-identifying criteria. The callback
   // capability token is stored only as a hash.
   providerDiscoveries: defineTable({
-    requestId: v.id("procurementRequests"),
+    // Set only on discoveries started from a request before market finding
+    // became network-level.
+    requestId: v.optional(v.id("procurementRequests")),
     createdByUserId: v.id("users"),
     status: v.union(
       v.literal("pending"),
@@ -4399,13 +4401,14 @@ export default defineSchema({
     candidateCount: v.optional(v.number()),
   })
     .index("by_requestId_and_createdAt", ["requestId", "createdAt"])
+    .index("by_createdAt", ["createdAt"])
     .index("by_tokenHash", ["tokenHash"]),
 
   // Bounded, cited candidates from a discovery callback; every text field is
   // untrusted public web content.
   providerDiscoveryCandidates: defineTable({
     discoveryId: v.id("providerDiscoveries"),
-    requestId: v.id("procurementRequests"),
+    requestId: v.optional(v.id("procurementRequests")),
     name: v.string(),
     url: v.string(),
     domain: v.string(),
