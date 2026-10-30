@@ -357,6 +357,7 @@ async function addVersion(
       await ctx.db.patch(current._id, {
         clientFileId,
         label,
+        ...(fill.outreachId ? { outreachId: fill.outreachId } : {}),
         updatedByUserId: args.operatorUserId,
         updatedAt: now,
       });
@@ -441,12 +442,16 @@ export const recordFillInternal = internalMutation({
       .withIndex("by_sourceFileId", (q) => q.eq("sourceFileId", args.sourceFileId))
       .order("desc")
       .take(50);
-    const existing = candidates.find(
-      (fill) =>
-        fill.clientOrgId === args.clientOrgId &&
-        fill.requestId === args.requestId &&
-        fill.brokerOrgId === args.brokerOrgId,
-    );
+    // A fill filed without a provider is adopted when a refill names one.
+    const sameFiling = (fill: Doc<"pdfFormFills">) =>
+      fill.clientOrgId === args.clientOrgId && fill.requestId === args.requestId;
+    const existing =
+      candidates.find(
+        (fill) => sameFiling(fill) && fill.brokerOrgId === args.brokerOrgId,
+      ) ??
+      (args.brokerOrgId
+        ? candidates.find((fill) => sameFiling(fill) && !fill.brokerOrgId)
+        : undefined);
     const fillId = existing
       ? existing._id
       : await ctx.db.insert("pdfFormFills", {
@@ -462,7 +467,12 @@ export const recordFillInternal = internalMutation({
         threadId: args.threadId,
         pageCount: args.pageCount,
         fields: args.fields,
+        ...(args.brokerOrgId ? { brokerOrgId: args.brokerOrgId } : {}),
         ...(args.outreachId ? { outreachId: args.outreachId } : {}),
+        ...(args.submissionDefaultId
+          ? { submissionDefaultId: args.submissionDefaultId }
+          : {}),
+        ...(args.coverageCode ? { coverageCode: args.coverageCode } : {}),
       });
     const fill = (await ctx.db.get(fillId))!;
     const filed = await addVersion(ctx, fill, {
