@@ -1,5 +1,27 @@
 # Platform workflow QA
 
+## Standard top bar and sub bar heights — October 30, 2026
+
+Native-local stack, operator in headless Chrome, `@claritylabs-inc/ui` 0.23.0.
+Each bar's bottom edge (including its 1px rule) was read with
+`getBoundingClientRect()` and measured from its column's top, page and drawers
+side by side (px, page / drawer):
+
+| Scenario | Before | After |
+| --- | --- | --- |
+| a. Wide inbox (tabs inline), thread drawer: page top bar / drawer header, then the context row | 48 / 48, 104 | 48 / 48, 96 |
+| b. Narrow inbox (tabs stacked) / thread drawer context row | 105 / 104 | 96 / 96 |
+| c. Thread drawer context row / PDF drawer toolbar | 104 / 96 | 96 / 96 |
+| d. Provider drawer, tabs stacked / PDF drawer toolbar | 105 / 96 | 96 / 96 |
+
+The context row is 48px in every state (client and request, client only, not
+linked, suggestion with Link). Three more checks, after only, all lined up:
+the notifications pane in the client view beside a policy page and its PDF
+drawer (title row 48 and tabs row 96; page 48; drawer header 48 and toolbar
+96), the operator and client sidebar headers against the page top bar (48 /
+48), and the Invite operator drawer beside Settings at 1600 and 1100 (48 / 48). Stacked tabs now sit 7px under the
+title row instead of 16px. No tests were written.
+
 ## One sidebar system — October 30, 2026
 
 Native-local stack, operator in headless Chrome at 1600px. The PDF opened from
