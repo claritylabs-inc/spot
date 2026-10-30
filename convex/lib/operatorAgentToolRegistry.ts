@@ -5,6 +5,7 @@ import { completionOutcomeSchema } from "./procurementCompletionOutcome";
 import { z } from "zod";
 import {
   COVERAGE_OPTIONS,
+  MARKET_SEARCH_COVERAGE_LABELS,
   type CoverageId,
 } from "../../lib/insurance-intake-details";
 import {
@@ -3841,7 +3842,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
         .min(1)
         .max(10)
         .describe(
-          "Coverage catalog labels such as General liability, Workers' compensation or Cyber liability",
+          `Coverage catalog labels: ${MARKET_SEARCH_COVERAGE_LABELS.join(", ")}`,
         ),
       states: z
         .array(z.string().trim().length(2))

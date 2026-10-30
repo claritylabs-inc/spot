@@ -14,7 +14,7 @@ import {
   USPS_STATE_CODES,
   USPS_STATE_NAMES,
 } from "@/convex/lib/brokerProfileValidation";
-import { COVERAGE_OPTIONS } from "@/lib/insurance-intake-details";
+import { MARKET_SEARCH_COVERAGE_LABELS } from "@/lib/insurance-intake-details";
 import { InlineFieldCard, InlineFieldRow } from "@/components/ui/inline-fields";
 import { PillButton } from "@/components/ui/pill-button";
 import { SuggestionSources } from "@/components/procurement/information/suggestion";
@@ -58,9 +58,10 @@ const MAX_INDUSTRY = 80;
 const MATCH_LIMITS = ["10", "25", "50"];
 const DEFAULT_MATCH_LIMIT = "25";
 
-const lineOptions = COVERAGE_OPTIONS.filter(
-  (option) => option.id !== "unknown" && option.id !== "other",
-).map((option) => ({ value: option.label, label: option.label }));
+const lineOptions = MARKET_SEARCH_COVERAGE_LABELS.map((label) => ({
+  value: label,
+  label,
+}));
 const stateOptions = USPS_STATE_CODES.map((code) => ({
   value: code,
   label: `${USPS_STATE_NAMES[code]} (${code})`,
@@ -120,9 +121,7 @@ function DiscoveryStatus({ discovery }: { discovery: Discovery }) {
     </StatusTag>
   ) : (
     <StatusTag indicator="error" tone="danger">
-      {discovery.status === "cancelled"
-        ? "Cancelled"
-        : `Failed${discovery.error ? `: ${discovery.error}` : ""}`}
+      {discovery.status === "cancelled" ? "Cancelled" : "Failed"}
     </StatusTag>
   );
 }

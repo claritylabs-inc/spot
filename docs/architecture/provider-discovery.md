@@ -43,8 +43,9 @@ The tool and action return a `running` status object; results arrive later.
 Only public, non-identifying criteria (`providerDiscoveryCriteria`,
 `providerDiscoveryInput` in `convex/lib/providerDiscovery.ts`):
 
-- `lines`: 1–10 coverage catalog labels (`COVERAGE_OPTIONS` without
-  `unknown`/`other`, matched case-insensitively and stored canonically).
+- `lines`: 1–10 coverage catalog labels (`MARKET_SEARCH_COVERAGE_LABELS`:
+  `COVERAGE_OPTIONS` without `unknown`/`other`, matched case-insensitively and
+  stored canonically).
 - `states`: 1–20 USPS state codes (`USPS_STATE_CODES`, including DC).
 - `industry`: only when the operator passes one (at most 80 characters).
 - `exclude`: up to 1,000 external network providers with a website, as
