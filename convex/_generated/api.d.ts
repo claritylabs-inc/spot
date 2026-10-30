@@ -571,6 +571,7 @@ import type * as orgWiki from "../orgWiki.js";
 import type * as organizations from "../organizations.js";
 import type * as orgs from "../orgs.js";
 import type * as passwordAccounts from "../passwordAccounts.js";
+import type * as pdfFormEdits from "../pdfFormEdits.js";
 import type * as pdfFormFill from "../pdfFormFill.js";
 import type * as pendingEmails from "../pendingEmails.js";
 import type * as policies from "../policies.js";
@@ -1197,6 +1198,7 @@ declare const fullApi: ApiFromModules<{
   organizations: typeof organizations;
   orgs: typeof orgs;
   passwordAccounts: typeof passwordAccounts;
+  pdfFormEdits: typeof pdfFormEdits;
   pdfFormFill: typeof pdfFormFill;
   pendingEmails: typeof pendingEmails;
   policies: typeof policies;
