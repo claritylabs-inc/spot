@@ -553,12 +553,14 @@ function OperatorProviderEmailComposer({
             {!single ? (
               // Lines up with the composer's send bar.
               <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-3">
-                <span className={`min-w-0 flex-1 truncate text-muted-foreground ${typeStyle("caption.default")}`}>
+                <span className={`flex min-h-7 min-w-0 flex-1 items-center text-muted-foreground ${typeStyle("caption.default")}`}>
+                  <span className="truncate">
                   {!ownEmail(previewed.brokerOrgId)
                     ? "Uses the template · edit here for this provider only"
                     : !edits[previewed.brokerOrgId] && savedEdits.get(previewed.brokerOrgId)?.source === "agent"
                       ? "From the AI panel"
                       : "Edited · saved automatically"}
+                  </span>
                 </span>
                 {ownEmail(previewed.brokerOrgId) ? (
                   <PillButton
