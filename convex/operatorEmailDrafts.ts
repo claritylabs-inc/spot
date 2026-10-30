@@ -188,10 +188,16 @@ export const attachDraftToOperatorMessageInternal = internalMutation({
   },
 });
 
-/** Validates that the operator may write email as themself and resolves any link targets. */
+/**
+ * Validates that the operator may write this email and resolves its sender and
+ * link targets. An existing draft keeps its sender unless `senderUserId` names
+ * another active operator; a new one is signed by that operator or by
+ * `operatorUserId`, the acting operator.
+ */
 export const resolveSenderInternal = internalQuery({
   args: {
     operatorUserId: v.id("users"),
+    senderUserId: v.optional(v.string()),
     threadId: v.id("operatorAgentThreads"),
     orgId: v.optional(v.string()),
     draftId: v.optional(v.string()),
@@ -203,7 +209,6 @@ export const resolveSenderInternal = internalQuery({
     await requireOperatorEmailThread(ctx, args.threadId);
     if (args.write)
       await assertNoOperatorImpersonation(ctx, args.operatorUserId);
-    const identity = await operatorSenderIdentity(ctx, args.operatorUserId);
 
     let draft: Doc<"pendingEmails"> | null = null;
     if (args.draftId) {
@@ -215,6 +220,19 @@ export const resolveSenderInternal = internalQuery({
         );
       }
     }
+    let senderUserId = draft?.senderUserId ?? args.operatorUserId;
+    if (args.senderUserId) {
+      const named = ctx.db.normalizeId("users", args.senderUserId);
+      if (!named)
+        throw new Error(
+          "fromUserId must be an exact active operator userId from list_operators.",
+        );
+      await requireOperatorForUser(ctx, named);
+      senderUserId = named;
+    }
+    if (args.write && senderUserId !== args.operatorUserId)
+      await assertNoOperatorImpersonation(ctx, senderUserId);
+    const identity = await operatorSenderIdentity(ctx, senderUserId);
     const named = {
       orgId: args.orgId ? ctx.db.normalizeId("organizations", args.orgId) : null,
       requestId: args.procurementRequestId
@@ -320,9 +338,9 @@ export const resolveSenderInternal = internalQuery({
 
     let teamThread: TeamThreadDraftContext | undefined;
     if (thread) {
-      const plan = await teamThreadReplyPlan(ctx, thread, args.operatorUserId);
+      const plan = await teamThreadReplyPlan(ctx, thread, senderUserId);
       const ownerAddress =
-        plan.threaded || thread.ownerUserId === args.operatorUserId
+        plan.threaded || thread.ownerUserId === senderUserId
           ? undefined
           : await teamThreadOwnerAddress(ctx, thread.ownerUserId);
       const quote =
