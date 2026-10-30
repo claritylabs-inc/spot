@@ -19,7 +19,7 @@ import { intakeCoverageDestination, intakeCoveragePages } from "@/lib/intake-cov
 import { intakeApplicantQuestion, intakeLocationHeading } from "@/lib/intake-applicant-wording";
 import { routeAnswerComplete } from "@/lib/route-input";
 import { parseCalendarDateInput } from "@/lib/date-format";
-import { intakeSection, atIntakeSectionStart } from "@/lib/intake-sections";
+import { INTAKE_SECTION_INTRODUCTIONS, intakeSection, atIntakeSectionStart } from "@/lib/intake-sections";
 import { isFixedVehicleFollowup } from "@/lib/intake-vehicle-underwriting";
 import { mergeRequirementCoverageSuggestions } from "@/lib/intake-requirement-prefill";
 import { invalidateIntakePrefills } from "@/lib/intake-prefill-state";
@@ -177,7 +177,63 @@ const isTypedScopeQuestion = (question?: IntakeFollowupQuestion) => isPropertySu
  */
 export function InsuranceIntake() {
   const following = useIsFollowing();
+  const params = useSearchParams();
+  const { isAuthenticated } = useConvexAuth();
+  const viewer = useQuery(api.users.viewer, isAuthenticated ? {} : "skip");
+  const requestId = params.get("request") as Id<"procurementRequests"> | null;
+  // An operator never owns a draft, so the editable flow is not theirs to open.
+  if (viewer?.accountKind === "operator" && requestId)
+    return <ImpersonatedApplication requestId={requestId} />;
   return <IntakeApplication key={following ? "following" : "own"} />;
+}
+
+/**
+ * What an operator impersonating the applicant's client sees: the saved
+ * application and where the applicant stopped, read-only, so nothing is
+ * saved, prepared or sent on the applicant's behalf.
+ */
+function ImpersonatedApplication({
+  requestId,
+}: {
+  requestId: Id<"procurementRequests">;
+}) {
+  const params = useSearchParams();
+  const data = useQuery(api.requestIntake.getImpersonated, { requestId });
+  const allApplications = (
+    <PillButton
+      size="large"
+      variant="ghost"
+      href={withQuoteProvider("/signup", params.get("provider"))}
+    >
+      All applications
+    </PillButton>
+  );
+  if (data === undefined) return <IntakeApplicationLoading />;
+  if (data === null)
+    return (
+      <IntakeFrame footer={allApplications}>
+        <p>This application does not belong to the client you are viewing.</p>
+      </IntakeFrame>
+    );
+  const details = normalizeIntakeCursors(data.details);
+  return (
+    <IntakeTracking
+      readOnly
+      data={{
+        ...data,
+        answers: { ...data.answers, ...detailsAnswers(details) },
+        details,
+      }}
+      banner={
+        <p className={`mb-4 text-muted-foreground ${typeStyle("body.root")}`}>
+          {data.submittedAt
+            ? `Submitted ${dayjs(data.submittedAt).format("MMM D, YYYY h:mm A")}`
+            : `Applicant stopped at ${INTAKE_SECTION_INTRODUCTIONS[intakeSection(data.step)].label}, last saved ${dayjs(data.updatedAt).format("MMM D, YYYY h:mm A")}`}
+        </p>
+      }
+      footer={allApplications}
+    />
+  );
 }
 
 function IntakeApplication() {
