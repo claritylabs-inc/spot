@@ -61,6 +61,7 @@ function useOperatorTabSummary(
       hint: detail.thread?.creator
         ? `Started by ${detail.thread.creator.name}`
         : undefined,
+      creator: detail.thread?.creator,
     };
   }, [rawThread]);
 }

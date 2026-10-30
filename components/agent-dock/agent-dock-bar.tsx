@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { ShortcutTooltip, type ShortcutKey } from "@/components/ui/kbd";
 import { APP_SIDEBAR_COLLAPSED_WIDTH } from "@claritylabs-inc/ui/components/app-shell/app-shell-sidebar-layout";
+import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { PillButton } from "@/components/ui/pill-button";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
@@ -25,7 +26,7 @@ import {
   AGENT_DOCK_TABS_MIN_WIDTH,
   clampAgentDockTabsWidth,
 } from "./dock-storage";
-import type { AgentDockAdapter } from "./types";
+import type { AgentDockAdapter, AgentDockPerson } from "./types";
 
 /** Shared by the new-chat button and chat tabs so the row reads as one set. */
 const TAB_ITEM_CLASS = cn(
@@ -56,11 +57,17 @@ function TabButton({
   onClose,
   closeShortcut,
   hint,
+  creator,
+  position,
   variant = "bar",
 }: {
   closeShortcut?: ShortcutKey[];
   /** Hover text beside the label, such as who started the chat. */
   hint?: string;
+  /** Who started the chat; their avatar leads vertical tabs. */
+  creator?: AgentDockPerson;
+  /** 1-based tab number, shown on the collapsed rail. */
+  position?: number;
   active: boolean;
   label: string;
   onSelect: () => void;
@@ -116,14 +123,36 @@ function TabButton({
         )}
       >
         {rail ? (
-          <span aria-hidden="true">
-            {label.trim().charAt(0).toUpperCase() || (
+          <span aria-hidden="true" className="relative flex">
+            {creator ? (
+              <Avatar
+                name={creator.name}
+                imageUrl={creator.avatarUrl}
+                className="size-5 rounded-full"
+              />
+            ) : (
               <MessageSquare className="size-3.5" />
             )}
+            {position ? (
+              <span
+                className={cn(
+                  "absolute -right-1.5 -bottom-1.5 flex size-4 items-center justify-center rounded-full bg-background text-foreground ring-1 ring-border",
+                  typeStyle("caption.medium"),
+                )}
+              >
+                {position}
+              </span>
+            ) : null}
           </span>
         ) : (
           <>
-            {variant === "row" ? (
+            {creator ? (
+              <Avatar
+                name={creator.name}
+                imageUrl={creator.avatarUrl}
+                className="size-4 shrink-0"
+              />
+            ) : variant === "row" ? (
               <MessageSquare className="size-3.5 shrink-0 opacity-60" />
             ) : null}
             <span className={cn("truncate", onClose && closeMask)}>{label}</span>
@@ -162,12 +191,14 @@ function ThreadTab({
   tab,
   active,
   open,
+  position,
   variant,
 }: {
   adapter: AgentDockAdapter;
   tab: AgentDockTab;
   active: boolean;
   open: boolean;
+  position?: number;
   variant?: TabVariant;
 }) {
   const dock = useAgentDock();
@@ -193,6 +224,8 @@ function ThreadTab({
       active={active}
       label={summary?.title ?? "Chat"}
       hint={summary?.hint}
+      creator={summary?.creator}
+      position={position}
       onSelect={() => dock.openThread(tab.threadId)}
       onClose={() => closeTab(tab.threadId)}
       closeShortcut={active ? ["alt", "w"] : undefined}
@@ -558,7 +591,7 @@ export function AgentDockTabSidebar({
             variant={variant}
           />
         ) : null}
-        {dock.tabs.map((tab) => (
+        {dock.tabs.map((tab, index) => (
           <DockErrorBoundary key={tab.threadId} fallback={null}>
             <ThreadTab
               adapter={adapter}
@@ -569,6 +602,7 @@ export function AgentDockTabSidebar({
                 dock.activeThreadId === tab.threadId
               }
               open={open}
+              position={index + 1}
               variant={variant}
             />
           </DockErrorBoundary>

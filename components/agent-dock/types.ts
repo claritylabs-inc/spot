@@ -25,6 +25,8 @@ export type AgentDockTabSummary = {
   status: AgentDockTabStatus;
   /** Shown when hovering the tab, such as who started a shared chat. */
   hint?: string;
+  /** Shown in place of the chat icon on vertical tabs. */
+  creator?: AgentDockPerson;
 };
 
 export type AgentDockChatProps = {
