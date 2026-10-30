@@ -2,20 +2,24 @@
 
 import { Component, type ReactNode } from "react";
 
-import { PillButton } from "@/components/ui/pill-button";
+import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { typeStyle } from "@/lib/typography";
 
 /** Shown in the reader when a conversation id is invalid, deleted or out of scope. */
 export function ConversationUnavailable({ onClose }: { onClose: () => void }) {
   return (
-    <div className="flex flex-col items-start gap-3 p-4">
+    <SettingsDrawer
+      open
+      title="Conversation unavailable"
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
       <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-        This conversation is not available.
+        This conversation is not available. It may have been deleted, or it
+        belongs to another request.
       </p>
-      <PillButton type="button" variant="ghost" onClick={onClose}>
-        Close
-      </PillButton>
-    </div>
+    </SettingsDrawer>
   );
 }
 

@@ -711,13 +711,6 @@ export function ConnectedOrgsSection({
         footer={
           <>
             <PillButton
-              variant="secondary"
-              disabled={submitting}
-              onClick={() => setRequestOpen(false)}
-            >
-              Cancel
-            </PillButton>
-            <PillButton
               disabled={submitting || !vendorEmail.trim()}
               onClick={() => void handleSubmit()}
             >

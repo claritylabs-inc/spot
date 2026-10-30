@@ -1,8 +1,9 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
 import { useEffect } from "react";
 import { usePdf } from "@/components/pdf-context";
+import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
+import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { PdfViewer } from "@/components/ui/pdf-viewer";
 import {
   PDF_DOCUMENT_PAGE_TYPE,
@@ -11,7 +12,6 @@ import {
 import { usePageContext } from "@/hooks/use-page-context";
 import { usePdfFormActions } from "@/components/ui/pdf-form-actions";
 
-const EASE = [0.2, 0, 0, 1] as const;
 export function PdfPanel() {
   const {
     isPdfOpen,
@@ -25,7 +25,6 @@ export function PdfPanel() {
     source,
     openWithUrl,
   } = usePdf();
-  const reduceMotion = useReducedMotion();
   // The agent panel works on the open PDF (e.g. filling a form) while it is shown.
   const { pushPageContext } = usePageContext();
   const open = Boolean(fileUrl && isPdfOpen);
@@ -48,30 +47,34 @@ export function PdfPanel() {
   if (!fileUrl || !isPdfOpen) return null;
 
   return (
-    <div className="flex h-full w-full min-w-0 overflow-hidden">
-      <motion.div
-        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: 8 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.1, ease: EASE }}
-        className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col border-l border-border bg-background"
-      >
-        <PdfViewer
-          fileUrl={fileUrl}
-          currentPage={currentPage}
-          highlightedPage={highlightedPage}
-          highlightBoxes={highlightBoxes}
-          onPageChange={navigateToPage}
-          onDocumentLoad={setNumPages}
-          onClose={closePdf}
-          {...(formActions.active
-            ? {
-                toolbarActions: formActions.toolbarActions,
-                ...formActions.viewerProps,
-              }
-            : {})}
-        />
-        {formActions.active ? formActions.footer : null}
-      </motion.div>
-    </div>
+    <SettingsDrawer
+      open
+      title={filename ?? "Document"}
+      body="fill"
+      onOpenChange={(next) => {
+        if (!next) closePdf();
+      }}
+      footer={formActions.active ? formActions.footer : undefined}
+    >
+      <PdfViewer
+        fileUrl={fileUrl}
+        currentPage={currentPage}
+        highlightedPage={highlightedPage}
+        highlightBoxes={highlightBoxes}
+        onPageChange={navigateToPage}
+        onDocumentLoad={setNumPages}
+        {...(formActions.active ? formActions.viewerProps : {})}
+        toolbarActions={
+          <>
+            {formActions.active ? formActions.toolbarActions : null}
+            <FileDownloadButton
+              href={fileUrl}
+              fileName={filename ?? "document.pdf"}
+              iconOnly
+            />
+          </>
+        }
+      />
+    </SettingsDrawer>
   );
 }

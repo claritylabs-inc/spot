@@ -122,6 +122,7 @@ import { OperatorPageContextRegistration } from "@/components/operator-agent/ope
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { ShellPanel } from "@/components/shell-panels";
+import { ImageFileDrawer } from "@/components/client-files/image-file-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
@@ -1759,38 +1760,6 @@ function ProcurementFileEditor({
   );
 }
 
-function ImagePreview({
-  file,
-  onClose,
-}: {
-  file: ClientFileOption;
-  onClose: () => void;
-}) {
-  return (
-    <SettingsDrawer
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      title={file.name}
-      footer={
-        file.url ? (
-          <FileDownloadButton href={file.url} fileName={file.name} />
-        ) : null
-      }
-    >
-      {file.url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={file.url}
-          alt={file.name}
-          className="h-auto max-h-[calc(100vh-11rem)] w-auto max-w-full object-contain"
-        />
-      ) : null}
-    </SettingsDrawer>
-  );
-}
-
 export function ProcurementRequestWorkspace({
   clientOrgId,
   requestId,
@@ -2285,7 +2254,7 @@ export function ProcurementRequestWorkspace({
         (row) => row._id === panel.fileItemId,
       )?.clientFile;
       if (file?.url)
-        node = <ImagePreview file={file} onClose={close} />;
+        node = <ImageFileDrawer file={file} onClose={close} />;
     } else {
       node = details ? (
         <NewEmailComposer

@@ -1,5 +1,17 @@
 # Platform workflow QA
 
+## One sidebar system — October 30, 2026
+
+Native-local stack, operator in headless Chrome at 1600px. The PDF opened from
+a provider's Files tab as a standard drawer (file name as title, close on the
+right; page, zoom, form and download controls in the viewer toolbar) beside the
+provider drawer, and the email reader opened beside the provider drawer with its
+body edge to edge. The fixture conversation has no message rows, so the reader
+showed only its header (same on main). The procurement list preview, Slack
+settings drawer and policy preview were type-checked but not opened. The email
+composers and certificate drawer are left to the composer consolidation in
+progress elsewhere. No tests were written.
+
 ## Procurement drawers side by side — October 30, 2026
 
 Native-local stack, operator in headless Chrome, cancelled fixture request.

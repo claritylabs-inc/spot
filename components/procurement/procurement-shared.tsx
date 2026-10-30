@@ -620,7 +620,7 @@ function EmailConversation({
     readOnly ? "skip" : { threadId: thread.thread._id },
   );
   return (
-    <div className="-mx-4 -my-4 divide-y divide-border">
+    <div className="divide-y divide-border">
       <ThreadClientContext
         thread={{
           _id: thread.thread._id,
@@ -999,10 +999,11 @@ export function ProcurementEmailDrawer({
       onOpenChange={(open) => {
         if (!open && !busy.current) onClose();
       }}
-      title={thread?.thread.subject ?? subject ?? ""}
+      title={thread?.thread.subject ?? subject ?? "Email"}
+      body="flush"
       actions={
         thread && !readOnly ? (
-          <div className="flex items-center gap-1">
+          <>
             <FileQuoteAction
               key={emailThreadId}
               emailThreadId={emailThreadId}
@@ -1015,7 +1016,7 @@ export function ProcurementEmailDrawer({
               archived={!!thread.thread.archivedAt}
               onArchived={onClose}
             />
-          </div>
+          </>
         ) : null
       }
       footer={
@@ -1037,7 +1038,7 @@ export function ProcurementEmailDrawer({
       }
     >
       {result === null ? (
-        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+        <p className={`p-4 text-muted-foreground ${typeStyle("body.default")}`}>
           This email is no longer available.
         </p>
       ) : thread ? (

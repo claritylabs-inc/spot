@@ -309,13 +309,6 @@ function ConnectedApps() {
         footer={
           <>
             <PillButton
-              variant="secondary"
-              onClick={() => setRevokeClientId(null)}
-              disabled={revoking}
-            >
-              Cancel
-            </PillButton>
-            <PillButton
               variant="destructive"
               onClick={handleRevokeApp}
               disabled={revoking}

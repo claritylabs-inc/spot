@@ -82,7 +82,7 @@ export function usePdfFormActions({
       active: true as const,
       toolbarActions: null,
       footer: (
-        <div className="flex h-12 shrink-0 items-center gap-2 border-t border-border px-3">
+        <div className="flex min-h-7 min-w-0 flex-1 items-center gap-2">
           <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
           <p
             role="status"

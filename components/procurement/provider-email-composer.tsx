@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ChevronLeft, ChevronRight, Eye, Loader2, Pencil, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -11,7 +11,6 @@ import {
 } from "@/components/email/compose-fields";
 import { EmailComposerBar, type FollowUps } from "@/components/email/email-composer";
 import { AddressPills, FromPicker } from "@/components/email/operator-address";
-import { useMediaQuery } from "@/components/app-sidebar/utils";
 import { AppShellPortal } from "@/components/app-shell-slots";
 import { ReplyEditor } from "@/components/inbox/reply-editor";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
@@ -262,7 +261,6 @@ function OperatorProviderEmailComposer({
   const previewed =
     sends.find((provider) => provider.brokerOrgId === previewFor) ?? sends[0] ?? null;
   const previewIndex = previewed ? sends.indexOf(previewed) : 0;
-  const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   // The AI panel works on this email while it is open.
   const { pushPageContext } = usePageContext();
@@ -323,7 +321,7 @@ function OperatorProviderEmailComposer({
           </PillButton>
         ) : undefined
       }
-      contentClassName="-mx-4 my-0 flex-1"
+      body="flush"
       onOpenChange={(open) => {
         if (!open && !sending) onClose();
       }}
@@ -478,24 +476,18 @@ function OperatorProviderEmailComposer({
             </button>
           </p>
         ) : null}
-        {showFull && previewed?.email && !isDesktop ? (
-          <div className="border-t border-border">
-            <EmailPreview
-                provider={previewed}
-                candidate={candidates.find((row) => row.brokerOrgId === previewed.brokerOrgId)}
-                signature={shown?.signature}
-              />
-          </div>
-        ) : null}
       </div>
-      {showFull && previewed?.email && isDesktop ? (
+      {showFull && previewed?.email ? (
         <AppShellPortal slot="previewPanel">
-          <section aria-label="Email preview" className="flex min-h-0 w-full min-w-0 flex-col border-l border-border bg-background">
-            <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
-              <span className={`min-w-0 flex-1 truncate text-foreground ${typeStyle("body.medium")}`}>
-                {single ? "Preview" : `Preview · ${previewed.brokerName ?? "provider"}`}
-              </span>
-              {!single && sends.length > 1 ? (
+          <SettingsDrawer
+            open
+            title={single ? "Preview" : `Preview · ${previewed.brokerName ?? "provider"}`}
+            body="flush"
+            onOpenChange={(open) => {
+              if (!open) setShowFull(false);
+            }}
+            actions={
+              !single && sends.length > 1 ? (
                 <>
                   <PillButton
                     type="button"
@@ -521,64 +513,54 @@ function OperatorProviderEmailComposer({
                     <ChevronRight className="size-3.5" />
                   </PillButton>
                 </>
-              ) : null}
-              <PillButton
-                type="button"
-                size="compact"
-                variant="ghost"
-                label="Close preview"
-                aria-label="Close preview"
-                onClick={() => setShowFull(false)}
-              >
-                <X className="size-3.5" />
-              </PillButton>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {!single && previewed.email ? (
-                // Edits apply to this provider only; the first change makes its own email.
-                <ProviderEmailEditor
-                  key={previewed.brokerOrgId}
-                  provider={previewed}
-                  candidate={candidates.find((row) => row.brokerOrgId === previewed.brokerOrgId)}
-                  email={ownEmail(previewed.brokerOrgId) ?? { subject: previewed.email.subject, body: previewed.email.body }}
-                  signature={shown?.signature}
-                  disabled={disabled}
-                  onChange={(next) => editProvider(previewed.brokerOrgId, next)}
-                />
-              ) : (
-                <EmailPreview
-                  provider={previewed}
-                  candidate={candidates.find((row) => row.brokerOrgId === previewed.brokerOrgId)}
-                  signature={shown?.signature}
-                />
-              )}
-            </div>
-            {!single ? (
-              // Lines up with the composer's send bar.
-              <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-3">
-                <span className={`flex min-h-7 min-w-0 flex-1 items-center text-muted-foreground ${typeStyle("caption.default")}`}>
-                  <span className="truncate">
-                  {!ownEmail(previewed.brokerOrgId)
-                    ? "Uses the template · edit here for this provider only"
-                    : !edits[previewed.brokerOrgId] && savedEdits.get(previewed.brokerOrgId)?.source === "agent"
-                      ? "From the AI panel"
-                      : "Edited · saved automatically"}
+              ) : null
+            }
+            footer={
+              !single ? (
+                <>
+                  <span className={`flex min-h-7 min-w-0 flex-1 items-center text-muted-foreground ${typeStyle("caption.default")}`}>
+                    <span className="truncate">
+                      {!ownEmail(previewed.brokerOrgId)
+                        ? "Uses the template · edit here for this provider only"
+                        : !edits[previewed.brokerOrgId] && savedEdits.get(previewed.brokerOrgId)?.source === "agent"
+                          ? "From the AI panel"
+                          : "Edited · saved automatically"}
+                    </span>
                   </span>
-                </span>
-                {ownEmail(previewed.brokerOrgId) ? (
-                  <PillButton
-                    type="button"
-                    size="compact"
-                    variant="ghost"
-                    disabled={disabled}
-                    onClick={() => revertToTemplate(previewed.brokerOrgId)}
-                  >
-                    Use the template
-                  </PillButton>
-                ) : null}
-              </div>
-            ) : null}
-          </section>
+                  {ownEmail(previewed.brokerOrgId) ? (
+                    <PillButton
+                      type="button"
+                      size="compact"
+                      variant="ghost"
+                      disabled={disabled}
+                      onClick={() => revertToTemplate(previewed.brokerOrgId)}
+                    >
+                      Use the template
+                    </PillButton>
+                  ) : null}
+                </>
+              ) : undefined
+            }
+          >
+            {!single && previewed.email ? (
+              // Edits apply to this provider only; the first change makes its own email.
+              <ProviderEmailEditor
+                key={previewed.brokerOrgId}
+                provider={previewed}
+                candidate={candidates.find((row) => row.brokerOrgId === previewed.brokerOrgId)}
+                email={ownEmail(previewed.brokerOrgId) ?? { subject: previewed.email.subject, body: previewed.email.body }}
+                signature={shown?.signature}
+                disabled={disabled}
+                onChange={(next) => editProvider(previewed.brokerOrgId, next)}
+              />
+            ) : (
+              <EmailPreview
+                provider={previewed}
+                candidate={candidates.find((row) => row.brokerOrgId === previewed.brokerOrgId)}
+                signature={shown?.signature}
+              />
+            )}
+          </SettingsDrawer>
         </AppShellPortal>
       ) : null}
     </SettingsDrawer>

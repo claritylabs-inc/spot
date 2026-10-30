@@ -122,9 +122,6 @@ function AddQuestionDrawer({
       onOpenChange={(open) => !open && onClose()}
       footer={
         <>
-          <PillButton variant="ghost" onClick={onClose}>
-            Cancel
-          </PillButton>
           <PillButton type="submit" form={formId} disabled={busy || !canAdd}>
             {busy ? "Adding…" : "Add question"}
           </PillButton>
