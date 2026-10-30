@@ -6,7 +6,6 @@ import { useState, type ReactNode } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
-import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { ProcurementListWorkspace } from "@/components/procurement/procurement-list-workspace";
 import {
   OperationalPanel,
@@ -53,15 +52,6 @@ export default function OperatorClientProcurementPage() {
       }
       rightPanel={rightPanel}
     >
-      <OperatorPageContextRegistration
-        context={{
-          pageType: "operator_client_procurement",
-          entityId: clientOrgId,
-          summary: client
-            ? `New-policy procurement for ${client.name}`
-            : "Current client procurement",
-        }}
-      />
       {clients === undefined ? (
         <OperationalPanel>
           <div className="flex h-40 items-center justify-center text-muted-foreground">

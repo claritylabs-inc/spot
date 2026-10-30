@@ -7,7 +7,6 @@ import { useQuery } from "convex/react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
-import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { OperatorClientImpersonationAction } from "../../operator-client-impersonation-action";
 import { ProcurementRequestWorkspace } from "@/components/procurement/procurement-request-workspace";
 import {
@@ -90,15 +89,6 @@ export default function OperatorProcurementRequestPage() {
       // The Email view's panel is the mail reader.
       rightPanelWide={view === "email"}
     >
-      <OperatorPageContextRegistration
-        context={{
-          pageType: "procurement_request",
-          entityId: requestId,
-          summary: request
-            ? `${request.request.title} procurement for ${client?.name ?? "client"}`
-            : "Current procurement request",
-        }}
-      />
       {clients === undefined ? (
         <OperationalPanel>
           <div className="flex h-40 items-center justify-center text-muted-foreground">
