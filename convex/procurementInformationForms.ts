@@ -32,6 +32,11 @@ import {
   filesForClient,
   businessNameForRequest,
 } from "./lib/procurementInformationAccess";
+import {
+  clientFormSuggestion,
+  resolvePendingSuggestions,
+  sameInformationAnswer,
+} from "./lib/procurementInformationResearch";
 
 export const informationFormUrl = (formId: Id<"procurementInformationForms">) =>
   `${getClientPortalUrl()}/intake/information/${formId}`;
@@ -255,7 +260,12 @@ export const clientForm = query({
       title: informationFormTitle(form, forms),
       status: form.status,
       revision: form.revision,
-      questions: form.questions,
+      questions: await Promise.all(
+        form.questions.map(async (item) => ({
+          ...item,
+          suggestion: await clientFormSuggestion(ctx, form, item),
+        })),
+      ),
       responses: form.responses,
       editDraft: form.editDraft,
       currency: intakeCurrency(
@@ -448,6 +458,25 @@ export const saveForm = mutation({
           createdAt: dayjs().valueOf(),
         });
         await ctx.db.patch(response.questionId, { answerId });
+        // Only a suggestion shown in this open form can be confirmed or edited by it.
+        await resolvePendingSuggestions(
+          ctx,
+          response.questionId,
+          (suggestion) =>
+            form.status === "open" &&
+            suggestion.confidence === "high" &&
+            suggestion.answerIdAtSuggestion === expectedAnswerId
+              ? !response.unsure &&
+                sameInformationAnswer(
+                  published.question.kind,
+                  suggestion.answer,
+                  response.answer,
+                )
+                ? { status: "accepted", resolution: "client_confirmed" }
+                : { status: "superseded", resolution: "client_edited" }
+              : { status: "superseded", resolution: "answered_elsewhere" },
+          user._id,
+        );
       }
     }
     await ctx.db.patch(form._id, {

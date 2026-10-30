@@ -38,6 +38,10 @@ import {
 } from "./lib/procurementInformationAccess";
 import type { Ctx } from "./lib/procurementInformationAccess";
 import { addRequirementForRequest } from "./lib/procurementInformationRequirements";
+import {
+  queueAutomaticInformationResearch,
+  resolvePendingSuggestions,
+} from "./lib/procurementInformationResearch";
 
 export const startExtraction = mutation({
   args: {
@@ -367,6 +371,7 @@ export const finishExtraction = internalMutation({
               proposalIds.set(proposal.key, requirement.questionId);
           }
         }
+        await queueAutomaticInformationResearch(ctx, row.requestId);
       } else if (row.audience === "client") {
         const factsForOrder = await requestFacts(ctx, row.requestId);
         const orderedIds = orderInformationQuestions(
@@ -446,6 +451,7 @@ export const finishExtraction = internalMutation({
           );
           await ctx.db.patch(q._id, { answerId });
           await cancelSupersededForms(ctx, row.requestId, q._id);
+          await resolvePendingSuggestions(ctx, q._id);
         }
       }
     }

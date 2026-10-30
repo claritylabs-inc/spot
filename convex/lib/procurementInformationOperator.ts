@@ -21,6 +21,12 @@ import {
 } from "../procurementInformationForms";
 import { MAX, bounded, requestFacts } from "./procurementInformationAccess";
 import { addRequirementForRequest } from "./procurementInformationRequirements";
+import {
+  latestResearchRuns,
+  pendingSuggestionsByQuestion,
+  queueAutomaticInformationResearch,
+  researchRunStatus,
+} from "./procurementInformationResearch";
 
 /**
  * Agent and MCP access to supplementary client information: the same question,
@@ -108,7 +114,7 @@ export async function procurementInformationOverview(
   requestId: Id<"procurementRequests">,
 ) {
   const request = await liveRequest(ctx, requestId);
-  const [facts, requirements, forms, outreaches] = await Promise.all([
+  const [facts, requirements, forms, outreaches, runs] = await Promise.all([
     requestFacts(ctx, requestId),
     bounded(
       ctx.db
@@ -126,7 +132,9 @@ export async function procurementInformationOverview(
       .query("procurementBrokerOutreaches")
       .withIndex("request", (q) => q.eq("requestId", requestId))
       .take(MAX),
+    latestResearchRuns(ctx, requestId),
   ]);
+  const suggestions = await pendingSuggestionsByQuestion(ctx, requestId, facts);
   const needed = new Set(
     neededInformationQuestions(facts, requirements).map((q) => q._id),
   );
@@ -152,6 +160,7 @@ export async function procurementInformationOverview(
       answer: q.answer
         ? { text: q.answer.answer, unsure: q.answer.unsure }
         : null,
+      suggestion: compactSuggestion(suggestions.get(q._id)),
       readyForForm: needed.has(q._id) && !openFormQuestions.has(q._id),
       inOpenForm: openFormQuestions.has(q._id),
       requirements: requirements
@@ -172,6 +181,22 @@ export async function procurementInformationOverview(
       submittedAt: f.submittedAt ?? null,
     })),
     unansweredApplicationQuestions: unansweredApplicationQuestions(request),
+    research: runs[0] ? researchRunStatus(runs[0]) : null,
+  };
+}
+
+/** A pending public-research answer for operator review; never an answer itself. */
+function compactSuggestion(
+  suggestion: Doc<"procurementInformationSuggestions"> | undefined,
+) {
+  if (!suggestion) return null;
+  const [source] = suggestion.citations;
+  return {
+    suggestionId: suggestion._id,
+    answer: suggestion.answer,
+    confidence: suggestion.confidence,
+    sourceUrl: source.url,
+    excerpt: source.excerpt?.slice(0, 300) ?? null,
   };
 }
 
@@ -231,6 +256,7 @@ export async function addInformationQuestionsByOperator(
       requirementId,
     });
   }
+  await queueAutomaticInformationResearch(ctx, request._id);
   return { added };
 }
 
