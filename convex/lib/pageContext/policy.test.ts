@@ -1,7 +1,8 @@
 // Failure modes: a policy, requirement or certificate page prefetching another
 // record or the client's whole library; a coverage read without the client;
 // status-only reads framed as if coverages were loaded; a running or failed
-// extraction reported as final; a requirement's status read from the wrong row.
+// extraction reported as final; a requirement's status read from the wrong row;
+// a requirement page without its title reading every requirement.
 import { expect, test } from "vitest";
 import type { OperatorAgentToolName } from "../operatorAgentToolRegistry";
 import { operatorPageContextEntry } from ".";
@@ -15,7 +16,7 @@ const page = (
   pageType: string,
   entityId: string,
   summary: string,
-  related: Array<{ kind: string; id: string }>,
+  related: Array<{ kind: string; id: string; label?: string }>,
 ) => ({
   pageType,
   entityId,
@@ -37,6 +38,8 @@ function inputs(
         page: context,
         relatedId: (kind) =>
           context.related.find((entry) => entry.kind === kind)?.id,
+        relatedLabel: (kind) =>
+          context.related.find((entry) => entry.kind === kind)?.label,
       }),
     ]),
   );
@@ -64,6 +67,7 @@ test("policy group pages read the attached record with the client from the page"
     inputs(
       "requirement",
       page("requirement", "r1", "Requirement: GL each occurrence · Not met", [
+        { kind: "requirement", id: "r1", label: "GL each occurrence" },
         org,
         { kind: "policy", id: "p9" },
       ]),
@@ -82,6 +86,36 @@ test("policy group pages read the attached record with the client from the page"
       ],
     ],
     [["lookup_policy", { orgId: "o1", policyIds: ["p1", "p2"] }]],
+  ]);
+  // Without the page's own title, the lookup is skipped, not run unscoped;
+  // matched policies then come from the page.
+  expect(
+    inputs(
+      "requirement",
+      page("requirement", "r1", "Requirement: GL", [
+        org,
+        { kind: "policy", id: "p9" },
+      ]),
+    ),
+  ).toEqual([
+    [["lookup_compliance_requirements", undefined]],
+    [["lookup_policy", { orgId: "o1", policyIds: ["p9"] }]],
+  ]);
+  expect(
+    inputs(
+      "requirement_source",
+      page("requirement_source", "s1", "Requirement source: Lease", [
+        { kind: "requirement_source", id: "s1", label: "Lease" },
+        org,
+      ]),
+    ),
+  ).toEqual([
+    [
+      [
+        "lookup_compliance_requirements",
+        { orgId: "o1", scope: "all", query: "Lease" },
+      ],
+    ],
   ]);
   expect(
     inputs(
