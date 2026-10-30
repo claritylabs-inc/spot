@@ -1,5 +1,19 @@
 # Platform workflow QA
 
+## Side panels as columns — October 30, 2026
+
+Native-local stack, operator in headless Chrome, procurement request with the
+provider drawer open on Files and a PDF opened from it. Both stayed open at
+every width: 1720 and 1440 showed page, drawer and PDF side by side (at 1440
+the panels shared the width while the page kept 480px); 1100 and 900 scrolled
+the row sideways to the newly opened PDF; 390 showed the PDF full screen and
+closing it returned to the drawer. Dragging the drawer's edge at 1440 widened it
+as the PDF gave up width, and the saved widths matched what was shown. Three or
+more panels (the TweetDeck-style row) were not reachable on this page yet, which
+still shows one detail drawer at a time; following a teammate was not exercised
+(panel contents keep their followed keys; layout is per browser). No tests were
+written.
+
 ## Provider drawer: Details, Threads, Files — October 30, 2026
 
 Native-local stack, operator in headless Chrome. The provider drawer showed
