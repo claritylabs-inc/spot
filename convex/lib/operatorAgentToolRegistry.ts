@@ -3225,10 +3225,12 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       `Cancel client information form ${input.informationFormId}`,
   }),
   send_procurement_client_email: defineOperatorTool({
+    // Retired send tool: a client information request is now a draft (save_email_draft with informationFormId).
     family: "procurement",
-    version: 4,
+    version: 5,
+    offered: false,
     description:
-      "Email one client contact to request information for a procurement request, then send automated same-thread nudges until they reply. Externally visible; needs exact approval of the complete signed email. List client outreach first and use an exact listed recipient email. The first email is exactly the subject and message given (greeting and signature are added); replies and attachments land in the request Inbox. Follow-ups stop when the request closes, the recipient stops being a client contact, the linked form is submitted or cancelled, or follow-ups are stopped. To prepare a questionnaire without emailing, use create_procurement_information_form.",
+      "Save a client information request draft (same as save_email_draft with procurementRequestId and informationFormId). Never sends; send it with send_email_draft.",
     inputSchema: z.object({
       procurementRequestId,
       recipientEmail: emailAddress.describe(
@@ -3255,15 +3257,16 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       }),
     }),
     capability: "operator.procurement.write",
-    effect: "external_send",
+    effect: "reversible_write",
     requiredRole: "operator",
-    confirmation: "exact",
+    confirmation: "none",
+    execution: "action",
     target: (input) => ({
       kind: "procurement_request",
       id: input.procurementRequestId,
     }),
     summarize: (input) =>
-      `Email ${input.recipientEmail} "${input.subject}" for ${input.procurementRequestId}, with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days`,
+      `Draft an email to ${input.recipientEmail} "${input.subject}" for ${input.procurementRequestId}, with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days`,
   }),
   // Kept callable for existing MCP clients; the shorter description steers models to reply_email_thread.
   reply_procurement_email_thread: {

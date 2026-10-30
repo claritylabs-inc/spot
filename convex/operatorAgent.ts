@@ -406,6 +406,10 @@ const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "search_thread_history",
   "read_thread_attachment",
   "save_email_draft",
+  // Retired send tools that now only save drafts.
+  "reply_email_thread",
+  "reply_procurement_email_thread",
+  "send_procurement_client_email",
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
