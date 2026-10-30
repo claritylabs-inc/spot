@@ -57,6 +57,7 @@ import {
 } from "./client-outreach-composer";
 import { NewEmailComposer } from "@/components/inbox/new-email-composer";
 import { ProviderEmailComposer } from "./provider-email-composer";
+import { ProviderDiscoveryPanel } from "./provider-discovery-panel";
 import {
   FitChips,
   OutreachSequenceActions,
@@ -3014,6 +3015,19 @@ export function ProcurementRequestWorkspace({
                 ),
               };
             })}
+          />
+        ) : null}
+        {view === "proposals" && !readOnly && providerOutreach.panel ? (
+          <ProviderDiscoveryPanel
+            requestId={requestId}
+            lines={providerOutreach.panel.needs.lines.map((line) => line.label)}
+            states={[
+              ...new Set(
+                providerOutreach.panel.geography.places.flatMap((place) =>
+                  place.region ? [place.region] : [],
+                ),
+              ),
+            ]}
           />
         ) : null}
 

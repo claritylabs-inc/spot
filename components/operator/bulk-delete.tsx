@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation } from "convex/react";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -57,12 +57,15 @@ export function SelectionDeleteBar({
   count,
   disabled,
   className,
+  children,
   onClear,
   onDelete,
 }: {
   count: number;
   disabled?: boolean;
   className?: string;
+  /** Extra bulk actions, shown before Delete. */
+  children?: ReactNode;
   onClear: () => void;
   onDelete: () => void;
 }) {
@@ -80,6 +83,7 @@ export function SelectionDeleteBar({
       >
         Clear
       </PillButton>
+      {children}
       <PillButton
         type="button"
         variant="destructive"
@@ -100,6 +104,7 @@ export function BulkDeleteBar({
   applicationIds = [],
   disabled,
   className,
+  children,
   onClear,
 }: {
   type: "client" | "broker";
@@ -108,6 +113,7 @@ export function BulkDeleteBar({
   applicationIds?: ApplicationId[];
   disabled?: boolean;
   className?: string;
+  children?: ReactNode;
   onClear: () => void;
 }) {
   const noun = type === "broker" ? "provider" : "client";
@@ -168,7 +174,9 @@ export function BulkDeleteBar({
         className={className}
         onClear={onClear}
         onDelete={() => setOpen(true)}
-      />
+      >
+        {children}
+      </SelectionDeleteBar>
       <Dialog
         open={open}
         onOpenChange={(next) => {
