@@ -8,7 +8,7 @@ test("a procurement request reads what its section and drawer show", () => {
   const entry = operatorPageContextEntry("procurement_request")!;
   const [stage] = entry.prefetch;
   const inputs = (
-    page: { href?: string; summary?: string },
+    page: { href?: string },
     related: Record<string, string> = {},
   ) =>
     Object.fromEntries(
@@ -51,9 +51,7 @@ test("a procurement request reads what its section and drawer show", () => {
       include: ["information"],
     },
   });
-  expect(
-    inputs({ summary: "GL · Viewing Application › Submission notes" }),
-  ).toMatchObject({
+  expect(inputs({}, { view: "submission_notes" })).toMatchObject({
     get_procurement_packet: { procurementRequestId: "r1", view: "internal" },
   });
   // A drawer's records are read whatever the section.
