@@ -2963,3 +2963,7 @@ Sent. No existing fixture records were replaced. Artifacts are ignored under
 all 145 existing tests passed. No tests or data migrations were written, and
 browser QA sent no email. Live reply arrival and a real reply send were not
 simulated; existing mirroring supplies the latest direction used by the indexes.
+
+## Provider bulk recipient selection — October 30, 2026
+
+Native Helium verified an isolated capture-mode request with 141 matches and a 20-provider shortlist entirely beyond the former first-50 cutoff. Search and status select-all each staged exactly 20 in the shared composer, whose server preview personalized the greeting and enabled Send 20 emails. Recipient removal did not carry into a different batch; filter changes cleared selection; selecting more than 50 showed an explicit limit and selected none. See [provider-outreach-workflow.md](provider-outreach-workflow.md#explicit-bulk-recipient-selection--october-30-2026) for evidence and limits. No QA sends, new tests or migrations.

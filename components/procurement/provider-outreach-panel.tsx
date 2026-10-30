@@ -61,6 +61,7 @@ import {
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { Badge } from "@claritylabs-inc/ui/components/badge";
+import { Checkbox } from "@claritylabs-inc/ui/components/checkbox";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import {
   Select,
@@ -348,7 +349,7 @@ export type ProviderComposeTarget = {
 /**
  * Panel data, the cadence the operator is composing, and the compose actions.
  * The workspace owns one instance so the panel, the header action and the
- * contacted table stay in step. Send and Send to all matched open the provider
+ * contacted table stay in step. Send and Email selected open the provider
  * email composer (`onCompose`); only the composer launches.
  */
 export function useProviderOutreach(
@@ -374,6 +375,10 @@ export function useProviderOutreach(
   }>({ requestId, choices: {} });
   const selectedContacts =
     contactSelection.requestId === requestId ? contactSelection.choices : {};
+  const [selection, setSelection] = useFollowedState<{
+    requestId: Id<"procurementRequests">;
+    ids: Id<"organizations">[];
+  }>(`procurement:${requestId}:provider-selection`, { requestId, ids: [] });
   const selectContact = (
     brokerOrgId: Id<"organizations">,
     contactId: Id<"brokerContacts"> | null,
@@ -485,7 +490,25 @@ export function useProviderOutreach(
       ) &&
       candidateRecipient(candidate, selectedContacts[candidate.brokerOrgId]),
   );
-  const sendAllCount = Math.min(eligible.length, MAX_LAUNCH_PROVIDERS);
+  const eligibleIds = eligible.map((candidate) => candidate.brokerOrgId);
+  // Recheck eligibility on every render: a send elsewhere must remove a stale pick.
+  const selectedIds = selection.requestId === requestId
+    ? selection.ids.filter((id) => eligibleIds.includes(id))
+    : [];
+  const clearSelection = () => setSelection({ requestId, ids: [] });
+  const selectProviders = (ids: Id<"organizations">[], checked: boolean) => {
+    if (readOnly || !canLaunch) return;
+    const next = new Set(selectedIds);
+    for (const id of ids) {
+      if (checked && eligibleIds.includes(id)) next.add(id);
+      else next.delete(id);
+    }
+    if (next.size > MAX_LAUNCH_PROVIDERS) {
+      toast.error(`Select up to ${MAX_LAUNCH_PROVIDERS} providers per email batch. Narrow the filters or select providers individually.`);
+      return;
+    }
+    setSelection({ requestId, ids: [...next] });
+  };
 
   // The From and Always CC this launch will use. Without a fingerprint to
   // approve there is nothing to launch with, so the whole panel reads as blocked.
@@ -514,16 +537,46 @@ export function useProviderOutreach(
     setCadenceField,
     selectedContacts,
     selectContact,
-    sendAllCount,
+    readOnly,
+    eligibleIds,
+    selectedIds,
+    selectProviders,
+    clearSelection,
     send: (brokerOrgId: Id<"organizations">) =>
       onCompose({ brokerOrgIds: [brokerOrgId], contacts: contactsFor([brokerOrgId]), merge: false }),
-    sendAll: () => {
-      const brokerOrgIds = eligible.slice(0, MAX_LAUNCH_PROVIDERS).map((row) => row.brokerOrgId);
-      if (brokerOrgIds.length) onCompose({ brokerOrgIds, contacts: contactsFor(brokerOrgIds), merge: true });
+    sendSelected: () => {
+      if (!readOnly && canLaunch && selectedIds.length && selectedIds.length <= MAX_LAUNCH_PROVIDERS) {
+        onCompose({ brokerOrgIds: selectedIds, contacts: contactsFor(selectedIds), merge: true });
+      }
     },
   };
 }
 export type ProviderOutreachController = ReturnType<typeof useProviderOutreach>;
+
+/** Selection is local to this operator, with the same cells for tracked and new providers. */
+export function ProviderSelectionCell({
+  controller,
+  brokerOrgId,
+  name,
+}: {
+  controller: ProviderOutreachController;
+  brokerOrgId?: Id<"organizations">;
+  name: string;
+}) {
+  if (controller.readOnly) return null;
+  const checked = !!brokerOrgId && controller.selectedIds.includes(brokerOrgId);
+  return (
+    <TableCell className="w-10" onClick={(event) => event.stopPropagation()}>
+      <Checkbox
+        data-collab-ignore
+        aria-label={`Select ${name}`}
+        checked={checked}
+        disabled={!controller.panel?.request.canLaunch || !brokerOrgId || !controller.eligibleIds.includes(brokerOrgId)}
+        onCheckedChange={(value) => brokerOrgId && controller.selectProviders([brokerOrgId], value === true)}
+      />
+    </TableCell>
+  );
+}
 
 function SourceTag({ source }: { source: CadenceSource }) {
   if (source === "jev") return <Badge variant="secondary">Suggested</Badge>;
@@ -807,12 +860,14 @@ function CandidateRow({
   onSelectContact,
   canLaunch,
   onSend,
+  selection,
 }: {
   candidate: ProviderCandidateView;
   selectedContactId?: Id<"brokerContacts">;
   onSelectContact: (contactId: Id<"brokerContacts"> | null) => void;
   canLaunch: boolean;
   onSend: () => void;
+  selection: ReactNode;
 }) {
   const blocked = candidateLaunchBlock(candidate, selectedContactId);
   const contactLocked =
@@ -821,6 +876,7 @@ function CandidateRow({
     blocked === "outreach_status_progressed";
   return (
     <TableRow>
+      {selection}
       <TableCell className="whitespace-normal">
         <div className="flex items-center gap-3">
           <OrgBrandIcon
@@ -1075,6 +1131,7 @@ export function outreachStatusSortValue(status: string) {
 }
 
 type ProviderTableRow = {
+  brokerOrgId?: Id<"organizations">;
   group: "submitted" | "matched" | "other";
   sort: ProviderSortValues;
   match: ProviderRowMatch;
@@ -1161,7 +1218,10 @@ export function ProviderOutreachPanel({
       multiple: true,
       allLabel: "All statuses",
       value: statusFilter,
-      onChange: setStatusFilter,
+      onChange: (value) => {
+        controller.clearSelection();
+        setStatusFilter(value);
+      },
       options: [
         ...OUTREACH_STATUS_OPTIONS.map(({ value, label }) => ({ value, label })),
         ...NOT_CONTACTED_STATUS_OPTIONS,
@@ -1174,7 +1234,10 @@ export function ProviderOutreachPanel({
       multiple: true,
       allLabel: "All follow-ups",
       value: followUpFilter,
-      onChange: setFollowUpFilter,
+      onChange: (value) => {
+        controller.clearSelection();
+        setFollowUpFilter(value);
+      },
       options: FOLLOW_UP_OPTIONS,
     },
   ];
@@ -1188,6 +1251,7 @@ export function ProviderOutreachPanel({
       }
       canLaunch={!!panel?.request.canLaunch}
       onSend={() => send(candidate.brokerOrgId)}
+      selection={<ProviderSelectionCell controller={controller} brokerOrgId={candidate.brokerOrgId} name={candidate.name} />}
     />
   );
   // Submitted, matched and other providers each sort within their group.
@@ -1195,18 +1259,21 @@ export function ProviderOutreachPanel({
     toolbarKey,
     [
       ...submittedProviders.map((provider) => ({
+        brokerOrgId: provider.brokerOrgId,
         group: "submitted" as const,
         sort: provider.sort,
         match: provider.match,
         render: () => provider.row,
       })),
       ...rows.map((candidate) => ({
+        brokerOrgId: candidate.brokerOrgId,
         group: "matched" as const,
         sort: candidateSortValues(candidate),
         match: candidateMatch(candidate),
         render: () => candidateRow(candidate),
       })),
       ...others.map((candidate) => ({
+        brokerOrgId: candidate.brokerOrgId,
         group: "other" as const,
         sort: candidateSortValues(candidate),
         match: candidateMatch(candidate),
@@ -1221,6 +1288,11 @@ export function ProviderOutreachPanel({
       .map((row) => row.render());
   const visibleCount = (group: ProviderTableRow["group"]) =>
     tableSort.rows.filter((row) => row.group === group).length;
+  const visibleEligibleIds = tableSort.rows.flatMap((row) =>
+    row.brokerOrgId && controller.eligibleIds.includes(row.brokerOrgId) ? [row.brokerOrgId] : [],
+  );
+  const checkedVisibleCount = visibleEligibleIds.filter((id) => controller.selectedIds.includes(id)).length;
+  const allVisibleChecked = visibleEligibleIds.length > 0 && checkedVisibleCount === visibleEligibleIds.length;
   const matchGaps = (panel?.banners ?? []).flatMap((banner) => MATCH_GAP_COPY[banner] ?? []);
   if (!panel && !readOnly) return null;
   return (
@@ -1235,37 +1307,58 @@ export function ProviderOutreachPanel({
       {!readOnly && panel && sender ? (
         <IdentityHolds sequences={panel.sequences} sender={sender} block={senderBlock} />
       ) : null}
-      {!readOnly && panel ? (
-        <div className="sm:hidden">
-          <PillButton
-            size="compact"
-            type="button"
-            disabled={!panel.request.canLaunch || !controller.sendAllCount}
-            onClick={() => controller.sendAll()}
-          >
-            {`Send to all matched (${controller.sendAllCount})`}
-          </PillButton>
-        </div>
-      ) : null}
       <section aria-label="Providers" className="space-y-3">
         <ListToolbar
           followKey={toolbarKey}
           search={{
             value: search,
-            onChange: setSearch,
+            onChange: (value) => {
+              controller.clearSelection();
+              setSearch(value);
+            },
             label: "Search providers",
             placeholder: "Search providers",
           }}
           filters={filters}
           onClearFilters={() => {
+            controller.clearSelection();
             setStatusFilter([]);
             setFollowUpFilter([]);
           }}
+          actions={!readOnly ? (
+            <>
+              {controller.selectedIds.length ? (
+                <PillButton type="button" variant="ghost" onClick={controller.clearSelection}>
+                  Clear selection
+                </PillButton>
+              ) : null}
+              <PillButton
+                className="sm:hidden"
+                type="button"
+                disabled={!panel?.request.canLaunch || !controller.selectedIds.length}
+                onClick={controller.sendSelected}
+              >
+                Email selected ({controller.selectedIds.length})
+              </PillButton>
+            </>
+          ) : undefined}
         />
         <OperationalPanel as="div" data-operator-inline-fields>
           <Table>
             <TableHeader>
               <TableRow>
+                {!readOnly ? (
+                  <TableHead className="w-10">
+                    <Checkbox
+                      data-collab-ignore
+                      aria-label="Select all visible eligible providers"
+                      checked={allVisibleChecked}
+                      indeterminate={checkedVisibleCount > 0 && !allVisibleChecked}
+                      disabled={!panel?.request.canLaunch || !visibleEligibleIds.length}
+                      onCheckedChange={(value) => controller.selectProviders(visibleEligibleIds, value === true)}
+                    />
+                  </TableHead>
+                ) : null}
                 <SortableTableHead {...tableSort.head("provider")}>
                   Provider
                 </SortableTableHead>
@@ -1295,7 +1388,7 @@ export function ProviderOutreachPanel({
               !visibleCount("other") ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={readOnly ? 6 : 7}
                     className="h-16 text-center text-muted-foreground"
                   >
                     No providers match these filters.
@@ -1304,7 +1397,7 @@ export function ProviderOutreachPanel({
               ) : !filtering && !rows.length && !submittedProviders.length ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={readOnly ? 6 : 7}
                     className="h-16 text-center text-muted-foreground"
                   >
                     {others.length
@@ -1315,7 +1408,7 @@ export function ProviderOutreachPanel({
               ) : null}
               {others.length && !filtering ? (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={6} className="p-0">
+                  <TableCell colSpan={readOnly ? 6 : 7} className="p-0">
                     <button
                       type="button"
                       aria-expanded={showOthers}

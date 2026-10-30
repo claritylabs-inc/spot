@@ -64,6 +64,7 @@ import {
   outreachStatusSortValue,
   ProviderContactPill,
   ProviderOutreachPanel,
+  ProviderSelectionCell,
   ProviderOutreachCadence,
   SequenceState,
   followUpKey,
@@ -2274,7 +2275,7 @@ export function ProcurementRequestWorkspace({
     } else if (panel.kind === "provider-email") {
       node = (
         <ProviderEmailComposer
-          key={panel.merge ? "all" : panel.brokerOrgIds.join(",")}
+          key={`${panel.merge ? "merge" : "single"}:${panel.brokerOrgIds.join(",")}`}
           requestId={requestId}
           requestTitle={requestTitle}
           target={panel}
@@ -2390,8 +2391,8 @@ export function ProcurementRequestWorkspace({
     },
     [basePath, requestId, router, closeRightPanel],
   );
-  const sendAllCount = providerOutreach.sendAllCount;
-  const canSendAll = providerOutreach.panel?.request.canLaunch ?? false;
+  const selectedProviderCount = providerOutreach.selectedIds.length;
+  const canEmailProviders = providerOutreach.panel?.request.canLaunch ?? false;
   useEffect(() => {
     if (readOnly) {
       onActions?.(null);
@@ -2421,10 +2422,10 @@ export function ProcurementRequestWorkspace({
           <span className="hidden sm:contents">
             <PillButton
               type="button"
-              disabled={sendAllCount === 0 || !canSendAll}
-              onClick={() => providerOutreachRef.current.sendAll()}
+              disabled={selectedProviderCount === 0 || !canEmailProviders}
+              onClick={() => providerOutreachRef.current.sendSelected()}
             >
-              {`Send to all matched (${sendAllCount})`}
+              {`Email selected (${selectedProviderCount})`}
             </PillButton>
           </span>
         </>
@@ -2474,8 +2475,8 @@ export function ProcurementRequestWorkspace({
     askClientForInformation,
     openInformationDrawer,
     selectedInformationForm,
-    sendAllCount,
-    canSendAll,
+    selectedProviderCount,
+    canEmailProviders,
     openNotes,
     openPacketLink,
     openUpload,
@@ -2899,6 +2900,11 @@ export function ProcurementRequestWorkspace({
                     className="cursor-pointer"
                     onClick={() => openOutreachEditor(outreach, proposal?._id)}
                   >
+                    <ProviderSelectionCell
+                      controller={providerOutreach}
+                      brokerOrgId={outreach.brokerOrgId}
+                      name={outreach.brokerName}
+                    />
                     <TableCell className="whitespace-normal">
                       <div className="flex items-center gap-3">
                         <OrgBrandIcon
