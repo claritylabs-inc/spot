@@ -3136,7 +3136,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   get_procurement_information: defineOperatorTool({
     family: "procurement",
     version: 1,
-    description: "Read provider summaries and question/form counts by default. Include information for supplementary questions/answers, requirements, client forms and the accepted application's unansweredApplicationQuestions; clientOutreach for contacts and bounded email sequences. Select both when needed. Does not send.",
+    description: "Read provider summaries and question/form counts by default. Include information for supplementary questions/answers (each with any pending public-research suggestion), requirements, client forms, the latest research run and the accepted application's unansweredApplicationQuestions; clientOutreach for contacts and bounded email sequences. Select both when needed. Does not send.",
     inputSchema: z.object({ procurementRequestId, include: omittable(z.array(z.enum(["information", "clientOutreach"])).min(1).max(2)) }),
     capability: "operator.procurement.read",
     effect: "read",
@@ -3281,6 +3281,54 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     }),
     summarize: (input) =>
       `Cancel client information form ${input.informationFormId}`,
+  }),
+  research_procurement_information: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Queue public web research that pre-answers a request's unresolved information questions (yes/no, short text, numbers, amounts, dates, choices) from cited public sources about the client company: its website, registries, regulators and news. Results are suggestions, never answers: accept or dismiss them with review_procurement_information_suggestions; the client confirms high-confidence ones in their form. Spot also queues research automatically when questions are added. Returns a research status object (queued, running, completed, partial, failed) or reuses an active or identical earlier run; never claim queued research is complete. Read suggestions and research status with get_procurement_information include information instead of re-triggering.",
+    inputSchema: z.object({ procurementRequestId }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) => ({
+      kind: "procurement_request",
+      id: input.procurementRequestId,
+    }),
+    summarize: (input) =>
+      `Research public answers to information questions for ${input.procurementRequestId}`,
+  }),
+  review_procurement_information_suggestions: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Accept or dismiss public-research suggestions from get_procurement_information (each question's suggestion). Accept records the suggested answer as the operator's answer with its cited source and closes open forms containing that question; dismiss leaves the question for the client. Check the cited excerpt before accepting. Process 1–50 distinct items atomically under one exact approval; returns compact per-item results.",
+    inputSchema: z.object({
+      items: z
+        .array(
+          z.object({
+            suggestionId: z
+              .string()
+              .trim()
+              .min(1)
+              .describe("Exact suggestionId from get_procurement_information"),
+            action: z.enum(["accept", "dismiss"]),
+          }),
+        )
+        .min(1)
+        .max(50),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "exact",
+    target: () => ({
+      kind: "batch",
+      id: "review_procurement_information_suggestions",
+    }),
+    summarize: (input) =>
+      `Review ${input.items.length} information suggestion${input.items.length === 1 ? "" : "s"}`,
   }),
   send_procurement_client_email: defineOperatorTool({
     // Retired send tool: a client information request is now a draft (save_email_draft with informationFormId).

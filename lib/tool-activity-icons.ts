@@ -97,6 +97,8 @@ const operatorToolCategories = {
   add_procurement_information_questions: "requests",
   create_procurement_information_form: "links",
   cancel_procurement_information_form: "archive",
+  research_procurement_information: "web",
+  review_procurement_information_suggestions: "requests",
   reply_procurement_email_thread: "send",
   reply_email_thread: "send",
   create_procurement_broker_outreach: "brokers",

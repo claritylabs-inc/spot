@@ -18,6 +18,11 @@ import {
   createInformationFormByOperator,
   procurementInformationOverview,
 } from "./lib/procurementInformationOperator";
+import {
+  informationSuggestionReviewSummary,
+  researchInformationByOperator,
+  reviewInformationSuggestionsByOperator,
+} from "./procurementInformationSuggestions";
 import { NoWriteInputError, rethrowNoWriteInput } from "./lib/noWriteInputError";
 import { operatorTeamAddressFor } from "./lib/teamEmail";
 import { ensureOperatorInbox } from "./lib/operatorInbox";
@@ -682,6 +687,12 @@ async function operatorConfirmationSummary(
   if (isClientBatchToolName(toolName)) {
     return clientBatchConfirmationSummary(ctx, toolName, input);
   }
+  if (toolName === "review_procurement_information_suggestions") {
+    return informationSuggestionReviewSummary(
+      ctx,
+      OPERATOR_AGENT_TOOL_REGISTRY.review_procurement_information_suggestions.inputSchema.parse(input).items,
+    );
+  }
   if (
     toolName === "ensure_broker_network_profiles" ||
     toolName === "update_broker_network_profiles"
@@ -1234,6 +1245,19 @@ function normalizeInformationFormId(
     throw new NoWriteInputError(
       "invalid_identifier",
       "Use an exact information form ID from list_procurement_information",
+    );
+  return id;
+}
+
+function normalizeInformationSuggestionId(
+  ctx: QueryCtx | MutationCtx,
+  value: string,
+) {
+  const id = ctx.db.normalizeId("procurementInformationSuggestions", value);
+  if (!id)
+    throw new NoWriteInputError(
+      "invalid_identifier",
+      "Use an exact suggestionId from get_procurement_information",
     );
   return id;
 }
@@ -3956,6 +3980,26 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
       operatorUserId: args.operatorUserId,
       formId: normalizeInformationFormId(ctx, input.informationFormId),
     });
+  }
+
+  if (toolName === "research_procurement_information") {
+    return await researchInformationByOperator(
+      ctx,
+      args.operatorUserId,
+      normalizeProcurementRequestId(ctx, input.procurementRequestId),
+    );
+  }
+
+  if (toolName === "review_procurement_information_suggestions") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.review_procurement_information_suggestions.inputSchema.parse(input);
+    return await reviewInformationSuggestionsByOperator(
+      ctx,
+      args.operatorUserId,
+      parsed.items.map((item) => ({
+        suggestionId: normalizeInformationSuggestionId(ctx, item.suggestionId),
+        action: item.action,
+      })),
+    );
   }
 
   if (toolName === "stop_procurement_provider_outreach") {
