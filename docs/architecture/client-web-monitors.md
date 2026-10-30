@@ -70,6 +70,11 @@ payload.
   `client_monitor` notification (`emitOperatorNotification`, keyed by monitor
   and delivery) routed like other alerts. Copy is fixed and links to the client;
   headlines are web content and are not placed in Slack messages.
+- Operator UI: the client Profile Account tab has a Web monitoring section
+  (`app/operator/clients/[clientOrgId]/web-monitoring-section.tsx`) backed by
+  `clientWebMonitors.forClient`/`acknowledgeEvents` and the
+  `actions/clientWebMonitors.start`/`stop` operator actions, which reuse the
+  create and cancel helpers. Event text renders as plain text.
 
 Event text is untrusted public web content: tools label it as evidence, never
 instructions. Retained events are not yet pruned.

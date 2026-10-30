@@ -189,6 +189,13 @@ suggestion whose answer matches (`client_confirmed`) or records the correction
 other requests' suggestions. The internal `stats` query reports status, resolution
 and confidence counts for acceptance and correction rates.
 
+In the operator request view, `components/procurement/information/suggestion.tsx`
+shows a pending suggestion under its question (answer, High/Medium, up to three
+sources, Accept/Dismiss) and the "Research public sources" action
+(`procurementInformationSuggestions.research`) with the latest run state. The
+client form prefills unanswered questions from their suggestion with a
+"Suggested from public sources" note; submitting is the confirmation.
+
 ## Batched client forms and invitations
 
 Information Needed is the complete request-owned question list. Forms have their
