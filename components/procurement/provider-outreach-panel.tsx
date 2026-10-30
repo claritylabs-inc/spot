@@ -727,7 +727,7 @@ export function ProviderContactSelect({
           aria-label={`Contact for ${candidate.name}`}
           title={recipient ? `${recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email} · ${candidate.name}` : undefined}
           // The contact's pill is the button: provider logo, name, chevron.
-          className={`w-auto max-w-full min-w-0 gap-1 rounded-full border-0 bg-muted p-0.5 pr-2 hover:border-0 focus-visible:ring-2 focus-visible:ring-ring data-[size=default]:h-auto [&>svg]:size-3 ${typeStyle("body.large")}`}
+          className={`w-auto max-w-full min-w-0 gap-1 rounded-full border-0 bg-muted p-0.5 pr-2 hover:border-0 focus-visible:ring-2 focus-visible:ring-ring data-[size=default]:h-auto [&>svg]:size-3 ${typeStyle("label.tag")} text-tag! **:text-tag!`}
         >
           <SelectValue>
             <span className="flex min-w-0 items-center gap-1">
