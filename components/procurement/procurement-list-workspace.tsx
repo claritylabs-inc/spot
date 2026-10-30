@@ -71,6 +71,11 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@claritylabs-inc/ui/components/textarea";
 import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
+import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
+import {
+  procurementListPageContext,
+  procurementRequestPageContext,
+} from "@/components/procurement/procurement-page-context";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { useLocalDraft } from "@/hooks/use-local-draft";
 import { useTableSort } from "@/hooks/use-table-sort";
@@ -854,6 +859,57 @@ export function ProcurementListWorkspace({
     return () => onActions?.(null);
   }, [clientOrgId, onActions, openNewRequest, readOnly]);
 
+  const statusLabels = new Map<string, string>(
+    REQUEST_STATUS_OPTIONS.map((option) => [option.value, option.label]),
+  );
+  const pageContext = panelRequest
+    ? procurementRequestPageContext({
+        requestId: panelRequest._id,
+        clientOrgId: panelRequest.clientOrgId,
+        title: panelRequest.title,
+        clientName:
+          panelRequest.client?.name ??
+          clientBrand.get(panelRequest.clientOrgId)?.name,
+        status: statusLabels.get(panelRequest.status),
+        open: { text: "request preview on the procurement list" },
+      })
+    : procurementListPageContext({
+        clientOrgId,
+        clientName: clientOrgId
+          ? clientBrand.get(clientOrgId)?.name
+          : undefined,
+        filters: [
+          ...(filter === "all" ? [] : [`state ${filter}`]),
+          ...(statusFilter.length
+            ? [
+                `status ${statusFilter.map((value) => statusLabels.get(value) ?? value).join(", ")}`,
+              ]
+            : []),
+          ...(clientFilter.length
+            ? [
+                `client ${clientFilter
+                  .map(
+                    (id) =>
+                      requests.find((request) => request.clientOrgId === id)
+                        ?.client?.name ?? id,
+                  )
+                  .join(", ")}`,
+              ]
+            : []),
+          ...(searchText ? [`search "${search.trim().slice(0, 80)}"`] : []),
+        ],
+        shown: visibleRequests.length,
+        total: requests.length,
+        checked: selectedRequests.map((request) => ({
+          id: request._id,
+          title: request.title,
+        })),
+        open: panel === NEW_REQUEST_PANEL ? "new request" : undefined,
+      });
+  const contextRegistration = (
+    <OperatorPageContextRegistration context={pageContext} />
+  );
+
   if (
     requestRows === undefined ||
     (clientOrgId !== undefined && policyRows === undefined)
@@ -863,6 +919,7 @@ export function ProcurementListWorkspace({
         as="div"
         className="flex h-40 items-center justify-center"
       >
+        {contextRegistration}
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </OperationalPanel>
     );
@@ -871,6 +928,7 @@ export function ProcurementListWorkspace({
   if (requests.length === 0)
     return (
       <div className="space-y-4">
+        {contextRegistration}
         {notice}
         <EmptyStateCard
           title="No procurement requests yet"
@@ -941,6 +999,7 @@ export function ProcurementListWorkspace({
   const columns = 4 + (allClients ? 1 : 0) + (readOnly ? 0 : 2);
   return (
     <div className="flex flex-col gap-4">
+      {contextRegistration}
       <ListToolbar
         followKey={`procurement:${scopeKey}:list`}
         filters={filters}

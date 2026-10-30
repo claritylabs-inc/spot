@@ -54,6 +54,24 @@ export function operatorPageContextFromPathname(
     };
   }
 
+  if (
+    segments[1] === "clients" &&
+    segments[2] &&
+    segments[3] === "procurement"
+  ) {
+    return segments[4]
+      ? {
+          pageType: "procurement_request",
+          entityId: segments[4],
+          summary: "Current procurement request",
+        }
+      : {
+          pageType: "operator_client_procurement",
+          entityId: segments[2],
+          summary: "Current client procurement",
+        };
+  }
+
   const clientSectionSummary: Record<string, string> = {
     policies: "Client policies",
     compliance: "Client compliance",
@@ -130,7 +148,7 @@ export function operatorThreadContextHref(
   }
   const url = new URL(href, "https://spot.invalid");
   if (
-    !/^\/operator\/(?:clients(?:\/[^/]+(?:\/(?:wiki|files|procurement(?:\/[^/]+)?|policies(?:\/[^/]+)?|compliance|certificates))?)?|brokers|channels|profile|routing|telemetry|logs|usage|settings)\/?$/.test(url.pathname)
+    !/^\/operator\/(?:clients(?:\/[^/]+(?:\/(?:wiki|files|procurement(?:\/[^/]+)?|policies(?:\/[^/]+)?|compliance|certificates))?)?|brokers|channels|procurement|profile|routing|telemetry|logs|usage|settings)\/?$/.test(url.pathname)
   ) return null;
   url.searchParams.set("agentThread", threadId);
   return `${url.pathname}${url.search}${url.hash}`;
