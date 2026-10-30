@@ -29,6 +29,11 @@ import {
 import type { OperatorClientRow } from "../../client-model";
 import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
+import {
+  clientContextName,
+  pageContextSummary,
+} from "@/components/operator-agent/operator-client-page-context";
+import { usePageContextLayer } from "@/hooks/use-page-context";
 import { CompanyWikiSection } from "@/components/settings/company-wiki-section";
 import {
   OperationalPanel,
@@ -120,6 +125,17 @@ function LoadedProfile({
     false,
   );
   const [notesToolbar, setNotesToolbar] = useState<HTMLDivElement | null>(null);
+  usePageContextLayer({
+    pageType: "operator_client_wiki",
+    entityId: client._id,
+    summary: pageContextSummary([
+      `Profile for ${clientContextName(client)}`,
+      `${profileTab} tab`,
+      notesOpen && "company notes drawer open",
+      readOnly && "read-only while impersonating",
+      !wiki.businessProfile && "no business profile saved yet",
+    ]),
+  });
   const serverVersion = wiki.businessProfile?.submittedAt ?? 0;
   const savedAnswers = wiki.businessProfile?.answers ?? {
     legalName: support.name,
@@ -320,7 +336,7 @@ export default function OperatorClientWikiPage() {
           pageType: "operator_client_wiki",
           entityId: clientOrgId,
           summary: client
-            ? `Profile for ${client.dba ?? client.name}`
+            ? `Profile for ${clientContextName(client)}`
             : "Current client profile",
         }}
       />

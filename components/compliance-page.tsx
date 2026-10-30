@@ -100,6 +100,10 @@ import { formatDisplayDate } from "@/lib/date-format";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import {
+  usePageContextLayer,
+  type PageContext,
+} from "@/hooks/use-page-context";
 import { useTableSort } from "@/hooks/use-table-sort";
 
 type RequirementScope = "vendors" | "own_org";
@@ -166,10 +170,38 @@ export type ComplianceCertificatesTabArgs = {
   onRightPanel: (panel: ReactNode) => void;
 };
 
+/** What the compliance workspace shows, for an agent page context. */
+export type ComplianceContextState = {
+  view: Exclude<ComplianceView, "certificates">;
+  scope: RequirementScope;
+  requirementCount?: number;
+  sourceCount?: number;
+  selectedRequirement: {
+    id: Id<"insuranceRequirements">;
+    title: string;
+    lineOfBusiness?: string;
+    status: string;
+    sourceId?: Id<"requirementSourceDocuments">;
+  } | null;
+  selectedSource: {
+    id: Id<"requirementSourceDocuments">;
+    title: string;
+    holderName?: string;
+    requirementCount?: number;
+  } | null;
+  creationDrawer: "import" | "manual" | null;
+  certificateSourceId: Id<"requirementSourceDocuments"> | null;
+};
+
 export type CompliancePageProps = {
   orgContext?: ComplianceWorkspaceOrgContext;
   renderShell?: (args: ComplianceWorkspaceShellArgs) => ReactNode;
   renderCertificatesTab?: (args: ComplianceCertificatesTabArgs) => ReactNode;
+  /**
+   * Builds the agent page context layered over the page's. The certificates
+   * tab sets its own.
+   */
+  pageContext?: (state: ComplianceContextState) => PageContext | null;
 };
 
 type ComplianceSurface = "customer" | "operator";
@@ -2319,6 +2351,7 @@ function ComplianceWorkspace({
   orgContext,
   renderShell,
   renderCertificatesTab,
+  pageContext,
   surface,
 }: CompliancePageProps & { surface: ComplianceSurface }) {
   const router = useRouter();
@@ -2693,6 +2726,36 @@ function ComplianceWorkspace({
         }
       : "skip",
   ) as SourceCertificate[] | undefined;
+  usePageContextLayer(
+    pageContext && view !== "certificates"
+      ? pageContext({
+          view,
+          scope: activeRequirementScope,
+          requirementCount:
+            requirements === undefined ? undefined : scopedRequirements.length,
+          sourceCount: requirementSources?.length,
+          selectedRequirement: selectedRequirement
+            ? {
+                id: selectedRequirement._id,
+                title: selectedRequirement.title,
+                lineOfBusiness: selectedRequirement.lineOfBusiness,
+                status: statusFilterLabel(statusFilterValue(selectedRequirement)),
+                sourceId: selectedRequirement.sourceDocumentId,
+              }
+            : null,
+          selectedSource: selectedSource
+            ? {
+                id: selectedSource._id,
+                title: selectedSource.title,
+                holderName: selectedSource.holder?.displayName,
+                requirementCount: selectedSourceRequirements?.length,
+              }
+            : null,
+          creationDrawer,
+          certificateSourceId,
+        })
+      : null,
+  );
 
   useEffect(() => {
     if (!requestedRequirementId && !requestedSourceId) {

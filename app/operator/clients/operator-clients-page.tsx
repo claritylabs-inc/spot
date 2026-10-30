@@ -6,6 +6,11 @@ import { useRef, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { AppShell } from "@/components/app-shell";
+import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
+import {
+  namedList,
+  pageContextSummary,
+} from "@/components/operator-agent/operator-client-page-context";
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -179,6 +184,30 @@ export default function OperatorClientsScreen() {
   const selectedApplicationIds = filteredApplications
     .map((application) => application.requestId)
     .filter(selection.isSelected);
+  const selectedClientLabels = (filteredClients ?? [])
+    .filter((client) => selection.isSelected(client._id))
+    .map((client) => `${client.dba ?? client.name} (${client._id})`);
+  const selectedApplicationLabels = filteredApplications
+    .filter((application) => selection.isSelected(application.requestId))
+    .map(
+      (application) =>
+        `${applicationName(application)} (procurement request ${application.requestId})`,
+    );
+  const pageContextSummaryText = pageContextSummary([
+    "Client organizations list",
+    filter === "all"
+      ? "status filter: all except archived"
+      : `status filter: ${OPERATOR_CLIENT_STATUSES[filter].label}`,
+    searchText && `search “${search.trim().slice(0, 80)}”`,
+    filteredClients &&
+      `${filteredClients.length} client${filteredClients.length === 1 ? "" : "s"} shown`,
+    filteredApplications.length > 0 &&
+      `${filteredApplications.length} unsubmitted application${filteredApplications.length === 1 ? "" : "s"} shown`,
+    selectedClientLabels.length > 0 &&
+      `selected clients: ${namedList(selectedClientLabels, 4)}`,
+    selectedApplicationLabels.length > 0 &&
+      `selected applications: ${namedList(selectedApplicationLabels, 2)}`,
+  ]);
   const stopOperatorImpersonation = useStopOperatorImpersonation(
     current?.activeImpersonation,
   );
@@ -216,6 +245,12 @@ export default function OperatorClientsScreen() {
   );
   return (
     <AppShell actions={actions}>
+      <OperatorPageContextRegistration
+        context={{
+          pageType: "operator_clients",
+          summary: pageContextSummaryText,
+        }}
+      />
       <main className="flex w-full flex-col gap-4">
         <ListToolbar
           followKey="clients:list"
