@@ -42,11 +42,7 @@ export function PdfPanel() {
   const formEditing = usePdfFormEditing({
     source,
     onSaved: (saved) =>
-      openWithUrl(saved.url, currentPage, undefined, {
-        kind: "operatorAttachment",
-        fileId: saved.fileId,
-        filename: saved.filename,
-      }),
+      openWithUrl(saved.url, currentPage, undefined, saved.source),
   });
 
   if (!fileUrl || !isPdfOpen) return null;
@@ -74,6 +70,7 @@ export function PdfPanel() {
               }
             : {})}
         />
+        {formEditing.active ? formEditing.footer : null}
       </motion.div>
     </div>
   );

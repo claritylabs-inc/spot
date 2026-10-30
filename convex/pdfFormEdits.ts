@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import { v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import {
   internalMutation,
   internalQuery,
@@ -10,13 +10,16 @@ import {
 } from "./_generated/server";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { NoWriteInputError } from "./lib/noWriteInputError";
-import { requireOperator } from "./lib/operatorIdentity";
+import {
+  getActiveOperatorProfile,
+  requireOperator,
+} from "./lib/operatorIdentity";
 import {
   pdfFormFieldValidator,
   pdfFormModeValidator,
 } from "./lib/pdfFormFields";
-import { requireOperatorThread } from "./operatorAgent";
-import { commitPdfFormEdit } from "./pdfFormFill";
+import { parsePdfFormSourceId } from "./lib/pdfFormSource";
+import { commitPdfFormEdit, fillForVersionFile } from "./pdfFormFill";
 
 const editArgs = {
   fillId: v.id("pdfFormFills"),
@@ -32,9 +35,6 @@ async function editableFill(
   const fill = await ctx.db.get(args.fillId);
   if (!fill)
     throw new NoWriteInputError("form_not_found", "Filled form not found");
-  await requireOperatorThread(ctx, fill.threadId, operator.userId, {
-    anyOperator: true,
-  });
   if (
     !Number.isInteger(args.expectedVersion) ||
     fill.version !== args.expectedVersion
@@ -46,112 +46,49 @@ async function editableFill(
   return { fill, operator };
 }
 
-export const getForAttachment = query({
-  args: { fileId: v.id("_storage") },
+/** The stored file behind a PDF panel source, when it can be a filled form. */
+async function sourceFileId(ctx: QueryCtx, source: string) {
+  const parsed = parsePdfFormSourceId(source);
+  if (parsed?.kind === "operatorAttachment")
+    return ctx.db.system.normalizeId("_storage", parsed.fileId);
+  if (parsed?.kind === "clientFile") {
+    const id = ctx.db.normalizeId("clientFiles", parsed.clientFileId);
+    const file = id ? await ctx.db.get(id) : null;
+    return file && !file.deletedAt ? file.fileId : null;
+  }
+  return null;
+}
+
+/**
+ * The filled form open in the PDF panel, from any of its versions. Editing
+ * always starts from the latest version's fields over the original.
+ */
+export const getForDocument = query({
+  args: { source: v.string() },
   returns: v.union(
     v.null(),
-    v.object({ isStale: v.literal(true), outputFileId: v.id("_storage") }),
     v.object({
-      isStale: v.literal(false),
       fillId: v.id("pdfFormFills"),
-      threadId: v.id("operatorAgentThreads"),
       version: v.number(),
+      isLatest: v.boolean(),
       mode: pdfFormModeValidator,
-      pageCount: v.number(),
-      sourceFilename: v.string(),
-      outputFilename: v.string(),
       originalUrl: v.union(v.string(), v.null()),
-      outputUrl: v.union(v.string(), v.null()),
       fields: v.array(pdfFormFieldValidator),
-      filing: v.object({
-        clientName: v.optional(v.string()),
-        requestTitle: v.optional(v.string()),
-        providerName: v.optional(v.string()),
-      }),
-      versions: v.array(
-        v.object({
-          version: v.number(),
-          filename: v.string(),
-          source: v.union(v.literal("autofill"), v.literal("edit")),
-          createdAt: v.number(),
-        }),
-      ),
     }),
   ),
-  handler: async (ctx, { fileId }) => {
-    const operator = await requireOperator(ctx);
-    const fill = await ctx.db
-      .query("pdfFormFills")
-      .withIndex("by_outputFileId", (q) => q.eq("outputFileId", fileId))
-      .first();
-    if (!fill) {
-      // Historical attachment rows survive edits and narrow the version lookup
-      // to their conversations rather than scanning every saved form.
-      const threads = new Set<Id<"operatorAgentThreads">>();
-      for await (const attachment of ctx.db
-        .query("operatorAgentAttachments")
-        .withIndex("file", (q) => q.eq("fileId", fileId))) {
-        if (threads.has(attachment.threadId)) continue;
-        threads.add(attachment.threadId);
-        for await (const candidate of ctx.db
-          .query("pdfFormFills")
-          .withIndex("by_threadId", (q) =>
-            q.eq("threadId", attachment.threadId),
-          )) {
-          if (candidate.versions.some((version) => version.fileId === fileId)) {
-            await requireOperatorThread(
-              ctx,
-              candidate.threadId,
-              operator.userId,
-              {
-                anyOperator: true,
-              },
-            );
-            return {
-              isStale: true as const,
-              outputFileId: candidate.outputFileId,
-            };
-          }
-        }
-      }
-      return null;
-    }
-    await requireOperatorThread(ctx, fill.threadId, operator.userId, {
-      anyOperator: true,
-    });
-    const [client, request, provider, originalUrl, outputUrl] =
-      await Promise.all([
-        fill.clientOrgId ? ctx.db.get(fill.clientOrgId) : null,
-        fill.requestId ? ctx.db.get(fill.requestId) : null,
-        fill.brokerOrgId ? ctx.db.get(fill.brokerOrgId) : null,
-        ctx.storage.getUrl(fill.sourceFileId),
-        ctx.storage.getUrl(fill.outputFileId),
-      ]);
+  handler: async (ctx, { source }) => {
+    // Clients open the same files in their library; editing is operator-only.
+    if (!(await getActiveOperatorProfile(ctx))) return null;
+    const fileId = await sourceFileId(ctx, source);
+    const fill = fileId ? await fillForVersionFile(ctx, fileId) : null;
+    if (!fill) return null;
     return {
-      isStale: false as const,
       fillId: fill._id,
-      threadId: fill.threadId,
       version: fill.version,
+      isLatest: fill.outputFileId === fileId,
       mode: fill.mode,
-      pageCount: fill.pageCount,
-      sourceFilename: fill.sourceFilename,
-      outputFilename: fill.outputFilename,
-      originalUrl,
-      outputUrl,
+      originalUrl: await ctx.storage.getUrl(fill.sourceFileId),
       fields: fill.fields,
-      filing: {
-        ...(client ? { clientName: client.name } : {}),
-        ...(request ? { requestTitle: request.title } : {}),
-        ...(provider ? { providerName: provider.name } : {}),
-      },
-      versions: fill.versions.map(
-        ({ version, filename, source, createdAt }) => ({
-          version,
-          filename,
-          source,
-          createdAt,
-        }),
-      ),
     };
   },
 });
@@ -176,41 +113,19 @@ export const commitEditsInternal = internalMutation({
     fileId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
-    const { fill, operator } = await editableFill(ctx, args);
-    let message: Doc<"operatorAgentMessages"> | null = null;
-    for await (const attachment of ctx.db
-      .query("operatorAgentAttachments")
-      .withIndex("thread_file", (q) =>
-        q.eq("threadId", fill.threadId).eq("fileId", fill.outputFileId),
-      )) {
-      const candidate = await ctx.db.get(attachment.messageId);
-      if (
-        candidate?.threadId === fill.threadId &&
-        candidate.role === "agent" &&
-        candidate.attachments?.some(
-          (entry) => entry.fileId === fill.outputFileId,
-        )
-      ) {
-        message = candidate;
-        break;
-      }
-    }
-    if (!message)
-      throw new NoWriteInputError(
-        "form_attachment_not_found",
-        "The filled form is no longer attached to its conversation.",
-      );
+    const { operator } = await editableFill(ctx, args);
     const metadata = await ctx.db.system.get("_storage", args.fileId);
     if (!metadata || metadata.contentType !== "application/pdf")
       throw new NoWriteInputError(
         "form_file_unavailable",
         "The edited PDF is unavailable.",
       );
-
     const committed = await commitPdfFormEdit(ctx, {
       ...args,
       operatorUserId: operator.userId,
     });
+
+    // Swap the agent's attachment so the conversation carries the latest version.
     const attachment = {
       fileId: args.fileId,
       filename: committed.filename,
@@ -218,31 +133,49 @@ export const commitEditsInternal = internalMutation({
       size: metadata.size,
     };
     const now = dayjs().valueOf();
-    await ctx.db.insert("operatorAgentAttachments", {
-      ...attachment,
-      operatorUserId: operator.userId,
-      threadId: committed.threadId,
-      messageId: message._id,
-      createdAt: now,
-    });
-    await ctx.db.patch(message._id, {
-      attachments: message.attachments!.map((entry) =>
-        entry.fileId === committed.previousFileId ? attachment : entry,
-      ),
-      updatedAt: now,
-    });
-    return { version: committed.version, filename: committed.filename };
+    for await (const row of ctx.db
+      .query("operatorAgentAttachments")
+      .withIndex("file", (q) => q.eq("fileId", committed.previousFileId))) {
+      const message = await ctx.db.get(row.messageId);
+      if (
+        message?.role !== "agent" ||
+        !message.attachments?.some(
+          (entry) => entry.fileId === committed.previousFileId,
+        )
+      )
+        continue;
+      await ctx.db.insert("operatorAgentAttachments", {
+        ...attachment,
+        operatorUserId: operator.userId,
+        threadId: message.threadId,
+        messageId: message._id,
+        createdAt: now,
+      });
+      await ctx.db.patch(message._id, {
+        attachments: message.attachments.map((entry) =>
+          entry.fileId === committed.previousFileId ? attachment : entry,
+        ),
+        updatedAt: now,
+      });
+    }
+    return {
+      version: committed.version,
+      filename: committed.filename,
+      clientFileId: committed.clientFileId ?? null,
+    };
   },
 });
 
 export const discardUncommittedFileInternal = internalMutation({
-  args: { fillId: v.id("pdfFormFills"), fileId: v.id("_storage") },
-  handler: async (ctx, { fillId, fileId }) => {
-    const fill = await ctx.db.get(fillId);
+  args: { fileId: v.id("_storage") },
+  handler: async (ctx, { fileId }) => {
     // A lost mutation response may follow a successful commit, even if a newer
     // edit has already superseded it. Every committed version must keep its bytes.
-    if (!fill?.versions.some((version) => version.fileId === fileId))
-      await ctx.storage.delete(fileId);
+    const committed = await ctx.db
+      .query("pdfFormFillVersions")
+      .withIndex("by_fileId", (q) => q.eq("fileId", fileId))
+      .first();
+    if (!committed) await ctx.storage.delete(fileId);
     return null;
   },
 });

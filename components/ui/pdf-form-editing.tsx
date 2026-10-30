@@ -1,7 +1,7 @@
 "use client";
 
 import { useAction, useQuery } from "convex/react";
-import { Check, ListPlus, Pencil, TextCursorInput, X } from "lucide-react";
+import { Check, ListPlus, Pencil, TextCursorInput } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type {
@@ -17,11 +17,11 @@ import {
 import { PillButton } from "@/components/ui/pill-button";
 import type { PdfDocumentSource } from "@/components/pdf-context";
 import { api } from "@/convex/_generated/api";
-import type { Id } from "@/convex/_generated/dataModel";
 import {
   pdfFormFieldBox,
   type PdfFormField,
 } from "@/convex/lib/pdfFormFields";
+import { pdfFormSourceId } from "@/convex/lib/pdfFormSource";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
 
@@ -32,41 +32,47 @@ const PLACED_CHECKBOX = { width: 10, height: 10 };
 type Placing = { kind: "new" } | { kind: "field"; id: string } | null;
 
 /**
- * Editing for a filled form open in the PDF panel: while editing, the panel
- * shows the original PDF with the shared viewer's field layer, and Save
- * renders a new version that replaces the conversation attachment.
+ * Editing for a filled form open in the PDF panel, from the conversation or
+ * client files: while editing, the panel shows the original PDF with the
+ * shared viewer's field layer, and Save files the next version.
  */
 export function usePdfFormEditing({
   source,
   onSaved,
 }: {
   source: PdfDocumentSource | null;
-  onSaved: (saved: { url: string; fileId: Id<"_storage">; filename: string }) => void;
+  onSaved: (saved: { url: string; source: PdfDocumentSource }) => void;
 }) {
-  const fileId =
-    source?.kind === "operatorAttachment"
-      ? (source.fileId as Id<"_storage">)
+  const sourceId =
+    source?.kind === "operatorAttachment" || source?.kind === "clientFile"
+      ? pdfFormSourceId(source)
       : null;
-  const result = useQuery(
-    api.pdfFormEdits.getForAttachment,
-    fileId ? { fileId } : "skip",
+  const fill = useQuery(
+    api.pdfFormEdits.getForDocument,
+    sourceId ? { source: sourceId } : "skip",
   );
-  // Older versions stay read-only; edits always start from the latest.
-  const fill = result && !result.isStale ? result : null;
   const saveEdits = useAction(api.actions.pdfFormEdits.saveEdits);
   const [draft, setDraft] = useState<PdfFormField[] | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [placing, setPlacing] = useState<Placing>(null);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [placeListOpen, setPlaceListOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const editing = draft !== null && fill?.fillId !== undefined;
+  const editing = draft !== null && Boolean(fill);
 
   // Opening another document ends editing without saving.
-  const [editedFileId, setEditedFileId] = useState(fileId);
-  if (editedFileId !== fileId) {
-    setEditedFileId(fileId);
+  const [editedSourceId, setEditedSourceId] = useState(sourceId);
+  if (editedSourceId !== sourceId) {
+    setEditedSourceId(sourceId);
     setDraft(null);
     setPlacing(null);
   }
+
+  const stopEditing = useCallback(() => {
+    setDraft(null);
+    setDirty(false);
+    setPlacing(null);
+  }, []);
 
   useEffect(() => {
     if (!placing) return;
@@ -77,15 +83,15 @@ export function usePdfFormEditing({
     return () => window.removeEventListener("keydown", onKey);
   }, [placing]);
 
-  const update = useCallback(
-    (id: string, patch: Partial<PdfFormField>) =>
-      setDraft((current) =>
+  const update = useCallback((id: string, patch: Partial<PdfFormField>) => {
+    setDirty(true);
+    setDraft(
+      (current) =>
         current?.map((field) =>
           field.id === id ? { ...field, ...patch, basis: "manual" } : field,
         ) ?? null,
-      ),
-    [],
-  );
+    );
+  }, []);
 
   const formFields = useMemo<ViewerFormField[] | undefined>(
     () =>
@@ -118,6 +124,7 @@ export function usePdfFormEditing({
       if (target) update(target.id, box);
       else {
         const id = `m${crypto.randomUUID()}`;
+        setDirty(true);
         setDraft((current) => [
           ...(current ?? []),
           {
@@ -137,7 +144,8 @@ export function usePdfFormEditing({
   );
 
   const onFormFieldRemove = useCallback(
-    (id: string) =>
+    (id: string) => {
+      setDirty(true);
       setDraft(
         (current) =>
           current?.flatMap((field) =>
@@ -148,7 +156,8 @@ export function usePdfFormEditing({
                 ? [{ ...field, value: "", basis: "manual" as const }]
                 : [],
           ) ?? null,
-      ),
+      );
+    },
     [fill?.mode],
   );
 
@@ -161,53 +170,98 @@ export function usePdfFormEditing({
         expectedVersion: fill.version,
         fields: draft,
       });
-      setDraft(null);
-      onSaved(saved);
+      stopEditing();
+      toast.success(`Saved version ${saved.version}`);
+      onSaved({
+        url: saved.url,
+        source: saved.clientFileId
+          ? {
+              kind: "clientFile",
+              clientFileId: saved.clientFileId,
+              filename: saved.filename,
+            }
+          : {
+              kind: "operatorAttachment",
+              fileId: saved.fileId,
+              filename: saved.filename,
+            },
+      });
     } catch (error) {
       toast.error(getUserFacingErrorMessage(error, "The form could not be saved"));
     } finally {
       setSaving(false);
     }
-  }, [draft, fill, onSaved, saveEdits]);
+  }, [draft, fill, onSaved, saveEdits, stopEditing]);
 
   if (!fill) return { active: false as const };
 
-  const toolbarActions = editing ? (
-    <div className="flex items-center gap-1">
+  const placingField =
+    placing?.kind === "field"
+      ? draft?.find((field) => field.id === placing.id)
+      : undefined;
+  const hint = placing
+    ? `Click where ${placingField ? `“${placingField.label}”` : "the text"} goes. Esc cancels.`
+    : `Type into any highlighted field. Save files version ${fill.version + 1}.`;
+
+  const toolbarActions = editing ? null : (
+    <PillButton
+      variant="ghost"
+      size="compact"
+      title={
+        fill.isLatest
+          ? `Edit version ${fill.version}`
+          : `This is an older copy. Edit the latest, version ${fill.version}`
+      }
+      onClick={() => {
+        setDraft(fill.fields);
+        setDirty(false);
+      }}
+    >
+      <Pencil />
+      {fill.isLatest ? "Edit" : "Edit latest"}
+    </PillButton>
+  );
+
+  const footer = editing ? (
+    <div className="flex h-12 shrink-0 items-center gap-2 border-t border-border px-3">
+      <p
+        role="status"
+        className={`min-w-0 flex-1 truncate text-muted-foreground ${typeStyle("caption.default")}`}
+      >
+        {hint}
+      </p>
       <PillButton
-        variant="icon"
+        variant="ghost"
         size="compact"
-        iconOnly
-        label={placing?.kind === "new" ? "Click the page to add text" : "Add text"}
         aria-pressed={placing?.kind === "new"}
         onClick={() => setPlacing(placing?.kind === "new" ? null : { kind: "new" })}
       >
         <TextCursorInput />
+        Add text
       </PillButton>
       {unplaced.length ? (
-        <Popover>
+        <Popover open={placeListOpen} onOpenChange={setPlaceListOpen}>
           <PopoverTrigger
             render={
-              <PillButton
-                variant="icon"
-                size="compact"
-                iconOnly
-                label={`Place ${unplaced.length} unplaced ${unplaced.length === 1 ? "value" : "values"}`}
-              >
+              <PillButton variant="ghost" size="compact">
                 <ListPlus />
+                {`Place ${unplaced.length}`}
               </PillButton>
             }
           />
-          <PopoverContent align="end" className="w-72 p-1">
+          <PopoverContent align="end" side="top" className="w-72 p-1">
             <p className={`px-2 py-1.5 text-muted-foreground ${typeStyle("caption.default")}`}>
-              Pick a value, then click where it goes on the page.
+              Spot couldn&apos;t find where these go. Pick one, then click its spot on the page.
             </p>
             {unplaced.map((field) => (
               <button
                 key={field.id}
                 type="button"
                 className={`flex w-full min-w-0 flex-col items-start rounded-md px-2 py-1.5 text-left hover:bg-muted ${typeStyle("body.default")}`}
-                onClick={() => setPlacing({ kind: "field", id: field.id })}
+                onClick={() => {
+                  setPlaceListOpen(false);
+                  setPlacing({ kind: "field", id: field.id });
+                }}
               >
                 <span className="w-full truncate">{field.label}</span>
                 <span className={`w-full truncate text-muted-foreground ${typeStyle("caption.default")}`}>
@@ -219,45 +273,30 @@ export function usePdfFormEditing({
         </Popover>
       ) : null}
       <PillButton
-        variant="icon"
+        variant="ghost"
         size="compact"
-        iconOnly
-        label="Discard edits"
         disabled={saving}
-        onClick={() => {
-          setDraft(null);
-          setPlacing(null);
-        }}
+        onClick={stopEditing}
       >
-        <X />
+        Cancel
       </PillButton>
       <PillButton
         variant="primary"
         size="compact"
-        label={`Save as version ${fill.version + 1}`}
-        disabled={saving}
+        disabled={saving || !dirty}
         onClick={() => void save()}
       >
         <Check />
         {saving ? "Saving…" : "Save"}
       </PillButton>
     </div>
-  ) : (
-    <PillButton
-      variant="ghost"
-      size="compact"
-      onClick={() => setDraft(fill.fields)}
-      label={`Edit form (version ${fill.version})`}
-    >
-      <Pencil />
-      {`Edit v${fill.version}`}
-    </PillButton>
-  );
+  ) : null;
 
   return {
     active: true as const,
     editing,
     toolbarActions,
+    footer,
     viewerProps: editing
       ? {
           ...(fill.originalUrl ? { fileUrl: fill.originalUrl } : {}),

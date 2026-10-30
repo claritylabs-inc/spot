@@ -3,16 +3,18 @@
 // Fills a PDF form for an operator. AcroForm PDFs map named fields to values
 // in one structured generation. Flat forms (scanned or printed questionnaires)
 // get their fields and values from a vision generation over the page images,
-// then Jev Box places each value on its answer space. Both produce the same
-// field records, and `renderPdfFormFields` writes them onto the original, so
-// the PDF panel's editor regenerates a flattened copy the same way.
+// then Jev Box places every blank and checkbox, answered or not, so the PDF
+// panel's editor can type into any of them. Both produce the same field
+// records, and `renderPdfFormFields` writes them onto the original, so the
+// editor regenerates a flattened copy the same way.
 
 import { Output, type ModelMessage, type UserModelMessage } from "ai";
 import { PDFDocument, StandardFonts, type PDFFont } from "pdf-lib";
 import { z } from "zod";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
-import { locateTargetsOnPdfPage } from "./jevImages";
+import { locateOnPdfPage, type PdfPageBbox } from "./jevImages";
+import { jevProceeds } from "./jevThreshold";
 import {
   generateAgentTextForOrg,
   generateAgentTextForPublicTask,
@@ -33,11 +35,16 @@ import { extractPdfText } from "./pdfText";
 
 /** Pages read and filled; later pages are reported, never silently filled. */
 export const MAX_FORM_PAGES = 10;
-const MAX_FORM_FIELDS = 300;
+const MAX_FORM_FIELDS = 350;
 const MAX_PAGE_TEXT_CHARS = 6_000;
 const MAX_FONT_SIZE = 10;
 const MIN_FONT_SIZE = 5;
 const TEXT_INSET = 2;
+/**
+ * Fields located at once. Each Jev request carries the page image once per
+ * question, so one target per request keeps it under Jev's payload limit.
+ */
+const LOCATE_CONCURRENCY = 6;
 
 export type PdfFormFillInput = {
   pdfBytes: Uint8Array;
@@ -56,9 +63,9 @@ export type PdfFormFillResult = {
   mode: PdfFormMode;
   pageCount: number;
   pagesRead: number;
-  /** Every answered field, placed or not, plus blank AcroForm fields. */
+  /** Every placed field, answered or not, plus answers Jev could not place. */
   fields: PdfFormField[];
-  /** Flat-form fields left blank because no source had the answer. */
+  /** Text fields and checkbox questions no source answered. */
   blank: Array<{ page: number; field: string }>;
 };
 
@@ -102,12 +109,12 @@ const flatFormSchema = z.object({
         option: z
           .string()
           .describe(
-            "Checkbox only: the printed option beside the box to tick, e.g. Yes, No, Leased; empty for text fields",
+            "Checkbox only: the option printed beside this box, e.g. Yes, No, Leased (for a lone box, its label); empty for text fields",
           ),
         value: z
           .string()
           .describe(
-            "Text fields: the value to write. Checkboxes: X to tick the box. Empty when unknown",
+            "Text fields: the value to write, empty when unknown. Checkboxes: X to tick this box, empty to leave it clear",
           ),
         basis: basisSchema,
       }),
@@ -128,7 +135,7 @@ async function generateFormObject<T>(
   const options = {
     system: SYSTEM,
     messages,
-    maxOutputTokens: 12_000,
+    maxOutputTokens: 16_000,
     output: Output.object({ schema }),
   };
   const run = {
@@ -230,13 +237,22 @@ async function fillAcroFormFields(
     pageCount,
     pagesRead: pageCount,
     fields: records,
-    blank: [],
+    // An unticked AcroForm checkbox is an answer, not a gap.
+    blank: records
+      .filter((field) => field.kind === "text" && !field.value)
+      .map(({ page, label }) => ({ page, field: label })),
   };
 }
 
+/** "Vehicle #2 › Winter Tires › Yes"; a lone box is named once ("Vehicle #2 › Leased"). */
 function fieldName(field: FlatField) {
-  return [field.section, field.label, field.kind === "checkbox" ? field.option : ""]
-    .map((part) => part.trim())
+  const label = field.label.trim().replace(/:$/, "");
+  const option = field.kind === "checkbox" ? field.option.trim() : "";
+  return [
+    field.section.trim(),
+    label,
+    option.toLowerCase() === label.toLowerCase() ? "" : option,
+  ]
     .filter(Boolean)
     .join(" › ");
 }
@@ -356,6 +372,33 @@ export async function renderPdfFormFields(
   return await overlayTextOnPdf(filled, overlays);
 }
 
+/** Empty text blanks, and checkbox questions with no option ticked. */
+function unansweredFlatFields(fields: FlatField[]) {
+  const answered = new Set(
+    fields
+      .filter((field) => field.kind === "checkbox" && field.value.trim())
+      .map((field) => `${field.page}|${field.section}|${field.label}`),
+  );
+  const seen = new Set<string>();
+  return fields.flatMap((field) => {
+    if (field.kind === "text")
+      return field.value.trim()
+        ? []
+        : [{ page: field.page, field: fieldName(field) }];
+    const question = `${field.page}|${field.section}|${field.label}`;
+    if (answered.has(question) || seen.has(question)) return [];
+    seen.add(question);
+    return [
+      {
+        page: field.page,
+        field: [field.section.trim(), field.label.trim().replace(/:$/, "")]
+          .filter(Boolean)
+          .join(" › "),
+      },
+    ];
+  });
+}
+
 async function fillFlatForm(
   ctx: ActionCtx,
   input: PdfFormFillInput,
@@ -386,7 +429,7 @@ async function fillFlatForm(
   }
   content.push({
     type: "text",
-    text: `List every fillable field on these pages in reading order: each text blank, and for checkbox questions the one box to tick (one entry with an empty option and value when the answer is unknown). Fill each from the sources.\n${contextText(input)}`,
+    text: `List every fillable field on these pages in reading order: each text blank, and each checkbox as its own entry with the option printed beside it. Fill each from the sources and leave the rest empty.\n${contextText(input)}`,
   });
   const object = await generateFormObject(
     ctx,
@@ -395,56 +438,75 @@ async function fillFlatForm(
     flatFormSchema,
     [{ role: "user", content }],
   );
-  const detected = object.fields.filter((field) => field.page <= pagesRead);
-  const toPlace = detected.filter(
+  const detected = object.fields.filter(
     (field) =>
-      field.value.trim() && (field.kind === "text" || field.option.trim()),
+      field.page <= pagesRead &&
+      (field.kind === "text" || field.option.trim()),
   );
-  const blank = detected
-    .filter((field) => !toPlace.includes(field))
-    .map((field) => ({ page: field.page, field: fieldName(field) }));
 
-  const byPage = new Map<number, FlatField[]>();
-  for (const field of toPlace)
-    byPage.set(field.page, [...(byPage.get(field.page) ?? []), field]);
-  const records: PdfFormField[] = [];
-  await Promise.all(
-    [...byPage].map(async ([page, pageFields]) => {
-      const locations = await locateTargetsOnPdfPage(ctx, {
-        pdfBytes: input.pdfBytes,
-        page,
-        targets: pageFields.map(answerTarget),
-        pageImage: images.find((image) => image.page === page),
-        orgId: input.orgId,
-        task: "pdf_form_field_location",
-        surface: "pdf_form_fill",
-        sessionKey: input.traceId,
-        traceId: input.traceId,
-      });
-      pageFields.forEach((field, index) => {
-        const bbox = locations[index]?.bbox;
-        records.push({
-          id: `p${page}f${index}`,
-          label: fieldName(field),
-          kind: field.kind,
-          value: field.kind === "checkbox" ? "X" : field.value.trim(),
-          page,
-          ...(bbox
-            ? { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height }
-            : {}),
-          basis: field.basis,
+  // Jev places every field, answered or not, so the editor can type into any blank.
+  const boxes = new Map<FlatField, PdfPageBbox>();
+  const queue = [...detected];
+  const locate = async () => {
+    for (let field = queue.shift(); field; field = queue.shift()) {
+      try {
+        const location = await locateOnPdfPage(ctx, {
+          pdfBytes: input.pdfBytes,
+          page: field.page,
+          target: answerTarget(field),
+          pageImage: images.find((image) => image.page === field.page),
+          orgId: input.orgId,
+          task: "pdf_form_field_location",
+          surface: "pdf_form_fill",
+          sessionKey: input.traceId,
+          traceId: input.traceId,
         });
-      });
-    }),
+        if (location.bbox && jevProceeds(location.confidence))
+          boxes.set(field, location.bbox);
+      } catch (error) {
+        // An unplaced value stays in the editor's Place list.
+        console.warn(
+          "PDF form field location failed",
+          error instanceof Error ? error.message : "Unknown error",
+        );
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(LOCATE_CONCURRENCY, queue.length) }, locate),
   );
-  records.sort((a, b) => a.page - b.page);
+
+  const records = detected.flatMap((field, index): PdfFormField[] => {
+    const value =
+      field.kind === "checkbox"
+        ? field.value.trim()
+          ? "X"
+          : ""
+        : field.value.trim();
+    const bbox = boxes.get(field);
+    // An empty blank Jev could not find has nothing to place.
+    if (!bbox && !value) return [];
+    return [
+      {
+        id: `p${field.page}f${index}`,
+        label: fieldName(field),
+        kind: field.kind,
+        value,
+        page: field.page,
+        ...(bbox
+          ? { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height }
+          : {}),
+        basis: value ? field.basis : "none",
+      },
+    ];
+  });
   return {
     pdfBytes: await renderPdfFormFields(input.pdfBytes, "overlay", records),
     mode: "overlay",
     pageCount,
     pagesRead,
     fields: records,
-    blank,
+    blank: unansweredFlatFields(detected),
   };
 }
 

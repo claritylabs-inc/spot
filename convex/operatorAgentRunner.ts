@@ -228,7 +228,7 @@ const OPERATOR_GUIDANCE_MODULES: ReadonlyArray<{
   },
   {
     families: ["client_files"],
-    text: 'To fill out a form, call fill_pdf_form. When the thread page context has pageType "pdf_document", its entityId is the open PDF\'s source; for a conversation attachment use operatorAttachment:<fileId>. Resolve the client first when the source has none. Pass values the operator stated as answers. The filled copy opens in the PDF panel; report the filled count, then list blank and unplaced fields so the operator can supply or check them. Never describe guessed values as filled.',
+    text: 'To fill out a form, call fill_pdf_form. When the thread page context has pageType "pdf_document", its entityId is the open PDF\'s source; for a conversation attachment use operatorAttachment:<fileId>. Resolve the client first when the source has none. Pass values the operator stated as answers. The filled copy opens in the PDF panel; report the filled count, then list blank and unplaced fields. The operator can type missing values with Edit in the PDF panel or give them to you to refill. Never describe guessed values as filled.',
   },
   {
     families: ["broker_network"],

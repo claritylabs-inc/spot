@@ -8,7 +8,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { submittedIntakeApplication } from "../lib/intake-application";
-import { activeClientFile } from "./clientFiles";
+import { activeClientFile, setClientFileArchived } from "./clientFiles";
 import { createClientFileFromGeneratedCertificate } from "./lib/clientFiles";
 import {
   requireOperatorForUser,
@@ -40,6 +40,36 @@ type FormSource = {
   coverageCode?: string;
 };
 
+/** The form a saved version belongs to, so refilling restarts from its original. */
+export async function fillForVersionFile(
+  ctx: QueryCtx,
+  fileId: Id<"_storage">,
+) {
+  const version = await ctx.db
+    .query("pdfFormFillVersions")
+    .withIndex("by_fileId", (q) => q.eq("fileId", fileId))
+    .first();
+  return version ? await ctx.db.get(version.fillId) : null;
+}
+
+async function savedFormSource(
+  ctx: QueryCtx,
+  fileId: Id<"_storage">,
+): Promise<FormSource | null> {
+  const fill = await fillForVersionFile(ctx, fileId);
+  return fill
+    ? {
+        fileId: fill.sourceFileId,
+        filename: fill.sourceFilename,
+        orgId: fill.clientOrgId,
+        requestId: fill.requestId,
+        brokerOrgId: fill.brokerOrgId,
+        submissionDefaultId: fill.submissionDefaultId,
+        coverageCode: fill.coverageCode,
+      }
+    : null;
+}
+
 async function resolveSource(
   ctx: QueryCtx,
   threadId: Id<"operatorAgentThreads">,
@@ -57,29 +87,20 @@ async function resolveSource(
           .first()
       : null;
     if (!attachment) return null;
-    // Refilling an earlier filled copy restarts from its original and keeps its filing.
-    const fill = await ctx.db
-      .query("pdfFormFills")
-      .withIndex("by_outputFileId", (q) =>
-        q.eq("outputFileId", attachment.fileId),
-      )
-      .first();
-    return fill
-      ? {
-          fileId: fill.sourceFileId,
-          filename: fill.sourceFilename,
-          orgId: fill.clientOrgId,
-          requestId: fill.requestId,
-          brokerOrgId: fill.brokerOrgId,
-          submissionDefaultId: fill.submissionDefaultId,
-          coverageCode: fill.coverageCode,
-        }
-      : { fileId: attachment.fileId, filename: attachment.filename };
+    return (
+      (await savedFormSource(ctx, attachment.fileId)) ?? {
+        fileId: attachment.fileId,
+        filename: attachment.filename,
+      }
+    );
   }
   if (parsed?.kind === "clientFile") {
     const id = ctx.db.normalizeId("clientFiles", parsed.clientFileId);
     const file = id ? await ctx.db.get(id) : null;
-    if (!file || !activeClientFile(file)) return null;
+    if (!file || file.deletedAt) return null;
+    const saved = await savedFormSource(ctx, file.fileId);
+    if (saved) return saved;
+    if (!activeClientFile(file)) return null;
     return { fileId: file.fileId, filename: file.name, orgId: file.orgId };
   }
   if (parsed?.kind === "teamEmailAttachment") {
@@ -286,68 +307,121 @@ const filingValidator = {
 };
 
 /**
- * Files one version: a hidden client file, and on a procurement request a
+ * Files the next version of a form: a hidden client file that replaces the
+ * previous version's (now archived), and on a procurement request one
  * provider-scoped file item that always points at the latest version.
  */
-async function fileVersion(
+async function addVersion(
   ctx: MutationCtx,
-  fill: Pick<
-    Doc<"pdfFormFills">,
-    "clientOrgId" | "requestId" | "outreachId" | "brokerOrgId" | "fileItemId"
-  >,
+  fill: Doc<"pdfFormFills">,
   args: {
     operatorUserId: Id<"users">;
     fileId: Id<"_storage">;
-    filename: string;
+    version: number;
+    source: Doc<"pdfFormFillVersions">["source"];
   },
-): Promise<{
-  clientFileId?: Id<"clientFiles">;
-  fileItemId?: Id<"procurementFileItems">;
-}> {
-  if (!fill.clientOrgId) return {};
-  const clientFileId = await createClientFileFromGeneratedCertificate(ctx, {
-    operatorUserId: args.operatorUserId,
-    orgId: fill.clientOrgId,
-    fileId: args.fileId,
-    filename: args.filename,
-  });
-  if (!fill.requestId) return { clientFileId };
-  const provider = fill.brokerOrgId ? await ctx.db.get(fill.brokerOrgId) : null;
-  const label =
-    `${provider ? `${provider.name} application: ` : ""}${args.filename}`.slice(
-      0,
-      300,
-    );
+) {
+  const filename = pdfFormVersionFilename(fill.sourceFilename, args.version);
   const now = dayjs().valueOf();
-  const current = fill.fileItemId ? await ctx.db.get(fill.fileItemId) : null;
-  if (current && !current.removedAt) {
-    await ctx.db.patch(current._id, {
-      clientFileId,
-      label,
-      updatedByUserId: args.operatorUserId,
-      updatedAt: now,
+  let clientFileId: Id<"clientFiles"> | undefined;
+  let fileItemId = fill.fileItemId;
+  if (fill.clientOrgId) {
+    clientFileId = await createClientFileFromGeneratedCertificate(ctx, {
+      operatorUserId: args.operatorUserId,
+      orgId: fill.clientOrgId,
+      fileId: args.fileId,
+      filename,
     });
-    return { clientFileId, fileItemId: current._id };
+    const previous = await ctx.db
+      .query("pdfFormFillVersions")
+      .withIndex("by_fillId_and_version", (q) => q.eq("fillId", fill._id))
+      .order("desc")
+      .first();
+    const previousFile = previous?.clientFileId
+      ? await ctx.db.get(previous.clientFileId)
+      : null;
+    if (previousFile && activeClientFile(previousFile))
+      await setClientFileArchived(ctx, previousFile, true, args.operatorUserId);
   }
-  const fileItemId = await ctx.db.insert("procurementFileItems", {
-    requestId: fill.requestId,
-    clientOrgId: fill.clientOrgId,
-    ...(fill.outreachId ? { outreachId: fill.outreachId } : {}),
-    clientFileId,
-    label,
-    documentCategory: "supporting",
-    // Provider-specific: not released in the shared request packet.
-    brokerRelease: "hidden",
-    clientVisible: false,
-    createdByUserId: args.operatorUserId,
-    updatedByUserId: args.operatorUserId,
+  if (fill.requestId && fill.clientOrgId && clientFileId) {
+    const provider = fill.brokerOrgId
+      ? await ctx.db.get(fill.brokerOrgId)
+      : null;
+    const label =
+      `${provider ? `${provider.name} application: ` : ""}${filename}`.slice(
+        0,
+        300,
+      );
+    const current = fileItemId ? await ctx.db.get(fileItemId) : null;
+    if (current && !current.removedAt)
+      await ctx.db.patch(current._id, {
+        clientFileId,
+        label,
+        updatedByUserId: args.operatorUserId,
+        updatedAt: now,
+      });
+    else
+      fileItemId = await ctx.db.insert("procurementFileItems", {
+        requestId: fill.requestId,
+        clientOrgId: fill.clientOrgId,
+        ...(fill.outreachId ? { outreachId: fill.outreachId } : {}),
+        clientFileId,
+        label,
+        documentCategory: "supporting",
+        // Provider-specific: not released in the shared request packet.
+        brokerRelease: "hidden",
+        clientVisible: false,
+        createdByUserId: args.operatorUserId,
+        updatedByUserId: args.operatorUserId,
+        createdAt: now,
+        updatedAt: now,
+      });
+  }
+  await ctx.db.insert("pdfFormFillVersions", {
+    fillId: fill._id,
+    version: args.version,
+    fileId: args.fileId,
+    filename,
+    ...(clientFileId ? { clientFileId } : {}),
+    source: args.source,
     createdAt: now,
-    updatedAt: now,
+    createdByUserId: args.operatorUserId,
   });
-  return { clientFileId, fileItemId };
+  await ctx.db.patch(fill._id, {
+    outputFileId: args.fileId,
+    outputFilename: filename,
+    ...(fileItemId ? { fileItemId } : {}),
+    version: args.version,
+    updatedAt: now,
+    updatedByUserId: args.operatorUserId,
+  });
+  if (fill.clientOrgId)
+    await writeOperatorAudit(ctx, {
+      operatorUserId: args.operatorUserId,
+      type: "setup_write",
+      targetOrgId: fill.clientOrgId,
+      summary: `${args.source === "edit" ? "Saved" : "Filled"} version ${args.version} of ${fill.sourceFilename}`,
+      metadata: {
+        domain: "pdf_forms",
+        fillId: fill._id,
+        requestId: fill.requestId,
+        outreachId: fill.outreachId,
+        version: args.version,
+      },
+    });
+  return {
+    version: args.version,
+    filename,
+    previousFileId: fill.outputFileId,
+    ...(clientFileId ? { clientFileId } : {}),
+    ...(fileItemId ? { fileItemId } : {}),
+  };
 }
 
-/** Records an autofill as version 1, filed under its client, request and provider. */
+/**
+ * Records an autofill. Refilling the same original for the same client,
+ * request and provider adds the next version instead of a second copy.
+ */
 export const recordFillInternal = internalMutation({
   args: {
     operatorUserId: v.id("users"),
@@ -363,47 +437,43 @@ export const recordFillInternal = internalMutation({
   handler: async (ctx, { operatorUserId, ...args }) => {
     await requireOperatorForUser(ctx, operatorUserId);
     const now = dayjs().valueOf();
-    const filename = pdfFormVersionFilename(args.sourceFilename, 1);
-    const filed = await fileVersion(ctx, args, {
+    const candidates = await ctx.db
+      .query("pdfFormFills")
+      .withIndex("by_sourceFileId", (q) => q.eq("sourceFileId", args.sourceFileId))
+      .order("desc")
+      .take(50);
+    const existing = candidates.find(
+      (fill) =>
+        fill.clientOrgId === args.clientOrgId &&
+        fill.requestId === args.requestId &&
+        fill.brokerOrgId === args.brokerOrgId,
+    );
+    const fillId = existing
+      ? existing._id
+      : await ctx.db.insert("pdfFormFills", {
+          ...args,
+          operatorUserId,
+          outputFilename: pdfFormVersionFilename(args.sourceFilename, 1),
+          version: 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+    if (existing)
+      await ctx.db.patch(existing._id, {
+        threadId: args.threadId,
+        mode: args.mode,
+        pageCount: args.pageCount,
+        fields: args.fields,
+        ...(args.outreachId ? { outreachId: args.outreachId } : {}),
+      });
+    const fill = (await ctx.db.get(fillId))!;
+    const filed = await addVersion(ctx, fill, {
       operatorUserId,
       fileId: args.outputFileId,
-      filename,
+      version: fill.version + 1,
+      source: "autofill",
     });
-    const fillId = await ctx.db.insert("pdfFormFills", {
-      ...args,
-      operatorUserId,
-      outputFilename: filename,
-      ...(filed.fileItemId ? { fileItemId: filed.fileItemId } : {}),
-      version: 1,
-      versions: [
-        {
-          version: 1,
-          fileId: args.outputFileId,
-          filename,
-          ...(filed.clientFileId ? { clientFileId: filed.clientFileId } : {}),
-          source: "autofill",
-          createdAt: now,
-          createdByUserId: operatorUserId,
-        },
-      ],
-      createdAt: now,
-      updatedAt: now,
-    });
-    if (args.clientOrgId)
-      await writeOperatorAudit(ctx, {
-        operatorUserId,
-        type: "setup_write",
-        targetOrgId: args.clientOrgId,
-        summary: `Filled ${args.sourceFilename}`,
-        metadata: {
-          domain: "pdf_forms",
-          fillId,
-          requestId: args.requestId,
-          outreachId: args.outreachId,
-          version: 1,
-        },
-      });
-    return { fillId, filename, ...filed };
+    return { fillId, ...filed };
   },
 });
 
@@ -429,54 +499,11 @@ export async function commitPdfFormEdit(
     throw new Error(
       "This form was saved by someone else. Reload before saving again.",
     );
-  const version = fill.version + 1;
-  const filename = pdfFormVersionFilename(fill.sourceFilename, version);
-  const filed = await fileVersion(ctx, fill, {
+  await ctx.db.patch(fill._id, { fields: args.fields });
+  return await addVersion(ctx, fill, {
     operatorUserId: args.operatorUserId,
     fileId: args.fileId,
-    filename,
+    version: fill.version + 1,
+    source: "edit",
   });
-  const now = dayjs().valueOf();
-  await ctx.db.patch(fill._id, {
-    fields: args.fields,
-    outputFileId: args.fileId,
-    outputFilename: filename,
-    ...(filed.fileItemId ? { fileItemId: filed.fileItemId } : {}),
-    version,
-    versions: [
-      ...fill.versions,
-      {
-        version,
-        fileId: args.fileId,
-        filename,
-        ...(filed.clientFileId ? { clientFileId: filed.clientFileId } : {}),
-        source: "edit" as const,
-        createdAt: now,
-        createdByUserId: args.operatorUserId,
-      },
-    ],
-    updatedAt: now,
-    updatedByUserId: args.operatorUserId,
-  });
-  if (fill.clientOrgId)
-    await writeOperatorAudit(ctx, {
-      operatorUserId: args.operatorUserId,
-      type: "setup_write",
-      targetOrgId: fill.clientOrgId,
-      summary: `Saved version ${version} of ${fill.sourceFilename}`,
-      metadata: {
-        domain: "pdf_forms",
-        fillId: fill._id,
-        requestId: fill.requestId,
-        outreachId: fill.outreachId,
-        version,
-      },
-    });
-  return {
-    version,
-    filename,
-    previousFileId: fill.outputFileId,
-    threadId: fill.threadId,
-    ...filed,
-  };
 }

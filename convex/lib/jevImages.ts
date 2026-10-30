@@ -13,7 +13,6 @@ import type {
   DecisionAsset,
   DecisionBox,
   DecisionEntry,
-  DecisionQuestion,
 } from "../../contracts/cl-router/policy";
 import { clRouterDecide } from "./clRouterClient";
 import { jevProceeds } from "./jevThreshold";
@@ -166,37 +165,6 @@ export function boxToPdfBbox(
   };
 }
 
-/** Box questions per request stay under Jev's 128-question limit (two per target). */
-const MAX_PAGE_TARGETS_PER_REQUEST = 60;
-/** Zoomed crops per request, keeping staged assets well under 16 MiB. */
-const MAX_CROPS_PER_REQUEST = 20;
-
-/** A presence Noul and a Box per target, each pointing at its image in state. */
-function targetQuestions(
-  indices: number[],
-  image: (index: number) => string,
-): Record<string, DecisionQuestion> {
-  const questions: Record<string, DecisionQuestion> = {};
-  for (const index of indices) {
-    questions[`present_${index}`] = {
-      type: "noul",
-      instructions: `Does \`${image(index)}\` show \`targets.t${index}\`?`,
-    };
-    questions[`box_${index}`] = {
-      type: "box",
-      instructions: `\`targets.t${index}\` in \`${image(index)}\``,
-    };
-  }
-  return questions;
-}
-
-function chunks<T>(items: T[], size: number): T[][] {
-  const result: T[][] = [];
-  for (let index = 0; index < items.length; index += size)
-    result.push(items.slice(index, index + size));
-  return result;
-}
-
 /**
  * Locates one target on one PDF page. The first request asks a presence Noul
  * and a full-page Box together (Box has no "not found" answer). Full-page Box
@@ -205,27 +173,11 @@ function chunks<T>(items: T[], size: number): T[][] {
  */
 export async function locateOnPdfPage(
   ctx: ActionCtx,
-  params: Omit<Parameters<typeof locateTargetsOnPdfPage>[1], "targets"> & {
-    /** What to find, written as a noun phrase, e.g. a quoted line of text. */
-    target: DecisionEntry;
-  },
-): Promise<PdfPageLocation> {
-  const { target, ...rest } = params;
-  return (await locateTargetsOnPdfPage(ctx, { ...rest, targets: [target] }))[0];
-}
-
-/**
- * Batched `locateOnPdfPage` for many targets on one page: one full-page
- * request asks every presence Noul and coarse Box together, then zoomed crops
- * of the targets Jev found are refined together. Results follow input order.
- */
-export async function locateTargetsOnPdfPage(
-  ctx: ActionCtx,
   params: {
     pdfBytes: Uint8Array;
     page: number;
-    /** What to find, each written as a noun phrase or a small object. */
-    targets: DecisionEntry[];
+    /** What to find, written as a noun phrase, e.g. a quoted line of text. */
+    target: DecisionEntry;
     orgId?: Id<"organizations">;
     task: string;
     surface: string;
@@ -234,7 +186,7 @@ export async function locateTargetsOnPdfPage(
     /** Reuse an already rendered full page. */
     pageImage?: PdfPageImage;
   },
-): Promise<PdfPageLocation[]> {
+): Promise<PdfPageLocation> {
   const pageImage =
     params.pageImage ??
     (
@@ -254,122 +206,98 @@ export async function locateTargetsOnPdfPage(
     task: params.task,
     ...(params.traceId ? { trace: { traceId: params.traceId } } : {}),
   };
-  const unlocated = (present: number): PdfPageLocation => ({
-    present,
+  const unlocated: PdfPageLocation = {
+    present: 0,
     box: null,
     bbox: null,
     confidence: 0,
     pageWidth: pageImage.pageWidth,
     pageHeight: pageImage.pageHeight,
-  });
-  const results = params.targets.map(() => unlocated(0));
-  const coarse = new Map<number, DecisionBox>();
+  };
 
   const full = await stageJevImages(ctx, [pdfPageJevImage(pageImage)], scope);
+  let coarse: DecisionBox;
+  let present: number;
   try {
-    for (const group of chunks(
-      params.targets.map((target, index) => ({ target, index })),
-      MAX_PAGE_TARGETS_PER_REQUEST,
-    )) {
-      const result = await clRouterDecide(
-        {
-          ...request,
-          state: {
-            page: full.refs[0],
-            targets: Object.fromEntries(
-              group.map(({ target, index }) => [`t${index}`, target]),
-            ),
+    const result = await clRouterDecide(
+      {
+        ...request,
+        state: { page: full.refs[0], target: params.target },
+        assets: full.assets,
+        questions: {
+          present: {
+            type: "noul",
+            instructions: "Does `page` show `target`?",
           },
-          assets: full.assets,
-          questions: targetQuestions(
-            group.map(({ index }) => index),
-            () => "page",
-          ),
+          box: { type: "box", instructions: "`target` in `page`" },
         },
-        { telemetry: ctx },
-      );
-      for (const { index } of group) {
-        const presentAnswer = result.answers[`present_${index}`];
-        const boxAnswer = result.answers[`box_${index}`];
-        const present =
-          presentAnswer?.type === "noul" ? presentAnswer.noul : 0;
-        results[index] = unlocated(present);
-        if (jevProceeds(present) && boxAnswer?.type === "box")
-          // The page image may be margin-trimmed; map its box back to page fractions.
-          coarse.set(index, mapFromRegion(boxAnswer.box, pageImage.region));
-      }
+      },
+      { telemetry: ctx },
+    );
+    const presentAnswer = result.answers.present;
+    const boxAnswer = result.answers.box;
+    present = presentAnswer?.type === "noul" ? presentAnswer.noul : 0;
+    if (!jevProceeds(present) || boxAnswer?.type !== "box") {
+      return { ...unlocated, present };
     }
+    // The page image may be margin-trimmed; map its box back to page fractions.
+    coarse = mapFromRegion(boxAnswer.box, pageImage.region);
   } finally {
     await full.cleanup();
   }
 
-  for (const group of chunks([...coarse], MAX_CROPS_PER_REQUEST)) {
-    const crops = [];
-    for (const [index, box] of group) {
-      const crop = await renderPdfPageRegion({
-        pdfBytes: params.pdfBytes,
-        page: params.page,
-        region: padBox(box, ZOOM_PADDING),
-      });
-      crops.push({ index, crop });
-    }
-    const zoomed = await stageJevImages(
-      ctx,
-      crops.map(({ index, crop }) => ({
-        ...pdfPageJevImage(crop),
-        label: `page-${params.page}-crop-${index}`,
-      })),
-      scope,
-    );
-    try {
-      const result = await clRouterDecide(
-        {
-          ...request,
-          state: {
-            crops: Object.fromEntries(
-              crops.map(({ index }, position) => [
-                `t${index}`,
-                zoomed.refs[position],
-              ]),
-            ),
-            targets: Object.fromEntries(
-              crops.map(({ index }) => [`t${index}`, params.targets[index]]),
-            ),
+  const region = padBox(coarse, ZOOM_PADDING);
+  const crop = await renderPdfPageRegion({
+    pdfBytes: params.pdfBytes,
+    page: params.page,
+    region,
+  });
+  const zoomed = await stageJevImages(
+    ctx,
+    [{ ...pdfPageJevImage(crop), label: `page-${params.page}-crop` }],
+    scope,
+  );
+  try {
+    const result = await clRouterDecide(
+      {
+        ...request,
+        state: { crop: zoomed.refs[0], target: params.target },
+        assets: zoomed.assets,
+        questions: {
+          present: {
+            type: "noul",
+            instructions: "Does `crop` show `target`?",
           },
-          assets: zoomed.assets,
-          questions: targetQuestions(
-            crops.map(({ index }) => index),
-            (index) => `crops.t${index}`,
-          ),
+          box: { type: "box", instructions: "`target` in `crop`" },
         },
-        { telemetry: ctx },
-      );
-      for (const { index, crop } of crops) {
-        const cropPresent = result.answers[`present_${index}`];
-        const answer = result.answers[`box_${index}`];
-        // The coarse box can land on a similar label; require the crop to show the target too.
-        if (
-          cropPresent?.type !== "noul" ||
-          !jevProceeds(cropPresent.noul) ||
-          answer?.type !== "box"
-        )
-          continue;
-        const box = mapFromRegion(answer.box, crop.region);
-        results[index] = {
-          ...results[index],
-          box,
-          bbox: boxToPdfBbox(
-            box,
-            params.page,
-            pageImage.pageWidth,
-            pageImage.pageHeight,
-          ),
-          confidence: answer.confidence,
-        };
-      }
-    } finally {
-      await zoomed.cleanup();
+      },
+      { telemetry: ctx },
+    );
+    const cropPresent = result.answers.present;
+    const answer = result.answers.box;
+    // The coarse box can land on a similar label; require the crop to show the target too.
+    if (
+      cropPresent?.type !== "noul" ||
+      !jevProceeds(cropPresent.noul) ||
+      answer?.type !== "box"
+    ) {
+      return { ...unlocated, present };
     }
+    const box = mapFromRegion(answer.box, crop.region);
+    return {
+      present,
+      box,
+      bbox: boxToPdfBbox(
+        box,
+        params.page,
+        pageImage.pageWidth,
+        pageImage.pageHeight,
+      ),
+      confidence: answer.confidence,
+      pageWidth: pageImage.pageWidth,
+      pageHeight: pageImage.pageHeight,
+    };
+  } finally {
+    await zoomed.cleanup();
   }
-  return results;
 }

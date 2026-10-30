@@ -2,12 +2,13 @@ import dayjs from "dayjs";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
   internalQuery,
   mutation,
   query,
+  type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
 import {
@@ -499,6 +500,25 @@ export const update = mutation({
   },
 });
 
+export async function setClientFileArchived(
+  ctx: MutationCtx,
+  file: Doc<"clientFiles">,
+  archived: boolean,
+  operatorUserId: Id<"users">,
+) {
+  const now = dayjs().valueOf();
+  await ctx.db.patch(file._id, {
+    archivedAt: archived ? now : undefined,
+    archivedByUserId: archived ? operatorUserId : undefined,
+    updatedAt: now,
+  });
+  if (archived) {
+    await removeClientFileCompanyInformation(ctx, file._id);
+  } else {
+    await scheduleClientFileCompanyInformation(ctx, file._id);
+  }
+}
+
 export const setArchived = mutation({
   args: {
     clientFileId: v.id("clientFiles"),
@@ -510,17 +530,7 @@ export const setArchived = mutation({
     const file = await ctx.db.get(args.clientFileId);
     if (!file || file.deletedAt) throw new Error("Client file not found");
     await requireClientOrganization(ctx, file.orgId);
-    const now = dayjs().valueOf();
-    await ctx.db.patch(file._id, {
-      archivedAt: args.archived ? now : undefined,
-      archivedByUserId: args.archived ? operator.userId : undefined,
-      updatedAt: now,
-    });
-    if (args.archived) {
-      await removeClientFileCompanyInformation(ctx, file._id);
-    } else {
-      await scheduleClientFileCompanyInformation(ctx, file._id);
-    }
+    await setClientFileArchived(ctx, file, args.archived, operator.userId);
     await writeOperatorAudit(ctx, {
       operatorUserId: operator.userId,
       type: "setup_write",

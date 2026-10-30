@@ -112,7 +112,7 @@ export const OPERATOR_AGENT_INTENTS: readonly OperatorAgentIntent[] = [
     label: "Fill this form",
     pageTypes: ["pdf_document"],
     objective:
-      "Fill out the PDF form in this thread's page context with fill_pdf_form, passing its entityId as the source. Resolve the client the form is for first; ask me only when it is unclear. Use only the client's records and values I give. Then summarize what was filled and list blank or unplaced fields so I can supply or check them. Do not file or send the form.",
+      "Fill out the PDF form in this thread's page context with fill_pdf_form, passing its entityId as the source. Resolve the client the form is for first; ask me only when it is unclear. Use only the client's records and values I give. Then summarize what was filled and list blank or unplaced fields so I can supply or check them. Do not send the form.",
   },
   {
     id: "review_client_knowledge",

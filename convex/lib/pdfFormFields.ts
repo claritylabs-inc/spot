@@ -37,19 +37,6 @@ export const pdfFormModeValidator = v.union(
 
 export type PdfFormMode = Infer<typeof pdfFormModeValidator>;
 
-/** One saved copy of a filled form; versions only grow. */
-export const pdfFormVersionValidator = v.object({
-  version: v.number(),
-  fileId: v.id("_storage"),
-  filename: v.string(),
-  clientFileId: v.optional(v.id("clientFiles")),
-  source: v.union(v.literal("autofill"), v.literal("edit")),
-  createdAt: v.number(),
-  createdByUserId: v.id("users"),
-});
-
-export type PdfFormVersion = Infer<typeof pdfFormVersionValidator>;
-
 /** `Form (filled).pdf`, then `Form (filled v2).pdf` for later versions. */
 export function pdfFormVersionFilename(sourceFilename: string, version: number) {
   const base = sourceFilename.replace(/\.pdf$/i, "");

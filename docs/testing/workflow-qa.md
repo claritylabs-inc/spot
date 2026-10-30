@@ -1,21 +1,28 @@
 # Platform workflow QA
 
-## PDF form autofill and in-panel editing — October 29, 2026
+## PDF form autofill and in-panel editing — October 30, 2026
 
-Native-local Conductor stack. A seeded flat form fill for Foundry Robotics
-(procurement request with a Pinecrest outreach) filed v1 as a hidden client file
-and a hidden provider-scoped request file item. Operator-identity API checks
-passed: current/stale `getForAttachment`, `saveEdits` (corrected VIN, placed an
-unplaced value, unticked a checkbox, added a manual value) rendering v2 from the
-original, version-conflict rejection, out-of-page box rejection and anonymous
-rejection. In headless Chrome the PDF panel showed Edit, the shared viewer's
-field layer (clarity-ui PR #55 source copied into node_modules), keyboard
-checkbox toggle, click-to-add text and Save; v3 reopened in the panel, the
-conversation attachment was swapped and the request file item pointed at v3.
-Live `fill_pdf_form` LLM and Jev calls were not exercised: the remote router
-cannot call back to this sandbox's loopback backend without a callback tunnel.
-Placement math was checked on a synthetic form render. No tests or migrations
-added.
+Native-local Conductor stack, signed in as an operator in headless Chrome.
+
+- Live models: a scanned copy of the Morison automotive questionnaire went
+  through the flat-form prompt and schema via cl-router's synchronous
+  `/v1/generate` and `/v1/decide` (inline images; the remote router cannot
+  fetch this sandbox's loopback assets). The vision generation listed 63 fields
+  (every blank and checkbox option), filled 19 from operator answers and the
+  client record, and invented nothing. Single-target Jev placement placed 54–57
+  of 63 in about 11 seconds; two answers stayed unplaced and Address landed on
+  the Mailing Address row once. The earlier batched locator failed: Jev returned
+  `router_payload_too_large` once a page image was shared by more than about six
+  questions, so form fill now uses `locateOnPdfPage` per field.
+- Editor: seeded from that output, the panel showed Edit, every field tinted,
+  typing into an empty Date of Birth, ticking Leased, the Place list closing on
+  pick, and Save → "Saved version 2". v1's client file was archived, v2 filed
+  hidden, the provider request file item repointed to v2 and the conversation
+  attachment swapped. The same form opened from client files offered Edit, the
+  archived v1 offered Edit latest, and a new chat with the PDF open offered
+  Fill this form.
+- Not exercised: a full `fill_pdf_form` agent turn (the router cannot call back
+  to this sandbox) and AcroForm editing in the browser.
 
 ## Provider submission defaults — October 29, 2026
 

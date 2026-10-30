@@ -229,12 +229,6 @@ export const runInternal = internalAction({
         fields
           .slice(0, MAX_REPORTED_FORM_FIELDS)
           .map(({ page, label, value, basis }) => ({ page, field: label, value, basis }));
-      const blank = [
-        ...filled.fields
-          .filter((field) => !field.value)
-          .map(({ page, label }) => ({ page, field: label })),
-        ...filled.blank,
-      ];
       return {
         result: {
           status: "filled",
@@ -248,7 +242,7 @@ export const runInternal = internalAction({
             procurementRequest: source.request,
             provider: source.provider,
             procurementFileItemId: recorded.fileItemId ?? null,
-            version: 1,
+            version: recorded.version,
           },
           mode: filled.mode,
           pageCount: filled.pageCount,
@@ -256,11 +250,12 @@ export const runInternal = internalAction({
           filledCount: placed.length,
           filled: report(placed),
           unplaced: report(answered.filter((field) => !pdfFormFieldBox(field))),
-          blank: blank.slice(0, MAX_REPORTED_FORM_FIELDS),
+          blank: filled.blank.slice(0, MAX_REPORTED_FORM_FIELDS),
           truncated:
-            Math.max(answered.length, blank.length) > MAX_REPORTED_FORM_FIELDS,
+            Math.max(answered.length, filled.blank.length) >
+            MAX_REPORTED_FORM_FIELDS,
           editing:
-            "The operator can correct, move or place values in the PDF panel's editor; each save files a new version under the same client, request and provider.",
+            "The operator can type into any blank, tick boxes, or move and place values with Edit in the PDF panel; each save files a new version under the same client, request and provider.",
         },
         attachments: [
           {

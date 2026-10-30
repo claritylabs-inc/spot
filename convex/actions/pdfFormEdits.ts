@@ -117,6 +117,7 @@ export const saveEdits = action({
     fileId: v.id("_storage"),
     url: v.string(),
     filename: v.string(),
+    clientFileId: v.union(v.id("clientFiles"), v.null()),
   }),
   handler: async (
     ctx,
@@ -126,6 +127,7 @@ export const saveEdits = action({
     fileId: Id<"_storage">;
     url: string;
     filename: string;
+    clientFileId: Id<"clientFiles"> | null;
   }> => {
     const source = await ctx.runQuery(
       internal.pdfFormEdits.getSaveInputInternal,
@@ -167,10 +169,7 @@ export const saveEdits = action({
     } catch (error) {
       await ctx.runMutation(
         internal.pdfFormEdits.discardUncommittedFileInternal,
-        {
-          fillId: args.fillId,
-          fileId,
-        },
+        { fileId },
       );
       throw error;
     }
