@@ -85,6 +85,7 @@ const pageContextPrefetchTimingValidator = v.object({
     v.literal("attached"),
     v.literal("not_in_history"),
     v.literal("in_history"),
+    v.literal("prefetched_earlier"),
     v.literal("covered_by_intent"),
   ),
   reads: v.array(v.object({ toolName: v.string(), status: v.string() })),
