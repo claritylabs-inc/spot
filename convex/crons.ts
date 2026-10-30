@@ -88,6 +88,13 @@ crons.cron(
   {},
 );
 
+crons.cron(
+  "sweep client web monitor events",
+  "20 4 * * *",
+  internal.clientWebMonitors.sweepExpired,
+  {},
+);
+
 crons.interval("recover MCP event deliveries", { minutes: 1 }, internal.mcpEvents.recoverInternal, {});
 
 crons.interval("recover operator notification deliveries", { minutes: 1 }, internal.operatorNotifications.recoverInternal, {});

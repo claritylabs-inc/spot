@@ -30,6 +30,7 @@ export type WebRetrievalInput = {
   goal?: string;
   allowedDomains?: string[];
   maxResults?: number;
+  executionBudgetMs?: number;
 };
 
 export type WebRetrievalSource = {
@@ -233,6 +234,9 @@ async function runWebRetrievalWithConfig(
         primary: config.primary,
         ...(route ? { route } : {}),
       },
+      ...(rawInput.executionBudgetMs
+        ? { executionBudgetMs: rawInput.executionBudgetMs }
+        : {}),
     },
     // Choose local intake's synchronous transport before submission. Hosted
     // research stays durable; a failed/unknown call never triggers a replay.
