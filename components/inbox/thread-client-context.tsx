@@ -84,7 +84,7 @@ export function ThreadClientContext({
   }
 
   return (
-    <div className={`flex min-h-14 items-center gap-2 px-4 py-2 ${typeStyle("body.default")} ${suggestion ? "bg-muted/40" : ""}`}>
+    <div className={`flex min-h-sub-bar items-center gap-2 px-4 py-1.5 ${typeStyle("body.default")} ${suggestion ? "bg-muted/40" : ""}`}>
       {thread.client ? (
         <span className="flex min-w-0 flex-1 items-center gap-1.5">
           {brand}
