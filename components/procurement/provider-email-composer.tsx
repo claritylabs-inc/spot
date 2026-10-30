@@ -27,7 +27,7 @@ import {
   MERGE_VARIABLES,
 } from "@/convex/lib/providerOutreachMerge";
 import type { ProviderCandidateView } from "@/convex/providerOutreach";
-import { useFollowedState, useLeaderOnly } from "@/hooks/use-followed-state";
+import { followedContentKey, useFollowedState, useLeaderOnly } from "@/hooks/use-followed-state";
 import { usePageContext } from "@/hooks/use-page-context";
 import { useSharedValue } from "@/hooks/use-shared-value";
 import { useCachedOperatorCurrent } from "@/lib/sync/operator-cached-queries";
@@ -106,6 +106,9 @@ function OperatorProviderEmailComposer({
 }) {
   const single = !target.merge && target.brokerOrgIds.length === 1;
   const scope = `provider-email:${requestId}:${single ? target.brokerOrgIds[0] : "all"}`;
+  // A fresh selection must not inherit removed recipients or contact choices
+  // from an earlier batch. The request's shared template still keeps its scope.
+  const recipientScope = followedContentKey(scope, target.brokerOrgIds);
   const draftKey = `${operatorId}:${scope}`;
   const panel = useQuery(api.providerOutreach.getPanel, { requestId });
   const saved = useQuery(api.providerOutreachDrafts.get, {
@@ -121,9 +124,9 @@ function OperatorProviderEmailComposer({
   const [fromUserId, setFromUserId] = useState<Id<"users">>(operatorId);
   useSharedValue(`${scope}:from`, fromUserId, setFromUserId);
   const [removed, setRemoved] = useState<string[]>([]);
-  useSharedValue(`${scope}:removed`, removed, setRemoved);
+  useSharedValue(`${recipientScope}:removed`, removed, setRemoved);
   const [contacts, setContacts] = useState(target.contacts);
-  useSharedValue(`${scope}:contacts`, contacts, setContacts);
+  useSharedValue(`${recipientScope}:contacts`, contacts, setContacts);
   const requestDefault = panel ? requestCadence(panel) : null;
   const [followUps, setFollowUps] = useState<FollowUps | null | undefined>(undefined);
   useSharedValue(`${scope}:follow-ups`, followUps ?? null, setFollowUps);
@@ -135,10 +138,10 @@ function OperatorProviderEmailComposer({
     setDraftState(next);
   };
   const [showFull, setShowFull] = useFollowedState(`${scope}:show-full`, false);
-  const [previewFor, setPreviewFor] = useFollowedState<string | null>(`${scope}:preview-for`, null);
+  const [previewFor, setPreviewFor] = useFollowedState<string | null>(`${recipientScope}:preview-for`, null);
   // A mail merge's per-provider emails edited in the preview, until each is saved as that provider's draft.
   const [edits, setEdits] = useState<Record<string, Email>>({});
-  useSharedValue(`${scope}:edits`, edits, setEdits);
+  useSharedValue(`${recipientScope}:edits`, edits, setEdits);
   const [sending, setSending] = useState(false);
 
   // Spot's email for this box: one provider's own draft, else the request template.
