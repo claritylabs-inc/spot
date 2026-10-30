@@ -185,15 +185,12 @@ export default function OperatorClientsScreen() {
   const selectedApplicationIds = filteredApplications
     .map((application) => application.requestId)
     .filter(selection.isSelected);
-  const selectedClientLabels = (filteredClients ?? [])
-    .filter((client) => selection.isSelected(client._id))
-    .map((client) => `${client.dba ?? client.name} (${client._id})`);
-  const selectedApplicationLabels = filteredApplications
-    .filter((application) => selection.isSelected(application.requestId))
-    .map(
-      (application) =>
-        `${applicationName(application)} (procurement request ${application.requestId})`,
-    );
+  const selectedClients = (filteredClients ?? []).filter((client) =>
+    selection.isSelected(client._id),
+  );
+  const selectedApplications = filteredApplications.filter((application) =>
+    selection.isSelected(application.requestId),
+  );
   const pageContextSummaryText = pageContextSummary([
     "Client organizations list",
     filter === "all"
@@ -204,11 +201,24 @@ export default function OperatorClientsScreen() {
       `${filteredClients.length} client${filteredClients.length === 1 ? "" : "s"} shown`,
     filteredApplications.length > 0 &&
       `${filteredApplications.length} unsubmitted application${filteredApplications.length === 1 ? "" : "s"} shown`,
-    selectedClientLabels.length > 0 &&
-      `selected clients: ${namedList(selectedClientLabels, 4)}`,
-    selectedApplicationLabels.length > 0 &&
-      `selected applications: ${namedList(selectedApplicationLabels, 2)}`,
+    selectedClients.length > 0 &&
+      `selected clients: ${namedList(selectedClients.map((client) => client.dba ?? client.name), 4)}`,
+    selectedApplications.length > 0 &&
+      `selected applications: ${namedList(selectedApplications.map(applicationName), 2)}`,
   ]);
+  // The first selected rows, by exact ID; the summary counts the rest.
+  const pageContextRelated = [
+    ...selectedClients.slice(0, 8).map((client) => ({
+      kind: "organization",
+      id: client._id,
+      label: client.dba ?? client.name,
+    })),
+    ...selectedApplications.slice(0, 2).map((application) => ({
+      kind: "procurement_request",
+      id: application.requestId,
+      label: applicationName(application),
+    })),
+  ].slice(0, 10);
   const stopOperatorImpersonation = useStopOperatorImpersonation(
     current?.activeImpersonation,
   );
@@ -250,6 +260,7 @@ export default function OperatorClientsScreen() {
         context={{
           pageType: "operator_clients",
           summary: pageContextSummaryText,
+          related: pageContextRelated,
         }}
       />
       <main className="flex w-full flex-col gap-4">

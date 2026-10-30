@@ -91,11 +91,20 @@ export function usePageContextLayer(ctx: PageContext | null) {
   const pageType = ctx?.pageType;
   const entityId = ctx?.entityId;
   const summary = ctx?.summary;
+  // Keyed by value so a freshly built array does not re-set the layer.
+  const related = ctx?.related?.length ? JSON.stringify(ctx.related) : undefined;
   useEffect(() => {
     setPageContextLayer(
       id,
-      pageType ? { pageType, entityId, summary } : null,
+      pageType
+        ? {
+            pageType,
+            entityId,
+            summary,
+            ...(related ? { related: JSON.parse(related) } : {}),
+          }
+        : null,
     );
-  }, [entityId, id, pageType, setPageContextLayer, summary]);
+  }, [entityId, id, pageType, related, setPageContextLayer, summary]);
   useEffect(() => () => setPageContextLayer(id, null), [id, setPageContextLayer]);
 }
