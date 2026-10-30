@@ -67,6 +67,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "stop_procurement_provider_outreach",
   "create_procurement_information_form",
   "cancel_procurement_information_form",
+  "review_procurement_information_suggestions",
   "link_team_inbox_thread",
   "link_team_inbox_threads",
   "update_procurement_broker_outreach",
@@ -1133,6 +1134,20 @@ export async function preflightOperatorToolConfirmation(
     case "cancel_procurement_information_form": {
       const form = await requireDocument(ctx, "procurementInformationForms", args.input.informationFormId, "Information form");
       if (form.status !== "open") throw new Error("Only open forms can be cancelled");
+      return;
+    }
+    case "review_procurement_information_suggestions": {
+      const items = Array.isArray(args.input.items) ? (args.input.items as { suggestionId?: unknown }[]) : [];
+      if (new Set(items.map((item) => item.suggestionId)).size !== items.length)
+        throw new Error("Review each suggestion once");
+      for (const item of items) {
+        const suggestion = await requireDocument(ctx, "procurementInformationSuggestions", item.suggestionId, "Suggestion");
+        if (suggestion.status !== "pending")
+          throw new Error(`Suggestion ${suggestion._id} was already ${suggestion.status}`);
+        const question = await ctx.db.get(suggestion.questionId);
+        if (!question || question.archivedAt || question.answerId !== suggestion.answerIdAtSuggestion)
+          throw new Error(`Suggestion ${suggestion._id} is out of date: its question changed after research. Read get_procurement_information again.`);
+      }
       return;
     }
     case "link_team_inbox_thread": {
