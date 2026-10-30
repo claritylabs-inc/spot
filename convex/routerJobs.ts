@@ -36,6 +36,7 @@ const operation = v.union(
   v.literal("retrieve"),
   v.literal("transcribe"),
   v.literal("browse"),
+  v.literal("research"),
 );
 
 export async function routerJobTokenHash(token: string): Promise<string> {

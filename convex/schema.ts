@@ -2942,6 +2942,76 @@ export default defineSchema({
     recordedByUserId: v.id("users"),
     createdAt: v.number(),
   }).index("by_requestId", ["requestId"]),
+  // Public web research runs that pre-answer unresolved questions. Metadata only;
+  // provider output is never stored here.
+  procurementInformationResearchRuns: defineTable({
+    requestId: v.id("procurementRequests"),
+    // sha256 of the sorted eligible question/answer revisions and the entity.
+    fingerprint: v.string(),
+    automatic: v.boolean(),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("partial"),
+      v.literal("failed"),
+    ),
+    // Questions this run assessed; on completion only those actually researched.
+    questions: v.array(
+      v.object({
+        questionId: v.id("procurementInformationQuestions"),
+        answerId: v.optional(v.id("procurementInformationAnswers")),
+      }),
+    ),
+    questionCount: v.number(),
+    suggestionCount: v.number(),
+    provider: v.optional(v.string()),
+    // Short Spot-owned code; never provider text.
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_request", ["requestId"])
+    .index("by_request_and_fingerprint", ["requestId", "fingerprint"]),
+  // Cited answers proposed from public research. Never answers: an operator or
+  // the client confirms them through the existing answer writers.
+  procurementInformationSuggestions: defineTable({
+    requestId: v.id("procurementRequests"),
+    questionId: v.id("procurementInformationQuestions"),
+    // The question's answer revision when researched; a later answer makes it stale.
+    answerIdAtSuggestion: v.optional(v.id("procurementInformationAnswers")),
+    answer: v.string(),
+    confidence: v.union(v.literal("high"), v.literal("medium")),
+    citations: v.array(
+      v.object({
+        url: v.string(),
+        title: v.optional(v.string()),
+        excerpt: v.optional(v.string()),
+      }),
+    ),
+    provider: v.string(),
+    researchRunId: v.id("procurementInformationResearchRuns"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("dismissed"),
+      v.literal("superseded"),
+    ),
+    resolution: v.optional(
+      v.union(
+        v.literal("operator_accepted"),
+        v.literal("client_confirmed"),
+        v.literal("client_edited"),
+        v.literal("dismissed"),
+        v.literal("answered_elsewhere"),
+      ),
+    ),
+    resolvedAt: v.optional(v.number()),
+    resolvedByUserId: v.optional(v.id("users")),
+    createdAt: v.number(),
+  })
+    .index("by_request_status", ["requestId", "status"])
+    .index("by_question", ["questionId"]),
   // Deprecated: retained for existing records, without readers or writers.
   procurementQuestionLibrary: defineTable({
     question: followupQuestionValidator,
@@ -5502,6 +5572,7 @@ export default defineSchema({
       v.literal("retrieve"),
       v.literal("transcribe"),
       v.literal("browse"),
+      v.literal("research"),
     ),
     fingerprint: v.string(),
     status: v.union(

@@ -40,7 +40,8 @@ export type RouterJobOperation =
   | "embed"
   | "retrieve"
   | "transcribe"
-  | "browse";
+  | "browse"
+  | "research";
 
 export function callbackSiteUrl(): string {
   const canonical = routerAssetSigningConfiguration().siteUrl;
