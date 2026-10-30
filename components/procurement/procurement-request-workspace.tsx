@@ -54,11 +54,13 @@ import {
   type RequestEmailAudience,
 } from "./client-outreach-composer";
 import { NewEmailComposer } from "@/components/inbox/new-email-composer";
+import { ProviderEmailComposer } from "./provider-email-composer";
 import {
   FitChips,
   OutreachSequenceActions,
   isLiveSequence,
   outreachStatusSortValue,
+  ProviderContactPill,
   ProviderOutreachPanel,
   ProviderOutreachCadence,
   SequenceState,
@@ -251,7 +253,13 @@ type RequestPanel =
       audience: RequestEmailAudience;
       informationFormId?: Id<"procurementInformationForms">;
     }
-  | { kind: "information"; target: InformationDrawerTarget };
+  | { kind: "information"; target: InformationDrawerTarget }
+  | {
+      kind: "provider-email";
+      brokerOrgIds: Id<"organizations">[];
+      contacts: Record<string, Id<"brokerContacts">>;
+      merge: boolean;
+    };
 
 type RequestDetails = {
   request: RequestSummary;
@@ -2074,7 +2082,9 @@ export function ProcurementRequestWorkspace({
   const informationForms = useQuery(api.procurementInformation.operatorForms, {
     requestId,
   });
-  const providerOutreach = useProviderOutreach(requestId, readOnly);
+  const providerOutreach = useProviderOutreach(requestId, readOnly, (target) =>
+    setPanel({ kind: "provider-email", ...target }),
+  );
   // The header actions depend on primitives only; handlers read the latest controller.
   const providerOutreachRef = useRef(providerOutreach);
   useEffect(() => {
@@ -2471,6 +2481,16 @@ export function ProcurementRequestWorkspace({
           onClose={closeRightPanel}
         />
       );
+    } else if (panel.kind === "provider-email") {
+      node = (
+        <ProviderEmailComposer
+          key={panel.merge ? "all" : panel.brokerOrgIds.join(",")}
+          requestId={requestId}
+          requestTitle={requestTitle}
+          target={panel}
+          onClose={closeRightPanel}
+        />
+      );
     } else if (panel.kind === "image") {
       const file = details?.files.find(
         (row) => row._id === panel.fileItemId,
@@ -2578,7 +2598,6 @@ export function ProcurementRequestWorkspace({
     [basePath, requestId, router, closeRightPanel],
   );
   const sendAllCount = providerOutreach.sendAllCount;
-  const providerOutreachBusy = providerOutreach.sending.size > 0;
   const canSendAll = providerOutreach.panel?.request.canLaunch ?? false;
   useEffect(() => {
     if (readOnly) {
@@ -2600,14 +2619,10 @@ export function ProcurementRequestWorkspace({
           <span className="hidden sm:contents">
             <PillButton
               type="button"
-              disabled={
-                sendAllCount === 0 || providerOutreachBusy || !canSendAll
-              }
-              onClick={() => void providerOutreachRef.current.sendAll()}
+              disabled={sendAllCount === 0 || !canSendAll}
+              onClick={() => providerOutreachRef.current.sendAll()}
             >
-              {providerOutreachBusy
-                ? "Sending…"
-                : `Send to all matched (${sendAllCount})`}
+              {`Send to all matched (${sendAllCount})`}
             </PillButton>
           </span>
         </>
@@ -2658,7 +2673,6 @@ export function ProcurementRequestWorkspace({
     openInformationDrawer,
     selectedInformationForm,
     sendAllCount,
-    providerOutreachBusy,
     canSendAll,
     openNotes,
     openUpload,
@@ -2984,12 +2998,6 @@ export function ProcurementRequestWorkspace({
           >
             <div className="min-w-0 flex-1">
               <p className={typeStyle("body.medium")}>Provider share link</p>
-              <p
-                className={`text-muted-foreground ${typeStyle("caption.default")}`}
-              >
-                Providers open the shared application and released documents
-                from this link.
-              </p>
             </div>
             <PillButton
               type="button"
@@ -3053,18 +3061,19 @@ export function ProcurementRequestWorkspace({
                       </div>
                     </TableCell>
                     <TableCell className="min-w-64 whitespace-normal">
-                      <span className="break-all">
-                        {sequence?.recipient.email ??
-                          outreach.contactEmail ??
-                          "—"}
-                      </span>
-                      {outreach.contactName ? (
-                        <p
-                          className={`text-muted-foreground ${typeStyle("caption.default")}`}
-                        >
-                          {outreach.contactName}
-                        </p>
-                      ) : null}
+                      {(sequence?.recipient.email ?? outreach.contactEmail) ? (
+                        <ProviderContactPill
+                          provider={{
+                            name: outreach.brokerName,
+                            iconUrl: candidate?.iconUrl ?? broker?.iconUrl,
+                            website: candidate?.website ?? broker?.website,
+                          }}
+                          name={sequence?.recipient.name ?? outreach.contactName}
+                          email={(sequence?.recipient.email ?? outreach.contactEmail)!}
+                        />
+                      ) : (
+                        "—"
+                      )}
                     </TableCell>
                     <TableCell className="whitespace-normal">
                       {candidate ? <FitChips candidate={candidate} /> : "—"}
@@ -3130,17 +3139,11 @@ export function ProcurementRequestWorkspace({
                           <PillButton
                             type="button"
                             size="compact"
-                            disabled={
-                              providerOutreach.sending.size > 0 ||
-                              providerOutreach.sendingAll
-                            }
                             onClick={() =>
-                              void providerOutreach.send(candidate.brokerOrgId)
+                              providerOutreach.send(candidate.brokerOrgId)
                             }
                           >
-                            {providerOutreach.sending.has(candidate.brokerOrgId)
-                              ? "Sending…"
-                              : "Send"}
+                            Send
                           </PillButton>
                         ) : null}
                       </div>

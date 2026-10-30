@@ -101,6 +101,19 @@ import {
   type ThreadFollowUpConversation,
 } from "./lib/threadFollowUps";
 import { submittedIntakeApplication } from "../lib/intake-application";
+import { actionConfirmationFingerprint } from "./lib/actionConfirmationFingerprint";
+import { defaultProviderEmailTemplate } from "./lib/providerOutreachEmail";
+import {
+  applyMergeValues,
+  providerEmailProblem,
+  providerMergeValues,
+  type MergeValues,
+  type ProviderEmail,
+} from "./lib/providerOutreachMerge";
+import { readProviderOutreachDraft, readyDraftEmail } from "./lib/providerOutreachDrafts";
+import { buildOperatorSignature } from "./lib/teamEmail";
+import { intakeCatalogCoverage } from "../lib/intake-acord-questions";
+import { intakeMarkdown } from "../lib/insurance-intake";
 import { CANADIAN_PROVINCES, USPS_STATE_NAMES } from "./lib/brokerProfileValidation";
 
 const OUTREACH_REGION_NAMES: Readonly<Record<string, string>> = { ...USPS_STATE_NAMES, ...CANADIAN_PROVINCES };
@@ -1492,86 +1505,132 @@ async function classifyLaunchCandidate(
   return { kind: "send", org, outreach, evaluation, recipient: evaluation.recipient };
 }
 
-/**
- * Read-only: what a launch of these providers would do right now. Backs the
- * agent's pre-approval check and approval card; it never writes.
- */
-export async function previewProviderOutreachLaunch(
-  ctx: MutationCtx,
-  args: {
-    operatorUserId: Id<"users">;
-    requestId: Id<"procurementRequests">;
-    brokerOrgIds: Id<"organizations">[];
-  },
-) {
-  if (!args.brokerOrgIds.length || args.brokerOrgIds.length > MAX_LAUNCH_PROVIDERS)
-    throw new Error(`Select one to ${MAX_LAUNCH_PROVIDERS} providers`);
-  const { request, client } = await loadCompanyRequest(ctx, args.requestId);
-  if (closedReason(request)) throw new Error("Procurement request is closed");
-  const match = matchFor(request, client);
-  const testMode = await operatorInTestMode(ctx, args.operatorUserId);
-  const providers: { brokerOrgId: Id<"organizations">; brokerName: string | null; willSend: boolean; reason?: LaunchSkipReason; recipientEmail?: string }[] = [];
-  const seen = new Set<Id<"organizations">>();
-  for (const requestedId of args.brokerOrgIds) {
-    if (seen.has(requestedId)) {
-      providers.push({
-        brokerOrgId: requestedId,
-        brokerName: eligibleProviderOrg(await ctx.db.get(requestedId))?.name ?? null,
-        willSend: false,
-        reason: "duplicate_selection",
-      });
-      continue;
-    }
-    seen.add(requestedId);
-    const candidate = await classifyLaunchCandidate(ctx, {
-      requestedId,
-      request,
-      match,
-      testMode,
-      matchedOnly: false,
-    });
-    providers.push(
-      candidate.kind === "skip"
-        ? { brokerOrgId: requestedId, brokerName: candidate.skipped.brokerName, willSend: false, reason: candidate.skipped.reason }
-        : { brokerOrgId: requestedId, brokerName: candidate.org.name, willSend: true, recipientEmail: candidate.recipient.email },
-    );
-  }
-  return providers;
+/** Request-wide facts every provider's first email draws on. */
+export function requestEmailFacts(request: Doc<"procurementRequests">, client: Doc<"organizations">) {
+  const facts = requestContext(request, client);
+  return {
+    client: { name: facts.clientName, summary: facts.title },
+    request: {
+      coverageLines: facts.coverageLabels.length ? facts.coverageLabels : facts.coverageLines,
+      regions: facts.regions,
+      effectiveDate: facts.targetEffectiveDate ?? undefined,
+      isRenewal: facts.isRenewal,
+      summaryItems: facts.summaryItems,
+      coverageRequest: facts.coverageRequest ?? undefined,
+    },
+  };
 }
 
-export async function launchProviderOutreachByOperator(
-  ctx: MutationCtx,
-  args: {
-    operatorUserId: Id<"users">;
-    requestId: Id<"procurementRequests">;
-    brokerOrgIds: Id<"organizations">[];
-    cadence: OutreachCadenceInput;
-    cadenceSource: OutreachCadenceSource;
-    /** Direct UI choices are validated against the provider's current contacts. */
-    selectedContacts?: { brokerOrgId: Id<"organizations">; contactId: Id<"brokerContacts"> }[];
-    /** Send-all: unknown-fit providers are skipped even when named. */
-    matchedOnly?: boolean;
-    /** From `outreachSenderIdentity` in the reviewed preview. */
-    expectedIdentityFingerprint?: string;
-  },
-): Promise<ProviderOutreachLaunchResult> {
-  await requireDirectOperatorWrite(ctx, args.operatorUserId);
+/** The request's mail-merge template: the saved one, else the default layout. */
+export async function requestEmailTemplate(
+  ctx: Ctx,
+  request: Doc<"procurementRequests">,
+  client: Doc<"organizations">,
+) {
+  const saved = await readProviderOutreachDraft(ctx, request._id);
+  const ready = readyDraftEmail(saved);
+  return ready
+    ? { ...ready, source: (saved?.source ?? "agent") as "spot" | "agent" }
+    : { ...defaultProviderEmailTemplate(requestEmailFacts(request, client)), source: "default" as const };
+}
+
+/** The follow-up cadence a launch uses when none is given: operator choices, then confident Jev picks, then defaults. */
+export async function currentRequestCadence(
+  ctx: Ctx,
+  request: Doc<"procurementRequests">,
+  client: Doc<"organizations">,
+): Promise<{ cadence: OutreachCadenceInput; cadenceSource: OutreachCadenceSource }> {
+  const row = await ctx.db
+    .query("procurementOutreachCadences")
+    .withIndex("by_requestId", (q) => q.eq("requestId", request._id))
+    .first();
+  const picks =
+    row?.status === "ready" && row.fingerprint === cadenceFingerprint(request, matchFor(request, client))
+      ? row.picks
+      : undefined;
+  const resolve = <K extends keyof OutreachCadenceInput>(field: K) => {
+    const override = row?.overrides?.[field];
+    if (override !== undefined) return { value: override as OutreachCadenceInput[K], source: "operator" as const };
+    const pick = picks?.[field];
+    if (pick?.source === "jev") return { value: pick.value as OutreachCadenceInput[K], source: "jev" as const };
+    return { value: OUTREACH_DEFAULT_CADENCE[field] as OutreachCadenceInput[K], source: "default" as const };
+  };
+  const followUpCount = resolve("followUpCount");
+  const intervalBusinessDays = resolve("intervalBusinessDays");
+  const style = resolve("style");
+  return {
+    cadence: {
+      followUpCount: followUpCount.value,
+      intervalBusinessDays: intervalBusinessDays.value,
+      style: style.value,
+    },
+    cadenceSource: {
+      followUpCount: followUpCount.source,
+      intervalBusinessDays: intervalBusinessDays.source,
+      style: style.source,
+    },
+  };
+}
+
+/** Where a provider's email came from: the composer, its own draft, the request template or the default layout. */
+export type ProviderEmailSource = "composer" | "draft" | "template" | "default";
+
+export type PlannedProviderEmail = {
+  brokerOrgId: Id<"organizations">;
+  brokerName: string | null;
+  willSend: boolean;
+  reason?: LaunchSkipReason;
+  detail: ProviderFitReason[];
+  recipient?: { email: string; name: string | null; contactId: Id<"brokerContacts"> | null };
+  values?: MergeValues;
+  /** Merged subject and body; `{{application_link}}` becomes the provider's own link when sent. */
+  email?: ProviderEmail & { source: ProviderEmailSource };
+  /** Why this provider's email cannot be sent as written. */
+  problem?: string;
+};
+
+export type ProviderLaunchArgs = {
+  /** Who is launching; authorization and test mode are theirs. */
+  operatorUserId: Id<"users">;
+  /** Who the emails are sent as; defaults to the launching operator. */
+  senderUserId?: Id<"users">;
+  requestId: Id<"procurementRequests">;
+  brokerOrgIds: Id<"organizations">[];
+  cadence: OutreachCadenceInput;
+  /** Direct UI choices are validated against the provider's current contacts. */
+  selectedContacts?: { brokerOrgId: Id<"organizations">; contactId: Id<"brokerContacts"> }[];
+  /** Send-all: unknown-fit providers are skipped even when named. */
+  matchedOnly?: boolean;
+  /**
+   * The template the operator reviewed in the composer, merged for every
+   * provider. Without it each provider gets its own saved draft, else the
+   * request's template, else the default layout.
+   */
+  email?: ProviderEmail;
+};
+
+/**
+ * Read-only: exactly what a launch would send right now, provider by provider,
+ * and the fingerprint that approves it. The composer preview, the agent's
+ * approval card and the launch itself all call this, so a launch sends only
+ * the emails that were reviewed: the fingerprint covers the sender identity,
+ * cadence, recipients and every merged subject and body.
+ */
+export async function planProviderLaunch(ctx: Ctx, args: ProviderLaunchArgs) {
   // Cap the raw input first: duplicates must not widen the loop.
   if (!args.brokerOrgIds.length || args.brokerOrgIds.length > MAX_LAUNCH_PROVIDERS)
     throw new Error(`Select one to ${MAX_LAUNCH_PROVIDERS} providers`);
   const cadence = validatedCadence(args.cadence);
   const { request, client } = await loadCompanyRequest(ctx, args.requestId);
-  const closed = closedReason(request);
-  if (closed) throw new Error("Procurement request is closed");
+  if (closedReason(request)) throw new Error("Procurement request is closed");
   const match = matchFor(request, client);
   const testMode = await operatorInTestMode(ctx, args.operatorUserId);
-  const now = dayjs().valueOf();
-  const result: ProviderOutreachLaunchResult = { launched: [], skipped: [] };
-  const seen = new Set<Id<"organizations">>();
+  const identity = await assertOutreachIdentity(ctx, args.senderUserId ?? args.operatorUserId);
+
   const selectedContacts = new Map<Id<"organizations">, Doc<"brokerContacts">>();
   if ((args.selectedContacts?.length ?? 0) > args.brokerOrgIds.length)
     throw new Error("Select at most one contact per provider");
-  // Validate every choice before any launch writes. A stale or foreign contact
+  // Validate every choice before anything else. A stale or foreign contact
   // never silently falls back to the provider's default recipient.
   for (const choice of args.selectedContacts ?? []) {
     if (!args.brokerOrgIds.includes(choice.brokerOrgId) || selectedContacts.has(choice.brokerOrgId))
@@ -1585,14 +1644,15 @@ export async function launchProviderOutreachByOperator(
     selectedContacts.set(choice.brokerOrgId, contact);
   }
 
+  const template = args.email
+    ? { ...args.email, source: "composer" as const }
+    : await requestEmailTemplate(ctx, request, client);
+  const providers: PlannedProviderEmail[] = [];
+  const sends: Extract<LaunchCandidate, { kind: "send" }>[] = [];
+  const seen = new Set<Id<"organizations">>();
   for (const requestedId of args.brokerOrgIds) {
     if (seen.has(requestedId)) {
-      result.skipped.push({
-        brokerOrgId: requestedId,
-        brokerName: null,
-        reason: "duplicate_selection",
-        detail: [],
-      });
+      providers.push({ brokerOrgId: requestedId, brokerName: null, willSend: false, reason: "duplicate_selection", detail: [] });
       continue;
     }
     seen.add(requestedId);
@@ -1605,10 +1665,121 @@ export async function launchProviderOutreachByOperator(
       matchedOnly: args.matchedOnly === true,
     });
     if (candidate.kind === "skip") {
-      result.skipped.push(candidate.skipped);
+      providers.push({ ...candidate.skipped, willSend: false });
       continue;
     }
-    const { org, outreach, evaluation, recipient } = candidate;
+    const own = args.email ? null : readyDraftEmail(await readProviderOutreachDraft(ctx, request._id, requestedId));
+    const source: ProviderEmailSource = args.email
+      ? "composer"
+      : own
+        ? "draft"
+        : template.source === "default"
+          ? "default"
+          : "template";
+    const values = providerMergeValues({
+      providerName: candidate.org.name,
+      recipientName: candidate.recipient.name,
+      clientName: client.name,
+      senderName: identity.name,
+      activeRelationship: candidate.evaluation.profile?.networkStatus === "active",
+    });
+    const written = own ?? template;
+    const email = {
+      subject: applyMergeValues(written.subject, values),
+      body: applyMergeValues(written.body, values),
+      source,
+    };
+    const problem = providerEmailProblem(email);
+    providers.push({
+      brokerOrgId: candidate.org._id,
+      brokerName: candidate.org.name,
+      willSend: true,
+      detail: candidate.evaluation.fit.reasons,
+      recipient: {
+        email: candidate.recipient.email,
+        name: candidate.recipient.name,
+        contactId: candidate.recipient.contactId,
+      },
+      values,
+      email,
+      ...(problem ? { problem } : {}),
+    });
+    sends.push(candidate);
+  }
+  const ready = providers.filter((provider) => provider.willSend);
+  const problems = ready.filter((provider) => provider.problem);
+  const problem = problems.length
+    ? ready.length === 1
+      ? problems[0].problem!
+      : `${problems.map((provider) => provider.brokerName).join(", ")}: ${problems[0].problem}`
+    : ready.length
+      ? null
+      : "None of these providers can receive outreach.";
+  const fingerprint = problem
+    ? null
+    : await actionConfirmationFingerprint({
+        kind: "provider_outreach_launch",
+        requestId: String(request._id),
+        identity: identity.fingerprint,
+        cadence,
+        providers: ready.map((provider) => ({
+          brokerOrgId: String(provider.brokerOrgId),
+          to: provider.recipient!.email,
+          contactId: provider.recipient!.contactId ? String(provider.recipient!.contactId) : null,
+          subject: provider.email!.subject,
+          body: provider.email!.body,
+        })),
+      });
+  return { request, client, identity, cadence, template, providers, sends, problem, fingerprint };
+}
+
+/** What a launch would do, for the agent's preflight and approval card. Never writes. */
+export async function previewProviderOutreachLaunch(ctx: Ctx, args: ProviderLaunchArgs) {
+  const plan = await planProviderLaunch(ctx, args);
+  return {
+    identity: plan.identity,
+    cadence: plan.cadence,
+    template: plan.template,
+    providers: plan.providers,
+    problem: plan.problem,
+    fingerprint: plan.fingerprint,
+  };
+}
+
+/**
+ * Launches the reviewed emails: one sequence per provider, whose first email
+ * is exactly its merged email from the plan. Refuses unless the plan still
+ * matches `expectedFingerprint`, so an email, recipient, sender or cadence
+ * that changed since it was reviewed is never sent.
+ */
+export async function launchProviderOutreachByOperator(
+  ctx: MutationCtx,
+  args: ProviderLaunchArgs & {
+    cadenceSource: OutreachCadenceSource;
+    /** From `planProviderLaunch` in the reviewed preview or approval. */
+    expectedFingerprint: string;
+  },
+): Promise<ProviderOutreachLaunchResult> {
+  await requireDirectOperatorWrite(ctx, args.operatorUserId);
+  const plan = await planProviderLaunch(ctx, args);
+  if (plan.problem) throw new Error(plan.problem);
+  if (plan.fingerprint !== args.expectedFingerprint)
+    throw new Error("These emails changed since they were reviewed. Review them again before sending.");
+  const { request, identity, cadence } = plan;
+  const senderUserId = identity.senderUserId;
+  const now = dayjs().valueOf();
+  const result: ProviderOutreachLaunchResult = {
+    launched: [],
+    skipped: plan.providers.flatMap((provider) =>
+      provider.willSend
+        ? []
+        : [{ brokerOrgId: provider.brokerOrgId, brokerName: provider.brokerName, reason: provider.reason!, detail: provider.detail }],
+    ),
+  };
+  const planned = new Map(plan.providers.map((provider) => [provider.brokerOrgId, provider]));
+
+  for (const { org, outreach, evaluation, recipient } of plan.sends) {
+    const email = planned.get(org._id)!.email!;
     // Defensive: a recipient must always clear the external-identity gate.
     assertExternalBrokerIdentity({ ...org, email: recipient.email });
 
@@ -1648,14 +1819,15 @@ export async function launchProviderOutreachByOperator(
         outreachId,
         brokerOrgId: org._id,
         recipient: storedRecipient(recipient),
-        senderUserId: args.operatorUserId,
+        message: { subject: email.subject, text: email.body },
+        senderUserId,
         packetLinkId: link.id,
         cadence,
         cadenceSource: args.cadenceSource,
       },
       staggerMs: result.launched.length * LAUNCH_STAGGER_MS,
       now,
-      expectedIdentityFingerprint: args.expectedIdentityFingerprint,
+      expectedIdentityFingerprint: identity.fingerprint,
     });
     await writeOperatorAudit(ctx, {
       operatorUserId: args.operatorUserId,
@@ -1669,6 +1841,8 @@ export async function launchProviderOutreachByOperator(
         outreachId,
         sequenceId,
         brokerOrgId: org._id,
+        senderUserId,
+        emailSource: email.source,
         packetLinkId: link.id,
         packetLinkReused: link.reused,
         revokedPacketLinkIds: link.revokedIds,
@@ -1694,26 +1868,62 @@ export async function launchProviderOutreachByOperator(
   return result;
 }
 
+const launchArgs = {
+  requestId: v.id("procurementRequests"),
+  brokerOrgIds: v.array(v.id("organizations")),
+  cadence: outreachCadenceValidator,
+  matchedOnly: v.optional(v.boolean()),
+  selectedContacts: v.optional(v.array(v.object({
+    brokerOrgId: v.id("organizations"),
+    contactId: v.id("brokerContacts"),
+  }))),
+  /** The composer's email, merged for every provider. */
+  email: v.optional(v.object({ subject: v.string(), body: v.string() })),
+  /** Send as this active operator instead of the caller. */
+  fromUserId: v.optional(v.id("users")),
+};
+
+/** The composer's live preview: each provider's merged email, the signature, and the fingerprint Send approves. */
+export const previewLaunch = query({
+  args: launchArgs,
+  handler: async (ctx, { fromUserId, ...args }) => {
+    const operator = await requireOperator(ctx);
+    try {
+      const plan = await planProviderLaunch(ctx, {
+        ...args,
+        operatorUserId: operator.userId,
+        senderUserId: fromUserId,
+      });
+      return {
+        ok: true as const,
+        from: plan.identity.fromHeader,
+        alwaysCc: plan.identity.alwaysCc,
+        signature: buildOperatorSignature(
+          { name: plan.identity.name, address: plan.identity.address },
+          { toProvider: true },
+        ).text,
+        providers: plan.providers.map(({ detail: _detail, ...provider }) => provider),
+        problem: plan.problem,
+        fingerprint: plan.fingerprint,
+      };
+    } catch (error) {
+      return { ok: false as const, reason: error instanceof Error ? error.message : "This email cannot be sent." };
+    }
+  },
+});
+
 export const launch = mutation({
   args: {
-    requestId: v.id("procurementRequests"),
-    brokerOrgIds: v.array(v.id("organizations")),
-    cadence: outreachCadenceValidator,
+    ...launchArgs,
     cadenceSource: outreachCadenceSourceValidator,
-    matchedOnly: v.optional(v.boolean()),
-    selectedContacts: v.optional(v.array(v.object({
-      brokerOrgId: v.id("organizations"),
-      contactId: v.id("brokerContacts"),
-    }))),
-    expectedIdentityFingerprint: v.optional(v.string()),
+    expectedFingerprint: v.string(),
   },
-  handler: async (ctx, args): Promise<ProviderOutreachLaunchResult> => {
+  handler: async (ctx, { fromUserId, ...args }): Promise<ProviderOutreachLaunchResult> => {
     const operator = await requireOperator(ctx);
-    if (!args.expectedIdentityFingerprint)
-      throw new Error("Reload to review the From and CC before sending");
     return await launchProviderOutreachByOperator(ctx, {
-      operatorUserId: operator.userId,
       ...args,
+      operatorUserId: operator.userId,
+      senderUserId: fromUserId,
     });
   },
 });
@@ -3855,3 +4065,71 @@ export const recordGoogleMailboxReplyInternal = internalMutation({
     }
   },
 });
+
+// ---------------------------------------------------------------------------
+// First-email drafting context
+// ---------------------------------------------------------------------------
+
+const DRAFT_FACTS_CHARS = 12_000;
+const DRAFT_STANDARDS = 20;
+
+/**
+ * What Spot's drafting model may draw on to tailor one provider's first email:
+ * the request's template, the provider's relationship, recipient, fit and its
+ * saved submission standards for the requested lines, and the submitted
+ * application. Null when the provider cannot receive outreach for this request.
+ */
+export async function providerEmailDraftContext(
+  ctx: Ctx,
+  requestId: Id<"procurementRequests">,
+  brokerOrgId: Id<"organizations">,
+) {
+  const { request, client } = await loadCompanyRequest(ctx, requestId);
+  if (closedReason(request)) return null;
+  const org = eligibleProviderOrg(await ctx.db.get(brokerOrgId));
+  if (!org) return null;
+  const match = matchFor(request, client);
+  const outreach =
+    (
+      await ctx.db
+        .query("procurementBrokerOutreaches")
+        .withIndex("request_broker", (q) => q.eq("requestId", request._id).eq("brokerOrgId", org._id))
+        .take(1)
+    )[0] ?? null;
+  const evaluation = await evaluateProvider(ctx, org, match, false, outreach, true);
+  if (evaluation.fit.verdict === "excluded" || evaluation.profile?.networkStatus === "blacklisted") return null;
+  const codes = new Set(needAcceptedCodes(match.needs.needs));
+  const standards = (
+    await ctx.db
+      .query("providerSubmissionDefaults")
+      .withIndex("by_brokerOrgId_and_coverageCode", (q) => q.eq("brokerOrgId", org._id))
+      .take(DRAFT_STANDARDS)
+  ).filter((row) => codes.has(row.coverageCode));
+  const application = submittedIntakeApplication(request);
+  const facts = application
+    ? intakeMarkdown(application.answers, undefined, application.details, intakeCatalogCoverage)
+    : "";
+  return {
+    orgId: client._id,
+    template: await requestEmailTemplate(ctx, request, client),
+    clientName: client.name,
+    provider: {
+      name: org.name,
+      relationship: evaluation.profile?.networkStatus === "active" ? "active_relationship" : "cold",
+      recipient: evaluation.recipient
+        ? { name: evaluation.recipient.name, role: evaluation.recipient.role }
+        : null,
+      writesLines: evaluation.fit.lines.covered.map((need) => need.label),
+      doesNotWriteLines: evaluation.fit.lines.missing.map((need) => need.label),
+      submissionStandards: standards.map((row) => ({
+        coverageCode: row.coverageCode,
+        instructions: row.instructions.slice(0, 2_000),
+        minimumInformation: row.requirements.slice(0, 20).map((item) => ({
+          question: item.question.slice(0, 300),
+          guidance: item.guidance.slice(0, 500),
+        })),
+      })),
+    },
+    applicationFacts: facts.slice(0, DRAFT_FACTS_CHARS) || null,
+  };
+}

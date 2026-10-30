@@ -12,6 +12,7 @@ export function AppShellPanelLayout({
   pdfPanel,
   preserveAuxiliaryPixelWidths = false,
   rightPanel,
+  previewPanel,
   rightPanelLabel = "Resize detail panel",
   rightPanelWide = false,
   storageUserId,
@@ -21,6 +22,8 @@ export function AppShellPanelLayout({
   pdfPanel?: ReactNode;
   preserveAuxiliaryPixelWidths?: boolean;
   rightPanel?: ReactNode;
+  /** A preview beside the detail panel (for example, the email a composer will send). */
+  previewPanel?: ReactNode;
   rightPanelLabel?: string;
   /** Reading surfaces (mail) open wider and keep their own saved width. */
   rightPanelWide?: boolean;
@@ -63,6 +66,18 @@ export function AppShellPanelLayout({
             minWidth: 320,
           },
     );
+  }
+
+  if (previewPanel) {
+    auxiliaryPanels.push({
+      content: previewPanel,
+      defaultWidth: 440,
+      desktopOnly: true,
+      id: "preview",
+      label: "Resize preview",
+      maxWidth: 760,
+      minWidth: 320,
+    });
   }
 
   if (hasPdfPanel) {

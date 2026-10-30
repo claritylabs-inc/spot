@@ -23,6 +23,11 @@ const FOLLOWER_APPLY_DELAY_MS = 1_500;
 
 /** A fact Spot could not fill, written `[needs: hint]` in the reply text. */
 const BLANK_PATTERN = /\[needs:\s*([^\]]+)\]/g;
+/** Blanks, and mail-merge variables (`{{key}}`, filled in per recipient on send) when the editor has them. */
+const TOKEN_PATTERN = /\[needs:\s*([^\]]+)\]|\{\{\s*([a-z_]+)\s*\}\}/g;
+
+/** A merge variable the editor offers, shown as a chip with its label. */
+export type EditorVariable = { key: string; label: string };
 
 export type BlankSuggestion = { blank: string; value: string; source: string };
 
@@ -114,6 +119,34 @@ const TextLinks = Extension.create({
   },
 });
 
+const Variable = Node.create<{ labels: Map<string, string> }>({
+  name: "variable",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  addOptions() {
+    return { labels: new Map() };
+  },
+  addAttributes() {
+    return { key: { default: "" } };
+  },
+  parseHTML() {
+    return [{ tag: "span[data-variable]" }];
+  },
+  renderHTML({ node }) {
+    const key = node.attrs.key as string;
+    return [
+      "span",
+      { "data-variable": key, title: "Filled in for each recipient when sent" },
+      this.options.labels.get(key) ?? key,
+    ];
+  },
+  renderText({ node }) {
+    return `{{${node.attrs.key}}}`;
+  },
+});
+
 /** Selects the next (or previous) blank after the cursor, wrapping around. */
 function selectBlank(editor: Editor, direction: 1 | -1) {
   const positions: number[] = [];
@@ -131,15 +164,20 @@ function selectBlank(editor: Editor, direction: 1 | -1) {
   return true;
 }
 
-function toDoc(text: string) {
+function toDoc(text: string, variables: boolean) {
+  const pattern = variables ? TOKEN_PATTERN : BLANK_PATTERN;
   return {
     type: "doc",
     content: text.split("\n").map((line) => {
       const content: object[] = [];
       let last = 0;
-      for (const match of line.matchAll(BLANK_PATTERN)) {
+      for (const match of line.matchAll(pattern)) {
         if (match.index > last) content.push({ type: "text", text: line.slice(last, match.index) });
-        content.push({ type: "blank", attrs: { hint: match[1].trim() } });
+        content.push(
+          match[1] !== undefined
+            ? { type: "blank", attrs: { hint: match[1].trim() } }
+            : { type: "variable", attrs: { key: match[2] } },
+        );
         last = match.index + match[0].length;
       }
       if (last < line.length) content.push({ type: "text", text: line.slice(last) });
@@ -153,7 +191,12 @@ function toText(doc: PMNode) {
   doc.forEach((paragraph) => {
     let line = "";
     paragraph.forEach((child) => {
-      line += child.type.name === "blank" ? `[needs: ${child.attrs.hint}]` : (child.text ?? "");
+      line +=
+        child.type.name === "blank"
+          ? `[needs: ${child.attrs.hint}]`
+          : child.type.name === "variable"
+            ? `{{${child.attrs.key}}}`
+            : (child.text ?? "");
     });
     lines.push(line);
   });
@@ -194,6 +237,8 @@ export function ReplyEditor({
   scrollClassName,
   footer,
   collabKey = null,
+  variables,
+  label = "Reply",
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -212,7 +257,11 @@ export function ReplyEditor({
   footer?: string;
   /** Written together with teammates on the page through this shared document. */
   collabKey?: string | null;
+  /** Merge variables shown as chips, with a row to insert them at the cursor. */
+  variables?: readonly EditorVariable[];
+  label?: string;
 }) {
+  const hasVariables = Boolean(variables?.length);
   const callbacks = useRef({ onChange, onFocusChange, onSubmit, onEscape, accept: (): boolean => false });
   useEffect(() => {
     callbacks.current = { onChange, onFocusChange, onSubmit, onEscape, accept };
@@ -231,7 +280,7 @@ export function ReplyEditor({
     const room = toText(current.state.doc);
     const merged = mergeText(join.base, join.local, room);
     synced.current = merged;
-    if (merged !== room) current.commands.setContent(toDoc(merged));
+    if (merged !== room) current.commands.setContent(toDoc(merged, hasVariables));
   }
 
   // Shared, the content comes from the room's document; the editor is rebuilt
@@ -262,14 +311,17 @@ export function ReplyEditor({
       }),
       Blank,
       TextLinks,
+      Variable.configure({
+        labels: new Map((variables ?? []).map((variable) => [variable.key, variable.label])),
+      }),
       ...(fragment ? [Collaboration.configure({ fragment })] : []),
     ],
-    ...(fragment ? {} : { content: toDoc(value) }),
+    ...(fragment ? {} : { content: toDoc(value, hasVariables) }),
     editorProps: {
-      attributes: { "aria-label": "Reply", "aria-multiline": "true", role: "textbox" },
+      attributes: { "aria-label": label, "aria-multiline": "true", role: "textbox" },
       // Pasted text becomes plain lines and blanks, never formatting.
       clipboardTextParser: (text, $context, _plain, view) =>
-        view.state.schema.nodeFromJSON(toDoc(text.replace(/\r\n/g, "\n"))).slice(0),
+        view.state.schema.nodeFromJSON(toDoc(text.replace(/\r\n/g, "\n"), hasVariables)).slice(0),
       handleKeyDown: (_view, event) => {
         if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
           event.preventDefault();
@@ -288,7 +340,7 @@ export function ReplyEditor({
       // The browser that started the shared document fills it; any other
       // merges its unsaved edits into it once it is shown.
       if (fragment && takeSeed(fragment))
-        editor.commands.setContent(toDoc(lastValue.current), { emitUpdate: false });
+        editor.commands.setContent(toDoc(lastValue.current, hasVariables), { emitUpdate: false });
       else if (fragment && lastValue.current !== synced.current)
         joining.current = { base: synced.current, local: lastValue.current };
     },
@@ -323,14 +375,14 @@ export function ReplyEditor({
     const apply = () => {
       if (editor.isDestroyed) return;
       if (value === lastValue.current || toText(editor.state.doc) === value) return;
-      editor.commands.setContent(toDoc(value), { emitUpdate: false });
+      editor.commands.setContent(toDoc(value, hasVariables), { emitUpdate: false });
       lastValue.current = value;
       synced.current = value;
     };
     if (!fragment || leadsSharedRoom()) return apply();
     const timer = window.setTimeout(apply, FOLLOWER_APPLY_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [editor, fragment, value]);
+  }, [editor, fragment, value, hasVariables]);
   useEffect(() => {
     editor?.setEditable(!disabled && !readOnly);
   }, [editor, disabled, readOnly]);
@@ -375,25 +427,51 @@ export function ReplyEditor({
 
   return (
     <div className={cn("relative", className)}>
-      {!value ? (
-        <span
-          aria-hidden
-          className={`pointer-events-none absolute top-2.5 left-4 text-muted-foreground/60 ${typeStyle("body.default")}`}
-        >
-          {placeholder}
-        </span>
+      {hasVariables && editor && !disabled && !readOnly ? (
+        // Merge variables, as a compose row above the text.
+        <div className="flex min-h-11 items-start gap-3 border-b border-border px-4 py-2.5">
+          <span className={`w-14 shrink-0 pt-0.5 text-muted-foreground ${typeStyle("body.default")}`}>
+            Insert
+          </span>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            {variables!.map((variable) => (
+              <button
+                key={variable.key}
+                type="button"
+                title={`Insert ${variable.label}: filled in for each recipient`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() =>
+                  editor.chain().focus().insertContent({ type: "variable", attrs: { key: variable.key } }).run()
+                }
+                className={`rounded-full bg-[color-mix(in_oklab,var(--primary)_10%,transparent)] px-2 py-0.5 text-foreground outline-none hover:bg-[color-mix(in_oklab,var(--primary)_18%,transparent)] focus-visible:ring-2 focus-visible:ring-ring ${typeStyle("caption.default")}`}
+              >
+                + {variable.label}
+              </button>
+            ))}
+          </div>
+        </div>
       ) : null}
-      <div className={cn("max-h-72 overflow-y-auto px-4 pt-2.5 pb-2", scrollClassName)}>
-        <EditorContent
-          editor={editor}
-          className={cn(
-            "reply-editor [&_.ProseMirror]:min-h-6 [&_.ProseMirror]:outline-none [&_.ProseMirror]:whitespace-pre-wrap [&_p]:min-h-[1lh]",
-            typeStyle("body.default"),
-          )}
-        />
-        {footer ? (
-          <p className={`mt-3 whitespace-pre-line text-muted-foreground ${typeStyle("body.default")}`}>{footer}</p>
+      <div className="relative">
+        {!value ? (
+          <span
+            aria-hidden
+            className={`pointer-events-none absolute top-2.5 left-4 text-muted-foreground/60 ${typeStyle("body.default")}`}
+          >
+            {placeholder}
+          </span>
         ) : null}
+        <div className={cn("max-h-72 overflow-y-auto px-4 pt-2.5 pb-2", scrollClassName)}>
+          <EditorContent
+            editor={editor}
+            className={cn(
+              "reply-editor [&_.ProseMirror]:min-h-6 [&_.ProseMirror]:outline-none [&_.ProseMirror]:whitespace-pre-wrap [&_p]:min-h-[1lh]",
+              typeStyle("body.default"),
+            )}
+          />
+          {footer ? (
+            <p className={`mt-3 whitespace-pre-line text-muted-foreground ${typeStyle("body.default")}`}>{footer}</p>
+          ) : null}
+        </div>
       </div>
       {selected ? (
         <div

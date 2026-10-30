@@ -2948,24 +2948,67 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     summarize: (input) =>
       `List provider matches for ${input.procurementRequestId}`,
   }),
+  get_procurement_provider_emails: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description:
+      "Read the first emails launch_procurement_provider_outreach would send for one company-linked request: the request's mail-merge template (subject and body with {{variables}}) and, per provider, the recipient, whether it will send or why not, the merge values, and its email source. A provider's own draft (tailored by Spot or written with update_procurement_provider_emails) wins over the template; its merged body is returned. Omit brokerOrgIds for every matched provider (up to 50). Use list_procurement_provider_matches to find providers by fit; use this before revising or sending.",
+    inputSchema: z.object({
+      procurementRequestId,
+      brokerOrgIds: omittable(z.array(organizationId).min(1).max(50)),
+    }),
+    capability: "operator.procurement.read",
+    effect: "read",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) => ({ kind: "procurement_request", id: input.procurementRequestId }),
+    summarize: (input) => `Read provider emails for ${input.procurementRequestId}`,
+  }),
+  update_procurement_provider_emails: defineOperatorTool({
+    family: "procurement",
+    version: 1,
+    description: `Write or revise the first provider emails for one request; never sends. Omit brokerOrgId to set the request's mail-merge template, sent to every provider without its own draft; give brokerOrgId to write that provider's own email. Open composers show the new text unless the operator already edited theirs. Write plain text with factual bullets following the email writing rules and provider rules, and use merge variables for anything that differs by provider: {{first_name}} (greeting), {{provider}}, {{company}}, {{introduction}} (our introduction for providers without an active relationship; empty otherwise), {{sender_first_name}}. Keep {{application_link}} once, on its own line; it becomes each provider's secure application link. ${REPLY_DRAFT_SIGN_OFF} The signature is added on send. Use [needs: …] only for facts nobody has provided; they must be filled before sending. Process 1–50 items.\n${emailSkillPrompt({ provider: true })}`,
+    inputSchema: z.object({
+      procurementRequestId,
+      items: z
+        .array(
+          z.object({
+            brokerOrgId: omittable(organizationId.describe("Provider; omit for the request's mail-merge template")),
+            subject: z.string().trim().min(1).max(200),
+            body: z.string().trim().min(1).max(10_000).describe("Complete plain-text body with merge variables"),
+          }),
+        )
+        .min(1)
+        .max(50),
+    }),
+    capability: "operator.procurement.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    target: (input) => ({ kind: "procurement_request", id: input.procurementRequestId }),
+    summarize: (input) =>
+      `Update ${input.items.length} provider email${input.items.length === 1 ? "" : "s"} for ${input.procurementRequestId}`,
+  }),
   launch_procurement_provider_outreach: defineOperatorTool({
     family: "procurement",
-    version: 3,
+    version: 4,
     description:
-      "Email the named providers now from your team address and schedule the approved follow-up cadence. Externally visible; needs exact approval, which lists every provider and whether it will send. Name at most 50 providers from list_procurement_provider_matches. Unknown-fit providers need individual selection, excluded providers cannot receive outreach, and providers with a live or responded sequence are skipped. Each email shares a provider-scoped packet link.",
+      "Email the named providers now, one individual email each from your team address, and schedule follow-ups. Each provider gets exactly the email get_procurement_provider_emails shows: its own draft, else the request's mail-merge template with its values filled in; revise first with update_procurement_provider_emails. Externally visible; needs exact approval, which lists every provider, whether it will send, and the emails. Name at most 50 providers. Unknown-fit providers need individual selection, excluded providers cannot receive outreach, and providers with a live or responded sequence are skipped. Omit cadence to use the request's follow-up cadence.",
     inputSchema: z.object({
       procurementRequestId,
       brokerOrgIds: z.array(organizationId).min(1).max(50),
-      cadence: z.object({
-        followUpCount: z.number().int().min(0).max(4),
-        intervalBusinessDays: z.union([
-          z.literal(2),
-          z.literal(3),
-          z.literal(5),
-          z.literal(7),
-        ]),
-        style: z.enum(["brief_nudge", "concise_recap", "detailed_recap"]),
-      }),
+      cadence: omittable(
+        z.object({
+          followUpCount: z.number().int().min(0).max(4),
+          intervalBusinessDays: z.union([
+            z.literal(2),
+            z.literal(3),
+            z.literal(5),
+            z.literal(7),
+          ]),
+          style: z.enum(["brief_nudge", "concise_recap", "detailed_recap"]),
+        }),
+      ),
     }),
     capability: "operator.procurement.write",
     effect: "external_send",
@@ -2976,7 +3019,11 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
       id: input.procurementRequestId,
     }),
     summarize: (input) =>
-      `Send outreach to ${input.brokerOrgIds.length} providers for ${input.procurementRequestId}, with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days (${input.cadence.style})`,
+      `Send outreach to ${input.brokerOrgIds.length} provider${input.brokerOrgIds.length === 1 ? "" : "s"} for ${input.procurementRequestId}, ${
+        input.cadence
+          ? `with ${input.cadence.followUpCount} follow-ups every ${input.cadence.intervalBusinessDays} business days (${input.cadence.style})`
+          : "with the request's follow-up cadence"
+      }`,
   }),
   list_procurement_client_outreach: defineOperatorTool({
     offered: false,

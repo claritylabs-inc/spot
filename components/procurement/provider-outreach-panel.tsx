@@ -7,6 +7,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
+import type { FunctionReturnType } from "convex/server";
 import { useMutation, useQuery } from "convex/react";
 import dayjs from "dayjs";
 import { toast } from "sonner";
@@ -76,13 +77,10 @@ const STYLE_LABELS: Record<OutreachCadence["style"], string> = {
   detailed_recap: "Detailed recap",
 };
 
-const BANNER_COPY: Record<string, string> = {
-  geography_undeterminable:
-    "Confirm the country and state/province in the application’s mailing or operating address. Providers with unknown geography are excluded from bulk sending; individual sends require your explicit selection.",
-  lines_undeterminable:
-    "Requested coverages could not be determined, so coverage lines are not used to match providers.",
-  lines_partly_unevaluated:
-    "Other or unknown coverage types cannot be matched to provider lines and are ignored.",
+/** Why matching found nothing, shown in the empty table instead of standing banners. */
+const MATCH_GAP_COPY: Record<string, string> = {
+  geography_undeterminable: "the application has no country and state/province",
+  lines_undeterminable: "its requested coverages could not be read",
 };
 
 const SKIP_COPY: Record<string, string> = {
@@ -267,7 +265,7 @@ export function isLiveSequence(sequence: Pick<SequenceView, "status">) {
   return sequence.status === "active" || sequence.status === "reply_check";
 }
 
-function launchSummary(
+export function launchSummary(
   skipped: { brokerName: string | null; reason: string }[],
 ) {
   const shown = skipped
@@ -304,20 +302,62 @@ function candidateLaunchBlock(
     : candidate.launchBlock;
 }
 
+type PanelCadence = Pick<
+  NonNullable<FunctionReturnType<typeof api.providerOutreach.getPanel>>,
+  "cadence" | "defaultCadence"
+>;
+
+/** The request's saved cadence: operator choices, then confident Jev picks, then defaults. */
+export function requestCadence(panel: PanelCadence) {
+  const picks =
+    panel.cadence?.current && panel.cadence.status === "ready" ? panel.cadence.picks : null;
+  const resolve = <K extends CadenceField>(field: K) => {
+    const operator = panel.cadence?.overrides?.[field];
+    if (operator !== undefined && operator !== null)
+      return { value: operator as OutreachCadence[K], source: "operator" as CadenceSource };
+    const pick = picks?.[field];
+    if (pick?.source === "jev") return { value: pick.value as OutreachCadence[K], source: "jev" as CadenceSource };
+    return { value: panel.defaultCadence[field] as OutreachCadence[K], source: "default" as CadenceSource };
+  };
+  const followUpCount = resolve("followUpCount");
+  const intervalBusinessDays = resolve("intervalBusinessDays");
+  const style = resolve("style");
+  return {
+    cadence: {
+      followUpCount: followUpCount.value,
+      intervalBusinessDays: intervalBusinessDays.value,
+      style: style.value,
+    },
+    cadenceSource: {
+      followUpCount: followUpCount.source,
+      intervalBusinessDays: intervalBusinessDays.source,
+      style: style.source,
+    },
+  };
+}
+
+/** Who a Send opens the provider email composer for. */
+export type ProviderComposeTarget = {
+  brokerOrgIds: Id<"organizations">[];
+  contacts: Record<string, Id<"brokerContacts">>;
+  merge: boolean;
+};
+
 /**
- * Panel data, the cadence the operator is composing, and the launch/stop
- * actions. The workspace owns one instance so the panel, the header action and
- * the contacted table stay in step.
+ * Panel data, the cadence the operator is composing, and the compose actions.
+ * The workspace owns one instance so the panel, the header action and the
+ * contacted table stay in step. Send and Send to all matched open the provider
+ * email composer (`onCompose`); only the composer launches.
  */
 export function useProviderOutreach(
   requestId: Id<"procurementRequests">,
   readOnly: boolean,
+  onCompose: (target: ProviderComposeTarget) => void,
 ) {
   const panel = useQuery(
     api.providerOutreach.getPanel,
     readOnly ? "skip" : { requestId },
   );
-  const launch = useMutation(api.providerOutreach.launch);
   const requestSuggestion = useMutation(
     api.providerOutreach.requestCadenceSuggestion,
   );
@@ -344,9 +384,6 @@ export function useProviderOutreach(
       else delete choices[brokerOrgId];
       return { requestId, choices };
     });
-  const [sending, setSending] = useState<ReadonlySet<string>>(new Set());
-  const [sendingAll, setSendingAll] = useState(false);
-  const busyRef = useRef(false);
   const suggestedFor = useRef<string | null>(null);
 
   // Saved operator choices, with unsaved local edits on top while a save runs.
@@ -417,12 +454,6 @@ export function useProviderOutreach(
         style: fields.style.value,
       }
     : null;
-  const cadenceSource = {
-    followUpCount: fields.followUpCount.source,
-    intervalBusinessDays: fields.intervalBusinessDays.source,
-    style: fields.style.source,
-  };
-
   const setCadenceField = <K extends CadenceField>(
     field: K,
     value: OutreachCadence[K],
@@ -462,81 +493,32 @@ export function useProviderOutreach(
       (sender.fingerprint ? null : "Reload to review the From and CC before sending"))
     : null;
 
-  async function run(
-    brokerOrgIds: Id<"organizations">[],
-    matchedOnly: boolean,
-  ) {
-    if (!cadence || !panel?.request.canLaunch || busyRef.current) return;
-    if (!sender?.fingerprint || senderBlock) {
-      toast.error(senderBlock ?? "Reload to review the From and CC before sending");
-      return;
-    }
-    busyRef.current = true;
-    setSending(new Set(brokerOrgIds));
-    setSendingAll(matchedOnly);
-    try {
-      const result = await launch({
-        requestId,
-        brokerOrgIds,
-        cadence,
-        cadenceSource,
-        matchedOnly,
-        expectedIdentityFingerprint: sender.fingerprint,
-        selectedContacts: brokerOrgIds.flatMap((brokerOrgId) =>
-          selectedContacts[brokerOrgId]
-            ? [{ brokerOrgId, contactId: selectedContacts[brokerOrgId] }]
-            : [],
-        ),
-      });
-      const launched = result.launched.length;
-      const skipped = result.skipped.length;
-      if (launched) {
-        toast.success(
-          `Outreach started for ${launched} provider${launched === 1 ? "" : "s"}${skipped ? ` · ${skipped} skipped` : ""}`,
-          {
-            description: skipped ? launchSummary(result.skipped) : undefined,
-          },
-        );
-      } else {
-        toast.error(`No outreach started · ${skipped} skipped`, {
-          description: launchSummary(result.skipped) || undefined,
-        });
-      }
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(error, "Could not send provider outreach"),
-      );
-    } finally {
-      busyRef.current = false;
-      setSending(new Set());
-      setSendingAll(false);
-    }
-  }
+  const contactsFor = (brokerOrgIds: Id<"organizations">[]) =>
+    Object.fromEntries(
+      brokerOrgIds.flatMap((brokerOrgId) =>
+        selectedContacts[brokerOrgId] ? [[brokerOrgId, selectedContacts[brokerOrgId]]] : [],
+      ),
+    );
 
   return {
     requestId,
-    // Launch controls read `request.canLaunch`; a sender problem turns it off.
-    panel:
-      panel && senderBlock && panel.request.canLaunch
-        ? { ...panel, request: { ...panel.request, canLaunch: false } }
-        : panel,
+    // The composer shows any From problem when it previews the email.
+    panel,
     sender,
     senderBlock,
     requestCanLaunch: panel?.request.canLaunch ?? false,
     cadence,
     fields,
     setCadenceField,
-    sending,
-    sendingAll,
     selectedContacts,
     selectContact,
     sendAllCount,
-    send: (brokerOrgId: Id<"organizations">) => run([brokerOrgId], false),
-    sendAll: () =>
-      run(
-        eligible.slice(0, MAX_LAUNCH_PROVIDERS).map((row) => row.brokerOrgId),
-        true,
-      ),
+    send: (brokerOrgId: Id<"organizations">) =>
+      onCompose({ brokerOrgIds: [brokerOrgId], contacts: contactsFor([brokerOrgId]), merge: false }),
+    sendAll: () => {
+      const brokerOrgIds = eligible.slice(0, MAX_LAUNCH_PROVIDERS).map((row) => row.brokerOrgId);
+      if (brokerOrgIds.length) onCompose({ brokerOrgIds, contacts: contactsFor(brokerOrgIds), merge: true });
+    },
   };
 }
 export type ProviderOutreachController = ReturnType<typeof useProviderOutreach>;
@@ -677,33 +659,163 @@ export function FitChips({ candidate }: { candidate: ProviderCandidateView }) {
   );
 }
 
+/** A provider contact as a pill: the provider's logo and the contact's name, address on hover. */
+export function ProviderContactPill({
+  provider,
+  name,
+  email,
+}: {
+  provider: { name: string; iconUrl?: string | null; website?: string | null };
+  name: string | null | undefined;
+  email: string;
+}) {
+  return (
+    <span
+      title={`${name ? `${name} <${email}>` : email} · ${provider.name}`}
+      className={`inline-flex max-w-full min-w-0 items-center gap-1 rounded-full bg-muted p-0.5 pr-2.5 ${typeStyle("body.large")}`}
+    >
+      <OrgBrandIcon
+        name={provider.name}
+        iconUrl={provider.iconUrl ?? undefined}
+        website={provider.website ?? undefined}
+        size="xs"
+        shape="circle"
+      />
+      <span className="min-w-0 truncate">{name || email}</span>
+    </span>
+  );
+}
+
+/** The provider contact an email goes to: current external contacts, or the request's own contact. */
+export function ProviderContactSelect({
+  candidate,
+  selectedContactId,
+  disabled,
+  onSelect,
+}: {
+  candidate: ProviderCandidateView;
+  selectedContactId?: Id<"brokerContacts">;
+  disabled: boolean;
+  onSelect: (contactId: Id<"brokerContacts"> | null) => void;
+}) {
+  const recipient = candidateRecipient(candidate, selectedContactId);
+  const options = candidate.contactOptions;
+  const contactValue =
+    selectedContactId ?? candidate.recipient?.contactId ?? "request";
+  const explicitRecipient =
+    candidate.recipient && !candidate.recipient.contactId;
+  if (!options.length && !explicitRecipient)
+    return (
+      <span className="text-muted-foreground">
+        {SKIP_COPY[candidate.skipReason ?? "no_contact_email"] ??
+          humanize(candidate.skipReason ?? "no_contact_email")}
+      </span>
+    );
+  return (
+    <div className="min-w-0">
+      <Select
+        value={contactValue}
+        disabled={disabled}
+        onValueChange={(value) => {
+          if (value)
+            onSelect(
+              value === "request" ? null : (value as Id<"brokerContacts">),
+            );
+        }}
+      >
+        <SelectTrigger
+          aria-label={`Contact for ${candidate.name}`}
+          title={recipient ? `${recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email} · ${candidate.name}` : undefined}
+          // The contact's pill is the button: provider logo, name, chevron.
+          className={`w-auto max-w-full min-w-0 gap-1 rounded-full border-0 bg-muted p-0.5 pr-2 hover:border-0 focus-visible:ring-2 focus-visible:ring-ring data-[size=default]:h-auto [&>svg]:size-3 ${typeStyle("body.large")}`}
+        >
+          <SelectValue>
+            <span className="flex min-w-0 items-center gap-1">
+              <OrgBrandIcon
+                name={candidate.name}
+                iconUrl={candidate.iconUrl ?? undefined}
+                website={candidate.website ?? undefined}
+                size="xs"
+                shape="circle"
+              />
+              <span className="min-w-0 truncate">
+                {recipient ? (recipient.name ?? recipient.email) : "Select contact"}
+              </span>
+            </span>
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent className="max-w-[min(32rem,calc(100vw-2rem))]">
+          {explicitRecipient ? (
+            <SelectItem
+              value="request"
+              label={candidate.recipient!.email}
+            >
+              <span className="flex min-w-0 flex-col whitespace-normal">
+                <span>
+                  {candidate.recipient!.name ?? "Request contact"}
+                </span>
+                <span
+                  className={`break-all text-muted-foreground ${typeStyle("caption.default")}`}
+                >
+                  {candidate.recipient!.email} · Current request contact
+                </span>
+              </span>
+            </SelectItem>
+          ) : null}
+          {options.map((contact) => (
+            <SelectItem
+              key={contact.contactId}
+              value={contact.contactId}
+              label={`${contact.name} ${contact.email}`}
+            >
+              <span className="flex min-w-0 flex-col gap-0.5 whitespace-normal py-1">
+                <span>{contact.name}</span>
+                <span
+                  className={`break-all text-muted-foreground ${typeStyle("caption.default")}`}
+                >
+                  {contact.email}
+                </span>
+                {contact.lineOfBusinessCodes.length ? (
+                  <span
+                    className={`text-muted-foreground ${typeStyle("caption.default")}`}
+                  >
+                    Best for {contact.lineOfBusinessCodes.join(", ")}
+                  </span>
+                ) : null}
+                {contact.context ? (
+                  <span
+                    className={`line-clamp-2 text-muted-foreground ${typeStyle("caption.default")}`}
+                  >
+                    {contact.context}
+                  </span>
+                ) : null}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 function CandidateRow({
   candidate,
   selectedContactId,
   onSelectContact,
-  sendingId,
   canLaunch,
   onSend,
 }: {
   candidate: ProviderCandidateView;
   selectedContactId?: Id<"brokerContacts">;
   onSelectContact: (contactId: Id<"brokerContacts"> | null) => void;
-  sendingId: boolean;
   canLaunch: boolean;
   onSend: () => void;
 }) {
-  const recipient = candidateRecipient(candidate, selectedContactId);
   const blocked = candidateLaunchBlock(candidate, selectedContactId);
   const contactLocked =
     !canLaunch ||
-    sendingId ||
     blocked === "sequence_exists" ||
     blocked === "outreach_status_progressed";
-  const options = candidate.contactOptions;
-  const contactValue =
-    selectedContactId ?? candidate.recipient?.contactId ?? "request";
-  const explicitRecipient =
-    candidate.recipient && !candidate.recipient.contactId;
   return (
     <TableRow>
       <TableCell className="whitespace-normal">
@@ -722,92 +834,12 @@ function CandidateRow({
         </div>
       </TableCell>
       <TableCell className="min-w-64 whitespace-normal">
-        {options.length > 0 || explicitRecipient ? (
-          <div>
-            <Select
-              value={contactValue}
-              disabled={contactLocked}
-              onValueChange={(value) => {
-                if (value)
-                  onSelectContact(
-                    value === "request"
-                      ? null
-                      : (value as Id<"brokerContacts">),
-                  );
-              }}
-            >
-              <SelectTrigger
-                aria-label={`Contact for ${candidate.name}`}
-                className="-ml-2 w-[calc(100%+0.5rem)] py-0.5 pr-2 pl-2 data-[size=default]:h-auto"
-              >
-                <SelectValue>
-                  {recipient?.email ?? "Select contact"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent className="max-w-[min(32rem,calc(100vw-2rem))]">
-                {explicitRecipient ? (
-                  <SelectItem
-                    value="request"
-                    label={candidate.recipient!.email}
-                  >
-                    <span className="flex min-w-0 flex-col whitespace-normal">
-                      <span>
-                        {candidate.recipient!.name ?? "Request contact"}
-                      </span>
-                      <span
-                        className={`break-all text-muted-foreground ${typeStyle("caption.default")}`}
-                      >
-                        {candidate.recipient!.email} · Current request contact
-                      </span>
-                    </span>
-                  </SelectItem>
-                ) : null}
-                {options.map((contact) => (
-                  <SelectItem
-                    key={contact.contactId}
-                    value={contact.contactId}
-                    label={`${contact.name} ${contact.email}`}
-                  >
-                    <span className="flex min-w-0 flex-col gap-0.5 whitespace-normal py-1">
-                      <span>{contact.name}</span>
-                      <span
-                        className={`break-all text-muted-foreground ${typeStyle("caption.default")}`}
-                      >
-                        {contact.email}
-                      </span>
-                      {contact.lineOfBusinessCodes.length ? (
-                        <span
-                          className={`text-muted-foreground ${typeStyle("caption.default")}`}
-                        >
-                          Best for {contact.lineOfBusinessCodes.join(", ")}
-                        </span>
-                      ) : null}
-                      {contact.context ? (
-                        <span
-                          className={`line-clamp-2 text-muted-foreground ${typeStyle("caption.default")}`}
-                        >
-                          {contact.context}
-                        </span>
-                      ) : null}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {recipient?.name ? (
-              <p
-                className={`text-muted-foreground ${typeStyle("caption.default")}`}
-              >
-                {recipient.name}
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <span className="text-muted-foreground">
-            {SKIP_COPY[candidate.skipReason ?? "no_contact_email"] ??
-              humanize(candidate.skipReason ?? "no_contact_email")}
-          </span>
-        )}
+        <ProviderContactSelect
+          candidate={candidate}
+          selectedContactId={selectedContactId}
+          disabled={contactLocked}
+          onSelect={onSelectContact}
+        />
       </TableCell>
       <TableCell className="whitespace-normal">
         <FitChips candidate={candidate} />
@@ -830,10 +862,10 @@ function CandidateRow({
               type="button"
               size="compact"
               variant="primary"
-              disabled={!!blocked || !canLaunch || sendingId}
+              disabled={!!blocked || !canLaunch}
               onClick={onSend}
             >
-              {sendingId ? "Sending…" : "Send"}
+              Send
             </PillButton>
           )}
         </div>
@@ -876,39 +908,6 @@ type SenderPanel = NonNullable<ProviderOutreachController["sender"]>;
 
 function senderLine(sender: SenderPanel) {
   return `${sender.fromHeader ?? ""}${sender.alwaysCc ? ` · Cc ${sender.alwaysCc}` : ""}`;
-}
-
-/** The From and Always CC every email in this launch is sent with, or the Profile fix needed first. */
-function SenderSummary({
-  sender,
-  block,
-}: {
-  sender: SenderPanel;
-  block: string | null;
-}) {
-  return (
-    <div
-      role="status"
-      className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border px-4 py-3 ${typeStyle("body.default")}`}
-    >
-      {block ? (
-        <>
-          <p className="min-w-0 flex-1 text-muted-foreground">{block}</p>
-          <PillButton href="/operator/profile" size="compact" variant="ghost">
-            Open Profile
-          </PillButton>
-        </>
-      ) : (
-        <p className="min-w-0 flex-1 break-words">
-          <span className="text-muted-foreground">Sends as </span>
-          {sender.fromHeader}
-          {sender.alwaysCc ? (
-            <span className="text-muted-foreground"> · Cc {sender.alwaysCc}</span>
-          ) : null}
-        </p>
-      )}
-    </div>
-  );
 }
 
 /**
@@ -1059,7 +1058,7 @@ export function ProviderOutreachPanel({
   }[];
   readOnly?: boolean;
 }) {
-  const { requestId, panel, sender, senderBlock, sending, send, selectedContacts, selectContact } =
+  const { requestId, panel, sender, senderBlock, send, selectedContacts, selectContact } =
     controller;
   const [othersOpen, setOthersOpen] = useFollowedState<boolean | null>(
     `procurement:${requestId}:provider-others-open`,
@@ -1085,9 +1084,8 @@ export function ProviderOutreachPanel({
       onSelectContact={(contactId) =>
         selectContact(candidate.brokerOrgId, contactId)
       }
-      sendingId={sending.has(candidate.brokerOrgId)}
-      canLaunch={!!panel?.request.canLaunch && sending.size === 0}
-      onSend={() => void send(candidate.brokerOrgId)}
+      canLaunch={!!panel?.request.canLaunch}
+      onSend={() => send(candidate.brokerOrgId)}
     />
   );
   // Submitted, matched and other providers each sort within their group.
@@ -1116,6 +1114,7 @@ export function ProviderOutreachPanel({
     tableSort.rows
       .filter((row) => row.group === group)
       .map((row) => row.render());
+  const matchGaps = (panel?.banners ?? []).flatMap((banner) => MATCH_GAP_COPY[banner] ?? []);
   if (!panel && !readOnly) return null;
   return (
     <div className="space-y-4">
@@ -1126,18 +1125,6 @@ export function ProviderOutreachPanel({
           outreach cannot be sent.
         </p>
       ) : null}
-      {panel?.banners.map((banner) => (
-        <p
-          key={banner}
-          role="status"
-          className={`rounded-lg border border-border px-4 py-3 text-muted-foreground ${typeStyle("body.default")}`}
-        >
-          {BANNER_COPY[banner] ?? humanize(banner)}
-        </p>
-      ))}
-      {!readOnly && panel && sender ? (
-        <SenderSummary sender={sender} block={senderBlock} />
-      ) : null}
       {!readOnly && panel && sender ? (
         <IdentityHolds sequences={panel.sequences} sender={sender} block={senderBlock} />
       ) : null}
@@ -1146,16 +1133,10 @@ export function ProviderOutreachPanel({
           <PillButton
             size="compact"
             type="button"
-            disabled={
-              !panel.request.canLaunch ||
-              !controller.sendAllCount ||
-              sending.size > 0
-            }
-            onClick={() => void controller.sendAll()}
+            disabled={!panel.request.canLaunch || !controller.sendAllCount}
+            onClick={() => controller.sendAll()}
           >
-            {sending.size > 0
-              ? "Starting…"
-              : `Send to all matched (${controller.sendAllCount})`}
+            {`Send to all matched (${controller.sendAllCount})`}
           </PillButton>
         </div>
       ) : null}
@@ -1191,7 +1172,7 @@ export function ProviderOutreachPanel({
                     className="h-16 text-center text-muted-foreground"
                   >
                     {others.length
-                      ? "No confirmed matches yet. Providers with unknown fit are listed below and can be sent individually."
+                      ? `No confirmed matches yet${matchGaps.length ? ` because ${matchGaps.join(" and ")}` : ""}. Providers with unknown fit are listed below and can be sent individually.`
                       : "No providers in the directory yet."}
                   </TableCell>
                 </TableRow>

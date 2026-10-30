@@ -1,6 +1,16 @@
 import { resolveOperatorToolDispatch } from "./lib/operatorToolConsolidation";
 import { listProviderSubmissionDefaults } from "./providerSubmissionDefaults";
-import { getProviderOutreachPanel, launchProviderOutreachByOperator, stopProviderOutreachByOperator } from "./providerOutreach";
+import {
+  currentRequestCadence,
+  getProviderOutreachPanel,
+  launchProviderOutreachByOperator,
+  loadCompanyRequest,
+  previewProviderOutreachLaunch,
+  requestEmailTemplate,
+  stopProviderOutreachByOperator,
+} from "./providerOutreach";
+import { writeProviderOutreachDraft } from "./lib/providerOutreachDrafts";
+import { MAX_LAUNCH_PROVIDERS } from "./lib/providerOutreachSchedule";
 import { getClientOutreachPanel, launchClientOutreachByOperator } from "./clientOutreach";
 import {
   addInformationQuestionsByOperator,
@@ -198,7 +208,12 @@ import { normalizedSearchText, uniqueSearchTerms } from "./lib/searchTokenizer";
 import { applyOperatorBatch } from "./lib/operatorBatch";
 import { isRemainingBatchToolName, remainingBatchConfirmationSummary, REMAINING_BATCH_TOOLS, type RemainingBatchResult } from "./lib/operatorRemainingBatch";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
-import { preflightOperatorToolConfirmation, prepareRemainingBatchForConfirmation, providerLaunchApprovalLines } from "./lib/operatorAgentConfirmationPreflight";
+import {
+  preflightOperatorToolConfirmation,
+  prepareRemainingBatchForConfirmation,
+  providerLaunchApprovalLines,
+  providerLaunchFingerprint,
+} from "./lib/operatorAgentConfirmationPreflight";
 import { clientBatchConfirmationSummary, isClientBatchToolName, type ClientBatchResult } from "./lib/operatorClientBatch";
 import {
   describeOperatorRecordFields,
@@ -432,6 +447,7 @@ function serializedOperatorActionOutput(toolName: string, result: unknown) {
     toolName === "update_broker_network_profiles" ||
     toolName === "get_procurement_proposal" ||
     toolName === "list_procurement_provider_matches" ||
+    toolName === "get_procurement_provider_emails" ||
     toolName === "get_platform_status" ||
     toolName === "get_procurement_information" ||
     toolName === "get_procurement_packet" ||
@@ -662,6 +678,7 @@ async function operatorConfirmationSummary(
         ...(await providerLaunchApprovalLines(ctx, {
           operatorUserId: context.operatorUserId,
           input,
+          budget: OPERATOR_EMAIL_SEND_SUMMARY_LIMIT - lines.join("\n").length - 2,
         })),
       );
     }
@@ -3780,16 +3797,112 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
       : { ...context, ...next };
   }
 
+  if (toolName === "get_procurement_provider_emails") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.get_procurement_provider_emails.inputSchema.parse(input);
+    const requestId = normalizeProcurementRequestId(ctx, parsed.procurementRequestId);
+    const { request, client } = await loadCompanyRequest(ctx, requestId);
+    const template = await requestEmailTemplate(ctx, request, client);
+    let brokerOrgIds = parsed.brokerOrgIds
+      ? uniqueIds(parsed.brokerOrgIds).map((id) => normalizeOrganizationId(ctx, id))
+      : null;
+    if (!brokerOrgIds) {
+      const panel = await getProviderOutreachPanel(ctx, requestId, args.operatorUserId, {
+        limit: MAX_LAUNCH_PROVIDERS,
+        verdict: "matched",
+      });
+      brokerOrgIds = (panel?.candidates.matched ?? [])
+        .filter((candidate) => !candidate.launchBlock)
+        .map((candidate) => candidate.brokerOrgId);
+    }
+    if (!brokerOrgIds.length) {
+      return { template, providers: [], note: "No matched provider can receive outreach right now; name providers explicitly to check others." };
+    }
+    const { cadence } = await currentRequestCadence(ctx, request, client);
+    const plan = await previewProviderOutreachLaunch(ctx, {
+      operatorUserId: args.operatorUserId,
+      requestId,
+      brokerOrgIds,
+      cadence,
+      matchedOnly: !parsed.brokerOrgIds,
+    });
+    return {
+      template,
+      from: plan.identity.fromHeader,
+      alwaysCc: plan.identity.alwaysCc,
+      cadence: plan.cadence,
+      problem: plan.problem,
+      providers: plan.providers.map((provider) => ({
+        brokerOrgId: provider.brokerOrgId,
+        name: provider.brokerName,
+        willSend: provider.willSend,
+        ...(provider.reason ? { reason: provider.reason } : {}),
+        ...(provider.recipient ? { to: provider.recipient.email, recipientName: provider.recipient.name } : {}),
+        ...(provider.values ? { values: provider.values } : {}),
+        ...(provider.email
+          ? {
+              emailSource: provider.email.source,
+              ...(provider.email.source === "draft"
+                ? { subject: provider.email.subject, body: provider.email.body }
+                : {}),
+            }
+          : {}),
+        ...(provider.problem ? { problem: provider.problem } : {}),
+      })),
+    };
+  }
+
+  if (toolName === "update_procurement_provider_emails") {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.update_procurement_provider_emails.inputSchema.parse(input);
+    const requestId = normalizeProcurementRequestId(ctx, parsed.procurementRequestId);
+    const { request } = await loadCompanyRequest(ctx, requestId);
+    if (request.status === "completed" || request.status === "cancelled") {
+      throw new NoWriteInputError("invalid_or_stale_input", "This request is closed, so its provider emails cannot change.");
+    }
+    const results = [];
+    for (const item of parsed.items) {
+      const brokerOrgId = item.brokerOrgId ? normalizeOrganizationId(ctx, item.brokerOrgId) : undefined;
+      const provider = brokerOrgId ? await ctx.db.get(brokerOrgId) : null;
+      if (brokerOrgId && (!provider || provider.type !== "broker" || provider.deletedAt !== undefined)) {
+        results.push({ brokerOrgId, ok: false, problem: "Provider not found." });
+        continue;
+      }
+      try {
+        const email = await writeProviderOutreachDraft(ctx, {
+          requestId,
+          brokerOrgId,
+          email: { subject: item.subject, body: item.body },
+          source: "agent",
+        });
+        results.push({ brokerOrgId: brokerOrgId ?? "template", ok: true, subject: email.subject });
+      } catch (error) {
+        results.push({
+          brokerOrgId: brokerOrgId ?? "template",
+          ok: false,
+          problem: error instanceof Error ? error.message : "Could not save this email.",
+        });
+      }
+    }
+    return { results };
+  }
+
   if (toolName === "launch_procurement_provider_outreach") {
     const parsed = OPERATOR_AGENT_TOOL_REGISTRY.launch_procurement_provider_outreach.inputSchema.parse(input);
-    if (!args.sourceFingerprint) throw new Error("Request a fresh sender approval before launching outreach.");
+    if (!args.sourceFingerprint) throw new Error("Request a fresh approval before launching outreach.");
+    const requestId = normalizeProcurementRequestId(ctx, parsed.procurementRequestId);
+    const { request, client } = await loadCompanyRequest(ctx, requestId);
+    const { cadence, cadenceSource } = parsed.cadence
+      ? {
+          cadence: parsed.cadence,
+          cadenceSource: { followUpCount: "operator", intervalBusinessDays: "operator", style: "operator" } as const,
+        }
+      : await currentRequestCadence(ctx, request, client);
     return await launchProviderOutreachByOperator(ctx, {
       operatorUserId: args.operatorUserId,
-      requestId: normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
+      requestId,
       brokerOrgIds: parsed.brokerOrgIds.map((id) => normalizeOrganizationId(ctx, id)),
-      cadence: parsed.cadence,
-      cadenceSource: { followUpCount: "operator", intervalBusinessDays: "operator", style: "operator" },
-      expectedIdentityFingerprint: args.sourceFingerprint,
+      cadence,
+      cadenceSource,
+      expectedFingerprint: args.sourceFingerprint,
     });
   }
 
@@ -5955,7 +6068,13 @@ async function confirmOperatorAction(
         throw new Error("The reply changed since confirmation; request a fresh approval.");
       }
     }
-    if (payload.toolName === "launch_procurement_provider_outreach" || payload.toolName === "send_procurement_client_email") {
+    if (payload.toolName === "launch_procurement_provider_outreach") {
+      if (!payload.sourceFingerprint) throw new Error("Request a fresh approval.");
+      if ((await providerLaunchFingerprint(ctx, { operatorUserId: operator.userId, input })) !== payload.sourceFingerprint) {
+        throw new Error("The provider emails changed since confirmation; request a fresh approval.");
+      }
+    }
+    if (payload.toolName === "send_procurement_client_email") {
       if (!payload.sourceFingerprint) throw new Error("Request a fresh sender approval.");
       await assertOutreachIdentity(ctx, operator.userId, payload.sourceFingerprint);
     }
@@ -7788,7 +7907,9 @@ export const requestToolConfirmationInternal = internalMutation({
               ).fingerprint
             : args.toolName === "reply_email_thread" || args.toolName === "reply_procurement_email_thread"
             ? (await operatorReplyConfirmation(ctx, input, args.operatorUserId)).fingerprint
-            : args.toolName === "launch_procurement_provider_outreach" || args.toolName === "send_procurement_client_email"
+            : args.toolName === "launch_procurement_provider_outreach"
+            ? await providerLaunchFingerprint(ctx, { operatorUserId: args.operatorUserId, input })
+            : args.toolName === "send_procurement_client_email"
             ? (await assertOutreachIdentity(ctx, args.operatorUserId)).fingerprint
             : args.toolName === "import_policy_files"
             ? await operatorPolicySourceFingerprint(

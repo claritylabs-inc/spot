@@ -83,22 +83,20 @@ export function EmailComposerBar({
   note,
   actions,
   className,
+  sendLabel = "Send",
 }: {
   /** `[needs: …]` blanks still in the text. */
   blanks: number;
   sending: boolean;
   canSend: boolean;
   onSend: () => void;
-  followUps?: {
-    followKey: string;
-    value: FollowUps | null;
-    disabled: boolean;
-    onChange: (value: FollowUps | null) => void;
-  };
+  followUps?: FollowUpControlProps;
   /** A muted line after the controls, e.g. what sending changes. */
   note?: ReactNode;
   actions?: ReactNode;
   className?: string;
+  /** The Send button's text, e.g. "Send 12 emails" for a mail merge. */
+  sendLabel?: string;
 }) {
   const needsInput = blanks > 0;
   return (
@@ -111,7 +109,7 @@ export function EmailComposerBar({
         onClick={onSend}
       >
         {sending ? <Loader2 className="size-3.5 animate-spin" /> : needsInput ? null : <Send className="size-3.5" />}
-        {needsInput ? `Fill ${blanks} blank${blanks === 1 ? "" : "s"} to send` : "Send"}
+        {needsInput ? `Fill ${blanks} blank${blanks === 1 ? "" : "s"} to send` : sendLabel}
       </PillButton>
       {followUps ? <FollowUpControl {...followUps} /> : null}
       {note ? (
@@ -128,17 +126,28 @@ export function EmailComposerBar({
  * Follow up toggle: once the email is sent, Spot nudges the recipient on the
  * same thread until anyone replies. The schedule is Spot's pick unless set here.
  */
+type FollowUpControlProps = {
+  followKey: string;
+  value: FollowUps | null;
+  disabled: boolean;
+  onChange: (value: FollowUps | null) => void;
+  /** Hover text of the toggle. */
+  title?: string;
+  /** What "Spot picks" shows on the schedule button. */
+  autoLabel?: string;
+  /** How the nudges are written, before "They stop when anyone replies." */
+  note?: string;
+};
+
 function FollowUpControl({
   followKey,
   value,
   disabled,
   onChange,
-}: {
-  followKey: string;
-  value: FollowUps | null;
-  disabled: boolean;
-  onChange: (value: FollowUps | null) => void;
-}) {
+  title = "Nudge the recipient on this thread until someone replies",
+  autoLabel = "Auto",
+  note,
+}: FollowUpControlProps) {
   const schedule = useFollowedOpen(`${followKey}:follow-ups-open`);
   const cadence = value?.cadence ?? null;
   return (
@@ -148,7 +157,7 @@ function FollowUpControl({
         type="button"
         variant="ghost"
         aria-pressed={value !== null}
-        title="Nudge the recipient on this thread until someone replies"
+        title={title}
         className={cn(value && "bg-foreground/6 text-foreground")}
         disabled={disabled}
         onClick={() => onChange(value ? null : { cadence: null })}
@@ -171,7 +180,7 @@ function FollowUpControl({
           >
             {cadence
               ? `${cadence.followUpCount} · every ${cadence.intervalBusinessDays} days`
-              : "Auto"}
+              : autoLabel}
             <ChevronDown className="size-3.5" />
           </PopoverTrigger>
           <PopoverContent align="start" className="w-72 space-y-3 p-3">
@@ -221,9 +230,10 @@ function FollowUpControl({
               </>
             ) : null}
             <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
-              {cadence
-                ? "Spot writes each nudge from the conversation."
-                : "Spot picks how many nudges and how far apart, and writes each from the conversation."}{" "}
+              {note ??
+                (cadence
+                  ? "Spot writes each nudge from the conversation."
+                  : "Spot picks how many nudges and how far apart, and writes each from the conversation.")}{" "}
               They stop when anyone replies.
             </p>
           </PopoverContent>

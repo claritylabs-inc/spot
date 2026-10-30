@@ -17,6 +17,7 @@ export type AppShellSlotName =
   | "actions"
   | "breadcrumb"
   | "rightPanel"
+  | "previewPanel"
   | "artifactPanel"
   | "sidebar"
   | "secondaryNav"
@@ -29,6 +30,7 @@ const EMPTY_OWNERS: SlotOwners = {
   actions: [],
   breadcrumb: [],
   rightPanel: [],
+  previewPanel: [],
   artifactPanel: [],
   sidebar: [],
   secondaryNav: [],
@@ -38,6 +40,7 @@ const EMPTY_TARGETS: SlotTargets = {
   actions: null,
   breadcrumb: null,
   rightPanel: null,
+  previewPanel: null,
   artifactPanel: null,
   sidebar: null,
   secondaryNav: null,

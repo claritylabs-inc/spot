@@ -27,7 +27,7 @@ Follow-up cadence is a separate left-menu item immediately beneath Providers, ro
 | Umbrella/excess | UMBRC, UMBRL, EXLIA |
 | Other/unknown | Unevaluable |
 
-Locations, property addresses and workers-compensation jurisdictions supply geography, with mailing address before registration fallback. Country codes are ISO2 and US/Canadian regions use the existing provider region codes. Country-only US/Canadian appetite is unknown unless nationwide service is explicitly recorded. State/province exceptions override nationwide service. Every recorded request location must be serviced: any excluded location excludes the provider, while unresolved locations remain unknown fit. Partial matches refer only to coverage lines, never service areas. Hidden follow-up answers do not supply geography. Zero covered lines excludes a provider. Missing appetite is unknown fit. An undetermined request dimension is skipped with a banner. Do-not-contact (`blacklisted`) providers remain excluded. The first email to a new (`prospect`) provider moves it to inactive relationship (`inactive`, contacted without a reply); operators can change it back. `brokerProfileMigrations:markContactedProspectsInactive` backfills new providers that already had a sent outreach. Unknown-fit providers require explicit individual selection and are excluded from send-all.
+Locations, property addresses and workers-compensation jurisdictions supply geography, with mailing address before registration fallback. Country codes are ISO2 and US/Canadian regions use the existing provider region codes. Country-only US/Canadian appetite is unknown unless nationwide service is explicitly recorded. State/province exceptions override nationwide service. Every recorded request location must be serviced: any excluded location excludes the provider, while unresolved locations remain unknown fit. Partial matches refer only to coverage lines, never service areas. Hidden follow-up answers do not supply geography. Zero covered lines excludes a provider. Missing appetite is unknown fit. An undetermined request dimension is skipped and named in the empty Providers table; the From and Always CC show in the composer, not as a separate box. Do-not-contact (`blacklisted`) providers remain excluded. The first email to a new (`prospect`) provider moves it to inactive relationship (`inactive`, contacted without a reply); operators can change it back. `brokerProfileMigrations:markContactedProspectsInactive` backfills new providers that already had a sent outreach. Unknown-fit providers require explicit individual selection and are excluded from send-all.
 
 Manual Auto-add and automated outreach share `brokerAreaFit` and the all-locations requirement, along with shared code aliases and geography normalization. The Providers view uses the shared Table and OrgBrandIcon primitives, with Provider, Contact, Coverage and Status columns. Geography remains a matching condition rather than a repeated column chip. Stored organization logos take precedence over the existing website favicon/initials fallback. The Contact column is an inline Select of current external provider contacts; options include email, recorded coverage preferences and short notes. Operator choices are request-scoped composition state and apply to individual Send and Send-all. The server validates every explicit contact choice before any launch write, rejects foreign/deleted/unusable contacts without fallback, and stores the selected recipient on the outreach and immutable sequence recipient. Live/progressed sequences cannot change contacts through this selector.
 
@@ -59,9 +59,43 @@ questionnaire in the email. No personal contact details or street addresses are
 added to these summaries; the authorized packet's contents and access do not change.
 Draft answers, internal notes, identifiers and file contents are not summary inputs.
 Values are bounded and HTML-escaped; HTML and plain text carry equivalent facts.
-Initial composition makes no model call. Existing lease, identity, packet
-authorization and retry behavior remain intact; already saved drafts are immutable.
-The UI still initiates sending immediately and has no editable provider-email preview.
+This layout is the request's default mail-merge template
+(`defaultProviderEmailTemplate`); the greeting, introduction and application link
+are merge variables.
+
+## First-email composer and mail merge
+
+Send and Send to all matched open the provider email composer
+(`components/procurement/provider-email-composer.tsx`) built from the shared
+compose fields: From picker, To (provider contact select, or one pill per provider
+for a mail merge, each removable and previewable; every provider contact pill shows the provider's logo and the contact's name, address on hover), fixed Always CC, Subject, the
+reply editor with merge-variable chips and `[needs: …]` blanks, the sender
+signature, and the shared send bar and Follow up control from `components/email/email-composer.tsx` (request cadence or custom). Preview opens the exact merged email in its own panel beside the composer (`previewPanel` shell slot, desktop; inline below lg), with previous/next for a mail merge. Every
+email goes to one provider; a mail merge never puts several providers on one email.
+
+`convex/lib/providerOutreachMerge.ts` owns the variables (`{{first_name}}`,
+`{{provider}}`, `{{company}}`, `{{introduction}}`, `{{sender_first_name}}`,
+`{{application_link}}`), merging, validation and rendering. `planProviderLaunch`
+in `convex/providerOutreach.ts` is the one plan behind the composer preview
+(`providerOutreach.previewLaunch`), the agent approval card and the launch: it
+classifies each provider, merges its email and fingerprints the sender identity,
+cadence, recipients and every merged subject and body. `launch` refuses a changed
+fingerprint. The merged email is stored on the sequence (`message`), and the
+first step renders it with the provider's packet link and signature
+(`renderProviderEmail`); follow-ups are unchanged. Sequences without `message`
+keep the deterministic composition.
+
+`providerOutreachDrafts` holds Spot's drafts: one per provider and one request
+template (no `brokerOrgId`). Opening the composer for one provider asks Spot's
+drafting model once to tailor the template for that provider
+(`actions/providerOutreachDrafts.tailor`, route `email_draft`, task
+`procurement_outreach_initial_tailor`): only the lines it writes, its saved
+submission standards and the application facts that answer them, keeping the
+merge variables. Failed or unknown outcomes are never replayed; the template stays.
+The AI panel reads and writes the same drafts with `get_procurement_provider_emails`
+and `update_procurement_provider_emails`, and the open composer pushes a
+`provider_email_draft` page context. Composers adopt a new draft while unedited
+and otherwise offer "Replace yours".
 
 Cadence suggestions use one Jev call with independent choices for count, business-day interval and style. Each field independently passes the shared confidence threshold or falls back to two follow-ups, three business days, brief nudge. Operator overrides remain explicit. Schedules skip weekends, respect effective-date/deadline cutoffs and a 30-day maximum, and derive subsequent due times from observed send time.
 
