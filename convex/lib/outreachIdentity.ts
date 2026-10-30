@@ -1,6 +1,8 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { actionConfirmationFingerprint } from "./actionConfirmationFingerprint";
+import { loadEmailPrompts } from "./emailPrompts";
+import type { EmailPrompts } from "./emailSkill";
 import { validateAlwaysCcEmail } from "./operatorInbox";
 import { operatorEmailAliases, requireOperatorForUser } from "./operatorIdentity";
 import {
@@ -31,6 +33,8 @@ export type OutreachSenderIdentity = {
   /** The validated Always CC, or null when none is saved. */
   alwaysCc: string | null;
   fingerprint: string;
+  /** Settings → Email prompts in effect for this sender, including their own signature. */
+  prompts: EmailPrompts;
 };
 
 export type OutreachSenderIdentityResult =
@@ -99,6 +103,7 @@ export async function outreachSenderIdentity(
           address,
           alwaysCc,
         }),
+        prompts: await loadEmailPrompts(ctx, operatorUserId),
       },
     };
   } catch (error) {
@@ -117,6 +122,7 @@ export type OperatorSenderIdentity = {
   fromHeader: string;
   teamAddress: string;
   alwaysCc: string | null;
+  prompts: EmailPrompts;
 };
 
 /** `outreachSenderIdentity` for callers that treat an unusable sender as an error. */
@@ -133,6 +139,7 @@ export async function operatorSenderIdentity(
     fromHeader: identity.fromHeader,
     teamAddress: identity.address,
     alwaysCc: identity.alwaysCc,
+    prompts: identity.prompts,
   };
 }
 

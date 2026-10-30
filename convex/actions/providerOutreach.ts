@@ -38,6 +38,7 @@ import { ensureOperatorInbox, validateAlwaysCcEmail } from "../lib/operatorInbox
 import { outreachIdentityFingerprint } from "../lib/outreachIdentity";
 import { operatorEmailAliases } from "../lib/operatorIdentity";
 import { buildOperatorSignature, isTeamEmailError } from "../lib/teamEmail";
+import type { EmailPrompts } from "../lib/emailSkill";
 import {
   capturedResourceId,
   createDraft,
@@ -268,7 +269,7 @@ function emailInputFor(
   request: NonNullable<Claimed["request"]>,
   broker: NonNullable<Claimed["broker"]>,
   packet: NonNullable<Claimed["packet"]>,
-  operator: { name: string; address: string },
+  operator: { name: string; address: string; prompts: EmailPrompts },
 ): OutreachEmailInput {
   const { step, sequence } = claim;
   const initialSubject =
@@ -340,7 +341,7 @@ async function resolveDraft(
   identity: SenderIdentity,
 ): Promise<StepDraft | null> {
   const { stepId } = claim.step;
-  const operator = { name: identity.name, address: identity.address };
+  const operator = { name: identity.name, address: identity.address, prompts: claim.prompts };
   const prepared = await ctx.runMutation(
     internal.providerOutreach.prepareDraftInternal,
     {

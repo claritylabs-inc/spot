@@ -112,6 +112,8 @@ import {
 } from "./lib/providerOutreachMerge";
 import { readProviderOutreachDraft, readyDraftEmail } from "./lib/providerOutreachDrafts";
 import { buildOperatorSignature } from "./lib/teamEmail";
+import { loadEmailPrompts } from "./lib/emailPrompts";
+import type { EmailPrompts } from "./lib/emailSkill";
 import { intakeCatalogCoverage } from "../lib/intake-acord-questions";
 import { intakeMarkdown } from "../lib/insurance-intake";
 import { CANADIAN_PROVINCES, USPS_STATE_NAMES } from "./lib/brokerProfileValidation";
@@ -1692,6 +1694,7 @@ export async function planProviderLaunch(ctx: Ctx, args: ProviderLaunchArgs) {
       recipientName: candidate.recipient.name,
       clientName: client.name,
       senderName: identity.name,
+      prompts: identity.prompts,
       activeRelationship: candidate.evaluation.profile?.networkStatus === "active",
     });
     const written = own ?? template;
@@ -1914,7 +1917,7 @@ export const previewLaunch = query({
         from: plan.identity.fromHeader,
         alwaysCc: plan.identity.alwaysCc,
         signature: buildOperatorSignature(
-          { name: plan.identity.name, address: plan.identity.address },
+          { name: plan.identity.name, address: plan.identity.address, prompts: plan.identity.prompts },
           { toProvider: true },
         ).text,
         providers: plan.providers.map(({ detail: _detail, ...provider }) => provider),
@@ -2454,6 +2457,8 @@ export type ClaimStepResult =
         inboxId: string | null;
       };
       sender: { userId: Id<"users">; name: string | null; email: string | null };
+      /** Settings → Email prompts in effect for the sender. */
+      prompts: EmailPrompts;
       /** The last email already sent on this sequence, for the history quoted when a follow-up moves to a new inbox. */
       lastSent: { sentAt: number; text: string } | null;
       /** Conversation follow-ups: the messages a nudge is written from, newest last. */
@@ -2656,6 +2661,7 @@ export const claimStepInternal = internalMutation({
         name: world.sender?.name ?? null,
         email: world.sender?.email ?? null,
       },
+      prompts: await loadEmailPrompts(ctx, sequence.senderUserId),
       lastSent: (() => {
         const sent = earlier
           .filter((row) => row.index < step.index && row.status === "sent" && row.draft?.text)

@@ -147,6 +147,7 @@ import {
   operatorContextBudget,
   operatorContextHardLimit,
 } from "./lib/operatorContextCompaction";
+import { emailSkillPrompt, type EmailPrompts } from "./lib/emailSkill";
 
 const OPERATOR_AGENT_MAX_OUTPUT_TOKENS = 8_192;
 const OPERATOR_AGENT_MAX_STEPS = 1;
@@ -483,6 +484,9 @@ export async function selectOperatorToolFamilies(
   return { families: result.families, source: result.source };
 }
 
+/** Families whose tools write email text; their runs get the Settings → Email rules. */
+const EMAIL_WRITING_FAMILIES: ReadonlySet<string> = new Set(["outbound_email", "procurement", "team_inbox"]);
+
 function buildOperatorIdentityBlock(name?: string, email?: string, teamAddress?: string) {
   const identity = [name?.trim(), email?.trim() ? `<${email.trim()}>` : ""]
     .filter(Boolean)
@@ -663,6 +667,7 @@ export const run = internalAction({
         operatorName?: string;
         operatorEmail?: string;
         operatorTeamAddress?: string;
+        emailPrompts: EmailPrompts;
       } | null = await timer.time("run_context", () =>
         ctx.runQuery(internal.operatorAgent.getRunContextInternal, {
           runId: args.runId,
@@ -1513,6 +1518,9 @@ export const run = internalAction({
           context.operatorEmail,
           context.operatorTeamAddress,
         ) +
+        (familySelection.families.some((family) => EMAIL_WRITING_FAMILIES.has(family))
+          ? `\n\n${emailSkillPrompt(context.emailPrompts, { provider: true })}`
+          : "") +
         (commandEmail ? `\n\n${OPERATOR_COMMAND_EMAIL_GUIDANCE}` : "") +
         (run.emailReadOnly
           ? "\n\nREAD-ONLY EMAIL: The raw message could not be authenticated. You may read and answer, including drafting wording in your reply, but cannot save changes, create saved drafts, call external MCP servers, approve actions, or send email. Explain the restriction and direct changes to authenticated operator chat."

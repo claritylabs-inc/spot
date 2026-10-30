@@ -1,6 +1,7 @@
 import { escapeHtml } from "./emailTemplate";
 import { canonicalAddress } from "./emailAddress";
-import { SPOT_SIGNATURE_DESCRIPTION } from "./emailSkill";
+import { fillEmailPrompt, type EmailPrompts } from "./emailSkill";
+import { findTextLinks } from "../../lib/text-links";
 
 /**
  * Pure identity rules for operator team email (no Convex context, no network).
@@ -246,15 +247,30 @@ export function operatorFromHeader(
   return `${operatorFromName(name)} <${address}>`;
 }
 
+/** Escaped text with its web addresses as links. */
+export function linkedHtml(text: string) {
+  let html = "";
+  let last = 0;
+  for (const link of findTextLinks(text)) {
+    html += `${escapeHtml(text.slice(last, link.start))}<a href="${escapeHtml(link.href)}">${escapeHtml(text.slice(link.start, link.end))}</a>`;
+    last = link.end;
+  }
+  return html + escapeHtml(text.slice(last));
+}
+
+/** The prompts a signature is built from. */
+export type SignaturePrompts = Pick<EmailPrompts, "signature" | "provider_signature_note">;
+
 /**
- * Unstyled operator signature, using the same address as the email's From
- * header. Emails to a provider add the general Spot explanation below it;
- * clients already know Spot.
+ * Unstyled operator signature from the configured template, using the same
+ * address as the email's From header. Emails to a provider add the configured
+ * Spot explanation below it; clients already know Spot.
  */
 export function buildOperatorSignature(
   operator: {
     name: string | null | undefined;
     address: string;
+    prompts: SignaturePrompts;
   },
   options: { toProvider?: boolean } = {},
 ): {
@@ -262,11 +278,19 @@ export function buildOperatorSignature(
   html: string;
 } {
   const name = requirePersonName(operator.name).slice(0, MAX_SIGNATURE_NAME_LENGTH);
-  const lines = [name, "Spot", operator.address];
-  const html = `<p>${lines.map(escapeHtml).join("<br>")}</p>`;
-  if (!options.toProvider) return { text: lines.join("\n"), html };
+  const text = fillEmailPrompt(operator.prompts.signature, {
+    sender_name: name,
+    sender_email: operator.address,
+  })
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trim();
+  const html = `<p>${text.split("\n").map(linkedHtml).join("<br>")}</p>`;
+  const note = operator.prompts.provider_signature_note.trim();
+  if (!options.toProvider || !note) return { text, html };
   return {
-    text: `${lines.join("\n")}\n\n${SPOT_SIGNATURE_DESCRIPTION} Learn more at https://spot.insure`,
-    html: `${html}<p style="margin:16px 0 0;font-size:12px">${escapeHtml(SPOT_SIGNATURE_DESCRIPTION)} Learn more at <a href="https://spot.insure">Spot.Insure</a></p>`,
+    text: `${text}\n\n${note}`,
+    html: `${html}<p style="margin:16px 0 0;font-size:12px">${note.split("\n").map(linkedHtml).join("<br>")}</p>`,
   };
 }

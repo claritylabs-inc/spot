@@ -217,6 +217,7 @@ export async function runOperatorEmailTool(
       senderUserId: sender.senderUserId,
       senderName: sender.name,
       teamAddress: sender.teamAddress,
+      prompts: sender.prompts,
       alwaysCc: sender.alwaysCc ?? undefined,
       procurementRequestId: sender.procurementRequestId,
       teamThread: sender.teamThread,

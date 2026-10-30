@@ -1,4 +1,5 @@
 import { escapeHtml } from "@claritylabs-inc/ui/lib/email";
+import { spotIntroduction, type EmailPrompts } from "./emailSkill";
 
 /**
  * Mail merge for provider outreach. One email template, with `{{variable}}`
@@ -68,11 +69,6 @@ export function contactFirstName(name: string | null | undefined, providerName?:
   return contact.split(" ")[0];
 }
 
-export function spotIntroductionSentence(senderName: string, clientName: string) {
-  const first = clean(senderName, 160)?.split(" ")[0] ?? "the team";
-  return `This is ${first}. ${clientName} hired us at Spot to help buy their commercial insurance.`;
-}
-
 /** One provider's values. The introduction is skipped for an active relationship. */
 export function providerMergeValues(args: {
   providerName: string;
@@ -80,13 +76,16 @@ export function providerMergeValues(args: {
   clientName: string;
   senderName: string;
   activeRelationship: boolean;
+  prompts: Pick<EmailPrompts, "provider_introduction">;
 }): MergeValues {
   const provider = clean(args.providerName, 160) ?? "there";
   return {
     first_name: contactFirstName(args.recipientName, args.providerName) ?? provider,
     provider,
     company: clean(args.clientName, 160) ?? "our client",
-    introduction: args.activeRelationship ? "" : spotIntroductionSentence(args.senderName, args.clientName),
+    introduction: args.activeRelationship
+      ? ""
+      : spotIntroduction(args.prompts, { senderName: clean(args.senderName, 160) ?? "", clientName: args.clientName }),
     sender_first_name: clean(args.senderName, 160)?.split(" ")[0] ?? "",
   };
 }

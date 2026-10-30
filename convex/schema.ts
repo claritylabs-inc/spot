@@ -955,6 +955,22 @@ export default defineSchema({
     updatedAt: v.number(),
   }),
 
+  /** Settings → Email overrides of `DEFAULT_EMAIL_PROMPTS`; `userId` null is shared, else one operator's own. */
+  emailPrompts: defineTable({
+    key: v.union(
+      v.literal("provider_introduction"),
+      v.literal("provider_nudge"),
+      v.literal("signature"),
+      v.literal("provider_signature_note"),
+      v.literal("writing_rules"),
+      v.literal("provider_rules"),
+    ),
+    userId: v.union(v.id("users"), v.null()),
+    value: v.string(),
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  }).index("by_userId_and_key", ["userId", "key"]),
+
   operatorAgentSettings: defineTable({
     key: v.literal("default"),
     approveAll: v.boolean(),

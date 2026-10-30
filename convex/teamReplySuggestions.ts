@@ -12,6 +12,7 @@ import { providerForEmail } from "./lib/providerRecipients";
 import { intakeCatalogCoverage } from "../lib/intake-acord-questions";
 import { submittedIntakeApplication } from "../lib/intake-application";
 import { intakeMarkdown } from "../lib/insurance-intake";
+import { loadEmailPrompts } from "./lib/emailPrompts";
 
 const MESSAGES = 12;
 const MESSAGE_CHARS = 4_000;
@@ -36,7 +37,9 @@ export const contextInternal = internalQuery({
     if (recent[0]?._id !== args.messageId) return null;
     const context = await replyContext(ctx, thread, recent);
     // Spot never emails a Do Not Contact provider, so there is no reply to draft.
-    return context.provider?.relationship === "do_not_contact" ? null : context;
+    return context.provider?.relationship === "do_not_contact"
+      ? null
+      : { ...context, prompts: await loadEmailPrompts(ctx) };
   },
 });
 
