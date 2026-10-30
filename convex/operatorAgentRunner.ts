@@ -652,6 +652,7 @@ export const run = internalAction({
         operatorEmail?: string;
         operatorTeamAddress?: string;
         emailPrompts: EmailPrompts;
+        operatorSkillsPrompt: string;
       } | null = await timer.time("run_context", () =>
         ctx.runQuery(internal.operatorAgent.getRunContextInternal, {
           runId: args.runId,
@@ -1542,6 +1543,7 @@ export const run = internalAction({
         (familySelection.families.some((family) => EMAIL_WRITING_FAMILIES.has(family))
           ? `\n\n${emailSkillPrompt(context.emailPrompts, { provider: true })}`
           : "") +
+        context.operatorSkillsPrompt +
         (commandEmail ? `\n\n${OPERATOR_COMMAND_EMAIL_GUIDANCE}` : "") +
         (run.emailReadOnly
           ? "\n\nREAD-ONLY EMAIL: The raw message could not be authenticated. You may read and answer, including drafting wording in your reply, but cannot save changes, create saved drafts, call external MCP servers, approve actions, or send email. Explain the restriction and direct changes to authenticated operator chat."

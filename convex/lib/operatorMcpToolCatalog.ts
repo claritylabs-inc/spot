@@ -17,7 +17,8 @@ export function buildOperatorMcpToolCatalog(args: {
   const available = args.toolNames ? new Set(args.toolNames) : undefined;
   const registeredTools = Object.entries(OPERATOR_AGENT_TOOL_REGISTRY)
     .filter(([name, spec]) => {
-      if (!spec.offered || (available && !available.has(name))) return false;
+      if (!spec.offered || spec.agentOnly || (available && !available.has(name)))
+        return false;
       if (spec.requiredRole === "owner" && args.operatorRole !== "owner") {
         return false;
       }

@@ -379,6 +379,9 @@ import type * as lib_operatorRemainingBatch from "../lib/operatorRemainingBatch.
 import type * as lib_operatorRunPlan from "../lib/operatorRunPlan.js";
 import type * as lib_operatorRunTiming from "../lib/operatorRunTiming.js";
 import type * as lib_operatorSecondFactor from "../lib/operatorSecondFactor.js";
+import type * as lib_operatorSkillStore from "../lib/operatorSkillStore.js";
+import type * as lib_operatorSkillTools from "../lib/operatorSkillTools.js";
+import type * as lib_operatorSkills from "../lib/operatorSkills.js";
 import type * as lib_operatorSlackBlocks from "../lib/operatorSlackBlocks.js";
 import type * as lib_operatorSlackConfig from "../lib/operatorSlackConfig.js";
 import type * as lib_operatorSuggestionRanking from "../lib/operatorSuggestionRanking.js";
@@ -574,6 +577,7 @@ import type * as operatorPresence from "../operatorPresence.js";
 import type * as operatorProvisioning from "../operatorProvisioning.js";
 import type * as operatorSecondFactor from "../operatorSecondFactor.js";
 import type * as operatorSendingMailboxes from "../operatorSendingMailboxes.js";
+import type * as operatorSkills from "../operatorSkills.js";
 import type * as operatorSlack from "../operatorSlack.js";
 import type * as operatorSuggestions from "../operatorSuggestions.js";
 import type * as operatorToolDiscovery from "../operatorToolDiscovery.js";
@@ -1016,6 +1020,9 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorRunPlan": typeof lib_operatorRunPlan;
   "lib/operatorRunTiming": typeof lib_operatorRunTiming;
   "lib/operatorSecondFactor": typeof lib_operatorSecondFactor;
+  "lib/operatorSkillStore": typeof lib_operatorSkillStore;
+  "lib/operatorSkillTools": typeof lib_operatorSkillTools;
+  "lib/operatorSkills": typeof lib_operatorSkills;
   "lib/operatorSlackBlocks": typeof lib_operatorSlackBlocks;
   "lib/operatorSlackConfig": typeof lib_operatorSlackConfig;
   "lib/operatorSuggestionRanking": typeof lib_operatorSuggestionRanking;
@@ -1211,6 +1218,7 @@ declare const fullApi: ApiFromModules<{
   operatorProvisioning: typeof operatorProvisioning;
   operatorSecondFactor: typeof operatorSecondFactor;
   operatorSendingMailboxes: typeof operatorSendingMailboxes;
+  operatorSkills: typeof operatorSkills;
   operatorSlack: typeof operatorSlack;
   operatorSuggestions: typeof operatorSuggestions;
   operatorToolDiscovery: typeof operatorToolDiscovery;

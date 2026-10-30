@@ -971,6 +971,55 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_userId_and_key", ["userId", "key"]),
 
+  /**
+   * Settings → Skills: imported Claude Code / Codex skills for the operator
+   * agent. Personal skills are visible only to their owner; shared skills to
+   * every active operator. Names are unique per owner (personal) or among
+   * shared skills. Files live in `operatorSkillFiles`.
+   */
+  operatorSkills: defineTable({
+    name: v.string(),
+    description: v.string(),
+    scope: v.union(v.literal("personal"), v.literal("shared")),
+    ownerUserId: v.id("users"),
+    enabled: v.boolean(),
+    /** Bumped by every re-import, which replaces all files at once. */
+    revision: v.number(),
+    fileCount: v.number(),
+    totalBytes: v.number(),
+    hasScripts: v.boolean(),
+    /** Where it came from: a zip or folder name, or "Pasted SKILL.md". */
+    sourceLabel: v.string(),
+    /** Import warnings shown in Settings (skipped files, machine-specific paths). */
+    warnings: v.array(v.string()),
+    importedBy: v.id("users"),
+    importedAt: v.number(),
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  })
+    .index("by_scope_and_ownerUserId_and_name", ["scope", "ownerUserId", "name"])
+    .index("by_scope_and_name", ["scope", "name"]),
+
+  /** One stored file of an operator skill; bytes live in Convex storage. */
+  operatorSkillFiles: defineTable({
+    skillId: v.id("operatorSkills"),
+    path: v.string(),
+    size: v.number(),
+    /** Hex SHA-256 of the stored bytes. */
+    sha256: v.string(),
+    kind: v.union(
+      v.literal("instructions"),
+      v.literal("reference"),
+      v.literal("script"),
+      v.literal("asset"),
+    ),
+    /** Valid UTF-8 text that tools and Settings can preview. */
+    text: v.boolean(),
+    storageId: v.id("_storage"),
+  })
+    .index("by_skillId_and_path", ["skillId", "path"])
+    .index("by_storageId", ["storageId"]),
+
   operatorAgentSettings: defineTable({
     key: v.literal("default"),
     approveAll: v.boolean(),

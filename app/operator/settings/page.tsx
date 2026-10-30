@@ -14,6 +14,7 @@ import {
   operatorContextSummary,
 } from "@/components/operator-agent/operator-page-context";
 import { OperatorNotificationRoutes } from "@/components/settings/operator-notification-routes";
+import { useOperatorSkillSettings } from "@/components/settings/operator-skill-settings";
 import { McpEventSubscriptions } from "@/components/settings/mcp-event-subscriptions";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import {
@@ -32,6 +33,7 @@ const SECTION_SUMMARIES = {
   team: "Team: operators and invitations",
   notifications: "Notification routes",
   email: "Email prompts: the operator's email writing rules",
+  skills: "Skills: the operator's personal and shared skills",
 };
 
 export default function OperatorSettingsPage() {
@@ -39,13 +41,20 @@ export default function OperatorSettingsPage() {
   const invitations = useOperatorInvite(!current || Boolean(current.activeImpersonation));
   const sectionParam = useSearchParams().get("section");
   const section =
-    sectionParam === "team" || sectionParam === "notifications" || sectionParam === "email"
+    sectionParam === "team" ||
+    sectionParam === "notifications" ||
+    sectionParam === "email" ||
+    sectionParam === "skills"
       ? sectionParam
       : "general";
   const settings = useQuery(api.operator.getAgentSettings);
   const setApproveAll = useMutation(api.operator.setApproveAll);
   const [saving, setSaving] = useState(false);
   const mcp = useMcpSettings(!current || Boolean(current.activeImpersonation));
+  const skills = useOperatorSkillSettings(
+    !current || Boolean(current.activeImpersonation),
+    section === "skills",
+  );
   const pageSummary = operatorContextSummary(
     "Operator settings",
     SECTION_SUMMARIES[section],
@@ -57,7 +66,13 @@ export default function OperatorSettingsPage() {
 
   return (
     <AppShell
-      rightPanel={section === "team" ? invitations.drawer : mcp.drawer}
+      rightPanel={
+        section === "team"
+          ? invitations.drawer
+          : section === "skills"
+            ? skills.drawer
+            : mcp.drawer
+      }
     >
       <OperatorPageContextRegistration
         context={{ pageType: "operator_settings", summary: pageSummary }}
@@ -72,6 +87,8 @@ export default function OperatorSettingsPage() {
             <Loader2 className="size-5 animate-spin text-muted-foreground" />
           </div>
         )
+      ) : section === "skills" ? (
+        skills.panel
       ) : section === "notifications" ? (
         current ? (
           <OperatorNotificationRoutes
