@@ -103,7 +103,7 @@ type BackendConfirmation = {
 
 type ListThreadsArgs = {
   limit?: number;
-  view?: "recent" | "mcp" | "archived";
+  view?: "recent" | "archived";
 };
 type GetThreadArgs = { threadId: string };
 type SetThreadArchiveArgs = { threadId: string };

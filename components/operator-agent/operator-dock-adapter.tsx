@@ -84,7 +84,6 @@ function useOperatorArchiveActions() {
 
 export const operatorDockAdapter: AgentDockAdapter = {
   newChatLabel: "Ask anything",
-  historyViews: ["recent", "mcp", "archived"],
   useThreads: useOperatorThreads,
   useTabSummary: useOperatorTabSummary,
   useArchiveActions: useOperatorArchiveActions,

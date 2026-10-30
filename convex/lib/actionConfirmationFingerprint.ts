@@ -46,6 +46,7 @@ type FingerprintedDraft = Pick<
   | "fromHeader"
   | "transport"
   | "procurementRequestId"
+  | "informationFormId"
   | "teamEmailThreadId"
   | "inReplyTo"
   | "references"
@@ -87,6 +88,9 @@ export async function pendingEmailDraftFingerprint(
             procurementRequestId: draft.procurementRequestId
               ? String(draft.procurementRequestId)
               : null,
+            ...(draft.informationFormId
+              ? { informationFormId: String(draft.informationFormId) }
+              : {}),
             teamEmailThreadId: draft.teamEmailThreadId
               ? String(draft.teamEmailThreadId)
               : null,

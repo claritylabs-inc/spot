@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAction, useQuery } from "convex/react";
 import dayjs from "dayjs";
 import { Trash2 } from "lucide-react";
@@ -21,14 +21,6 @@ import { AddressField, FromPicker } from "@/components/email/operator-address";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { PillButton } from "@/components/ui/pill-button";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-} from "@claritylabs-inc/ui/components/select";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -50,6 +42,8 @@ type Draft = {
   clientOrgId: string;
   /** Files the conversation under a procurement request (and its client). */
   requestId?: string;
+  /** Asks the client to complete this information form. */
+  informationFormId?: string;
   /** Sent as this operator instead of the signed-in one. */
   fromUserId?: string;
   /** Nudge the recipient until someone replies. */
@@ -65,6 +59,12 @@ export type ComposerRequest = {
   clientOrgId: Id<"organizations">;
   title: string;
 };
+
+/** A kept draft picks up the form invitation it was opened without. */
+function withInvitation(saved: Draft | undefined, invitation?: string) {
+  if (!saved || !invitation || saved.message.includes(invitation)) return saved;
+  return { ...saved, message: [saved.message, invitation].filter(Boolean).join("\n\n") };
+}
 
 /** One send of one exact email; it stays locked until the server gives a definitive outcome. */
 type SendAttempt = { key: string; fingerprint: string; draft: Draft; startedAt: number };
@@ -110,6 +110,9 @@ function composeArgs(draft: Draft) {
     message: draft.message,
     ...(draft.clientOrgId ? { clientOrgId: draft.clientOrgId as Id<"organizations"> } : {}),
     ...(draft.requestId ? { requestId: draft.requestId as Id<"procurementRequests"> } : {}),
+    ...(draft.informationFormId
+      ? { informationFormId: draft.informationFormId as Id<"procurementInformationForms"> }
+      : {}),
     ...(draft.fromUserId ? { fromUserId: draft.fromUserId as Id<"users"> } : {}),
   };
 }
@@ -126,10 +129,14 @@ export function NewEmailComposer(props: {
   onSent: (threadId: Id<"teamEmailThreads"> | null) => void;
   /** Opened from a request: the email is filed under it and its providers are offered as recipients. */
   request?: ComposerRequest;
-  /** Shown above the header rows (the request composer's audience switch). */
-  header?: ReactNode;
   /** Followed id of this inbox draft, so a teammate following along edits the same one. */
   draftId?: string;
+  /**
+   * Asking the client for the answers to an information form: the email goes to a
+   * client contact and its follow-ups are tracked against the form, so they stop
+   * once the form is submitted. Needs `request`.
+   */
+  informationForm?: { id: Id<"procurementInformationForms">; title?: string; initialText?: string };
 }) {
   const operatorId = useCachedOperatorCurrent()?.user._id;
   if (!operatorId) return null;
@@ -141,35 +148,76 @@ function OperatorNewEmailComposer({
   onClose,
   onSent,
   request,
-  header,
   draftId,
+  informationForm,
 }: {
   operatorId: string;
   onClose: () => void;
   onSent: (threadId: Id<"teamEmailThreads"> | null) => void;
   request?: ComposerRequest;
-  header?: ReactNode;
   draftId?: string;
+  informationForm?: { id: Id<"procurementInformationForms">; title?: string; initialText?: string };
 }) {
   const send = useAction(api.actions.teamEmailCompose.send);
+  const formId = request ? informationForm?.id : undefined;
   const clients = useCachedOperatorClients();
+  const clientContacts = useQuery(
+    api.clientOutreach.recipientOptions,
+    request ? { requestId: request.requestId } : "skip",
+  );
   const providerContacts = useQuery(
     api.brokerContacts.listForRequest,
     request ? { requestId: request.requestId } : "skip",
   );
+  const requestClient = clients?.find(
+    (client) => client._id === request?.clientOrgId,
+  );
+  const suggestedRecipients = useMemo(
+    () => [
+      ...(clientContacts ?? []).map((contact) => ({
+        email: contact.email,
+        name: contact.name,
+        group: "Client",
+        ...(requestClient
+          ? {
+              org: {
+                name: requestClient.name,
+                iconUrl: requestClient.iconUrl,
+                website: requestClient.website,
+              },
+            }
+          : {}),
+      })),
+      ...(providerContacts ?? []).map((contact) => ({
+        email: contact.email,
+        name: contact.name,
+        group: contact.brokerName,
+        org: {
+          name: contact.brokerName,
+          iconUrl: contact.brokerIconUrl,
+          website: contact.brokerWebsite,
+        },
+      })),
+    ],
+    [clientContacts, providerContacts, requestClient],
+  );
   // Request drafts are kept apart from the inbox's own unsent email.
-  const draftKey = request ? `${operatorId}:${request.requestId}` : operatorId;
+  const draftKey = request
+    ? `${operatorId}:${request.requestId}${formId ? `:form:${formId}` : ""}`
+    : operatorId;
   const [attempt, setAttempt] = useState<SendAttempt | null>(() => readAttempt(operatorId));
   const [draft, setDraft] = useState<Draft>(
     () =>
       attempt?.draft ??
-      drafts.get(draftKey) ??
+      withInvitation(drafts.get(draftKey), informationForm?.initialText) ??
       (request
         ? {
             ...EMPTY,
-            subject: request.title.slice(0, 200),
+            subject: (formId ? `Information needed: ${informationForm?.title ?? request.title}` : request.title).slice(0, 200),
+            message: informationForm?.initialText ?? "",
             clientOrgId: request.clientOrgId,
             requestId: request.requestId,
+            ...(formId ? { informationFormId: formId, followUps: { cadence: null } } : {}),
           }
         : EMPTY),
   );
@@ -194,10 +242,16 @@ function OperatorNewEmailComposer({
     update({ followUps }),
   );
 
-  const settled = useDebounced(draft, PREVIEW_DELAY_MS);
+  // Asking a client about a form starts with the first client contact as the recipient.
+  const defaultTo = formId ? (clientContacts?.[0]?.email ?? "") : "";
+  const effective = useMemo(
+    () => (draft.to.trim() || !defaultTo ? draft : { ...draft, to: defaultTo }),
+    [draft, defaultTo],
+  );
+  const settled = useDebounced(effective, PREVIEW_DELAY_MS);
   const ready = Boolean(settled.to.trim() && settled.subject.trim() && settled.message.trim());
   const result = useQuery(api.teamEmailCompose.preview, !locked && ready ? composeArgs(settled) : "skip");
-  const current = settled === draft;
+  const current = settled === effective;
   const preview = current && result?.ok ? result.preview : null;
   const typedCc = parseEmailAddressList(draft.cc).map((address) => address.toLowerCase());
   const addedCc = (preview?.cc ?? []).filter((address) => !typedCc.includes(address));
@@ -240,7 +294,7 @@ function OperatorNewEmailComposer({
     const next =
       retry ??
       (preview
-        ? { key: crypto.randomUUID(), fingerprint: preview.fingerprint, draft, startedAt: dayjs().valueOf() }
+        ? { key: crypto.randomUUID(), fingerprint: preview.fingerprint, draft: effective, startedAt: dayjs().valueOf() }
         : null);
     if (!next) return;
     writeAttempt(operatorId, next);
@@ -295,6 +349,12 @@ function OperatorNewEmailComposer({
             value: draft.followUps ?? null,
             disabled,
             onChange: (followUps) => update({ followUps }),
+            ...(formId
+              ? {
+                  title: "Nudge the client until they reply or submit the form",
+                  note: "Follow-ups stop when the client replies or submits the form.",
+                }
+              : {}),
           }}
           note={problem ? <span role="alert">{problem}</span> : null}
           actions={
@@ -328,7 +388,6 @@ function OperatorNewEmailComposer({
           }
         }}
       >
-        {header}
         {attempt ? (
           <div role="alert" className={`flex items-center gap-3 border-b border-border bg-muted/40 px-4 py-2 ${typeStyle("caption.default")}`}>
             <p className="min-w-0 flex-1 text-foreground">
@@ -358,49 +417,11 @@ function OperatorNewEmailComposer({
             max={1}
             autoFocus
             placeholder="name@company.com"
-            value={parseEmailAddressList(draft.to)}
+            value={parseEmailAddressList(effective.to)}
             disabled={disabled}
+            suggested={suggestedRecipients}
             onChange={(to) => update({ to: to[0] ?? "" })}
           />
-          {providerContacts?.length ? (
-            <Select
-              value=""
-              disabled={disabled}
-              onValueChange={(value) => value && update({ to: String(value) })}
-            >
-              <SelectTrigger
-                aria-label="Choose a provider contact"
-                className="h-8 w-auto shrink-0 border-transparent bg-transparent px-2 shadow-none"
-              >
-                <span className={`text-muted-foreground ${typeStyle("caption.default")}`}>Providers</span>
-              </SelectTrigger>
-              <SelectContent align="end">
-                {[...new Set(providerContacts.map((contact) => contact.brokerName))].map((brokerName) => (
-                  <SelectGroup key={brokerName}>
-                    <SelectLabel>{brokerName}</SelectLabel>
-                    {providerContacts
-                      .filter((contact) => contact.brokerName === brokerName)
-                      .map((contact) => (
-                        <SelectItem
-                          key={`${contact.brokerOrgId}:${contact.email}`}
-                          value={contact.email}
-                          label={`${contact.name ?? ""} ${contact.email}`}
-                        >
-                          <span className="flex min-w-0 flex-col whitespace-normal">
-                            <span>{contact.name ?? contact.email}</span>
-                            {contact.name ? (
-                              <span className={`break-all text-muted-foreground ${typeStyle("caption.default")}`}>
-                                {contact.email}
-                              </span>
-                            ) : null}
-                          </span>
-                        </SelectItem>
-                      ))}
-                  </SelectGroup>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
           {draft.showCopies ? null : (
             <PillButton type="button" size="compact" variant="ghost" onClick={() => update({ showCopies: true })}>
               Cc Bcc

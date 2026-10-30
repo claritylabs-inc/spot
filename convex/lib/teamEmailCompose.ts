@@ -32,6 +32,8 @@ export type TeamComposeInput = {
   clientOrgId?: Id<"organizations">;
   /** Files the conversation under this request (and its client). */
   requestId?: Id<"procurementRequests">;
+  /** Asks the client to complete this form; its reminders stop once the form is done. Needs `requestId`. */
+  informationFormId?: Id<"procurementInformationForms">;
 };
 
 /** Every field of the pending draft a new email becomes; the fingerprint is computed over these. */
@@ -49,6 +51,7 @@ export type TeamComposeDraftFields = {
   transport: "operator_inbox";
   orgId?: Id<"organizations">;
   procurementRequestId?: Id<"procurementRequests">;
+  informationFormId?: Id<"procurementInformationForms">;
 };
 
 export type TeamComposePreview = {
@@ -127,6 +130,14 @@ export async function composeTeamEmail(
     clientOrgId = record.clientOrgId;
     request = { _id: record._id, title: record.title };
   }
+  let informationFormId: Id<"procurementInformationForms"> | undefined;
+  if (args.informationFormId) {
+    const form = await ctx.db.get(args.informationFormId);
+    if (!request || !form || form.requestId !== request._id || form.status === "cancelled") {
+      return { ok: false, reason: "That form is no longer available." };
+    }
+    informationFormId = form._id;
+  }
   if (clientOrgId) {
     const problem = await teamTargetProblem(ctx, {
       clientOrgId,
@@ -172,6 +183,7 @@ export async function composeTeamEmail(
     transport: "operator_inbox",
     ...(client ? { orgId: client._id } : {}),
     ...(request ? { procurementRequestId: request._id } : {}),
+    ...(informationFormId ? { informationFormId } : {}),
   };
   const fingerprint = await pendingEmailDraftFingerprint(fields);
   return {

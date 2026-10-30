@@ -843,7 +843,7 @@ async function terminalizeSequence(
   return cancelled;
 }
 
-/** Closing an authorized form stops only its own client reminder sequence. */
+/** Closing a form stops the reminders on the emails that asked for it, and only those. */
 export async function closeInformationFormOutreach(
   ctx: MutationCtx,
   form: Pick<
@@ -852,6 +852,19 @@ export async function closeInformationFormOutreach(
   >,
   reason: "information_form_submitted" | "information_form_cancelled",
 ) {
+  const threads = await ctx.db
+    .query("teamEmailThreads")
+    .withIndex("by_informationFormId", (q) => q.eq("informationFormId", form._id))
+    .take(20);
+  for (const thread of threads)
+    for (const sequence of await threadFollowUps(ctx, thread._id))
+      if (isLive(sequence.status))
+        await terminalizeSequence(ctx, sequence, {
+          status: "stopped",
+          reason,
+          now: dayjs().valueOf(),
+        });
+  // Forms emailed before this used their own client reminder sequence.
   if (!form.outreachSequenceId) return;
   const sequence = await ctx.db.get(form.outreachSequenceId);
   if (

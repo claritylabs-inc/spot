@@ -50,11 +50,6 @@ import { ReaderBoundary } from "@/components/inbox/reader-boundary";
 import { useResolvedThreadId } from "@/components/inbox/resolve-thread-id";
 import { TeamInbox } from "@/components/inbox/team-inbox";
 import type { InboxThread } from "@/components/inbox/team-inbox";
-import {
-  ClientOutreachComposer,
-  RequestEmailAudienceTabs,
-  type RequestEmailAudience,
-} from "./client-outreach-composer";
 import { NewEmailComposer } from "@/components/inbox/new-email-composer";
 import { ProviderEmailComposer } from "./provider-email-composer";
 import { ProviderDiscoveryPanel } from "./provider-discovery-panel";
@@ -267,7 +262,6 @@ type RequestPanel =
   | { kind: "image"; fileItemId: string }
   | {
       kind: "composer";
-      audience: RequestEmailAudience;
       informationFormId?: Id<"procurementInformationForms">;
     }
   | { kind: "information"; target: InformationDrawerTarget }
@@ -341,7 +335,7 @@ function requestPanelContext(
       };
     case "composer":
       return {
-        text: `new ${panel.audience} email`,
+        text: panel.informationFormId ? "new client email" : "new email",
         refs: panel.informationFormId
           ? [{
                 kind: "procurement_information_form",
@@ -2104,7 +2098,7 @@ export function ProcurementRequestWorkspace({
         `${basePath}/${requestId}?view=${informationFormId ? `information&form=${informationFormId}` : "email"}`,
         { scroll: false },
       );
-      setPanel({ kind: "composer", audience: "client", informationFormId });
+      setPanel({ kind: "composer", informationFormId });
     },
     [basePath, requestId, router, setPanel],
   );
@@ -2293,35 +2287,27 @@ export function ProcurementRequestWorkspace({
       if (file?.url)
         node = <ImagePreview file={file} onClose={close} />;
     } else {
-      const audienceTabs = (
-        <RequestEmailAudienceTabs
-          value={panel.audience}
-          onChange={(audience) => setPanel({ kind: "composer", audience })}
+      node = details ? (
+        <NewEmailComposer
+          key={panel.informationFormId ?? "composer"}
+          request={{
+            requestId,
+            clientOrgId,
+            title: requestTitle,
+          }}
+          informationForm={
+            panel.informationFormId
+              ? {
+                  id: panel.informationFormId,
+                  title: composerDraft.title,
+                  initialText: composerDraft.text,
+                }
+              : undefined
+          }
+          onClose={close}
+          onSent={close}
         />
-      );
-      node =
-        panel.audience === "provider" ? (
-          details ? (
-            <NewEmailComposer
-              key="provider-composer"
-              request={{ requestId, clientOrgId, title: requestTitle }}
-              header={audienceTabs}
-              onClose={close}
-              onSent={close}
-            />
-          ) : null
-        ) : (
-          <ClientOutreachComposer
-            key={panel.informationFormId ?? requestId}
-            informationFormId={panel.informationFormId}
-            requestId={requestId}
-            requestTitle={composerDraft.title ?? requestTitle}
-            initialText={composerDraft.text}
-            header={audienceTabs}
-            onClose={close}
-            onSent={close}
-          />
-        );
+      ) : null;
     }
     return node;
   };

@@ -3800,6 +3800,8 @@ export default defineSchema({
     clientOrgId: v.optional(v.id("organizations")),
     addressedRequestId: v.optional(v.id("procurementRequests")),
     requestId: v.optional(v.id("procurementRequests")),
+    /** The client information form this conversation asks the client to complete. */
+    informationFormId: v.optional(v.id("procurementInformationForms")),
     normalizedSubject: v.string(),
     subject: v.string(),
     category: v.union(
@@ -3846,6 +3848,7 @@ export default defineSchema({
     .index("by_addressedRequestId_and_latestMessageAt", ["addressedRequestId", "latestMessageAt"])
     .index("subject", ["clientOrgId", "normalizedSubject", "latestMessageAt"])
     .index("by_resendThreadId", ["resendThreadId"])
+    .index("by_informationFormId", ["informationFormId"])
     .searchIndex("search_subject", { searchField: "subject", filterFields: ["clientOrgId"] }),
 
   teamEmailMessages: defineTable({
@@ -5999,6 +6002,8 @@ export default defineSchema({
     })),
     transport: v.optional(v.literal("operator_inbox")),
     procurementRequestId: v.optional(v.id("procurementRequests")),
+    /** The client information form this email asks the client to complete. */
+    informationFormId: v.optional(v.id("procurementInformationForms")),
     teamEmailThreadId: v.optional(v.id("teamEmailThreads")),
     resendInboxEmailId: v.optional(v.string()),
     orgId: v.optional(v.id("organizations")),

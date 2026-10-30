@@ -1,6 +1,6 @@
 "use client";
 
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
 
@@ -21,25 +21,15 @@ export function PolicyUploadModeToggle({
 }: PolicyUploadModeToggleProps) {
   return (
     <div className={cn("flex items-center justify-between gap-3", className)}>
-      <div className={`text-muted-foreground ${typeStyle("caption.medium")}`}>
-        Import as
+      <div className={`text-foreground ${typeStyle("body.default")}`}>
+        Combine into one policy
       </div>
-      <Tabs
-        value={value}
-        onValueChange={(next) => {
-          if (!disabled) onChange(next as PolicyUploadMode);
-        }}
-        className={cn("shrink-0", disabled && "pointer-events-none opacity-50")}
-      >
-        <TabsList variant="pill" aria-label="Import files as">
-          <TabsTrigger value="combined" disabled={disabled}>
-            One policy
-          </TabsTrigger>
-          <TabsTrigger value="separate" disabled={disabled}>
-            Separate policies
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <SettingsSwitch
+        checked={value === "combined"}
+        onCheckedChange={() => onChange(value === "combined" ? "separate" : "combined")}
+        label="Combine files into one policy"
+        disabled={disabled}
+      />
     </div>
   );
 }

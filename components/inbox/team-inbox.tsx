@@ -43,12 +43,7 @@ import { EmptyStateCard } from "@claritylabs-inc/ui/components/empty-state-card"
 import { OperationalPanel } from "@claritylabs-inc/ui/components/operational-panel";
 import { Skeleton } from "@claritylabs-inc/ui/components/skeleton";
 import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import {
-  PageTabsList,
-  PageTabsRail,
-  SectionTabs,
-  SectionTabsList,
-} from "@/components/ui/folder-tabs";
+import { PageTabsList, PageTabsRail } from "@/components/ui/folder-tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useFollowedState, useFollowedValue } from "@/hooks/use-followed-state";
@@ -81,13 +76,11 @@ const MAILBOX_TABS: { value: Mailbox; label: string }[] = [
   { value: "archived", label: "Archived" },
 ];
 
-/** Mailbox tabs: in the shell top bar on the team inbox, local when embedded in a request. */
+/** Mailbox tabs, rendered in the shell top bar. */
 function MailboxTabs({
-  topBar,
   value,
   onValueChange,
 }: {
-  topBar: boolean;
   value: Mailbox;
   onValueChange: (value: Mailbox) => void;
 }) {
@@ -97,14 +90,10 @@ function MailboxTabs({
     </TabsTrigger>
   ));
   const change = (next: unknown) => onValueChange(next as Mailbox);
-  return topBar ? (
+  return (
     <PageTabsRail value={value} onValueChange={change}>
       <PageTabsList aria-label="Mailbox">{triggers}</PageTabsList>
     </PageTabsRail>
-  ) : (
-    <SectionTabs value={value} onValueChange={change}>
-      <SectionTabsList aria-label="Mailbox">{triggers}</SectionTabsList>
-    </SectionTabs>
   );
 }
 type Category = NonNullable<InboxThread["category"]>;
@@ -867,7 +856,6 @@ export function TeamInbox({
         </AppShellPortal>
       ) : null}
       <MailboxTabs
-        topBar={scope.kind === "team"}
         value={mailbox}
         onValueChange={(value) => {
           setMailbox(value);

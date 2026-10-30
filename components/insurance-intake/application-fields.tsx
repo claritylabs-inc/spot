@@ -10,8 +10,6 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Tabs,
-  TabsList,
-  TabsTrigger,
   TabsContent,
 } from "@claritylabs-inc/ui/components/tabs";
 import { cn } from "@/lib/utils";
@@ -94,8 +92,7 @@ export function IntakeApplicationFields({
       ? ["Insurance history", ...intakeQuoteSections(details, true)]
       : []),
   ];
-  const [selected, setSelected] = useState(titles[0]);
-  const visible = activeSection ?? selected;
+  const visible = activeSection ?? titles[0];
   // Panels edit items of the visible coverage; leaving the section closes them.
   const [panelState, setPanelState] = useState<{
     section?: string;
@@ -314,21 +311,11 @@ export function IntakeApplicationFields({
       <Tabs
         data-operator-inline-fields
         value={visible}
-        onValueChange={(value) => setSelected(String(value))}
         className={cn(
           "[&_input:not([type=checkbox])]:h-9 [&_[data-slot=select-trigger]]:h-9",
           activeSection ? "gap-5" : "gap-0",
         )}
       >
-        {!activeSection && (
-          <TabsList variant="folder" aria-label="Application details">
-            {titles.map((title) => (
-              <TabsTrigger key={title} value={title}>
-                {title}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        )}
         {!companyOnly &&
           section(
             "Contact details",

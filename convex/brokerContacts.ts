@@ -81,7 +81,26 @@ export const listForRequest = query({
       name: string | null;
       brokerOrgId: Id<"organizations">;
       brokerName: string;
+      brokerWebsite: string | null;
+      brokerIconUrl: string | null;
     }> = [];
+    const brandOf = new Map<
+      Id<"organizations">,
+      { brokerWebsite: string | null; brokerIconUrl: string | null }
+    >();
+    const brand = async (brokerOrgId: Id<"organizations">) => {
+      const known = brandOf.get(brokerOrgId);
+      if (known) return known;
+      const org = await ctx.db.get(brokerOrgId);
+      const found = {
+        brokerWebsite: org?.website ?? null,
+        brokerIconUrl: org?.iconStorageId
+          ? await ctx.storage.getUrl(org.iconStorageId)
+          : null,
+      };
+      brandOf.set(brokerOrgId, found);
+      return found;
+    };
     const seen = new Set<string>();
     const add = (entry: (typeof recipients)[number]) => {
       const email = entry.email.trim().toLowerCase();
@@ -98,8 +117,10 @@ export const listForRequest = query({
       } catch {
         continue;
       }
+      const brokerBrand = await brand(outreach.brokerOrgId);
       if (outreach.contactEmail)
         add({
+          ...brokerBrand,
           email: outreach.contactEmail,
           name: outreach.contactName ?? null,
           brokerOrgId: outreach.brokerOrgId,
@@ -116,6 +137,7 @@ export const listForRequest = query({
       for (const contact of contacts)
         if (contact.email)
           add({
+            ...brokerBrand,
             email: contact.email,
             name: contact.name || null,
             brokerOrgId: outreach.brokerOrgId,
@@ -534,7 +556,13 @@ export const suggestRecipients = query({
         q.gte("email", start).lt("email", `${start}\uffff`),
       )
       .take(20);
-    const found: Array<{ email: string; name: string }> = [];
+    const found: Array<{
+      email: string;
+      name: string;
+      brokerName: string;
+      brokerWebsite: string | null;
+      brokerIconUrl: string | null;
+    }> = [];
     for (const contact of contacts) {
       if (contact.deletedAt !== undefined || !contact.email) continue;
       const provider = await ctx.db.get(contact.brokerOrgId);
@@ -545,7 +573,15 @@ export const suggestRecipients = query({
         isSpotOwnedBrokerIdentity(provider)
       )
         continue;
-      found.push({ email: contact.email, name: contact.name });
+      found.push({
+        email: contact.email,
+        name: contact.name,
+        brokerName: provider.name,
+        brokerWebsite: provider.website ?? null,
+        brokerIconUrl: provider.iconStorageId
+          ? await ctx.storage.getUrl(provider.iconStorageId)
+          : null,
+      });
       if (found.length === 5) break;
     }
     return found;

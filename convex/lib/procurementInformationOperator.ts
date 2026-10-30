@@ -3,6 +3,7 @@ import {
   informationFormTitle,
   neededInformationQuestions,
 } from "../../lib/procurement-information";
+import { informationFormThread } from "./informationFormEmail";
 import type { IntakeFollowupQuestion } from "../../lib/intake-followups";
 import { submittedIntakeApplication } from "../../lib/intake-application";
 import { intakeQuestionHistory } from "../../lib/intake-question-history";
@@ -171,15 +172,17 @@ export async function procurementInformationOverview(
           status: r.status,
         })),
     })),
-    forms: forms.map((f) => ({
-      informationFormId: f._id,
-      title: informationFormTitle(f, forms),
-      status: f.status,
-      url: f.status === "cancelled" ? null : informationFormUrl(f._id),
-      questionIds: f.questions.map((q) => q.questionId),
-      emailed: !!f.outreachSequenceId,
-      submittedAt: f.submittedAt ?? null,
-    })),
+    forms: await Promise.all(
+      forms.map(async (f) => ({
+        informationFormId: f._id,
+        title: informationFormTitle(f, forms),
+        status: f.status,
+        url: f.status === "cancelled" ? null : informationFormUrl(f._id),
+        questionIds: f.questions.map((q) => q.questionId),
+        emailed: !!f.outreachSequenceId || !!(await informationFormThread(ctx, f._id)),
+        submittedAt: f.submittedAt ?? null,
+      })),
+    ),
     unansweredApplicationQuestions: unansweredApplicationQuestions(request),
     research: runs[0] ? researchRunStatus(runs[0]) : null,
   };
