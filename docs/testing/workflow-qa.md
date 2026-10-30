@@ -1,5 +1,26 @@
 # Platform workflow QA
 
+## PDF forms: flat fills, live view and agent edits — October 30, 2026
+
+Native-local Conductor stack, signed in as an operator in headless Chrome.
+
+- Production repro: the Morison "NEW Auto Questionnaire - Fillable" PDF has 150
+  AcroForm widgets with random names (`text_3dlru`) and no widget `/P`. The old
+  path matched values by name (every value in the wrong field), found no boxes
+  (nothing to edit) and lost checkbox squares when flattening.
+- Live models (synchronous router endpoints, inline images): the tagged-blank
+  generation labelled all 150 blanks and filled 19 correctly in about 68 seconds,
+  rendered with checkbox squares. On the same form flattened without tags, Jev
+  placed only 30 of 63 fields and no checkboxes.
+- Live view: a simulated run on a client file showed "Spot is reading the form…",
+  then fields appearing in two tabs ("40 of 150 fields"); both tabs moved to the
+  filled copy, which offered Edit with Spot (a new chat with the PDF as
+  context). A blank PDF offered Fill form.
+- `edit_pdf_form` via `operatorAgentRichTools:runInternal`: an ambiguous label
+  and an unknown label failed with candidates and saved nothing; three changes
+  (text, checkbox, a label without the › separator) filed v3.
+- Not exercised: a full agent turn (the router cannot call back to this sandbox).
+
 ## PDF form autofill and in-panel editing — October 30, 2026
 
 Native-local Conductor stack, signed in as an operator in headless Chrome.

@@ -122,6 +122,7 @@ const operatorToolCategories = {
   read_client_file: "files",
   attach_client_file: "files",
   fill_pdf_form: "files",
+  edit_pdf_form: "files",
   add_client_file: "files",
   add_client_files: "files",
   update_client_file: "files",

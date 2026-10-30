@@ -62,7 +62,6 @@ import type * as actions_operatorSecondFactor from "../actions/operatorSecondFac
 import type * as actions_operatorSendingMailboxes from "../actions/operatorSendingMailboxes.js";
 import type * as actions_operatorSuggestions from "../actions/operatorSuggestions.js";
 import type * as actions_ownComplianceMonitor from "../actions/ownComplianceMonitor.js";
-import type * as actions_pdfFormEdits from "../actions/pdfFormEdits.js";
 import type * as actions_policyExtraction from "../actions/policyExtraction.js";
 import type * as actions_processThreadChat from "../actions/processThreadChat.js";
 import type * as actions_procurementInformation from "../actions/procurementInformation.js";
@@ -700,7 +699,6 @@ declare const fullApi: ApiFromModules<{
   "actions/operatorSendingMailboxes": typeof actions_operatorSendingMailboxes;
   "actions/operatorSuggestions": typeof actions_operatorSuggestions;
   "actions/ownComplianceMonitor": typeof actions_ownComplianceMonitor;
-  "actions/pdfFormEdits": typeof actions_pdfFormEdits;
   "actions/policyExtraction": typeof actions_policyExtraction;
   "actions/processThreadChat": typeof actions_processThreadChat;
   "actions/procurementInformation": typeof actions_procurementInformation;

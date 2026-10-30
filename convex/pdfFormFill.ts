@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
   internalQuery,
+  query,
   type MutationCtx,
   type QueryCtx,
 } from "./_generated/server";
@@ -11,19 +12,19 @@ import { submittedIntakeApplication } from "../lib/intake-application";
 import { activeClientFile, setClientFileArchived } from "./clientFiles";
 import { createClientFileFromGeneratedCertificate } from "./lib/clientFiles";
 import {
+  getActiveOperatorProfile,
   requireOperatorForUser,
   writeOperatorAudit,
 } from "./lib/operatorIdentity";
 import {
   pdfFormFieldValidator,
-  pdfFormModeValidator,
   pdfFormVersionFilename,
-  type PdfFormField,
 } from "./lib/pdfFormFields";
 import {
   PDF_FORM_SOURCE_FORMATS,
   parsePdfFormSourceId,
 } from "./lib/pdfFormSource";
+import { NoWriteInputError } from "./lib/noWriteInputError";
 import { readOrgWiki } from "./orgWiki";
 
 const MAX_FORM_PDF_BYTES = 25 * 1024 * 1024;
@@ -78,6 +79,9 @@ async function resolveSource(
   const parsed = parsePdfFormSourceId(source);
   if (parsed?.kind === "operatorAttachment") {
     const fileId = ctx.db.system.normalizeId("_storage", parsed.fileId);
+    // A filled copy restarts from its original, whichever conversation shows it.
+    const saved = fileId ? await savedFormSource(ctx, fileId) : null;
+    if (saved) return saved;
     const attachment = fileId
       ? await ctx.db
           .query("operatorAgentAttachments")
@@ -86,13 +90,9 @@ async function resolveSource(
           )
           .first()
       : null;
-    if (!attachment) return null;
-    return (
-      (await savedFormSource(ctx, attachment.fileId)) ?? {
-        fileId: attachment.fileId,
-        filename: attachment.filename,
-      }
-    );
+    return attachment
+      ? { fileId: attachment.fileId, filename: attachment.filename }
+      : null;
   }
   if (parsed?.kind === "clientFile") {
     const id = ctx.db.normalizeId("clientFiles", parsed.clientFileId);
@@ -429,7 +429,6 @@ export const recordFillInternal = internalMutation({
     sourceFileId: v.id("_storage"),
     sourceFilename: v.string(),
     outputFileId: v.id("_storage"),
-    mode: pdfFormModeValidator,
     pageCount: v.number(),
     fields: v.array(pdfFormFieldValidator),
     ...filingValidator,
@@ -461,7 +460,6 @@ export const recordFillInternal = internalMutation({
     if (existing)
       await ctx.db.patch(existing._id, {
         threadId: args.threadId,
-        mode: args.mode,
         pageCount: args.pageCount,
         fields: args.fields,
         ...(args.outreachId ? { outreachId: args.outreachId } : {}),
@@ -477,33 +475,278 @@ export const recordFillInternal = internalMutation({
   },
 });
 
-/**
- * Commits an operator edit as the next version. The caller has already
- * rendered `fileId` from the original with `renderPdfFormFields`; a stale
- * `expectedVersion` means someone else saved first.
- */
-export async function commitPdfFormEdit(
-  ctx: MutationCtx,
-  args: {
-    operatorUserId: Id<"users">;
-    fillId: Id<"pdfFormFills">;
-    expectedVersion: number;
-    fields: PdfFormField[];
-    fileId: Id<"_storage">;
+/** The filled form behind a PDF source (any of its versions), for edit_pdf_form. */
+export const getFillForEditInternal = internalQuery({
+  args: { operatorUserId: v.id("users"), source: v.string() },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    const fileId = await pdfSourceFileId(ctx, args.source);
+    const fill = fileId ? await fillForVersionFile(ctx, fileId) : null;
+    if (!fill)
+      throw new NoWriteInputError(
+        "form_not_filled",
+        "That PDF is not a filled form. Fill it with fill_pdf_form first.",
+      );
+    // Fills from before every form was filled flat have no field positions.
+    if (fill.mode === "acroform")
+      throw new NoWriteInputError(
+        "form_refill_required",
+        "This form was filled with an older method. Refill it with fill_pdf_form, passing the corrections in answers.",
+      );
+    return {
+      fillId: fill._id,
+      version: fill.version,
+      sourceFileId: fill.sourceFileId,
+      fields: fill.fields,
+    };
   },
-) {
-  await requireOperatorForUser(ctx, args.operatorUserId);
-  const fill = await ctx.db.get(args.fillId);
-  if (!fill) throw new Error("Filled form not found");
-  if (fill.version !== args.expectedVersion)
-    throw new Error(
-      "This form was saved by someone else. Reload before saving again.",
-    );
-  await ctx.db.patch(fill._id, { fields: args.fields });
-  return await addVersion(ctx, fill, {
-    operatorUserId: args.operatorUserId,
-    fileId: args.fileId,
-    version: fill.version + 1,
-    source: "edit",
-  });
+});
+
+/**
+ * Commits an agent edit as the next version. The caller has already rendered
+ * `fileId` from the original with `renderPdfFormFields`; a stale
+ * `expectedVersion` means another edit landed first.
+ */
+export const commitEditInternal = internalMutation({
+  args: {
+    operatorUserId: v.id("users"),
+    fillId: v.id("pdfFormFills"),
+    expectedVersion: v.number(),
+    fields: v.array(pdfFormFieldValidator),
+    fileId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    await requireOperatorForUser(ctx, args.operatorUserId);
+    const fill = await ctx.db.get(args.fillId);
+    if (!fill) throw new NoWriteInputError("form_not_found", "Filled form not found");
+    if (fill.version !== args.expectedVersion)
+      throw new NoWriteInputError(
+        "form_version_conflict",
+        "The form changed while editing. Read it again and retry.",
+      );
+    await ctx.db.patch(fill._id, { fields: args.fields });
+    return await addVersion(ctx, fill, {
+      operatorUserId: args.operatorUserId,
+      fileId: args.fileId,
+      version: fill.version + 1,
+      source: "edit",
+    });
+  },
+});
+
+/** A run that stopped reporting this long ago failed without saying so. */
+const PDF_FORM_RUN_STALE_MS = 5 * 60 * 1000;
+
+export function isLivePdfFormRun(
+  run: Doc<"pdfFormFillRuns">,
+): run is Doc<"pdfFormFillRuns"> & { stage: "reading" | "placing" } {
+  return (
+    (run.stage === "reading" || run.stage === "placing") &&
+    dayjs().valueOf() - run.updatedAt < PDF_FORM_RUN_STALE_MS
+  );
 }
+
+export async function latestPdfFormRun(
+  ctx: QueryCtx,
+  sourceFileId: Id<"_storage">,
+) {
+  return await ctx.db
+    .query("pdfFormFillRuns")
+    .withIndex("by_sourceFileId", (q) => q.eq("sourceFileId", sourceFileId))
+    .order("desc")
+    .first();
+}
+
+export const startRunInternal = internalMutation({
+  args: {
+    operatorUserId: v.id("users"),
+    threadId: v.id("operatorAgentThreads"),
+    sourceFileId: v.id("_storage"),
+    sourceFilename: v.string(),
+    clientOrgId: v.optional(v.id("organizations")),
+  },
+  handler: async (ctx, args) => {
+    const now = dayjs().valueOf();
+    return await ctx.db.insert("pdfFormFillRuns", {
+      ...args,
+      stage: "reading",
+      fields: [],
+      startedAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+export const progressRunInternal = internalMutation({
+  args: {
+    runId: v.id("pdfFormFillRuns"),
+    stage: v.union(v.literal("reading"), v.literal("placing")),
+    fields: v.array(pdfFormFieldValidator),
+    total: v.optional(v.number()),
+  },
+  handler: async (ctx, { runId, ...progress }) => {
+    const run = await ctx.db.get(runId);
+    if (!run || !isLivePdfFormRun(run)) return null;
+    await ctx.db.patch(runId, { ...progress, updatedAt: dayjs().valueOf() });
+    return null;
+  },
+});
+
+export const finishRunInternal = internalMutation({
+  args: {
+    runId: v.id("pdfFormFillRuns"),
+    fillId: v.optional(v.id("pdfFormFills")),
+    outputFileId: v.optional(v.id("_storage")),
+  },
+  handler: async (ctx, { runId, fillId, outputFileId }) => {
+    await ctx.db.patch(runId, {
+      stage: fillId && outputFileId ? "done" : "failed",
+      ...(fillId ? { fillId } : {}),
+      ...(outputFileId ? { outputFileId } : {}),
+      updatedAt: dayjs().valueOf(),
+    });
+    return null;
+  },
+});
+
+/** The form this conversation's agent is filling now, so the panel can show it live. */
+export const activeRunForThread = query({
+  args: { threadId: v.id("operatorAgentThreads") },
+  returns: v.union(
+    v.null(),
+    v.object({
+      runId: v.id("pdfFormFillRuns"),
+      sourceFileId: v.id("_storage"),
+      sourceFilename: v.string(),
+      url: v.union(v.string(), v.null()),
+    }),
+  ),
+  handler: async (ctx, { threadId }) => {
+    if (!(await getActiveOperatorProfile(ctx))) return null;
+    const run = await ctx.db
+      .query("pdfFormFillRuns")
+      .withIndex("by_threadId", (q) => q.eq("threadId", threadId))
+      .order("desc")
+      .first();
+    if (!run || !isLivePdfFormRun(run)) return null;
+    return {
+      runId: run._id,
+      sourceFileId: run.sourceFileId,
+      sourceFilename: run.sourceFilename,
+      url: await ctx.storage.getUrl(run.sourceFileId),
+    };
+  },
+});
+
+/** The stored file behind a PDF panel source. */
+export async function pdfSourceFileId(ctx: QueryCtx, source: string) {
+  const parsed = parsePdfFormSourceId(source);
+  if (parsed?.kind === "clientFile") {
+    const id = ctx.db.normalizeId("clientFiles", parsed.clientFileId);
+    const file = id ? await ctx.db.get(id) : null;
+    return file && !file.deletedAt ? file.fileId : null;
+  }
+  const storageId =
+    parsed?.kind === "operatorAttachment" ? parsed.fileId : parsed?.storageId;
+  return storageId ? ctx.db.system.normalizeId("_storage", storageId) : null;
+}
+
+const pdfDocumentSourceValidator = v.union(
+  v.object({
+    kind: v.literal("clientFile"),
+    clientFileId: v.id("clientFiles"),
+    filename: v.string(),
+  }),
+  v.object({
+    kind: v.literal("operatorAttachment"),
+    fileId: v.id("_storage"),
+    filename: v.string(),
+  }),
+);
+
+/**
+ * What the PDF panel shows for the open PDF: a fill in progress (live, for
+ * every operator viewing it), a filled form (edited through the agent), or
+ * Fill form. A fill that just finished points at its filled copy so viewers
+ * move to it.
+ */
+export const getForDocument = query({
+  args: { source: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      status: v.literal("fillable"),
+      finished: v.union(
+        v.null(),
+        v.object({
+          runId: v.id("pdfFormFillRuns"),
+          url: v.string(),
+          source: pdfDocumentSourceValidator,
+        }),
+      ),
+    }),
+    v.object({
+      status: v.literal("filling"),
+      runId: v.id("pdfFormFillRuns"),
+      stage: v.union(v.literal("reading"), v.literal("placing")),
+      fields: v.array(pdfFormFieldValidator),
+      total: v.union(v.number(), v.null()),
+    }),
+    v.object({
+      status: v.literal("filled"),
+      version: v.number(),
+      isLatest: v.boolean(),
+    }),
+  ),
+  handler: async (ctx, { source }) => {
+    // Clients open the same files in their library; filling is operator-only.
+    if (!(await getActiveOperatorProfile(ctx))) return null;
+    const fileId = await pdfSourceFileId(ctx, source);
+    if (!fileId) return null;
+    const fill = await fillForVersionFile(ctx, fileId);
+    if (fill)
+      return {
+        status: "filled" as const,
+        version: fill.version,
+        isLatest: fill.outputFileId === fileId,
+      };
+    const run = await latestPdfFormRun(ctx, fileId);
+    if (run && isLivePdfFormRun(run))
+      return {
+        status: "filling" as const,
+        runId: run._id,
+        stage: run.stage,
+        fields: run.fields,
+        total: run.total ?? null,
+      };
+    const version =
+      run?.stage === "done" && run.outputFileId
+        ? await ctx.db
+            .query("pdfFormFillVersions")
+            .withIndex("by_fileId", (q) => q.eq("fileId", run.outputFileId!))
+            .first()
+        : null;
+    const url = version ? await ctx.storage.getUrl(version.fileId) : null;
+    return {
+      status: "fillable" as const,
+      finished:
+        run && version && url
+          ? {
+              runId: run._id,
+              url,
+              source: version.clientFileId
+                ? {
+                    kind: "clientFile" as const,
+                    clientFileId: version.clientFileId,
+                    filename: version.filename,
+                  }
+                : {
+                    kind: "operatorAttachment" as const,
+                    fileId: version.fileId,
+                    filename: version.filename,
+                  },
+            }
+          : null,
+    };
+  },
+});

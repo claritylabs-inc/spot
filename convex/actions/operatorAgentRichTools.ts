@@ -14,8 +14,12 @@ import { runOperatorWebRetrieval } from "../lib/webRetrieval";
 import { fetchPublicUrl } from "../lib/fetchPublicUrl";
 import { parseOperatorAgentToolInput } from "../lib/operatorAgentToolRegistry";
 import { mergePdfsFromUrls, mergedFileName } from "../lib/mergePdfs";
-import { fillPdfForm } from "../lib/pdfFormFill";
-import { pdfFormFieldBox } from "../lib/pdfFormFields";
+import { fillPdfForm, renderPdfFormFields } from "../lib/pdfFormFill";
+import {
+  findPdfFormField,
+  pdfFormFieldBox,
+  pdfFormFieldValue,
+} from "../lib/pdfFormFields";
 import {
   OPERATOR_EMAIL_TOOL_NAMES,
   runOperatorEmailTool,
@@ -199,29 +203,56 @@ export const runInternal = internalAction({
           "invalid_file_type",
           `${source.filename} is not a readable PDF.`,
         );
-      const filled = await fillPdfForm(ctx, {
-        pdfBytes,
-        filename: source.filename,
-        orgId: source.client?.orgId,
-        client: source.client,
-        answers: (input.answers ?? []) as Array<{ field: string; value: string }>,
-        instructions: input.instructions as string | undefined,
-        traceId: `pdf-form:${args.threadId}:${source.fileId}`,
-      });
-      const fileId = await ctx.storage.store(
-        new Blob([new Uint8Array(filled.pdfBytes)], { type: "application/pdf" }),
-      );
-      const recorded = await ctx.runMutation(internal.pdfFormFill.recordFillInternal, {
+      // Every operator viewing this form watches the fill live in the PDF panel.
+      const runId = await ctx.runMutation(internal.pdfFormFill.startRunInternal, {
         operatorUserId: args.operatorUserId,
         threadId: args.threadId,
         sourceFileId: source.fileId,
         sourceFilename: source.filename,
-        outputFileId: fileId,
-        mode: filled.mode,
-        pageCount: filled.pageCount,
-        fields: filled.fields,
-        ...source.filing,
+        ...(source.client ? { clientOrgId: source.client.orgId } : {}),
       });
+      let filled;
+      let fileId;
+      let recorded;
+      try {
+        filled = await fillPdfForm(ctx, {
+          pdfBytes,
+          filename: source.filename,
+          orgId: source.client?.orgId,
+          client: source.client,
+          answers: (input.answers ?? []) as Array<{ field: string; value: string }>,
+          instructions: input.instructions as string | undefined,
+          traceId: `pdf-form:${args.threadId}:${source.fileId}`,
+          onProgress: async (progress) => {
+            await ctx.runMutation(internal.pdfFormFill.progressRunInternal, {
+              runId,
+              stage: progress.stage,
+              fields: progress.fields,
+              ...(progress.total !== undefined ? { total: progress.total } : {}),
+            });
+          },
+        });
+        fileId = await ctx.storage.store(
+          new Blob([new Uint8Array(filled.pdfBytes)], { type: "application/pdf" }),
+        );
+        recorded = await ctx.runMutation(internal.pdfFormFill.recordFillInternal, {
+          operatorUserId: args.operatorUserId,
+          threadId: args.threadId,
+          sourceFileId: source.fileId,
+          sourceFilename: source.filename,
+          outputFileId: fileId,
+          pageCount: filled.pageCount,
+          fields: filled.fields,
+          ...source.filing,
+        });
+      } finally {
+        await ctx.runMutation(internal.pdfFormFill.finishRunInternal, {
+          runId,
+          ...(recorded && fileId
+            ? { fillId: recorded.fillId, outputFileId: fileId }
+            : {}),
+        });
+      }
       const filename = recorded.filename;
       const answered = filled.fields.filter((field) => field.value);
       const placed = answered.filter((field) => pdfFormFieldBox(field));
@@ -244,7 +275,6 @@ export const runInternal = internalAction({
             procurementFileItemId: recorded.fileItemId ?? null,
             version: recorded.version,
           },
-          mode: filled.mode,
           pageCount: filled.pageCount,
           pagesRead: filled.pagesRead,
           filledCount: placed.length,
@@ -263,6 +293,92 @@ export const runInternal = internalAction({
             filename,
             contentType: "application/pdf",
             size: filled.pdfBytes.byteLength,
+          },
+        ],
+      };
+    }
+
+    if (args.toolName === "edit_pdf_form") {
+      const input = parseOperatorAgentToolInput("edit_pdf_form", args.input) as {
+        source: string;
+        changes: Array<{ field: string; value: string }>;
+      };
+      const fill = await ctx.runQuery(internal.pdfFormFill.getFillForEditInternal, {
+        operatorUserId: args.operatorUserId,
+        source: input.source,
+      });
+      const fields = [...fill.fields];
+      const changed: Array<{ field: string; value: string; placed: boolean }> = [];
+      const problems: string[] = [];
+      for (const change of input.changes) {
+        const match = findPdfFormField(fields, change.field);
+        if ("candidates" in match) {
+          problems.push(
+            match.candidates.length
+              ? `"${change.field}" matches several fields: ${match.candidates.join("; ")}`
+              : `No field is labelled "${change.field}"`,
+          );
+          continue;
+        }
+        const value = pdfFormFieldValue(match.field, change.value);
+        fields[fields.indexOf(match.field)] = { ...match.field, value, basis: "operator" };
+        changed.push({
+          field: match.field.label,
+          value,
+          placed: Boolean(pdfFormFieldBox(match.field)),
+        });
+      }
+      if (problems.length)
+        throw new NoWriteInputError(
+          "unknown_form_fields",
+          `Nothing was saved. ${problems.join(". ")}. Use the labels fill_pdf_form reported.`,
+        );
+      const blob = await ctx.storage.get(fill.sourceFileId);
+      if (!blob)
+        throw new NoWriteInputError(
+          "form_source_unavailable",
+          "The original PDF is unavailable.",
+        );
+      const rendered = await renderPdfFormFields(
+        new Uint8Array(await blob.arrayBuffer()),
+        fields,
+      );
+      const fileId = await ctx.storage.store(
+        new Blob([new Uint8Array(rendered)], { type: "application/pdf" }),
+      );
+      let committed;
+      try {
+        committed = await ctx.runMutation(internal.pdfFormFill.commitEditInternal, {
+          operatorUserId: args.operatorUserId,
+          fillId: fill.fillId,
+          expectedVersion: fill.version,
+          fields,
+          fileId,
+        });
+      } catch (error) {
+        await ctx.storage.delete(fileId);
+        throw error;
+      }
+      return {
+        result: {
+          status: "edited",
+          attachmentFileId: fileId,
+          filename: committed.filename,
+          version: committed.version,
+          changed,
+          ...(changed.some((change) => !change.placed)
+            ? {
+                notShown:
+                  "Some changed fields were never placed on the page, so they do not appear in the PDF; refill with those values in answers.",
+              }
+            : {}),
+        },
+        attachments: [
+          {
+            fileId,
+            filename: committed.filename,
+            contentType: "application/pdf",
+            size: rendered.byteLength,
           },
         ],
       };

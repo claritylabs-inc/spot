@@ -1,15 +1,29 @@
 "use node";
 
-// Fills a PDF form for an operator. AcroForm PDFs map named fields to values
-// in one structured generation. Flat forms (scanned or printed questionnaires)
-// get their fields and values from a vision generation over the page images,
-// then Jev Box places every blank and checkbox, answered or not, so the PDF
-// panel's editor can type into any of them. Both produce the same field
-// records, and `renderPdfFormFields` writes them onto the original, so the
-// editor regenerates a flattened copy the same way.
+// Fills a PDF form for an operator; the filled copy is always flat. A
+// fillable PDF already knows where its blanks are: its fields are flattened
+// as they look blank and the page images go to one vision generation with
+// each blank outlined and tagged by id (field names are often meaningless,
+// e.g. text_3dlru), which labels and fills each id. Any other form (scanned
+// or printed) gets its fields from the generation, then Jev Box places every
+// blank and checkbox. Both produce the same field records, shown live in the
+// PDF panel and drawn over the original by `renderPdfFormFields`, which
+// agent edits reuse to render each new version.
 
 import { Output, type ModelMessage, type UserModelMessage } from "ai";
-import { PDFDocument, StandardFonts, type PDFFont } from "pdf-lib";
+import dayjs from "dayjs";
+import {
+  PDFCheckBox,
+  PDFDocument,
+  PDFDropdown,
+  PDFOptionList,
+  PDFRadioGroup,
+  PDFTextField,
+  StandardFonts,
+  componentsToColor,
+  rgb,
+  type PDFFont,
+} from "pdf-lib";
 import { z } from "zod";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -19,16 +33,10 @@ import {
   generateAgentTextForOrg,
   generateAgentTextForPublicTask,
 } from "./models";
-import {
-  fillAcroForm,
-  getAcroFormFields,
-  overlayTextOnPdf,
-  type TextOverlay,
-} from "./pdfFiller";
+import { overlayTextOnPdf, type TextOverlay } from "./pdfFiller";
 import {
   pdfFormFieldBox,
   type PdfFormField,
-  type PdfFormMode,
 } from "./pdfFormFields";
 import { renderPdfPageImages } from "./pdfPageImages";
 import { extractPdfText } from "./pdfText";
@@ -45,6 +53,8 @@ const TEXT_INSET = 2;
  * question, so one target per request keeps it under Jev's payload limit.
  */
 const LOCATE_CONCURRENCY = 6;
+/** How often live progress reaches the PDF panel while fields are placed. */
+const PROGRESS_INTERVAL_MS = 400;
 
 export type PdfFormFillInput = {
   pdfBytes: Uint8Array;
@@ -56,11 +66,18 @@ export type PdfFormFillInput = {
   answers: Array<{ field: string; value: string }>;
   instructions?: string;
   traceId: string;
+  /** Live progress for the PDF panel: reading the form, then fields as they are placed. */
+  onProgress?: (progress: PdfFormFillProgress) => Promise<void>;
+};
+
+export type PdfFormFillProgress = {
+  stage: "reading" | "placing";
+  fields: PdfFormField[];
+  total?: number;
 };
 
 export type PdfFormFillResult = {
   pdfBytes: Uint8Array;
-  mode: PdfFormMode;
   pageCount: number;
   pagesRead: number;
   /** Every placed field, answered or not, plus answers Jev could not place. */
@@ -78,15 +95,20 @@ basis says where each value came from: operator (operatorAnswers or instructions
 
 const basisSchema = z.enum(["operator", "client_record", "none"]);
 
-const acroFormSchema = z.object({
+const taggedFormSchema = z.object({
   fields: z
     .array(
       z.object({
-        name: z.string().describe("Exact AcroForm field name from fields"),
+        id: z.string().describe("Blank id from the red tag, e.g. f12"),
+        label: z
+          .string()
+          .describe(
+            "What the blank asks, as printed beside it, with its section when labels repeat, e.g. Vehicle #2 › VIN Number or Winter Tires › Yes",
+          ),
         value: z
           .string()
           .describe(
-            "Text to enter; for checkboxes Yes or No; for dropdown and radio fields one of its options; empty when unknown",
+            "Text blanks: the value to write, empty when unknown. Checkboxes: X to tick, empty to leave clear. Choice fields: one of its options",
           ),
         basis: basisSchema,
       }),
@@ -163,81 +185,182 @@ function contextText(input: PdfFormFillInput) {
   });
 }
 
-/** First widget of each AcroForm field, as a page number and top-left box. */
-function acroFormFieldBoxes(document: PDFDocument) {
+type TaggedBlank = {
+  id: string;
+  kind: PdfFormField["kind"];
+  options?: string[];
+  page: number;
+} & Box;
+
+/**
+ * Where a fillable PDF's blanks are: each field widget with its page and
+ * top-left box. Widgets often omit their page (`/P`), so the page comes from
+ * the page's annotations.
+ */
+function formBlanks(document: PDFDocument): TaggedBlank[] {
   const pages = document.getPages();
-  const boxes = new Map<string, Box & { page: number }>();
+  const blanks: TaggedBlank[] = [];
   for (const field of document.getForm().getFields()) {
-    const widget = field.acroField.getWidgets()[0];
-    const pageRef = widget?.P();
-    const index = pageRef
-      ? pages.findIndex((page) => page.ref === pageRef)
-      : -1;
-    if (!widget || index < 0) continue;
-    const rect = widget.getRectangle();
-    boxes.set(field.getName(), {
-      page: index + 1,
-      x: rect.x,
-      y: pages[index].getHeight() - rect.y - rect.height,
-      width: rect.width,
-      height: rect.height,
-    });
+    const kind =
+      field instanceof PDFCheckBox || field instanceof PDFRadioGroup
+        ? "checkbox"
+        : field instanceof PDFTextField ||
+            field instanceof PDFDropdown ||
+            field instanceof PDFOptionList
+          ? "text"
+          : null;
+    if (!kind) continue;
+    const options =
+      field instanceof PDFDropdown || field instanceof PDFOptionList
+        ? field.getOptions()
+        : undefined;
+    const widgets = field.acroField.getWidgets();
+    // A text field shown twice holds one value; each radio widget is a choice.
+    for (const widget of field instanceof PDFRadioGroup ? widgets : widgets.slice(0, 1)) {
+      const ref = document.context.getObjectRef(widget.dict);
+      const page = ref ? document.findPageForAnnotationRef(ref) : undefined;
+      const pageIndex = page ? pages.indexOf(page) : -1;
+      if (pageIndex < 0) continue;
+      const rect = widget.getRectangle();
+      blanks.push({
+        id: `f${blanks.length}`,
+        kind,
+        ...(options ? { options } : {}),
+        page: pageIndex + 1,
+        x: rect.x,
+        y: pages[pageIndex].getHeight() - rect.y - rect.height,
+        width: rect.width,
+        height: rect.height,
+      });
+    }
   }
-  return boxes;
+  return blanks.slice(0, MAX_FORM_FIELDS);
 }
 
-async function fillAcroFormFields(
+/**
+ * The PDF with any form fields baked into the page as they look blank, so
+ * values are drawn over it like any flat form. Viewers draw a checkbox's
+ * square from its border colour rather than its (often empty) appearance, so
+ * that square is drawn onto the page first.
+ */
+async function flattenedFormBytes(sourceBytes: Uint8Array) {
+  const load = () => PDFDocument.load(sourceBytes, { ignoreEncryption: true });
+  let document = await load();
+  if (!document.getForm().getFields().length) return sourceBytes;
+  const drawToggleBorders = (target: PDFDocument) => {
+    for (const field of target.getForm().getFields()) {
+      if (!(field instanceof PDFCheckBox || field instanceof PDFRadioGroup)) continue;
+      for (const widget of field.acroField.getWidgets()) {
+        const border = widget.getAppearanceCharacteristics()?.getBorderColor();
+        const ref = target.context.getObjectRef(widget.dict);
+        const page = ref ? target.findPageForAnnotationRef(ref) : undefined;
+        const color = border ? componentsToColor(border) : undefined;
+        if (!page || !color) continue;
+        const rect = widget.getRectangle();
+        page.drawRectangle({
+          ...rect,
+          borderColor: color,
+          borderWidth: widget.getBorderStyle()?.getWidth() ?? 1,
+        });
+      }
+    }
+  };
+  drawToggleBorders(document);
+  try {
+    document.getForm().flatten({ updateFieldAppearances: false });
+  } catch {
+    // A widget without its own appearance needs pdf-lib's generated one.
+    document = await load();
+    drawToggleBorders(document);
+    document.getForm().flatten();
+  }
+  return await document.save();
+}
+
+/** The flattened form with each blank outlined and tagged by id, for the model to read. */
+async function taggedFormBytes(flatBytes: Uint8Array, blanks: TaggedBlank[]) {
+  const document = await PDFDocument.load(flatBytes, { ignoreEncryption: true });
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  const pages = document.getPages();
+  const red = rgb(0.85, 0, 0);
+  const size = 6;
+  for (const blank of blanks) {
+    const page = pages[blank.page - 1];
+    const y = page.getHeight() - blank.y - blank.height;
+    page.drawRectangle({ x: blank.x, y, width: blank.width, height: blank.height, borderColor: red, borderWidth: 0.6 });
+    const tagWidth = font.widthOfTextAtSize(blank.id, size) + 2;
+    // A checkbox's tag sits left of it so the box stays readable.
+    const tagX = blank.kind === "checkbox" ? blank.x - tagWidth - 1 : blank.x + 1;
+    const tagY = blank.kind === "checkbox" ? y : y + blank.height - size - 1;
+    page.drawRectangle({ x: tagX, y: tagY, width: tagWidth, height: size + 1, color: rgb(1, 1, 1) });
+    page.drawText(blank.id, { x: tagX + 1, y: tagY + 1.5, size, font, color: red });
+  }
+  return await document.save();
+}
+
+const TICKED = new Set(["x", "yes", "true", "checked", "on"]);
+
+async function fillTaggedForm(
   ctx: ActionCtx,
   input: PdfFormFillInput,
-  document: PDFDocument,
-  fields: ReturnType<typeof getAcroFormFields>,
+  blanks: TaggedBlank[],
   pageCount: number,
 ): Promise<PdfFormFillResult> {
-  const object = await generateFormObject(
-    ctx,
-    input,
-    "document_extraction",
-    acroFormSchema,
-    [
-      {
-        role: "user",
-        content: `Fill every field you can.\n${JSON.stringify({ fields: fields.slice(0, MAX_FORM_FIELDS) })}\n${contextText(input)}`,
-      },
-    ],
-  );
-  const answers = new Map(
-    object.fields
-      .filter((field) => field.value.trim())
-      .map((field) => [field.name, field]),
-  );
-  const boxes = acroFormFieldBoxes(document);
-  const records: PdfFormField[] = fields.slice(0, MAX_FORM_FIELDS).map((field, index) => {
-    const answer = answers.get(field.name);
-    const box = boxes.get(field.name);
-    const value = answer?.value.trim() ?? "";
+  const pagesRead = Math.min(pageCount, MAX_FORM_PAGES);
+  const pageNumbers = Array.from({ length: pagesRead }, (_, i) => i + 1);
+  const readable = blanks.filter((blank) => blank.page <= pagesRead);
+  const [images, text] = await Promise.all([
+    taggedFormBytes(input.pdfBytes, readable).then((pdfBytes) =>
+      renderPdfPageImages({ pdfBytes, pages: pageNumbers }),
+    ),
+    pageTextLayers(input),
+  ]);
+  const object = await generateFormObject(ctx, input, "chat_vision", taggedFormSchema, [
+    {
+      role: "user",
+      content: [
+        ...pageContent(images, text),
+        {
+          type: "text",
+          text: `Every blank is outlined in red with its id. Label and fill each id below from the sources; leave the rest empty.\n${JSON.stringify(
+            {
+              blanks: readable.map(({ id, kind, page, options }) => ({
+                id,
+                kind,
+                page,
+                ...(options ? { options } : {}),
+              })),
+            },
+          )}\n${contextText(input)}`,
+        },
+      ],
+    },
+  ]);
+  const answers = new Map(object.fields.map((field) => [field.id, field]));
+  const records: PdfFormField[] = readable.map(({ id, kind, page, x, y, width, height }) => {
+    const answer = answers.get(id);
+    const raw = answer?.value.trim() ?? "";
+    const value = kind === "checkbox" ? (TICKED.has(raw.toLowerCase()) ? "X" : "") : raw;
     return {
-      id: `f${index}`,
-      label: field.name,
-      kind: field.type === "checkbox" ? "checkbox" : "text",
-      value:
-        field.type === "checkbox"
-          ? CHECKED_VALUES.has(value.toLowerCase())
-            ? "X"
-            : ""
-          : value,
-      page: box?.page ?? 1,
-      ...(box ? { x: box.x, y: box.y, width: box.width, height: box.height } : {}),
-      acroFormName: field.name,
-      basis: answer?.basis ?? "none",
+      id,
+      label: answer?.label.trim() || `Blank ${id.slice(1)}`,
+      kind,
+      value,
+      page,
+      x,
+      y,
+      width,
+      height,
+      basis: value ? (answer?.basis ?? "none") : "none",
     };
   });
+  await input.onProgress?.({ stage: "placing", fields: records, total: records.length });
   return {
-    pdfBytes: await renderPdfFormFields(input.pdfBytes, "acroform", records),
-    mode: "acroform",
+    pdfBytes: await renderPdfFormFields(input.pdfBytes, records),
     pageCount,
-    pagesRead: pageCount,
+    pagesRead,
     fields: records,
-    // An unticked AcroForm checkbox is an answer, not a gap.
+    // An unticked checkbox is an answer, not a gap.
     blank: records
       .filter((field) => field.kind === "text" && !field.value)
       .map(({ page, label }) => ({ page, field: label })),
@@ -272,8 +395,6 @@ function answerTarget(field: FlatField) {
         ...(field.section ? { section: field.section } : {}),
       };
 }
-
-const CHECKED_VALUES = new Set(["yes", "true", "x", "checked", "on"]);
 
 /** Largest font size up to 10pt at which the value fits its box on one line. */
 function fitFontSize(font: PDFFont, field: PdfFormField, box: Box) {
@@ -316,43 +437,19 @@ function overlayFor(
 }
 
 /**
- * Writes field records onto the original PDF: AcroForm fields by name, every
- * other placed value as overlaid text. The result is flattened.
+ * Draws field records over the original PDF, flattening any form fields as
+ * they look blank so the copy has no fillable fields.
  */
 export async function renderPdfFormFields(
   sourceBytes: Uint8Array,
-  mode: PdfFormMode,
   fields: PdfFormField[],
 ): Promise<Uint8Array> {
-  const filled =
-    mode === "acroform"
-      ? await fillAcroForm(
-          sourceBytes,
-          fields.flatMap((field) =>
-            field.acroFormName
-              ? [
-                  {
-                    acroFormName: field.acroFormName,
-                    value:
-                      field.kind === "checkbox"
-                        ? field.value
-                          ? "Yes"
-                          : "No"
-                        : field.value,
-                  },
-                ]
-              : [],
-          ),
-        )
-      : sourceBytes;
+  const base = await flattenedFormBytes(sourceBytes);
   const overlaid = fields.filter(
-    (field) =>
-      !(mode === "acroform" && field.acroFormName) &&
-      field.value.trim() &&
-      pdfFormFieldBox(field),
+    (field) => field.value.trim() && pdfFormFieldBox(field),
   );
-  if (!overlaid.length) return filled;
-  const document = await PDFDocument.load(filled, { ignoreEncryption: true });
+  if (!overlaid.length) return base;
+  const document = await PDFDocument.load(base, { ignoreEncryption: true });
   const font = await document.embedFont(StandardFonts.Helvetica);
   const overlays = overlaid.flatMap((field) => {
     const page = document.getPages()[field.page - 1];
@@ -369,7 +466,7 @@ export async function renderPdfFormFields(
         ]
       : [];
   });
-  return await overlayTextOnPdf(filled, overlays);
+  return await overlayTextOnPdf(base, overlays);
 }
 
 /** Empty text blanks, and checkbox questions with no option ticked. */
@@ -399,6 +496,47 @@ function unansweredFlatFields(fields: FlatField[]) {
   });
 }
 
+function pageTextLayers(input: PdfFormFillInput) {
+  return extractPdfText({
+    pdfBytes: input.pdfBytes,
+    documentId: input.traceId,
+    sourceKind: "attachment",
+  }).catch(() => null);
+}
+
+/** Each page image with its text layer, for the vision generation. */
+function pageContent(
+  images: Awaited<ReturnType<typeof renderPdfPageImages>>,
+  text: Awaited<ReturnType<typeof pageTextLayers>>,
+): Exclude<UserModelMessage["content"], string> {
+  return images.flatMap((image) => {
+    const pageText = text?.pages
+      .find((page) => page.page === image.page)
+      ?.text.slice(0, MAX_PAGE_TEXT_CHARS);
+    return [
+      {
+        type: "text" as const,
+        text: `Page ${image.page}${pageText ? ` text layer:\n${pageText}` : " (no text layer)"}`,
+      },
+      { type: "image" as const, image: image.bytes, mediaType: image.mediaType },
+    ];
+  });
+}
+
+/** Reports placed fields at most every PROGRESS_INTERVAL_MS; progress never fails the fill. */
+function progressReporter(input: PdfFormFillInput, total: number) {
+  let last = 0;
+  return async (fields: PdfFormField[], force = false) => {
+    const now = dayjs().valueOf();
+    if (!input.onProgress || (!force && now - last < PROGRESS_INTERVAL_MS))
+      return;
+    last = now;
+    await input.onProgress({ stage: "placing", fields: [...fields], total }).catch(
+      () => undefined,
+    );
+  };
+}
+
 async function fillFlatForm(
   ctx: ActionCtx,
   input: PdfFormFillInput,
@@ -408,25 +546,11 @@ async function fillFlatForm(
   const pageNumbers = Array.from({ length: pagesRead }, (_, i) => i + 1);
   const [images, text] = await Promise.all([
     renderPdfPageImages({ pdfBytes: input.pdfBytes, pages: pageNumbers }),
-    extractPdfText({
-      pdfBytes: input.pdfBytes,
-      documentId: input.traceId,
-      sourceKind: "attachment",
-    }).catch(() => null),
+    pageTextLayers(input),
   ]);
-  const content: Exclude<UserModelMessage["content"], string> = [];
-  for (const image of images) {
-    const pageText = text?.pages
-      .find((page) => page.page === image.page)
-      ?.text.slice(0, MAX_PAGE_TEXT_CHARS);
-    content.push(
-      {
-        type: "text",
-        text: `Page ${image.page}${pageText ? ` text layer:\n${pageText}` : " (no text layer)"}`,
-      },
-      { type: "image", image: image.bytes, mediaType: image.mediaType },
-    );
-  }
+  const content: Exclude<UserModelMessage["content"], string> = [
+    ...pageContent(images, text),
+  ];
   content.push({
     type: "text",
     text: `List every fillable field on these pages in reading order: each text blank, and each checkbox as its own entry with the option printed beside it. Fill each from the sources and leave the rest empty.\n${contextText(input)}`,
@@ -444,11 +568,38 @@ async function fillFlatForm(
       (field.kind === "text" || field.option.trim()),
   );
 
-  // Jev places every field, answered or not, so the editor can type into any blank.
-  const boxes = new Map<FlatField, PdfPageBbox>();
-  const queue = [...detected];
+  const toRecord = (
+    field: FlatField,
+    index: number,
+    bbox: PdfPageBbox | undefined,
+  ): PdfFormField | null => {
+    const raw = field.value.trim();
+    const value = field.kind === "checkbox" ? (raw ? "X" : "") : raw;
+    // An empty blank Jev could not find has nothing to place.
+    if (!bbox && !value) return null;
+    return {
+      id: `p${field.page}f${index}`,
+      label: fieldName(field),
+      kind: field.kind,
+      value,
+      page: field.page,
+      ...(bbox
+        ? { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height }
+        : {}),
+      basis: value ? field.basis : "none",
+    };
+  };
+
+  // Jev places every field, answered or not, so the editor can type into any
+  // blank; each placed field is shown live in the PDF panel.
+  const boxes = new Map<number, PdfPageBbox>();
+  const placed: PdfFormField[] = [];
+  const report = progressReporter(input, detected.length);
+  await report(placed, true);
+  const queue = detected.map((field, index) => ({ field, index }));
   const locate = async () => {
-    for (let field = queue.shift(); field; field = queue.shift()) {
+    for (let next = queue.shift(); next; next = queue.shift()) {
+      const { field, index } = next;
       try {
         const location = await locateOnPdfPage(ctx, {
           pdfBytes: input.pdfBytes,
@@ -461,8 +612,11 @@ async function fillFlatForm(
           sessionKey: input.traceId,
           traceId: input.traceId,
         });
-        if (location.bbox && jevProceeds(location.confidence))
-          boxes.set(field, location.bbox);
+        if (!location.bbox || !jevProceeds(location.confidence)) continue;
+        boxes.set(index, location.bbox);
+        const record = toRecord(field, index, location.bbox);
+        if (record) placed.push(record);
+        await report(placed);
       } catch (error) {
         // An unplaced value stays in the editor's Place list.
         console.warn(
@@ -475,34 +629,12 @@ async function fillFlatForm(
   await Promise.all(
     Array.from({ length: Math.min(LOCATE_CONCURRENCY, queue.length) }, locate),
   );
-
-  const records = detected.flatMap((field, index): PdfFormField[] => {
-    const value =
-      field.kind === "checkbox"
-        ? field.value.trim()
-          ? "X"
-          : ""
-        : field.value.trim();
-    const bbox = boxes.get(field);
-    // An empty blank Jev could not find has nothing to place.
-    if (!bbox && !value) return [];
-    return [
-      {
-        id: `p${field.page}f${index}`,
-        label: fieldName(field),
-        kind: field.kind,
-        value,
-        page: field.page,
-        ...(bbox
-          ? { x: bbox.x, y: bbox.y, width: bbox.width, height: bbox.height }
-          : {}),
-        basis: value ? field.basis : "none",
-      },
-    ];
-  });
+  const records = detected.flatMap(
+    (field, index) => toRecord(field, index, boxes.get(index)) ?? [],
+  );
+  await report(records, true);
   return {
-    pdfBytes: await renderPdfFormFields(input.pdfBytes, "overlay", records),
-    mode: "overlay",
+    pdfBytes: await renderPdfFormFields(input.pdfBytes, records),
     pageCount,
     pagesRead,
     fields: records,
@@ -514,12 +646,14 @@ export async function fillPdfForm(
   ctx: ActionCtx,
   input: PdfFormFillInput,
 ): Promise<PdfFormFillResult> {
+  await input.onProgress?.({ stage: "reading", fields: [] });
   const document = await PDFDocument.load(input.pdfBytes, {
     ignoreEncryption: true,
   });
   const pageCount = document.getPageCount();
-  const fields = getAcroFormFields(document);
-  return fields.length
-    ? await fillAcroFormFields(ctx, input, document, fields, pageCount)
-    : await fillFlatForm(ctx, input, pageCount);
+  const blanks = formBlanks(document);
+  const flat = { ...input, pdfBytes: await flattenedFormBytes(input.pdfBytes) };
+  return blanks.length
+    ? await fillTaggedForm(ctx, flat, blanks, pageCount)
+    : await fillFlatForm(ctx, flat, pageCount);
 }

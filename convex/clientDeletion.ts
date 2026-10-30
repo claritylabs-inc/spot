@@ -103,6 +103,7 @@ const connectionChildren = [
 // Rows owned by the client organization, children before parents.
 const ORG_ROOTS: Node[] = [
   // The source PDF may belong to a provider or another client; versions are client files.
+  child("pdfFormFillRuns", "by_clientOrgId", "clientOrgId"),
   child("pdfFormFills", "by_clientOrgId", "clientOrgId", undefined, [
     child("pdfFormFillVersions", "by_fillId_and_version", "fillId"),
   ]),
