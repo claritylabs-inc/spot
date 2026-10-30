@@ -3,7 +3,6 @@
 import {
   useCallback,
   useEffect,
-  useRef,
   type Dispatch,
   type SetStateAction,
 } from "react";
@@ -44,8 +43,6 @@ export function useSavedFollowedState<T>(
 ): [T, Dispatch<SetStateAction<T>>] {
   const [value, setValue] = useFollowedState(key, initial);
   const following = useIsFollowing();
-  const valueRef = useRef(value);
-  valueRef.current = value;
 
   useEffect(() => {
     if (!persist || following) return;
@@ -57,12 +54,12 @@ export function useSavedFollowedState<T>(
     (next) => {
       const resolved =
         typeof next === "function"
-          ? (next as (current: T) => T)(valueRef.current)
+          ? (next as (current: T) => T)(value)
           : next;
       setValue(resolved);
       if (persist) writeSaved(key, resolved);
     },
-    [key, persist, setValue],
+    [key, persist, value, setValue],
   );
 
   return [value, set];
