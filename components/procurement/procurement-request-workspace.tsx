@@ -113,6 +113,11 @@ import {
   type ProcurementOutreachStatus,
   type ProcurementRequestStatus,
 } from "@/components/procurement/procurement-shared";
+import {
+  procurementRequestPageContext,
+  type ProcurementContextRef,
+} from "@/components/procurement/procurement-page-context";
+import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
 import { SettingsSwitch } from "@/components/settings/settings-switch";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
@@ -151,11 +156,16 @@ import {
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useFollowedState } from "@/hooks/use-followed-state";
-import { useCachedOperatorBrokers } from "@/lib/sync/operator-cached-queries";
+import {
+  useCachedOperatorBrokers,
+  useCachedOperatorClients,
+} from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 
 const NONE = "__none__";
+const plural = (count: number, noun: string) =>
+  `${count} ${noun}${count === 1 ? "" : "s"}`;
 const SUBMISSION_NOTES_SECTION = "Submission notes";
 
 type PolicyOption = {
@@ -267,6 +277,104 @@ type RequestDetails = {
   files: ProcurementFileItem[];
   emailThreads: EmailThread[];
 };
+
+const DOCUMENT_CATEGORY_LABELS = {
+  requirements: "insurance requirements",
+  policy: "current policies",
+  loss_runs: "loss runs",
+  supporting: "supporting documents",
+} as const;
+
+/** What the open request drawer shows, for the agent's page context. */
+function requestPanelContext(
+  panel: RequestPanel | null,
+  details: RequestDetails,
+  proposals: ReadonlyArray<{
+    _id: string;
+    outreachId: string;
+    brokerName?: string;
+    status: string;
+    reviews: ReadonlyArray<{
+      modelConclusion: keyof typeof REVIEW_CONCLUSION_LABELS;
+      staffConclusion?: keyof typeof REVIEW_CONCLUSION_LABELS;
+    }>;
+  }>,
+): { text: string; refs?: ProcurementContextRef[] } | null {
+  if (!panel) return null;
+  switch (panel.kind) {
+    case "notes":
+      return { text: "internal notes (private.md)" };
+    case "packet-link":
+      return { text: "provider packet link" };
+    case "upload":
+      return {
+        text: `uploading ${DOCUMENT_CATEGORY_LABELS[panel.documentCategory]}`,
+      };
+    case "composer":
+      return {
+        text: `new ${panel.audience} email`,
+        refs: panel.informationFormId
+          ? [{ arg: "informationFormId", id: panel.informationFormId }]
+          : undefined,
+      };
+    case "information":
+      return panel.target.questionId
+        ? {
+            text: "information question",
+            refs: [{ arg: "questionId", id: panel.target.questionId }],
+          }
+        : { text: "new information question" };
+    case "file":
+    case "image": {
+      const file = details.files.find((row) => row._id === panel.fileItemId);
+      if (!file) return null;
+      return {
+        text: `request document "${file.label.slice(0, 120)}"`,
+        refs: [
+          { arg: "procurementFileItemId", id: file._id },
+          ...(file.clientFileId
+            ? [{ arg: "clientFileId" as const, id: file.clientFileId }]
+            : []),
+        ],
+      };
+    }
+    case "outreach": {
+      const outreach = details.outreaches.find(
+        (row) => row._id === panel.outreachId,
+      );
+      if (!outreach) return { text: "adding a provider" };
+      // The editor shows the linked proposal, else the outreach's active one.
+      const proposal = proposals.find(
+        (row) =>
+          row.outreachId === outreach._id &&
+          (panel.proposalId
+            ? row._id === panel.proposalId
+            : row.status !== "archived" && row.status !== "withdrawn"),
+      );
+      const outreachStatus = OUTREACH_STATUS_OPTIONS.find(
+        (option) => option.value === outreach.status,
+      )?.label;
+      const review = proposal?.reviews[0];
+      const conclusion = review?.staffConclusion ?? review?.modelConclusion;
+      return {
+        text: [
+          `provider ${outreach.brokerName.slice(0, 80)}${outreachStatus ? ` (${outreachStatus})` : ""}`,
+          proposal
+            ? `${proposal.status} proposal${conclusion ? `, review ${REVIEW_CONCLUSION_LABELS[conclusion].toLowerCase()}${review?.staffConclusion ? "" : " (unconfirmed)"}` : ""}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" with "),
+        refs: [
+          { arg: "procurementOutreachId", id: outreach._id },
+          ...(proposal
+            ? [{ arg: "procurementProposalId" as const, id: proposal._id }]
+            : []),
+        ],
+      };
+    }
+  }
+}
 
 type BrokerOption = {
   _id: Id<"organizations">;
@@ -2078,6 +2186,7 @@ export function ProcurementRequestWorkspace({
     limit: 100,
   });
   const brokers = useCachedOperatorBrokers() as BrokerOption[] | undefined;
+  const clients = useCachedOperatorClients();
   const proposals = useQuery(api.procurementProposals.list, { requestId });
   const informationForms = useQuery(api.procurementInformation.operatorForms, {
     requestId,
@@ -2682,6 +2791,14 @@ export function ProcurementRequestWorkspace({
     openClientComposer,
   ]);
 
+  const client = clients?.find((row) => row._id === clientOrgId);
+  const loadingPageContext = procurementRequestPageContext({
+    requestId,
+    clientOrgId,
+    title: details?.request.title,
+    clientName: client?.name,
+  });
+
   if (
     result === undefined ||
     policies === undefined ||
@@ -2690,12 +2807,18 @@ export function ProcurementRequestWorkspace({
     brokers === undefined ||
     proposals === undefined
   ) {
-    return <OperationalSkeletonList rows={4} />;
+    return (
+      <>
+        <OperatorPageContextRegistration context={loadingPageContext} />
+        <OperationalSkeletonList rows={4} />
+      </>
+    );
   }
 
   if (!details || details.request.clientOrgId !== clientOrgId) {
     return (
       <OperationalPanel>
+        <OperatorPageContextRegistration context={loadingPageContext} />
         <OperationalPanelHeader title="Procurement request not found" />
         <OperationalPanelBody>
           <PillButton href={basePath} variant="secondary">
@@ -2929,8 +3052,37 @@ export function ProcurementRequestWorkspace({
           ]
         : [];
 
+  const activeMenuGroup = menuGroups.find((group) =>
+    group.items.some((item) => item.key === activeMenuKey),
+  );
+  const activeMenuItem = activeMenuGroup?.items.find(
+    (item) => item.key === activeMenuKey,
+  );
+  const pageContext = procurementRequestPageContext({
+    requestId,
+    clientOrgId,
+    title: details.request.title,
+    clientName: client?.name,
+    status: REQUEST_STATUS_OPTIONS.find(
+      (option) => option.value === details.request.status,
+    )?.label,
+    section: activeMenuGroup &&
+      activeMenuItem && {
+        text: `${activeMenuGroup.label} › ${activeMenuItem.label}${
+          view === "proposals"
+            ? ` (${plural(details.outreaches.length, "provider")}, ${plural(activeProposals.length, "active proposal")})`
+            : ""
+        }`,
+        refs: selectedInformationForm
+          ? [{ arg: "informationFormId", id: selectedInformationForm }]
+          : undefined,
+      },
+    open: requestPanelContext(panel, details, proposals),
+  });
+
   return (
     <IntakeReviewCompact.Provider value={true}>
+      <OperatorPageContextRegistration context={pageContext} />
       <div className="space-y-5">
         <SectionMenu
           label="Request sections"
