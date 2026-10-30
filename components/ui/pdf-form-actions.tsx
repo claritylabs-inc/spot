@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { FileCheck2, Loader2, Sparkles } from "lucide-react";
+import { FileCheck2, Loader2, Pencil, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { PdfFormField as ViewerFormField } from "@claritylabs-inc/ui/components/pdf-viewer";
@@ -108,8 +108,11 @@ export function usePdfFormActions({
       active: true as const,
       toolbarActions: (
         <PillButton
-          variant="ghost"
+          type="button"
+          variant="icon"
           size="compact"
+          iconOnly
+          label="Edit with Spot"
           title={
             formState.isLatest
               ? "Tell Spot what to change, or paste a screenshot"
@@ -117,8 +120,7 @@ export function usePdfFormActions({
           }
           onClick={dock.newChat}
         >
-          <Sparkles />
-          Edit with Spot
+          <Pencil className="size-3.5" />
         </PillButton>
       ),
       footer: null,
