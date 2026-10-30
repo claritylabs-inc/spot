@@ -6,6 +6,7 @@
 
 import {
   buildPdfSourceSpans,
+  type PdfTextItem,
   type SpotSourceChunk,
   type SpotSourceKind,
   type SpotSourceSpan,
@@ -15,6 +16,8 @@ export type PdfPageText = {
   /** 1-based page number in the original PDF. */
   page: number;
   text: string;
+  /** With `includeItems`: text items with top-left boxes in PDF points. */
+  items?: PdfTextItem[];
 };
 
 export type PdfTextResult = {
@@ -34,6 +37,8 @@ export async function extractPdfText(params: {
   pdfBytes: Uint8Array;
   documentId: string;
   sourceKind?: SpotSourceKind;
+  /** Keep each page's positioned text items (layout-aware readers only). */
+  includeItems?: boolean;
 }): Promise<PdfTextResult> {
   const startedAt = Date.now();
   const pages: PdfPageText[] = [];
@@ -44,6 +49,14 @@ export async function extractPdfText(params: {
     onPageText: (page, text) => {
       pages.push({ page, text: text.trim() });
     },
+    ...(params.includeItems
+      ? {
+          onPageItems: (page: number, items: PdfTextItem[]) => {
+            const entry = pages.find((candidate) => candidate.page === page);
+            if (entry) entry.items = items;
+          },
+        }
+      : {}),
   });
   const textLayerMissing = pages.every((page) => !page.text);
   const text = pages

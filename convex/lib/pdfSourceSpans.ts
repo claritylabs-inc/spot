@@ -106,6 +106,9 @@ const LINE_BASELINE_TOLERANCE = 2;
 
 type LineBox = { x: number; y: number; width: number; height: number };
 
+/** One pdf.js text item with its top-left box in PDF points. */
+export type PdfTextItem = LineBox & { text: string };
+
 function itemBboxTopLeft(item: PdfLineItem, viewportHeight: number): LineBox {
   const height = item.height || Math.hypot(item.transform[2] ?? 0, item.transform[3] ?? 0) || 10;
   const baseline = item.transform[5] ?? 0;
@@ -239,6 +242,8 @@ export async function buildPdfSourceSpans(params: {
   sourceKind?: SpotSourceKind;
   /** Invoked once per page with the raw extracted text, in page order. */
   onPageText?: (page: number, text: string) => void;
+  /** Invoked once per page with each text item's top-left box in PDF points. */
+  onPageItems?: (page: number, items: PdfTextItem[]) => void;
 }): Promise<{ sourceSpans: SpotSourceSpan[]; sourceChunks: SpotSourceChunk[]; pageCount: number }> {
   try {
     const { getDocument, VerbosityLevel } = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -276,6 +281,13 @@ export async function buildPdfSourceSpans(params: {
         const viewport = page.getViewport({ scale: 1 });
         const lineItems: PdfLineItem[] = textContent.items.flatMap((item) =>
           "str" in item ? [item as unknown as PdfLineItem] : [],
+        );
+        params.onPageItems?.(
+          pageNumber,
+          lineItems.flatMap((item) => {
+            const text = normalizeWhitespace(item.str);
+            return text ? [{ text, ...itemBboxTopLeft(item, viewport.height) }] : [];
+          }),
         );
         for (const line of groupItemsIntoLines(lineItems, viewport.height)) {
           const lineSpan = buildSpan({
