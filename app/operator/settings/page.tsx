@@ -31,6 +31,7 @@ const SECTION_SUMMARIES = {
   general: "General: agent approvals, MCP servers and event subscriptions",
   team: "Team: operators and invitations",
   notifications: "Notification routes",
+  email: "Email prompts: the operator's email writing rules",
 };
 
 export default function OperatorSettingsPage() {
