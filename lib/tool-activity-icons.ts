@@ -76,6 +76,8 @@ const operatorToolCategories = {
   get_client_assignees: "organizations",
   set_client_assignee: "organizations",
   set_client_assignees: "organizations",
+  manage_client_web_monitor: "web",
+  acknowledge_client_web_monitor_events: "organizations",
   get_broker_network_profile: "brokers",
   list_broker_network_profiles: "brokers",
   create_broker_network_profile: "brokers",

@@ -4244,6 +4244,58 @@ export default defineSchema({
     .index("by_category_and_createdAt", ["category", "createdAt"])
     .index("by_category_and_status", ["category", "status"]),
 
+  // Client web monitors: one cl-router monitor per client watching public
+  // events. The callback capability token is stored only as a hash.
+  clientWebMonitors: defineTable({
+    orgId: v.id("organizations"),
+    routerMonitorId: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("active"),
+      v.literal("cancelled"),
+      v.literal("failed"),
+    ),
+    query: v.string(),
+    frequency: v.string(),
+    tokenHash: v.optional(v.string()),
+    createdAt: v.number(),
+    createdByUserId: v.id("users"),
+    cancelledAt: v.optional(v.number()),
+    lastEventAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+  })
+    .index("by_org", ["orgId"])
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_router_monitor", ["routerMonitorId"]),
+
+  // Bounded, cited events from a monitor callback; headline and summary are
+  // untrusted public web content.
+  clientWebMonitorEvents: defineTable({
+    orgId: v.id("organizations"),
+    monitorId: v.id("clientWebMonitors"),
+    deliveryId: v.string(),
+    eventId: v.string(),
+    eventDate: v.optional(v.string()),
+    category: v.optional(v.string()),
+    headline: v.string(),
+    summary: v.optional(v.string()),
+    materiality: v.optional(
+      v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+    ),
+    citations: v.array(
+      v.object({
+        url: v.string(),
+        title: v.optional(v.string()),
+        excerpt: v.optional(v.string()),
+      }),
+    ),
+    receivedAt: v.number(),
+    acknowledgedAt: v.optional(v.number()),
+    acknowledgedByUserId: v.optional(v.id("users")),
+  })
+    .index("by_org_received", ["orgId", "receivedAt"])
+    .index("by_monitor_and_delivery", ["monitorId", "deliveryId"]),
+
   // ── Notifications ──
 
   notifications: defineTable({

@@ -65,6 +65,7 @@ import {
   scheduleWebsiteTechScan,
 } from "./websiteTech";
 import { websiteTechDomain } from "./lib/websiteTech";
+import { acknowledgeClientWebMonitorEvents } from "./clientWebMonitors";
 import { clientRecipientOptions } from "./lib/clientOutreach";
 import { appendWikiSection } from "./lib/wikiAppend";
 import {
@@ -403,6 +404,7 @@ const OPERATOR_RICH_ACTION_TOOLS = new Set<OperatorAgentToolName>([
   "load_skill",
   "read_skill_file",
   "run_skill_script",
+  "manage_client_web_monitor",
   "import_policy_files",
   "fill_pdf_form",
   "edit_pdf_form",
@@ -4145,6 +4147,14 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
       fields: Object.keys(patch),
       companyResearch: (await ctx.db.get(orgId))?.companyResearch ?? null,
     };
+  }
+
+  if (toolName === "acknowledge_client_web_monitor_events") {
+    return await acknowledgeClientWebMonitorEvents(ctx, {
+      orgId: normalizeOrganizationId(ctx, input.orgId),
+      eventIds: input.eventIds as string[],
+      userId: args.operatorUserId,
+    });
   }
 
   if (toolName === "research_client_tech_stack") {

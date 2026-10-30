@@ -124,6 +124,29 @@ export const runInternal = internalAction({
       return { result: await runOperatorWebRetrieval(ctx, input) };
     }
 
+    if (args.toolName === "manage_client_web_monitor") {
+      const input = parseOperatorAgentToolInput(
+        "manage_client_web_monitor",
+        args.input,
+      );
+      const orgId = input.orgId as Id<"organizations">;
+      return {
+        result:
+          input.action === "create"
+            ? await ctx.runAction(internal.actions.clientWebMonitors.create, {
+                orgId,
+                userId: args.operatorUserId,
+                frequency:
+                  typeof input.frequency === "string"
+                    ? input.frequency
+                    : undefined,
+              })
+            : await ctx.runAction(internal.actions.clientWebMonitors.cancel, {
+                orgId,
+              }),
+      };
+    }
+
     if (args.toolName === "fetch_url") {
       const input = parseOperatorAgentToolInput("fetch_url", args.input);
       return {

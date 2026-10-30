@@ -11,6 +11,7 @@
 import type * as actions_brokerContactDefaults from "../actions/brokerContactDefaults.js";
 import type * as actions_chatPresentations from "../actions/chatPresentations.js";
 import type * as actions_clientFileNaming from "../actions/clientFileNaming.js";
+import type * as actions_clientWebMonitors from "../actions/clientWebMonitors.js";
 import type * as actions_compactOperatorThreadHistory from "../actions/compactOperatorThreadHistory.js";
 import type * as actions_compactThreadHistory from "../actions/compactThreadHistory.js";
 import type * as actions_companyInformationExtraction from "../actions/companyInformationExtraction.js";
@@ -119,6 +120,7 @@ import type * as clientDeletion from "../clientDeletion.js";
 import type * as clientFiles from "../clientFiles.js";
 import type * as clientOutreach from "../clientOutreach.js";
 import type * as clientProcurementRequests from "../clientProcurementRequests.js";
+import type * as clientWebMonitors from "../clientWebMonitors.js";
 import type * as collab from "../collab.js";
 import type * as companyInformation from "../companyInformation.js";
 import type * as companyResearch from "../companyResearch.js";
@@ -212,6 +214,7 @@ import type * as lib_clientFiles from "../lib/clientFiles.js";
 import type * as lib_clientOutreach from "../lib/clientOutreach.js";
 import type * as lib_clientOutreachEmail from "../lib/clientOutreachEmail.js";
 import type * as lib_clientProfile from "../lib/clientProfile.js";
+import type * as lib_clientWebMonitors from "../lib/clientWebMonitors.js";
 import type * as lib_coiAttachmentGuards from "../lib/coiAttachmentGuards.js";
 import type * as lib_coiGenerator from "../lib/coiGenerator.js";
 import type * as lib_companyInformationExtraction from "../lib/companyInformationExtraction.js";
@@ -655,6 +658,7 @@ declare const fullApi: ApiFromModules<{
   "actions/brokerContactDefaults": typeof actions_brokerContactDefaults;
   "actions/chatPresentations": typeof actions_chatPresentations;
   "actions/clientFileNaming": typeof actions_clientFileNaming;
+  "actions/clientWebMonitors": typeof actions_clientWebMonitors;
   "actions/compactOperatorThreadHistory": typeof actions_compactOperatorThreadHistory;
   "actions/compactThreadHistory": typeof actions_compactThreadHistory;
   "actions/companyInformationExtraction": typeof actions_companyInformationExtraction;
@@ -763,6 +767,7 @@ declare const fullApi: ApiFromModules<{
   clientFiles: typeof clientFiles;
   clientOutreach: typeof clientOutreach;
   clientProcurementRequests: typeof clientProcurementRequests;
+  clientWebMonitors: typeof clientWebMonitors;
   collab: typeof collab;
   companyInformation: typeof companyInformation;
   companyResearch: typeof companyResearch;
@@ -856,6 +861,7 @@ declare const fullApi: ApiFromModules<{
   "lib/clientOutreach": typeof lib_clientOutreach;
   "lib/clientOutreachEmail": typeof lib_clientOutreachEmail;
   "lib/clientProfile": typeof lib_clientProfile;
+  "lib/clientWebMonitors": typeof lib_clientWebMonitors;
   "lib/coiAttachmentGuards": typeof lib_coiAttachmentGuards;
   "lib/coiGenerator": typeof lib_coiGenerator;
   "lib/companyInformationExtraction": typeof lib_companyInformationExtraction;

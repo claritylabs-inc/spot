@@ -110,6 +110,11 @@ export async function resolveOperatorNotificationTarget(
         isNonInsuranceDocument(state.pipelineError)) return null;
       return `${base}/operator/clients/${policy.orgId}/policies/${policy._id}`;
     }
+    case "client_monitor": {
+      const event = await ctx.db.get(target.eventId);
+      if (!event || event.acknowledgedAt !== undefined || !await liveClient(ctx, event.orgId)) return null;
+      return `${base}/operator/clients/${event.orgId}`;
+    }
     case "proposal": {
       const proposal = await ctx.db.get(target.proposalId);
       if (!proposal || proposal.status !== "draft") return null;

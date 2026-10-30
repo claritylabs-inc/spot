@@ -10,6 +10,7 @@ import {
   requireClient,
   requireRequest,
 } from "../procurementRequests";
+import { clientWebMonitorAttention } from "../clientWebMonitors";
 import { getProcurementProposalDetails } from "../procurementProposals";
 import { readPolicyPipelineState } from "../policies";
 import { activeTeamThread } from "./teamEmailStore";
@@ -424,6 +425,7 @@ export async function getClientAttention(
       scope:
         "Current failed/paused/stalled policy extractions and latest failed/stalled proposal jobs among 100 recent jobs per status platform-wide. Counts are lower bounds when scanning is bounded.",
     },
+    webMonitorEvents: await clientWebMonitorAttention(ctx, orgId),
     procurementRequests: requests.requests,
     procurementNextCursor: requests.nextCursor,
     procurementBounded: requests.bounded,
