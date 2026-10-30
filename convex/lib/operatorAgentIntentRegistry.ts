@@ -204,19 +204,22 @@ export function operatorAgentIntentFamilies(intentId: string) {
 }
 
 /**
- * A read the runner performs in code before an intent's first model step.
- * `input` derives the tool input from the intent's structured focus ids and
- * earlier stages' successful results; undefined skips the read.
+ * A read the runner performs in code before an intent's (or attached page's)
+ * first model step. `input` derives the tool input from the structured focus
+ * ids and earlier stages' successful results; undefined skips the read.
  */
 export type OperatorIntentPrefetchRead = {
   toolName: OperatorAgentToolName;
   input: (state: {
     focus: Readonly<Record<string, string>>;
     results: ReadonlyMap<OperatorAgentToolName, unknown>;
+    /** The first id of a related record of this kind on the attached page. */
+    relatedId?: (kind: string) => string | undefined;
   }) => Record<string, unknown> | undefined;
 };
 
-const linkedProcurementRequest: OperatorIntentPrefetchRead["input"] = ({
+/** The request a prefetched team inbox thread is linked or addressed to. */
+export const linkedProcurementRequest: OperatorIntentPrefetchRead["input"] = ({
   results,
 }) => {
   const thread = results.get("get_team_inbox_thread") as

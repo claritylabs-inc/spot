@@ -24,7 +24,8 @@ const phaseValidator = v.object({
 const toolTimingValidator = v.object({
   toolName: v.string(),
   toolCallId: v.optional(v.string()),
-  // A starter intent's read executed in code before the first model step.
+  // A starter intent's or attached page's read executed in code before the
+  // first model step.
   prefetch: v.optional(v.boolean()),
   // Called while an earlier call of the same step still held `toolQueue`.
   serial: v.boolean(),
@@ -74,6 +75,21 @@ const modelCallTimingValidator = v.object({
   finishReason: v.optional(v.string()),
 });
 
+// Whether the attached page's record was prefetched before the first step,
+// and what happened to each declared read: its outcome when the prefetch ran
+// (`skipped` when its input was absent, `unavailable` when not offered), else
+// the reason it did not.
+const pageContextPrefetchTimingValidator = v.object({
+  pageType: v.string(),
+  decision: v.union(
+    v.literal("attached"),
+    v.literal("not_in_history"),
+    v.literal("in_history"),
+    v.literal("covered_by_intent"),
+  ),
+  reads: v.array(v.object({ toolName: v.string(), status: v.string() })),
+});
+
 export const operatorRunTimingValidator = v.object({
   iteration: v.number(),
   runnerAttempt: v.number(),
@@ -90,6 +106,7 @@ export const operatorRunTimingValidator = v.object({
   previousCheckpointMs: v.optional(v.number()),
   // The run's first step was offered without expand_tools.
   expandToolsWithheld: v.optional(v.boolean()),
+  pageContextPrefetch: v.optional(pageContextPrefetchTimingValidator),
 });
 
 export const operatorRunTimingEndValidator = v.union(
@@ -102,6 +119,9 @@ export const operatorRunTimingEndValidator = v.union(
 
 export type OperatorRunTiming = Infer<typeof operatorRunTimingValidator>;
 export type OperatorToolTiming = Infer<typeof toolTimingValidator>;
+export type OperatorPageContextPrefetchTiming = Infer<
+  typeof pageContextPrefetchTimingValidator
+>;
 type ModelCallTiming = Infer<typeof modelCallTimingValidator>;
 
 /**
@@ -116,6 +136,7 @@ export class OperatorStepTimer {
   iteration = 0;
   routerRetryCount = 0;
   expandToolsWithheld = false;
+  pageContextPrefetch: OperatorPageContextPrefetchTiming | undefined;
   readonly tools: OperatorToolTiming[] = [];
   private readonly modelCalls: ModelCallTiming[] = [];
   private readonly phases = new Map<
@@ -254,6 +275,9 @@ export class OperatorStepTimer {
       tools: this.tools.slice(0, MAX_TOOLS),
       modelCalls: this.modelCalls.slice(0, MAX_MODEL_CALLS),
       ...(this.expandToolsWithheld ? { expandToolsWithheld: true } : {}),
+      ...(this.pageContextPrefetch
+        ? { pageContextPrefetch: this.pageContextPrefetch }
+        : {}),
       ...(this.previousCheckpointMs !== undefined
         ? { previousCheckpointMs: this.previousCheckpointMs }
         : {}),
@@ -261,7 +285,11 @@ export class OperatorStepTimer {
   }
 }
 
-const TOOL_PHASES = new Set(["tool.execute", "intent_prefetch"]);
+const TOOL_PHASES = new Set([
+  "tool.execute",
+  "intent_prefetch",
+  "page_context_prefetch",
+]);
 const DECISION_PHASES = new Set([
   "family_selection",
   "workflow_assessment",
@@ -326,6 +354,9 @@ export function operatorRunTimingView(rows: OperatorRunTimingRow[]) {
       ...(handoffMs !== undefined ? { handoffMs } : {}),
       modelCalls: row.modelCalls,
       tools: row.tools,
+      ...(row.pageContextPrefetch
+        ? { pageContextPrefetch: row.pageContextPrefetch }
+        : {}),
     };
   });
   return {

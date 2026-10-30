@@ -23,50 +23,56 @@ import type { OperatorToolTiming } from "./operatorRunTiming";
 import { boundToolOutput } from "./operatorToolOutput";
 import { summarizeToolResult } from "./toolResultSummary";
 
-type PrefetchedRead = {
+export type PrefetchedRead = {
   toolCallId: string;
   toolName: OperatorAgentToolName;
   input: Record<string, unknown>;
   outcome: unknown;
 };
 
+/** What happened to one declared read: run, or why it did not. */
+export type PrefetchReadStatus = {
+  toolName: OperatorAgentToolName;
+  status: "succeeded" | "failed" | "skipped" | "unavailable";
+};
+
+type PrefetchArgs = {
+  run: Doc<"operatorAgentRuns">;
+  toolNames: readonly OperatorAgentToolName[];
+  channel: "chat" | "email" | "imessage" | "slack" | "mcp";
+  recordActivity: (update: MessageActivityUpdate) => Promise<void>;
+  /** Metadata-only timing of each executed read. */
+  onReadTiming?: (timing: OperatorToolTiming) => void;
+};
+
 /**
- * Runs a starter intent's declared reads through the normal operator executor
+ * Runs declared plain reads through the normal operator executor
  * (authorization, audit rows, and run-scoped idempotency keys shared with
- * model calls, so a replayed step returns the stored result) and returns them
- * as one already-answered parallel tool step. Fails open: a failed or skipped
- * read is left for the model to make itself.
+ * model calls, so a replayed step returns the stored result). Stages run in
+ * order; reads within a stage run together. Fails open: a failed or skipped
+ * read is left for the model to make itself. Activity ids are
+ * `prefetch_<tool>`, suffixed when `reservedToolCallIds` already holds one.
  */
-export async function prefetchOperatorIntentContext(
+export async function runOperatorPrefetchReads(
   ctx: ActionCtx,
-  args: {
-    run: Doc<"operatorAgentRuns">;
-    messages: Array<Doc<"operatorAgentMessages">>;
-    toolNames: readonly OperatorAgentToolName[];
-    channel: "chat" | "email" | "imessage" | "slack" | "mcp";
-    recordActivity: (update: MessageActivityUpdate) => Promise<void>;
-    /** Metadata-only timing of each executed read. */
-    onReadTiming?: (timing: OperatorToolTiming) => void;
+  args: PrefetchArgs & {
+    stages: ReadonlyArray<readonly OperatorIntentPrefetchRead[]>;
+    focus: Readonly<Record<string, string>>;
+    relatedId?: (kind: string) => string | undefined;
+    reservedToolCallIds?: ReadonlySet<string>;
   },
-): Promise<{ messages: ModelMessage[]; audit: AgentToolAudit } | undefined> {
-  const intent = args.messages
-    .find((message) => message._id === args.run.userMessageId)
-    ?.toolArtifacts?.find((artifact) => artifact.type === "operator_intent")
-    ?.data as { id?: unknown; focus?: unknown } | undefined;
-  const stages =
-    typeof intent?.id === "string"
-      ? operatorAgentIntentPrefetch(intent.id)
-      : undefined;
-  if (!stages) return undefined;
-  const focus = Object.fromEntries(
-    Object.entries(
-      intent?.focus && typeof intent.focus === "object" ? intent.focus : {},
-    ).filter(
-      (entry): entry is [string, string] => typeof entry[1] === "string",
-    ),
-  );
+) {
   const results = new Map<OperatorAgentToolName, unknown>();
   const reads: PrefetchedRead[] = [];
+  const statuses: PrefetchReadStatus[] = [];
+  const reserved = new Set(args.reservedToolCallIds);
+  const toolCallIdFor = (toolName: OperatorAgentToolName) => {
+    let id = `prefetch_${toolName}`;
+    for (let index = 2; reserved.has(id); index += 1)
+      id = `prefetch_${toolName}_${index}`;
+    reserved.add(id);
+    return id;
+  };
   const read = async (
     step: OperatorIntentPrefetchRead,
   ): Promise<PrefetchedRead | undefined> => {
@@ -77,11 +83,20 @@ export async function prefetchOperatorIntentContext(
       spec.effect !== "read" ||
       spec.confirmation !== "none" ||
       spec.execution !== "mutation"
-    )
+    ) {
+      statuses.push({ toolName: step.toolName, status: "unavailable" });
       return undefined;
-    const rawInput = step.input({ focus, results });
-    if (!rawInput) return undefined;
-    const toolCallId = `prefetch_${step.toolName}`;
+    }
+    const rawInput = step.input({
+      focus: args.focus,
+      results,
+      relatedId: args.relatedId,
+    });
+    if (!rawInput) {
+      statuses.push({ toolName: step.toolName, status: "skipped" });
+      return undefined;
+    }
+    const toolCallId = toolCallIdFor(step.toolName);
     const activity = {
       kind: "tool" as const,
       toolCallId,
@@ -90,6 +105,7 @@ export async function prefetchOperatorIntentContext(
     const startedAt = dayjs().valueOf();
     let executeMs = 0;
     let status = "failed";
+    let succeeded = false;
     try {
       const input = parseOperatorAgentToolInput(step.toolName, rawInput);
       const target = toolActivityTarget(spec.target(input));
@@ -130,9 +146,10 @@ export async function prefetchOperatorIntentContext(
       // truncate to an unparseable string; the model then reads it itself.
       if (outcome.status !== "succeeded" || typeof outcome.result === "string")
         return undefined;
+      succeeded = true;
       return { toolCallId, toolName: step.toolName, input, outcome };
     } catch (error) {
-      console.warn("Operator intent prefetch read failed", {
+      console.warn("Operator prefetch read failed", {
         runId: args.run._id,
         toolName: step.toolName,
         error: error instanceof Error ? error.message : String(error),
@@ -140,6 +157,10 @@ export async function prefetchOperatorIntentContext(
       await args.recordActivity({ ...activity, status: "failed" });
       return undefined;
     } finally {
+      statuses.push({
+        toolName: step.toolName,
+        status: succeeded ? "succeeded" : "failed",
+      });
       args.onReadTiming?.({
         toolName: step.toolName,
         toolCallId,
@@ -153,7 +174,7 @@ export async function prefetchOperatorIntentContext(
       });
     }
   };
-  for (const stage of stages) {
+  for (const stage of args.stages) {
     const settled = (await Promise.all(stage.map(read))).filter(
       (entry) => entry !== undefined,
     );
@@ -165,6 +186,40 @@ export async function prefetchOperatorIntentContext(
       reads.push(entry);
     }
   }
+  return { reads, results, statuses };
+}
+
+/** A starter intent's declared reads, run before its first model step. */
+export async function prefetchOperatorIntentContext(
+  ctx: ActionCtx,
+  args: PrefetchArgs & { messages: Array<Doc<"operatorAgentMessages">> },
+) {
+  const intent = args.messages
+    .find((message) => message._id === args.run.userMessageId)
+    ?.toolArtifacts?.find((artifact) => artifact.type === "operator_intent")
+    ?.data as { id?: unknown; focus?: unknown } | undefined;
+  const stages =
+    typeof intent?.id === "string"
+      ? operatorAgentIntentPrefetch(intent.id)
+      : undefined;
+  if (!stages) return undefined;
+  const focus = Object.fromEntries(
+    Object.entries(
+      intent?.focus && typeof intent.focus === "object" ? intent.focus : {},
+    ).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+  return await runOperatorPrefetchReads(ctx, { ...args, stages, focus });
+}
+
+/**
+ * Prefetched reads as one already-answered parallel tool step, with the
+ * audit the step's message records.
+ */
+export function operatorPrefetchedToolStep(
+  reads: readonly PrefetchedRead[],
+): { messages: ModelMessage[]; audit: AgentToolAudit } | undefined {
   if (reads.length === 0) return undefined;
   return {
     messages: [
