@@ -2,6 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { useEffect, useRef, useState } from "react";
+import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { usePdf } from "@/components/pdf-context";
 import { useAppMinWidth } from "@/hooks/use-app-container-width";
@@ -33,13 +34,33 @@ function assistantPdfAttachments(
   );
 }
 
-/** Opens PDFs the agent produces during this session (e.g. a filled form) in the PDF panel. */
+/**
+ * Opens PDFs the agent works on during this session in the PDF panel: the
+ * form while Spot fills it live, then each PDF it produces (a filled copy).
+ */
 export function useAutoOpenOperatorPdfs(
   threadId: string,
   messages: OperatorAgentThreadDetail["messages"],
 ) {
-  const { openWithUrl } = usePdf();
+  const { openWithUrl, fileUrl, isPdfOpen } = usePdf();
   const isDesktop = useAppMinWidth(1024);
+  const liveFill = useQuery(
+    api.pdfFormFill.activeRunForThread,
+    threadId ? { threadId: threadId as Id<"operatorAgentThreads"> } : "skip",
+  );
+  const openedRun = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isDesktop || !liveFill?.url || openedRun.current === liveFill.runId)
+      return;
+    openedRun.current = liveFill.runId;
+    // Already showing the form (e.g. Fill form was clicked on it).
+    if (isPdfOpen && fileUrl === liveFill.url) return;
+    openWithUrl(liveFill.url, undefined, undefined, {
+      kind: "operatorAttachment",
+      fileId: liveFill.sourceFileId,
+      filename: liveFill.sourceFilename,
+    });
+  }, [fileUrl, isDesktop, isPdfOpen, liveFill, openWithUrl]);
   const seenThreadId = useRef<string | null>(null);
   const seen = useRef<Set<string>>(new Set());
   const opened = useRef<string | null>(null);

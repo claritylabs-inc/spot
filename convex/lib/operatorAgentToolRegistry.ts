@@ -2343,7 +2343,7 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   fill_pdf_form: defineOperatorTool({
     family: "client_files",
     version: 1,
-    description: `Fill out a PDF form (application, questionnaire, supplemental) and attach the filled copy to this conversation, where it opens in the PDF panel. Fillable AcroForm fields are filled by name; flat forms are read page by page and each value is placed on its answer blank. Values come only from answers, instructions and the client's business profile, notes and policies; unknown fields stay blank. source is the pdf_document page context entityId or one of ${PDF_FORM_SOURCE_FORMATS}. orgId defaults to the source's client or request. With a client, the latest version is filed as a hidden client file (earlier versions are archived); with a procurement request it is also listed on the request for that provider (hidden from the shared packet). Refilling the same form for the same client, request and provider files the next version, not a copy. Use a provider's default application form (get_broker_network_profile submissionDefaults) as source:submissionDefaultForm when preparing that provider's submission. To change values, call again with corrections in answers (passing a filled copy restarts from its original), or let the operator type them in with Edit in the PDF panel.`,
+    description: `Fill out a PDF form (application, questionnaire, supplemental) and attach the filled copy to this conversation, where it opens in the PDF panel and every operator viewing the form watches it fill live. Fillable PDFs are flattened first; every form is read page by page and each blank and checkbox is placed on the page. Values come only from answers, instructions and the client's business profile, notes and policies; unknown fields stay blank. source is the pdf_document page context entityId or one of ${PDF_FORM_SOURCE_FORMATS}. orgId defaults to the source's client or request. With a client, the latest version is filed as a hidden client file (earlier versions are archived); with a procurement request it is also listed on the request for that provider (hidden from the shared packet). Refilling the same form for the same client, request and provider files the next version, not a copy. Use a provider's default application form (get_broker_network_profile submissionDefaults) as source:submissionDefaultForm when preparing that provider's submission. To change some values on a filled form, use edit_pdf_form; refill only to redo the whole form.`,
     inputSchema: z.object({
       source: z
         .string()
@@ -2392,6 +2392,39 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     execution: "action",
     target: (input) => ({ kind: "pdf_form", id: input.source }),
     summarize: (input) => `Fill PDF form ${input.source}`,
+  }),
+  edit_pdf_form: defineOperatorTool({
+    family: "client_files",
+    version: 1,
+    description: `Change values on a filled PDF form and attach the next version, which opens in the PDF panel. source is the filled form's pdf_document page context entityId, its conversation attachment (operatorAttachment:<fileId>) or client file (clientFile:<clientFileId>); any version edits the latest. Each change names a field by the label fill_pdf_form reported (e.g. Vehicle #2 › VIN Number, Winter Tires › Yes) or its id; an empty value clears it; checkboxes take X or empty. Unknown or ambiguous labels fail with candidates and nothing is saved. Fields the fill could not place on the page cannot be shown; refill with the value in answers instead. Files the version like fill_pdf_form.`,
+    inputSchema: z.object({
+      source: z
+        .string()
+        .min(1)
+        .max(300)
+        .describe("The filled form: pdf_document entityId, operatorAttachment:<fileId> or clientFile:<clientFileId>"),
+      changes: z
+        .array(
+          z.object({
+            field: z
+              .string()
+              .min(1)
+              .max(300)
+              .describe("Field label as reported by fill_pdf_form, or the field id"),
+            value: z.string().max(2_000),
+          }),
+        )
+        .min(1)
+        .max(100),
+    }),
+    capability: "operator.client_files.write",
+    effect: "reversible_write",
+    requiredRole: "operator",
+    confirmation: "none",
+    execution: "action",
+    target: (input) => ({ kind: "pdf_form", id: input.source }),
+    summarize: (input) =>
+      `Edit PDF form ${input.source} (${input.changes.length} ${input.changes.length === 1 ? "change" : "changes"})`,
   }),
   import_policy_files: defineOperatorTool({
     family: "policies",

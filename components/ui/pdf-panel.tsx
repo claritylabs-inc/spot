@@ -9,7 +9,7 @@ import {
   pdfFormSourceId,
 } from "@/convex/lib/pdfFormSource";
 import { usePageContext } from "@/hooks/use-page-context";
-import { usePdfFormEditing } from "@/components/ui/pdf-form-editing";
+import { usePdfFormActions } from "@/components/ui/pdf-form-actions";
 
 const EASE = [0.2, 0, 0, 1] as const;
 export function PdfPanel() {
@@ -39,10 +39,10 @@ export function PdfPanel() {
       summary: `PDF: ${filename?.slice(0, 200) ?? "document"}`,
     });
   }, [filename, open, pushPageContext, sourceId]);
-  const formEditing = usePdfFormEditing({
+  const formActions = usePdfFormActions({
     source,
-    onSaved: (saved) =>
-      openWithUrl(saved.url, currentPage, undefined, saved.source),
+    onOpen: (document) =>
+      openWithUrl(document.url, currentPage, undefined, document.source),
   });
 
   if (!fileUrl || !isPdfOpen) return null;
@@ -63,14 +63,14 @@ export function PdfPanel() {
           onPageChange={navigateToPage}
           onDocumentLoad={setNumPages}
           onClose={closePdf}
-          {...(formEditing.active
+          {...(formActions.active
             ? {
-                toolbarActions: formEditing.toolbarActions,
-                ...formEditing.viewerProps,
+                toolbarActions: formActions.toolbarActions,
+                ...formActions.viewerProps,
               }
             : {})}
         />
-        {formEditing.active ? formEditing.footer : null}
+        {formActions.active ? formActions.footer : null}
       </motion.div>
     </div>
   );

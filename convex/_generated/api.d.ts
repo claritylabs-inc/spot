@@ -62,7 +62,6 @@ import type * as actions_operatorSecondFactor from "../actions/operatorSecondFac
 import type * as actions_operatorSendingMailboxes from "../actions/operatorSendingMailboxes.js";
 import type * as actions_operatorSuggestions from "../actions/operatorSuggestions.js";
 import type * as actions_ownComplianceMonitor from "../actions/ownComplianceMonitor.js";
-import type * as actions_pdfFormEdits from "../actions/pdfFormEdits.js";
 import type * as actions_policyExtraction from "../actions/policyExtraction.js";
 import type * as actions_processThreadChat from "../actions/processThreadChat.js";
 import type * as actions_procurementInformation from "../actions/procurementInformation.js";
@@ -572,7 +571,6 @@ import type * as orgWiki from "../orgWiki.js";
 import type * as organizations from "../organizations.js";
 import type * as orgs from "../orgs.js";
 import type * as passwordAccounts from "../passwordAccounts.js";
-import type * as pdfFormEdits from "../pdfFormEdits.js";
 import type * as pdfFormFill from "../pdfFormFill.js";
 import type * as pendingEmails from "../pendingEmails.js";
 import type * as policies from "../policies.js";
@@ -690,7 +688,6 @@ declare const fullApi: ApiFromModules<{
   "actions/operatorSendingMailboxes": typeof actions_operatorSendingMailboxes;
   "actions/operatorSuggestions": typeof actions_operatorSuggestions;
   "actions/ownComplianceMonitor": typeof actions_ownComplianceMonitor;
-  "actions/pdfFormEdits": typeof actions_pdfFormEdits;
   "actions/policyExtraction": typeof actions_policyExtraction;
   "actions/processThreadChat": typeof actions_processThreadChat;
   "actions/procurementInformation": typeof actions_procurementInformation;
@@ -1200,7 +1197,6 @@ declare const fullApi: ApiFromModules<{
   organizations: typeof organizations;
   orgs: typeof orgs;
   passwordAccounts: typeof passwordAccounts;
-  pdfFormEdits: typeof pdfFormEdits;
   pdfFormFill: typeof pdfFormFill;
   pendingEmails: typeof pendingEmails;
   policies: typeof policies;

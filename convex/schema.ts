@@ -5219,7 +5219,8 @@ export default defineSchema({
     sourceFilename: v.string(),
     outputFileId: v.id("_storage"),
     outputFilename: v.string(),
-    mode: pdfFormModeValidator,
+    // Deprecated: every form is now filled as a flat form.
+    mode: v.optional(pdfFormModeValidator),
     pageCount: v.number(),
     fields: v.array(pdfFormFieldValidator),
     /** Client, procurement request and provider each version is filed under. */
@@ -5239,6 +5240,33 @@ export default defineSchema({
   })
     .index("by_outputFileId", ["outputFileId"])
     .index("by_sourceFileId", ["sourceFileId"])
+    .index("by_clientOrgId", ["clientOrgId"]),
+
+  /**
+   * A fill in progress, shown live in the PDF panel to every operator viewing
+   * the form: reading, then fields as they are placed, then the filled copy.
+   */
+  pdfFormFillRuns: defineTable({
+    operatorUserId: v.id("users"),
+    threadId: v.id("operatorAgentThreads"),
+    sourceFileId: v.id("_storage"),
+    sourceFilename: v.string(),
+    clientOrgId: v.optional(v.id("organizations")),
+    stage: v.union(
+      v.literal("reading"),
+      v.literal("placing"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    fields: v.array(pdfFormFieldValidator),
+    total: v.optional(v.number()),
+    fillId: v.optional(v.id("pdfFormFills")),
+    outputFileId: v.optional(v.id("_storage")),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_sourceFileId", ["sourceFileId"])
+    .index("by_threadId", ["threadId"])
     .index("by_clientOrgId", ["clientOrgId"]),
 
   /** One saved copy of a filled form; versions only grow. */
