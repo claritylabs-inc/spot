@@ -4,12 +4,14 @@ import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { operatorBatchApprovalDetails } from "@/lib/operator-batch-approval";
 import { Fragment, useMemo, type ComponentProps, type ReactNode } from "react";
 import { useMutation } from "convex/react";
-import { ChevronRight, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import type { StatusPresentation } from "@claritylabs-inc/ui/components/status-tag";
 import {
   ChatApprovalActions,
   ChatApprovalCard,
+  ChatApprovalEmailCard,
+  ChatApprovalReceipt,
   type ChatApprovalDecision,
 } from "@/components/chat/approval-card";
 import { ChatAttachmentList } from "@/components/chat/attachment-chip";
@@ -20,7 +22,6 @@ import {
 } from "@/components/chat/chat-message";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { MessageContextTag } from "@/components/chat/message-context-tag";
-import { ChatDisclosure } from "@/components/chat/disclosure";
 import { hasAwaitingApprovalCall } from "@/components/chat/thinking-summary";
 import { useChatAction } from "@/components/chat/use-chat-action";
 import { AppShellPortal, useOptionalAppShellSlots } from "@/components/app-shell-slots";
@@ -35,11 +36,11 @@ import {
 } from "@/lib/operator-agent-api";
 import type { OperatorSuggestion } from "@/convex/lib/operatorSuggestionTypes";
 import { useFollowedState } from "@/hooks/use-followed-state";
-import { cn } from "@/lib/utils";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import type { OperatorEmailDraftView } from "@/lib/operator-email-draft";
 import {
   OperatorEmailDraftCards,
+  draftSendDetail,
   OperatorThreadReplyCards,
   threadReplyDrafts,
   OperatorEmailDraftPanel,
@@ -100,7 +101,7 @@ function isAutoApproved(confirmation: OperatorAgentConfirmation) {
   );
 }
 
-/** Consecutive auto-approved confirmations collapse into one disclosure. */
+/** Consecutive decided confirmations share one stack of receipt lines. */
 function groupOperatorConfirmations(
   confirmations: OperatorAgentConfirmation[],
 ) {
@@ -108,9 +109,9 @@ function groupOperatorConfirmations(
   for (const confirmation of confirmations) {
     const previous = groups.at(-1);
     if (
-      isAutoApproved(confirmation) &&
+      confirmation.state !== "pending" &&
       previous &&
-      isAutoApproved(previous[0])
+      previous[0].state !== "pending"
     ) {
       previous.push(confirmation);
     } else {
@@ -137,10 +138,6 @@ function OperatorMessageFooter({
 }) {
   const rerunTurn = useMutation(operatorAgentApi.rerunTurn);
   const rerunAction = useChatAction();
-  const [expanded, setExpanded] = useFollowedState(
-    `operator-conversation:${message.id}:approvals-expanded`,
-    false,
-  );
   const approved = confirmations.filter(isAutoApproved);
   const disabled = rerunAction.pending || activeRun;
   function rerun() {
@@ -158,47 +155,33 @@ function OperatorMessageFooter({
   const controlClass = "text-muted-foreground/50 hover:text-muted-foreground";
   return (
     <div className="-mt-2 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="-ml-2 flex items-center gap-1">
-          <ChatCopyButton
-            content={message.content}
-            size="small"
-            className={controlClass}
-          />
-          {message.rerun ? (
-            <PillButton
-              variant="icon"
-              size="small"
-              iconOnly
-              label="Retry"
-              disabled={disabled}
-              className={controlClass}
-              onClick={rerun}
-            >
-              {rerunAction.pending ? (
-                <Spinner className="size-3.5" />
-              ) : (
-                <RotateCcw className="size-3.5" />
-              )}
-            </PillButton>
-          ) : null}
-        </div>
-        {approved.length > 0 ? (
+      {approved.length > 0 ? (
+        <div>{approved.map(renderConfirmation)}</div>
+      ) : null}
+      <div className="-ml-2 flex items-center gap-1">
+        <ChatCopyButton
+          content={message.content}
+          size="small"
+          className={controlClass}
+        />
+        {message.rerun ? (
           <PillButton
-            variant="ghost"
+            variant="icon"
             size="small"
-            className={cn("-mr-2", controlClass)}
-            aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
+            iconOnly
+            label="Retry"
+            disabled={disabled}
+            className={controlClass}
+            onClick={rerun}
           >
-            {approved.length} auto-approved
-            <ChevronRight className={cn("size-3", expanded && "rotate-90")} />
+            {rerunAction.pending ? (
+              <Spinner className="size-3.5" />
+            ) : (
+              <RotateCcw className="size-3.5" />
+            )}
           </PillButton>
         ) : null}
       </div>
-      {expanded ? (
-        <div className="space-y-4">{approved.map(renderConfirmation)}</div>
-      ) : null}
     </div>
   );
 }
@@ -235,7 +218,35 @@ function EmptyThread({
 }
 
 /** What an approval will do, under the waiting call's row. */
-function ApprovalDetail({ title }: { title: string }) {
+function ApprovalDetail({
+  title,
+  draft,
+  onOpenDraft,
+}: {
+  title: string;
+  /** The email draft a send approval covers, shown instead of its full text. */
+  draft?: OperatorEmailDraftView;
+  onOpenDraft: () => void;
+}) {
+  if (draft) {
+    const detail = draftSendDetail(draft);
+    return (
+      <>
+        <p className="text-foreground/90">{draft.subject || "(no subject)"}</p>
+        <p>
+          To {draft.to.join(", ")}
+          {detail ? ` · ${detail}` : ""}
+        </p>
+        <button
+          type="button"
+          onClick={onOpenDraft}
+          className="mt-1 text-foreground underline underline-offset-2"
+        >
+          Review email
+        </button>
+      </>
+    );
+  }
   const batch = operatorBatchApprovalDetails(title);
   if (!batch) return <p className="whitespace-pre-line">{title}</p>;
   return (
@@ -452,6 +463,16 @@ export function OperatorConversation({
   const [openEmailDraftId, setOpenEmailDraftId] = useFollowedState<
     string | null
   >(`operator-conversation:${threadId}:email-draft`, null);
+  const draftsById = new Map(
+    Object.values(emailDraftsByMessage ?? {})
+      .flat()
+      .map((draft) => [draft.id, draft]),
+  );
+  // A send approval shows its draft, which opens editable in the composer.
+  const approvalDraft = (confirmation: OperatorAgentConfirmation) =>
+    confirmation.emailDraftId
+      ? draftsById.get(confirmation.emailDraftId)
+      : undefined;
   const hasAppShell = useOptionalAppShellSlots();
   const openEmailDraft = useMemo(
     () =>
@@ -480,18 +501,53 @@ export function OperatorConversation({
   const hasPendingConfirmation = detail.confirmations.some(
     (confirmation) => confirmation.state === "pending",
   );
-  const confirmationCard = (confirmation: OperatorAgentConfirmation) => (
-    <ChatApprovalCard
-      key={confirmation.id}
-      status={operatorConfirmationStatus(confirmation)}
-      title={confirmation.title}
-      items={operatorBatchApprovalDetails(confirmation.title)?.items}
-      actionable={confirmation.state === "pending" && confirmation.actionable}
-      destructive={confirmation.destructive}
-      busy={confirmationBusyId === confirmation.id}
-      onDecision={(decision) => onDecision(confirmation, decision)}
-    />
-  );
+  const confirmationCard = (confirmation: OperatorAgentConfirmation) => {
+    const status = operatorConfirmationStatus(confirmation);
+    const draft = approvalDraft(confirmation);
+    if (confirmation.state !== "pending")
+      return (
+        <ChatApprovalReceipt
+          key={confirmation.id}
+          status={status}
+          title={
+            draft
+              ? `Email ${draft.to.join(", ") || "recipients"}`
+              : confirmation.title
+          }
+          context={draft?.subject}
+          items={operatorBatchApprovalDetails(confirmation.title)?.items}
+          onOpen={draft ? () => setOpenEmailDraftId(draft.id) : undefined}
+          isOpen={draft ? openEmailDraftId === draft.id : false}
+        />
+      );
+    if (draft)
+      return (
+        <ChatApprovalEmailCard
+          key={confirmation.id}
+          status={status}
+          subject={draft.subject}
+          recipients={draft.to.join(", ")}
+          detail={draftSendDetail(draft)}
+          actionable={confirmation.actionable}
+          busy={confirmationBusyId === confirmation.id}
+          isOpen={openEmailDraftId === draft.id}
+          onOpen={() => setOpenEmailDraftId(draft.id)}
+          onDecision={(decision) => onDecision(confirmation, decision)}
+        />
+      );
+    return (
+      <ChatApprovalCard
+        key={confirmation.id}
+        status={status}
+        title={confirmation.title}
+        items={operatorBatchApprovalDetails(confirmation.title)?.items}
+        actionable={confirmation.actionable}
+        destructive={confirmation.destructive}
+        busy={confirmationBusyId === confirmation.id}
+        onDecision={(decision) => onDecision(confirmation, decision)}
+      />
+    );
+  };
 
   return (
     <ChatMessageList
@@ -557,7 +613,14 @@ export function OperatorConversation({
             ? {
                 toolName: rowConfirmation.toolName,
                 detail: (
-                  <ApprovalDetail title={rowConfirmation.title} />
+                  <ApprovalDetail
+                    title={rowConfirmation.title}
+                    draft={approvalDraft(rowConfirmation)}
+                    onOpenDraft={() => {
+                      const draft = approvalDraft(rowConfirmation);
+                      if (draft) setOpenEmailDraftId(draft.id);
+                    }}
+                  />
                 ),
                 actions:
                   rowConfirmation.actionable ? (
@@ -629,7 +692,13 @@ export function OperatorConversation({
                   viewerUserId={detail.viewerUserId}
                   showSender={multipleSenders}
                   onFollowUp={onFollowUp}
-                  emailDrafts={emailDraftsByMessage?.[message.id] ?? []}
+                  emailDrafts={(emailDraftsByMessage?.[message.id] ?? []).filter(
+                    // A draft whose send approval is in this turn shows as that approval.
+                    (draft) =>
+                      !confirmations.some(
+                        (confirmation) => confirmation.emailDraftId === draft.id,
+                      ),
+                  )}
                   openEmailDraftId={openEmailDraftId}
                   onOpenEmailDraft={setOpenEmailDraftId}
                   toolApproval={rowApproval}
@@ -658,21 +727,8 @@ export function OperatorConversation({
                     !(settledAnswer && isAutoApproved(confirmation)),
                 ),
               ).map((group) =>
-                isAutoApproved(group[0]) ? (
-                  <ChatDisclosure
-                    key={group[0].id}
-                    summaryClassName="text-muted-foreground hover:text-foreground"
-                    summary={
-                      <span>
-                        {group.length} {group.length === 1 ? "task" : "tasks"}{" "}
-                        auto-approved
-                      </span>
-                    }
-                  >
-                    <div className="space-y-2">
-                      {group.map(renderConfirmation)}
-                    </div>
-                  </ChatDisclosure>
+                group.length > 1 ? (
+                  <div key={group[0].id}>{group.map(renderConfirmation)}</div>
                 ) : (
                   <Fragment key={group[0].id}>
                     {renderConfirmation(group[0])}

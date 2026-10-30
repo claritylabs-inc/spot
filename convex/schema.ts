@@ -5775,6 +5775,15 @@ export default defineSchema({
       startedAt: v.optional(v.number()),
       sequenceId: v.optional(v.id("procurementOutreachSequences")),
     })),
+    /**
+     * A client information request drafted in the operator chat: sending it
+     * launches the request's client email sequence with this subject, body and
+     * `followUps` instead of an inbox send.
+     */
+    clientOutreach: v.optional(v.object({
+      informationFormId: v.optional(v.id("procurementInformationForms")),
+      sequenceId: v.optional(v.id("procurementOutreachSequences")),
+    })),
   })
     .index("thread", ["threadId"])
     .index("operator_thread", ["operatorThreadId"])

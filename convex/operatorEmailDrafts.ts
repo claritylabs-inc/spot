@@ -11,6 +11,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import {
+  actionConfirmationFingerprint,
   isOperatorEmailDraft,
   pendingEmailDraftFingerprint,
 } from "./lib/actionConfirmationFingerprint";
@@ -23,6 +24,13 @@ import {
   validateThreadFollowUpRequest,
 } from "./lib/threadFollowUps";
 import { isComposeKey } from "./lib/teamEmailReply";
+import { composeClientOutreachEmail } from "./lib/clientOutreachEmail";
+import { OUTREACH_DEFAULT_CADENCE } from "./lib/providerOutreachSchedule";
+import {
+  getClientOutreachPanel,
+  launchClientOutreachByOperator,
+  validateClientOutreachLaunch,
+} from "./clientOutreach";
 import { operatorSenderIdentity, type OperatorSenderIdentity } from "./lib/outreachIdentity";
 import {
   quotedHistory,
@@ -88,8 +96,28 @@ async function toDraftView(
     sendBlockedReason:
       draft.sendBlockedReason ?? (legacy ? SENDER_CHANGED_REASON : undefined),
     fingerprint: await pendingEmailDraftFingerprint(draft),
+    followUps: draft.followUps
+      ? { cadence: draft.followUps.cadence ?? null }
+      : null,
+    clientRequest: Boolean(draft.clientOutreach),
     updatedAt: draft._creationTime,
   };
+}
+
+/**
+ * What an agent approval of a send covers: the exact draft, plus what sending
+ * starts (its follow-ups, or the client email sequence it launches).
+ */
+export async function operatorDraftSendFingerprint(draft: Doc<"pendingEmails">) {
+  return await actionConfirmationFingerprint({
+    draft: await pendingEmailDraftFingerprint(draft),
+    followUps: draft.followUps
+      ? { cadence: draft.followUps.cadence ?? null }
+      : null,
+    clientOutreach: draft.clientOutreach
+      ? { informationFormId: draft.clientOutreach.informationFormId ?? null }
+      : null,
+  });
 }
 
 /** Drafts the operator agent created or last revised under each message. */
@@ -575,23 +603,12 @@ type SendApproval =
   | { approved: true; draft: Doc<"pendingEmails"> }
   | { approved: false; reason: string };
 
-/** Tools whose exact confirmation approves a team-thread reply draft. */
-export const REPLY_TOOL_NAMES: readonly string[] = [
-  "reply_email_thread",
-  "reply_procurement_email_thread",
-];
-
-/** The idempotency key of a reply draft created for one agent confirmation. */
-export const agentReplyKey = (confirmationId: Id<"operatorAgentConfirmations">) =>
-  `confirmation:${confirmationId}`;
-
 /**
  * An operator draft may be sent only under an exact approval of this unchanged
  * draft by the operator who signed it, rechecked again inside the delivery
  * claim. Two grants exist, never a boolean:
- * - an agent/MCP exact confirmation (`confirmationId`): `send_email_draft`
- *   for a drafted email, or a reply tool for the reply draft created from that
- *   very confirmation;
+ * - an agent/MCP exact confirmation (`confirmationId`) of `send_email_draft`
+ *   for this draft, covering its follow-ups too;
  * - a browser `directApproval` snapshot (no `confirmationId`), which only the
  *   session-authenticated reply, compose and chat-draft send mutations write:
  *   the signing operator approved this exact fingerprint.
@@ -660,17 +677,13 @@ export async function checkOperatorSendApproval(
         return denied("The operator who approved this email is no longer active.");
       }
     }
-    const toolName = confirmation.payload.toolName;
     const input = JSON.parse(confirmation.payload.input) as Record<string, unknown>;
-    // A reply draft is bound to its confirmation when created (thread and message
-    // checked there, ids of any generation resolved); the fingerprint then pins
-    // the exact reply, target included.
-    const targetsThisDraft =
-      toolName === "send_email_draft"
-        ? input.draftId === draft._id
-        : REPLY_TOOL_NAMES.includes(toolName) &&
-          draft.directReplyKey === agentReplyKey(confirmation._id);
-    if (!targetsThisDraft || confirmation.payload.sourceFingerprint !== fingerprint) {
+    if (
+      confirmation.payload.toolName !== "send_email_draft" ||
+      input.draftId !== draft._id ||
+      confirmation.payload.sourceFingerprint !==
+        (await operatorDraftSendFingerprint(draft))
+    ) {
       return denied("The draft changed since it was approved.");
     }
   }
@@ -733,7 +746,7 @@ export const approveSendInternal = internalMutation({
       },
       followUps: args.followUps,
     });
-    return null;
+    return { clientRequest: Boolean(draft.clientOutreach) };
   },
 });
 
@@ -837,11 +850,24 @@ function operatorEmailSendSummary(
     draft.attachments?.length
       ? `Attachments: ${draft.attachments.map(({ filename }) => filename).join(", ")}`
       : null,
+    draft.clientOutreach
+      ? `Starts a client information request${draft.clientOutreach.informationFormId ? " for its linked form" : ""}.`
+      : null,
+    draftFollowUpsLine(draft),
     "",
     draft.renderedText ?? draft.emailBody,
   ]
     .filter((line) => line !== null)
     .join("\n");
+}
+
+/** The follow-ups a send starts, as the approval states them. */
+function draftFollowUpsLine(draft: Doc<"pendingEmails">) {
+  if (!draft.followUps) return draft.clientOutreach ? "Follow-ups: none" : null;
+  const cadence = draft.followUps.cadence;
+  return cadence
+    ? `Follow-ups: ${cadence.followUpCount}, every ${cadence.intervalBusinessDays} business day${cadence.intervalBusinessDays === 1 ? "" : "s"}, until someone replies`
+    : "Follow-ups: on a schedule Spot picks, until someone replies";
 }
 
 export async function operatorEmailSendConfirmation(
@@ -853,7 +879,7 @@ export async function operatorEmailSendConfirmation(
   },
 ) {
   const { draft, summary } = await requireSendableOperatorEmailDraft(ctx, args);
-  return { summary, fingerprint: await pendingEmailDraftFingerprint(draft) };
+  return { summary, fingerprint: await operatorDraftSendFingerprint(draft) };
 }
 
 /**
@@ -921,3 +947,168 @@ export const checkAttachmentInputInternal = internalQuery({
     return { reference: policyId };
   },
 });
+
+const draftFollowUpsValidator = v.union(threadFollowUpRequestValidator, v.null());
+
+/** The schedule a client information request launches with: none, Spot's default, or the draft's. */
+async function clientDraftCadence(ctx: MutationCtx, draft: Doc<"pendingEmails">) {
+  if (draft.followUps?.cadence)
+    return { ...draft.followUps.cadence, style: "brief_nudge" as const };
+  const panel = draft.procurementRequestId
+    ? await getClientOutreachPanel(ctx, draft.procurementRequestId)
+    : null;
+  const fallback = panel?.defaultCadence ?? OUTREACH_DEFAULT_CADENCE;
+  return {
+    followUpCount: draft.followUps ? fallback.followUpCount : 0,
+    intervalBusinessDays: fallback.intervalBusinessDays,
+    style: "brief_nudge" as const,
+  };
+}
+
+/** Why a client information request draft cannot launch as it stands, or null. */
+async function clientRequestBlocker(ctx: MutationCtx, draft: Doc<"pendingEmails">) {
+  if (!draft.procurementRequestId)
+    return "A client information request needs its procurementRequestId.";
+  if (draft.teamEmailThreadId)
+    return "A client information request starts a new conversation; it cannot reply on a team thread.";
+  if (draft.attachments?.length || draft.bccAddresses?.length)
+    return "A client information request cannot carry attachments or Bcc.";
+  const alwaysCc = draft.operatorAlwaysCcEmail?.toLowerCase();
+  if ((draft.ccAddresses ?? []).some((address) => address.toLowerCase() !== alwaysCc))
+    return "A client information request copies only your Always CC.";
+  try {
+    await validateClientOutreachLaunch(ctx, {
+      requestId: draft.procurementRequestId,
+      recipientEmail: draft.recipientEmail,
+      subject: draft.subject,
+      text: withoutQuotedHistory(draft.emailBody),
+      cadence: await clientDraftCadence(ctx, draft),
+      informationFormId: draft.clientOutreach?.informationFormId,
+    });
+  } catch (error) {
+    return error instanceof Error ? error.message : "This client email cannot be sent.";
+  }
+  return null;
+}
+
+/**
+ * Applies a draft's send options after each save: its follow-ups, and whether
+ * it is a client information request. A request is rendered exactly as its
+ * sequence sends it (greeting, the message, signature) and keeps any launch
+ * problem as its send blocker.
+ */
+export const applyDraftOptionsInternal = internalMutation({
+  args: {
+    threadId: v.id("operatorAgentThreads"),
+    draftId: v.id("pendingEmails"),
+    followUps: v.optional(draftFollowUpsValidator),
+    informationFormId: v.optional(v.string()),
+    clientRequest: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    let draft = await ctx.db.get(args.draftId);
+    if (!draft || draft.operatorThreadId !== args.threadId || draft.status !== "draft")
+      throw new Error("Draft not found");
+    const patch: Partial<Doc<"pendingEmails">> = {};
+    if (args.followUps !== undefined) {
+      if (args.followUps) validateThreadFollowUpRequest(args.followUps);
+      patch.followUps = args.followUps ?? undefined;
+    }
+    if (args.clientRequest || args.informationFormId) {
+      const informationFormId = args.informationFormId
+        ? ctx.db.normalizeId("procurementInformationForms", args.informationFormId)
+        : draft.clientOutreach?.informationFormId;
+      if (args.informationFormId && !informationFormId)
+        throw new Error(
+          "informationFormId must be an exact ID from create_procurement_information_form or get_procurement_information.",
+        );
+      patch.clientOutreach = informationFormId ? { informationFormId } : {};
+    }
+    if (Object.keys(patch).length) {
+      await ctx.db.patch(draft._id, patch);
+      draft = { ...draft, ...patch };
+    }
+    if (!draft.clientOutreach || !draft.senderUserId)
+      return draftOptionsResult(draft);
+    const identity = await operatorSenderIdentity(ctx, draft.senderUserId);
+    const recipient = draft.procurementRequestId
+      ? (await getClientOutreachPanel(ctx, draft.procurementRequestId))?.recipients.find(
+          (option) => option.email === draft!.recipientEmail.toLowerCase(),
+        )
+      : undefined;
+    const composed = composeClientOutreachEmail({
+      kind: "initial",
+      isFinal: false,
+      recipientName: recipient?.name ?? undefined,
+      operator: { name: identity.name, address: identity.teamAddress, prompts: identity.prompts },
+      message: { subject: draft.subject, text: withoutQuotedHistory(draft.emailBody) },
+    });
+    const blocker = await clientRequestBlocker(ctx, draft);
+    // The executor's own blockers come first; a launch problem is added once.
+    const reasons = [draft.sendBlockedReason, blocker].filter(
+      (reason): reason is string => Boolean(reason),
+    );
+    const sendBlockedReason = reasons.length ? [...new Set(reasons)].join(" ") : undefined;
+    await ctx.db.patch(draft._id, {
+      renderedText: composed.text,
+      renderedHtml: composed.html,
+      sendBlockedReason,
+    });
+    return draftOptionsResult({ ...draft, sendBlockedReason });
+  },
+});
+
+/** The send options the agent sees after a save. */
+function draftOptionsResult(draft: Doc<"pendingEmails">) {
+  return {
+    followUps: draft.followUps
+      ? (draft.followUps.cadence ?? "auto")
+      : null,
+    ...(draft.clientOutreach ? { clientInformationRequest: true } : {}),
+    ...(draft.sendBlockedReason ? { blockedReason: draft.sendBlockedReason } : {}),
+  };
+}
+
+/**
+ * Sends a client information request draft under the same approval as any
+ * operator draft: the request's client email sequence launches with the
+ * draft's recipient, subject, message, follow-ups and form, and the draft is
+ * recorded as sent once the sequence exists.
+ */
+export const launchClientRequestDraftInternal = internalMutation({
+  args: {
+    pendingEmailId: v.id("pendingEmails"),
+    confirmationId: v.optional(v.id("operatorAgentConfirmations")),
+  },
+  handler: async (ctx, args) => {
+    const check = await checkOperatorSendApproval(ctx, args);
+    if (!check.approved) throw new Error(check.reason);
+    const { draft } = check;
+    if (!draft.clientOutreach || draft.status !== "draft" || !draft.senderUserId)
+      throw new Error("This draft is not an unsent client information request.");
+    if (draft.sendBlockedReason)
+      throw new Error(`Draft is not ready to send: ${draft.sendBlockedReason}`);
+    const blocker = await clientRequestBlocker(ctx, draft);
+    if (blocker) throw new Error(blocker);
+    const launched = await launchClientOutreachByOperator(ctx, {
+      operatorUserId: draft.senderUserId,
+      requestId: draft.procurementRequestId!,
+      informationFormId: draft.clientOutreach.informationFormId,
+      recipientEmail: draft.recipientEmail,
+      subject: draft.subject,
+      text: withoutQuotedHistory(draft.emailBody),
+      cadence: await clientDraftCadence(ctx, draft),
+    });
+    const now = dayjs().valueOf();
+    await ctx.db.patch(draft._id, {
+      status: "sent",
+      sendBlockedReason: undefined,
+      clientOutreach: { ...draft.clientOutreach, sequenceId: launched.sequenceId },
+      ...(draft.followUps
+        ? { followUps: { ...draft.followUps, startedAt: now, sequenceId: launched.sequenceId } }
+        : {}),
+    });
+    return { recipientEmail: draft.recipientEmail, sequenceId: launched.sequenceId };
+  },
+});
+

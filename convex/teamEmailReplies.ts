@@ -3,7 +3,6 @@ import dayjs from "dayjs";
 
 import type { Id } from "./_generated/dataModel";
 import {
-  internalMutation,
   internalQuery,
   mutation,
   query,
@@ -11,7 +10,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
-import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
+import { requireOperator } from "./lib/operatorIdentity";
 import {
   composeTeamReply,
   normalizeReplyMessage,
@@ -23,7 +22,6 @@ import {
   threadFollowUpRequestValidator,
   validateThreadFollowUpRequest,
 } from "./lib/threadFollowUps";
-import { REPLY_TOOL_NAMES, agentReplyKey } from "./operatorEmailDrafts";
 
 /**
  * Replies on the shared team inbox. Every reply is an operator draft that goes
@@ -33,9 +31,9 @@ import { REPLY_TOOL_NAMES, agentReplyKey } from "./operatorEmailDrafts";
  * name, current Always CC included, no personal Reply-To. `composeTeamReply` is the single source of the preview,
  * the approval fingerprint and the draft, so what is approved is what is sent.
  *
- * Two grants authorize a send, never a flag: the browser's session-
- * authenticated `prepareSend` stores the approved fingerprint on the draft, and
- * an agent reply needs its completed exact confirmation (`prepareAgentReply`).
+ * The browser's session-authenticated `prepareSend` stores the approved
+ * fingerprint on the draft. Agent replies are chat drafts linked to the thread
+ * (`save_email_draft` with `teamEmailThreadId`) and send with `send_email_draft`.
  */
 
 const BROWSER_KEY = /^[A-Za-z0-9-]{8,80}$/;
@@ -182,68 +180,6 @@ export const prepareSend = mutation({
         approvedAt: dayjs().valueOf(),
       },
       ...(args.followUps ? { followUps: args.followUps } : {}),
-    });
-    return { pendingEmailId };
-  },
-});
-
-/**
- * Creates the reply draft for an operator-agent or MCP reply, once per
- * confirmation. The confirmation must be completed, belong to this operator
- * and one of the reply tools, name this thread and message, and carry the
- * fingerprint of the reply as it composes now.
- */
-export const prepareAgentReplyInternal = internalMutation({
-  args: {
-    operatorUserId: v.id("users"),
-    confirmationId: v.id("operatorAgentConfirmations"),
-    teamEmailThreadId: v.id("teamEmailThreads"),
-    message: v.string(),
-  },
-  handler: async (ctx, args) => {
-    await requireOperatorForUser(ctx, args.operatorUserId);
-    await assertNoOperatorImpersonation(ctx, args.operatorUserId);
-    const confirmation = await ctx.db.get(args.confirmationId);
-    if (
-      !confirmation ||
-      confirmation.status !== "completed" ||
-      confirmation.operatorUserId !== args.operatorUserId ||
-      confirmation.payload.kind !== "operator_tool_action" ||
-      !REPLY_TOOL_NAMES.includes(confirmation.payload.toolName)
-    ) {
-      throw new Error("A completed approval for this reply is required.");
-    }
-    const input = JSON.parse(confirmation.payload.input) as Record<string, unknown>;
-    // Both supported tool argument names must identify the exact approved thread.
-    const named = [input.teamEmailThreadId, input.procurementEmailThreadId].filter(
-      (id): id is string => typeof id === "string" && id.length > 0,
-    );
-    if (
-      !named.length ||
-      named.some((id) => id !== args.teamEmailThreadId) ||
-      input.message !== args.message
-    ) {
-      throw new Error("The reply does not match what was approved.");
-    }
-    const composed = await composeTeamReply(ctx, {
-      operatorUserId: args.operatorUserId,
-      threadId: args.teamEmailThreadId,
-      message: args.message,
-    });
-    if (!composed.ok) throw new Error(composed.reason);
-    if (composed.preview.fingerprint !== confirmation.payload.sourceFingerprint) {
-      throw new Error("The reply changed since it was approved.");
-    }
-    const directReplyKey = agentReplyKey(confirmation._id);
-    const existing = await replyDraftByKey(ctx, args.operatorUserId, directReplyKey);
-    if (existing) return { pendingEmailId: existing._id };
-    const pendingEmailId = await ctx.db.insert("pendingEmails", {
-      ...composed.fields,
-      status: "draft",
-      scheduledSendTime: 0,
-      directReplyKey,
-      directReplyMessage: composed.message,
-      operatorThreadId: confirmation.threadId,
     });
     return { pendingEmailId };
   },

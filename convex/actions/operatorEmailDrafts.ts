@@ -69,7 +69,8 @@ export const cancel = action({
  * Sends a chat draft from its artifact: any active operator's click approves
  * the exact draft shown, as its signer, then the same claimed delivery as an
  * inbox reply sends it once. With `followUps`, Spot nudges the recipient on
- * the sent thread until anyone replies, as for an inbox reply.
+ * the sent thread until anyone replies, as for an inbox reply. A client
+ * information request launches its request's client email sequence instead.
  */
 export const send = action({
   args: {
@@ -78,7 +79,16 @@ export const send = action({
     followUps: v.optional(threadFollowUpRequestValidator),
   },
   handler: async (ctx, args): Promise<{ recipientEmail: string }> => {
-    await ctx.runMutation(internal.operatorEmailDrafts.approveSendInternal, args);
+    const { clientRequest } = await ctx.runMutation(
+      internal.operatorEmailDrafts.approveSendInternal,
+      args,
+    );
+    // A client information request launches its client email sequence instead.
+    if (clientRequest)
+      return await ctx.runMutation(
+        internal.operatorEmailDrafts.launchClientRequestDraftInternal,
+        { pendingEmailId: args.draftId },
+      );
     return await sendOperatorInboxDraft(ctx, { pendingEmailId: args.draftId });
   },
 });

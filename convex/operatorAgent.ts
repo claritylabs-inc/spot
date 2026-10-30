@@ -11,7 +11,7 @@ import {
 } from "./providerOutreach";
 import { writeProviderOutreachDraft } from "./lib/providerOutreachDrafts";
 import { MAX_LAUNCH_PROVIDERS } from "./lib/providerOutreachSchedule";
-import { getClientOutreachPanel, launchClientOutreachByOperator } from "./clientOutreach";
+import { getClientOutreachPanel } from "./clientOutreach";
 import {
   addInformationQuestionsByOperator,
   cancelInformationFormByOperator,
@@ -129,6 +129,7 @@ import {
   assertOperatorEmailToolAccess,
   operatorToolRoleAllowed,
   isOperatorAgentToolName,
+  isProviderEmailSendTool,
   parseOperatorAgentToolInput,
   operatorUpdateFieldLabel,
   operatorUpdateValue,
@@ -220,9 +221,7 @@ import {
   describeOperatorRecordFields,
   type OperatorDescribableRecord,
 } from "./lib/operatorRecordFieldCatalog";
-import { previewTeamEmailReply } from "./lib/teamEmailReply";
 import { assertOutreachIdentity } from "./lib/outreachIdentity";
-import { composeClientOutreachEmail } from "./lib/clientOutreachEmail";
 import {
   OPERATOR_EMAIL_SEND_SUMMARY_LIMIT,
   operatorEmailSendConfirmation,
@@ -668,36 +667,21 @@ async function operatorConfirmationSummary(
   ) {
     return getOperatorAgentToolSpec(toolName).summarize(input);
   }
-  if (toolName === "reply_email_thread" || toolName === "reply_procurement_email_thread") {
-    return (await operatorReplyConfirmation(ctx, input, context.operatorUserId)).summary;
-  }
-  if (toolName === "launch_procurement_provider_outreach" || toolName === "send_procurement_client_email") {
+  if (isProviderEmailSendTool(toolName)) {
     const identity = await assertOutreachIdentity(ctx, context.operatorUserId);
     const lines = [
       await operatorDisplaySummary(ctx, getOperatorAgentToolSpec(toolName).summarize(input), input),
       `From: ${identity.fromHeader}`,
       `Always CC: ${identity.alwaysCc ?? "None"}`,
     ];
-    if (toolName === "launch_procurement_provider_outreach") {
-      lines.push(
-        "",
-        ...(await providerLaunchApprovalLines(ctx, {
-          operatorUserId: context.operatorUserId,
-          input,
-          budget: OPERATOR_EMAIL_SEND_SUMMARY_LIMIT - lines.join("\n").length - 2,
-        })),
-      );
-    }
-    if (toolName === "send_procurement_client_email") {
-      const panel = await getClientOutreachPanel(ctx, normalizeProcurementRequestId(ctx, input.procurementRequestId));
-      const recipient = panel?.recipients.find((person) => person.email === input.recipientEmail);
-      const composed = composeClientOutreachEmail({
-        kind: "initial", isFinal: false, recipientName: recipient?.name ?? undefined,
-        operator: { name: identity.name, address: identity.address, prompts: identity.prompts },
-        message: { subject: String(input.subject), text: String(input.message) },
-      });
-      lines.push("", composed.text);
-    }
+    lines.push(
+      "",
+      ...(await providerLaunchApprovalLines(ctx, {
+        operatorUserId: context.operatorUserId,
+        input,
+        budget: OPERATOR_EMAIL_SEND_SUMMARY_LIMIT - lines.join("\n").length - 2,
+      })),
+    );
     const summary = lines.join("\n");
     if (summary.length > OPERATOR_EMAIL_SEND_SUMMARY_LIMIT) {
       throw new Error("This email is too long to review here. Send it from the request's Email client composer.");
@@ -777,33 +761,6 @@ async function operatorConfirmationSummary(
     2_500,
     true,
   );
-}
-
-async function operatorReplyConfirmation(
-  ctx: MutationCtx,
-  input: Record<string, unknown>,
-  operatorUserId: Id<"users">,
-) {
-  const result = await previewTeamEmailReply(ctx, {
-    operatorUserId,
-    teamEmailThreadId: String(input.teamEmailThreadId ?? input.procurementEmailThreadId ?? ""),
-    message: String(input.message ?? ""),
-  });
-  if (!result.ok) throw new Error(result.reason);
-  const { preview } = result;
-  const summary = [
-    `From: ${preview.from}`,
-    `To: ${preview.to.join(", ")}`,
-    `Cc: ${preview.cc.join(", ") || "None"}`,
-    `Subject: ${preview.subject}`,
-    preview.mode === "standalone" ? "New email with quoted history; stays in this conversation." : "Reply in your inbox conversation.",
-    ...(preview.stopsFollowUps ? ["Stops automatic follow-ups."] : []),
-    "", preview.text,
-  ].join("\n");
-  if (summary.length > OPERATOR_EMAIL_SEND_SUMMARY_LIMIT) {
-    throw new Error("This reply is too long to review here. Send it from the team Inbox, which shows the full email.");
-  }
-  return { summary, fingerprint: preview.fingerprint };
 }
 
 function boundedTokenEditDistance(
@@ -3893,8 +3850,8 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
     return { results };
   }
 
-  if (toolName === "launch_procurement_provider_outreach") {
-    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.launch_procurement_provider_outreach.inputSchema.parse(input);
+  if (isProviderEmailSendTool(toolName)) {
+    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.send_procurement_provider_emails.inputSchema.parse(input);
     if (!args.sourceFingerprint) throw new Error("Request a fresh approval before launching outreach.");
     const requestId = normalizeProcurementRequestId(ctx, parsed.procurementRequestId);
     const { request, client } = await loadCompanyRequest(ctx, requestId);
@@ -3959,23 +3916,6 @@ async function executeToolDomainSingle(ctx: MutationCtx, args: OperatorToolDomai
     return await cancelInformationFormByOperator(ctx, {
       operatorUserId: args.operatorUserId,
       formId: normalizeInformationFormId(ctx, input.informationFormId),
-    });
-  }
-
-  if (toolName === "send_procurement_client_email") {
-    const parsed = OPERATOR_AGENT_TOOL_REGISTRY.send_procurement_client_email.inputSchema.parse(input);
-    if (!args.sourceFingerprint) throw new Error("Request a fresh sender approval before sending this email.");
-    return await launchClientOutreachByOperator(ctx, {
-      operatorUserId: args.operatorUserId,
-      requestId: normalizeProcurementRequestId(ctx, parsed.procurementRequestId),
-      recipientEmail: parsed.recipientEmail,
-      subject: parsed.subject,
-      text: parsed.message,
-      cadence: { ...parsed.cadence, style: "brief_nudge" },
-      informationFormId: parsed.informationFormId
-        ? normalizeInformationFormId(ctx, parsed.informationFormId)
-        : undefined,
-      expectedIdentityFingerprint: args.sourceFingerprint,
     });
   }
 
@@ -4761,29 +4701,6 @@ async function executeToolActionDomain(
     };
   }
 
-  if (args.toolName === "reply_procurement_email_thread" || args.toolName === "reply_email_thread") {
-    const parsed =
-      OPERATOR_AGENT_TOOL_REGISTRY.reply_procurement_email_thread.inputSchema.parse(
-        args.input,
-      );
-    if (!args.confirmationId) throw new Error("Email replies require exact confirmation");
-    const { threadId } = await ctx.runQuery(internal.operatorAgent.teamEmailThreadForToolInternal, {
-      operatorUserId: args.operatorUserId,
-      threadId: parsed.teamEmailThreadId ?? parsed.procurementEmailThreadId!,
-    });
-    return {
-      result: await ctx.runAction(
-        internal.actions.teamEmailReplies.sendAgentReplyInternal,
-        {
-          operatorUserId: args.operatorUserId,
-          confirmationId: args.confirmationId,
-          teamEmailThreadId: threadId,
-          message: parsed.message,
-        },
-      ),
-    };
-  }
-
   if (args.toolName === "send_operator_slack_message") {
     if (!args.idempotencyKey) {
       throw new Error("Operator Slack send requires an idempotency key");
@@ -5349,6 +5266,20 @@ function toolIntegrations(names: string[]) {
   return integrations;
 }
 
+/** The agent draft a `send_email_draft` approval would send, so the chat can open it in the composer. */
+function confirmationEmailDraftId(payload: {
+  toolName: string;
+  input: string;
+}) {
+  if (payload.toolName !== "send_email_draft") return undefined;
+  try {
+    const { draftId } = JSON.parse(payload.input) as { draftId?: unknown };
+    return typeof draftId === "string" ? draftId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export const getThread = query({
   args: { threadId: v.id("operatorAgentThreads") },
   handler: async (ctx, args) => {
@@ -5464,6 +5395,7 @@ export const getThread = query({
             state: operatorConfirmationDisplayState(confirmation),
             actionable,
             expiresAt: confirmation.expiresAt,
+            emailDraftId: confirmationEmailDraftId(confirmation.payload),
           };
         }),
     };
@@ -6070,21 +6002,11 @@ async function confirmOperatorAction(
       toolName: payload.toolName as OperatorAgentToolName,
       input,
     });
-    if (payload.toolName === "reply_email_thread" || payload.toolName === "reply_procurement_email_thread") {
-      const reply = await operatorReplyConfirmation(ctx, input, operator.userId);
-      if (payload.sourceFingerprint !== reply.fingerprint) {
-        throw new Error("The reply changed since confirmation; request a fresh approval.");
-      }
-    }
-    if (payload.toolName === "launch_procurement_provider_outreach") {
+    if (isProviderEmailSendTool(payload.toolName)) {
       if (!payload.sourceFingerprint) throw new Error("Request a fresh approval.");
       if ((await providerLaunchFingerprint(ctx, { operatorUserId: operator.userId, input })) !== payload.sourceFingerprint) {
         throw new Error("The provider emails changed since confirmation; request a fresh approval.");
       }
-    }
-    if (payload.toolName === "send_procurement_client_email") {
-      if (!payload.sourceFingerprint) throw new Error("Request a fresh sender approval.");
-      await assertOutreachIdentity(ctx, operator.userId, payload.sourceFingerprint);
     }
     if (payload.toolName === "import_policy_files") {
       const files = await resolveOperatorPolicySources(ctx, {
@@ -7914,12 +7836,8 @@ export const requestToolConfirmationInternal = internalMutation({
                   draftId: input.draftId,
                 })
               ).fingerprint
-            : args.toolName === "reply_email_thread" || args.toolName === "reply_procurement_email_thread"
-            ? (await operatorReplyConfirmation(ctx, input, args.operatorUserId)).fingerprint
-            : args.toolName === "launch_procurement_provider_outreach"
+            : isProviderEmailSendTool(args.toolName)
             ? await providerLaunchFingerprint(ctx, { operatorUserId: args.operatorUserId, input })
-            : args.toolName === "send_procurement_client_email"
-            ? (await assertOutreachIdentity(ctx, args.operatorUserId)).fingerprint
             : args.toolName === "import_policy_files"
             ? await operatorPolicySourceFingerprint(
                 await resolveOperatorPolicySources(ctx, {

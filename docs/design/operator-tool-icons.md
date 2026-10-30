@@ -24,7 +24,7 @@ Collapsed activity shows each represented category icon once, in first-use order
 | Extraction | `ScanText` | `control_proposal_extraction`, `list_extraction_issues`, `retry_failed_policy_extraction`, `retry_procurement_proposal_extraction`, `cancel_procurement_proposal_extraction` |
 | Addresses | `MapPin` | `lookup_address` |
 | Platform health | `Activity` | `get_platform_status`, `get_operator_overview`, `get_routing_status`, `get_channel_health` |
-| Outbound messages | `Send` | `send_operator_slack_message`, `send_email_draft`, `launch_procurement_provider_outreach`, `send_procurement_client_email` |
+| Outbound messages | `Send` | `send_operator_slack_message`, `send_email_draft`, `send_procurement_provider_emails` |
 | Configuration | `Settings2` | `set_client_feature_flag`, `set_client_feature_flags`, `invite_operator`, `list_operators` |
 | Archive | `Archive` | `archive_procurement_proposal`, `archive_procurement_proposals` |
 | Deletion | `Trash2` | `clear_all_agent_memory`, `cancel_email_draft`, `cancel_email_drafts` |

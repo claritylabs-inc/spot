@@ -19,6 +19,10 @@ import {
  */
 export const OPERATOR_EMAIL_TOOL_NAMES = new Set([
   "save_email_draft",
+  // Retired send tools: each now saves the draft that send_email_draft sends.
+  "reply_email_thread",
+  "reply_procurement_email_thread",
+  "send_procurement_client_email",
   "draft_email",
   "update_email_draft",
   "attach_policy_pdf_to_draft",
@@ -27,6 +31,50 @@ export const OPERATOR_EMAIL_TOOL_NAMES = new Set([
   "send_email_draft",
   "cancel_email_draft",
 ]);
+
+/**
+ * The retired reply and client email send tools, as the draft they now save:
+ * every agent email starts as a draft the operator can review and edit.
+ */
+function retiredSendAsDraft(toolName: string, input: Record<string, unknown>) {
+  if (toolName === "reply_email_thread" || toolName === "reply_procurement_email_thread")
+    return {
+      teamEmailThreadId: input.teamEmailThreadId ?? input.procurementEmailThreadId,
+      procurementRequestId: input.procurementRequestId,
+      body: input.message,
+    };
+  if (toolName === "send_procurement_client_email") {
+    const cadence = input.cadence as
+      | { followUpCount: number; intervalBusinessDays: number }
+      | undefined;
+    return {
+      procurementRequestId: input.procurementRequestId,
+      to: input.recipientEmail,
+      subject: input.subject,
+      body: input.message,
+      informationFormId: input.informationFormId,
+      clientRequest: true,
+      followUps: cadence?.followUpCount
+        ? { followUpCount: cadence.followUpCount, intervalBusinessDays: cadence.intervalBusinessDays }
+        : null,
+    };
+  }
+  return null;
+}
+
+/** `save_email_draft` follow-ups as stored: a schedule, Spot's pick, or none. */
+function draftFollowUps(value: unknown) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (value === "auto") return {};
+  const cadence = value as { followUpCount: number; intervalBusinessDays: number };
+  return {
+    cadence: {
+      followUpCount: cadence.followUpCount,
+      intervalBusinessDays: cadence.intervalBusinessDays,
+    },
+  };
+}
 
 function operatorEmailResult(result: EmailToolResult) {
   const showsDraft =
@@ -84,12 +132,34 @@ export async function runOperatorEmailTool(
   },
 ) {
   let { input } = args;
-  // Who to sign as is resolved here, not by the draft executors.
-  const { fromUserId, ...draftInput } = input;
+  let toolName = args.toolName;
+  const retired = retiredSendAsDraft(toolName, input);
+  if (retired) {
+    toolName = "save_email_draft";
+    input = Object.fromEntries(
+      Object.entries(retired).filter(([, value]) => value !== undefined),
+    );
+  }
+  // Who to sign as and the send options are resolved here, not by the draft executors.
+  const {
+    fromUserId,
+    followUps: followUpsInput,
+    informationFormId,
+    clientRequest,
+    ...draftInput
+  } = input;
   input = draftInput;
+  // A new reply goes to the thread's reply-all recipients unless `to` names others.
+  if (
+    toolName === "save_email_draft" &&
+    !input.draftId &&
+    !input.to &&
+    typeof input.teamEmailThreadId === "string"
+  )
+    input = { ...input, recipientDirection: "explicit" };
   const senderUserId =
     args.senderUserId ?? (typeof fromUserId === "string" ? fromUserId : undefined);
-  if (args.toolName === "list_email_drafts") {
+  if (toolName === "list_email_drafts") {
     const text = (value: unknown) =>
       typeof value === "string" && value ? value : undefined;
     const before = text(input.cursor) === undefined ? undefined : Number(input.cursor);
@@ -131,16 +201,36 @@ export async function runOperatorEmailTool(
     };
   }
 
-  if (args.toolName === "send_email_draft" && !args.confirmationId) {
+  if (toolName === "send_email_draft" && !args.confirmationId) {
     throw new Error("Exact operator confirmation is required");
+  }
+  // A client information request sends by launching its client email sequence.
+  if (toolName === "send_email_draft") {
+    const draft = await ctx.runQuery(internal.pendingEmails.getInternal, {
+      id: String(input.draftId) as Id<"pendingEmails">,
+    });
+    if (draft?.clientOutreach && draft.operatorThreadId === args.threadId) {
+      const launched = await ctx.runMutation(
+        internal.operatorEmailDrafts.launchClientRequestDraftInternal,
+        { pendingEmailId: draft._id, confirmationId: args.confirmationId },
+      );
+      return {
+        status: "sent",
+        draftId: draft._id,
+        to: launched.recipientEmail,
+        subject: draft.subject,
+        message:
+          "Client information request sent; its follow-ups stop when the client replies or submits the form.",
+      };
+    }
   }
   // Attachment IDs are trimmed and verified against the draft's client first.
   if (
-    args.toolName === "attach_client_file_to_draft" ||
-    args.toolName === "attach_policy_pdf_to_draft"
+    toolName === "attach_client_file_to_draft" ||
+    toolName === "attach_policy_pdf_to_draft"
   ) {
     const field =
-      args.toolName === "attach_client_file_to_draft"
+      toolName === "attach_client_file_to_draft"
         ? "clientFileId"
         : "policyId";
     const checked = await ctx.runQuery(
@@ -148,14 +238,14 @@ export async function runOperatorEmailTool(
       {
         operatorUserId: args.operatorUserId,
         threadId: args.threadId,
-        toolName: args.toolName,
+        toolName,
         draftId: String(input.draftId ?? ""),
         reference: String(input[field] ?? ""),
       },
     );
     input = { ...input, draftId: String(input.draftId).trim(), [field]: checked.reference };
   }
-  if (args.toolName === "save_email_draft" && typeof input.draftId === "string") {
+  if (toolName === "save_email_draft" && typeof input.draftId === "string") {
     const draftId = input.draftId;
     for (const [field, toolName] of [
       ["clientFileIds", "attach_client_file_to_draft"],
@@ -238,7 +328,7 @@ export async function runOperatorEmailTool(
     ...fields
   } = input;
   const result = await (async (): Promise<EmailToolResult> => {
-    switch (args.toolName) {
+    switch (toolName) {
       case "save_email_draft":
         return executors.save_email_draft.execute(fields as never);
       case "draft_email":
@@ -261,11 +351,35 @@ export async function runOperatorEmailTool(
           draftId: String(input.draftId),
         });
       default:
-        throw new Error(`Unsupported operator email tool: ${args.toolName}`);
+        throw new Error(`Unsupported operator email tool: ${toolName}`);
     }
   })();
+  const savedDraftId =
+    result.status === "draft" && result.pendingEmailId ? result.pendingEmailId : undefined;
   if (
-    args.toolName === "send_email_draft" &&
+    savedDraftId &&
+    (toolName === "save_email_draft" ||
+      toolName === "update_email_draft" ||
+      toolName === "draft_email")
+  ) {
+    const options = await ctx.runMutation(
+      internal.operatorEmailDrafts.applyDraftOptionsInternal,
+      {
+        threadId: args.threadId,
+        draftId: savedDraftId as Id<"pendingEmails">,
+        followUps: draftFollowUps(followUpsInput),
+        informationFormId:
+          typeof informationFormId === "string" ? informationFormId : undefined,
+        clientRequest: clientRequest === true ? true : undefined,
+      },
+    );
+    return {
+      ...operatorEmailResult(result),
+      ...options,
+    };
+  }
+  if (
+    toolName === "send_email_draft" &&
     result.status !== "sent" &&
     result.status !== "pending"
   ) {
