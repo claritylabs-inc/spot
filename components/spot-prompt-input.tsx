@@ -36,6 +36,8 @@ import { cn } from "@/lib/utils";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
 import type { ChatStatus } from "ai";
 import { useCachedAgentTargets } from "@/lib/sync/spot-cached-queries";
+import { useCachedQuery } from "@/lib/sync/use-cached-query";
+import { api } from "@/convex/_generated/api";
 import {
   PromptReferenceTag,
   promptReferenceMarker,
@@ -659,9 +661,11 @@ export const SpotPromptInput = forwardRef<
   const isCommandVariant = variant === "command";
   const isDockVariant = variant === "dock";
   const wrapperRef = useRef<HTMLDivElement>(null);
-  // A narrow dock gives the text its own line and moves the chip beside the
-  // send controls.
-  const [stackedDock, setStackedDock] = useState(false);
+  // A narrow or side-docked panel gives the text its own line and moves the
+  // chip beside the send controls.
+  const [narrowDock, setStackedDock] = useState(false);
+  const viewer = useCachedQuery("users.viewer", api.users.viewer, {});
+  const stackedDock = narrowDock || viewer?.agentDockPlacement === "right";
   useEffect(() => {
     const node = wrapperRef.current;
     if (!isDockVariant || !node) return;
