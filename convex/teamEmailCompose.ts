@@ -31,6 +31,7 @@ const composeArgs = {
   message: v.string(),
   clientOrgId: v.optional(v.id("organizations")),
   requestId: v.optional(v.id("procurementRequests")),
+  informationFormId: v.optional(v.id("procurementInformationForms")),
   /** Send as this active operator instead of the caller. */
   fromUserId: v.optional(v.id("users")),
 };

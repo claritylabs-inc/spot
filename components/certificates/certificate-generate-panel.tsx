@@ -10,7 +10,8 @@ import { CertificateHolderFields } from "./certificate-holder-fields";
 import { certificateHolderDraft } from "./certificate-workspace";
 import { PillButton } from "@/components/ui/pill-button";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { DrawerTabs, DrawerTabsList } from "@/components/ui/folder-tabs";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { StatusTag, type StatusTagTone } from "@claritylabs-inc/ui/components/status-tag";
 import { api } from "@/convex/_generated/api";
@@ -314,6 +315,16 @@ export function CertificateGeneratePanel({
         else close();
       }}
       title="Generate certificate"
+      tabs={
+        !batchResult && !policyLocked && !initialRequirementSourceId ? (
+          <DrawerTabs value={mode} onValueChange={(value) => setMode(value as GenerationMode)}>
+            <DrawerTabsList aria-label="Generate from">
+              <TabsTrigger value="policy">Policy</TabsTrigger>
+              <TabsTrigger value="requirements">Requirements source</TabsTrigger>
+            </DrawerTabsList>
+          </DrawerTabs>
+        ) : undefined
+      }
       footer={batchResult ? (
         <PillButton variant="secondary" size="compact" onClick={() => setBatchResult(null)}>
           Back to request
@@ -386,16 +397,6 @@ export function CertificateGeneratePanel({
         </div>
       ) : (
         <form id="certificate-generate-form" onSubmit={handleSubmit} className="space-y-6">
-          {!policyLocked && !initialRequirementSourceId ? (
-            <section className="space-y-3">
-              <Tabs value={mode} onValueChange={(value) => setMode(value as GenerationMode)}>
-                <TabsList variant="pill">
-                  <TabsTrigger value="policy">Policy</TabsTrigger>
-                  <TabsTrigger value="requirements">Requirements source</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </section>
-          ) : null}
 
           {mode === "policy" ? (
             <>

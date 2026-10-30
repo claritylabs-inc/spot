@@ -5,29 +5,26 @@ import dayjs from "dayjs";
 import { Archive, ArchiveRestore } from "lucide-react";
 import { toast } from "sonner";
 import { Spinner } from "@claritylabs-inc/ui/components/spinner";
-import { Tabs, TabsList, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { PresenceAvatars } from "@/components/app-top-bar";
 import { Avatar } from "@claritylabs-inc/ui/components/avatar";
 import { PillButton } from "@/components/ui/pill-button";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
 import { typeStyle } from "@/lib/typography";
 import { cn } from "@/lib/utils";
-import { useFollowedState } from "@/hooks/use-followed-state";
 import { useAgentDock } from "./agent-dock-provider";
 import {
   formatAgentDockRelativeTime,
   groupAgentDockHistory,
 } from "./history-groups";
-import type {
-  AgentDockAdapter,
-  AgentDockHistoryView,
-  AgentDockThread,
-} from "./types";
+import type { AgentDockAdapter, AgentDockThread } from "./types";
 
 function useNow() {
   const [now, setNow] = useState(() => dayjs().valueOf());
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(dayjs().valueOf()), 60_000);
+    const interval = window.setInterval(
+      () => setNow(dayjs().valueOf()),
+      60_000,
+    );
     return () => window.clearInterval(interval);
   }, []);
   return now;
@@ -64,7 +61,10 @@ function HistoryRow({
           />
         ) : null}
         <span
-          className={cn("mr-6 min-w-0 flex-1 truncate text-foreground", typeStyle("body.default"))}
+          className={cn(
+            "mr-6 min-w-0 flex-1 truncate text-foreground",
+            typeStyle("body.default"),
+          )}
           title={thread.title}
         >
           {thread.title}
@@ -103,36 +103,16 @@ function HistoryRow({
   );
 }
 
-const DEFAULT_VIEWS: AgentDockHistoryView[] = ["recent", "archived"];
-const VIEW_LABELS: Record<AgentDockHistoryView, string> = {
-  recent: "Recent",
-  mcp: "MCP",
-  archived: "Archived",
-};
-const EMPTY_LABELS: Record<AgentDockHistoryView, string> = {
-  recent: "No chats yet.",
-  mcp: "No MCP requests yet.",
-  archived: "No archived chats.",
-};
-
-/** Past chats grouped by day, with search, archived toggle and archive/restore. */
+/** Past chats grouped by day, with a show-archived link and archive/restore. */
 export function AgentDockHistory({ adapter }: { adapter: AgentDockAdapter }) {
   const dock = useAgentDock();
-  const views = adapter.historyViews ?? DEFAULT_VIEWS;
-  // Archived lives in dock state (deep links open it); other tabs are local.
-  const [liveView, setLiveView] = useFollowedState<AgentDockHistoryView>(
-    "shell:agent-dock:history-view",
-    "recent",
-  );
   const archived = dock.historyArchived;
-  const view: AgentDockHistoryView = archived ? "archived" : liveView;
-  const threads = adapter.useThreads(view);
+  const threads = adapter.useThreads(archived ? "archived" : "recent");
   const { archive, restore } = adapter.useArchiveActions();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const now = useNow();
   const groups = useMemo(
-    () =>
-      groupAgentDockHistory(threads ?? [], now),
+    () => groupAgentDockHistory(threads ?? [], now),
     [now, threads],
   );
 
@@ -150,7 +130,9 @@ export function AgentDockHistory({ adapter }: { adapter: AgentDockAdapter }) {
       toast.error(
         getUserFacingErrorMessage(
           error,
-          archived ? "Could not restore the chat" : "Could not archive the chat",
+          archived
+            ? "Could not restore the chat"
+            : "Could not archive the chat",
         ),
       );
     } finally {
@@ -172,7 +154,7 @@ export function AgentDockHistory({ adapter }: { adapter: AgentDockAdapter }) {
               typeStyle("body.default"),
             )}
           >
-            {EMPTY_LABELS[view]}
+            {archived ? "No archived chats." : "No chats yet."}
           </p>
         ) : (
           groups.map((group) => (
@@ -205,24 +187,15 @@ export function AgentDockHistory({ adapter }: { adapter: AgentDockAdapter }) {
             </section>
           ))
         )}
-        {/* Floats over the list so the views stay reachable while scrolling. */}
-        <Tabs
-          className="sticky bottom-2 z-10 mt-3 self-end rounded-full bg-background/90 shadow-sm ring-1 ring-border backdrop-blur"
-          value={view}
-          onValueChange={(value) => {
-            const next = value as AgentDockHistoryView;
-            if (next !== "archived") setLiveView(next);
-            dock.setHistoryArchived(next === "archived");
-          }}
+        <PillButton
+          type="button"
+          variant="ghost"
+          size="compact"
+          className="mt-3 self-end text-muted-foreground"
+          onClick={() => dock.setHistoryArchived(!archived)}
         >
-          <TabsList variant="pill">
-            {views.map((option) => (
-              <TabsTrigger key={option} value={option}>
-                {VIEW_LABELS[option]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+          {archived ? "Show recent" : "Show archived"}
+        </PillButton>
       </div>
     </div>
   );

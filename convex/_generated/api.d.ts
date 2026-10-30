@@ -302,6 +302,7 @@ import type * as lib_imessageVoice from "../lib/imessageVoice.js";
 import type * as lib_inboundEmailDeterministicControls from "../lib/inboundEmailDeterministicControls.js";
 import type * as lib_inboundEmailParser from "../lib/inboundEmailParser.js";
 import type * as lib_inboxIds from "../lib/inboxIds.js";
+import type * as lib_informationFormEmail from "../lib/informationFormEmail.js";
 import type * as lib_insuranceIntakeSchema from "../lib/insuranceIntakeSchema.js";
 import type * as lib_insuredNameDecisions from "../lib/insuredNameDecisions.js";
 import type * as lib_intakeAcordQuestions from "../lib/intakeAcordQuestions.js";
@@ -959,6 +960,7 @@ declare const fullApi: ApiFromModules<{
   "lib/inboundEmailDeterministicControls": typeof lib_inboundEmailDeterministicControls;
   "lib/inboundEmailParser": typeof lib_inboundEmailParser;
   "lib/inboxIds": typeof lib_inboxIds;
+  "lib/informationFormEmail": typeof lib_informationFormEmail;
   "lib/insuranceIntakeSchema": typeof lib_insuranceIntakeSchema;
   "lib/insuredNameDecisions": typeof lib_insuredNameDecisions;
   "lib/intakeAcordQuestions": typeof lib_intakeAcordQuestions;

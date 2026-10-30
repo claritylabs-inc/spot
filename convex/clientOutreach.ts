@@ -2,7 +2,7 @@ import dayjs from "dayjs";
 import { v } from "convex/values";
 
 import type { Id } from "./_generated/dataModel";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import {
   MAX_CLIENT_MESSAGE_CHARS,
   MAX_CLIENT_SUBJECT_CHARS,
@@ -12,7 +12,7 @@ import {
 import { requireOperator, writeOperatorAudit } from "./lib/operatorIdentity";
 import { normalizeProcurementEmail } from "./lib/procurement";
 import { outreachSenderPanel, type OutreachSenderPanel } from "./lib/outreachIdentity";
-import { outreachCadenceValidator, type OutreachCadenceInput } from "./lib/providerOutreachValidators";
+import { type OutreachCadenceInput } from "./lib/providerOutreachValidators";
 import { MAX_OUTREACH_FOLLOW_UPS, OUTREACH_DEFAULT_CADENCE } from "./lib/providerOutreachSchedule";
 import { requireDirectOperatorWrite } from "./procurementRequests";
 import {
@@ -79,6 +79,20 @@ export async function getClientOutreachPanel(
     sequences: views,
   };
 }
+
+/** The request's client contacts, for completing a recipient field. */
+export const recipientOptions = query({
+  args: { requestId: v.id("procurementRequests") },
+  handler: async (ctx, { requestId }) => {
+    await requireOperator(ctx);
+    try {
+      const { request, client } = await loadCompanyRequest(ctx, requestId);
+      return await clientRecipientOptions(ctx, request, client._id);
+    } catch {
+      return [];
+    }
+  },
+});
 
 export const getPanel = query({
   args: {
@@ -221,25 +235,3 @@ export async function launchClientOutreachByOperator(
     droppedFollowUps: schedule.droppedFollowUps,
   };
 }
-
-export const launch = mutation({
-  args: {
-    requestId: v.id("procurementRequests"),
-    informationFormId: v.optional(v.id("procurementInformationForms")),
-    recipientEmail: v.string(),
-    subject: v.string(),
-    text: v.string(),
-    cadence: outreachCadenceValidator,
-    /** The sender fingerprint of the From and CC the operator reviewed. */
-    expectedIdentityFingerprint: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const operator = await requireOperator(ctx);
-    if (!args.expectedIdentityFingerprint)
-      throw new Error("Reload to review the From and CC before sending");
-    return await launchClientOutreachByOperator(ctx, {
-      operatorUserId: operator.userId,
-      ...args,
-    });
-  },
-});

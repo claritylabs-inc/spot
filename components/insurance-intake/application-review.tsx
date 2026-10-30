@@ -2,9 +2,7 @@
 import { IntakeAutoQuoteReview } from "./auto-quote-fields";
 import { IntakeDriverReview } from "./driver-fields";
 import { IntakeFollowupReview } from "./followup-review";
-import { useState, type ReactNode } from "react";
-import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import { SectionTabs, SectionTabsList } from "@/components/ui/folder-tabs";
+import type { ReactNode } from "react";
 import {
   intakeFollowupAnswerRows,
   intakeQuoteSections,
@@ -22,16 +20,13 @@ const QUOTE_SECTIONS = {
 /** One structured application presentation for intake and operator surfaces. */
 export function IntakeApplicationReview({
   application,
-  tabbed = false,
   activeSection,
   extraRows,
 }: {
   application: IntakeApplication;
-  tabbed?: boolean;
   activeSection?: string;
   extraRows?: { label: string; value?: ReactNode }[];
 }) {
-  const [selected, setSelected] = useState("Contact details");
   const groups = [
     { title: "Contact details", section: "contact" as const },
     { title: "Request details", section: "request" as const },
@@ -82,30 +77,6 @@ export function IntakeApplicationReview({
             null,
         )}
       </div>
-    );
-  if (tabbed)
-    return (
-      <SectionTabs
-        value={
-          groups.some((group) => group.title === selected)
-            ? selected
-            : groups[0].title
-        }
-        onValueChange={(value) => setSelected(String(value))}
-      >
-        <SectionTabsList aria-label="Application details">
-          {groups.map(({ title }) => (
-            <TabsTrigger key={title} value={title}>
-              {title}
-            </TabsTrigger>
-          ))}
-        </SectionTabsList>
-        {groups.map(({ title, section }) => (
-          <TabsContent key={title} value={title} className="pt-4">
-            {content(section)}
-          </TabsContent>
-        ))}
-      </SectionTabs>
     );
   return (
     <div data-review-content className="w-full space-y-8">

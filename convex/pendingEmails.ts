@@ -764,6 +764,7 @@ export const recordOperatorInboxSentInternal = internalMutation({
         ...(linked ? { linkedAt: now, linkedByUserId: senderUserId } : {}),
         clientOrgId: pending.orgId,
         requestId: pending.procurementRequestId,
+        informationFormId: pending.informationFormId,
         normalizedSubject: normalizeProcurementSubject(pending.subject),
         subject: pending.subject,
         category: "other",
@@ -826,6 +827,9 @@ export const recordOperatorInboxSentInternal = internalMutation({
         createdAt: now,
       });
     }
+    // The thread may predate this send (a webhook thread, a merged one), so tie it to the form here.
+    if (pending.informationFormId)
+      await ctx.db.patch(threadId, { informationFormId: pending.informationFormId });
     await ctx.db.patch(pending._id, {
       status: "sent",
       sentMessageId: args.emailId,

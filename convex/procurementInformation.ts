@@ -10,6 +10,7 @@ import { query, mutation, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireOperator } from "./lib/operatorIdentity";
 import { requireRequest } from "./procurementRequests";
+import { informationFormThread } from "./lib/informationFormEmail";
 import { informationRequirementStatus } from "./lib/procurementInformationSchema";
 import { validateFollowupAnswers } from "../lib/intake-followups";
 import { normalizeIntakeQuestion } from "../lib/intake-question-reference";
@@ -169,31 +170,29 @@ export const panel = query({
       requirements,
       forms: await Promise.all(
         forms.map(async (form) => {
-          const sequence = form.outreachSequenceId
-            ? await ctx.db.get(form.outreachSequenceId)
-            : null;
-          const firstStep = sequence
-            ? await ctx.db
-                .query("procurementOutreachSteps")
-                .withIndex("by_sequenceId_and_index", (q) =>
-                  q.eq("sequenceId", sequence._id),
-                )
-                .first()
-            : null;
+          const thread = await informationFormThread(ctx, form._id);
+          // Forms emailed before conversations were tied to forms used a client sequence.
+          const sequence =
+            !thread && form.outreachSequenceId
+              ? await ctx.db.get(form.outreachSequenceId)
+              : null;
           return {
             ...form,
             title: informationFormTitle(form, forms),
-            email:
-              sequence &&
-              sequence.requestId === requestId &&
-              sequence.informationFormId === form._id
+            email: thread
+              ? {
+                  threadId: thread._id as typeof thread._id | null,
+                  recipient: thread.participantEmails[0] ?? "",
+                  subject: thread.subject,
+                  createdAt: thread.createdAt,
+                }
+              : sequence &&
+                  sequence.requestId === requestId &&
+                  sequence.informationFormId === form._id
                 ? {
-                    sequenceId: sequence._id,
-                    status: sequence.status,
-                    deliveryStatus: firstStep?.status ?? null,
+                    threadId: sequence.teamEmailThreadId ?? null,
                     recipient: sequence.recipient.email,
                     subject: sequence.message?.subject ?? "",
-                    threadId: sequence.teamEmailThreadId ?? null,
                     createdAt: sequence.createdAt,
                   }
                 : null,

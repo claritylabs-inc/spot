@@ -61,6 +61,7 @@ export const send = action({
     message: v.string(),
     clientOrgId: v.optional(v.id("organizations")),
     requestId: v.optional(v.id("procurementRequests")),
+    informationFormId: v.optional(v.id("procurementInformationForms")),
     fromUserId: v.optional(v.id("users")),
     expectedFingerprint: v.string(),
     idempotencyKey: v.string(),

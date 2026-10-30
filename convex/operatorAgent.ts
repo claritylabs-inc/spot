@@ -5239,14 +5239,20 @@ async function executeOperatorTool(ctx: MutationCtx, args: ExecuteToolArgs) {
   }
 }
 
-const CONVERSATION_CHANNELS = ["chat", "slack", "imessage", "email"] as const;
+const CONVERSATION_CHANNELS = [
+  "chat",
+  "slack",
+  "imessage",
+  "email",
+  "mcp",
+] as const;
 
 export const listThreads = query({
   args: {
     limit: v.optional(v.number()),
-    /** Recent conversations, MCP requests, or everything archived. */
+    /** Recent conversations (including MCP requests), or everything archived. */
     view: v.optional(
-      v.union(v.literal("recent"), v.literal("mcp"), v.literal("archived")),
+      v.union(v.literal("recent"), v.literal("archived")),
     ),
   },
   handler: async (ctx, args) => {
@@ -5270,12 +5276,10 @@ export const listThreads = query({
             )
             .order("desc")
             .take(limit)
-        : view === "mcp"
-          ? await byChannel("mcp")
-          : (await Promise.all(CONVERSATION_CHANNELS.map(byChannel)))
-              .flat()
-              .sort((left, right) => right.lastMessageAt - left.lastMessageAt)
-              .slice(0, limit);
+        : (await Promise.all(CONVERSATION_CHANNELS.map(byChannel)))
+            .flat()
+            .sort((left, right) => right.lastMessageAt - left.lastMessageAt)
+            .slice(0, limit);
     const people = await operatorPeople(
       ctx,
       threads.map((thread) => thread.ownerUserId),

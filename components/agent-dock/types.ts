@@ -37,13 +37,11 @@ export type AgentDockChatProps = {
   onActions: (actions: ReactNode) => void;
 };
 
-export type AgentDockHistoryView = "recent" | "mcp" | "archived";
+export type AgentDockHistoryView = "recent" | "archived";
 
 /** Surface-specific data and chat for the shared dock. */
 export type AgentDockAdapter = {
   newChatLabel: string;
-  /** History tabs this surface offers; defaults to Recent and Archived. */
-  historyViews?: AgentDockHistoryView[];
   useThreads: (view: AgentDockHistoryView) => AgentDockThread[] | undefined;
   /** `undefined` while loading, `null` when the thread is gone. */
   useTabSummary: (threadId: string) => AgentDockTabSummary | null | undefined;

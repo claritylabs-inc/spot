@@ -201,6 +201,34 @@ const EMAIL_PATTERN = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
  * start of a name or address lists matching people; Tab or Enter takes the
  * highlighted one, and ghost text shows how its address continues.
  */
+export type AddressSuggestion = {
+  email: string;
+  name?: string | null;
+  group?: string;
+  /** Providers and clients show their organization's icon; people show their avatar. */
+  org?: { name: string; iconUrl?: string | null; website?: string | null };
+  avatarUrl?: string | null;
+};
+
+function SuggestionIcon({ option }: { option: AddressSuggestion }) {
+  return option.org ? (
+    <OrgBrandIcon
+      name={option.org.name}
+      iconUrl={option.org.iconUrl}
+      website={option.org.website}
+      size="sm"
+      shape="circle"
+      className="shrink-0 self-center"
+    />
+  ) : (
+    <Avatar
+      name={option.name ?? option.email}
+      imageUrl={option.avatarUrl ?? undefined}
+      className="size-6 shrink-0 self-center"
+    />
+  );
+}
+
 export function AddressField({
   label,
   value,
@@ -211,6 +239,7 @@ export function AddressField({
   disabled,
   autoFocus,
   placeholder = "Add recipient",
+  suggested = [],
 }: {
   label: string;
   value: string[];
@@ -222,6 +251,8 @@ export function AddressField({
   disabled?: boolean;
   autoFocus?: boolean;
   placeholder?: string;
+  /** Known recipients for this context (a request's providers and client), offered on focus and as you type. */
+  suggested?: AddressSuggestion[];
 }) {
   const { find, operators } = useOperatorDirectory();
   const contacts = useProviderContacts(value);
@@ -239,35 +270,56 @@ export function AddressField({
     api.teamInbox.threadContacts,
     threadId && searching ? { threadId } : "skip",
   );
-  // Teammates, then people on the conversation, then saved contacts; each address once.
-  const options = searching
-    ? [
-        ...(operators ?? []).flatMap((operator) =>
-          operator.teamAddress
-            ? [
-                {
-                  email: operator.teamAddress.toLowerCase(),
-                  name: operator.name,
-                },
-              ]
-            : [],
-        ),
-        ...(participants ?? []),
-        ...(savedMatches ?? []),
-      ]
-        .filter(
-          (option, index, all) =>
-            all.findIndex((other) => other.email === option.email) === index &&
-            !value.some((entry) => entry.toLowerCase() === option.email) &&
-            (option.email.startsWith(typed) ||
-              (option.name ?? "")
-                .toLowerCase()
-                .split(/\s+/)
-                .some((word) => word.startsWith(typed)) ||
-              (option.name ?? "").toLowerCase().startsWith(typed)),
-        )
-        .slice(0, 6)
-    : [];
+  // Context suggestions, teammates, people on the conversation, then saved contacts; each address once.
+  const matches = (option: AddressSuggestion) =>
+    option.email.startsWith(typed) ||
+    (option.name ?? "")
+      .toLowerCase()
+      .split(/\s+/)
+      .some((word) => word.startsWith(typed)) ||
+    (option.name ?? "").toLowerCase().startsWith(typed);
+  const pool: AddressSuggestion[] = [
+    ...suggested,
+    ...(searching
+      ? [
+          ...(operators ?? []).flatMap((operator) =>
+            operator.teamAddress
+              ? [
+                  {
+                    email: operator.teamAddress.toLowerCase(),
+                    name: operator.name,
+                    group: "Team",
+                    avatarUrl: operator.avatarUrl,
+                  },
+                ]
+              : [],
+          ),
+          ...(participants ?? []),
+          ...(savedMatches ?? []).map((contact) => ({
+            email: contact.email,
+            name: contact.name,
+            group: contact.brokerName,
+            org: {
+              name: contact.brokerName,
+              iconUrl: contact.brokerIconUrl,
+              website: contact.brokerWebsite,
+            },
+          })),
+        ]
+      : []),
+  ];
+  const options =
+    !disabled && (searching || (!typed && focused && suggested.length))
+      ? pool
+          .filter(
+            (option, index, all) =>
+              all.findIndex((other) => other.email === option.email) ===
+                index &&
+              !value.some((entry) => entry.toLowerCase() === option.email) &&
+              (!typed || matches(option)),
+          )
+          .slice(0, typed ? 6 : 8)
+      : [];
   const active = options[Math.min(picked, options.length - 1)];
   // Ghost text continues the typed address when the highlighted option starts with it.
   const completion =
@@ -387,7 +439,7 @@ export function AddressField({
               role="listbox"
               // Keeps focus in the input so a click does not blur and commit the draft first.
               onMouseDown={(event) => event.preventDefault()}
-              className="absolute top-full left-0 z-50 mt-1 w-72 max-w-[80vw] overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md"
+              className="absolute top-full left-0 z-50 mt-1 w-[28rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md"
             >
               {options.map((option, index) => (
                 <li
@@ -397,17 +449,30 @@ export function AddressField({
                   onClick={() => accept(option.email)}
                   onMouseEnter={() => setPicked(index)}
                   className={cn(
-                    "flex cursor-default items-baseline gap-2 rounded-md px-2 py-1.5",
+                    "flex cursor-default items-center gap-2.5 rounded-md px-2 py-1.5",
                     typeStyle("body.default"),
                     option === active && "bg-muted",
                   )}
                 >
-                  <span className="min-w-0 shrink-0 truncate">
-                    {option.name ?? option.email}
+                  <SuggestionIcon option={option} />
+                  <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                    <span className="min-w-0 shrink-0 truncate">
+                      {option.name ?? option.email}
+                    </span>
+                    {option.name ? (
+                      <span className="min-w-0 truncate text-muted-foreground">
+                        {option.email}
+                      </span>
+                    ) : null}
                   </span>
-                  {option.name ? (
-                    <span className="min-w-0 truncate text-muted-foreground">
-                      {option.email}
+                  {option.group ? (
+                    <span
+                      className={cn(
+                        "ml-auto max-w-[45%] shrink-0 truncate text-muted-foreground/70",
+                        typeStyle("caption.default"),
+                      )}
+                    >
+                      {option.group}
                     </span>
                   ) : null}
                 </li>
