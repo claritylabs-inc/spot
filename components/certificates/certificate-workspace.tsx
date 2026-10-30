@@ -102,7 +102,9 @@ export type CertificateHolderDraft = {
 
 export type PolicyCertificateRecord = {
   _id: Id<"policyCertificates">;
+  orgId?: Id<"organizations">;
   policyId: Id<"policies">;
+  requirementSourceDocumentId?: Id<"requirementSourceDocuments">;
   holderId: Id<"certificateHolders">;
   status: string;
   lastIssuedAt?: number;
