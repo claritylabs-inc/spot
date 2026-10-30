@@ -44,7 +44,8 @@ export type RouterJobOperation =
   | "retrieve"
   | "transcribe"
   | "browse"
-  | "exec";
+  | "exec"
+  | "research";
 
 export function callbackSiteUrl(): string {
   const canonical = routerAssetSigningConfiguration().siteUrl;

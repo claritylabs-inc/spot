@@ -540,6 +540,57 @@ export type ClRouterRetrieveResponse = {
   warnings?: string[];
 };
 
+export type ClRouterResearchFieldType =
+  | "string"
+  | "number"
+  | "boolean"
+  | "date"
+  | "enum";
+
+export type ClRouterResearchRequest = {
+  tenantId?: string;
+  orgId?: string;
+  input: {
+    entity: { name: string; website?: string; location?: string };
+    objective: string;
+    fields: Array<{
+      key: string;
+      description: string;
+      type: ClRouterResearchFieldType;
+      options?: string[];
+    }>;
+    allowedDomains?: string[];
+    excludedDomains?: string[];
+    afterDate?: string;
+  };
+  config?: {
+    primary?: "parallel" | "exa";
+    depth?: "fast" | "standard" | "deep";
+  };
+  executionBudgetMs?: number;
+};
+
+export type ClRouterResearchCitation = {
+  url: string;
+  title?: string;
+  excerpts?: string[];
+};
+
+export type ClRouterResearchAnswer = {
+  value: string | number | boolean | null;
+  confidence: "high" | "medium" | "low" | null;
+  citations: ClRouterResearchCitation[];
+  reasoning?: string;
+};
+
+export type ClRouterResearchResponse = {
+  provider: "parallel" | "exa";
+  attempts: Array<{ provider: string; ok: boolean; error?: string }>;
+  providerRunId: string;
+  answers: Record<string, ClRouterResearchAnswer>;
+  warnings?: string[];
+};
+
 export type ClRouterErrorKind =
   | "configuration"
   | "connection"
@@ -654,7 +705,14 @@ export type ClRouterClientOptions = {
   fetch?: typeof fetch;
   abortSignal?: AbortSignal;
   executeJob?: (
-    operation: "generate" | "manual" | "embed" | "retrieve" | "transcribe" | "browse",
+    operation:
+      | "generate"
+      | "manual"
+      | "embed"
+      | "retrieve"
+      | "transcribe"
+      | "browse"
+      | "research",
     payload: unknown,
     abortSignal?: AbortSignal,
   ) => Promise<unknown>;
@@ -991,12 +1049,25 @@ async function postJson(
   const operation = path.replace(/^\/v1\//, "").split("/")[0];
   if (
     options.executeJob &&
-    ["generate", "manual", "embed", "retrieve", "transcribe", "browse"].includes(
-      operation,
-    )
+    [
+      "generate",
+      "manual",
+      "embed",
+      "retrieve",
+      "transcribe",
+      "browse",
+      "research",
+    ].includes(operation)
   ) {
     return options.executeJob(
-      operation as "generate" | "manual" | "embed" | "retrieve" | "transcribe" | "browse",
+      operation as
+        | "generate"
+        | "manual"
+        | "embed"
+        | "retrieve"
+        | "transcribe"
+        | "browse"
+        | "research",
       body,
       options.abortSignal,
     );
@@ -1961,6 +2032,80 @@ export async function clRouterBrowse(
     );
   }
   return payload as ClRouterBrowseResponse;
+}
+
+const RESEARCH_BODY_KEYS = [
+  "orgId",
+  "input",
+  "config",
+  "executionBudgetMs",
+] as const satisfies readonly (keyof ClRouterResearchRequest)[];
+
+function isResearchCitation(value: unknown): value is ClRouterResearchCitation {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.url) &&
+    (value.title === undefined || typeof value.title === "string") &&
+    (value.excerpts === undefined ||
+      (Array.isArray(value.excerpts) &&
+        value.excerpts.every((excerpt) => typeof excerpt === "string")))
+  );
+}
+
+function isResearchAnswer(value: unknown): value is ClRouterResearchAnswer {
+  return (
+    isRecord(value) &&
+    (value.value === null ||
+      ["string", "number", "boolean"].includes(typeof value.value)) &&
+    (value.confidence === null ||
+      value.confidence === "high" ||
+      value.confidence === "medium" ||
+      value.confidence === "low") &&
+    Array.isArray(value.citations) &&
+    value.citations.length <= 10 &&
+    value.citations.every(isResearchCitation) &&
+    (value.reasoning === undefined || typeof value.reasoning === "string")
+  );
+}
+
+/** Structured public research about one entity, one cited answer per field. */
+export async function clRouterResearch(
+  request: ClRouterResearchRequest,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterResearchResponse> {
+  const payload = await postJson(
+    "/v1/research",
+    requestBody(request, RESEARCH_BODY_KEYS),
+    options,
+  );
+  if (
+    !isRecord(payload) ||
+    (payload.provider !== "parallel" && payload.provider !== "exa") ||
+    !Array.isArray(payload.attempts) ||
+    !payload.attempts.every(
+      (attempt) =>
+        isRecord(attempt) &&
+        isNonEmptyString(attempt.provider) &&
+        typeof attempt.ok === "boolean" &&
+        (attempt.error === undefined || typeof attempt.error === "string"),
+    ) ||
+    typeof payload.providerRunId !== "string" ||
+    !isRecord(payload.answers) ||
+    !request.input.fields.every(
+      (field) =>
+        isRecord(payload.answers) &&
+        isResearchAnswer(payload.answers[field.key]),
+    ) ||
+    (payload.warnings !== undefined &&
+      (!Array.isArray(payload.warnings) ||
+        !payload.warnings.every((warning) => typeof warning === "string")))
+  ) {
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router research response is invalid",
+    );
+  }
+  return payload as ClRouterResearchResponse;
 }
 
 export async function clRouterEmbed(
