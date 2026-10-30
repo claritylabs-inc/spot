@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useAction, useMutation } from "convex/react";
 import { BadgeCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -25,13 +25,14 @@ import { PillButton } from "@/components/ui/pill-button";
 import { ListToolbar, type FilterDefinition } from "@/components/ui/list-toolbar";
 import { useCachedViewerOrg } from "@/lib/sync/spot-cached-queries";
 import { useCachedQuery } from "@/lib/sync/use-cached-query";
-import { usePageContext } from "@/hooks/use-page-context";
 import { useSavedFollowedState } from "@/hooks/use-saved-followed-state";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { usePdf } from "@/components/pdf-context";
 import {
   certificateContextSummary,
   contextSummary,
+  usePageContextBase,
+  usePageContextLayer,
 } from "@/lib/policy-page-context";
 import { typeStyle } from "@/lib/typography";
 import { CertificateGeneratePanel } from "@/components/certificates/certificate-generate-panel";
@@ -100,27 +101,16 @@ function CertificatesPageContext({
   /** The certificate whose panel is open. */
   selected: PolicyCertificateRecord | null;
 }) {
-  const { setPageContext, pushPageContext } = usePageContext();
-
-  useEffect(() => {
-    setPageContext({ pageType: "certificates", summary });
-
-    return () => setPageContext(null);
-  }, [setPageContext, summary]);
-
-  const selectedId = selected?._id;
-  const selectedSummary = selected
-    ? certificateContextSummary(selected)
-    : undefined;
-  useEffect(() => {
-    if (!selectedId) return;
-    return pushPageContext({
-      pageType: "certificate",
-      entityId: selectedId,
-      summary: selectedSummary,
-    });
-  }, [pushPageContext, selectedId, selectedSummary]);
-
+  usePageContextBase({ pageType: "certificates", summary });
+  usePageContextLayer(
+    selected
+      ? {
+          pageType: "certificate",
+          entityId: selected._id,
+          summary: certificateContextSummary(selected),
+        }
+      : null,
+  );
   return null;
 }
 

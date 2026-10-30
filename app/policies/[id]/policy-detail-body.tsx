@@ -46,7 +46,6 @@ import {
   type CertificateHolderDraft,
   type PolicyCertificateRecord,
 } from "@/components/certificates/certificate-workspace";
-import { usePageContext } from "@/hooks/use-page-context";
 import { useFollowedState } from "@/hooks/use-followed-state";
 import { PolicyDetailsTab } from "./policy-details-tab";
 import { PolicyCoveragesTab } from "./policy-coverages-tab";
@@ -81,7 +80,11 @@ import {
 } from "@/components/shared/reextract-control";
 import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";
 import { extractionState, hasFinalExtraction } from "@/lib/extraction-state";
-import { policyContextSummary } from "@/lib/policy-page-context";
+import {
+  policyContextSummary,
+  relatedRecords,
+  usePageContextBase,
+} from "@/lib/policy-page-context";
 import { typeStyle } from "@/lib/typography";
 
 type PolicyDetailTab =
@@ -446,7 +449,6 @@ export function PolicyDetailBody({
   const [restoring, setRestoring] = useState(false);
 
   const { openWithUrl, setFileUrl: preloadPdfUrl } = usePdf();
-  const { setPageContext } = usePageContext();
 
   const didAutoOpen = useRef(false);
   useEffect(() => {
@@ -877,61 +879,55 @@ export function PolicyDetailBody({
     setSelectedCertificateId,
   ]);
 
-  const contextPolicyId = policy?._id;
   const contextTabLabel = visibleTabs.find(
     (tab) => tab.id === visibleActiveTab,
   )?.label;
-  const contextSummary = useMemo(() => {
-    if (!policy) return undefined;
-    if (!operatorMode) {
-      const lines = policyLobCodes(policy).map(lobLabel);
-      const parties = resolvePolicyPartyContext(policy);
-      return `${parties.primaryDisplayName ?? "Unknown"} ${policy.policyNumber ?? ""} — ${lines.join(", ")}`;
-    }
-    return policyContextSummary(policy, [
-      {
-        extracting: "extraction running",
-        failed: "extraction failed",
-        not_a_policy: "not a policy document",
-        needs_review: "extraction review questions open",
-        ready: undefined,
-      }[state.kind],
-      contextTabLabel ? `${contextTabLabel} tab` : undefined,
-      // Mirrors the right panel effect above.
-      showCertificateSheet && !readOnly && isPolicyFinal
-        ? "generating a certificate"
-        : editingPolicyDetails && canEditPolicyDetails
-          ? `editing ${editingPolicyDetails} details`
-          : showEditExtractedFields && canEditExtractedFields && !isArchived
-            ? "editing coverages"
-            : selectedCertificateForPanel
-              ? `certificate for ${selectedCertificateForPanel.holder?.displayName ?? "unknown holder"} open (certificateId=${selectedCertificateForPanel._id})`
-              : undefined,
-    ]);
-  }, [
-    canEditExtractedFields,
-    canEditPolicyDetails,
-    contextTabLabel,
-    editingPolicyDetails,
-    isArchived,
-    isPolicyFinal,
-    operatorMode,
-    policy,
-    readOnly,
-    selectedCertificateForPanel,
-    showCertificateSheet,
-    showEditExtractedFields,
-    state.kind,
-  ]);
-  useEffect(() => {
-    if (!contextPolicyId) return;
-    setPageContext({
-      pageType: "policy",
-      entityId: contextPolicyId,
-      summary: contextSummary,
-    });
-    return () => setPageContext(null);
-  }, [contextPolicyId, contextSummary, setPageContext]);
+  // Mirrors the right panel effect above.
+  const contextPanel =
+    showCertificateSheet && !readOnly && isPolicyFinal
+      ? "generating a certificate"
+      : editingPolicyDetails && canEditPolicyDetails
+        ? `editing ${editingPolicyDetails} details`
+        : showEditExtractedFields && canEditExtractedFields && !isArchived
+          ? "editing coverages"
+          : undefined;
+  const contextCertificate = contextPanel ? null : selectedCertificateForPanel;
+  usePageContextBase(
+    !policy
+      ? null
+      : !operatorMode
+        ? {
+            pageType: "policy",
+            entityId: policy._id,
+            summary: `${resolvePolicyPartyContext(policy).primaryDisplayName ?? "Unknown"} ${policy.policyNumber ?? ""} — ${policyLobCodes(policy).map(lobLabel).join(", ")}`,
+          }
+        : {
+            pageType: "policy",
+            entityId: policy._id,
+            summary: policyContextSummary(policy, [
+              {
+                extracting: "extraction running",
+                failed: "extraction failed",
+                not_a_policy: "not a policy document",
+                needs_review: "extraction review questions open",
+                ready: undefined,
+              }[state.kind],
+              contextTabLabel ? `${contextTabLabel} tab` : undefined,
+              contextPanel ??
+                (contextCertificate
+                  ? `certificate for ${contextCertificate.holder?.displayName ?? "unknown holder"} open`
+                  : undefined),
+            ]),
+            related: relatedRecords([
+              { kind: "organization", id: policy.orgId },
+              {
+                kind: "certificate",
+                id: contextCertificate?._id,
+                label: contextCertificate?.holder?.displayName,
+              },
+            ]),
+          },
+  );
 
   if (policy === undefined) {
     return <PolicyDetailSkeleton />;

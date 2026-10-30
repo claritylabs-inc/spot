@@ -102,7 +102,7 @@ export const OPERATOR_AGENT_INTENTS: readonly OperatorAgentIntent[] = [
     id: "prepare_certificate",
     version: 1,
     label: "Prepare a certificate",
-    pageTypes: ["policy", "operator_client_compliance"],
+    pageTypes: ["policy", "operator_client_compliance", "requirement", "requirement_source", "certificate"],
     objective:
       "Prepare a certificate of insurance using the policy or client in this thread's origin context. Resolve the correct active policy, holder, requirements, and any missing address details. Explain any coverage gaps and require exact confirmation before generating a certificate.",
   },

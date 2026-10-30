@@ -1,14 +1,17 @@
+import { useEffect } from "react";
 import { lobLabel, policyLobCodes } from "@/convex/lib/linesOfBusiness";
 import { resolvePolicyPartyContext } from "@/convex/lib/policyPartyContext";
+import { usePageContext, type PageContext } from "@/hooks/use-page-context";
 
 /** normalizeOperatorPageContext rejects longer summaries. */
 const MAX_SUMMARY_CHARS = 500;
 
 type Part = string | false | null | undefined;
+type Related = NonNullable<PageContext["related"]>[number];
 
 /**
  * Joins the readable parts of a page context summary. The chip shows the
- * start, so lead with the record's name and end with exact IDs.
+ * start, so lead with the record's name.
  */
 export function contextSummary(parts: Part[]) {
   const summary = parts
@@ -20,16 +23,43 @@ export function contextSummary(parts: Part[]) {
     : summary;
 }
 
-/** Exact IDs named as the read tools take them, e.g. `orgId=… policyId=…`. */
-export function contextIds(ids: Record<string, string | null | undefined>) {
-  const pairs = Object.entries(ids).filter(([, id]) => id);
-  return pairs.length
-    ? pairs.map(([name, id]) => `${name}=${id}`).join(" ")
-    : undefined;
+/** Related records with an ID, in order; undefined when there are none. */
+export function relatedRecords(
+  entries: Array<Partial<Related> & { kind: string }>,
+): Related[] | undefined {
+  const related = entries.flatMap(({ kind, id, label }) =>
+    id ? [{ kind, id, ...(label ? { label } : {}) }] : [],
+  );
+  return related.length ? related : undefined;
+}
+
+// Contexts compare by value: summaries and related lists are rebuilt each render.
+function useContextKey(context: PageContext | null) {
+  return context ? JSON.stringify(context) : null;
+}
+
+/** Registers the page's own context while mounted. */
+export function usePageContextBase(context: PageContext | null) {
+  const { setPageContext } = usePageContext();
+  const key = useContextKey(context);
+  useEffect(() => {
+    if (!key) return;
+    setPageContext(JSON.parse(key) as PageContext);
+    return () => setPageContext(null);
+  }, [key, setPageContext]);
+}
+
+/** Layers an open panel's record over the page's context while it is shown. */
+export function usePageContextLayer(context: PageContext | null) {
+  const { pushPageContext } = usePageContext();
+  const key = useContextKey(context);
+  useEffect(
+    () => (key ? pushPageContext(JSON.parse(key) as PageContext) : undefined),
+    [key, pushPageContext],
+  );
 }
 
 type ContextPolicy = {
-  orgId?: string;
   policyNumber?: string;
   effectiveDate?: string;
   expirationDate?: string;
@@ -44,6 +74,12 @@ function known(value: string | undefined) {
     : text;
 }
 
+/** `Policy GL-123`, or `Policy` while the number is unknown. */
+export function policyLabel(policy: { policyNumber?: string }) {
+  const number = known(policy.policyNumber);
+  return number ? `Policy ${number}` : "Policy";
+}
+
 /**
  * The operator's view of one policy: insured, number, lines, carrier, term,
  * then whatever the page adds (tab, open panel, extraction state).
@@ -56,18 +92,16 @@ export function policyContextSummary(
   const lines = policyLobCodes(policy)
     .filter((code) => code !== "UN" && code !== "BLANK")
     .map(lobLabel);
-  const number = known(policy.policyNumber);
   const start = known(policy.effectiveDate);
   const end = known(policy.expirationDate);
   return contextSummary([
     known(parties.insuredName),
-    number ? `Policy ${number}` : "Policy",
+    policyLabel(policy),
     lines.slice(0, 4).join(", "),
     known(parties.primaryDisplayName),
     start && end ? `${start} to ${end}` : undefined,
     policy.deletedAt ? "archived" : undefined,
     ...details,
-    contextIds({ orgId: policy.orgId }),
   ]);
 }
 
@@ -91,17 +125,10 @@ type ContextCertificate = {
   } | null;
 };
 
-/**
- * One selected certificate: holder, policy, status and current version. With
- * `ids`, ends with the policy, client and requirement source IDs the operator
- * agent's tools take.
- */
-export function certificateContextSummary(
-  row: ContextCertificate,
-  { ids = false }: { ids?: boolean } = {},
-) {
+/** One selected certificate: holder, policy, status and current version. */
+export function certificateContextSummary(row: ContextCertificate) {
   const version = row.currentVersion;
-  const policyLabel = [
+  const policy = [
     row.policy?.policyNumber,
     row.policy?.carrier ?? row.policy?.security,
   ]
@@ -109,7 +136,7 @@ export function certificateContextSummary(
     .join(" ");
   return contextSummary([
     `Certificate for ${row.holder?.displayName ?? "unknown holder"}`,
-    policyLabel ? `policy ${policyLabel}` : undefined,
+    policy ? `policy ${policy}` : undefined,
     row.status.replaceAll("_", " "),
     version
       ? [`v${version.versionNumber}`, version.formCode?.toUpperCase()]
@@ -119,12 +146,18 @@ export function certificateContextSummary(
     version?.additionalInsuredName
       ? `additional insured ${version.additionalInsuredName}`
       : version?.requestKind?.replaceAll("_", " "),
-    ids
-      ? contextIds({
-          orgId: row.orgId,
-          policyId: row.policyId,
-          requirementSourceDocumentId: row.requirementSourceDocumentId,
-        })
-      : undefined,
+  ]);
+}
+
+/** The client, policy and requirement source a certificate belongs to. */
+export function certificateContextRelated(row: ContextCertificate) {
+  return relatedRecords([
+    { kind: "organization", id: row.orgId },
+    {
+      kind: "policy",
+      id: row.policyId,
+      label: row.policy ? policyLabel(row.policy) : undefined,
+    },
+    { kind: "requirement_source", id: row.requirementSourceDocumentId },
   ]);
 }
