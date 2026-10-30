@@ -66,11 +66,11 @@ export type OperatorToolIntegration =
  */
 export const OPERATOR_TOOL_FAMILIES = {
   procurement:
-    "insurance application intake drafts and submissions, requested coverage, procurement requests, provider packets and packet links, provider outreach, supplementary client information questions and client information forms, proposals and proposal reviews, procurement files and procurement email threads",
+    "insurance application intake drafts and submissions, requested coverage, procurement requests, provider packets and packet links, provider outreach, supplementary client information questions, cited public-research suggestions that pre-answer them, and client information forms, proposals and proposal reviews, procurement files and procurement email threads",
   organizations:
-    "creating client organizations and updating structured business fields from documents (read get_organization with include businessProfile first), changing an organization's profile, lifecycle status, feature flags or public company research",
+    "creating client organizations and updating structured business fields from documents (read get_organization with include businessProfile first), changing an organization's profile, lifecycle status, feature flags or public company research (one client or batches of clients), and client web monitoring alerts for material public events",
   broker_network:
-    "the external insurance provider supplier network (carriers, MGAs, wholesalers, agencies and producers): provider network profiles, provider research and provider profile changes",
+    "the external insurance provider supplier network (carriers, MGAs, wholesalers, agencies and producers): provider network profiles, provider research and provider profile changes, and finding new markets through public-web market discovery and its candidates",
   policies:
     "insurance policies: listing, coverage lookup and comparison, policy sections and facts, importing policy PDFs and policy extraction status",
   compliance:

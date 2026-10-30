@@ -50,6 +50,15 @@ export const PROCUREMENT_CAPABILITIES = [
     ],
   },
   {
+    id: "client.information_research",
+    browserSurface: "request Information questions: Research public sources and suggestion Accept/Dismiss",
+    agentTools: [
+      "get_procurement_information",
+      "research_procurement_information",
+      "review_procurement_information_suggestions",
+    ],
+  },
+  {
     id: "correspondence.reply",
     browserSurface: "request Inbox reply composer",
     agentTools: ["save_email_draft", "send_email_drafts"],
@@ -96,6 +105,15 @@ export const PROCUREMENT_CAPABILITIES = [
       "get_broker_network_profile",
       "create_broker_network_profile",
       "update_broker_network_profile",
+    ],
+  },
+  {
+    id: "provider.market_discovery",
+    browserSurface: "Find markets: start discovery, candidate list, Add to network/Dismiss",
+    agentTools: [
+      "discover_providers",
+      "list_provider_candidates",
+      "review_provider_candidates",
     ],
   },
   {
