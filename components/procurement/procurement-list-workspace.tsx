@@ -871,7 +871,7 @@ export function ProcurementListWorkspace({
           panelRequest.client?.name ??
           clientBrand.get(panelRequest.clientOrgId)?.name,
         status: statusLabels.get(panelRequest.status),
-        open: { text: "request preview on the procurement list" },
+        open: [{ text: "request preview on the procurement list" }],
       })
     : procurementListPageContext({
         clientOrgId,

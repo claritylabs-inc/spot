@@ -85,8 +85,9 @@ export function SettingsDrawer({
       disablePointerDismissal
       onOpenChange={(nextOpen, details) => {
         if (
-          details.reason === "escape-key" ||
-          details.reason === "close-press"
+          details.reason === "close-press" ||
+          (details.reason === "escape-key" &&
+            (panel?.ownsEscape(details.event) ?? true))
         ) {
           onOpenChange(nextOpen);
         }
