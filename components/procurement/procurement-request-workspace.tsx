@@ -277,11 +277,7 @@ const DOCUMENT_CATEGORY_LABELS = {
   supporting: "supporting documents",
 } as const;
 
-/**
- * What the open request drawer shows, for the agent's page context. The
- * prefetch matches the notes and packet link texts
- * (`procurementRequestSection` in `convex/lib/pageContext/procurement.ts`).
- */
+/** What the open request drawer shows, for the agent's page context. */
 function requestPanelContext(
   panel: RequestPanel | null,
   details: RequestDetails,
@@ -299,9 +295,17 @@ function requestPanelContext(
   if (!panel) return null;
   switch (panel.kind) {
     case "notes":
-      return { text: "internal notes (private.md)" };
+      return {
+        text: "internal notes (private.md)",
+        refs: [{ kind: "view", id: "internal_notes", label: "Internal notes" }],
+      };
     case "packet-link":
-      return { text: "provider packet link" };
+      return {
+        text: "provider packet link",
+        refs: [
+          { kind: "view", id: "packet_links", label: "Provider packet link" },
+        ],
+      };
     case "upload":
       return {
         text: `uploading ${DOCUMENT_CATEGORY_LABELS[panel.documentCategory]}`,
@@ -3060,6 +3064,18 @@ export function ProcurementRequestWorkspace({
   const activeMenuItem = activeMenuGroup?.items.find(
     (item) => item.key === activeMenuKey,
   );
+  const sectionLabel = `${activeMenuGroup?.label} › ${activeMenuItem?.label}`;
+  // The prefetch reads what the section shows (`convex/lib/pageContext/procurement.ts`).
+  const sectionViewId =
+    view === "proposals"
+      ? "providers"
+      : view === "email"
+        ? "inbox"
+        : view === "cadence" || view === "information"
+          ? view
+          : activeApplicationSection === SUBMISSION_NOTES_SECTION
+            ? "submission_notes"
+            : "application";
   const pageContext = procurementRequestPageContext({
     requestId,
     clientOrgId,
@@ -3070,19 +3086,22 @@ export function ProcurementRequestWorkspace({
     )?.label,
     section: activeMenuGroup &&
       activeMenuItem && {
-        text: `${activeMenuGroup.label} › ${activeMenuItem.label}${
+        text: `${sectionLabel}${
           view === "proposals"
             ? ` (${plural(details.outreaches.length, "provider")}, ${plural(activeProposals.length, "active proposal")})`
             : ""
         }`,
-        refs: selectedInformationForm
-          ? [
-              {
-                kind: "procurement_information_form",
-                id: selectedInformationForm,
-              },
-            ]
-          : undefined,
+        refs: [
+          { kind: "view", id: sectionViewId, label: sectionLabel },
+          ...(selectedInformationForm
+            ? [
+                {
+                  kind: "procurement_information_form",
+                  id: selectedInformationForm,
+                },
+              ]
+            : []),
+        ],
       },
     open: requestPanelContext(panel, details, proposals),
   });

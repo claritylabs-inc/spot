@@ -65,11 +65,12 @@ export function procurementRequestPageContext(args: {
           : "Current procurement request",
       },
       args.status ? { text: `Status: ${args.status}` } : null,
-      args.section
-        ? { ...args.section, text: `Viewing ${args.section.text}` }
-        : null,
+      // The drawer's records come first: it covers the section.
       args.open
         ? { ...args.open, text: `Open drawer: ${args.open.text}` }
+        : null,
+      args.section
+        ? { ...args.section, text: `Viewing ${args.section.text}` }
         : null,
       {
         text: "",
