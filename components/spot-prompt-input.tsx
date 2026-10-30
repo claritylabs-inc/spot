@@ -1586,7 +1586,7 @@ export const SpotPromptInput = forwardRef<
                         </span>
                         {target.sublabel ? (
                           <span
-                            className={`min-w-0 truncate text-muted-foreground ${typeStyle("caption.default")}`}
+                            className={`min-w-0 truncate text-muted-foreground ${typeStyle("body.default")}`}
                           >
                             {target.sublabel}
                           </span>
