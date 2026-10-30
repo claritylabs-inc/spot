@@ -198,6 +198,40 @@
           "schema": "ExtractResponse"
         }
       ]
+    },
+    {
+      "name": "research",
+      "method": "post",
+      "path": "/v1/research",
+      "request": {
+        "required": true,
+        "mediaType": "application/json",
+        "schema": "ResearchRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "mediaType": "application/json",
+          "schema": "ResearchResponse"
+        }
+      ]
+    },
+    {
+      "name": "monitor creation",
+      "method": "post",
+      "path": "/v1/monitors",
+      "request": {
+        "required": true,
+        "mediaType": "application/json",
+        "schema": "MonitorCreateRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "mediaType": "application/json",
+          "schema": "MonitorStatusResponse"
+        }
+      ]
     }
   ],
   "fixtures": [
@@ -245,8 +279,14 @@
             "description": "Read one procurement request.",
             "inputSchema": {
               "type": "object",
-              "properties": { "requestId": { "type": "string" } },
-              "required": ["requestId"]
+              "properties": {
+                "requestId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "requestId"
+              ]
             }
           }
         ],
@@ -1260,6 +1300,199 @@
           "inputTokens": 200
         },
         "latencyMs": 100
+      }
+    },
+    {
+      "name": "Spot procurement information research request",
+      "schema": "ResearchRequest",
+      "value": {
+        "tenantId": "glass",
+        "orgId": "org_contract_fixture",
+        "input": {
+          "entity": {
+            "name": "Acme Robotics",
+            "website": "https://acme-robotics.example.com/",
+            "location": "Austin, TX"
+          },
+          "objective": "These are insurance application questions about this exact company. Return null rather than guess.",
+          "fields": [
+            {
+              "key": "q0",
+              "description": "Year the business was founded",
+              "type": "number"
+            },
+            {
+              "key": "q1",
+              "description": "Does the company manufacture products?",
+              "type": "boolean"
+            },
+            {
+              "key": "q2",
+              "description": "Primary operations",
+              "type": "enum",
+              "options": [
+                "Manufacturing",
+                "Software",
+                "Services"
+              ]
+            }
+          ]
+        },
+        "config": {
+          "depth": "standard"
+        },
+        "executionBudgetMs": 300000
+      }
+    },
+    {
+      "name": "Structured research response",
+      "schema": "ResearchResponse",
+      "value": {
+        "provider": "parallel",
+        "attempts": [
+          {
+            "provider": "parallel",
+            "ok": true
+          }
+        ],
+        "providerRunId": "trun_contract_fixture",
+        "answers": {
+          "q0": {
+            "value": 2014,
+            "confidence": "high",
+            "citations": [
+              {
+                "url": "https://acme-robotics.example.com/about",
+                "title": "About Acme Robotics",
+                "excerpts": [
+                  "Founded in 2014, Acme Robotics builds warehouse automation systems."
+                ]
+              }
+            ],
+            "reasoning": "The about page states the founding year."
+          },
+          "q1": {
+            "value": true,
+            "confidence": "medium",
+            "citations": [
+              {
+                "url": "https://acme-robotics.example.com/about",
+                "title": "About Acme Robotics",
+                "excerpts": [
+                  "Founded in 2014, Acme Robotics builds warehouse automation systems."
+                ]
+              }
+            ]
+          },
+          "q2": {
+            "value": null,
+            "confidence": null,
+            "citations": []
+          }
+        }
+      }
+    },
+    {
+      "name": "Spot client web monitor request",
+      "schema": "MonitorCreateRequest",
+      "value": {
+        "tenantId": "glass",
+        "orgId": "org_contract_fixture",
+        "input": {
+          "entity": {
+            "name": "Acme Robotics",
+            "website": "https://acme-robotics.example.com/"
+          },
+          "query": "Material public developments for this exact company.",
+          "fields": [
+            {
+              "key": "category",
+              "description": "Event category",
+              "type": "enum",
+              "options": [
+                "litigation",
+                "acquisition",
+                "data_breach",
+                "other"
+              ]
+            },
+            {
+              "key": "headline",
+              "description": "One-line headline",
+              "type": "string"
+            }
+          ],
+          "frequency": "1d"
+        },
+        "callbackUrl": "https://spot.example.com/router-monitors/events?token=contract_fixture_token",
+        "config": {
+          "depth": "fast"
+        }
+      }
+    },
+    {
+      "name": "Active monitor status",
+      "schema": "MonitorStatusResponse",
+      "value": {
+        "monitorId": "k57d2x9a1b3c4d5e6f7g8h9j0k1m2n3p",
+        "provider": "parallel",
+        "status": "active",
+        "frequency": "1d",
+        "createdAt": 1793404800000
+      }
+    },
+    {
+      "name": "Monitor event callback",
+      "schema": "MonitorCallback",
+      "value": {
+        "contractVersion": 1,
+        "monitorId": "k57d2x9a1b3c4d5e6f7g8h9j0k1m2n3p",
+        "orgId": "org_contract_fixture",
+        "deliveryId": "46f09b52e8352ec7dd547ff4573fa238d09a14ae94de2db21f4ca9db52ba1d88",
+        "kind": "events",
+        "events": [
+          {
+            "eventId": "mevt_01",
+            "eventDate": "2026-10-28",
+            "answers": {
+              "category": {
+                "value": "acquisition",
+                "confidence": "high",
+                "citations": [
+                  {
+                    "url": "https://acme-robotics.example.com/about",
+                    "title": "About Acme Robotics",
+                    "excerpts": [
+                      "Founded in 2014, Acme Robotics builds warehouse automation systems."
+                    ]
+                  }
+                ]
+              },
+              "headline": {
+                "value": "Acme Robotics agrees to acquire Beta Sensors",
+                "confidence": "high",
+                "citations": [
+                  {
+                    "url": "https://acme-robotics.example.com/about",
+                    "title": "About Acme Robotics",
+                    "excerpts": [
+                      "Founded in 2014, Acme Robotics builds warehouse automation systems."
+                    ]
+                  }
+                ]
+              }
+            },
+            "citations": [
+              {
+                "url": "https://acme-robotics.example.com/about",
+                "title": "About Acme Robotics",
+                "excerpts": [
+                  "Founded in 2014, Acme Robotics builds warehouse automation systems."
+                ]
+              }
+            ]
+          }
+        ]
       }
     }
   ]

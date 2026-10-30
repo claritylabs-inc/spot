@@ -13,7 +13,7 @@ The checker enforces three boundaries:
 - the Spot-used operations still reference the expected request and response
   schemas; and
 -   representative generation, manual generation, typed Jev decisions, streaming, embedding, JSON transcription,
-  capabilities, retrieval, fixed Clairic extraction, feedback, and health payloads in
+  capabilities, retrieval, structured research, web monitors, fixed Clairic extraction, feedback, and health payloads in
   `fixtures.v1.json` validate with strict Ajv draft-2020-12 checks. Retired
   admin freeze/pin/policy/rollups/score schemas are intentionally absent;
   the router rates difficulty with Jev and selects the cheapest eligible model.
