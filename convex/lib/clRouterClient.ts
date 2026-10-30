@@ -2127,7 +2127,7 @@ export async function clRouterCancelMonitor(
 ): Promise<ClRouterMonitorStatus> {
   return readMonitorStatus(
     await clRouterFetch(
-      `/v1/monitors/${encodeURIComponent(monitorId)}/cancel`,
+      `/v1/monitors/${encodeURIComponent(monitorId)}/cancel?tenantId=${encodeURIComponent(CL_ROUTER_TENANT_ID)}`,
       { method: "POST" },
       options,
     ),
