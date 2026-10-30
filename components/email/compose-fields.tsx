@@ -17,14 +17,14 @@ export function EmailComposeRow({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-11 items-center gap-3 border-b border-border px-4 py-1">
+    <div className="flex min-h-11 items-start gap-3 border-b border-border px-4 py-1">
       <span
-        className={`w-14 shrink-0 text-muted-foreground ${typeStyle("body.default")}`}
+        className={`flex h-9 w-14 shrink-0 items-center text-muted-foreground ${typeStyle("body.default")}`}
       >
         {label}
       </span>
       <div
-        className={`flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 ${typeStyle("body.default")}`}
+        className={`flex min-h-9 min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 ${typeStyle("body.default")}`}
       >
         {children}
       </div>
