@@ -82,7 +82,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
   FileText,
   ListChecks,
@@ -95,12 +95,12 @@ import {
   ArrowLeft,
   Clock3,
   SquarePen,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ClientFileUploadPanel } from "@/components/client-files/client-files-workspace";
 import { usePdf } from "@/components/pdf-context";
-import { ProseMarkdown } from "@/components/prose-markdown";
 import {
   type PacketEditorHandle,
   PacketLinkDrawer,
@@ -127,7 +127,6 @@ import { SettingsDrawer } from "@/components/settings/settings-drawer";
 import { AutoSaveStatus } from "@/components/ui/auto-save-status";
 import { useLocalFirstAutoSave } from "@/lib/sync/use-local-first-auto-save";
 import { FileDownloadButton } from "@claritylabs-inc/ui/components/file-download-button";
-import { FileDropZone } from "@claritylabs-inc/ui/components/file-drop";
 import { OrgBrandIcon } from "@/components/ui/org-brand-icon";
 import { DateField } from "@claritylabs-inc/ui/components/date-field";
 import { Input } from "@claritylabs-inc/ui/components/input";
@@ -139,10 +138,7 @@ import {
   OperationalSkeletonList,
 } from "@claritylabs-inc/ui/components/operational-panel";
 import { PillButton } from "@/components/ui/pill-button";
-import {
-  StatusLabel,
-  StatusTag,
-} from "@claritylabs-inc/ui/components/status-tag";
+import { StatusTag } from "@claritylabs-inc/ui/components/status-tag";
 import { SearchableSelect } from "@claritylabs-inc/ui/components/searchable-select";
 import {
   Select,
@@ -153,7 +149,7 @@ import {
 } from "@claritylabs-inc/ui/components/select";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
-import { SectionTabs, SectionTabsList } from "@/components/ui/folder-tabs";
+import { DrawerTabs, DrawerTabsList } from "@/components/ui/folder-tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useFollowedState } from "@/hooks/use-followed-state";
@@ -250,6 +246,10 @@ type EmailThread = {
   participantEmails: string[];
   latestMessageAt: number;
   messageCount: number;
+  latestFromName?: string;
+  preview?: string;
+  /** The provider this conversation is with. */
+  providerOutreachId?: Id<"procurementBrokerOutreaches">;
 };
 
 type RequestPanel =
@@ -414,165 +414,6 @@ type BrokerOption = {
   website?: string;
 };
 
-type ProposalUploadTarget = {
-  _id: Id<"procurementProposals">;
-  status: string;
-};
-
-function ProposalDropzone({
-  requestId,
-  outreach,
-  proposal,
-  disabled = false,
-  onUploadingChange,
-}: {
-  requestId: Id<"procurementRequests">;
-  outreach: Outreach;
-  proposal?: ProposalUploadTarget;
-  disabled?: boolean;
-  onUploadingChange: (uploading: boolean) => void;
-}) {
-  const [uploading, setUploading] = useState(false);
-  const generateUploadUrl = useMutation(
-    api.procurementProposals.generateUploadUrl,
-  );
-  const registerUpload = useMutation(api.procurementProposals.registerUpload);
-  const discardUpload = useMutation(api.clientFiles.discardUpload);
-  const fileProposal = useMutation(api.procurementProposals.file);
-
-  async function upload(files: File[]) {
-    if (
-      uploading ||
-      disabled ||
-      !outreach.brokerOrgId ||
-      !files.length ||
-      proposal?.status === "selected"
-    )
-      return;
-    if (
-      files.some(
-        (file) =>
-          file.type !== "application/pdf" &&
-          !file.name.toLowerCase().endsWith(".pdf"),
-      )
-    ) {
-      toast.error("Proposal documents must be PDFs");
-      return;
-    }
-    if (files.some((file) => file.size > 50 * 1024 * 1024)) {
-      toast.error("Each proposal PDF must be 50 MB or smaller");
-      return;
-    }
-    const pendingUploads: Array<{
-      uploadIntentId: Id<"clientFileUploadIntents">;
-      fileId?: Id<"_storage">;
-    }> = [];
-    setUploading(true);
-    onUploadingChange(true);
-    const uploadToast = toast.loading(
-      `Uploading ${files.length === 1 ? "proposal PDF" : `${files.length} proposal PDFs`}…`,
-    );
-    try {
-      const sources: Array<{
-        kind: "upload";
-        fileId: Id<"_storage">;
-        fileName: string;
-        contentType?: string;
-        uploadIntentId: Id<"clientFileUploadIntents">;
-      }> = [];
-      for (const file of files) {
-        const target = await generateUploadUrl({ requestId });
-        const pending: (typeof pendingUploads)[number] = {
-          uploadIntentId: target.uploadIntentId,
-        };
-        pendingUploads.push(pending);
-        const response = await fetch(target.uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": file.type || "application/pdf" },
-          body: file,
-        });
-        if (!response.ok) throw new Error("Upload failed");
-        const { storageId } = (await response.json()) as {
-          storageId: Id<"_storage">;
-        };
-        pending.fileId = storageId;
-        await registerUpload({
-          requestId,
-          uploadIntentId: target.uploadIntentId,
-          fileId: storageId,
-        });
-        sources.push({
-          kind: "upload",
-          fileId: storageId,
-          fileName: file.name,
-          contentType: file.type || "application/pdf",
-          uploadIntentId: target.uploadIntentId,
-        });
-      }
-      const filed = await fileProposal({
-        requestId,
-        outreachId: outreach._id,
-        sources,
-        proposalId: proposal?.status === "draft" ? proposal._id : undefined,
-        supersedesProposalId:
-          proposal && proposal.status !== "draft" ? proposal._id : undefined,
-      });
-      toast.success(
-        filed.status === "already_filed"
-          ? "These proposal documents are already filed"
-          : filed.status === "revised"
-            ? "Proposal revision filed"
-            : "Proposal filed",
-        { id: uploadToast },
-      );
-    } catch (error) {
-      await Promise.allSettled(
-        pendingUploads.map((upload) =>
-          discardUpload({
-            uploadIntentId: upload.uploadIntentId,
-            fileId: upload.fileId,
-          }),
-        ),
-      );
-      toast.error(
-        getUserFacingErrorMessage(error, "Could not file the proposal"),
-        { id: uploadToast },
-      );
-    } finally {
-      setUploading(false);
-      onUploadingChange(false);
-    }
-  }
-
-  return (
-    <FileDropZone
-      multiple
-      accept="application/pdf,.pdf"
-      disabled={
-        disabled ||
-        uploading ||
-        !outreach.brokerOrgId ||
-        proposal?.status === "selected"
-      }
-      idleLabel={
-        proposal?.status === "selected"
-          ? "Proposal selected"
-          : proposal && proposal.status !== "draft"
-            ? "Drop revised proposal PDFs"
-            : "Drop proposal PDFs"
-      }
-      activeLabel="Drop to file proposal"
-      hint={
-        proposal?.status === "selected"
-          ? null
-          : "or choose PDFs · up to 50 MB each"
-      }
-      padding="px-3 py-3"
-      onFiles={(files) => void upload(files)}
-    />
-  );
-}
-
 type ProposalView = {
   _id: Id<"procurementProposals">;
   brokerName?: string;
@@ -672,180 +513,12 @@ function ProposalExtractionStatus({
   );
 }
 
-const FINDING_TONE = {
-  meets: "success",
-  has_gap: "danger",
-  insufficient_evidence: "warning",
-} as const;
-
-const FINDING_LABEL = {
-  meets: "Meets",
-  has_gap: "Gap",
-  insufficient_evidence: "Unverified",
-} as const;
-
 const REVIEW_CONCLUSION_LABELS = {
   meets_requirements: "Meets requirements",
   has_gaps: "Has gaps",
   insufficient_evidence: "Insufficient evidence",
 } as const;
 
-function ProposalReviewDetails({
-  proposal,
-  conclusion,
-  onConclusionChange,
-  readOnly,
-}: {
-  proposal: ProposalView;
-  conclusion: keyof typeof REVIEW_CONCLUSION_LABELS;
-  onConclusionChange: (value: keyof typeof REVIEW_CONCLUSION_LABELS) => void;
-  readOnly: boolean;
-}) {
-  const review = proposal.reviews[0];
-  const documents = new Map(
-    proposal.documents.map((document) => [String(document._id), document]),
-  );
-  return (
-    <div className="space-y-4 border-b border-border pb-4">
-      {proposal.proposalMarkdown ? (
-        <ProseMarkdown>{proposal.proposalMarkdown}</ProseMarkdown>
-      ) : (
-        <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-          No extracted terms yet.
-        </p>
-      )}
-      {review ? (
-        <details open>
-          <summary
-            className={`cursor-pointer text-foreground ${typeStyle("body.medium")}`}
-          >
-            Packet review{" "}
-            <span className="ml-2">
-              <StatusTag
-                indicator={
-                  review.stale
-                    ? "warning"
-                    : review.staffConclusion
-                      ? "complete"
-                      : "waiting"
-                }
-                tone={
-                  review.stale
-                    ? "warning"
-                    : review.staffConclusion
-                      ? "info"
-                      : "neutral"
-                }
-              >
-                {review.stale
-                  ? "Stale"
-                  : review.staffConclusion
-                    ? "Confirmed"
-                    : "Needs confirmation"}
-              </StatusTag>
-            </span>
-          </summary>
-          <div className="mt-3 space-y-4">
-            {review.findings.map((finding) => {
-              const evidence = finding.evidence[0];
-              const document = evidence
-                ? documents.get(evidence.proposalDocumentId)
-                : undefined;
-              return (
-                <div
-                  key={finding.sectionKey}
-                  className="space-y-2 border-b border-border pb-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <p className={typeStyle("body.medium")}>
-                      {proposal.sectionHeadings[finding.sectionKey] ??
-                        finding.sectionKey}
-                    </p>
-                    <StatusTag tone={FINDING_TONE[finding.conclusion]}>
-                      {FINDING_LABEL[finding.conclusion]}
-                    </StatusTag>
-                  </div>
-                  <p
-                    className={`text-muted-foreground ${typeStyle("body.default")}`}
-                  >
-                    {finding.summary}
-                  </p>
-                  {document?.url ? (
-                    <PillButton
-                      href={`${document.url}#page=${evidence?.pageStart ?? 1}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      size="compact"
-                      variant="secondary"
-                    >
-                      Open evidence
-                      {evidence?.pageStart ? ` · p. ${evidence.pageStart}` : ""}
-                    </PillButton>
-                  ) : null}
-                </div>
-              );
-            })}
-            {review.stale ? (
-              <p
-                className={`text-muted-foreground ${typeStyle("body.default")}`}
-              >
-                The packet changed. Re-run the review before confirming.
-              </p>
-            ) : (
-              <label className="block space-y-1.5">
-                <span
-                  className={`text-muted-foreground ${typeStyle("label.field")}`}
-                >
-                  Conclusion
-                </span>
-                <Select
-                  value={conclusion}
-                  disabled={readOnly || Boolean(review.staffConclusion)}
-                  onValueChange={(value) =>
-                    onConclusionChange(value as typeof conclusion)
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue>
-                      <StatusLabel
-                        tone={
-                          conclusion === "meets_requirements"
-                            ? "success"
-                            : "warning"
-                        }
-                      >
-                        {REVIEW_CONCLUSION_LABELS[conclusion]}
-                      </StatusLabel>
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(REVIEW_CONCLUSION_LABELS).map(
-                      ([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          <StatusLabel
-                            tone={
-                              value === "meets_requirements"
-                                ? "success"
-                                : "warning"
-                            }
-                          >
-                            {label}
-                          </StatusLabel>
-                        </SelectItem>
-                      ),
-                    )}
-                  </SelectContent>
-                </Select>
-              </label>
-            )}
-          </div>
-        </details>
-      ) : null}
-    </div>
-  );
-}
-
-/** New-coverage page, like the former New chat entry: pick a line to add. */
 function CoveragePicker({
   existing,
   onPick,
@@ -1392,68 +1065,167 @@ function RequestEditor({
 /** Signature and inline images that email clients attach to every message. */
 const EMAIL_INLINE_IMAGE = /^(inline-image-\d+|image\d*)\.(png|jpe?g|gif)$/i;
 
+/** One of the provider's files: open it, rename it in place or remove it from the request. */
+function ProviderFileRow({
+  file,
+  readOnly,
+  removing,
+  onOpen,
+  onRemove,
+}: {
+  file: ProcurementFileItem & { clientFile: ClientFileOption };
+  readOnly: boolean;
+  removing: boolean;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  const updateFileItem = useMutation(api.procurementRequests.updateFileItem);
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(file.label);
+
+  async function rename() {
+    setRenaming(false);
+    const label = draft.trim();
+    if (!label || label === file.label) return setDraft(file.label);
+    try {
+      await updateFileItem({ fileItemId: file._id, label });
+    } catch (error) {
+      setDraft(file.label);
+      toast.error(getUserFacingErrorMessage(error, "Could not rename the file"));
+    }
+  }
+
+  return (
+    <li className="flex min-h-11 items-center gap-2 py-1.5">
+      <div className="min-w-0 flex-1">
+        {renaming ? (
+          <Input
+            autoFocus
+            aria-label="File name"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => void rename()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+              if (event.key === "Escape") {
+                setDraft(file.label);
+                setRenaming(false);
+              }
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="block w-full text-left break-words underline underline-offset-2 hover:text-foreground"
+          >
+            {file.label}
+          </button>
+        )}
+        <p className={`text-muted-foreground ${typeStyle("caption.default")}`}>
+          {file.from
+            ? `${file.from.name} · ${dayjs(file.from.receivedAt).format("MMM D")}`
+            : `Prepared · ${dayjs(file.updatedAt).format("MMM D")}`}
+        </p>
+      </div>
+      {!readOnly && !renaming ? (
+        <PillButton
+          variant="icon"
+          size="compact"
+          iconOnly
+          label={`Rename ${file.label}`}
+          onClick={() => {
+            setDraft(file.label);
+            setRenaming(true);
+          }}
+        >
+          <Pencil />
+        </PillButton>
+      ) : null}
+      {!readOnly ? (
+        <RemoveButton
+          label={`Remove ${file.label}`}
+          busy={removing}
+          disabled={removing}
+          onClick={onRemove}
+        />
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * One provider on the request: Details (provider, contact, status), Threads
+ * (its outreach and other mail) and Files (what it sent and what was
+ * prepared for it).
+ */
 function OutreachEditor({
   requestId,
   outreach,
-  proposalId,
   brokers,
   files,
+  emailThreads,
+  hasProposal,
+  removingFileId,
   onOpenFile,
-  readOnly: parentReadOnly = false,
+  onRemoveFile,
+  onOpenThread,
+  readOnly = false,
   onClose,
 }: {
   requestId: Id<"procurementRequests">;
   outreach?: Outreach;
-  proposalId?: Id<"procurementProposals">;
   brokers: BrokerOption[];
-  /** The request's files; the drawer lists this provider's. */
+  /** The request's files and conversations; the drawer shows this provider's. */
   files: ProcurementFileItem[];
+  emailThreads: EmailThread[];
+  /** A provider with a proposal keeps its organization. */
+  hasProposal: boolean;
+  removingFileId: string | null;
   onOpenFile: (file: ClientFileOption) => void;
+  onRemoveFile: (fileItemId: Id<"procurementFileItems">) => void;
+  onOpenThread: (threadId: Id<"teamEmailThreads">) => void;
   readOnly?: boolean;
   onClose: () => void;
 }) {
   const createOutreach = useMutation(api.procurementRequests.createOutreach);
   const updateOutreach = useMutation(api.procurementRequests.updateOutreach);
-  const generateReview = useAction(api.actions.proposalReview.generateReview);
-  const confirmReview = useMutation(api.procurementProposals.confirmReview);
-  const selectProposal = useMutation(api.procurementProposals.select);
-  const archiveProposal = useMutation(api.procurementProposals.archive);
-  const retryExtraction = useMutation(api.procurementProposals.retryExtraction);
-  const cancelExtraction = useMutation(
-    api.procurementProposals.cancelExtraction,
-  );
   const stopFollowUps = useMutation(api.providerOutreach.stop);
   const outreachPanel = useQuery(
     api.providerOutreach.getPanel,
-    parentReadOnly ? "skip" : { requestId },
+    readOnly ? "skip" : { requestId },
   );
   const [outreachId, setOutreachId] = useState(outreach?._id);
   const currentRequest = useQuery(
     api.procurementRequests.get,
     outreachId ? { requestId } : "skip",
   );
-  const proposals = useQuery(
-    api.procurementProposals.list,
-    outreachId ? { requestId } : "skip",
-  );
-  const outreachSequence = outreachId
-    ? sequenceForOutreach(outreachPanel?.sequences, outreachId)
-    : null;
   const currentOutreach =
     currentRequest?.outreaches.find((row) => row._id === outreachId) ??
     outreach;
-  const proposal: (ProposalView & ProposalUploadTarget) | undefined =
-    proposals?.find(
-      (row) =>
-        row.outreachId === outreachId &&
-        (proposalId
-          ? row._id === proposalId
-          : row.status !== "archived" && row.status !== "withdrawn"),
+  const sequence = outreachId
+    ? sequenceForOutreach(outreachPanel?.sequences, outreachId)
+    : null;
+  const [tab, setTab] = useFollowedState(
+    `procurement:${requestId}:provider-tab`,
+    "details",
+  );
+  const shownTab = outreachId ? tab : "details";
+  const providerName = currentOutreach?.brokerName ?? "this provider";
+  const providerFiles = files
+    .filter(
+      (file): file is ProcurementFileItem & { clientFile: ClientFileOption } =>
+        file.providerOutreachId === outreachId &&
+        !!file.clientFile &&
+        !EMAIL_INLINE_IMAGE.test(file.clientFile.name),
+    )
+    .sort(
+      (a, b) =>
+        (b.from?.receivedAt ?? b.updatedAt) - (a.from?.receivedAt ?? a.updatedAt),
     );
-  const historical =
-    proposal?.status === "archived" || proposal?.status === "withdrawn";
-  const readOnly =
-    parentReadOnly || (!!proposalId && (!proposal || historical));
+  const threads = emailThreads.filter(
+    (thread) => thread.providerOutreachId === outreachId,
+  );
   const [brokerOrgId, setBrokerOrgId] = useState(outreach?.brokerOrgId ?? "");
   const [contactName, setContactName] = useState(outreach?.contactName ?? "");
   const [contactEmail, setContactEmail] = useState(
@@ -1480,59 +1252,8 @@ function OutreachEditor({
     contactPhone,
   });
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [working, setWorking] = useState(false);
-  const [sidebarTab, setSidebarTab] = useFollowedState(
-    `procurement:${requestId}:outreach-sidebar-tab`,
-    "files",
-  );
-  const providerFiles = files
-    .filter(
-      (file) =>
-        file.providerOutreachId === outreachId &&
-        file.clientFile &&
-        !EMAIL_INLINE_IMAGE.test(file.clientFile.name),
-    )
-    .sort(
-      (a, b) =>
-        (b.from?.receivedAt ?? b.updatedAt) - (a.from?.receivedAt ?? a.updatedAt),
-    );
-  const review = proposal?.reviews[0];
-  const latestExtraction = proposal?.extraction.latest;
-  const [reviewChoice, setReviewChoice] = useState<{
-    reviewId: string;
-    value: keyof typeof REVIEW_CONCLUSION_LABELS;
-  }>();
-  const conclusion =
-    reviewChoice && reviewChoice.reviewId === review?._id
-      ? reviewChoice.value
-      : (review?.staffConclusion ??
-        review?.modelConclusion ??
-        "insufficient_evidence");
-  const busy = saving || uploading || working;
-
-  async function run(
-    action: () => Promise<unknown>,
-    pending: string,
-    success: string,
-    close = false,
-  ) {
-    if (readOnly || busy) return;
-    setWorking(true);
-    const toastId = toast.loading(pending);
-    try {
-      await action();
-      toast.success(success, { id: toastId });
-      if (close) onClose();
-    } catch (error) {
-      toast.error(
-        getUserFacingErrorMessage(error, "Could not update the proposal"),
-        { id: toastId },
-      );
-    } finally {
-      setWorking(false);
-    }
-  }
+  const busy = saving || working;
 
   const autoSave = useLocalFirstAutoSave({
     mutationName: "procurementRequests.updateOutreach",
@@ -1604,8 +1325,6 @@ function OutreachEditor({
       getUserFacingErrorMessage(error, "Could not update provider details"),
   });
 
-  const changed = !!outreachId && autoSave.status !== "saved";
-
   async function addBroker() {
     if (readOnly || busy || !brokerOrgId) return;
     setSaving(true);
@@ -1646,264 +1365,36 @@ function OutreachEditor({
             });
         }
       }}
-      title={
-        outreachId
-          ? (currentOutreach?.brokerName ?? "Provider outreach")
-          : "Add provider"
+      title={outreachId ? providerName : "Add provider"}
+      tabs={
+        outreachId ? (
+          <DrawerTabs value={tab} onValueChange={setTab}>
+            <DrawerTabsList aria-label={providerName}>
+              <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="threads">Threads</TabsTrigger>
+              <TabsTrigger value="files">Files</TabsTrigger>
+            </DrawerTabsList>
+          </DrawerTabs>
+        ) : undefined
       }
       footer={
-        <>
-          {!readOnly ? (
-            <>
-              {outreachSequence && isLiveSequence(outreachSequence) ? (
-                <PillButton
-                  type="button"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(
-                      () =>
-                        stopFollowUps({
-                          sequenceId: outreachSequence.sequenceId,
-                        }),
-                      "Stopping follow-ups…",
-                      "Follow-ups stopped",
-                    )
-                  }
-                >
-                  {working ? "Stopping…" : "Stop follow-ups"}
-                </PillButton>
-              ) : null}
-              {proposal && proposal.status !== "selected" ? (
-                <PillButton
-                  variant="destructive"
-                  disabled={busy || changed}
-                  onClick={() =>
-                    void run(
-                      () => archiveProposal({ proposalId: proposal._id }),
-                      "Archiving proposal…",
-                      "Proposal archived",
-                      true,
-                    )
-                  }
-                >
-                  Archive
-                </PillButton>
-              ) : null}
-              {proposal &&
-              (latestExtraction?.stuck ||
-                latestExtraction?.status === "failed") ? (
-                <PillButton
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(
-                      () => retryExtraction({ proposalId: proposal._id }),
-                      "Retrying…",
-                      "Reading quote…",
-                    )
-                  }
-                >
-                  Retry reading
-                </PillButton>
-              ) : proposal &&
-                (latestExtraction?.status === "pending" ||
-                  latestExtraction?.status === "running") ? (
-                <PillButton
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(
-                      () => cancelExtraction({ proposalId: proposal._id }),
-                      "Cancelling…",
-                      "Stopped reading quote",
-                    )
-                  }
-                >
-                  Cancel reading
-                </PillButton>
-              ) : null}
-              {sidebarTab === "terms" ? (
-                <>
-                  {proposal?.extractedOffer && (!review || review.stale) ? (
-                    <PillButton
-                      disabled={busy || changed}
-                      onClick={() =>
-                        void run(
-                          () => generateReview({ proposalId: proposal._id }),
-                          "Reviewing proposal…",
-                          "Proposal review ready",
-                        )
-                      }
-                    >
-                      {review?.stale ? "Re-run review" : "Generate review"}
-                    </PillButton>
-                  ) : review && !review.stale && !review.staffConclusion ? (
-                    <PillButton
-                      disabled={busy || changed}
-                      onClick={() =>
-                        void run(
-                          () =>
-                            confirmReview({ reviewId: review._id, conclusion }),
-                          "Confirming review…",
-                          "Proposal review confirmed",
-                        )
-                      }
-                    >
-                      Confirm conclusion
-                    </PillButton>
-                  ) : proposal?.status === "reviewed" &&
-                    !review?.stale &&
-                    review?.staffConclusion === "meets_requirements" ? (
-                    <PillButton
-                      disabled={busy || changed}
-                      onClick={() =>
-                        void run(
-                          () => selectProposal({ proposalId: proposal._id }),
-                          "Selecting proposal…",
-                          "Proposal selected",
-                        )
-                      }
-                    >
-                      Select proposal
-                    </PillButton>
-                  ) : null}
-                </>
-              ) : null}
-              {!outreachId ? (
-                <PillButton
-                  type="button"
-                  onClick={() => void addBroker()}
-                  disabled={busy || !brokerOrgId}
-                >
-                  {saving ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : null}
-                  Add provider
-                </PillButton>
-              ) : null}
-            </>
-          ) : null}
-        </>
+        !outreachId && !readOnly ? (
+          <PillButton
+            type="button"
+            onClick={() => void addBroker()}
+            disabled={busy || !brokerOrgId}
+          >
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            Add provider
+          </PillButton>
+        ) : undefined
       }
     >
-      <AutoSaveStatus status={outreachId ? autoSave.status : "saved"} />
-      <div className="space-y-4">
-        {proposalId && historical ? (
-          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-            This proposal is {proposal.status} and is read-only.
-          </p>
-        ) : null}
-        {proposalId && !proposal ? (
-          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-            {proposals === undefined
-              ? "Loading proposal…"
-              : "This proposal is no longer available."}
-          </p>
-        ) : null}
-        {outreachId ? (
-          <SectionTabs value={sidebarTab} onValueChange={setSidebarTab}>
-            <SectionTabsList aria-label="Provider">
-              <TabsTrigger value="files">Files</TabsTrigger>
-              <TabsTrigger value="pdfs">Proposal</TabsTrigger>
-              <TabsTrigger value="terms">Terms</TabsTrigger>
-            </SectionTabsList>
-          </SectionTabs>
-        ) : null}
-        {sidebarTab === "files" && outreachId ? (
-          providerFiles.length ? (
-            <ul className="divide-y divide-border border-b border-border">
-              {providerFiles.map((file) => (
-                <li
-                  key={file._id}
-                  className="flex min-h-10 items-baseline justify-between gap-3 py-2"
-                >
-                  <button
-                    type="button"
-                    onClick={() => onOpenFile(file.clientFile!)}
-                    className="min-w-0 flex-1 text-left break-words underline underline-offset-2 hover:text-foreground"
-                  >
-                    {file.clientFile!.name}
-                  </button>
-                  <span
-                    className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
-                  >
-                    {file.from
-                      ? `${file.from.name} · ${dayjs(file.from.receivedAt).format("MMM D")}`
-                      : `Prepared · ${dayjs(file.updatedAt).format("MMM D")}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p
-              className={`border-b border-border pb-4 text-muted-foreground ${typeStyle("body.default")}`}
-            >
-              No files from {currentOutreach?.brokerName ?? "this provider"} yet.
-            </p>
-          )
-        ) : null}
-        {sidebarTab === "pdfs" && outreachId && currentOutreach ? (
-          <div className="space-y-3 border-b border-border pb-4">
-            {proposal?.documents.map((document) =>
-              document.url ? (
-                <PillButton
-                  key={document._id}
-                  href={document.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  variant="secondary"
-                  className="w-full justify-start"
-                >
-                  <FileText className="size-3.5 shrink-0" />
-                  <span className="truncate">{document.fileName}</span>
-                </PillButton>
-              ) : null,
-            )}
-            {!readOnly ? (
-              <ProposalDropzone
-                requestId={requestId}
-                outreach={currentOutreach}
-                proposal={proposal}
-                disabled={
-                  busy ||
-                  proposals === undefined ||
-                  brokerOrgId !== currentOutreach.brokerOrgId
-                }
-                onUploadingChange={setUploading}
-              />
-            ) : null}
-            {!readOnly &&
-            proposal &&
-            proposal.status !== "draft" &&
-            proposal.status !== "selected" ? (
-              <p
-                className={`text-muted-foreground ${typeStyle("caption.default")}`}
-              >
-                Uploading revised PDFs replaces the current proposal. Include
-                all documents for the new revision.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        {sidebarTab === "terms" && proposal ? (
-          <ProposalReviewDetails
-            proposal={proposal}
-            conclusion={conclusion}
-            onConclusionChange={(value) =>
-              review && setReviewChoice({ reviewId: review._id, value })
-            }
-            readOnly={readOnly || busy}
-          />
-        ) : null}
-        {sidebarTab === "terms" && !proposal && !proposalId ? (
-          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
-            Upload proposal PDFs to extract their terms.
-          </p>
-        ) : null}
-        {sidebarTab === "files" || !outreachId ? (
+      {shownTab === "details" ? (
+        <>
+          <AutoSaveStatus status={outreachId ? autoSave.status : "saved"} />
           <fieldset disabled={readOnly || busy} className="min-w-0 space-y-4">
-            {!proposals?.some((row) => row.outreachId === outreachId) ? (
+            {!hasProposal ? (
               <label className="block space-y-1.5">
                 <span
                   className={`text-muted-foreground ${typeStyle("caption.default")}`}
@@ -1913,9 +1404,6 @@ function OutreachEditor({
                 <SearchableSelect
                   value={brokerOrgId}
                   onChange={setBrokerOrgId}
-                  disabled={proposals?.some(
-                    (row) => row.outreachId === outreachId,
-                  )}
                   options={brokers.map((broker) => ({
                     value: broker._id,
                     label: broker.name,
@@ -1994,8 +1482,102 @@ function OutreachEditor({
               </Select>
             </label>
           </fieldset>
-        ) : null}
-      </div>
+        </>
+      ) : null}
+      {shownTab === "threads" ? (
+        <div className="space-y-3">
+          {sequence ? (
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-muted-foreground ${typeStyle("caption.default")}`}
+              >
+                Follow-ups
+              </span>
+              <SequenceState sequence={sequence} />
+              {!readOnly && isLiveSequence(sequence) ? (
+                <PillButton
+                  type="button"
+                  size="compact"
+                  variant="ghost"
+                  className="ml-auto"
+                  disabled={working}
+                  onClick={() => {
+                    setWorking(true);
+                    void stopFollowUps({ sequenceId: sequence.sequenceId })
+                      .then(() => toast.success("Follow-ups stopped"))
+                      .catch((error) =>
+                        toast.error(
+                          getUserFacingErrorMessage(
+                            error,
+                            "Could not stop follow-ups",
+                          ),
+                        ),
+                      )
+                      .finally(() => setWorking(false));
+                  }}
+                >
+                  Stop follow-ups
+                </PillButton>
+              ) : null}
+            </div>
+          ) : null}
+          {threads.length ? (
+            <ul className="divide-y divide-border">
+              {threads.map((thread) => (
+                <li key={thread._id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenThread(thread._id)}
+                    className="block w-full py-2 text-left hover:text-foreground"
+                  >
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className={`min-w-0 truncate ${typeStyle("body.medium")}`}>
+                        {thread.subject || "(no subject)"}
+                      </span>
+                      <span
+                        className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
+                      >
+                        {dayjs(thread.latestMessageAt).format("MMM D")}
+                      </span>
+                    </span>
+                    <span
+                      className={`block truncate text-muted-foreground ${typeStyle("caption.default")}`}
+                    >
+                      {[thread.latestFromName, thread.preview]
+                        .filter(Boolean)
+                        .join(": ")}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+              No email with {providerName} yet.
+            </p>
+          )}
+        </div>
+      ) : null}
+      {shownTab === "files" ? (
+        providerFiles.length ? (
+          <ul className="divide-y divide-border">
+            {providerFiles.map((file) => (
+              <ProviderFileRow
+                key={file._id}
+                file={file}
+                readOnly={readOnly}
+                removing={removingFileId === file._id}
+                onOpen={() => onOpenFile(file.clientFile)}
+                onRemove={() => onRemoveFile(file._id)}
+              />
+            ))}
+          </ul>
+        ) : (
+          <p className={`text-muted-foreground ${typeStyle("body.default")}`}>
+            No files from {providerName} yet.
+          </p>
+        )
+      ) : null}
     </SettingsDrawer>
   );
 }
@@ -2342,6 +1924,11 @@ export function ProcurementRequestWorkspace({
     [policies],
   );
   const closeRightPanel = useCallback(() => onRightPanel(null), [onRightPanel]);
+  // The panel effect opens a conversation through the latest changeView.
+  const changeViewRef = useRef<typeof changeView | null>(null);
+  useEffect(() => {
+    changeViewRef.current = changeView;
+  });
 
   const openNotes = useCallback(async () => {
     if (packetEditorRef.current && !(await packetEditorRef.current.save()))
@@ -2364,10 +1951,9 @@ export function ProcurementRequestWorkspace({
 
   const openOutreachEditor = useCallback(
     (outreach?: Outreach, proposalId?: Id<"procurementProposals">) => {
-      closePdf();
       setPanel({ kind: "outreach", outreachId: outreach?._id, proposalId });
     },
-    [closePdf, setPanel],
+    [setPanel],
   );
 
   useEffect(() => {
@@ -2577,20 +2163,29 @@ export function ProcurementRequestWorkspace({
       if (!panel.outreachId || outreach)
         node = (
           <OutreachEditor
-            key={proposalId ?? outreach?._id ?? "new-outreach"}
+            key={outreach?._id ?? "new-outreach"}
             requestId={requestId}
             outreach={outreach}
-            proposalId={proposalId as Id<"procurementProposals"> | undefined}
             readOnly={readOnly}
             brokers={brokers ?? []}
             files={details?.files ?? []}
+            emailThreads={details?.emailThreads ?? []}
+            hasProposal={
+              !!outreach &&
+              !!proposals?.some((row) => row.outreachId === outreach._id)
+            }
+            removingFileId={removingFileId}
+            onRemoveFile={(fileItemId) => void handleRemoveFile(fileItemId)}
+            onOpenThread={(threadId) =>
+              void changeViewRef.current?.("email", threadId)
+            }
             onOpenFile={(file) => {
               if (!file.url) return;
               if (
                 file.contentType === "application/pdf" ||
                 /\.pdf$/i.test(file.name)
               ) {
-                closeRightPanel();
+                // The PDF opens beside the provider drawer.
                 openWithUrl(file.url, undefined, undefined, {
                   kind: "clientFile",
                   clientFileId: file._id,
@@ -2740,10 +2335,13 @@ export function ProcurementRequestWorkspace({
     closeRightPanel,
     createFileItem,
     details,
+    handleRemoveFile,
     onRightPanel,
     openWithUrl,
     panel,
+    proposals,
     readOnly,
+    removingFileId,
     requestId,
     requestTitle,
     router,

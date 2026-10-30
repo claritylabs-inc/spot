@@ -1,7 +1,7 @@
 "use client";
 
 import { ScrollArea } from "@claritylabs-inc/ui/components/scroll-area";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Dialog } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
@@ -14,6 +14,7 @@ export function SettingsDrawer({
   open,
   onOpenChange,
   title,
+  tabs,
   actions,
   children,
   footer,
@@ -22,6 +23,8 @@ export function SettingsDrawer({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   title: ReactNode;
+  /** The drawer's own views (`DrawerTabs`), laid out like page top-bar tabs. */
+  tabs?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
@@ -32,6 +35,7 @@ export function SettingsDrawer({
     null,
   );
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const hasFooter = Boolean(footer);
 
   useEffect(() => {
@@ -83,6 +87,8 @@ export function SettingsDrawer({
           <AnimatePresence mode="popLayout">
             {open && (
               <Dialog.Popup
+                // Open on the close button, as untabbed drawers do, rather than the first tab.
+                initialFocus={tabs ? closeRef : undefined}
                 render={
                   <motion.div
                     initial={{ opacity: 0 }}
@@ -102,21 +108,35 @@ export function SettingsDrawer({
                   transition={{ duration: 0.1, ease: EASE }}
                   className="flex min-h-0 w-full flex-1 flex-col border-l border-border bg-background"
                 >
-                  <div className="min-h-12 flex items-center gap-3 px-4 py-2 border-b border-border shrink-0">
-                    <Dialog.Title
-                      render={<div />}
-                      className={`min-w-0 flex-1 truncate text-foreground ${typeStyle("body.medium")}`}
+                  {/* Same header geometry as the page top bar, so drawer tabs
+                      sit beside the title or wrap under it the same way. */}
+                  <div className="app-top-bar-container">
+                    <div
+                      data-slot="app-top-bar"
+                      data-tabs={tabs ? "true" : undefined}
+                      className={cn(
+                        "min-h-12 flex items-center gap-3 px-4 border-b border-border shrink-0",
+                        !tabs && "py-2",
+                      )}
                     >
-                      {title}
-                    </Dialog.Title>
-                    {actions ? <div className="shrink-0">{actions}</div> : null}
-                    <Dialog.Close
-                      type="button"
-                      className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground/40 hover:text-foreground hover:bg-foreground/4 transition-colors shrink-0"
-                      aria-label="Close"
-                    >
-                      <X className="w-4 h-4" />
-                    </Dialog.Close>
+                      <Dialog.Title
+                        render={<div />}
+                        data-slot="app-top-bar-context"
+                        className={`flex min-w-0 flex-1 items-center truncate text-foreground ${typeStyle("body.medium")}`}
+                      >
+                        <span className="truncate">{title}</span>
+                      </Dialog.Title>
+                      {tabs ? <div data-slot="app-top-bar-tabs">{tabs}</div> : null}
+                      {actions ? <div className="shrink-0">{actions}</div> : null}
+                      <Dialog.Close
+                        ref={closeRef}
+                        type="button"
+                        className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground/40 hover:text-foreground hover:bg-foreground/4 transition-colors shrink-0"
+                        aria-label="Close"
+                      >
+                        <X className="w-4 h-4" />
+                      </Dialog.Close>
+                    </div>
                   </div>
 
                   <ScrollArea className="min-h-0 flex-1">

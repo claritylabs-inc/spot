@@ -1,5 +1,13 @@
 # Platform workflow QA
 
+## Provider drawer: Details, Threads, Files — October 30, 2026
+
+Native-local stack, operator in headless Chrome. The provider drawer showed
+navbar-style tabs (Details, Threads, Files) under the title, opening on Details
+with focus on the close button. Threads listed a request conversation matched by
+the provider's domain; Files renamed an item in place and removed one (3 → 2);
+opening a file kept the drawer and showed the PDF beside it at 1720px.
+
 ## Provider drawer files — October 30, 2026
 
 Native-local stack, operator in headless Chrome. On a request with one provider,

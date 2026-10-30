@@ -571,7 +571,18 @@ export async function getProcurementRequestDetails(
       type: event.type,
       createdAt: event.createdAt,
     }));
-  const activeEmailThreads = emailThreads.filter(activeEmailThread);
+  // Each conversation's provider: its outreach, else a participant who is one
+  // of the provider's people.
+  const activeEmailThreads = await Promise.all(
+    emailThreads.filter(activeEmailThread).map(async (thread) => {
+      let providerOutreachId = thread.outreachId;
+      for (const email of providerOutreachId ? [] : thread.participantEmails) {
+        providerOutreachId = await outreachIdForEmail(email, null);
+        if (providerOutreachId) break;
+      }
+      return { ...thread, providerOutreachId };
+    }),
+  );
   return {
     request: summary,
     outreaches: await Promise.all(
