@@ -54,6 +54,8 @@ export type RouterCapabilities = {
   monitors?: { providers: RouterProviderEntry[] };
   /** Structured research providers; older routers omit it and do not support research. */
   research?: { providers: RouterProviderEntry[] };
+  /** Entity discovery providers; older routers omit it and do not support discovery. */
+  discovery?: { providers: RouterProviderEntry[] };
   /**
    * Optional request fields this router accepts. Older routers omit the list
    * and reject the fields, so callers send a field only when it is listed.
@@ -215,6 +217,9 @@ export function parseRouterCapabilities(
   const researchProviders = isRecord(value.research)
     ? parseProviders(value.research.providers)
     : null;
+  const discoveryProviders = isRecord(value.discovery)
+    ? parseProviders(value.discovery.providers)
+    : null;
   return {
     apiVersion: "v1",
     credentialMode: "router",
@@ -223,6 +228,9 @@ export function parseRouterCapabilities(
     ...(models ? { models } : {}),
     ...(monitorProviders ? { monitors: { providers: monitorProviders } } : {}),
     ...(researchProviders ? { research: { providers: researchProviders } } : {}),
+    ...(discoveryProviders
+      ? { discovery: { providers: discoveryProviders } }
+      : {}),
     // A malformed list advertises nothing rather than invalidating the catalog.
     ...(Array.isArray(value.features) && value.features.every(isIdentifier)
       ? { features: value.features }
@@ -243,5 +251,14 @@ export function routerResearchConfigured(
 ): boolean {
   return (
     capabilities.research?.providers.some((entry) => entry.configured) ?? false
+  );
+}
+
+/** Discovery runs only when the router advertises a configured discovery provider. */
+export function routerDiscoveryConfigured(
+  capabilities: RouterCapabilities,
+): boolean {
+  return (
+    capabilities.discovery?.providers.some((entry) => entry.configured) ?? false
   );
 }

@@ -115,6 +115,13 @@ export async function resolveOperatorNotificationTarget(
       if (!event || event.acknowledgedAt !== undefined || !await liveClient(ctx, event.orgId)) return null;
       return `${base}/operator/clients/${event.orgId}`;
     }
+    case "provider_discovery": {
+      const discovery = await ctx.db.get(target.discoveryId);
+      const request = discovery ? await ctx.db.get(discovery.requestId) : null;
+      if (discovery?.status !== "completed" || !request || request.deletedAt !== undefined ||
+        !request.clientOrgId || !await liveClient(ctx, request.clientOrgId)) return null;
+      return `${base}/operator/clients/${request.clientOrgId}/procurement/${request._id}`;
+    }
     case "proposal": {
       const proposal = await ctx.db.get(target.proposalId);
       if (!proposal || proposal.status !== "draft") return null;

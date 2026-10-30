@@ -4370,6 +4370,76 @@ export default defineSchema({
     .index("by_org_received", ["orgId", "receivedAt"])
     .index("by_monitor_and_delivery", ["monitorId", "deliveryId"]),
 
+  // Provider discovery: one cl-router discovery run that finds insurance
+  // markets for a request from public, non-identifying criteria. The callback
+  // capability token is stored only as a hash.
+  providerDiscoveries: defineTable({
+    requestId: v.id("procurementRequests"),
+    createdByUserId: v.id("users"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+    ),
+    routerDiscoveryId: v.optional(v.string()),
+    tokenHash: v.optional(v.string()),
+    criteria: v.object({
+      lines: v.array(v.string()),
+      states: v.array(v.string()),
+      industry: v.optional(v.string()),
+    }),
+    matchLimit: v.number(),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+    deliveryId: v.optional(v.string()),
+    error: v.optional(v.string()),
+    candidateCount: v.optional(v.number()),
+  })
+    .index("by_requestId_and_createdAt", ["requestId", "createdAt"])
+    .index("by_tokenHash", ["tokenHash"]),
+
+  // Bounded, cited candidates from a discovery callback; every text field is
+  // untrusted public web content.
+  providerDiscoveryCandidates: defineTable({
+    discoveryId: v.id("providerDiscoveries"),
+    requestId: v.id("procurementRequests"),
+    name: v.string(),
+    url: v.string(),
+    domain: v.string(),
+    description: v.optional(v.string()),
+    conditions: v.array(
+      v.object({
+        name: v.string(),
+        matched: v.boolean(),
+        value: v.optional(v.string()),
+        citations: v.array(
+          v.object({
+            url: v.string(),
+            title: v.optional(v.string()),
+            excerpt: v.optional(v.string()),
+          }),
+        ),
+      }),
+    ),
+    providerType: v.optional(v.string()),
+    linesOffered: v.optional(v.string()),
+    statesServed: v.optional(v.string()),
+    appointmentUrl: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("added"),
+      v.literal("dismissed"),
+    ),
+    brokerOrgId: v.optional(v.id("organizations")),
+    reviewedByUserId: v.optional(v.id("users")),
+    reviewedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_discoveryId", ["discoveryId"])
+    .index("by_requestId_and_status", ["requestId", "status"]),
+
   // ── Notifications ──
 
   notifications: defineTable({
