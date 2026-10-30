@@ -10,13 +10,18 @@ export function OperatorPageContextRegistration({
   context: PageContext;
 }) {
   const { setPageContext } = usePageContext();
+  // Callers build `related` on every render; compare it by value.
+  const relatedKey = context.related ? JSON.stringify(context.related) : "";
   const stableContext = useMemo(
     () => ({
       pageType: context.pageType,
       entityId: context.entityId,
       summary: context.summary,
+      ...(relatedKey
+        ? { related: JSON.parse(relatedKey) as PageContext["related"] }
+        : {}),
     }),
-    [context.entityId, context.pageType, context.summary],
+    [context.entityId, context.pageType, context.summary, relatedKey],
   );
 
   useEffect(() => {
