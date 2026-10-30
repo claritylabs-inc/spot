@@ -44,6 +44,7 @@ import { validateOperatorInvitation } from "../operatorInvitations";
 import { requireSendableOperatorEmailDraft } from "../operatorEmailDrafts";
 import { isOutreachLocked } from "./teamEmailStore";
 import { assertOutreachIdentity } from "./outreachIdentity";
+import { resolveSkillScriptRun, type SkillScriptInput } from "./operatorSkillScripts";
 
 export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "call_mcp_tool",
@@ -114,6 +115,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "send_email_draft",
   "send_email_drafts",
   "clear_all_agent_memory",
+  "run_skill_script",
 ] as const satisfies readonly OperatorAgentToolName[];
 
 type PreflightArgs = {
@@ -940,6 +942,13 @@ export async function preflightOperatorToolConfirmation(
         throw new Error("MCP arguments are too large");
       return;
     }
+    case "run_skill_script":
+      await resolveSkillScriptRun(
+        ctx,
+        args.operatorUserId,
+        args.input as SkillScriptInput,
+      );
+      return;
     case "import_policy_files":
       await resolveOperatorPolicySources(ctx, {
         operatorUserId: args.operatorUserId,
