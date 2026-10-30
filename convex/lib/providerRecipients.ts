@@ -1,6 +1,7 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
-import { normalizeProcurementEmail } from "./procurement";
+import { isSpotOwnedBrokerIdentity } from "./brokerProfileValidation";
+import { CONSUMER_DOMAINS, normalizeProcurementEmail } from "./procurement";
 
 export type ProviderRecipient = {
   email: string;
@@ -52,4 +53,106 @@ export async function doNotContactAddresses(ctx: QueryCtx, emails: string[]): Pr
 
 export function doNotContactReason(addresses: string[]): string {
   return `${addresses.join(", ")} ${addresses.length === 1 ? "belongs" : "belong"} to a Do Not Contact provider.`;
+}
+
+export const emailDomain = (email: string) => email.split("@")[1] ?? "";
+
+const websiteDomain = (website: string | undefined) => {
+  try {
+    return website
+      ? new URL(
+          /^https?:\/\//i.test(website) ? website : `https://${website}`,
+        ).hostname
+          .toLowerCase()
+          .replace(/^www\./, "")
+      : "";
+  } catch {
+    return "";
+  }
+};
+
+type ProviderEmailIndex = Map<
+  Id<"organizations">,
+  {
+    brokerName: string;
+    contacts: Doc<"brokerContacts">[];
+    emails: Set<string>;
+    domains: Set<string>;
+  }
+>;
+
+/**
+ * The saved contact emails and company domains (website, contacts, outreach
+ * address; never consumer mail domains) of each outreach's provider.
+ */
+export async function providerEmailIndex(
+  ctx: QueryCtx,
+  outreaches: Doc<"procurementBrokerOutreaches">[],
+): Promise<ProviderEmailIndex> {
+  const providers: ProviderEmailIndex = new Map();
+  for (const outreach of outreaches) {
+    if (!outreach.brokerOrgId) continue;
+    let entry = providers.get(outreach.brokerOrgId);
+    if (!entry) {
+      const provider = await ctx.db.get(outreach.brokerOrgId);
+      if (
+        !provider ||
+        provider.deletedAt !== undefined ||
+        provider.type !== "broker" ||
+        isSpotOwnedBrokerIdentity(provider)
+      )
+        continue;
+      const contacts = await ctx.db
+        .query("brokerContacts")
+        .withIndex("by_brokerOrgId_and_deletedAt", (q) =>
+          q.eq("brokerOrgId", provider._id).eq("deletedAt", undefined),
+        )
+        .take(200);
+      entry = {
+        brokerName: provider.name,
+        contacts,
+        emails: new Set(
+          contacts.flatMap((contact) =>
+            contact.email ? [normalizeProcurementEmail(contact.email)] : [],
+          ),
+        ),
+        domains: new Set([websiteDomain(provider.website)].filter(Boolean)),
+      };
+      providers.set(provider._id, entry);
+    }
+    // The outreach address is not a saved contact; it only identifies the domain.
+    for (const email of [
+      ...entry.emails,
+      ...(outreach.contactEmail
+        ? [normalizeProcurementEmail(outreach.contactEmail)]
+        : []),
+    ]) {
+      const domain = emailDomain(email);
+      if (domain && !CONSUMER_DOMAINS.has(domain)) entry.domains.add(domain);
+    }
+  }
+  return providers;
+}
+
+/**
+ * The provider an email belongs to: a saved contact first, then the company
+ * domain. A consumer mail domain matches only the conversation's own provider.
+ */
+export function matchProviderEmail(
+  providers: ProviderEmailIndex,
+  rawEmail: string,
+  conversationProvider?: Id<"organizations">,
+) {
+  const email = normalizeProcurementEmail(rawEmail);
+  const domain = emailDomain(email);
+  if (!domain) return undefined;
+  const entries = [...providers];
+  return (
+    entries.find(([, entry]) => entry.emails.has(email)) ??
+    entries.find(
+      ([brokerOrgId, entry]) =>
+        entry.domains.has(domain) ||
+        (conversationProvider === brokerOrgId && CONSUMER_DOMAINS.has(domain)),
+    )
+  );
 }

@@ -19,8 +19,13 @@ import { requireOperator, writeOperatorAudit } from "./lib/operatorIdentity";
 import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { requireRequest } from "./procurementRequests";
 import { teamTargetProblem } from "./lib/teamEmailStore";
-import { CONSUMER_DOMAINS, normalizeProcurementEmail } from "./lib/procurement";
-import { providerForEmail } from "./lib/providerRecipients";
+import { normalizeProcurementEmail } from "./lib/procurement";
+import {
+  emailDomain,
+  matchProviderEmail,
+  providerEmailIndex,
+  providerForEmail,
+} from "./lib/providerRecipients";
 
 async function requireProvider(
   ctx: QueryCtx | MutationCtx,
@@ -121,21 +126,6 @@ export const listForRequest = query({
   },
 });
 
-const emailDomain = (email: string) => email.split("@")[1] ?? "";
-const websiteDomain = (website: string | undefined) => {
-  try {
-    return website
-      ? new URL(
-          /^https?:\/\//i.test(website) ? website : `https://${website}`,
-        ).hostname
-          .toLowerCase()
-          .replace(/^www\./, "")
-      : "";
-  } catch {
-    return "";
-  }
-};
-
 /**
  * Provider participants of one conversation, including saved contacts, keyed by
  * email. The provider is the thread's outreach
@@ -160,49 +150,7 @@ async function threadContactSuggestions(
           .withIndex("request", (q) => q.eq("requestId", thread.requestId!))
           .take(50)
       : [];
-  const providers = new Map<
-    Id<"organizations">,
-    {
-      brokerName: string;
-      contacts: Doc<"brokerContacts">[];
-      emails: Set<string>;
-      domains: Set<string>;
-    }
-  >();
-  for (const outreach of outreaches) {
-    if (!outreach.brokerOrgId) continue;
-    let entry = providers.get(outreach.brokerOrgId);
-    if (!entry) {
-      let provider;
-      try {
-        provider = await requireProvider(ctx, outreach.brokerOrgId);
-      } catch {
-        continue;
-      }
-      const { contacts } = await listProviderContacts(ctx, provider._id);
-      entry = {
-        brokerName: provider.name,
-        contacts,
-        emails: new Set(
-          contacts.flatMap((contact) =>
-            contact.email ? [normalizeProcurementEmail(contact.email)] : [],
-          ),
-        ),
-        domains: new Set([websiteDomain(provider.website)].filter(Boolean)),
-      };
-      providers.set(provider._id, entry);
-    }
-    // The outreach address is not a saved contact; it only identifies the domain.
-    for (const email of [
-      ...entry.emails,
-      ...(outreach.contactEmail
-        ? [normalizeProcurementEmail(outreach.contactEmail)]
-        : []),
-    ]) {
-      const domain = emailDomain(email);
-      if (domain && !CONSUMER_DOMAINS.has(domain)) entry.domains.add(domain);
-    }
-  }
+  const providers = await providerEmailIndex(ctx, outreaches);
   const suggestions: Array<{
     email: string;
     brokerOrgId: Id<"organizations">;
@@ -216,14 +164,7 @@ async function threadContactSuggestions(
     const domain = emailDomain(email);
     if (!domain || seen.has(email) || isSpotOwnedDomain(email)) continue;
     seen.add(email);
-    const entries = [...providers];
-    const match =
-      entries.find(([, entry]) => entry.emails.has(email)) ??
-      entries.find(
-        ([brokerOrgId, entry]) =>
-          entry.domains.has(domain) ||
-          (direct?.brokerOrgId === brokerOrgId && CONSUMER_DOMAINS.has(domain)),
-      );
+    const match = matchProviderEmail(providers, email, direct?.brokerOrgId);
     if (match) {
       const contact = match[1].contacts.find(
         (row) => row.email && normalizeProcurementEmail(row.email) === email,

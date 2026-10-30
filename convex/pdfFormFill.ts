@@ -661,6 +661,31 @@ export async function pdfSourceFileId(ctx: QueryCtx, source: string) {
   return storageId ? ctx.db.system.normalizeId("_storage", storageId) : null;
 }
 
+/** A saved version's URL and the PDF panel source that opens it. */
+async function savedVersion(ctx: QueryCtx, fileId: Id<"_storage">) {
+  const version = await ctx.db
+    .query("pdfFormFillVersions")
+    .withIndex("by_fileId", (q) => q.eq("fileId", fileId))
+    .first();
+  const url = version ? await ctx.storage.getUrl(version.fileId) : null;
+  if (!version || !url) return null;
+  return {
+    version: version.version,
+    url,
+    source: version.clientFileId
+      ? {
+          kind: "clientFile" as const,
+          clientFileId: version.clientFileId,
+          filename: version.filename,
+        }
+      : {
+          kind: "operatorAttachment" as const,
+          fileId: version.fileId,
+          filename: version.filename,
+        },
+  };
+}
+
 const pdfDocumentSourceValidator = v.union(
   v.object({
     kind: v.literal("clientFile"),
@@ -690,6 +715,15 @@ export const getForDocument = query({
         v.null(),
         v.object({
           runId: v.id("pdfFormFillRuns"),
+          url: v.string(),
+          source: pdfDocumentSourceValidator,
+        }),
+      ),
+      /** The latest filled copy of this blank form, if any. */
+      filledCopy: v.union(
+        v.null(),
+        v.object({
+          version: v.number(),
           url: v.string(),
           source: pdfDocumentSourceValidator,
         }),
@@ -729,34 +763,28 @@ export const getForDocument = query({
         fields: run.fields,
         total: run.total ?? null,
       };
-    const version =
+    const finishedVersion =
       run?.stage === "done" && run.outputFileId
-        ? await ctx.db
-            .query("pdfFormFillVersions")
-            .withIndex("by_fileId", (q) => q.eq("fileId", run.outputFileId!))
-            .first()
+        ? await savedVersion(ctx, run.outputFileId)
         : null;
-    const url = version ? await ctx.storage.getUrl(version.fileId) : null;
+    const fills = await ctx.db
+      .query("pdfFormFills")
+      .withIndex("by_sourceFileId", (q) => q.eq("sourceFileId", fileId))
+      .take(20);
+    const latestFill = fills.reduce<Doc<"pdfFormFills"> | null>(
+      (latest, fill) => (!latest || fill.updatedAt > latest.updatedAt ? fill : latest),
+      null,
+    );
+    const filledCopy = latestFill
+      ? await savedVersion(ctx, latestFill.outputFileId)
+      : null;
     return {
       status: "fillable" as const,
       finished:
-        run && version && url
-          ? {
-              runId: run._id,
-              url,
-              source: version.clientFileId
-                ? {
-                    kind: "clientFile" as const,
-                    clientFileId: version.clientFileId,
-                    filename: version.filename,
-                  }
-                : {
-                    kind: "operatorAttachment" as const,
-                    fileId: version.fileId,
-                    filename: version.filename,
-                  },
-            }
+        run && finishedVersion
+          ? { runId: run._id, url: finishedVersion.url, source: finishedVersion.source }
           : null,
+      filledCopy,
     };
   },
 });

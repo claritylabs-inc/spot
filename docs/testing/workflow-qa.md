@@ -1,5 +1,15 @@
 # Platform workflow QA
 
+## Provider drawer files — October 30, 2026
+
+Native-local stack, operator in headless Chrome. On a request with one provider,
+the provider drawer opened on Files (folder section tabs Files, Proposal,
+Terms) and listed the three application copies prepared for that provider with
+full names; clicking one opened it in the PDF panel with Edit with Spot. A blank
+form opened from client files offered Open filled vN, which opened the latest
+filled copy. Email attribution (saved contact or company domain) shares the
+inbox's provider matcher; no local fixture had a provider-sent attachment.
+
 ## PDF form blank hints — October 30, 2026
 
 Production v3 of the Morison questionnaire (filled at 16:14 UTC, before #719)

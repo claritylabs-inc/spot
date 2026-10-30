@@ -75,6 +75,10 @@ import {
 } from "./lib/operatorIdentity";
 import { NoWriteInputError } from "./lib/noWriteInputError";
 import {
+  matchProviderEmail,
+  providerEmailIndex,
+} from "./lib/providerRecipients";
+import {
   createProcurementInboxToken,
   inferProcurementEmailCategory,
   normalizeProcurementEmail,
@@ -475,6 +479,19 @@ export async function getProcurementRequestDetails(
       .filter((file) => file.clientFileId)
       .map((file) => [String(file.clientFileId), file.category]),
   );
+  // Each file's provider: prepared for its outreach, or sent by one of its
+  // people (the outreach conversation, a saved contact or the company domain).
+  let providers: Awaited<ReturnType<typeof providerEmailIndex>> | undefined;
+  const outreachIdForEmail = async (
+    email: string,
+    thread: Doc<"teamEmailThreads"> | null,
+  ) => {
+    if (thread?.outreachId) return thread.outreachId;
+    providers ??= await providerEmailIndex(ctx, outreaches);
+    const brokerOrgId = matchProviderEmail(providers, email)?.[0];
+    return outreaches.find((outreach) => outreach.brokerOrgId === brokerOrgId)
+      ?._id;
+  };
   const files = await Promise.all(
     fileItems
       .filter((item) => item.clientFileId && !item.removedAt)
@@ -482,7 +499,24 @@ export async function getProcurementRequestDetails(
         const file = item.clientFileId
           ? await ctx.db.get(item.clientFileId)
           : null;
+        const message = item.sourceEmailMessageId
+          ? await ctx.db.get(item.sourceEmailMessageId)
+          : null;
+        const thread = message ? await ctx.db.get(message.threadId) : null;
+        const providerOutreachId =
+          item.outreachId ??
+          (message?.direction === "inbound" && message.fromEmail
+            ? await outreachIdForEmail(message.fromEmail, thread)
+            : undefined);
         return {
+          providerOutreachId,
+          from:
+            message?.direction === "inbound"
+              ? {
+                  name: message.fromName ?? message.fromEmail ?? null,
+                  receivedAt: message.receivedAt,
+                }
+              : null,
           _id: item._id,
           requestId: item.requestId,
           clientOrgId: item.clientOrgId,

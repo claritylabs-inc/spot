@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
-import { Loader2, Sparkles } from "lucide-react";
+import { FileCheck2, Loader2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { PdfFormField as ViewerFormField } from "@claritylabs-inc/ui/components/pdf-viewer";
@@ -33,7 +33,8 @@ function toViewerFields(fields: PdfFormField[]): ViewerFormField[] {
 
 /**
  * Form actions for the PDF open in the panel, for operators. A blank form
- * offers Fill form, which starts the agent's fill. While Spot fills, everyone
+ * offers Fill form, which starts the agent's fill, or opens its filled copy
+ * when there is one. While Spot fills, everyone
  * viewing the form watches each field appear, then moves to the filled copy.
  * A filled form is edited through the agent: Edit with Spot opens a chat
  * with the form as context.
@@ -118,6 +119,25 @@ export function usePdfFormActions({
         >
           <Sparkles />
           Edit with Spot
+        </PillButton>
+      ),
+      footer: null,
+      viewerProps: {},
+    };
+
+  const { filledCopy } = formState;
+  if (filledCopy)
+    return {
+      active: true as const,
+      toolbarActions: (
+        <PillButton
+          variant="ghost"
+          size="compact"
+          title="Spot already filled this form; open the latest filled copy"
+          onClick={() => onOpen({ url: filledCopy.url, source: filledCopy.source })}
+        >
+          <FileCheck2 />
+          {`Open filled v${filledCopy.version}`}
         </PillButton>
       ),
       footer: null,
