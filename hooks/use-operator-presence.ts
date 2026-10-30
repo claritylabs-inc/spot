@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useEffectEvent,
   useId,
   useMemo,
   useState,
@@ -87,8 +88,13 @@ export function useReportEmailThreadPresence(
 const TAB_STORAGE_KEY = "operatorPresence:tab";
 let tabId: string | null = null;
 let tabIdReady: Promise<string> | null = null;
-/** When this tab was last focused or entered; the latest is the operator's active tab. */
+/**
+ * When this tab was last shown, focused or entered; the latest is the
+ * operator's active tab. Zero for a tab opened in the background until shown.
+ */
 let activeAt = 0;
+/** When this tab last sent its heartbeat. */
+let lastBeatAt = 0;
 
 /**
  * Holds a Web Lock named after `id` for this page's lifetime. False when
@@ -156,23 +162,32 @@ export function useOperatorPresenceHeartbeat({
   const emailThreadId = email?.emailThreadId;
   const activity = email?.activity;
 
+  const beat = useEffectEvent(() => {
+    lastBeatAt = dayjs().valueOf();
+    if (!activeAt && document.visibilityState === "visible") {
+      activeAt = lastBeatAt;
+    }
+    void browserTabId().then((tabId) =>
+      heartbeat({
+        pathname,
+        threadId: (threadId ?? undefined) as
+          | Id<"operatorAgentThreads">
+          | undefined,
+        emailThreadId,
+        activity,
+        followingUserId: followingUserId ?? undefined,
+        tabId,
+        activeAt,
+      }).catch(() => {}),
+    );
+  });
+
+  // A change is reported at once.
   useEffect(() => {
-    const beat = () => {
-      activeAt ||= dayjs().valueOf();
-      void browserTabId().then((tabId) =>
-        heartbeat({
-          pathname,
-          threadId: (threadId ?? undefined) as
-            | Id<"operatorAgentThreads">
-            | undefined,
-          emailThreadId,
-          activity,
-          followingUserId: followingUserId ?? undefined,
-          tabId,
-          activeAt,
-        }).catch(() => {}),
-      );
-    };
+    beat();
+  }, [pathname, threadId, emailThreadId, activity, followingUserId]);
+
+  useEffect(() => {
     // Teammates see the pointer and panels of the tab used last, so a switch
     // to this one is reported at once.
     const activate = () => {
@@ -186,7 +201,6 @@ export function useOperatorPresenceHeartbeat({
       if (document.visibilityState === "visible") activate();
       else beat();
     };
-    beat();
     const interval = window.setInterval(beat, HEARTBEAT_INTERVAL_MS);
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("focus", activate);
@@ -197,14 +211,15 @@ export function useOperatorPresenceHeartbeat({
       window.removeEventListener("focus", activate);
       document.documentElement.removeEventListener("pointerenter", activate);
     };
-  }, [
-    heartbeat,
-    pathname,
-    threadId,
-    emailThreadId,
-    activity,
-    followingUserId,
-  ]);
+  }, []);
+
+  // A background tab's timers can be held back past the active window, but
+  // its socket is not: each presence update from a teammate also beats once
+  // one is due, so a hidden tab stays present while anyone is around to see it.
+  const presence = useQuery(api.operatorPresence.listActive, {});
+  useEffect(() => {
+    if (dayjs().valueOf() - lastBeatAt >= HEARTBEAT_INTERVAL_MS) beat();
+  }, [presence]);
 
   useEffect(() => {
     // Sent synchronously: the page may be gone before a promise settles.

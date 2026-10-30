@@ -30,7 +30,8 @@ function tabRow(
 /**
  * One entry per operator from their tabs' rows (newest first): the active
  * tab's page and chat, every open page, an email thread they are replying in
- * from any tab, and whoever any tab follows.
+ * from any tab, whoever any tab follows, and the newest heartbeat. The active
+ * tab may be a throttled background tab, so it never decides who is present.
  */
 function byOperator(rows: Doc<"operatorPresence">[]) {
   const operators = new Map<
@@ -50,6 +51,7 @@ function byOperator(rows: Doc<"operatorPresence">[]) {
       null;
     return {
       latest,
+      lastSeen: newest.lastSeen,
       pathnames: [...new Set(tabs.map((tab) => tab.pathname))],
       email,
       followingUserId:
@@ -145,7 +147,7 @@ export const listActive = query({
       rows.map((row) => row.userId),
     );
     return byOperator(rows).map(
-      ({ latest, pathnames, email, followingUserId }) => ({
+      ({ latest, lastSeen, pathnames, email, followingUserId }) => ({
         ...people.get(latest.userId)!,
         self: latest.userId === operator.userId,
         pathname: latest.pathname,
@@ -155,7 +157,7 @@ export const listActive = query({
         followingUserId,
         emailThreadId: email?.emailThreadId ?? null,
         activity: email?.emailThreadId ? (email.activity ?? "viewing") : null,
-        lastSeen: latest.lastSeen,
+        lastSeen,
       }),
     );
   },
@@ -178,34 +180,36 @@ export const listSessions = query({
       rows.map((row) => row.userId),
     );
     return await Promise.all(
-      byOperator(rows).map(async ({ latest: row, email, followingUserId }) => {
-        const [thread, emailThread] = await Promise.all([
-          row.threadId ? ctx.db.get(row.threadId) : null,
-          email?.emailThreadId ? ctx.db.get(email.emailThreadId) : null,
-        ]);
-        // A private chat stays hidden from everyone but its owner.
-        const chat =
-          thread &&
-          (thread.visibility === "shared" ||
-            thread.ownerUserId === operator.userId)
-            ? { id: thread._id, title: thread.title }
-            : null;
-        return {
-          ...people.get(row.userId)!,
-          self: row.userId === operator.userId,
-          pathname: row.pathname,
-          chat,
-          email: emailThread
-            ? {
-                id: emailThread._id,
-                subject: emailThread.subject,
-                activity: email?.activity ?? "viewing",
-              }
-            : null,
-          followingUserId,
-          lastSeen: row.lastSeen,
-        };
-      }),
+      byOperator(rows).map(
+        async ({ latest: row, lastSeen, email, followingUserId }) => {
+          const [thread, emailThread] = await Promise.all([
+            row.threadId ? ctx.db.get(row.threadId) : null,
+            email?.emailThreadId ? ctx.db.get(email.emailThreadId) : null,
+          ]);
+          // A private chat stays hidden from everyone but its owner.
+          const chat =
+            thread &&
+            (thread.visibility === "shared" ||
+              thread.ownerUserId === operator.userId)
+              ? { id: thread._id, title: thread.title }
+              : null;
+          return {
+            ...people.get(row.userId)!,
+            self: row.userId === operator.userId,
+            pathname: row.pathname,
+            chat,
+            email: emailThread
+              ? {
+                  id: emailThread._id,
+                  subject: emailThread.subject,
+                  activity: email?.activity ?? "viewing",
+                }
+              : null,
+            followingUserId,
+            lastSeen,
+          };
+        },
+      ),
     );
   },
 });
