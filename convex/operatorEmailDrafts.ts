@@ -18,6 +18,10 @@ import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { extractEmailAddress, parseReplyToAddresses } from "./lib/emailAddress";
 import { requireOperator, requireOperatorForUser } from "./lib/operatorIdentity";
 import { NoWriteInputError } from "./lib/noWriteInputError";
+import {
+  threadFollowUpRequestValidator,
+  validateThreadFollowUpRequest,
+} from "./lib/threadFollowUps";
 import { isComposeKey } from "./lib/teamEmailReply";
 import { operatorSenderIdentity, type OperatorSenderIdentity } from "./lib/outreachIdentity";
 import {
@@ -69,6 +73,7 @@ async function toDraftView(
     bcc: draft.bccAddresses ?? [],
     replyTo: parseReplyToAddresses(draft.replyTo),
     from: draft.fromHeader,
+    senderUserId: draft.senderUserId ? String(draft.senderUserId) : undefined,
     html: draft.renderedHtml,
     text: draft.renderedText || draft.emailBody,
     body: withoutQuotedHistory(draft.emailBody),
@@ -130,6 +135,7 @@ export const editTargetInternal = internalQuery({
   args: { draftId: v.id("pendingEmails") },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
+    await assertNoOperatorImpersonation(ctx, operator.userId);
     const draft = await ctx.db.get(args.draftId);
     if (!draft?.operatorThreadId) throw new Error("Draft not found");
     return {
@@ -601,12 +607,10 @@ export async function checkOperatorSendApproval(
       isComposeKey(draft.directReplyKey) &&
       !draft.teamEmailThreadId;
     const browserChat = Boolean(draft.operatorThreadId) && !draft.directReplyKey;
-    // In the app any active operator may send a reply or new email as
-    // another; a chat draft is still approved only by its signer.
+    // Any active operator may send a reply, new email or chat draft as another.
     if (
       !grant ||
       !(browserReply || browserCompose || browserChat) ||
-      (browserChat && grant.actorUserId !== draft.senderUserId) ||
       grant.fingerprint !== fingerprint
     ) {
       return denied("The email was not approved, or it changed after approval.");
@@ -630,10 +634,13 @@ export async function checkOperatorSendApproval(
         "A completed operator approval for this exact draft is required.",
       );
     }
+    // Any active operator may approve sending a teammate's draft as them.
     if (confirmation.operatorUserId !== draft.senderUserId) {
-      return denied(
-        "Only the operator who signed this draft can approve sending it. Update the draft to re-sign it as you.",
-      );
+      try {
+        await requireOperatorForUser(ctx, confirmation.operatorUserId);
+      } catch {
+        return denied("The operator who approved this email is no longer active.");
+      }
     }
     const toolName = confirmation.payload.toolName;
     const input = JSON.parse(confirmation.payload.input) as Record<string, unknown>;
@@ -678,7 +685,11 @@ export const isSendConfirmedInternal = internalQuery({
  * approve, any later edit voids it, and nothing here sends.
  */
 export const approveSendInternal = internalMutation({
-  args: { draftId: v.id("pendingEmails"), expectedFingerprint: v.string() },
+  args: {
+    draftId: v.id("pendingEmails"),
+    expectedFingerprint: v.string(),
+    followUps: v.optional(threadFollowUpRequestValidator),
+  },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     await assertNoOperatorImpersonation(ctx, operator.userId);
@@ -689,19 +700,20 @@ export const approveSendInternal = internalMutation({
     const { draft } = await requireSendableOperatorEmailDraft(ctx, {
       threadId: existing.operatorThreadId,
       draftId: args.draftId,
-      operatorUserId: operator.userId,
       browser: true,
     });
     const fingerprint = await pendingEmailDraftFingerprint(draft);
     if (fingerprint !== args.expectedFingerprint) {
       throw new Error("The draft changed since you opened it. Review it again.");
     }
+    if (args.followUps) validateThreadFollowUpRequest(args.followUps);
     await ctx.db.patch(draft._id, {
       directApproval: {
         actorUserId: operator.userId,
         fingerprint,
         approvedAt: dayjs().valueOf(),
       },
+      followUps: args.followUps,
     });
     return null;
   },
@@ -713,8 +725,6 @@ export async function requireSendableOperatorEmailDraft(
   args: {
     threadId: Id<"operatorAgentThreads">;
     draftId: unknown;
-    /** The operator who would approve; must be the one who signed the draft. */
-    operatorUserId?: Id<"users">;
     /** A browser send shows the whole draft, so the approval-summary bound does not apply. */
     browser?: boolean;
   },
@@ -736,15 +746,6 @@ export async function requireSendableOperatorEmailDraft(
   }
   if (draft.sendBlockedReason) {
     throw new Error(`Draft is not ready to send: ${draft.sendBlockedReason}`);
-  }
-  if (
-    args.operatorUserId &&
-    draft.senderUserId &&
-    draft.senderUserId !== args.operatorUserId
-  ) {
-    throw new Error(
-      "This draft is signed by another operator. Update the draft to re-sign it as you before sending.",
-    );
   }
   const blocker = await operatorDraftBlocker(ctx, draft);
   if (blocker) throw new Error(blocker);

@@ -1353,7 +1353,6 @@ export async function preflightOperatorToolConfirmation(
       return;
     case "send_email_draft":
       await requireSendableOperatorEmailDraft(ctx, {
-        operatorUserId: args.operatorUserId,
         threadId: args.threadId,
         draftId: args.input.draftId,
       });

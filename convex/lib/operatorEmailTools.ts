@@ -74,6 +74,8 @@ export async function runOperatorEmailTool(
   ctx: ActionCtx,
   args: {
     operatorUserId: Id<"users">;
+    /** Signs the draft as this operator instead of `operatorUserId`, who stays the actor. */
+    senderUserId?: Id<"users">;
     threadId: Id<"operatorAgentThreads">;
     toolName: string;
     input: Record<string, unknown>;
@@ -183,7 +185,7 @@ export async function runOperatorEmailTool(
   const sender = await ctx.runQuery(
     internal.operatorEmailDrafts.resolveSenderInternal,
     {
-      operatorUserId: args.operatorUserId,
+      operatorUserId: args.senderUserId ?? args.operatorUserId,
       threadId: args.threadId,
       orgId: clientOrgId,
       draftId: typeof input.draftId === "string" ? input.draftId : undefined,

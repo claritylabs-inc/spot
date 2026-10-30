@@ -6,6 +6,10 @@ import { assertNoOperatorImpersonation } from "./lib/clientFiles";
 import { requireOperator } from "./lib/operatorIdentity";
 import { COMPOSE_KEY_PREFIX, composeTeamEmail } from "./lib/teamEmailCompose";
 import { teamReplyError } from "./lib/teamEmailReply";
+import {
+  threadFollowUpRequestValidator,
+  validateThreadFollowUpRequest,
+} from "./lib/threadFollowUps";
 
 /**
  * New emails from the team inbox. Like replies, each is an operator draft sent
@@ -82,7 +86,12 @@ export const status = query({
  * direct (not impersonating) session; nothing here sends.
  */
 export const prepareSend = mutation({
-  args: { ...composeArgs, expectedFingerprint: v.string(), idempotencyKey: v.string() },
+  args: {
+    ...composeArgs,
+    expectedFingerprint: v.string(),
+    idempotencyKey: v.string(),
+    followUps: v.optional(threadFollowUpRequestValidator),
+  },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
     await assertNoOperatorImpersonation(ctx, operator.userId);
@@ -104,11 +113,24 @@ export const prepareSend = mutation({
       }
       return { pendingEmailId: existing._id };
     }
-    const { expectedFingerprint, idempotencyKey: _key, fromUserId: _from, ...input } = args;
+    const {
+      expectedFingerprint,
+      idempotencyKey: _key,
+      fromUserId: _from,
+      followUps,
+      ...input
+    } = args;
     const composed = await composeTeamEmail(ctx, { ...input, operatorUserId: senderUserId });
     if (!composed.ok) throw teamReplyError(composed.reason);
     if (composed.preview.fingerprint !== expectedFingerprint) {
       throw teamReplyError("The email changed since it was previewed. Review it again.");
+    }
+    if (followUps) {
+      try {
+        validateThreadFollowUpRequest(followUps);
+      } catch (error) {
+        throw teamReplyError(error instanceof Error ? error.message : "Choose a follow-up schedule.");
+      }
     }
     const pendingEmailId = await ctx.db.insert("pendingEmails", {
       ...composed.fields,
@@ -120,6 +142,7 @@ export const prepareSend = mutation({
         fingerprint: composed.preview.fingerprint,
         approvedAt: dayjs().valueOf(),
       },
+      ...(followUps ? { followUps } : {}),
     });
     return { pendingEmailId };
   },

@@ -1,17 +1,25 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { EditorContent, Node, useEditor, useEditorState, type Editor } from "@tiptap/react";
+import { EditorContent, Extension, Node, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import Collaboration, { isChangeOrigin } from "@tiptap/extension-collaboration";
+import { NodeSelection, Plugin, TextSelection } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Loader2 } from "lucide-react";
 
 import { LogoIcon } from "@/components/ui/logo-icon";
 import { Kbd } from "@/components/ui/kbd";
 import { PillButton } from "@/components/ui/pill-button";
+import { takeSeed, useSharedFragment } from "@/hooks/use-shared-value";
+import { leadsSharedRoom, mergeText, noteTeammateChange } from "@/lib/collab/doc";
+import { findTextLinks } from "@/lib/text-links";
 import { cn } from "@/lib/utils";
 import { typeStyle } from "@/lib/typography";
+
+/** How long a browser not leading the room waits for the leader to apply outside text. */
+const FOLLOWER_APPLY_DELAY_MS = 1_500;
 
 /** A fact Spot could not fill, written `[needs: hint]` in the reply text. */
 const BLANK_PATTERN = /\[needs:\s*([^\]]+)\]/g;
@@ -55,6 +63,54 @@ const Blank = Node.create({
       Tab: ({ editor }) => selectBlank(editor, 1),
       "Shift-Tab": ({ editor }) => selectBlank(editor, -1),
     };
+  },
+});
+
+function linkDecorations(doc: PMNode) {
+  const decorations: Decoration[] = [];
+  doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return;
+    for (const link of findTextLinks(node.text))
+      decorations.push(
+        Decoration.inline(pos + link.start, pos + link.end, {
+          nodeName: "a",
+          href: link.href,
+          class: "reply-editor-link",
+          title: `${link.href}\n⌘-click to open`,
+        }),
+      );
+  });
+  return DecorationSet.create(doc, decorations);
+}
+
+/** Web addresses in the text show as links; ⌘- or Ctrl-click opens one in a new tab. */
+const TextLinks = Extension.create({
+  name: "textLinks",
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        state: {
+          init: (_, state) => linkDecorations(state.doc),
+          apply: (tr, decorations) =>
+            tr.docChanged ? linkDecorations(tr.doc) : decorations,
+        },
+        props: {
+          decorations(state) {
+            return this.getState(state);
+          },
+          handleClick: (_view, _pos, event) => {
+            if (!(event.metaKey || event.ctrlKey)) return false;
+            const link =
+              event.target instanceof Element
+                ? event.target.closest<HTMLAnchorElement>("a.reply-editor-link")
+                : null;
+            if (!link) return false;
+            window.open(link.href, "_blank", "noopener,noreferrer");
+            return true;
+          },
+        },
+      }),
+    ];
   },
 });
 
@@ -135,7 +191,9 @@ export function ReplyEditor({
   onSubmit,
   onEscape,
   className,
+  scrollClassName,
   footer,
+  collabKey = null,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -149,13 +207,35 @@ export function ReplyEditor({
   onSubmit: () => void;
   onEscape: () => void;
   className?: string;
+  /** Overrides the text area's height limit, e.g. to fill an artifact. */
+  scrollClassName?: string;
   footer?: string;
+  /** Written together with teammates on the page through this shared document. */
+  collabKey?: string | null;
 }) {
   const callbacks = useRef({ onChange, onFocusChange, onSubmit, onEscape, accept: (): boolean => false });
   useEffect(() => {
     callbacks.current = { onChange, onFocusChange, onSubmit, onEscape, accept };
   });
+  const fragment = useSharedFragment(collabKey);
+  // The text this editor last reported or took from outside.
+  const lastValue = useRef(value);
+  // The last text shared with teammates: unsaved edits made before joining a
+  // document a teammate started are measured from it and merged in.
+  const synced = useRef(value);
+  const joining = useRef<{ base: string; local: string } | null>(null);
+  function mergeOnJoin(current: Editor) {
+    const join = joining.current;
+    if (current.isDestroyed || !join) return;
+    joining.current = null;
+    const room = toText(current.state.doc);
+    const merged = mergeText(join.base, join.local, room);
+    synced.current = merged;
+    if (merged !== room) current.commands.setContent(toDoc(merged));
+  }
 
+  // Shared, the content comes from the room's document; the editor is rebuilt
+  // when the page joins or leaves the room.
   const editor = useEditor({
     immediatelyRender: false,
     autofocus: autoFocus ? "end" : false,
@@ -178,10 +258,13 @@ export function ReplyEditor({
         underline: false,
         hardBreak: false,
         trailingNode: false,
+        ...(fragment ? { undoRedo: false as const } : {}),
       }),
       Blank,
+      TextLinks,
+      ...(fragment ? [Collaboration.configure({ fragment })] : []),
     ],
-    content: toDoc(value),
+    ...(fragment ? {} : { content: toDoc(value) }),
     editorProps: {
       attributes: { "aria-label": "Reply", "aria-multiline": "true", role: "textbox" },
       // Pasted text becomes plain lines and blanks, never formatting.
@@ -201,16 +284,53 @@ export function ReplyEditor({
         return false;
       },
     },
-    onUpdate: ({ editor }) => callbacks.current.onChange(toText(editor.state.doc)),
+    onCreate: ({ editor }) => {
+      // The browser that started the shared document fills it; any other
+      // merges its unsaved edits into it once it is shown.
+      if (fragment && takeSeed(fragment))
+        editor.commands.setContent(toDoc(lastValue.current), { emitUpdate: false });
+      else if (fragment && lastValue.current !== synced.current)
+        joining.current = { base: synced.current, local: lastValue.current };
+    },
+    onUpdate: ({ editor, transaction }) => {
+      const teammate = isChangeOrigin(transaction);
+      // Not inside this update: the merge dispatches its own change.
+      if (teammate && joining.current) window.setTimeout(() => mergeOnJoin(editor), 0);
+      const next = toText(editor.state.doc);
+      if (next === lastValue.current) return;
+      lastValue.current = next;
+      if (fragment) synced.current = next;
+      if (teammate) noteTeammateChange();
+      callbacks.current.onChange(next);
+    },
     onFocus: () => callbacks.current.onFocusChange(true),
     onBlur: () => callbacks.current.onFocusChange(false),
-  });
+  }, [fragment]);
 
-  // Text set from outside (a Spot suggestion, a cleared send) replaces the document.
+  // Text set from outside (a Spot suggestion, a cleared send) replaces the
+  // document. A rebuilt editor takes its content from the room or `value`
+  // itself; pushing `value` in again would race the room. Shared, the leading
+  // browser applies it and the room carries it to the rest, since two
+  // browsers writing the same text would double it; others apply what never
+  // arrived after a moment.
+  const appliedTo = useRef(editor);
   useEffect(() => {
-    if (!editor || toText(editor.state.doc) === value) return;
-    editor.commands.setContent(toDoc(value), { emitUpdate: false });
-  }, [editor, value]);
+    if (!editor || editor.isDestroyed) return;
+    if (appliedTo.current !== editor) {
+      appliedTo.current = editor;
+      return;
+    }
+    const apply = () => {
+      if (editor.isDestroyed) return;
+      if (value === lastValue.current || toText(editor.state.doc) === value) return;
+      editor.commands.setContent(toDoc(value), { emitUpdate: false });
+      lastValue.current = value;
+      synced.current = value;
+    };
+    if (!fragment || leadsSharedRoom()) return apply();
+    const timer = window.setTimeout(apply, FOLLOWER_APPLY_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [editor, fragment, value]);
   useEffect(() => {
     editor?.setEditable(!disabled && !readOnly);
   }, [editor, disabled, readOnly]);
@@ -263,7 +383,7 @@ export function ReplyEditor({
           {placeholder}
         </span>
       ) : null}
-      <div className="max-h-72 overflow-y-auto px-4 pt-2.5 pb-2">
+      <div className={cn("max-h-72 overflow-y-auto px-4 pt-2.5 pb-2", scrollClassName)}>
         <EditorContent
           editor={editor}
           className={cn(

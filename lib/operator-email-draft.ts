@@ -15,6 +15,8 @@ export type OperatorEmailDraftView = {
   bcc: string[];
   replyTo: string[];
   from?: string;
+  /** The operator it is signed and sent as. */
+  senderUserId?: string;
   html?: string;
   text: string;
   /** The editable message, without signature or quoted history. */

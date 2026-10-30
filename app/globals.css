@@ -535,6 +535,17 @@ input[type="number"]:not(:focus)::-webkit-outer-spin-button {
   }
 }
 
+/* Reply editor links: plain text that reads as a link; ⌘-click opens it. */
+.reply-editor a.reply-editor-link {
+  color: var(--color-blue-700, #1d4ed8);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: text;
+}
+.dark .reply-editor a.reply-editor-link {
+  color: var(--color-blue-300, #93c5fd);
+}
+
 /* Reply editor blanks: flat tinted chips, gray while empty and blue with a suggestion. */
 .reply-editor [data-blank] {
   --blank-tone: var(--muted-foreground);

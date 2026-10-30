@@ -308,8 +308,8 @@ export const claimOperatorInboxSendInternal = internalMutation({
  * The last gate before Resend is asked to send. Claim-time checks are stale
  * after inbox, attachment and draft I/O, so everything is checked again in the
  * same transaction that advances the attempt to `sending`: the signer is still
- * an active operator not impersonating, the confirming run is still theirs and
- * live, the exact approval and fingerprint still hold, and the sender
+ * an active operator not impersonating, the confirming run is still the
+ * approver's and live, the exact approval and fingerprint still hold, and the sender
  * identity, Always CC snapshot and link targets are unchanged.
  */
 export const beginOperatorInboxSendingInternal = internalMutation({
@@ -364,9 +364,10 @@ export const beginOperatorInboxSendingInternal = internalMutation({
         confirmation?.payload.kind === "operator_tool_action"
           ? await ctx.db.get(confirmation.payload.runId)
           : null;
+      // The approver's own run; they may be sending as a teammate.
       if (
         !run ||
-        run.operatorUserId !== attempt.senderUserId ||
+        run.operatorUserId !== confirmation?.operatorUserId ||
         run.status !== "running" ||
         run.cancellationRequestedAt
       ) {

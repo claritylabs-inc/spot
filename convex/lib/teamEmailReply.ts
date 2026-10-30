@@ -12,6 +12,7 @@ import { isSpotOutboundAddress } from "./resend";
 import { buildOperatorSignature, teamOwnedDomains } from "./teamEmail";
 import { providerForEmail } from "./providerRecipients";
 import { teamTargetProblem } from "./teamEmailStore";
+import { findTextLinks } from "../../lib/text-links";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -153,10 +154,21 @@ export type TeamReplyComposition =
     }
   | { ok: false; reason: string };
 
+/** Escaped text with its web addresses as links. */
+function linkedHtml(text: string) {
+  let html = "";
+  let last = 0;
+  for (const link of findTextLinks(text)) {
+    html += `${escapeHtml(text.slice(last, link.start))}<a href="${escapeHtml(link.href)}">${escapeHtml(text.slice(link.start, link.end))}</a>`;
+    last = link.end;
+  }
+  return html + escapeHtml(text.slice(last));
+}
+
 export function paragraphsHtml(text: string) {
   return text
     .split(/\n{2,}/)
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
+    .map((paragraph) => `<p>${linkedHtml(paragraph).replace(/\n/g, "<br>")}</p>`)
     .join("");
 }
 

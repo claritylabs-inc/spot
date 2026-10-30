@@ -300,8 +300,8 @@ function outboundMessageIdForPending(id: Id<"pendingEmails">) {
 
 /**
  * Operator drafts leave only from the signing operator's own inbox, under that
- * operator's completed exact approval. The delivery claim rechecks the
- * approval, the approver being the signer and the draft fingerprint.
+ * an active operator's completed exact approval. The delivery claim rechecks the
+ * approval, an active approver and the draft fingerprint.
  */
 async function sendOperatorDraft(
   ctx: ActionCtx,

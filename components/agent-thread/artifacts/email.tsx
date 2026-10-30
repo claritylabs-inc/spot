@@ -5,7 +5,6 @@ import { useAction, useMutation } from "convex/react";
 import { Mail as MailIcon, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { getUserFacingErrorMessage } from "@/lib/user-facing-error";
-import { useLiveRecordDraft } from "@/lib/sync/use-live-record-draft";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { PillButton } from "@/components/ui/pill-button";
@@ -15,11 +14,7 @@ import {
   type StatusPresentation,
 } from "@claritylabs-inc/ui/components/status-tag";
 import { ChatAttachmentList } from "@/components/chat/attachment-chip";
-import {
-  EmailComposeInput,
-  EmailComposeMessage,
-  EmailComposeRow,
-} from "@/components/email/compose-fields";
+import { LinkedText } from "@/components/email/linked-text";
 import {
   useCachedQuery,
   useUpdateCachedQuery,
@@ -175,7 +170,7 @@ export function EmailBodyPreview({ html, text }: { html?: string; text: string }
 
   return (
     <div className={`whitespace-pre-wrap break-words text-foreground/90 [overflow-wrap:anywhere] ${typeStyle("body.default")}`}>
-      {text}
+      <LinkedText text={text} />
     </div>
   );
 }
@@ -530,28 +525,7 @@ export function EmailStackCard({
   );
 }
 
-export type EmailArtifactDraft = {
-  to: string;
-  cc: string;
-  bcc: string;
-  subject: string;
-  body: string;
-};
-
-const NO_DRAFT: EmailArtifactDraft = {
-  to: "",
-  cc: "",
-  bcc: "",
-  subject: "",
-  body: "",
-};
-
-/**
- * One email in the chat artifact panel: subject and status, mail headers, the
- * body, and actions. With `edit`, the draft is shown directly in the shared
- * compose fields; local changes save through `onSave` and the server
- * re-renders the draft.
- */
+/** One email in the chat artifact panel: subject and status, mail headers, the body, and actions. */
 export function EmailArtifact({
   eyebrow,
   subject,
@@ -571,7 +545,6 @@ export function EmailArtifact({
   text,
   note,
   actions,
-  edit,
 }: {
   eyebrow?: ReactNode;
   subject: string;
@@ -592,168 +565,36 @@ export function EmailArtifact({
   /** Muted line at the start of the action bar, e.g. why a draft cannot be sent. */
   note?: ReactNode;
   actions?: ReactNode;
-  edit?: {
-    draft: EmailArtifactDraft;
-    onSave: (draft: EmailArtifactDraft) => Promise<void>;
-  };
 }) {
-  // Unsaved local changes over the saved draft: a field left alone shows the
-  // agent's latest revision as it is saved.
-  const live = useLiveRecordDraft("email-draft", edit?.draft ?? NO_DRAFT);
-  const changed = Object.keys(live.patch).length > 0;
-  const [saving, setSaving] = useState(false);
-  const draft = edit ? live.value : null;
-  const update = (patch: Partial<EmailArtifactDraft>) =>
-    live.setValue((current) => ({ ...current, ...patch }));
-
-  async function save() {
-    if (!edit || !changed || saving) return;
-    setSaving(true);
-    const revision = live.revision;
-    try {
-      await edit.onSave(live.value);
-      live.acknowledge(revision);
-      toast.success("Draft saved");
-    } catch (error) {
-      toast.error(getUserFacingErrorMessage(error, "Failed to save draft"));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const footer =
-    note || actions || changed ? (
-      <>
-        {note ? (
-          <p
-            className={`mr-auto min-w-0 text-muted-foreground/60 ${typeStyle("caption.default")}`}
-          >
-            {note}
-          </p>
-        ) : null}
-        {changed ? (
-          <>
-            <PillButton
-              type="button"
-              size="compact"
-              variant="ghost"
-              disabled={saving}
-              onClick={() => live.acknowledge(live.revision)}
-            >
-              Discard changes
-            </PillButton>
-            <ActionPill
-              type="button"
-              size="compact"
-              variant="primary"
-              disabled={saving || !live.value.to.trim()}
-              busy={saving}
-              onClick={() => void save()}
-            >
-              Save
-            </ActionPill>
-          </>
-        ) : (
-          actions
-        )}
-      </>
-    ) : null;
-
-  const header = {
-    eyebrow,
-    title: draft ? draft.subject || "(no subject)" : subject,
-    status: (
-      <StatusTag
-        indicator={status.indicator}
-        tone={status.tone}
-        className="shrink-0"
-      >
-        {status.label}
-      </StatusTag>
-    ),
-    closeLabel,
-    onClose,
-    footer,
-  };
-
-  if (draft) {
-    return (
-      <ChatArtifact {...header} bodyClassName="p-0">
-        <div
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault();
-              void save();
-            }
-          }}
-        >
-          {from ? (
-            <EmailComposeRow label="From">
-              <span className="min-w-0 truncate">{from}</span>
-            </EmailComposeRow>
-          ) : null}
-          <EmailComposeRow label="To">
-            <EmailComposeInput
-              aria-label="To"
-              type="email"
-              value={draft.to}
-              disabled={saving}
-              onChange={(event) => update({ to: event.target.value })}
-            />
-          </EmailComposeRow>
-          <EmailComposeRow label="Cc">
-            <EmailComposeInput
-              aria-label="Cc"
-              placeholder="Separate addresses with commas"
-              value={draft.cc}
-              disabled={saving}
-              onChange={(event) => update({ cc: event.target.value })}
-            />
-          </EmailComposeRow>
-          <EmailComposeRow label="Bcc">
-            <EmailComposeInput
-              aria-label="Bcc"
-              placeholder="Separate addresses with commas"
-              value={draft.bcc}
-              disabled={saving}
-              onChange={(event) => update({ bcc: event.target.value })}
-            />
-          </EmailComposeRow>
-          <EmailComposeRow label="Subject">
-            <EmailComposeInput
-              aria-label="Subject"
-              maxLength={200}
-              value={draft.subject}
-              disabled={saving}
-              onChange={(event) => update({ subject: event.target.value })}
-            />
-          </EmailComposeRow>
-          {attachments?.length ? (
-            <EmailComposeRow label="Files">
-              <ChatAttachmentList
-                attachments={attachments}
-                threadId={threadId}
-                operatorThreadId={operatorThreadId}
-                size="compact"
-                collapseAfter={2}
-              />
-            </EmailComposeRow>
-          ) : null}
-          <EmailComposeMessage
-            aria-label="Message"
-            value={draft.body}
-            disabled={saving}
-            onChange={(event) => update({ body: event.target.value })}
-            className="min-h-64 py-4"
-          />
-        </div>
-      </ChatArtifact>
-    );
-  }
-
   return (
     <ChatArtifact
-      {...header}
+      eyebrow={eyebrow}
+      title={subject}
+      status={
+        <StatusTag
+          indicator={status.indicator}
+          tone={status.tone}
+          className="shrink-0"
+        >
+          {status.label}
+        </StatusTag>
+      }
+      closeLabel={closeLabel}
+      onClose={onClose}
+      footer={
+        note || actions ? (
+          <>
+            {note ? (
+              <p
+                className={`mr-auto min-w-0 text-muted-foreground/60 ${typeStyle("caption.default")}`}
+              >
+                {note}
+              </p>
+            ) : null}
+            {actions}
+          </>
+        ) : null
+      }
       meta={
         <ChatArtifactMeta>
           <ChatArtifactMetaRow label="From" value={from} />
