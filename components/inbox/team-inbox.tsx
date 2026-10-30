@@ -820,8 +820,8 @@ export function TeamInbox({
     `Shared team inbox, ${MAILBOX_TABS.find((tab) => tab.value === mailbox)?.label ?? mailbox} mailbox`,
     filter === "unlinked"
       ? "unlinked conversations only"
-      : filter !== "all" && `owned by ${ownerName ?? "operator"} (${filter})`,
-    clientOrgId && `client ${clientName ?? "organization"} (${clientOrgId})`,
+      : filter !== "all" && `owned by ${ownerName ?? "one operator"}`,
+    clientOrgId && `client ${clientName ?? "filter"}`,
     category !== ALL_CATEGORIES &&
       `category ${CATEGORY_LABELS[category as Category] ?? category}`,
     term && `searching loaded conversations for "${term.slice(0, 100)}"`,
@@ -829,18 +829,29 @@ export function TeamInbox({
       `${visible.length} conversation${visible.length === 1 ? "" : "s"} shown${canLoadMore ? ", more older mail" : ""}`,
     checkedVisible.length > 0 &&
       `checked ${operatorContextList(
-        checkedVisible.map(
-          (thread) => `"${thread.subject.slice(0, 60)}" (${thread._id})`,
-        ),
+        checkedVisible.map((thread) => `"${thread.subject.slice(0, 60)}"`),
         3,
       )}`,
   );
+  const related = [
+    ...(clientOrgId
+      ? [{ kind: "organization", id: clientOrgId, label: clientName }]
+      : []),
+    ...(filter !== "all" && filter !== "unlinked"
+      ? [{ kind: "user", id: filter, label: ownerName }]
+      : []),
+    ...checkedVisible.map((thread) => ({
+      kind: "team_email_thread",
+      id: thread._id,
+      label: thread.subject,
+    })),
+  ];
 
   return (
     <section className="@container space-y-3">
       {scope.kind === "team" ? (
         <OperatorPageContextRegistration
-          context={{ pageType: "operator_inbox", summary: pageSummary }}
+          context={{ pageType: "operator_inbox", summary: pageSummary, related }}
         />
       ) : null}
       {scope.kind === "team" ? (

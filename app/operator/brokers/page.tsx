@@ -211,10 +211,8 @@ export default function OperatorBrokersPage() {
     regions.length > 0 ||
     lines.length > 0 ||
     statuses.length > 0;
-  const selectedNames = (rows ?? []).flatMap((row) =>
-    selection.isSelected(row.broker._id)
-      ? [`${row.broker.name} (${row.broker._id})`]
-      : [],
+  const selectedRows = (rows ?? []).filter((row) =>
+    selection.isSelected(row.broker._id),
   );
   const pageSummary = operatorContextSummary(
     "Insurance providers",
@@ -224,8 +222,11 @@ export default function OperatorBrokersPage() {
     regions.length > 0 && `serving ${operatorContextList(regions)}`,
     lines.length > 0 && `lines ${operatorContextList(lines)}`,
     filteredRows && rows && `${filteredRows.length} of ${rows.length} shown`,
-    selectedNames.length > 0 &&
-      `selected ${operatorContextList(selectedNames, 3)}`,
+    selectedRows.length > 0 &&
+      `selected ${operatorContextList(
+        selectedRows.map((row) => row.broker.name),
+        3,
+      )}`,
   );
   // Changing filters drops a selection the rows may no longer show.
   const filterSetter =
@@ -252,7 +253,15 @@ export default function OperatorBrokersPage() {
       }
     >
       <OperatorPageContextRegistration
-        context={{ pageType: "operator_brokers", summary: pageSummary }}
+        context={{
+          pageType: "operator_brokers",
+          summary: pageSummary,
+          related: selectedRows.map((row) => ({
+            kind: "broker",
+            id: row.broker._id,
+            label: row.broker.name,
+          })),
+        }}
       />
       <div className="@container/brokers space-y-4">
         <ListToolbar
