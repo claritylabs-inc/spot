@@ -285,7 +285,11 @@ const DOCUMENT_CATEGORY_LABELS = {
   supporting: "supporting documents",
 } as const;
 
-/** What the open request drawer shows, for the agent's page context. */
+/**
+ * What the open request drawer shows, for the agent's page context. The
+ * prefetch matches the notes and packet link texts
+ * (`procurementRequestSection` in `convex/lib/pageContext/procurement.ts`).
+ */
 function requestPanelContext(
   panel: RequestPanel | null,
   details: RequestDetails,
