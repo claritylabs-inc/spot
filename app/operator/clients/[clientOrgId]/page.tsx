@@ -18,9 +18,14 @@ import {
 } from "@/convex/lib/featureFlags";
 import { AppShell } from "@/components/app-shell";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
+import {
+  clientContextName,
+  pageContextSummary,
+} from "@/components/operator-agent/operator-client-page-context";
 import { AgentChannelsSection } from "@/components/settings/agent-channels-section";
 import { FeatureFlagToggleRow } from "@/components/settings/feature-flag-toggle-row";
 import { TeamSection } from "@/components/settings/team-section";
+import { usePageContextLayer } from "@/hooks/use-page-context";
 import { TabsContent, TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
 import { PageTabs, PageTabsList } from "@/components/ui/folder-tabs";
 
@@ -111,6 +116,18 @@ function ClientWorkspace({
       setSavingFeatureFlagId(null);
     }
   }
+
+  usePageContextLayer({
+    pageType: "operator_client",
+    entityId: clientOrgId,
+    summary: pageContextSummary([
+      `Client: ${clientContextName(client)}`,
+      `access status ${client.clientAccessStatus}`,
+      activeTab === "team"
+        ? `Team tab${teamInviteOpen ? ", invite member drawer open" : ""}`
+        : `Settings tab, ${settingsTab === "features" ? "Beta features" : "Agent channels"} section`,
+    ]),
+  });
 
   useEffect(() => {
     if (activeTab === "settings") {
@@ -241,7 +258,9 @@ function OperatorClientSettingsPage() {
         context={{
           pageType: "operator_client",
           entityId: clientOrgId,
-          summary: client ? `Client: ${client.dba ?? client.name}` : "Current client",
+          summary: client
+            ? `Client: ${clientContextName(client)}`
+            : "Current client",
         }}
       />
       {clients === undefined || supportDetails === undefined ? (

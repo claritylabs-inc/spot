@@ -6,8 +6,13 @@ import { Loader2 } from "lucide-react";
 import {
   OperatorComplianceWorkspace,
   type ComplianceCertificatesTabArgs,
+  type ComplianceContextState,
   type ComplianceWorkspaceShellArgs,
 } from "@/components/compliance-page";
+import {
+  clientContextName,
+  pageContextSummary,
+} from "@/components/operator-agent/operator-client-page-context";
 import { AppShell } from "@/components/app-shell";
 import {
   OperationalPanel,
@@ -21,6 +26,29 @@ import {
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
 import { OperatorCertificatesWorkspace } from "../certificates/operator-certificates-workspace";
+
+function compliancePageContextSummary(
+  clientName: string,
+  state: ComplianceContextState,
+) {
+  const requirement = state.selectedRequirement;
+  const source = state.selectedSource;
+  const scope = state.scope === "vendors" ? "vendor" : "own";
+  return pageContextSummary([
+    requirement &&
+      `Open requirement “${requirement.title.slice(0, 120)}” (requirementId ${requirement.id}${requirement.lineOfBusiness ? `, ${requirement.lineOfBusiness}` : ""}, ${requirement.status}${requirement.sourceId ? `, source ${requirement.sourceId}` : ""})`,
+    source &&
+      `Open requirement source “${source.title.slice(0, 120)}” (sourceId ${source.id}${source.holderName ? `, holder ${source.holderName.slice(0, 80)}` : ""}${source.requirementCount === undefined ? "" : `, ${source.requirementCount} requirements`})`,
+    state.certificateSourceId &&
+      `certificate drawer open for source ${state.certificateSourceId}`,
+    `Compliance for ${clientName}`,
+    state.view === "sources"
+      ? `Sources tab${state.sourceCount === undefined ? "" : `, ${state.sourceCount} sources`}`
+      : `${scope} requirements${state.requirementCount === undefined ? "" : `, ${state.requirementCount} shown`}`,
+    state.creationDrawer === "import" && "import requirements drawer open",
+    state.creationDrawer === "manual" && "add requirement drawer open",
+  ]);
+}
 
 export default function OperatorClientCompliancePage() {
   const { clientOrgId } = useParams<{ clientOrgId: string }>();
@@ -86,6 +114,11 @@ export default function OperatorClientCompliancePage() {
         role: "admin",
         featureFlags: client.featureFlags,
       }}
+      pageContext={(state) => ({
+        pageType: "operator_client_compliance",
+        entityId: client._id,
+        summary: compliancePageContextSummary(clientContextName(client), state),
+      })}
       renderCertificatesTab={({
         onActions,
         onRightPanel,
