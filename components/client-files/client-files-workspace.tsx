@@ -15,6 +15,10 @@ import { toast } from "sonner";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useFollowedState } from "@/hooks/use-followed-state";
+import {
+  usePageContextLayer,
+  type PageContext,
+} from "@/hooks/use-page-context";
 import { useTableSort } from "@/hooks/use-table-sort";
 import { usePdf } from "@/components/pdf-context";
 import { SettingsDrawer } from "@/components/settings/settings-drawer";
@@ -67,6 +71,25 @@ type ClientFilesPanel =
   | { kind: "upload"; clientVisible?: boolean }
   | { kind: "edit" | "image"; fileId: string }
   | null;
+
+/** What the files workspace shows, for an agent page context. */
+export type ClientFilesContextState = {
+  view: ClientFilesView | "all";
+  status: ClientFilesStatus;
+  shownCount: number;
+  truncated: boolean;
+  uploadOpen: boolean;
+  openFile: {
+    id: Id<"clientFiles">;
+    name: string;
+    contentType: string;
+    clientVisible: boolean;
+    policyId?: Id<"policies">;
+    policyLabel: string | null;
+    archived: boolean;
+    panel: "edit" | "image";
+  } | null;
+};
 
 function clientFilesEmptyState(
   status: ClientFilesStatus,
@@ -649,9 +672,12 @@ export function ClientFilesWorkspace({
   onActions,
   onRightPanel,
   notice,
+  pageContext,
 }: {
   clientOrgId: Id<"organizations">;
   readOnly?: boolean;
+  /** Builds the agent page context layered over the page's while files are shown. */
+  pageContext?: (state: ClientFilesContextState) => PageContext | null;
   /** Page-level notice (such as read-only), shown under the view tabs. */
   notice?: ReactNode;
   /**
@@ -852,6 +878,30 @@ export function ClientFilesWorkspace({
     `clients:${clientOrgId}:files:${status}:${view}`,
     visibleFiles,
     CLIENT_FILE_SORT_COLUMNS,
+  );
+  usePageContextLayer(
+    pageContext && listsReady && result !== undefined
+      ? pageContext({
+          view: hasViewTabs ? view : "all",
+          status,
+          shownCount: visibleFiles.length,
+          truncated: Boolean(result.truncated),
+          uploadOpen: panel?.kind === "upload" && canUpload,
+          openFile:
+            panelFile && (panel?.kind === "edit" || panel?.kind === "image")
+              ? {
+                  id: panelFile._id,
+                  name: panelFile.name,
+                  contentType: panelFile.contentType,
+                  clientVisible: panelFile.clientVisible,
+                  policyId: panelFile.policyId,
+                  policyLabel: panelFile.policyLabel,
+                  archived: panelFile.archivedAt !== undefined,
+                  panel: panel.kind,
+                }
+              : null,
+        })
+      : null,
   );
 
   if (!listsReady || result === undefined || policyRows === undefined) {

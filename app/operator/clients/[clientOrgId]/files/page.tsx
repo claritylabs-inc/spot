@@ -6,8 +6,15 @@ import { useState, type ReactNode } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
-import { ClientFilesWorkspace } from "@/components/client-files/client-files-workspace";
+import {
+  ClientFilesWorkspace,
+  type ClientFilesContextState,
+} from "@/components/client-files/client-files-workspace";
 import { OperatorPageContextRegistration } from "@/components/operator-agent/operator-page-context";
+import {
+  clientContextName,
+  pageContextSummary,
+} from "@/components/operator-agent/operator-client-page-context";
 import {
   OperationalPanel,
   OperationalPanelBody,
@@ -20,6 +27,21 @@ import {
   useCachedOperatorCurrent,
 } from "@/lib/sync/operator-cached-queries";
 import { typeStyle } from "@/lib/typography";
+
+function filesPageContextSummary(
+  clientName: string,
+  state: ClientFilesContextState,
+) {
+  const file = state.openFile;
+  return pageContextSummary([
+    file
+      ? `${file.panel === "image" ? "Viewing" : "Editing"} client file “${file.name.slice(0, 120)}” (clientFileId ${file.id}, ${file.contentType}, ${file.clientVisible ? "shared with client" : "private"}${file.archived ? ", archived" : ""}${file.policyId ? `, linked to policy ${file.policyLabel ?? ""} (${file.policyId})` : ", no linked policy"})`
+      : null,
+    `Files held for ${clientName}`,
+    `${state.status === "archived" ? "archived" : "active"} ${state.view === "all" ? "" : `${state.view} `}files, ${state.shownCount} shown${state.truncated ? " (latest 200 only)" : ""}`,
+    state.uploadOpen && "upload drawer open",
+  ]);
+}
 
 export default function OperatorClientFilesPage() {
   const { clientOrgId } = useParams<{ clientOrgId: string }>();
@@ -57,7 +79,7 @@ export default function OperatorClientFilesPage() {
           pageType: "operator_client_files",
           entityId: clientOrgId,
           summary: client
-            ? `Files held for ${client.name}`
+            ? `Files held for ${clientContextName(client)}`
             : "Current client files",
         }}
       />
@@ -106,6 +128,11 @@ export default function OperatorClientFilesPage() {
             }
             onActions={setWorkspaceActions}
             onRightPanel={setRightPanel}
+            pageContext={(state) => ({
+              pageType: "operator_client_files",
+              entityId: clientOrgId,
+              summary: filesPageContextSummary(clientContextName(client), state),
+            })}
           />
         </main>
       )}
