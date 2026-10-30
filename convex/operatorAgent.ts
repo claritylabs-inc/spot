@@ -99,7 +99,7 @@ import {
   assertExternalBrokerIdentity,
   isSpotOwnedBrokerIdentity,
 } from "./lib/brokerProfileValidation";
-import { v, type Infer } from "convex/values";
+import { ConvexError, v, type Infer } from "convex/values";
 import { cancelRouterJobForInvocation } from "./routerJobs";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -208,8 +208,9 @@ import {
 } from "./lib/operatorBrokerProfiles";
 import { readOrgWiki, upsertOrgWikiDocumentByOperator } from "./orgWiki";
 import { loadEmailPrompts } from "./lib/emailPrompts";
-import { enabledOperatorSkills } from "./lib/operatorSkillStore";
+import { enabledOperatorSkills, findLoadableOperatorSkill } from "./lib/operatorSkillStore";
 import {
+  MAX_REQUESTED_SKILLS,
   OPERATOR_SKILL_TOOL_NAMES,
   RUN_SKILL_SCRIPT_TOOL,
 } from "./lib/operatorSkills";
@@ -1694,6 +1695,8 @@ export async function enqueueOperatorMessage(
     requireUploadIntent?: boolean;
     /** Operator asked for a plan before acting (plan mode). */
     planRequested?: boolean;
+    /** Skills invoked with `/name`, already validated as loadable. */
+    requestedSkills?: string[];
     mcpClientId?: string;
   },
 ) {
@@ -1888,6 +1891,7 @@ export async function enqueueOperatorMessage(
     ...(args.channel === "email" && args.emailReadOnly ? { emailReadOnly: true } : {}),
     status: "queued",
     ...(args.planRequested ? { planRequested: true } : {}),
+    ...(args.requestedSkills?.length ? { requestedSkills: args.requestedSkills } : {}),
     checkpoint: { iteration: 0, executionCount: 0 },
     createdAt: now,
     updatedAt: now,
@@ -5826,9 +5830,18 @@ export const sendMessage = mutation({
     pageContext: v.optional(pageContextValidator),
     attachments: v.optional(v.array(operatorAttachmentValidator)),
     planMode: v.optional(v.boolean()),
+    /** Skills invoked with `/name` in the composer. */
+    skills: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const operator = await requireOperator(ctx);
+    const requestedSkills = [...new Set(args.skills ?? [])];
+    if (requestedSkills.length > MAX_REQUESTED_SKILLS)
+      throw new ConvexError(`Invoke at most ${MAX_REQUESTED_SKILLS} skills in one message.`);
+    for (const name of requestedSkills) {
+      if (!(await findLoadableOperatorSkill(ctx, operator.userId, name)))
+        throw new ConvexError(`/${name} is not one of your enabled skills.`);
+    }
     const threadId =
       args.threadId ??
       (await insertOperatorThread(ctx, {
@@ -5845,6 +5858,7 @@ export const sendMessage = mutation({
       attachments: args.attachments,
       requireUploadIntent: Boolean(args.attachments?.length),
       planRequested: args.planMode,
+      requestedSkills,
     });
     return { threadId, ...result };
   },
@@ -5903,6 +5917,7 @@ export const rerunTurn = mutation({
       attachments: original.attachments,
       emailContent: original.emailContent,
       planRequested: source.planRequested,
+      requestedSkills: source.requestedSkills,
       toolArtifacts: [{ type: "operator_turn_rerun", data: args }],
     });
     const summary = [

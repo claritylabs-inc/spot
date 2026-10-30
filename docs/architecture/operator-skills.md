@@ -42,6 +42,19 @@ enabled skills (personal first, then shared, by name; 160-character
 descriptions; at most 50 skills or 8 KB). It states that skills are guidance
 only and cannot grant tools, skip approvals or change authorization.
 
+## Invoking a skill with /
+
+In operator chat, typing `/` opens a picker of the operator's enabled skills
+(`operatorSkills.invocable`: personal over shared), with each name and
+description. Choosing one adds a `/name` chip. On send, `operatorAgent.sendMessage`
+receives `skills` (at most 3, each checked as loadable for the sender) and the
+run stores `requestedSkills`. The runner loads those skills once per action
+(`load_skill`'s executor) and adds a `REQUESTED SKILLS` block with their
+instructions (about 24 KB in total, the rest through `read_skill_file`) after
+the OPERATOR SKILLS block, so the agent follows them without deciding to load
+them. Turn reruns keep the skills. `/` still opens mailboxes in the client
+agent, which has no skills.
+
 ## Script execution
 
 `run_skill_script` runs one script in a fresh, non-persistent cl-router `exec`

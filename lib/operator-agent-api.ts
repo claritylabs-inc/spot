@@ -137,6 +137,8 @@ type SendMessageArgs = {
   pageContext?: PageContext;
   attachments?: BackendAttachment[];
   planMode?: boolean;
+  /** Skills invoked with `/name` in the composer. */
+  skills?: string[];
 };
 type OperatorUploadTarget = {
   uploadUrl: string;

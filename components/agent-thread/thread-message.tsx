@@ -74,7 +74,7 @@ function messagePromptReferences(
 ) {
   const references: PromptReference[] = [];
   const seen = new Set<string>();
-  const add = (kind: PromptReferenceTagKind, ids?: string[]) => {
+  const add = (kind: Exclude<PromptReferenceTagKind, "skill">, ids?: string[]) => {
     ids?.forEach((id) => {
       const key = `${kind}:${id}`;
       if (seen.has(key)) return;

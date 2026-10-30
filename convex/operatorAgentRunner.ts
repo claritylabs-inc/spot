@@ -159,7 +159,11 @@ import {
   operatorContextHardLimit,
 } from "./lib/operatorContextCompaction";
 import { emailSkillPrompt, type EmailPrompts } from "./lib/emailSkill";
-import { operatorSkillsPromptBlock } from "./lib/operatorSkills";
+import {
+  operatorSkillsPromptBlock,
+  requestedSkillsPromptBlock,
+} from "./lib/operatorSkills";
+import { runOperatorSkillTool } from "./lib/operatorSkillTools";
 import { skillScriptsRunnable } from "./lib/operatorSkillScriptRunner";
 
 const OPERATOR_AGENT_MAX_OUTPUT_TOKENS = 8_192;
@@ -641,6 +645,8 @@ export const run = internalAction({
     // instead of reading it back from storage.
     // Keyed by the blob or inline document id the run points at.
     let carried: { key: string; text: string } | undefined;
+    // Skills invoked with `/name`, loaded once per action and reused by each step.
+    let requestedSkillsBlock: string | undefined;
     // Runs one model step from the durable checkpoint. A step that checkpoints
     // with "continued" leaves the run running for the next step in this action.
     const runStep = async (): Promise<{ status: string; error?: string }> => {
@@ -1530,6 +1536,33 @@ export const run = internalAction({
       const scriptsRunnable =
         context.operatorSkills.some((skill) => skill.hasScripts) &&
         (await skillScriptsRunnable());
+      requestedSkillsBlock ??= requestedSkillsPromptBlock(
+        await Promise.all(
+          (run.requestedSkills ?? []).map(async (name) => {
+            try {
+              const loaded = await runOperatorSkillTool(ctx, {
+                operatorUserId: run.operatorUserId,
+                toolName: "load_skill",
+                input: { name },
+                scriptsRunnable,
+              });
+              if (!("instructions" in loaded)) throw new Error("it could not be loaded.");
+              return {
+                name,
+                instructions: loaded.instructions,
+                continueWith: loaded.continueWith,
+                files: loaded.files,
+              };
+            } catch (error) {
+              return {
+                name,
+                unavailable:
+                  error instanceof Error ? error.message : "it could not be loaded.",
+              };
+            }
+          }),
+        ),
+      );
       const system =
         buildOperatorSystemPrompt(familySelection.families, availableFamilies) +
         buildOperatorPageContextBlock(
@@ -1551,6 +1584,7 @@ export const run = internalAction({
         operatorSkillsPromptBlock(context.operatorSkills, {
           scriptsRunnable,
         }) +
+        requestedSkillsBlock +
         (commandEmail ? `\n\n${OPERATOR_COMMAND_EMAIL_GUIDANCE}` : "") +
         (run.emailReadOnly
           ? "\n\nREAD-ONLY EMAIL: The raw message could not be authenticated. You may read and answer, including drafting wording in your reply, but cannot save changes, create saved drafts, call external MCP servers, approve actions, or send email. Explain the restriction and direct changes to authenticated operator chat."
