@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ChevronLeft, ChevronRight, Eye, Loader2, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Loader2, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -110,8 +110,10 @@ function OperatorProviderEmailComposer({
   const panel = useQuery(api.providerOutreach.getPanel, { requestId });
   const saved = useQuery(api.providerOutreachDrafts.get, {
     requestId,
-    ...(single ? { brokerOrgId: target.brokerOrgIds[0] } : {}),
+    ...(single ? { brokerOrgId: target.brokerOrgIds[0] } : { brokerOrgIds: target.brokerOrgIds }),
   });
+  const saveEdit = useLeaderOnly(useMutation(api.providerOutreachDrafts.saveEdit));
+  const resetEdit = useLeaderOnly(useMutation(api.providerOutreachDrafts.resetEdit));
   const launch = useMutation(api.providerOutreach.launch);
   const requestTailored = useLeaderOnly(useMutation(api.providerOutreachDrafts.requestTailored));
 
@@ -134,6 +136,9 @@ function OperatorProviderEmailComposer({
   };
   const [showFull, setShowFull] = useFollowedState(`${scope}:show-full`, false);
   const [previewFor, setPreviewFor] = useFollowedState<string | null>(`${scope}:preview-for`, null);
+  // A mail merge's per-provider emails edited in the preview, until each is saved as that provider's draft.
+  const [edits, setEdits] = useState<Record<string, Email>>({});
+  useSharedValue(`${scope}:edits`, edits, setEdits);
   const [sending, setSending] = useState(false);
 
   // Spot's email for this box: one provider's own draft, else the request template.
@@ -181,6 +186,42 @@ function OperatorProviderEmailComposer({
     : null;
 
   const email = draft?.email ?? null;
+  // Each provider's own email in a mail merge: unsaved edits here, else its saved edit (yours or the AI panel's).
+  const savedEdits = new Map((saved?.edits ?? []).map((edit) => [edit.brokerOrgId as string, edit]));
+  const ownEmail = (brokerOrgId: string): Email | null =>
+    edits[brokerOrgId] ??
+    (savedEdits.get(brokerOrgId)
+      ? { subject: savedEdits.get(brokerOrgId)!.subject, body: savedEdits.get(brokerOrgId)!.body }
+      : null);
+  const overrides = single
+    ? []
+    : recipients.flatMap((row) => {
+        const own = ownEmail(row.brokerOrgId);
+        return own ? [{ brokerOrgId: row.brokerOrgId, ...own }] : [];
+      });
+  // Edits are saved as the provider's draft shortly after typing stops, so the AI panel sees them.
+  const savedEditText = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      for (const [brokerOrgId, edit] of Object.entries(edits)) {
+        const text = asText(edit);
+        if (savedEditText.current[brokerOrgId] === text || !edit.subject.trim() || !edit.body.trim()) continue;
+        savedEditText.current[brokerOrgId] = text;
+        void saveEdit({ requestId, brokerOrgId: brokerOrgId as Id<"organizations">, ...edit }).catch(() => {
+          // The edit still sends from this composer; saving it only shares it.
+        });
+      }
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [edits, requestId, saveEdit]);
+  const editProvider = (brokerOrgId: string, next: Email) => setEdits({ ...edits, [brokerOrgId]: next });
+  const revertToTemplate = (brokerOrgId: string) => {
+    const next = { ...edits };
+    delete next[brokerOrgId];
+    delete savedEditText.current[brokerOrgId];
+    setEdits(next);
+    void resetEdit({ requestId, brokerOrgId: brokerOrgId as Id<"organizations"> }).catch(() => {});
+  };
   const args =
     email && cadence && recipients.length
       ? {
@@ -194,6 +235,7 @@ function OperatorProviderEmailComposer({
               : [],
           ),
           email,
+          ...(overrides.length ? { overrides } : {}),
           ...(fromUserId === operatorId ? {} : { fromUserId }),
         }
       : null;
@@ -256,8 +298,9 @@ function OperatorProviderEmailComposer({
   }
 
   const disabled = sending || !panel?.request.canLaunch;
-  const title = single ? `Email ${recipients[0]?.name ?? "provider"}` : `Email ${recipients.length} providers`;
-  const sendLabel = single ? "Send" : `Send ${sends.length || recipients.length} emails`;
+  const title = single ? `Email ${recipients[0]?.name ?? "provider"}` : `Email ${recipients.length} provider${recipients.length === 1 ? "" : "s"}`;
+  const sendCount = sends.length || recipients.length;
+  const sendLabel = single ? "Send" : `Send ${sendCount} email${sendCount === 1 ? "" : "s"}`;
 
   return (
     <SettingsDrawer
@@ -339,7 +382,11 @@ function OperatorProviderEmailComposer({
           <FromPicker value={fromUserId} onChange={setFromUserId} disabled={disabled} />
           {own && !edited ? (
             <span className={`ml-auto shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}>
-              {saved?.draft?.source === "agent" ? "Written in the AI panel" : "Tailored by Spot"}
+              {saved?.draft?.source === "agent"
+                ? "Written in the AI panel"
+                : saved?.draft?.source === "operator"
+                  ? "Edited earlier"
+                  : "Tailored by Spot"}
             </span>
           ) : tailoring && !edited ? (
             <span className={`ml-auto flex shrink-0 items-center gap-1.5 text-muted-foreground ${typeStyle("caption.default")}`}>
@@ -368,6 +415,7 @@ function OperatorProviderEmailComposer({
                 candidate={candidate}
                 recipient={shown?.providers.find((row) => row.brokerOrgId === candidate.brokerOrgId)?.recipient ?? candidate.recipient}
                 skipped={shown?.providers.find((row) => row.brokerOrgId === candidate.brokerOrgId)?.willSend === false}
+                edited={!!ownEmail(candidate.brokerOrgId)}
                 active={previewed?.brokerOrgId === candidate.brokerOrgId && showFull}
                 onPreview={() => {
                   setPreviewFor(candidate.brokerOrgId);
@@ -483,16 +531,111 @@ function OperatorProviderEmailComposer({
               </PillButton>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <EmailPreview
-                provider={previewed}
-                candidate={candidates.find((row) => row.brokerOrgId === previewed.brokerOrgId)}
-                signature={shown?.signature}
-              />
+              {!single && previewed.email ? (
+                // Edits apply to this provider only; the first change makes its own email.
+                <ProviderEmailEditor
+                  key={previewed.brokerOrgId}
+                  provider={previewed}
+                  candidate={candidates.find((row) => row.brokerOrgId === previewed.brokerOrgId)}
+                  email={ownEmail(previewed.brokerOrgId) ?? { subject: previewed.email.subject, body: previewed.email.body }}
+                  signature={shown?.signature}
+                  disabled={disabled}
+                  onChange={(next) => editProvider(previewed.brokerOrgId, next)}
+                />
+              ) : (
+                <EmailPreview
+                  provider={previewed}
+                  candidate={candidates.find((row) => row.brokerOrgId === previewed.brokerOrgId)}
+                  signature={shown?.signature}
+                />
+              )}
             </div>
+            {!single ? (
+              // Lines up with the composer's send bar.
+              <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-3">
+                <span className={`min-w-0 flex-1 truncate text-muted-foreground ${typeStyle("caption.default")}`}>
+                  {!ownEmail(previewed.brokerOrgId)
+                    ? "Uses the template · edit here for this provider only"
+                    : !edits[previewed.brokerOrgId] && savedEdits.get(previewed.brokerOrgId)?.source === "agent"
+                      ? "From the AI panel"
+                      : "Edited · saved automatically"}
+                </span>
+                {ownEmail(previewed.brokerOrgId) ? (
+                  <PillButton
+                    type="button"
+                    size="compact"
+                    variant="ghost"
+                    disabled={disabled}
+                    onClick={() => revertToTemplate(previewed.brokerOrgId)}
+                  >
+                    Use the template
+                  </PillButton>
+                ) : null}
+              </div>
+            ) : null}
           </section>
         </AppShellPortal>
       ) : null}
     </SettingsDrawer>
+  );
+}
+
+/** One provider's own email in a mail merge, edited in the preview panel. */
+function ProviderEmailEditor({
+  provider,
+  candidate,
+  email,
+  signature,
+  disabled,
+  onChange,
+}: {
+  provider: { brokerName: string | null; recipient?: { email: string; name: string | null } | null };
+  candidate?: ProviderCandidateView;
+  email: Email;
+  signature?: string;
+  disabled: boolean;
+  onChange: (email: Email) => void;
+}) {
+  return (
+    <div className={typeStyle("body.default")}>
+      <EmailComposeRow label="To">
+        {provider.recipient ? (
+          <ProviderContactPill
+            provider={{
+              name: candidate?.name ?? provider.brokerName ?? "Provider",
+              iconUrl: candidate?.iconUrl,
+              website: candidate?.website,
+            }}
+            name={provider.recipient.name}
+            email={provider.recipient.email}
+          />
+        ) : null}
+      </EmailComposeRow>
+      <EmailComposeRow label="Subject">
+        <EmailComposeInput
+          aria-label="Subject for this provider"
+          maxLength={200}
+          value={email.subject}
+          disabled={disabled}
+          onChange={(event) => onChange({ ...email, subject: event.target.value })}
+        />
+      </EmailComposeRow>
+      <ReplyEditor
+        label={`Email to ${candidate?.name ?? provider.brokerName ?? "provider"}`}
+        placeholder="Write the email…"
+        value={email.body}
+        disabled={disabled}
+        variables={MERGE_VARIABLES}
+        scrollClassName="max-h-none overflow-visible"
+        footer={signature}
+        suggestions={[]}
+        suggesting={false}
+        onChange={(body) => onChange({ ...email, body })}
+        onFocusChange={() => {}}
+        onSubmit={() => {}}
+        onEscape={() => {}}
+      />
+    </div>
   );
 }
 
@@ -549,6 +692,7 @@ function RecipientPill({
   candidate,
   recipient,
   skipped,
+  edited,
   active,
   onPreview,
   onRemove,
@@ -556,6 +700,8 @@ function RecipientPill({
   candidate: ProviderCandidateView;
   recipient?: { email: string; name: string | null } | null;
   skipped: boolean;
+  /** Has its own email instead of the template. */
+  edited: boolean;
   active: boolean;
   onPreview: () => void;
   onRemove?: () => void;
@@ -566,7 +712,7 @@ function RecipientPill({
         skipped
           ? `${candidate.name} will be skipped`
           : recipient
-            ? `${recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email} · ${candidate.name}`
+            ? `${recipient.name ? `${recipient.name} <${recipient.email}>` : recipient.email} · ${candidate.name}${edited ? " · own email" : ""}`
             : candidate.name
       }
       className={cn(
@@ -585,6 +731,7 @@ function RecipientPill({
           shape="circle"
         />
         <span className="min-w-0 truncate">{recipient?.name ?? recipient?.email ?? candidate.name}</span>
+        {edited ? <Pencil aria-label="Own email" className="size-3 shrink-0 text-muted-foreground" /> : null}
       </button>
       {onRemove ? <TagRemoveButton label={`Remove ${candidate.name}`} onClick={onRemove} /> : null}
     </span>

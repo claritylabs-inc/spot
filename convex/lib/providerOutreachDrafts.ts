@@ -64,7 +64,7 @@ export async function writeProviderOutreachDraft(
     requestId: Id<"procurementRequests">;
     brokerOrgId?: Id<"organizations">;
     email: ProviderEmail;
-    source: "spot" | "agent";
+    source: "spot" | "agent" | "operator";
   },
 ) {
   const email = normalizedDraftEmail(args.email);

@@ -1530,7 +1530,7 @@ export async function requestEmailTemplate(
   const saved = await readProviderOutreachDraft(ctx, request._id);
   const ready = readyDraftEmail(saved);
   return ready
-    ? { ...ready, source: (saved?.source ?? "agent") as "spot" | "agent" }
+    ? { ...ready, source: saved?.source ?? "agent" }
     : { ...defaultProviderEmailTemplate(requestEmailFacts(request, client)), source: "default" as const };
 }
 
@@ -1573,7 +1573,7 @@ export async function currentRequestCadence(
 }
 
 /** Where a provider's email came from: the composer, its own draft, the request template or the default layout. */
-export type ProviderEmailSource = "composer" | "draft" | "template" | "default";
+export type ProviderEmailSource = "composer" | "edited" | "draft" | "template" | "default";
 
 export type PlannedProviderEmail = {
   brokerOrgId: Id<"organizations">;
@@ -1607,6 +1607,8 @@ export type ProviderLaunchArgs = {
    * request's template, else the default layout.
    */
   email?: ProviderEmail;
+  /** Emails the operator edited for single providers in the composer's preview; they win over `email`. */
+  overrides?: (ProviderEmail & { brokerOrgId: Id<"organizations"> })[];
 };
 
 /**
@@ -1644,6 +1646,12 @@ export async function planProviderLaunch(ctx: Ctx, args: ProviderLaunchArgs) {
     selectedContacts.set(choice.brokerOrgId, contact);
   }
 
+  const overrides = new Map<Id<"organizations">, ProviderEmail>();
+  for (const { brokerOrgId, ...email } of args.overrides ?? []) {
+    if (!args.brokerOrgIds.includes(brokerOrgId) || overrides.has(brokerOrgId))
+      throw new Error("Invalid provider email edit");
+    overrides.set(brokerOrgId, email);
+  }
   const template = args.email
     ? { ...args.email, source: "composer" as const }
     : await requestEmailTemplate(ctx, request, client);
@@ -1668,8 +1676,11 @@ export async function planProviderLaunch(ctx: Ctx, args: ProviderLaunchArgs) {
       providers.push({ ...candidate.skipped, willSend: false });
       continue;
     }
-    const own = args.email ? null : readyDraftEmail(await readProviderOutreachDraft(ctx, request._id, requestedId));
-    const source: ProviderEmailSource = args.email
+    const edited = overrides.get(requestedId) ?? null;
+    const own = edited ?? (args.email ? null : readyDraftEmail(await readProviderOutreachDraft(ctx, request._id, requestedId)));
+    const source: ProviderEmailSource = edited
+      ? "edited"
+      : args.email
       ? "composer"
       : own
         ? "draft"
@@ -1879,6 +1890,10 @@ const launchArgs = {
   }))),
   /** The composer's email, merged for every provider. */
   email: v.optional(v.object({ subject: v.string(), body: v.string() })),
+  /** Per-provider edits from the composer's preview, winning over `email`. */
+  overrides: v.optional(
+    v.array(v.object({ brokerOrgId: v.id("organizations"), subject: v.string(), body: v.string() })),
+  ),
   /** Send as this active operator instead of the caller. */
   fromUserId: v.optional(v.id("users")),
 };

@@ -3158,8 +3158,8 @@ export default defineSchema({
     status: v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
     subject: v.optional(v.string()),
     body: v.optional(v.string()),
-    /** `spot`: tailored by Spot's drafting model; `agent`: written by the AI panel. */
-    source: v.optional(v.union(v.literal("spot"), v.literal("agent"))),
+    /** `spot`: tailored by Spot's drafting model; `agent`: written by the AI panel; `operator`: edited in a composer preview. */
+    source: v.optional(v.union(v.literal("spot"), v.literal("agent"), v.literal("operator"))),
     generationStartedAt: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_requestId_and_brokerOrgId", ["requestId", "brokerOrgId"]),
