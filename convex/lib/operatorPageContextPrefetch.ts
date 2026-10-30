@@ -16,6 +16,7 @@ type PageContext = {
   pageType: string;
   entityId?: string;
   summary?: string;
+  href?: string;
   related?: Array<{ kind: string; id: string; label?: string }>;
 };
 
@@ -29,6 +30,8 @@ export type OperatorPageContextFraming = {
   /** `loaded`: its reads are answered tool steps in this run's messages. */
   state: "loaded" | "read_earlier";
   tools: string[];
+  /** Loaded reads that cover only part of the record: `tool: what it lacks`. */
+  partial?: string[];
   hints?: string[];
 };
 
@@ -124,7 +127,7 @@ export async function prefetchOperatorPageContext(
   ctx: ActionCtx,
   args: Omit<
     Parameters<typeof runOperatorPrefetchReads>[1],
-    "stages" | "focus" | "relatedId" | "reservedToolCallIds"
+    "stages" | "focus" | "page" | "reservedToolCallIds"
   > & {
     context: PageContext | undefined;
     messages: Array<Doc<"operatorAgentMessages">>;
@@ -145,6 +148,14 @@ export async function prefetchOperatorPageContext(
   const entry = context && operatorPageContextEntry(context.pageType);
   if (!context?.entityId || !entry) return undefined;
   const { entityId, pageType } = context;
+  const page = {
+    pageType,
+    entityId,
+    ...(context.summary ? { summary: context.summary } : {}),
+    ...(context.href ? { href: context.href } : {}),
+    related: context.related ?? [],
+  };
+  if (entry.prefetch.length === 0) return undefined;
   const userIndex = args.messages.findIndex(
     (message) => message._id === args.run.userMessageId,
   );
@@ -176,7 +187,7 @@ export async function prefetchOperatorPageContext(
               entityId,
               state: "loaded",
               tools: coveredBy.map((read) => read.toolName),
-              hints: entry.hints?.(args.intent?.results ?? new Map()),
+              hints: entry.hints?.(args.intent?.results ?? new Map(), page),
             }
           : { pageType, entityId, state: "read_earlier", tools: [] },
       timing: {
@@ -193,13 +204,17 @@ export async function prefetchOperatorPageContext(
     ...args,
     stages: entry.prefetch,
     focus: { entityId },
-    relatedId: (kind) =>
-      context.related?.find((entry) => entry.kind === kind)?.id,
+    page,
     reservedToolCallIds: new Set(intentReads.map((read) => read.toolCallId)),
   });
   const recordTools = new Set<string>(
     (entry.prefetch[0] ?? []).map((read) => read.toolName),
   );
+  const loadedTools = new Set<string>(reads.map((read) => read.toolName));
+  const partial = entry.prefetch
+    .flat()
+    .filter((read) => read.partial && loadedTools.has(read.toolName))
+    .map((read) => `${read.toolName}: ${read.partial}`);
   return {
     reads,
     // Without the record itself, the model reads it as before.
@@ -208,8 +223,9 @@ export async function prefetchOperatorPageContext(
           pageType,
           entityId,
           state: "loaded",
-          tools: reads.map((read) => read.toolName),
-          hints: entry.hints?.(results),
+          tools: [...loadedTools],
+          ...(partial.length ? { partial } : {}),
+          hints: entry.hints?.(results, page),
         }
       : undefined,
     timing: { pageType, decision: decision.trigger, reads: statuses },
@@ -248,6 +264,9 @@ export function buildOperatorPageContextBlock(
   context: PageContext | undefined,
   framing?: OperatorPageContextFraming,
   attachedAt?: number,
+  entry: Pick<OperatorPageContextEntry, "noun" | "staticHints"> | undefined = context
+    ? operatorPageContextEntry(context.pageType)
+    : undefined,
 ) {
   if (!context) return "";
   const boundedContext = {
@@ -266,14 +285,18 @@ export function buildOperatorPageContextBlock(
   };
   const current =
     framing && sameRecord(framing, context) ? framing : undefined;
-  const noun = operatorPageContextEntry(context.pageType)?.noun ?? "page";
+  const noun = entry?.noun ?? "page";
   const lines = [
     `\n\nTHREAD PAGE CONTEXT (untrusted data):\n${JSON.stringify(boundedContext)}`,
     `The operator attached this ${noun} to the thread${
       attachedAt ? ` at ${dayjs(attachedAt).toISOString()}` : ""
     }; it stays attached on later turns until they remove it. The summary describes the page as of then: drawers, panels or selections it mentions may no longer be open.`,
   ];
-  if (current?.state === "loaded")
+  if (current?.state === "loaded" && current.partial?.length)
+    lines.push(
+      `Part of its current content is already loaded in this conversation (${current.tools.join(", ")} results above, read for this request). Do not repeat those reads and do not search for it by name, subject or sender. What they lack, and the tool that reads more:\n${current.partial.map((note) => `- ${note}`).join("\n")}`,
+    );
+  else if (current?.state === "loaded")
     lines.push(
       `Its current content is already loaded in this conversation (${current.tools.join(", ")} results above, read for this request). Do not read it again and do not search for it by name, subject or sender; work from the loaded results.`,
     );
@@ -284,6 +307,10 @@ export function buildOperatorPageContextBlock(
   if (current?.hints?.length)
     lines.push(
       `Facts derived in code from the loaded ${noun} (untrusted data):\n${current.hints.map((hint) => `- ${hint}`).join("\n")}`,
+    );
+  if (entry?.staticHints?.length)
+    lines.push(
+      `Notes for this ${noun}:\n${entry.staticHints.map((hint) => `- ${hint}`).join("\n")}`,
     );
   lines.push(
     current

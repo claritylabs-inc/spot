@@ -13,6 +13,7 @@ import {
 import {
   operatorAgentIntentPrefetch,
   type OperatorIntentPrefetchRead,
+  type OperatorPrefetchPage,
 } from "./operatorAgentIntentRegistry";
 import {
   getOperatorAgentToolSpec,
@@ -33,8 +34,49 @@ export type PrefetchedRead = {
 /** What happened to one declared read: run, or why it did not. */
 export type PrefetchReadStatus = {
   toolName: OperatorAgentToolName;
-  status: "succeeded" | "failed" | "skipped" | "unavailable";
+  status: "succeeded" | "failed" | "timeout" | "skipped" | "unavailable";
 };
+
+/**
+ * Action-executed reads that only read Spot's own records. Others stay out:
+ * integration and web tools call remote services, search_team_inbox asks Jev,
+ * get_research_status can wait, and the attach_* tools change the
+ * conversation.
+ */
+const PREFETCH_ACTION_READS = new Set<OperatorAgentToolName>([
+  "lookup_policy",
+  "lookup_compliance_requirements",
+  "read_client_file",
+]);
+
+/** A slow action read fails open; the model can still make it. */
+export const PREFETCH_ACTION_READ_TIMEOUT_MS = 15_000;
+
+/** Plain reads a prefetch may run: no confirmation, no remote calls. */
+export function operatorPrefetchReadAllowed(toolName: OperatorAgentToolName) {
+  const spec = getOperatorAgentToolSpec(toolName);
+  return (
+    spec.effect === "read" &&
+    spec.confirmation === "none" &&
+    !spec.integration &&
+    (spec.execution === "mutation" || PREFETCH_ACTION_READS.has(toolName))
+  );
+}
+
+class PrefetchTimeoutError extends Error {}
+
+function withTimeout<T>(promise: Promise<T>, ms: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new PrefetchTimeoutError(`Prefetch read exceeded ${ms}ms`)),
+        ms,
+      );
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
 
 type PrefetchArgs = {
   run: Doc<"operatorAgentRuns">;
@@ -58,7 +100,7 @@ export async function runOperatorPrefetchReads(
   args: PrefetchArgs & {
     stages: ReadonlyArray<readonly OperatorIntentPrefetchRead[]>;
     focus: Readonly<Record<string, string>>;
-    relatedId?: (kind: string) => string | undefined;
+    page?: OperatorPrefetchPage;
     reservedToolCallIds?: ReadonlySet<string>;
   },
 ) {
@@ -80,17 +122,23 @@ export async function runOperatorPrefetchReads(
     // Only plain reads this operator may call are prefetched.
     if (
       !args.toolNames.includes(step.toolName) ||
-      spec.effect !== "read" ||
-      spec.confirmation !== "none" ||
-      spec.execution !== "mutation"
+      !operatorPrefetchReadAllowed(step.toolName)
     ) {
       statuses.push({ toolName: step.toolName, status: "unavailable" });
       return undefined;
     }
+    const related = (kind: string) =>
+      args.page?.related.find((entry) => entry.kind === kind);
     const rawInput = step.input({
       focus: args.focus,
       results,
-      relatedId: args.relatedId,
+      ...(args.page
+        ? {
+            page: args.page,
+            relatedId: (kind: string) => related(kind)?.id,
+            relatedLabel: (kind: string) => related(kind)?.label,
+          }
+        : {}),
     });
     if (!rawInput) {
       statuses.push({ toolName: step.toolName, status: "skipped" });
@@ -105,7 +153,7 @@ export async function runOperatorPrefetchReads(
     const startedAt = dayjs().valueOf();
     let executeMs = 0;
     let status = "failed";
-    let succeeded = false;
+    let readStatus: PrefetchReadStatus["status"] = "failed";
     try {
       const input = parseOperatorAgentToolInput(step.toolName, rawInput);
       const target = toolActivityTarget(spec.target(input));
@@ -120,20 +168,32 @@ export async function runOperatorPrefetchReads(
         input,
       });
       const executeStarted = dayjs();
-      const outcome = await ctx.runMutation(
-        internal.operatorAgent.executeToolInternal,
-        {
-          operatorUserId: args.run.operatorUserId,
-          runId: args.run._id,
-          threadId: args.run.threadId,
-          threadMessageId: args.run.agentMessageId,
-          toolName: step.toolName,
-          input,
-          inputHash,
-          idempotencyKey: `${String(args.run._id)}:${step.toolName}:${inputHash}`,
-          channel: args.channel,
-        },
-      );
+      const executionArgs = {
+        operatorUserId: args.run.operatorUserId,
+        runId: args.run._id,
+        threadId: args.run.threadId,
+        threadMessageId: args.run.agentMessageId,
+        toolName: step.toolName,
+        input,
+        inputHash,
+        idempotencyKey: `${String(args.run._id)}:${step.toolName}:${inputHash}`,
+        channel: args.channel,
+      };
+      // Action reads use the runner's action executor, bounded so a slow one
+      // fails open; a timed-out call still finishes and records its audit.
+      const outcome =
+        spec.execution === "action"
+          ? await withTimeout(
+              ctx.runAction(
+                internal.operatorAgent.executeUnconfirmedActionToolInternal,
+                executionArgs,
+              ),
+              PREFETCH_ACTION_READ_TIMEOUT_MS,
+            )
+          : await ctx.runMutation(
+              internal.operatorAgent.executeToolInternal,
+              executionArgs,
+            );
       executeMs = dayjs().diff(executeStarted);
       status = toolOutcomeStatus(outcome);
       const result = summarizeToolResult(outcome);
@@ -146,9 +206,10 @@ export async function runOperatorPrefetchReads(
       // truncate to an unparseable string; the model then reads it itself.
       if (outcome.status !== "succeeded" || typeof outcome.result === "string")
         return undefined;
-      succeeded = true;
+      readStatus = "succeeded";
       return { toolCallId, toolName: step.toolName, input, outcome };
     } catch (error) {
+      if (error instanceof PrefetchTimeoutError) readStatus = "timeout";
       console.warn("Operator prefetch read failed", {
         runId: args.run._id,
         toolName: step.toolName,
@@ -157,10 +218,7 @@ export async function runOperatorPrefetchReads(
       await args.recordActivity({ ...activity, status: "failed" });
       return undefined;
     } finally {
-      statuses.push({
-        toolName: step.toolName,
-        status: succeeded ? "succeeded" : "failed",
-      });
+      statuses.push({ toolName: step.toolName, status: readStatus });
       args.onReadTiming?.({
         toolName: step.toolName,
         toolCallId,

@@ -1,4 +1,7 @@
-import type { OperatorIntentPrefetchRead } from "../operatorAgentIntentRegistry";
+import type {
+  OperatorIntentPrefetchRead,
+  OperatorPrefetchPage,
+} from "../operatorAgentIntentRegistry";
 import type {
   OperatorAgentToolName,
   OperatorToolFamily,
@@ -20,8 +23,10 @@ export type OperatorPageContextEntry = {
   families: readonly OperatorToolFamily[];
   /**
    * Reads run before the first model step, in stages; reads within a stage
-   * run together. Builders receive `focus.entityId`, `relatedId(kind)` (the
-   * first related record of that kind) and earlier stages' successful results. The first stage reads the page's own record: a
+   * run together. Builders receive `focus.entityId`, the whole `page`,
+   * `relatedId(kind)` / `relatedLabel(kind)` (the first related record of that
+   * kind) and earlier stages' successful results. A read flagged `partial`
+   * changes the prompt to name what it lacks. The first stage reads the page's own record: a
    * successful earlier read of the entity by one of its tools suppresses the
    * prefetch on later turns.
    */
@@ -30,5 +35,13 @@ export type OperatorPageContextEntry = {
    * Deterministic facts derived in code from the prefetched results, listed
    * in the system prompt so the model does not search for them.
    */
-  hints?: (results: ReadonlyMap<OperatorAgentToolName, unknown>) => string[];
+  hints?: (
+    results: ReadonlyMap<OperatorAgentToolName, unknown>,
+    page: OperatorPrefetchPage,
+  ) => string[];
+  /**
+   * Guidance for this page type shown on every turn, whether or not anything
+   * was read, e.g. which tool to use when the page has no read of its own.
+   */
+  staticHints?: readonly string[];
 };
