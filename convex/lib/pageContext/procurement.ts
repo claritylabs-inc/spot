@@ -140,28 +140,29 @@ export function procurementListHints(listRead: unknown): string[] {
 }
 
 /**
- * The request page's section from its URL (`?view=`, `market` being the old
- * Providers name), and the application sidebar's notes, which only the
- * summary names (`components/procurement/procurement-page-context.ts`).
+ * The request page's sections and drawers in view: the workspace's related
+ * `view` records (the open drawer's first), else the URL's `?view=`
+ * (`market` being the old Providers name).
  */
-export function procurementRequestSection(page?: OperatorPrefetchPage) {
-  if (page?.summary?.includes("Open drawer: internal notes")) return "notes";
-  if (page?.summary?.includes("Open drawer: provider packet link"))
-    return "packet_link";
-  let view: string | null = null;
-  try {
-    view = page?.href
-      ? new URL(page.href, "https://spot.invalid").searchParams.get("view")
-      : null;
-  } catch {
-    view = null;
+export function procurementRequestViews(page?: OperatorPrefetchPage) {
+  const views = new Set(
+    page?.related
+      .filter((entry) => entry.kind === "view")
+      .map((entry) => entry.id),
+  );
+  if (views.size === 0 && page?.href) {
+    const view = new URL(page.href, "https://spot.invalid").searchParams.get(
+      "view",
+    );
+    views.add(
+      view === "proposals" || view === "market"
+        ? "providers"
+        : view === "email"
+          ? "inbox"
+          : (view ?? "application"),
+    );
   }
-  if (view === "proposals" || view === "market") return "providers";
-  if (view === "information" || view === "cadence" || view === "email")
-    return view;
-  return page?.summary?.includes("› Submission notes")
-    ? "notes"
-    : "application";
+  return views;
 }
 
 const PROVIDER_DRAWER_KINDS = ["procurement_outreach", "procurement_proposal"];
@@ -177,15 +178,15 @@ export const procurementPageContexts: readonly OperatorPageContextEntry[] = [
           toolName: "get_procurement_request",
           input: ({ focus, page, relatedId }) => {
             if (!focus.entityId) return undefined;
-            const section = procurementRequestSection(page);
-            const include =
-              section === "providers" ||
-              section === "cadence" ||
+            const views = procurementRequestViews(page);
+            const include = [
+              ...(views.has("providers") ||
+              views.has("cadence") ||
               PROVIDER_DRAWER_KINDS.some((kind) => relatedId?.(kind))
                 ? ["outreach", "proposals"]
-                : section === "email"
-                  ? ["emailThreads"]
-                  : [];
+                : []),
+              ...(views.has("inbox") ? ["emailThreads"] : []),
+            ];
             return {
               procurementRequestId: focus.entityId,
               ...(include.length ? { include } : {}),
@@ -210,7 +211,7 @@ export const procurementPageContexts: readonly OperatorPageContextEntry[] = [
           toolName: "get_procurement_information",
           input: ({ focus, page, relatedId }) =>
             focus.entityId &&
-            (procurementRequestSection(page) === "information" ||
+            (procurementRequestViews(page).has("information") ||
               relatedId?.("procurement_information_form") ||
               relatedId?.("procurement_information_question"))
               ? {
@@ -222,14 +223,16 @@ export const procurementPageContexts: readonly OperatorPageContextEntry[] = [
         {
           toolName: "get_procurement_packet",
           input: ({ focus, page }) =>
-            focus.entityId && procurementRequestSection(page) === "notes"
+            focus.entityId &&
+            (procurementRequestViews(page).has("submission_notes") ||
+              procurementRequestViews(page).has("internal_notes"))
               ? { procurementRequestId: focus.entityId, view: "internal" }
               : undefined,
         },
         {
           toolName: "list_broker_packet_links",
           input: ({ focus, page }) =>
-            focus.entityId && procurementRequestSection(page) === "packet_link"
+            focus.entityId && procurementRequestViews(page).has("packet_links")
               ? { procurementRequestId: focus.entityId }
               : undefined,
         },
