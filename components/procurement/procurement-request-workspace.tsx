@@ -1,4 +1,6 @@
 "use client";
+
+import dayjs from "dayjs";
 import { InformationDrawer } from "./information/information-drawer";
 import { InformationFormWorkspace } from "./information/form-workspace";
 import {
@@ -148,11 +150,8 @@ import {
   SelectValue,
 } from "@claritylabs-inc/ui/components/select";
 import { TableCell, TableRow } from "@/components/ui/table";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@claritylabs-inc/ui/components/tabs";
+import { TabsTrigger } from "@claritylabs-inc/ui/components/tabs";
+import { SectionTabs, SectionTabsList } from "@/components/ui/folder-tabs";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { useFollowedState } from "@/hooks/use-followed-state";
@@ -229,6 +228,9 @@ type Outreach = {
 
 type ProcurementFileItem = {
   _id: Id<"procurementFileItems">;
+  /** The provider this file came from or was prepared for. */
+  providerOutreachId?: Id<"procurementBrokerOutreaches">;
+  from: { name: string; receivedAt: number } | null;
   clientFileId?: Id<"clientFiles">;
   sourceEmailMessageId?: Id<"teamEmailMessages">;
   intakeCategory?: "requirements" | "policy" | "loss_runs" | "supporting";
@@ -1385,11 +1387,16 @@ function RequestEditor({
   );
 }
 
+/** Signature and inline images that email clients attach to every message. */
+const EMAIL_INLINE_IMAGE = /^(inline-image-\d+|image\d*)\.(png|jpe?g|gif)$/i;
+
 function OutreachEditor({
   requestId,
   outreach,
   proposalId,
   brokers,
+  files,
+  onOpenFile,
   readOnly: parentReadOnly = false,
   onClose,
 }: {
@@ -1397,6 +1404,9 @@ function OutreachEditor({
   outreach?: Outreach;
   proposalId?: Id<"procurementProposals">;
   brokers: BrokerOption[];
+  /** The request's files; the drawer lists this provider's. */
+  files: ProcurementFileItem[];
+  onOpenFile: (file: ClientFileOption) => void;
   readOnly?: boolean;
   onClose: () => void;
 }) {
@@ -1472,8 +1482,19 @@ function OutreachEditor({
   const [working, setWorking] = useState(false);
   const [sidebarTab, setSidebarTab] = useFollowedState(
     `procurement:${requestId}:outreach-sidebar-tab`,
-    "pdfs",
+    "files",
   );
+  const providerFiles = files
+    .filter(
+      (file) =>
+        file.providerOutreachId === outreachId &&
+        file.clientFile &&
+        !EMAIL_INLINE_IMAGE.test(file.clientFile.name),
+    )
+    .sort(
+      (a, b) =>
+        (b.from?.receivedAt ?? b.updatedAt) - (a.from?.receivedAt ?? a.updatedAt),
+    );
   const review = proposal?.reviews[0];
   const latestExtraction = proposal?.extraction.latest;
   const [reviewChoice, setReviewChoice] = useState<{
@@ -1779,12 +1800,46 @@ function OutreachEditor({
           </p>
         ) : null}
         {outreachId ? (
-          <Tabs value={sidebarTab} onValueChange={setSidebarTab}>
-            <TabsList variant="pill" aria-label="Proposal sidebar">
-              <TabsTrigger value="pdfs">PDFs</TabsTrigger>
+          <SectionTabs value={sidebarTab} onValueChange={setSidebarTab}>
+            <SectionTabsList aria-label="Provider">
+              <TabsTrigger value="files">Files</TabsTrigger>
+              <TabsTrigger value="pdfs">Proposal</TabsTrigger>
               <TabsTrigger value="terms">Terms</TabsTrigger>
-            </TabsList>
-          </Tabs>
+            </SectionTabsList>
+          </SectionTabs>
+        ) : null}
+        {sidebarTab === "files" && outreachId ? (
+          providerFiles.length ? (
+            <ul className="divide-y divide-border border-b border-border">
+              {providerFiles.map((file) => (
+                <li
+                  key={file._id}
+                  className="flex min-h-10 items-baseline justify-between gap-3 py-2"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onOpenFile(file.clientFile!)}
+                    className="min-w-0 flex-1 text-left break-words underline underline-offset-2 hover:text-foreground"
+                  >
+                    {file.clientFile!.name}
+                  </button>
+                  <span
+                    className={`shrink-0 text-muted-foreground ${typeStyle("caption.default")}`}
+                  >
+                    {file.from
+                      ? `${file.from.name} · ${dayjs(file.from.receivedAt).format("MMM D")}`
+                      : `Prepared · ${dayjs(file.updatedAt).format("MMM D")}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p
+              className={`border-b border-border pb-4 text-muted-foreground ${typeStyle("body.default")}`}
+            >
+              No files from {currentOutreach?.brokerName ?? "this provider"} yet.
+            </p>
+          )
         ) : null}
         {sidebarTab === "pdfs" && outreachId && currentOutreach ? (
           <div className="space-y-3 border-b border-border pb-4">
@@ -1844,7 +1899,7 @@ function OutreachEditor({
             Upload proposal PDFs to extract their terms.
           </p>
         ) : null}
-        {sidebarTab === "pdfs" ? (
+        {sidebarTab === "files" || !outreachId ? (
           <fieldset disabled={readOnly || busy} className="min-w-0 space-y-4">
             {!proposals?.some((row) => row.outreachId === outreachId) ? (
               <label className="block space-y-1.5">
@@ -2526,6 +2581,21 @@ export function ProcurementRequestWorkspace({
             proposalId={proposalId as Id<"procurementProposals"> | undefined}
             readOnly={readOnly}
             brokers={brokers ?? []}
+            files={details?.files ?? []}
+            onOpenFile={(file) => {
+              if (!file.url) return;
+              if (
+                file.contentType === "application/pdf" ||
+                /\.pdf$/i.test(file.name)
+              ) {
+                closeRightPanel();
+                openWithUrl(file.url, undefined, undefined, {
+                  kind: "clientFile",
+                  clientFileId: file._id,
+                  filename: file.name,
+                });
+              } else window.open(file.url, "_blank", "noopener");
+            }}
             onClose={() => {
               const url = new URL(window.location.href);
               if (
