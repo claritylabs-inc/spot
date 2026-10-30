@@ -134,7 +134,12 @@ function TabButton({
               <MessageSquare className="size-3.5" />
             )}
             {position ? (
-              <span className="absolute -right-1.5 -bottom-1.5 flex size-3.5 items-center justify-center rounded-full bg-background text-[9px] leading-none font-medium text-foreground ring-1 ring-border">
+              <span
+                className={cn(
+                  "absolute -right-1.5 -bottom-1.5 flex size-4 items-center justify-center rounded-full bg-background text-foreground ring-1 ring-border",
+                  typeStyle("caption.medium"),
+                )}
+              >
                 {position}
               </span>
             ) : null}
@@ -279,7 +284,7 @@ export function AgentDockBar({
         {draftActive ? (
           <TabButton active label="New chat" onSelect={dock.newChat} />
         ) : null}
-        {dock.tabs.map((tab, index) => (
+        {dock.tabs.map((tab) => (
           <DockErrorBoundary key={tab.threadId} fallback={null}>
             <ThreadTab
               adapter={adapter}
@@ -586,7 +591,7 @@ export function AgentDockTabSidebar({
             variant={variant}
           />
         ) : null}
-        {dock.tabs.map((tab) => (
+        {dock.tabs.map((tab, index) => (
           <DockErrorBoundary key={tab.threadId} fallback={null}>
             <ThreadTab
               adapter={adapter}
