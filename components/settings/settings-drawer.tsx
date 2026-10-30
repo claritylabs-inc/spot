@@ -138,7 +138,7 @@ export function SettingsDrawer({
                       data-slot="app-top-bar"
                       data-tabs={tabs ? "true" : undefined}
                       className={cn(
-                        "min-h-12 flex items-center gap-3 px-4 border-b border-border shrink-0",
+                        "min-h-top-bar flex items-center gap-3 px-4 border-b border-border shrink-0",
                         !tabs && "py-2",
                       )}
                     >

@@ -159,7 +159,7 @@ export function NotificationsPanel({
       }
     >
       {/* Header */}
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
+      <div className="flex h-top-bar shrink-0 items-center justify-between border-b border-border px-3">
         <span
           className={`min-w-0 truncate text-foreground ${typeStyle("body.medium")}`}
         >
@@ -175,7 +175,7 @@ export function NotificationsPanel({
       </div>
 
       <div
-        className="flex h-12 min-w-0 shrink-0 items-center gap-1 border-b border-border px-2"
+        className="flex h-sub-bar min-w-0 shrink-0 items-center gap-1 border-b border-border px-2"
         role="tablist"
       >
         <button
