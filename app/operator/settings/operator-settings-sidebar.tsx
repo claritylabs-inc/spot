@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Bell, Mail, Settings, Users } from "lucide-react";
+import { Bell, BookOpenText, Mail, Settings, Users } from "lucide-react";
 import { SidebarHeader } from "@/components/app-sidebar/sidebar-header";
 import {
   SidebarMenuItem,
@@ -17,7 +17,10 @@ export function OperatorSettingsSidebar({
 }) {
   const param = useSearchParams().get("section");
   const section =
-    param === "team" || param === "notifications" || param === "email"
+    param === "team" ||
+    param === "notifications" ||
+    param === "email" ||
+    param === "skills"
       ? param
       : "general";
   return (
@@ -49,6 +52,13 @@ export function OperatorSettingsSidebar({
           icon={Mail}
           label="Email"
           active={section === "email"}
+          collapsed={collapsed}
+        />
+        <SidebarMenuItem
+          href="/operator/settings?section=skills"
+          icon={BookOpenText}
+          label="Skills"
+          active={section === "skills"}
           collapsed={collapsed}
         />
         <SidebarMenuItem
