@@ -45,25 +45,19 @@ export function normalizeOperatorPageContext(
   if (href && href.length > 2000) {
     throw new Error("Operator page URL must be at most 2000 characters");
   }
-  // Order is kept; entries without a kind or id are dropped.
+  // Order is kept. A malformed entry is dropped, never rejected, so a bad
+  // chip cannot block sending a message.
   const related = (context.related ?? [])
     .map((entry) => ({
       kind: entry.kind.trim(),
       id: entry.id.trim(),
       label: entry.label?.trim().slice(0, 200) || undefined,
     }))
-    .filter((entry) => entry.kind && entry.id)
+    .filter(
+      (entry) =>
+        RELATED_KIND.test(entry.kind) && entry.id && entry.id.length <= 200,
+    )
     .slice(0, MAX_RELATED);
-  for (const entry of related) {
-    if (!RELATED_KIND.test(entry.kind)) {
-      throw new Error(
-        `Operator page related kind "${entry.kind.slice(0, 40)}" is invalid`,
-      );
-    }
-    if (entry.id.length > 200) {
-      throw new Error("Operator page related IDs must be at most 200 characters");
-    }
-  }
   return {
     pageType,
     ...(entityId ? { entityId } : {}),
