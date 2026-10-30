@@ -55,9 +55,11 @@ export function OperatorPresence() {
   const others = active.filter((operator) => !operator.self);
   // Distinct colors across everyone active, the same in every browser.
   const operatorColor = useOperatorColor();
-  const self = active.find((operator) => operator.self);
+  // From the session, not presence: this operator's own presence row can
+  // drop for a moment (another of their tabs closing).
+  const selfId = useCachedOperatorCurrent()?.user._id;
   const leader = others.find((operator) => operator.userId === followingUserId);
-  const mutual = !!leader && !!self && followIsMutual(leader, self.userId);
+  const mutual = !!leader && !!selfId && followIsMutual(leader, selfId);
   useEffect(() => {
     if (mutual) setFollowingOperator(null);
   }, [mutual]);
@@ -74,9 +76,6 @@ export function OperatorPresence() {
   if (peers.length > 0 && sharedPathname !== pathname) {
     setSharedPathname(pathname);
   }
-  // From the session, not presence: another of this operator's tabs closing
-  // drops their presence row for a moment.
-  const selfId = useCachedOperatorCurrent()?.user._id;
   const multiplayer =
     sharedPathname === pathname && selfId ? (
       <PageMultiplayer
@@ -90,8 +89,8 @@ export function OperatorPresence() {
         followingUserId={following}
       />
     ) : null;
-  const followers = self
-    ? others.filter((operator) => operator.followingUserId === self.userId)
+  const followers = selfId
+    ? others.filter((operator) => operator.followingUserId === selfId)
     : [];
   const followed = followers.length > 0;
   // Followers stop at a private page; tell the leader why they dropped off.
@@ -126,7 +125,7 @@ export function OperatorPresence() {
         takeOver: others.some(
           (operator) =>
             operator.userId === user.userId &&
-            operator.followingUserId === self?.userId,
+            operator.followingUserId === selfId,
         ),
       },
     );
