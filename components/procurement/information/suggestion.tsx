@@ -32,15 +32,17 @@ function sourceHost(url: string) {
 /** Cited sources, opened in a new tab. Titles are untrusted web text, shown as plain text. */
 export function SuggestionSources({
   citations,
+  limit = MAX_SOURCES,
 }: {
   citations: { url: string; title?: string }[];
+  limit?: number;
 }) {
   const sources = citations
     .flatMap((citation) => {
       const host = sourceHost(citation.url);
       return host ? [{ ...citation, host }] : [];
     })
-    .slice(0, MAX_SOURCES);
+    .slice(0, limit);
   if (!sources.length) return null;
   return (
     <ul
