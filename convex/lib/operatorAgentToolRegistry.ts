@@ -2044,9 +2044,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
   save_email_draft: defineOperatorTool({
     family: "outbound_email",
     version: 1,
-    description: "Create a team email draft, or edit draftId in this conversation. Never sends. Omitted fields and existing attachments are preserved on edits; [] clears copies or retained attachments. Every edit re-signs and invalidates send approval. clientFileIds adds exact files from the draft's client; policyIds requires an explicit request for original PDFs. Real recipients and complete placeholder-free subject/body are required on creation. A new draft to the same recipient replaces the earlier draft.",
+    description: "Create a team email draft, or edit draftId in this conversation. Never sends. Omitted fields and existing attachments are preserved on edits; [] clears copies or retained attachments. A draft keeps its sender unless fromUserId names another operator. Every edit re-signs and invalidates send approval. clientFileIds adds exact files from the draft's client; policyIds requires an explicit request for original PDFs. Real recipients and complete placeholder-free subject/body are required on creation. A new draft to the same recipient replaces the earlier draft.",
     inputSchema: z.object({
       draftId: omittable(z.string().trim().min(1)),
+      fromUserId: omittable(
+        z.string().trim().min(1).describe(
+          "Exact active operator userId from list_operators to sign and send as; omit to keep the draft's sender (a new draft is yours)",
+        ),
+      ),
       orgId: omittable(organizationId),
       clientOrgId: omittable(organizationId),
       teamEmailThreadId: omittable(teamEmailThreadId),
@@ -2080,8 +2085,13 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "outbound_email",
     version: 2,
     description:
-      "Create a saved email draft from your team address, signed with your full name. A client is optional for ad hoc mail. This never sends. Use real recipient addresses and a complete, placeholder-free body; the platform adds your signature and Always CC. A second draft to the same recipient in this conversation replaces the earlier draft. The draft appears under your reply.",
+      "Create a saved email draft from your team address, signed with your full name, or from a teammate's with fromUserId. A client is optional for ad hoc mail. This never sends. Use real recipient addresses and a complete, placeholder-free body; the platform adds your signature and Always CC. A second draft to the same recipient in this conversation replaces the earlier draft. The draft appears under your reply.",
     inputSchema: z.object({
+      fromUserId: omittable(
+        z.string().trim().min(1).describe(
+          "Exact active operator userId from list_operators to sign and send as; omit to keep the draft's sender (a new draft is yours)",
+        ),
+      ),
       orgId: omittable(organizationId.describe("Optional exact client organization ID")),
       clientOrgId: omittable(organizationId.describe("Alias for orgId; when both are supplied they must match")),
       teamEmailThreadId: omittable(teamEmailThreadId),
@@ -2109,9 +2119,14 @@ export const OPERATOR_AGENT_TOOL_REGISTRY = {
     family: "outbound_email",
     version: 2,
     description:
-      "Revise one unsent draft from this conversation and re-sign it as you, from your team address. Omitted cc, bcc and attachments are cleared except your saved Always CC; pass attachmentFileIds to keep existing attachments. Every edit invalidates earlier send approval, including a sender change.",
+      "Revise one unsent draft from this conversation. It keeps its sender unless fromUserId names another operator. Omitted cc, bcc and attachments are cleared except the sender's saved Always CC; pass attachmentFileIds to keep existing attachments. Every edit invalidates earlier send approval, including a sender change.",
     inputSchema: z.object({
       draftId: z.string().min(1).describe("Exact draft ID"),
+      fromUserId: omittable(
+        z.string().trim().min(1).describe(
+          "Exact active operator userId from list_operators to sign and send as; omit to keep the draft's sender (a new draft is yours)",
+        ),
+      ),
       orgId: omittable(organizationId),
       clientOrgId: omittable(organizationId.describe("Alias for orgId; when both are supplied they must match")),
       teamEmailThreadId: omittable(teamEmailThreadId),

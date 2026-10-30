@@ -107,8 +107,8 @@ web app a reply, new email or agent chat draft can instead be sent as any active
 operator with a team address (`fromUserId`), signed as them, with the clicking
 operator recorded as the approver. An ad hoc
 draft needs no client; attaching a client file or policy requires an exact client
-first. Updating a draft re-signs it (as the current operator, or the sender picked
-in the chat draft artifact) and invalidates its previous approval. Tenant send APIs, client review links and scheduled client sends
+first. Updating a draft keeps its sender unless an operator or the agent picks
+another (`fromUserId`), re-signs it, and invalidates its previous approval. Tenant send APIs, client review links and scheduled client sends
 reject operator drafts.
 
 An exact approval binds the complete payload, signer, From, Always CC snapshot,

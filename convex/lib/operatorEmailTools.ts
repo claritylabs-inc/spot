@@ -74,7 +74,7 @@ export async function runOperatorEmailTool(
   ctx: ActionCtx,
   args: {
     operatorUserId: Id<"users">;
-    /** Signs the draft as this operator instead of `operatorUserId`, who stays the actor. */
+    /** Signs the draft as this operator; by default a draft keeps its sender. */
     senderUserId?: Id<"users">;
     threadId: Id<"operatorAgentThreads">;
     toolName: string;
@@ -84,6 +84,11 @@ export async function runOperatorEmailTool(
   },
 ) {
   let { input } = args;
+  // Who to sign as is resolved here, not by the draft executors.
+  const { fromUserId, ...draftInput } = input;
+  input = draftInput;
+  const senderUserId =
+    args.senderUserId ?? (typeof fromUserId === "string" ? fromUserId : undefined);
   if (args.toolName === "list_email_drafts") {
     const text = (value: unknown) =>
       typeof value === "string" && value ? value : undefined;
@@ -185,7 +190,8 @@ export async function runOperatorEmailTool(
   const sender = await ctx.runQuery(
     internal.operatorEmailDrafts.resolveSenderInternal,
     {
-      operatorUserId: args.senderUserId ?? args.operatorUserId,
+      operatorUserId: args.operatorUserId,
+      senderUserId,
       threadId: args.threadId,
       orgId: clientOrgId,
       draftId: typeof input.draftId === "string" ? input.draftId : undefined,
