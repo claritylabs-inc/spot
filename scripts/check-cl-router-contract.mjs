@@ -23,6 +23,8 @@ const REQUIRED_OPERATION_KEYS = [
   "post /v1/retrieve",
   "post /v1/research",
   "post /v1/monitors",
+  "post /v1/research/batch",
+  "post /v1/discoveries",
 ];
 const REQUIRED_FIXTURE_SCHEMAS = [
   "GenerateRequest",
@@ -44,6 +46,11 @@ const REQUIRED_FIXTURE_SCHEMAS = [
   "MonitorCreateRequest",
   "MonitorStatusResponse",
   "MonitorCallback",
+  "ResearchBatchRequest",
+  "ResearchBatchResponse",
+  "DiscoveryCreateRequest",
+  "DiscoveryStatusResponse",
+  "DiscoveryCallback",
   "HealthResponse",
 ];
 

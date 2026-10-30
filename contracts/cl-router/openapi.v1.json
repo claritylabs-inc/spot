@@ -1070,6 +1070,78 @@
         "description": "Structured public research about one entity through Parallel Task, with Exa Agent as the fallback. Every requested field is answered with a value (or null), confidence and public citations. Also available as the durable `research` job operation."
       }
     },
+    "/v1/research/batch": {
+      "post": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchBatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchBatchResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Structured public research about up to 50 entities with one field set, through a Parallel Task Group, with per-entity Exa Agent runs as the fallback. Every entity key is present in `results`: completed entities carry answers shaped like `/v1/research`, and entities the provider did not finish are failed. Partial success is a success response. Also available as the durable `research_batch` job operation."
+      }
+    },
     "/v1/feedback": {
       "post": {
         "security": [
@@ -1354,6 +1426,236 @@
         "parameters": [
           {
             "name": "monitorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/discoveries": {
+      "post": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoveryCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Starts a Parallel FindAll run that discovers entities matching every condition, optionally answering research fields for each match. When the run ends, its verified Parallel webhook is relayed to callbackUrl as a DiscoveryCallback POST (content-type application/json; any 2xx acknowledges) with the matched candidates, re-fetched from Parallel per delivery and never stored."
+      }
+    },
+    "/v1/discoveries/{discoveryId}": {
+      "get": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "discoveryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/discoveries/{discoveryId}/cancel": {
+      "post": {
+        "security": [
+          {
+            "inferenceBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid bearer credential",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal router failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Router unavailable, candidates exhausted, or execution budget exhausted. Inspect error.code, retryable, and executionStarted; HTTP status alone does not determine retry safety.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouterFailureResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "discoveryId",
             "in": "path",
             "required": true,
             "schema": {
@@ -2272,7 +2574,7 @@
             "additionalProperties": false
           },
           "research": {
-            "description": "Structured entity research providers for `/v1/research` and durable `research` jobs.",
+            "description": "Structured entity research providers for `/v1/research`, `/v1/research/batch` and durable `research` and `research_batch` jobs.",
             "type": "object",
             "properties": {
               "providers": {
@@ -2310,6 +2612,40 @@
           },
           "monitors": {
             "description": "Web monitor providers for /v1/monitors. Absent on deployments without monitors.",
+            "type": "object",
+            "properties": {
+              "providers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "const": "parallel"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "configured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "label",
+                    "configured"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "providers"
+            ],
+            "additionalProperties": false
+          },
+          "discovery": {
+            "description": "Entity discovery providers for /v1/discoveries. Absent on deployments without discovery.",
             "type": "object",
             "properties": {
               "providers": {
@@ -2783,6 +3119,402 @@
           "actions",
           "skills",
           "files"
+        ],
+        "additionalProperties": false
+      },
+      "DiscoveryCallback": {
+        "type": "object",
+        "properties": {
+          "contractVersion": {
+            "type": "number",
+            "const": 1
+          },
+          "discoveryId": {
+            "type": "string"
+          },
+          "orgId": {
+            "type": "string"
+          },
+          "deliveryId": {
+            "type": "string",
+            "description": "Stable across retries: SHA-256 of the webhook id and FindAll run id."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "candidates": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "candidateId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "url": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "conditions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "matched": {
+                        "type": "boolean"
+                      },
+                      "value": {
+                        "type": "string",
+                        "maxLength": 1000
+                      },
+                      "citations": {
+                        "maxItems": 10,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string",
+                              "maxLength": 500
+                            },
+                            "excerpts": {
+                              "maxItems": 3,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 1000
+                              }
+                            }
+                          },
+                          "required": [
+                            "url"
+                          ],
+                          "additionalProperties": false
+                        }
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "matched",
+                      "citations"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "answers": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "confidence": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "high",
+                              "medium",
+                              "low"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "citations": {
+                        "maxItems": 10,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string",
+                              "maxLength": 500
+                            },
+                            "excerpts": {
+                              "maxItems": 3,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 1000
+                              }
+                            }
+                          },
+                          "required": [
+                            "url"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "reasoning": {
+                        "type": "string",
+                        "maxLength": 2000
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "confidence",
+                      "citations"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "candidateId",
+                "name",
+                "url",
+                "conditions"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Matched candidates only, at most matchLimit."
+          }
+        },
+        "required": [
+          "contractVersion",
+          "discoveryId",
+          "deliveryId",
+          "kind",
+          "candidates"
+        ],
+        "additionalProperties": false
+      },
+      "DiscoveryCreateRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "orgId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "objective": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "entityType": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "Plural entity kind, for example \"insurance companies\"."
+              },
+              "matchConditions": {
+                "minItems": 1,
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                    },
+                    "description": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "description"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "matchLimit": {
+                "type": "integer",
+                "minimum": 5,
+                "maximum": 100
+              },
+              "generator": {
+                "description": "Defaults to core.",
+                "type": "string",
+                "enum": [
+                  "base",
+                  "core",
+                  "pro"
+                ]
+              },
+              "exclude": {
+                "description": "Known entities FindAll should neither generate nor evaluate.",
+                "maxItems": 1000,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "url": {
+                      "type": "string",
+                      "maxLength": 2048
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "url"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "fields": {
+                "description": "Research fields answered for each matched candidate.",
+                "minItems": 1,
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                    },
+                    "description": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "date",
+                        "enum"
+                      ]
+                    },
+                    "options": {
+                      "minItems": 1,
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "description",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "objective",
+              "entityType",
+              "matchConditions",
+              "matchLimit"
+            ],
+            "additionalProperties": false
+          },
+          "callbackUrl": {
+            "type": "string",
+            "maxLength": 4096,
+            "format": "uri",
+            "description": "HTTPS URL on a CL_ROUTER_JOB_CALLBACK_HOSTS host with path /router-discoveries/events. Its query string may carry a consumer capability; the router never returns or logs it."
+          }
+        },
+        "required": [
+          "tenantId",
+          "input",
+          "callbackUrl"
+        ],
+        "additionalProperties": false
+      },
+      "DiscoveryStatusResponse": {
+        "type": "object",
+        "properties": {
+          "discoveryId": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "const": "parallel"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "completedAt": {
+            "type": "number"
+          },
+          "matchedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "discoveryId",
+          "provider",
+          "status",
+          "createdAt"
         ],
         "additionalProperties": false
       },
@@ -4715,6 +5447,7 @@
               "embed",
               "retrieve",
               "research",
+              "research_batch",
               "transcribe",
               "browser",
               "computer_use",
@@ -5736,6 +6469,327 @@
           "status",
           "frequency",
           "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "ResearchBatchRequest": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "orgId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "objective": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "fields": {
+                "minItems": 1,
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                    },
+                    "description": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "date",
+                        "enum"
+                      ]
+                    },
+                    "options": {
+                      "minItems": 1,
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "description",
+                    "type"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "entities": {
+                "minItems": 1,
+                "maxItems": 50,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9_-]{1,64}$"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "website": {
+                      "type": "string",
+                      "maxLength": 2048
+                    },
+                    "location": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  },
+                  "required": [
+                    "key",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "allowedDomains": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 253
+                }
+              },
+              "excludedDomains": {
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 253
+                }
+              },
+              "afterDate": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "objective",
+              "fields",
+              "entities"
+            ],
+            "additionalProperties": false
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "primary": {
+                "type": "string",
+                "enum": [
+                  "parallel",
+                  "exa"
+                ]
+              },
+              "depth": {
+                "type": "string",
+                "enum": [
+                  "fast",
+                  "standard",
+                  "deep"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "executionBudgetMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 540000
+          }
+        },
+        "required": [
+          "tenantId",
+          "input"
+        ],
+        "additionalProperties": false
+      },
+      "ResearchBatchResponse": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": [
+              "parallel",
+              "exa"
+            ]
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "ok": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "ok"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "groupId": {
+            "description": "Parallel task group id when Parallel answered.",
+            "type": "string"
+          },
+          "results": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "completed",
+                    "failed"
+                  ]
+                },
+                "providerRunId": {
+                  "type": "string"
+                },
+                "answers": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "confidence": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "high",
+                              "medium",
+                              "low"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "citations": {
+                        "maxItems": 10,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "url": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string",
+                              "maxLength": 500
+                            },
+                            "excerpts": {
+                              "maxItems": 3,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 1000
+                              }
+                            }
+                          },
+                          "required": [
+                            "url"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "reasoning": {
+                        "type": "string",
+                        "maxLength": 2000
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "confidence",
+                      "citations"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "Every requested field key. Values the provider could not support, or that did not match the requested type, are null."
+                },
+                "error": {
+                  "description": "Failed entities only: a failure code such as `research_failed:http_402`, `research_failed:timeout`, `research_failed:run_unmatched` or `research_failed:not_completed`. Never provider text.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Every requested entity key. Entities the provider did not finish are failed and carry no answers."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "provider",
+          "attempts",
+          "results"
         ],
         "additionalProperties": false
       },

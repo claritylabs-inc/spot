@@ -232,6 +232,40 @@
           "schema": "MonitorStatusResponse"
         }
       ]
+    },
+    {
+      "name": "batch research",
+      "method": "post",
+      "path": "/v1/research/batch",
+      "request": {
+        "required": true,
+        "mediaType": "application/json",
+        "schema": "ResearchBatchRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "mediaType": "application/json",
+          "schema": "ResearchBatchResponse"
+        }
+      ]
+    },
+    {
+      "name": "discovery creation",
+      "method": "post",
+      "path": "/v1/discoveries",
+      "request": {
+        "required": true,
+        "mediaType": "application/json",
+        "schema": "DiscoveryCreateRequest"
+      },
+      "responses": [
+        {
+          "status": "200",
+          "mediaType": "application/json",
+          "schema": "DiscoveryStatusResponse"
+        }
+      ]
     }
   ],
   "fixtures": [
@@ -1491,6 +1525,199 @@
                 ]
               }
             ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Spot client profile batch research request",
+      "schema": "ResearchBatchRequest",
+      "value": {
+        "tenantId": "glass",
+        "input": {
+          "objective": "Public profile facts about this exact company. Return null rather than guess.",
+          "fields": [
+            {
+              "key": "year_founded",
+              "description": "Year the company was founded",
+              "type": "number"
+            },
+            {
+              "key": "headquarters",
+              "description": "Headquarters city and state",
+              "type": "string"
+            }
+          ],
+          "entities": [
+            {
+              "key": "org_a",
+              "name": "Acme Robotics",
+              "website": "https://acme-robotics.example.com/",
+              "location": "Austin, TX"
+            },
+            {
+              "key": "org_b",
+              "name": "Maple Logistics"
+            }
+          ]
+        },
+        "config": {
+          "depth": "standard"
+        },
+        "executionBudgetMs": 300000
+      }
+    },
+    {
+      "name": "Batch research response with a failed entity",
+      "schema": "ResearchBatchResponse",
+      "value": {
+        "provider": "exa",
+        "attempts": [
+          {
+            "provider": "parallel",
+            "ok": false,
+            "error": "research_failed:http_402"
+          },
+          {
+            "provider": "exa",
+            "ok": true
+          }
+        ],
+        "results": {
+          "org_a": {
+            "status": "completed",
+            "providerRunId": "agent_run_1",
+            "answers": {
+              "year_founded": {
+                "value": 2014,
+                "confidence": "high",
+                "citations": [
+                  {
+                    "url": "https://acme-robotics.example.com/about"
+                  }
+                ]
+              },
+              "headquarters": {
+                "value": "Austin, Texas",
+                "confidence": "high",
+                "citations": []
+              }
+            }
+          },
+          "org_b": {
+            "status": "failed",
+            "error": "research_failed:timeout"
+          }
+        }
+      }
+    },
+    {
+      "name": "Spot provider discovery request",
+      "schema": "DiscoveryCreateRequest",
+      "value": {
+        "tenantId": "glass",
+        "orgId": "org_contract_fixture",
+        "input": {
+          "objective": "Find insurance markets that write cyber liability for software businesses in TX and accept submissions from retail brokers.",
+          "entityType": "insurance carriers, MGAs, program administrators and wholesale brokers",
+          "matchConditions": [
+            {
+              "name": "writes_lines",
+              "description": "Writes or places cyber liability insurance"
+            },
+            {
+              "name": "serves_states",
+              "description": "Can write business in TX"
+            }
+          ],
+          "matchLimit": 25,
+          "generator": "core",
+          "exclude": [
+            {
+              "name": "Known MGA",
+              "url": "https://known-mga.example.com/"
+            }
+          ],
+          "fields": [
+            {
+              "key": "provider_type",
+              "description": "Market type",
+              "type": "enum",
+              "options": [
+                "carrier",
+                "mga",
+                "wholesaler",
+                "program_administrator",
+                "agency",
+                "other"
+              ]
+            },
+            {
+              "key": "appointment_url",
+              "description": "Page for brokers to get appointed or submit",
+              "type": "string"
+            }
+          ]
+        },
+        "callbackUrl": "https://spot.example.com/router-discoveries/events?token=contract_fixture_token"
+      }
+    },
+    {
+      "name": "Queued discovery status",
+      "schema": "DiscoveryStatusResponse",
+      "value": {
+        "discoveryId": "j97a3k2m8x4q5r6s7t8v9w0y1z2b3c4d",
+        "provider": "parallel",
+        "status": "queued",
+        "createdAt": 1793404800000
+      }
+    },
+    {
+      "name": "Completed discovery callback",
+      "schema": "DiscoveryCallback",
+      "value": {
+        "contractVersion": 1,
+        "discoveryId": "j97a3k2m8x4q5r6s7t8v9w0y1z2b3c4d",
+        "orgId": "org_contract_fixture",
+        "deliveryId": "e71e9b26200fbab1a5aac8edcf36fb52d67b588ff33064ca920e2a75c9381654",
+        "kind": "completed",
+        "candidates": [
+          {
+            "candidateId": "candidate_a1",
+            "name": "Coalition Insurance Solutions",
+            "url": "https://coalitioninc.com/",
+            "description": "Cyber insurance MGA.",
+            "conditions": [
+              {
+                "name": "writes_lines",
+                "matched": true,
+                "value": "Writes cyber insurance.",
+                "citations": [
+                  {
+                    "url": "https://www.coalitioninc.com/about",
+                    "title": "About Coalition",
+                    "excerpts": [
+                      "Coalition is licensed in all 50 states."
+                    ]
+                  }
+                ]
+              }
+            ],
+            "answers": {
+              "provider_type": {
+                "value": "mga",
+                "confidence": "high",
+                "citations": [
+                  {
+                    "url": "https://www.coalitioninc.com/about",
+                    "title": "About Coalition",
+                    "excerpts": [
+                      "Coalition is licensed in all 50 states."
+                    ]
+                  }
+                ]
+              }
+            }
           }
         ]
       }
