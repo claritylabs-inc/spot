@@ -683,6 +683,10 @@ export function buildEmailToolExecutors(
     const cc = normalizeCopies([
       ...(input.cc ?? []),
       ...(context.defaultCc ?? []),
+      // A new reply that takes the thread's recipient also copies everyone else on it.
+      ...(!existing && !input.to && input.recipientDirection === "explicit"
+        ? (operator?.teamThread?.defaultCc ?? [])
+        : []),
       ...requiredCopies,
     ]);
     const bcc = normalizeCopies([

@@ -140,6 +140,8 @@ export type TeamThreadDraftContext = {
   crossReply: boolean;
   ownerAddress?: string;
   defaultTo?: string;
+  /** Everyone else on the latest message, copied on a reply-all. */
+  defaultCc?: string[];
   quoteHeader?: string;
   quote?: string;
 };

@@ -236,6 +236,22 @@ async function replyCorrespondents(
 }
 
 /**
+ * Who a reply on this thread goes to by default (reply-all, never the sender
+ * or Spot's own addresses), or null when nobody can be replied to. Agent reply
+ * drafts start from these, as inbox replies do.
+ */
+export async function teamReplyDefaultRecipients(
+  ctx: Ctx,
+  thread: Doc<"teamEmailThreads">,
+  latest: Doc<"teamEmailMessages"> | undefined,
+  ownAddress: string,
+) {
+  if (!latest) return null;
+  const correspondents = await replyCorrespondents(ctx, thread, latest, ownAddress.toLowerCase());
+  return correspondents.ok ? { to: correspondents.to[0], cc: correspondents.cc } : null;
+}
+
+/**
  * The reply `operatorUserId` would send on a team thread, from their own
  * inbox and signed as them. Pure over current state: the preview, the approval
  * fingerprint and the draft the send creates all come from this one function,

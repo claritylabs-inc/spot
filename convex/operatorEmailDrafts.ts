@@ -23,7 +23,7 @@ import {
   threadFollowUpRequestValidator,
   validateThreadFollowUpRequest,
 } from "./lib/threadFollowUps";
-import { isComposeKey } from "./lib/teamEmailReply";
+import { isComposeKey, teamReplyDefaultRecipients } from "./lib/teamEmailReply";
 import { composeClientOutreachEmail } from "./lib/clientOutreachEmail";
 import { OUTREACH_DEFAULT_CADENCE } from "./lib/providerOutreachSchedule";
 import {
@@ -373,13 +373,20 @@ export const resolveSenderInternal = internalQuery({
           : await teamThreadOwnerAddress(ctx, thread.ownerUserId);
       const quote =
         !plan.threaded && plan.latest ? quotedHistory(plan.latest) : undefined;
+      const replyAll = await teamReplyDefaultRecipients(
+        ctx,
+        thread,
+        plan.latest,
+        identity.teamAddress,
+      );
       teamThread = {
         id: thread._id,
         subject: thread.subject,
         ownerUserId: thread.ownerUserId,
         crossReply: !plan.threaded,
         ownerAddress,
-        defaultTo: plan.defaultTo,
+        defaultTo: replyAll?.to ?? plan.defaultTo,
+        defaultCc: replyAll?.cc,
         quoteHeader: quote?.header,
         quote: quote?.block,
       };
