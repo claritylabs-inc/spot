@@ -102,6 +102,7 @@ export const OPERATOR_CONFIRMATION_PREFLIGHT_TOOL_NAMES = [
   "update_organization_profiles",
   "update_client_business_profile",
   "research_client",
+  "manage_client_web_monitor",
   "research_broker",
   "research_brokers",
   "set_client_access_status",
@@ -1274,6 +1275,9 @@ export async function preflightOperatorToolConfirmation(
       await requireBrokerOrganization(ctx, args.input.orgId);
       return;
     case "research_client":
+      await requireClientOrganization(ctx, args.input.orgId);
+      return;
+    case "manage_client_web_monitor":
       await requireClientOrganization(ctx, args.input.orgId);
       return;
     case "set_client_assignees":

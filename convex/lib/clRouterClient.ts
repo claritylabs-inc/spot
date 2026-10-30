@@ -2039,3 +2039,97 @@ export async function clRouterTranscribe(
   };
 }
 
+
+export type ClRouterMonitorField = {
+  key: string;
+  description: string;
+  type: "string" | "number" | "boolean" | "date" | "enum";
+  options?: string[];
+};
+
+export type ClRouterCreateMonitorRequest = {
+  tenantId?: string;
+  orgId?: string;
+  input: {
+    entity: { name: string; website?: string };
+    query: string;
+    fields?: ClRouterMonitorField[];
+    frequency: string;
+  };
+  /** Carries a capability token in its query string; never log it. */
+  callbackUrl: string;
+  config?: { depth?: "fast" | "standard" };
+};
+
+export type ClRouterMonitorStatus = {
+  monitorId: string;
+  provider: "parallel";
+  status: "active" | "cancelled";
+  frequency: string;
+  createdAt: number;
+  lastEventAt?: number;
+};
+
+const CREATE_MONITOR_BODY_KEYS = [
+  "orgId",
+  "input",
+  "callbackUrl",
+  "config",
+] as const satisfies readonly (keyof ClRouterCreateMonitorRequest)[];
+
+function readMonitorStatus(payload: unknown): ClRouterMonitorStatus {
+  if (
+    !isRecord(payload) ||
+    !isNonEmptyString(payload.monitorId) ||
+    payload.provider !== "parallel" ||
+    (payload.status !== "active" && payload.status !== "cancelled") ||
+    !isNonEmptyString(payload.frequency) ||
+    typeof payload.createdAt !== "number" ||
+    !Number.isFinite(payload.createdAt) ||
+    (payload.lastEventAt !== undefined &&
+      (typeof payload.lastEventAt !== "number" ||
+        !Number.isFinite(payload.lastEventAt)))
+  ) {
+    throw new ClRouterRequestError(
+      "invalid_response",
+      "cl-router monitor response is invalid",
+    );
+  }
+  return {
+    monitorId: payload.monitorId,
+    provider: payload.provider,
+    status: payload.status,
+    frequency: payload.frequency,
+    createdAt: payload.createdAt,
+    ...(payload.lastEventAt !== undefined
+      ? { lastEventAt: payload.lastEventAt }
+      : {}),
+  };
+}
+
+/** Starts a public-web monitor whose events the router posts to `callbackUrl`. */
+export async function clRouterCreateMonitor(
+  request: ClRouterCreateMonitorRequest,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterMonitorStatus> {
+  return readMonitorStatus(
+    await postJson(
+      "/v1/monitors",
+      requestBody(request, CREATE_MONITOR_BODY_KEYS),
+      options,
+    ),
+  );
+}
+
+export async function clRouterCancelMonitor(
+  monitorId: string,
+  options: ClRouterClientOptions = {},
+): Promise<ClRouterMonitorStatus> {
+  return readMonitorStatus(
+    await clRouterFetch(
+      `/v1/monitors/${encodeURIComponent(monitorId)}/cancel`,
+      { method: "POST" },
+      options,
+    ),
+  );
+}
