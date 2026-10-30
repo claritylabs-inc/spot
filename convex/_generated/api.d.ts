@@ -60,6 +60,7 @@ import type * as actions_operatorNextMessage from "../actions/operatorNextMessag
 import type * as actions_operatorNotifications from "../actions/operatorNotifications.js";
 import type * as actions_operatorSecondFactor from "../actions/operatorSecondFactor.js";
 import type * as actions_operatorSendingMailboxes from "../actions/operatorSendingMailboxes.js";
+import type * as actions_operatorSkillScripts from "../actions/operatorSkillScripts.js";
 import type * as actions_operatorSuggestions from "../actions/operatorSuggestions.js";
 import type * as actions_ownComplianceMonitor from "../actions/ownComplianceMonitor.js";
 import type * as actions_policyExtraction from "../actions/policyExtraction.js";
@@ -379,6 +380,8 @@ import type * as lib_operatorRemainingBatch from "../lib/operatorRemainingBatch.
 import type * as lib_operatorRunPlan from "../lib/operatorRunPlan.js";
 import type * as lib_operatorRunTiming from "../lib/operatorRunTiming.js";
 import type * as lib_operatorSecondFactor from "../lib/operatorSecondFactor.js";
+import type * as lib_operatorSkillScriptRunner from "../lib/operatorSkillScriptRunner.js";
+import type * as lib_operatorSkillScripts from "../lib/operatorSkillScripts.js";
 import type * as lib_operatorSkillStore from "../lib/operatorSkillStore.js";
 import type * as lib_operatorSkillTools from "../lib/operatorSkillTools.js";
 import type * as lib_operatorSkills from "../lib/operatorSkills.js";
@@ -701,6 +704,7 @@ declare const fullApi: ApiFromModules<{
   "actions/operatorNotifications": typeof actions_operatorNotifications;
   "actions/operatorSecondFactor": typeof actions_operatorSecondFactor;
   "actions/operatorSendingMailboxes": typeof actions_operatorSendingMailboxes;
+  "actions/operatorSkillScripts": typeof actions_operatorSkillScripts;
   "actions/operatorSuggestions": typeof actions_operatorSuggestions;
   "actions/ownComplianceMonitor": typeof actions_ownComplianceMonitor;
   "actions/policyExtraction": typeof actions_policyExtraction;
@@ -1020,6 +1024,8 @@ declare const fullApi: ApiFromModules<{
   "lib/operatorRunPlan": typeof lib_operatorRunPlan;
   "lib/operatorRunTiming": typeof lib_operatorRunTiming;
   "lib/operatorSecondFactor": typeof lib_operatorSecondFactor;
+  "lib/operatorSkillScriptRunner": typeof lib_operatorSkillScriptRunner;
+  "lib/operatorSkillScripts": typeof lib_operatorSkillScripts;
   "lib/operatorSkillStore": typeof lib_operatorSkillStore;
   "lib/operatorSkillTools": typeof lib_operatorSkillTools;
   "lib/operatorSkills": typeof lib_operatorSkills;

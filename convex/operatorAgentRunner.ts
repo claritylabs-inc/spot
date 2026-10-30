@@ -159,6 +159,8 @@ import {
   operatorContextHardLimit,
 } from "./lib/operatorContextCompaction";
 import { emailSkillPrompt, type EmailPrompts } from "./lib/emailSkill";
+import { operatorSkillsPromptBlock } from "./lib/operatorSkills";
+import { skillScriptsRunnable } from "./lib/operatorSkillScriptRunner";
 
 const OPERATOR_AGENT_MAX_OUTPUT_TOKENS = 8_192;
 const OPERATOR_AGENT_MAX_STEPS = 1;
@@ -652,7 +654,7 @@ export const run = internalAction({
         operatorEmail?: string;
         operatorTeamAddress?: string;
         emailPrompts: EmailPrompts;
-        operatorSkillsPrompt: string;
+        operatorSkills: Array<{ name: string; description: string; hasScripts: boolean }>;
       } | null = await timer.time("run_context", () =>
         ctx.runQuery(internal.operatorAgent.getRunContextInternal, {
           runId: args.runId,
@@ -1525,6 +1527,9 @@ export const run = internalAction({
         ...(expandToolsWithheld ? { expandToolsWithheld: true } : {}),
         toolFamilySource: familySelection.source,
       } as const;
+      const scriptsRunnable =
+        context.operatorSkills.some((skill) => skill.hasScripts) &&
+        (await skillScriptsRunnable());
       const system =
         buildOperatorSystemPrompt(familySelection.families, availableFamilies) +
         buildOperatorPageContextBlock(
@@ -1543,7 +1548,9 @@ export const run = internalAction({
         (familySelection.families.some((family) => EMAIL_WRITING_FAMILIES.has(family))
           ? `\n\n${emailSkillPrompt(context.emailPrompts, { provider: true })}`
           : "") +
-        context.operatorSkillsPrompt +
+        operatorSkillsPromptBlock(context.operatorSkills, {
+          scriptsRunnable,
+        }) +
         (commandEmail ? `\n\n${OPERATOR_COMMAND_EMAIL_GUIDANCE}` : "") +
         (run.emailReadOnly
           ? "\n\nREAD-ONLY EMAIL: The raw message could not be authenticated. You may read and answer, including drafting wording in your reply, but cannot save changes, create saved drafts, call external MCP servers, approve actions, or send email. Explain the restriction and direct changes to authenticated operator chat."

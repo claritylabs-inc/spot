@@ -1,5 +1,8 @@
 import { readBoundedRequestBody } from "./lib/httpBody";
-import { ROUTER_JOB_INLINE_REQUEST_BYTES } from "./lib/routerJobLimits";
+import {
+  ROUTER_JOB_EXEC_REQUEST_BYTES,
+  ROUTER_JOB_INLINE_REQUEST_BYTES,
+} from "./lib/routerJobLimits";
 import { startModelCall, finishModelCall } from "./modelRoutingEvents";
 import { callContextValidator, callResultValidator, modelCallResult } from "./lib/modelCallTelemetry";
 import dayjs from "dayjs";
@@ -36,6 +39,7 @@ const operation = v.union(
   v.literal("retrieve"),
   v.literal("transcribe"),
   v.literal("browse"),
+  v.literal("exec"),
 );
 
 export async function routerJobTokenHash(token: string): Promise<string> {
@@ -141,7 +145,9 @@ export const prepare = internalMutation({
       requestBytes >
         (args.request !== undefined
           ? ROUTER_JOB_INLINE_REQUEST_BYTES
-          : ROUTER_JOB_REQUEST_BYTES) ||
+          : args.operation === "exec"
+            ? ROUTER_JOB_EXEC_REQUEST_BYTES
+            : ROUTER_JOB_REQUEST_BYTES) ||
       (args.assetStorageIds?.length ?? 0) > 8
     )
       throw new Error("Invalid router request storage");

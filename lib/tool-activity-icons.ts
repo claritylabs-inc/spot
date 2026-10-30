@@ -199,6 +199,7 @@ const operatorToolCategories = {
   clear_all_agent_memory: "delete",
   load_skill: "skills",
   read_skill_file: "skills",
+  run_skill_script: "skills",
 } satisfies Record<OperatorAgentToolName, keyof typeof toolActivityCategories>;
 
 const clientToolCategories: Record<

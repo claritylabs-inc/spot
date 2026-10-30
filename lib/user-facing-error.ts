@@ -93,6 +93,14 @@ export function getPermissionErrorMessage(error: unknown) {
 export function getUserFacingErrorMessage(error: unknown, fallback: string) {
   const structured = structuredErrorData(error);
   if (structured) return structured.message;
+  // A ConvexError thrown with a string carries its user-facing message as data.
+  if (
+    error instanceof Error &&
+    "data" in error &&
+    typeof error.data === "string" &&
+    error.data.trim()
+  )
+    return error.data;
 
   const message = normalizedErrorMessage(error);
   if (!message) return fallback;

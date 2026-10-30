@@ -19,3 +19,25 @@ export class NoWriteInputError extends ConvexError<{
     this.code = code;
   }
 }
+
+/**
+ * Rethrows a NoWriteInputError that crossed a `runAction` boundary as a fresh
+ * one, so its message no longer carries the nested function's stack text.
+ */
+export function rethrowNoWriteInput(error: unknown): never {
+  const data =
+    error && typeof error === "object" && "data" in error
+      ? (error as { data: unknown }).data
+      : undefined;
+  if (
+    data &&
+    typeof data === "object" &&
+    (data as { kind?: unknown }).kind === "no_write_input" &&
+    typeof (data as { code?: unknown }).code === "string" &&
+    typeof (data as { message?: unknown }).message === "string"
+  ) {
+    const { code, message } = data as { code: string; message: string };
+    throw new NoWriteInputError(code, message);
+  }
+  throw error;
+}

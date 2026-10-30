@@ -61,5 +61,9 @@ export async function enabledOperatorSkills(ctx: QueryCtx, userId: Id<"users">) 
   return [
     ...own,
     ...shared.filter((skill) => skill.enabled && !names.has(skill.name)),
-  ].map((skill) => ({ name: skill.name, description: skill.description }));
+  ].map((skill) => ({
+    name: skill.name,
+    description: skill.description,
+    hasScripts: skill.hasScripts,
+  }));
 }
