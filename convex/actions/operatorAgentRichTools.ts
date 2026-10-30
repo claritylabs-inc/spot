@@ -285,7 +285,7 @@ export const runInternal = internalAction({
             Math.max(answered.length, filled.blank.length) >
             MAX_REPORTED_FORM_FIELDS,
           editing:
-            "The operator can type into any blank, tick boxes, or move and place values with Edit in the PDF panel; each save files a new version under the same client, request and provider.",
+            "To correct or add values (the operator may send a screenshot), call edit_pdf_form with the field labels above; each edit files a new version under the same client, request and provider.",
         },
         attachments: [
           {
