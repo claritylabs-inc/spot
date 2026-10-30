@@ -1,5 +1,15 @@
 # Platform workflow QA
 
+## PDF form blank hints — October 30, 2026
+
+Production v3 of the Morison questionnaire (filled at 16:14 UTC, before #719)
+had values shifted into neighbouring fields; a refill with #719 (v4) fixed most
+but still swapped DOB/phone/email and put underwriting answers in Driver #4,
+because the model read tiny tags numbered in field-creation order. With ids in
+reading order, 7pt tags at 1568px and each blank's printed left/above/right
+words from the text layer, a live run on the same PDF with the client's facts
+placed all 23 answers in the right fields (about 46 seconds).
+
 ## PDF forms: flat fills, live view and agent edits — October 30, 2026
 
 Native-local Conductor stack, signed in as an operator in headless Chrome.

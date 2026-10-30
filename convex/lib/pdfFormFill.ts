@@ -38,7 +38,8 @@ import {
   pdfFormFieldBox,
   type PdfFormField,
 } from "./pdfFormFields";
-import { renderPdfPageImages } from "./pdfPageImages";
+import { JEV_IMAGE_MAX_SIDE, renderPdfPageImages } from "./pdfPageImages";
+import type { PdfTextItem } from "./pdfSourceSpans";
 import { extractPdfText } from "./pdfText";
 
 /** Pages read and filled; later pages are reported, never silently filled. */
@@ -223,7 +224,7 @@ function formBlanks(document: PDFDocument): TaggedBlank[] {
       if (pageIndex < 0) continue;
       const rect = widget.getRectangle();
       blanks.push({
-        id: `f${blanks.length}`,
+        id: "",
         kind,
         ...(options ? { options } : {}),
         page: pageIndex + 1,
@@ -234,7 +235,83 @@ function formBlanks(document: PDFDocument): TaggedBlank[] {
       });
     }
   }
-  return blanks.slice(0, MAX_FORM_FIELDS);
+  // Ids follow reading order (rows within ~4pt), so a misread tag lands near its blank.
+  return blanks
+    .sort(
+      (a, b) =>
+        a.page - b.page ||
+        (Math.abs(a.y - b.y) > 4 ? a.y - b.y : a.x - b.x),
+    )
+    .slice(0, MAX_FORM_FIELDS)
+    .map((blank, index) => ({ ...blank, id: `f${index + 1}` }));
+}
+
+const overlap = (a0: number, a1: number, b0: number, b1: number) =>
+  Math.min(a1, b1) - Math.max(a0, b0);
+
+/**
+ * The printed text around a blank, read from the text layer: what sits left
+ * of it on its row (after any blank to its left), the line just above it, and
+ * for a checkbox the option to its right. Field names are often meaningless,
+ * so these hints, not the tag alone, tie each id to its question.
+ */
+function blankHints(
+  blank: TaggedBlank,
+  blanks: TaggedBlank[],
+  items: PdfTextItem[],
+) {
+  const bottom = blank.y + blank.height;
+  const onRow = (box: Box) =>
+    overlap(box.y, box.y + box.height, blank.y, bottom) >
+    Math.min(box.height, blank.height) * 0.3;
+  const leftBound = Math.max(
+    blank.x - 220,
+    ...blanks
+      .filter(
+        (other) =>
+          other !== blank &&
+          other.page === blank.page &&
+          onRow(other) &&
+          other.x + other.width <= blank.x + 1,
+      )
+      .map((other) => other.x + other.width),
+  );
+  const join = (picked: PdfTextItem[]) =>
+    picked
+      .sort((a, b) => (Math.abs(a.y - b.y) > 2 ? a.y - b.y : a.x - b.x))
+      .map((item) => item.text)
+      .join(" ")
+      .slice(0, 100);
+  const left = items.filter(
+    (item) => onRow(item) && item.x >= leftBound - 1 && item.x + item.width <= blank.x + 2,
+  );
+  const right =
+    blank.kind === "checkbox"
+      ? items
+          .filter(
+            (item) =>
+              onRow(item) &&
+              item.x >= blank.x + blank.width - 2 &&
+              item.x - (blank.x + blank.width) < 60,
+          )
+          .sort((a, b) => a.x - b.x)
+          .slice(0, 1)
+      : [];
+  const aboveCandidates = items.filter(
+    (item) =>
+      item.y + item.height <= blank.y + 2 &&
+      blank.y - (item.y + item.height) < 24 &&
+      overlap(item.x, item.x + item.width, blank.x, blank.x + blank.width) > 0,
+  );
+  const nearestAbove = Math.max(...aboveCandidates.map((item) => item.y + item.height));
+  const above = aboveCandidates.filter(
+    (item) => nearestAbove - (item.y + item.height) < 3,
+  );
+  return {
+    ...(left.length ? { left: join(left) } : {}),
+    ...(above.length ? { above: join(above) } : {}),
+    ...(right.length ? { right: join(right) } : {}),
+  };
 }
 
 /**
@@ -283,7 +360,7 @@ async function taggedFormBytes(flatBytes: Uint8Array, blanks: TaggedBlank[]) {
   const font = await document.embedFont(StandardFonts.Helvetica);
   const pages = document.getPages();
   const red = rgb(0.85, 0, 0);
-  const size = 6;
+  const size = 7;
   for (const blank of blanks) {
     const page = pages[blank.page - 1];
     const y = page.getHeight() - blank.y - blank.height;
@@ -310,8 +387,9 @@ async function fillTaggedForm(
   const pageNumbers = Array.from({ length: pagesRead }, (_, i) => i + 1);
   const readable = blanks.filter((blank) => blank.page <= pagesRead);
   const [images, text] = await Promise.all([
+    // Full resolution so the small id tags stay legible.
     taggedFormBytes(input.pdfBytes, readable).then((pdfBytes) =>
-      renderPdfPageImages({ pdfBytes, pages: pageNumbers }),
+      renderPdfPageImages({ pdfBytes, pages: pageNumbers, maxSide: JEV_IMAGE_MAX_SIDE }),
     ),
     pageTextLayers(input),
   ]);
@@ -322,13 +400,18 @@ async function fillTaggedForm(
         ...pageContent(images, text),
         {
           type: "text",
-          text: `Every blank is outlined in red with its id. Label and fill each id below from the sources; leave the rest empty.\n${JSON.stringify(
+          text: `Every blank is outlined in red with its id, numbered in reading order. left, above and right are the printed words beside each blank; use them with the page image to tell which question it answers, including its section. Label and fill each id below from the sources; leave the rest empty.\n${JSON.stringify(
             {
-              blanks: readable.map(({ id, kind, page, options }) => ({
-                id,
-                kind,
-                page,
-                ...(options ? { options } : {}),
+              blanks: readable.map((blank) => ({
+                id: blank.id,
+                kind: blank.kind,
+                page: blank.page,
+                ...blankHints(
+                  blank,
+                  readable,
+                  text?.pages.find((page) => page.page === blank.page)?.items ?? [],
+                ),
+                ...(blank.options ? { options: blank.options } : {}),
               })),
             },
           )}\n${contextText(input)}`,
@@ -501,6 +584,7 @@ function pageTextLayers(input: PdfFormFillInput) {
     pdfBytes: input.pdfBytes,
     documentId: input.traceId,
     sourceKind: "attachment",
+    includeItems: true,
   }).catch(() => null);
 }
 
